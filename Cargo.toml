@@ -1,0 +1,38 @@
+[workspace]
+members = [
+    "crates/orpheus-dsp",
+    "crates/orpheus-lang",
+    "crates/orpheus-pattern",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.85"
+version = "0.1.0"
+
+[workspace.dependencies]
+orpheus-dsp = { path = "crates/orpheus-dsp" }
+orpheus-lang = { path = "crates/orpheus-lang" }
+orpheus-pattern = { path = "crates/orpheus-pattern" }
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"
+
+[package]
+name = "orpheus"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+orpheus-dsp.workspace = true
+orpheus-lang.workspace = true
+orpheus-pattern.workspace = true

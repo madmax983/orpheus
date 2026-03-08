@@ -1,0 +1,12 @@
+[package]
+name = "orpheus-pattern"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+orpheus-dsp.workspace = true
+orpheus-lang.workspace = true
