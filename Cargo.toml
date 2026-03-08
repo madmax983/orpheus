@@ -21,6 +21,7 @@ unsafe_code = "warn"
 
 [workspace.lints.clippy]
 all = "warn"
+nursery = "warn"
 pedantic = "warn"
 
 [package]

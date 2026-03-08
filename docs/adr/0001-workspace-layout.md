@@ -30,5 +30,12 @@ Trade-offs:
 
 - more manifests and crate wiring up front
 - cross-crate changes require deliberate dependency management
+- the Task 1 bootstrap smoke test in `crates/orpheus-pattern/tests/` needs
+  `orpheus-dsp` and `orpheus-lang` as `dev-dependencies` so the integration
+  test crate can import sibling workspace members
 
 This is acceptable because Orpheus is explicitly designed as a layered system, not a single-crate toy.
+
+Those test-only dependencies do not create a runtime layering violation. They are
+limited to the bootstrap smoke test target, while the `orpheus-pattern` library
+itself still has no runtime dependency on either higher layer.
