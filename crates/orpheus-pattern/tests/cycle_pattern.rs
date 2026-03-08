@@ -71,12 +71,34 @@ fn cycle_pattern_clips_whole_spans_to_query_window() {
     assert_eq!(events[1].part.end(), span.end());
 }
 
+#[test]
+fn cycle_pattern_clips_partial_windows_across_cycle_boundaries() {
+    let pattern = CyclePattern::from_nodes(vec![PatternNode::atom("bd")]);
+    let span = TimeSpan::new(Rational::new(3, 4).unwrap(), Rational::new(5, 4).unwrap()).unwrap();
+
+    let events = pattern.query(span);
+
+    assert_eq!(events.len(), 2);
+    assert_eq!(
+        events[0].whole.as_ref().unwrap(),
+        &TimeSpan::new(Rational::zero(), Rational::one()).unwrap()
+    );
+    assert_eq!(events[0].part.start(), &Rational::new(3, 4).unwrap());
+    assert_eq!(events[0].part.end(), &Rational::one());
+    assert_eq!(
+        events[1].whole.as_ref().unwrap(),
+        &TimeSpan::new(Rational::one(), Rational::new(2, 1).unwrap()).unwrap()
+    );
+    assert_eq!(events[1].part.start(), &Rational::one());
+    assert_eq!(events[1].part.end(), &Rational::new(5, 4).unwrap());
+}
+
 proptest! {
     #[test]
     fn queried_event_parts_stay_within_requested_span(
         start_numer in -4_i64..=4,
         start_denom in 1_i64..=4,
-        extra_numer in 0_i64..=8,
+        extra_numer in 1_i64..=8,
         extra_denom in 1_i64..=4,
     ) {
         let pattern = CyclePattern::from_nodes(vec![

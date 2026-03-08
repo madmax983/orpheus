@@ -2,7 +2,7 @@ use core::cmp::Ordering;
 
 use crate::{PatternError, Rational};
 
-/// Closed time span in exact rational time.
+/// Half-open time span in exact rational time: `[start, end)`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TimeSpan {
     start: Rational,
@@ -10,7 +10,7 @@ pub struct TimeSpan {
 }
 
 impl TimeSpan {
-    /// Creates a span if and only if its bounds are ordered.
+    /// Creates a half-open span if and only if its bounds are ordered.
     ///
     /// # Errors
     ///
@@ -23,7 +23,7 @@ impl TimeSpan {
         Ok(Self { start, end })
     }
 
-    /// Returns the unit cycle span.
+    /// Returns the unit cycle span `[0, 1)`.
     #[must_use]
     pub const fn unit() -> Self {
         Self {
@@ -32,19 +32,19 @@ impl TimeSpan {
         }
     }
 
-    /// Returns the start bound of the span.
+    /// Returns the inclusive start bound of the span.
     #[must_use]
     pub const fn start(&self) -> &Rational {
         &self.start
     }
 
-    /// Returns the end bound of the span.
+    /// Returns the exclusive end bound of the span.
     #[must_use]
     pub const fn end(&self) -> &Rational {
         &self.end
     }
 
-    /// Returns `true` when the span contains no duration.
+    /// Returns `true` when the half-open span contains no duration.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.start() == self.end()
