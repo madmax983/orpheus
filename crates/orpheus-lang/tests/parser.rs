@@ -7,6 +7,22 @@ fn binding_expr(source: &str) -> Expr {
     }
 }
 
+fn assert_parse_error_contains(source: &str, expected_fragments: &[&str]) {
+    let error = parse_module(source).unwrap_err();
+    let message = error.to_string();
+
+    assert!(
+        !message.trim().is_empty(),
+        "parse error should not be empty"
+    );
+    assert!(
+        expected_fragments
+            .iter()
+            .any(|fragment| message.contains(fragment)),
+        "parse error `{message}` did not mention any of: {expected_fragments:?}"
+    );
+}
+
 #[test]
 fn parses_juxtaposition_as_sequence() {
     let module = parse_module("drums = bd sn cp").unwrap();
@@ -17,9 +33,23 @@ fn parses_juxtaposition_as_sequence() {
 
 #[test]
 fn parses_pipe_as_left_associative() {
-    let module = parse_module("drums = bd sn |> fast(2) |> rev").unwrap();
-    let rendered = format!("{:#?}", module.statements[0]);
-    assert!(rendered.contains("Pipe"));
+    let expr = binding_expr("drums = bd sn |> fast(2) |> rev");
+    assert_eq!(
+        expr,
+        Expr::Pipe {
+            lhs: Box::new(Expr::Pipe {
+                lhs: Box::new(Expr::Seq(vec![
+                    Expr::Ident("bd".to_owned()),
+                    Expr::Ident("sn".to_owned()),
+                ])),
+                rhs: Box::new(Expr::Call {
+                    callee: Box::new(Expr::Ident("fast".to_owned())),
+                    args: vec![Expr::Number(2.0)],
+                }),
+            }),
+            rhs: Box::new(Expr::Ident("rev".to_owned())),
+        }
+    );
 }
 
 #[test]
@@ -37,14 +67,13 @@ fn parses_grouping_inside_sequences() {
 #[test]
 fn parses_stack_layers_with_rests() {
     let expr = binding_expr("drums = stack(bd ~, ~ sn)");
-    match &expr {
-        Expr::Stack(layers) => {
-            assert_eq!(layers.len(), 2);
-            assert!(format!("{:#?}", layers[0]).contains("Rest"));
-            assert!(format!("{:#?}", layers[1]).contains("Rest"));
-        }
-        other => panic!("unexpected AST: {other:#?}"),
-    }
+    assert_eq!(
+        expr,
+        Expr::Stack(vec![
+            Expr::Seq(vec![Expr::Ident("bd".to_owned()), Expr::Rest]),
+            Expr::Seq(vec![Expr::Rest, Expr::Ident("sn".to_owned())]),
+        ])
+    );
 }
 
 #[test]
@@ -59,4 +88,19 @@ fn parses_function_calls_with_numeric_arguments() {
         }
         other => panic!("unexpected AST: {other:#?}"),
     }
+}
+
+#[test]
+fn rejects_bindings_without_equals() {
+    assert_parse_error_contains("drums bd sn", &["parse error", "="]);
+}
+
+#[test]
+fn rejects_unterminated_stack_groups() {
+    assert_parse_error_contains("drums = stack(bd ~, ~ sn", &["parse error", ")"]);
+}
+
+#[test]
+fn rejects_stack_layers_with_double_commas() {
+    assert_parse_error_contains("drums = stack(bd ~,, ~ sn)", &["parse error", "expected"]);
 }

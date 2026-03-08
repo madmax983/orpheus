@@ -13,13 +13,16 @@ struct SyntaxParser;
 
 /// Parses Phase 1 Orpheus source text into an AST module.
 ///
+/// Phase 1 intentionally accepts a single top-level binding only. Multi-binding
+/// separator rules land in a later task once the surface syntax is specified.
+///
 /// # Errors
 ///
 /// Returns [`ParseError`] when the source does not match the Phase 1 grammar
 /// or when the parser encounters an internal AST construction failure.
 pub fn parse_module(source: &str) -> Result<Module, ParseError> {
     let mut pairs = SyntaxParser::parse(Rule::module, source)
-        .map_err(|error| ParseError::new(error.to_string()))?;
+        .map_err(|error| ParseError::new(format!("parse error: {error}")))?;
     let module_pair = next_pair(&mut pairs, "module")?;
     build_module(module_pair)
 }
