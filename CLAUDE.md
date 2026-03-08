@@ -15,7 +15,7 @@ Orpheus is a Cargo workspace with a root binary crate and three library crates u
 - Add or update a Rust test before adding runtime behavior
 - Put architecture decisions in `docs/adr/`
 - Keep proof-oriented work under `proofs/`
-- Run `cargo fmt --all`, `cargo clippy --all-targets --all-features -- -D warnings`, and targeted tests for each completed task
+- Run `cargo fmt --all`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test --workspace --all-targets --all-features` for workspace verification as appropriate to the task
 - Keep the audio-thread path allocation-free and lock-free once DSP work begins
 
 ## Initial Layout
