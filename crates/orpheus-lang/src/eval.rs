@@ -92,6 +92,10 @@ impl Evaluator {
     }
 
     fn eval_sequence(&self, items: &[Expr]) -> Result<Value, EvalError> {
+        if let Some(error) = Self::unsupported_pattern_item_error(items, "sequence") {
+            return Err(error);
+        }
+
         if let Some(nodes) = self.collect_sample_nodes(items)? {
             return Ok(Value::SamplePattern(SamplePatternValue::from_nodes(nodes)));
         }
@@ -106,6 +110,10 @@ impl Evaluator {
     }
 
     fn eval_group(&self, items: &[Expr]) -> Result<Value, EvalError> {
+        if let Some(error) = Self::unsupported_pattern_item_error(items, "group") {
+            return Err(error);
+        }
+
         if let Some(nodes) = self.collect_sample_nodes(items)? {
             return Ok(Value::SamplePattern(SamplePatternValue::from_group(nodes)));
         }
@@ -176,10 +184,51 @@ impl Evaluator {
 
         match self.mode {
             ReplMode::Loose => Err(EvalError::new(format!(
-                "unresolved identifier `{name}`; loose-mode placeholders are not implemented yet"
+                "unresolved identifier `{name}` in loose mode; placeholder playback is not implemented in Task 5"
             ))),
             ReplMode::Strict => Err(EvalError::new(format!("unresolved identifier `{name}`"))),
         }
+    }
+
+    fn unsupported_pattern_item_error(items: &[Expr], context: &str) -> Option<EvalError> {
+        for item in items {
+            match item {
+                Expr::Call { callee, .. } => {
+                    let name = match callee.as_ref() {
+                        Expr::Ident(name) => name.as_str(),
+                        Expr::Seq(_)
+                        | Expr::Stack(_)
+                        | Expr::Pipe { .. }
+                        | Expr::Call { .. }
+                        | Expr::Group(_)
+                        | Expr::Rest
+                        | Expr::Number(_) => "call",
+                    };
+                    return Some(EvalError::new(format!(
+                        "function call `{name}` cannot appear inside a pattern {context} in Task 5; apply transforms with the pipe operator `|>` or call `{name}(..., pattern)` directly"
+                    )));
+                }
+                Expr::Ident(name) if matches!(builtin_value(name), Some(Value::Function(_))) => {
+                    return Some(EvalError::new(format!(
+                        "function `{name}` cannot appear inside a pattern {context} in Task 5; apply transforms with the pipe operator `|>` or call `{name}(..., pattern)` directly"
+                    )));
+                }
+                Expr::Group(group_items) => {
+                    if let Some(error) = Self::unsupported_pattern_item_error(group_items, context)
+                    {
+                        return Some(error);
+                    }
+                }
+                Expr::Seq(_)
+                | Expr::Stack(_)
+                | Expr::Pipe { .. }
+                | Expr::Ident(_)
+                | Expr::Rest
+                | Expr::Number(_) => {}
+            }
+        }
+
+        None
     }
 
     fn collect_sample_nodes(

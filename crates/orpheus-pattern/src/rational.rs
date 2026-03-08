@@ -95,12 +95,24 @@ impl Rational {
         Self::checked_normalize(numerator, denominator)
     }
 
-    pub(crate) fn checked_sub(&self, rhs: &Self) -> Result<Self, PatternError> {
+    /// Subtracts two rationals using checked intermediate arithmetic.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PatternError::ArithmeticOverflow`] if the intermediate
+    /// numerator or denominator exceeds the supported integer range.
+    pub fn checked_sub(&self, rhs: &Self) -> Result<Self, PatternError> {
         let negated_rhs = Self::checked_normalize(rhs.numerator, -rhs.denominator)?;
         self.checked_add(&negated_rhs)
     }
 
-    pub(crate) fn checked_mul(&self, rhs: &Self) -> Result<Self, PatternError> {
+    /// Multiplies two rationals using checked intermediate arithmetic.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PatternError::ArithmeticOverflow`] if the intermediate
+    /// numerator or denominator exceeds the supported integer range.
+    pub fn checked_mul(&self, rhs: &Self) -> Result<Self, PatternError> {
         let numerator =
             self.numerator
                 .checked_mul(rhs.numerator)
@@ -126,10 +138,14 @@ impl Rational {
         Ok(compare_rationals(self, other))
     }
 
-    pub(crate) fn checked_from_parts(
-        numerator: i128,
-        denominator: i128,
-    ) -> Result<Self, PatternError> {
+    /// Creates a normalized rational directly from `i128` parts.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PatternError::InvalidDenominator`] if `denominator` is zero,
+    /// or [`PatternError::ArithmeticOverflow`] if normalization cannot be
+    /// represented in the bounded runtime domain.
+    pub fn checked_from_parts(numerator: i128, denominator: i128) -> Result<Self, PatternError> {
         Self::checked_normalize(numerator, denominator)
     }
 

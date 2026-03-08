@@ -1,7 +1,7 @@
 use core::cmp::{max, min};
 use core::fmt;
 
-use orpheus_pattern::{CyclePattern, Event, PatternNode, Rational, TimeSpan};
+use orpheus_pattern::{CyclePattern, Event, PatternError, PatternNode, Rational, TimeSpan};
 
 use crate::eval::EvalError;
 
@@ -292,7 +292,7 @@ where
         match self {
             Self::Cycle(pattern) => pattern
                 .try_query(span)
-                .map_err(|error| EvalError::new(error.to_string())),
+                .map_err(|error| map_pattern_error(&error)),
             Self::Stack(layers) => {
                 let mut events = Vec::new();
                 for layer in layers {
@@ -443,36 +443,17 @@ fn scale_span(span: &TimeSpan, numerator: i64, denominator: i64) -> Result<TimeS
 }
 
 fn build_span(start: Rational, end: Rational) -> Result<TimeSpan, EvalError> {
-    TimeSpan::new(start, end).map_err(|error| EvalError::new(error.to_string()))
+    TimeSpan::new(start, end).map_err(|error| map_pattern_error(&error))
 }
 
 fn rational_add(left: &Rational, right: &Rational) -> Result<Rational, EvalError> {
-    let left_scaled = left
-        .numerator()
-        .checked_mul(right.denominator())
-        .ok_or_else(|| EvalError::new("rational addition overflowed"))?;
-    let right_scaled = right
-        .numerator()
-        .checked_mul(left.denominator())
-        .ok_or_else(|| EvalError::new("rational addition overflowed"))?;
-    let numerator = left_scaled
-        .checked_add(right_scaled)
-        .ok_or_else(|| EvalError::new("rational addition overflowed"))?;
-    let denominator = left
-        .denominator()
-        .checked_mul(right.denominator())
-        .ok_or_else(|| EvalError::new("rational addition overflowed"))?;
-
-    rational_from_parts(numerator, denominator)
+    left.checked_add(right)
+        .map_err(|error| map_pattern_error(&error))
 }
 
 fn rational_sub(left: &Rational, right: &Rational) -> Result<Rational, EvalError> {
-    let numerator = right
-        .numerator()
-        .checked_neg()
-        .ok_or_else(|| EvalError::new("rational subtraction overflowed"))?;
-    let negated = rational_from_parts(numerator, right.denominator())?;
-    rational_add(left, &negated)
+    left.checked_sub(right)
+        .map_err(|error| map_pattern_error(&error))
 }
 
 fn rational_mul_parts(
@@ -480,64 +461,19 @@ fn rational_mul_parts(
     numerator: i64,
     denominator: i64,
 ) -> Result<Rational, EvalError> {
-    let scaled_numerator = value
-        .numerator()
-        .checked_mul(i128::from(numerator))
-        .ok_or_else(|| EvalError::new("rational multiplication overflowed"))?;
-    let scaled_denominator = value
-        .denominator()
-        .checked_mul(i128::from(denominator))
-        .ok_or_else(|| EvalError::new("rational multiplication overflowed"))?;
-
-    rational_from_parts(scaled_numerator, scaled_denominator)
+    let factor = Rational::checked_from_parts(i128::from(numerator), i128::from(denominator))
+        .map_err(|error| map_pattern_error(&error))?;
+    value
+        .checked_mul(&factor)
+        .map_err(|error| map_pattern_error(&error))
 }
 
 fn rational_from_parts(numerator: i128, denominator: i128) -> Result<Rational, EvalError> {
-    if denominator == 0 {
-        return Err(EvalError::new("rational denominator cannot be zero"));
-    }
-
-    if numerator == 0 {
-        return Ok(Rational::zero());
-    }
-
-    let (normalized_numerator, normalized_denominator) = if denominator < 0 {
-        (
-            numerator
-                .checked_neg()
-                .ok_or_else(|| EvalError::new("rational normalization overflowed"))?,
-            denominator
-                .checked_neg()
-                .ok_or_else(|| EvalError::new("rational normalization overflowed"))?,
-        )
-    } else {
-        (numerator, denominator)
-    };
-
-    let divisor = gcd_u128(
-        normalized_numerator.unsigned_abs(),
-        normalized_denominator.unsigned_abs(),
-    );
-    let divisor =
-        i128::try_from(divisor).map_err(|_| EvalError::new("rational normalization overflowed"))?;
-    let reduced_numerator = normalized_numerator / divisor;
-    let reduced_denominator = normalized_denominator / divisor;
-    let numerator = i64::try_from(reduced_numerator)
-        .map_err(|_| EvalError::new("rational value exceeded evaluator range"))?;
-    let denominator = i64::try_from(reduced_denominator)
-        .map_err(|_| EvalError::new("rational value exceeded evaluator range"))?;
-
-    Rational::new(numerator, denominator).map_err(|error| EvalError::new(error.to_string()))
+    Rational::checked_from_parts(numerator, denominator).map_err(|error| map_pattern_error(&error))
 }
 
-const fn gcd_u128(mut left: u128, mut right: u128) -> u128 {
-    while right != 0 {
-        let remainder = left % right;
-        left = right;
-        right = remainder;
-    }
-
-    left
+fn map_pattern_error(error: &PatternError) -> EvalError {
+    EvalError::new(error.to_string())
 }
 
 const fn floor_rational(value: &Rational) -> i128 {
@@ -559,5 +495,21 @@ const fn ceil_rational(value: &Rational) -> i128 {
         quotient + 1
     } else {
         quotient
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cycle_span;
+
+    #[test]
+    fn cycle_span_supports_indices_above_i64_range() {
+        let start_cycle = i128::from(i64::MAX) + 1;
+        let span = cycle_span(start_cycle).unwrap();
+
+        assert_eq!(span.start().numerator(), start_cycle);
+        assert_eq!(span.start().denominator(), 1);
+        assert_eq!(span.end().numerator(), start_cycle + 1);
+        assert_eq!(span.end().denominator(), 1);
     }
 }

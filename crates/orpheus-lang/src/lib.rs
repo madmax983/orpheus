@@ -17,6 +17,9 @@ pub use value::{NumberPatternValue, SampleEvent, SamplePatternValue, Value};
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReplMode {
     /// Uses permissive type behavior intended for interactive work.
+    ///
+    /// Task 5 still reports unresolved identifiers as eval errors because the
+    /// placeholder playback fallback has not been implemented yet.
     Loose,
     /// Uses strict type behavior intended for durable artifacts.
     Strict,
