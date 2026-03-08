@@ -1,9 +1,11 @@
 //! Temporal pattern engine for Orpheus.
 
+mod cycle;
 mod event;
 mod rational;
 mod time;
 
+pub use cycle::{CyclePattern, Pattern, PatternNode};
 pub use event::Event;
 pub use rational::Rational;
 pub use time::TimeSpan;

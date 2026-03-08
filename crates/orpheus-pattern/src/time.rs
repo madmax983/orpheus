@@ -44,6 +44,12 @@ impl TimeSpan {
         &self.end
     }
 
+    /// Returns `true` when the span contains no duration.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.start() == self.end()
+    }
+
     /// Returns the normalized numerator of the span start.
     #[must_use]
     pub const fn start_numer(&self) -> i128 {

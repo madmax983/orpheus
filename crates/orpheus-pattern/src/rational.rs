@@ -95,6 +95,27 @@ impl Rational {
         Self::checked_normalize(numerator, denominator)
     }
 
+    pub(crate) fn checked_sub(&self, rhs: &Self) -> Result<Self, PatternError> {
+        let negated_rhs = Self::checked_normalize(rhs.numerator, -rhs.denominator)?;
+        self.checked_add(&negated_rhs)
+    }
+
+    pub(crate) fn checked_mul(&self, rhs: &Self) -> Result<Self, PatternError> {
+        let numerator =
+            self.numerator
+                .checked_mul(rhs.numerator)
+                .ok_or(PatternError::ArithmeticOverflow {
+                    operation: "rational multiplication",
+                })?;
+        let denominator = self.denominator.checked_mul(rhs.denominator).ok_or(
+            PatternError::ArithmeticOverflow {
+                operation: "rational multiplication",
+            },
+        )?;
+
+        Self::checked_normalize(numerator, denominator)
+    }
+
     /// Compares two rationals using an overflow-free continued-fraction walk.
     ///
     /// # Errors
@@ -103,6 +124,13 @@ impl Rational {
     /// currently returns `Ok` for all values constructible through this crate.
     pub fn checked_cmp(&self, other: &Self) -> Result<Ordering, PatternError> {
         Ok(compare_rationals(self, other))
+    }
+
+    pub(crate) fn checked_from_parts(
+        numerator: i128,
+        denominator: i128,
+    ) -> Result<Self, PatternError> {
+        Self::checked_normalize(numerator, denominator)
     }
 
     fn checked_normalize(numerator: i128, denominator: i128) -> Result<Self, PatternError> {

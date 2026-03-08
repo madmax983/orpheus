@@ -10,3 +10,4 @@ workspace = true
 [dev-dependencies]
 orpheus-dsp.workspace = true
 orpheus-lang.workspace = true
+proptest.workspace = true

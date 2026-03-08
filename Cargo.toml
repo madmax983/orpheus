@@ -15,6 +15,7 @@ version = "0.1.0"
 orpheus-dsp = { path = "crates/orpheus-dsp" }
 orpheus-lang = { path = "crates/orpheus-lang" }
 orpheus-pattern = { path = "crates/orpheus-pattern" }
+proptest = "1.6.0"
 
 [workspace.lints.rust]
 unsafe_code = "warn"
