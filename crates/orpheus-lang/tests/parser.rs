@@ -16,11 +16,15 @@ fn assert_parse_error_contains(source: &str, expected_fragments: &[&str]) {
         "parse error should not be empty"
     );
     assert!(
-        expected_fragments
-            .iter()
-            .any(|fragment| message.contains(fragment)),
-        "parse error `{message}` did not mention any of: {expected_fragments:?}"
+        message.starts_with("parse error:"),
+        "parse error `{message}` did not start with `parse error:`"
     );
+    for fragment in expected_fragments {
+        assert!(
+            message.contains(fragment),
+            "parse error `{message}` did not mention required fragment `{fragment}`"
+        );
+    }
 }
 
 #[test]
@@ -92,15 +96,23 @@ fn parses_function_calls_with_numeric_arguments() {
 
 #[test]
 fn rejects_bindings_without_equals() {
-    assert_parse_error_contains("drums bd sn", &["parse error", "="]);
+    assert_parse_error_contains("drums bd sn", &["="]);
 }
 
 #[test]
 fn rejects_unterminated_stack_groups() {
-    assert_parse_error_contains("drums = stack(bd ~, ~ sn", &["parse error", ")"]);
+    assert_parse_error_contains("drums = stack(bd ~, ~ sn", &[")", "expected"]);
 }
 
 #[test]
 fn rejects_stack_layers_with_double_commas() {
-    assert_parse_error_contains("drums = stack(bd ~,, ~ sn)", &["parse error", "expected"]);
+    assert_parse_error_contains("drums = stack(bd ~,, ~ sn)", &["expected"]);
+}
+
+#[test]
+fn rejects_a_second_top_level_binding() {
+    assert_parse_error_contains(
+        "drums = bd sn\nbass = cp",
+        &["single top-level binding", "bass = cp"],
+    );
 }

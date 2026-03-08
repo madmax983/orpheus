@@ -1,6 +1,7 @@
 //! Phase 1 parser for Orpheus bindings and pattern expressions.
 
 use pest::Parser;
+use pest::error::Error as PestError;
 use pest::iterators::{Pair, Pairs};
 use pest_derive::Parser;
 
@@ -22,9 +23,68 @@ struct SyntaxParser;
 /// or when the parser encounters an internal AST construction failure.
 pub fn parse_module(source: &str) -> Result<Module, ParseError> {
     let mut pairs = SyntaxParser::parse(Rule::module, source)
-        .map_err(|error| ParseError::new(format!("parse error: {error}")))?;
+        .map_err(|error| enrich_parse_error(source, &error))?;
     let module_pair = next_pair(&mut pairs, "module")?;
     build_module(module_pair)
+}
+
+fn enrich_parse_error(source: &str, error: &PestError<Rule>) -> ParseError {
+    let rendered = error.to_string();
+
+    if let Some((line_number, binding)) = second_top_level_binding(source) {
+        return ParseError::new(format!(
+            "parse error: Phase 1 accepts a single top-level binding; found another binding at line {line_number}: {binding}"
+        ));
+    }
+
+    if unmatched_open_parens(source) > 0 {
+        return ParseError::new(format!(
+            "parse error: missing `)` before end of input; {rendered}"
+        ));
+    }
+
+    ParseError::new(format!("parse error: {rendered}"))
+}
+
+fn second_top_level_binding(source: &str) -> Option<(usize, &str)> {
+    source
+        .lines()
+        .enumerate()
+        .filter_map(|(index, line)| {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some((index + 1, trimmed))
+            }
+        })
+        .skip(1)
+        .find(|(_, line)| looks_like_binding(line))
+}
+
+fn looks_like_binding(line: &str) -> bool {
+    let Some((name, _expr)) = line.split_once('=') else {
+        return false;
+    };
+
+    let candidate = name.trim();
+    let mut chars = candidate.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+
+    (first.is_ascii_alphabetic() || first == '_')
+        && chars.all(|character| character.is_ascii_alphanumeric() || character == '_')
+}
+
+fn unmatched_open_parens(source: &str) -> usize {
+    source
+        .chars()
+        .fold(0_usize, |count, character| match character {
+            '(' => count + 1,
+            ')' => count.saturating_sub(1),
+            _ => count,
+        })
 }
 
 fn next_pair<'a>(
