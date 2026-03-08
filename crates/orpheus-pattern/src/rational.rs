@@ -21,10 +21,7 @@ impl Rational {
             return Err(PatternError::InvalidDenominator { denominator });
         }
 
-        Ok(Self::normalize(
-            i128::from(numerator),
-            i128::from(denominator),
-        ))
+        Self::checked_normalize(i128::from(numerator), i128::from(denominator))
     }
 
     /// Returns the additive identity.
@@ -63,6 +60,9 @@ impl Rational {
     ///
     /// Returns [`PatternError::ArithmeticOverflow`] if the intermediate
     /// numerator or denominator exceeds the supported integer range.
+    ///
+    /// Use this instead of the `Add` impl if unrepresentable sums must be
+    /// reported as data instead of panicking.
     pub fn checked_add(&self, rhs: &Self) -> Result<Self, PatternError> {
         let common_divisor = gcd(self.denominator, rhs.denominator);
         let left_scale = rhs.denominator / common_divisor;
@@ -92,55 +92,57 @@ impl Rational {
                     operation: "rational addition",
                 })?;
 
-        Ok(Self::normalize(numerator, denominator))
+        Self::checked_normalize(numerator, denominator)
     }
 
-    /// Compares two rationals using checked intermediate arithmetic.
+    /// Compares two rationals using an overflow-free continued-fraction walk.
     ///
     /// # Errors
     ///
-    /// Returns [`PatternError::ArithmeticOverflow`] if the comparison
-    /// requires an intermediate value outside the supported range.
+    /// This comparison algorithm is overflow-free for valid rationals and
+    /// currently returns `Ok` for all values constructible through this crate.
     pub fn checked_cmp(&self, other: &Self) -> Result<Ordering, PatternError> {
-        let common_divisor = gcd(self.denominator, other.denominator);
-        let left_scale = other.denominator / common_divisor;
-        let right_scale = self.denominator / common_divisor;
-        let left =
-            self.numerator
-                .checked_mul(left_scale)
-                .ok_or(PatternError::ArithmeticOverflow {
-                    operation: "rational comparison",
-                })?;
-        let right =
-            other
-                .numerator
-                .checked_mul(right_scale)
-                .ok_or(PatternError::ArithmeticOverflow {
-                    operation: "rational comparison",
-                })?;
-
-        Ok(left.cmp(&right))
+        Ok(compare_rationals(self, other))
     }
 
-    const fn normalize(numerator: i128, denominator: i128) -> Self {
+    fn checked_normalize(numerator: i128, denominator: i128) -> Result<Self, PatternError> {
+        if denominator == 0 {
+            return Err(PatternError::InvalidDenominator { denominator: 0 });
+        }
+
         if numerator == 0 {
-            return Self::zero();
+            return Ok(Self::zero());
         }
 
-        let (normalized_numerator, normalized_denominator) = if denominator < 0 {
-            (-numerator, -denominator)
-        } else {
-            (numerator, denominator)
-        };
-        let divisor = gcd(normalized_numerator.abs(), normalized_denominator);
+        let operation = "rational normalization";
+        let numerator_negative = numerator < 0;
+        let denominator_negative = denominator < 0;
+        let numerator_magnitude = numerator.unsigned_abs();
+        let denominator_magnitude = denominator.unsigned_abs();
+        let divisor = gcd_u128(numerator_magnitude, denominator_magnitude);
+        let reduced_numerator = numerator_magnitude / divisor;
+        let reduced_denominator = denominator_magnitude / divisor;
+        let normalized_numerator = signed_from_magnitude(
+            reduced_numerator,
+            numerator_negative ^ denominator_negative,
+            operation,
+        )?;
+        let normalized_denominator = positive_from_magnitude(reduced_denominator, operation)?;
 
-        Self {
-            numerator: normalized_numerator / divisor,
-            denominator: normalized_denominator / divisor,
-        }
+        Ok(Self {
+            numerator: normalized_numerator,
+            denominator: normalized_denominator,
+        })
     }
 }
 
+/// Adds two rationals.
+///
+/// # Panics
+///
+/// Panics if the exact sum cannot be represented in the bounded `i128`
+/// runtime representation. Use [`Rational::checked_add`] to handle that case
+/// explicitly.
 impl Add for Rational {
     type Output = Self;
 
@@ -159,15 +161,7 @@ impl Add for Rational {
 
 impl Ord for Rational {
     fn cmp(&self, other: &Self) -> Ordering {
-        match self.checked_cmp(other) {
-            Ok(ordering) => ordering,
-            Err(PatternError::ArithmeticOverflow { .. }) => {
-                panic!("rational comparison overflowed during checked arithmetic")
-            }
-            Err(PatternError::InvalidDenominator { .. } | PatternError::InvalidSpan { .. }) => {
-                unreachable!("checked_cmp only reports arithmetic overflow")
-            }
-        }
+        compare_rationals(self, other)
     }
 }
 
@@ -177,12 +171,128 @@ impl PartialOrd for Rational {
     }
 }
 
-const fn gcd(mut left: i128, mut right: i128) -> i128 {
+fn gcd(left: i128, right: i128) -> i128 {
+    let divisor = gcd_u128(left.unsigned_abs(), right.unsigned_abs());
+    // Stored denominators are always positive i128 values, so their gcd fits too.
+    i128::try_from(divisor)
+        .unwrap_or_else(|_| unreachable!("gcd of stored denominators always fits in i128"))
+}
+
+const fn gcd_u128(mut left: u128, mut right: u128) -> u128 {
     while right != 0 {
         let remainder = left % right;
         left = right;
         right = remainder;
     }
 
-    left.abs()
+    left
+}
+
+fn positive_from_magnitude(magnitude: u128, operation: &'static str) -> Result<i128, PatternError> {
+    i128::try_from(magnitude).map_err(|_| PatternError::ArithmeticOverflow { operation })
+}
+
+fn signed_from_magnitude(
+    magnitude: u128,
+    negative: bool,
+    operation: &'static str,
+) -> Result<i128, PatternError> {
+    const I128_MIN_MAGNITUDE: u128 = 1_u128 << 127;
+
+    if negative {
+        if magnitude == I128_MIN_MAGNITUDE {
+            return Ok(i128::MIN);
+        }
+
+        let value = i128::try_from(magnitude)
+            .map_err(|_| PatternError::ArithmeticOverflow { operation })?;
+        Ok(-value)
+    } else {
+        i128::try_from(magnitude).map_err(|_| PatternError::ArithmeticOverflow { operation })
+    }
+}
+
+fn compare_rationals(left: &Rational, right: &Rational) -> Ordering {
+    if left.numerator.signum() != right.numerator.signum() {
+        return left.numerator.cmp(&right.numerator);
+    }
+
+    let ordering = compare_positive_rationals(
+        left.numerator.unsigned_abs(),
+        left.denominator.unsigned_abs(),
+        right.numerator.unsigned_abs(),
+        right.denominator.unsigned_abs(),
+    );
+
+    if left.numerator < 0 {
+        ordering.reverse()
+    } else {
+        ordering
+    }
+}
+
+fn compare_positive_rationals(
+    mut left_numerator: u128,
+    mut left_denominator: u128,
+    mut right_numerator: u128,
+    mut right_denominator: u128,
+) -> Ordering {
+    let mut reversed = false;
+
+    loop {
+        let left_integer = left_numerator / left_denominator;
+        let right_integer = right_numerator / right_denominator;
+        if left_integer != right_integer {
+            let ordering = left_integer.cmp(&right_integer);
+            return if reversed {
+                ordering.reverse()
+            } else {
+                ordering
+            };
+        }
+
+        let left_remainder = left_numerator % left_denominator;
+        let right_remainder = right_numerator % right_denominator;
+        let ordering = match (left_remainder == 0, right_remainder == 0) {
+            (true, true) => Ordering::Equal,
+            (true, false) => Ordering::Less,
+            (false, true) => Ordering::Greater,
+            (false, false) => {
+                left_numerator = left_denominator;
+                left_denominator = left_remainder;
+                right_numerator = right_denominator;
+                right_denominator = right_remainder;
+                reversed = !reversed;
+                continue;
+            }
+        };
+
+        return if reversed {
+            ordering.reverse()
+        } else {
+            ordering
+        };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn checked_normalize_accepts_i128_min_numerator() {
+        let rational = Rational::checked_normalize(i128::MIN, 1).unwrap();
+
+        assert_eq!(rational.numerator(), i128::MIN);
+        assert_eq!(rational.denominator(), 1);
+    }
+
+    #[test]
+    fn checked_cmp_handles_large_cross_products_without_overflow() {
+        let larger = Rational::checked_normalize(i128::MAX - 1, i128::MAX).unwrap();
+        let smaller = Rational::checked_normalize(i128::MAX - 2, i128::MAX - 1).unwrap();
+
+        assert_eq!(larger.checked_cmp(&smaller), Ok(Ordering::Greater));
+        assert_eq!(larger.cmp(&smaller), Ordering::Greater);
+    }
 }

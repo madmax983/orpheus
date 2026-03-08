@@ -15,8 +15,6 @@ impl TimeSpan {
     /// # Errors
     ///
     /// Returns [`PatternError::InvalidSpan`] if `start` is after `end`.
-    /// Returns [`PatternError::ArithmeticOverflow`] if checked comparison of
-    /// the bounds exceeds the supported integer range.
     pub fn new(start: Rational, end: Rational) -> Result<Self, PatternError> {
         if matches!(start.checked_cmp(&end)?, Ordering::Greater) {
             return Err(PatternError::InvalidSpan { start, end });
