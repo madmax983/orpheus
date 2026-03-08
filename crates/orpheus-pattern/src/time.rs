@@ -1,10 +1,12 @@
+use core::cmp::Ordering;
+
 use crate::{PatternError, Rational};
 
 /// Closed time span in exact rational time.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TimeSpan {
-    pub start: Rational,
-    pub end: Rational,
+    start: Rational,
+    end: Rational,
 }
 
 impl TimeSpan {
@@ -13,8 +15,10 @@ impl TimeSpan {
     /// # Errors
     ///
     /// Returns [`PatternError::InvalidSpan`] if `start` is after `end`.
+    /// Returns [`PatternError::ArithmeticOverflow`] if checked comparison of
+    /// the bounds exceeds the supported integer range.
     pub fn new(start: Rational, end: Rational) -> Result<Self, PatternError> {
-        if start > end {
+        if matches!(start.checked_cmp(&end)?, Ordering::Greater) {
             return Err(PatternError::InvalidSpan { start, end });
         }
 
@@ -30,10 +34,22 @@ impl TimeSpan {
         }
     }
 
+    /// Returns the start bound of the span.
+    #[must_use]
+    pub const fn start(&self) -> &Rational {
+        &self.start
+    }
+
+    /// Returns the end bound of the span.
+    #[must_use]
+    pub const fn end(&self) -> &Rational {
+        &self.end
+    }
+
     /// Returns the normalized numerator of the span start.
     #[must_use]
     pub const fn start_numer(&self) -> i128 {
-        self.start.numerator()
+        self.start().numerator()
     }
 }
 

@@ -32,6 +32,16 @@ The formal proof surface in `proofs/pattern_time.rs` records the same invariant
 as `valid_span(start, end) == start <= end` and proves that splitting a valid
 ordered range at a midpoint preserves validity for both resulting spans.
 
+Current proof scope:
+
+- the proof covers span ordering, the exact invariant enforced by the private
+  `TimeSpan` constructors
+- the proof also records that both the unit span and zero-length spans are valid
+- it does not yet refine runtime `Rational` normalization or checked overflow
+  behavior into the Verus model
+- that refinement remains follow-up work once the time core grows beyond this
+  bootstrap surface
+
 ## Consequences
 
 Positive:

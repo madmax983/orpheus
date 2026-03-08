@@ -57,6 +57,71 @@ impl Rational {
         self.denominator
     }
 
+    /// Adds two rationals using checked intermediate arithmetic.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PatternError::ArithmeticOverflow`] if the intermediate
+    /// numerator or denominator exceeds the supported integer range.
+    pub fn checked_add(&self, rhs: &Self) -> Result<Self, PatternError> {
+        let common_divisor = gcd(self.denominator, rhs.denominator);
+        let left_scale = rhs.denominator / common_divisor;
+        let right_scale = self.denominator / common_divisor;
+
+        let left_numerator =
+            self.numerator
+                .checked_mul(left_scale)
+                .ok_or(PatternError::ArithmeticOverflow {
+                    operation: "rational addition",
+                })?;
+        let right_numerator =
+            rhs.numerator
+                .checked_mul(right_scale)
+                .ok_or(PatternError::ArithmeticOverflow {
+                    operation: "rational addition",
+                })?;
+        let numerator = left_numerator.checked_add(right_numerator).ok_or(
+            PatternError::ArithmeticOverflow {
+                operation: "rational addition",
+            },
+        )?;
+        let denominator =
+            self.denominator
+                .checked_mul(left_scale)
+                .ok_or(PatternError::ArithmeticOverflow {
+                    operation: "rational addition",
+                })?;
+
+        Ok(Self::normalize(numerator, denominator))
+    }
+
+    /// Compares two rationals using checked intermediate arithmetic.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PatternError::ArithmeticOverflow`] if the comparison
+    /// requires an intermediate value outside the supported range.
+    pub fn checked_cmp(&self, other: &Self) -> Result<Ordering, PatternError> {
+        let common_divisor = gcd(self.denominator, other.denominator);
+        let left_scale = other.denominator / common_divisor;
+        let right_scale = self.denominator / common_divisor;
+        let left =
+            self.numerator
+                .checked_mul(left_scale)
+                .ok_or(PatternError::ArithmeticOverflow {
+                    operation: "rational comparison",
+                })?;
+        let right =
+            other
+                .numerator
+                .checked_mul(right_scale)
+                .ok_or(PatternError::ArithmeticOverflow {
+                    operation: "rational comparison",
+                })?;
+
+        Ok(left.cmp(&right))
+    }
+
     const fn normalize(numerator: i128, denominator: i128) -> Self {
         if numerator == 0 {
             return Self::zero();
@@ -80,16 +145,29 @@ impl Add for Rational {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
-        Self::normalize(
-            (self.numerator * rhs.denominator) + (rhs.numerator * self.denominator),
-            self.denominator * rhs.denominator,
-        )
+        match self.checked_add(&rhs) {
+            Ok(sum) => sum,
+            Err(PatternError::ArithmeticOverflow { .. }) => {
+                panic!("rational addition overflowed during checked arithmetic")
+            }
+            Err(PatternError::InvalidDenominator { .. } | PatternError::InvalidSpan { .. }) => {
+                unreachable!("checked_add only reports arithmetic overflow")
+            }
+        }
     }
 }
 
 impl Ord for Rational {
     fn cmp(&self, other: &Self) -> Ordering {
-        (self.numerator * other.denominator).cmp(&(other.numerator * self.denominator))
+        match self.checked_cmp(other) {
+            Ok(ordering) => ordering,
+            Err(PatternError::ArithmeticOverflow { .. }) => {
+                panic!("rational comparison overflowed during checked arithmetic")
+            }
+            Err(PatternError::InvalidDenominator { .. } | PatternError::InvalidSpan { .. }) => {
+                unreachable!("checked_cmp only reports arithmetic overflow")
+            }
+        }
     }
 }
 
