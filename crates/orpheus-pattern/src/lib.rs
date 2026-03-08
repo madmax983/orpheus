@@ -1,19 +1,31 @@
 //! Temporal pattern engine for Orpheus.
 
-/// Minimal cycle-relative span placeholder used to link the workspace.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct TimeSpan;
+mod event;
+mod rational;
+mod time;
 
-impl TimeSpan {
-    /// Returns the unit span used by the bootstrap smoke test.
-    #[must_use]
-    pub const fn unit() -> Self {
-        Self
-    }
+pub use event::Event;
+pub use rational::Rational;
+pub use time::TimeSpan;
 
-    /// Returns the start numerator for the placeholder unit span.
-    #[must_use]
-    pub const fn start_numer(&self) -> i64 {
-        0
+use core::fmt;
+
+/// Errors produced by the pattern core time model.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PatternError {
+    /// A rational value was constructed with a zero denominator.
+    InvalidDenominator { denominator: i64 },
+    /// A span was constructed with its start after its end.
+    InvalidSpan { start: Rational, end: Rational },
+}
+
+impl fmt::Display for PatternError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidDenominator { .. } => f.write_str("rational denominator cannot be zero"),
+            Self::InvalidSpan { .. } => f.write_str("time span start cannot exceed end"),
+        }
     }
 }
+
+impl std::error::Error for PatternError {}
