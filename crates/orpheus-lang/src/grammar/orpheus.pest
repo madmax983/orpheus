@@ -1,0 +1,25 @@
+module = { SOI ~ padding ~ binding ~ padding ~ EOI }
+
+binding = { identifier ~ padding ~ "=" ~ padding ~ pipe_expr }
+
+pipe_expr = { sequence ~ (padding ~ pipe_op ~ padding ~ pipe_target)* }
+pipe_target = { stack | call | group | rest | number | identifier }
+
+sequence = { item ~ (required_padding ~ item)* }
+item = { stack | call | group | rest | number | identifier }
+
+group = { "(" ~ padding ~ item ~ (required_padding ~ item)* ~ padding ~ ")" }
+
+stack = { "stack" ~ "(" ~ padding ~ stack_layers ~ padding ~ ")" }
+stack_layers = { pipe_expr ~ (padding ~ "," ~ padding ~ pipe_expr)* }
+
+call = { identifier ~ "(" ~ padding ~ call_args? ~ padding ~ ")" }
+call_args = { pipe_expr ~ (padding ~ "," ~ padding ~ pipe_expr)* }
+
+identifier = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+number = @{ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
+rest = @{ "~" }
+pipe_op = _{ "|>" }
+
+padding = _{ (" " | "\t" | NEWLINE)* }
+required_padding = _{ (" " | "\t" | NEWLINE)+ }
