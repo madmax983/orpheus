@@ -1,4 +1,6 @@
-use orpheus_dsp::{EngineCommand, EngineError, EngineHandle, PatternUpdate};
+use orpheus_dsp::{
+    EngineCommand, EngineError, EngineHandle, PatternUpdate, load_builtin_sample_for_test,
+};
 use orpheus_pattern::{Event, Rational, TimeSpan};
 
 #[test]
@@ -34,6 +36,28 @@ fn built_in_voice_trigger_renders_non_silent_audio() {
     let rendered = engine.render_test_block(128);
 
     assert!(rendered.iter().any(|sample| sample.abs() > f32::EPSILON));
+}
+
+#[test]
+fn built_in_bd_trigger_prefers_embedded_wav_frames() {
+    let mut engine = EngineHandle::stub();
+    let sample = load_builtin_sample_for_test("bd").unwrap();
+
+    engine.schedule_test_trigger(0, "bd");
+    let rendered = engine.render_test_block(4);
+
+    let expected = vec![
+        sample.frames[0],
+        sample.frames[0],
+        sample.frames[1],
+        sample.frames[1],
+        sample.frames[2],
+        sample.frames[2],
+        sample.frames[3],
+        sample.frames[3],
+    ];
+
+    assert_eq!(rendered, expected);
 }
 
 #[test]

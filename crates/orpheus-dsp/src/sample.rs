@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::io::{Cursor, Read, Seek};
 use std::path::Path;
 
 use thiserror::Error;
@@ -25,6 +27,8 @@ pub enum SampleError {
     UnsupportedFloatEncoding(String),
     #[error("wav file `{0}` uses an unsupported integer bit depth")]
     UnsupportedIntEncoding(String),
+    #[error("unknown built-in sample `{0}`")]
+    UnknownBuiltinSample(String),
 }
 
 /// Loads a WAV fixture for deterministic tests.
@@ -36,13 +40,33 @@ pub enum SampleError {
 pub fn load_wav_for_test(path: impl AsRef<Path>) -> Result<DecodedSample, SampleError> {
     let path = path.as_ref();
     let display_path = path.display().to_string();
-    let mut reader = hound::WavReader::open(path).map_err(|source| SampleError::Io {
+    let file = File::open(path).map_err(|source| SampleError::Io {
         path: display_path.clone().into_boxed_str(),
+        source: source.into(),
+    })?;
+    decode_wav_reader(file, &display_path)
+}
+
+pub fn load_wav_bytes(
+    bytes: &'static [u8],
+    display_path: &'static str,
+) -> Result<DecodedSample, SampleError> {
+    decode_wav_reader(Cursor::new(bytes), display_path)
+}
+
+fn decode_wav_reader<R>(reader: R, display_path: &str) -> Result<DecodedSample, SampleError>
+where
+    R: Read + Seek,
+{
+    let mut reader = hound::WavReader::new(reader).map_err(|source| SampleError::Io {
+        path: display_path.to_owned().into_boxed_str(),
         source,
     })?;
     let spec = reader.spec();
     if !matches!(spec.channels, 1 | 2) {
-        return Err(SampleError::UnsupportedChannelCount(display_path));
+        return Err(SampleError::UnsupportedChannelCount(
+            display_path.to_owned(),
+        ));
     }
 
     let frames = match spec.sample_format {
@@ -50,29 +74,31 @@ pub fn load_wav_for_test(path: impl AsRef<Path>) -> Result<DecodedSample, Sample
             .samples::<f32>()
             .collect::<Result<Vec<_>, _>>()
             .map_err(|source| SampleError::Io {
-                path: display_path.clone().into_boxed_str(),
+                path: display_path.to_owned().into_boxed_str(),
                 source,
             })?,
         hound::SampleFormat::Float => {
-            return Err(SampleError::UnsupportedFloatEncoding(display_path));
+            return Err(SampleError::UnsupportedFloatEncoding(
+                display_path.to_owned(),
+            ));
         }
         hound::SampleFormat::Int if (1..=32).contains(&spec.bits_per_sample) => {
             let scale = integer_scale(spec.bits_per_sample)
-                .ok_or_else(|| SampleError::UnsupportedIntEncoding(display_path.clone()))?;
+                .ok_or_else(|| SampleError::UnsupportedIntEncoding(display_path.to_owned()))?;
             reader
                 .samples::<i32>()
                 .map(|sample| {
                     sample
                         .map(|sample| normalize_int_sample(sample, scale))
                         .map_err(|source| SampleError::Io {
-                            path: display_path.clone().into_boxed_str(),
+                            path: display_path.to_owned().into_boxed_str(),
                             source,
                         })
                 })
                 .collect::<Result<Vec<_>, _>>()?
         }
         hound::SampleFormat::Int => {
-            return Err(SampleError::UnsupportedIntEncoding(display_path));
+            return Err(SampleError::UnsupportedIntEncoding(display_path.to_owned()));
         }
     };
 

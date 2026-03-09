@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use orpheus_dsp::{SampleError, load_wav_for_test};
+use orpheus_dsp::{SampleError, load_builtin_sample_for_test, load_wav_for_test};
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -39,6 +39,17 @@ fn wav_loader_rejects_non_mono_or_stereo_sources() {
     assert!(matches!(error, SampleError::UnsupportedChannelCount(_)));
 
     fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn built_in_drum_assets_decode_for_test_use() {
+    for token in ["bd", "sn", "cp", "hh"] {
+        let sample = load_builtin_sample_for_test(token).unwrap();
+        assert!(
+            !sample.frames.is_empty(),
+            "builtin sample {token} was empty"
+        );
+    }
 }
 
 fn temp_fixture(name: &str) -> PathBuf {

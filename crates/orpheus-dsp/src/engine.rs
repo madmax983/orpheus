@@ -4,6 +4,7 @@ use rtrb::{Consumer, Producer};
 use thiserror::Error;
 
 use crate::command::{EngineCommand, PatternUpdate, new_command_queue};
+use crate::sample_bank::SampleBank;
 use crate::scheduler::Scheduler;
 use crate::voice::ActiveVoice;
 
@@ -36,6 +37,7 @@ pub enum EngineError {
 struct EngineCore {
     scheduler: Scheduler,
     active_voices: Vec<Option<ActiveVoice>>,
+    sample_bank: SampleBank,
     sample_rate: u32,
     channels: usize,
     current_frame: u64,
@@ -58,6 +60,7 @@ impl EngineCore {
         Ok(Self {
             scheduler: Scheduler::default(),
             active_voices: vec![None; MAX_ACTIVE_VOICES],
+            sample_bank: SampleBank::load_builtin(),
             sample_rate: config.sample_rate.0,
             channels: usize::from(config.channels),
             current_frame: 0,
@@ -160,7 +163,10 @@ impl EngineCore {
 
     fn activate_voice(&mut self, voice: crate::VoiceKind) {
         if let Some(slot) = self.active_voices.iter_mut().find(|slot| slot.is_none()) {
-            *slot = Some(ActiveVoice::new(voice, self.sample_rate));
+            *slot = Some(self.sample_bank.get(voice).map_or_else(
+                || ActiveVoice::new(voice, self.sample_rate),
+                |sample| ActiveVoice::from_sample(sample, self.sample_rate),
+            ));
         }
     }
 }
