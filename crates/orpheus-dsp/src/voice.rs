@@ -1,6 +1,6 @@
 use core::f32::consts::TAU;
 
-/// Built-in synthesized drum voices available before WAV support lands.
+/// Built-in synthesized drum voices used by the current live playback path.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum VoiceKind {
     /// Synthesized bass drum placeholder for `bd`.
@@ -14,7 +14,7 @@ pub enum VoiceKind {
 }
 
 impl VoiceKind {
-    /// Resolves a phase-one sample token to a built-in synthesized voice.
+    /// Resolves a phase-one drum token to the current synthesized fallback.
     #[must_use]
     pub fn from_token(token: &str) -> Option<Self> {
         match token {

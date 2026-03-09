@@ -43,7 +43,7 @@ impl Scheduler {
     /// # Errors
     ///
     /// Returns an error if the event time is negative, overflows the sample
-    /// clock, or names a voice token without a synthesized fallback.
+    /// clock, or names a voice token without a built-in playback mapping.
     pub fn schedule_cycle_events<'a, I>(
         &mut self,
         cycle_start_frame: u64,
@@ -103,7 +103,7 @@ impl Scheduler {
     ///
     /// # Errors
     ///
-    /// Returns an error if `token` does not map to a synthesized fallback.
+    /// Returns an error if `token` does not map to a built-in playback mapping.
     pub fn schedule_trigger(&mut self, frame: u64, token: &str) -> Result<(), EngineError> {
         let voice =
             VoiceKind::from_token(token).ok_or_else(|| EngineError::UnknownVoice(token.into()))?;
