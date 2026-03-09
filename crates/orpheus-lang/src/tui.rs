@@ -88,6 +88,9 @@ fn handle_key_event(app: &mut SessionTui, key: KeyEvent) {
         KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.move_cursor_home();
         }
+        KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.delete();
+        }
         KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.move_cursor_end();
         }
@@ -99,6 +102,12 @@ fn handle_key_event(app: &mut SessionTui, key: KeyEvent) {
         }
         KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.delete_previous_word();
+        }
+        KeyCode::Char('b') if key.modifiers.contains(KeyModifiers::ALT) => {
+            app.move_cursor_previous_word();
+        }
+        KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::ALT) => {
+            app.move_cursor_next_word();
         }
         KeyCode::Left => app.move_cursor_left(),
         KeyCode::Right => app.move_cursor_right(),
@@ -229,7 +238,7 @@ impl SessionTui {
 
     fn transport_body() -> String {
         format!(
-            "Status: live shell\nTempo: {DEFAULT_TEMPO_BPM} BPM\nAudio: cycle-locked\nExport: :render <binding> <path> [cycles]\nInput: Tab=complete, Up/Down=history, Left/Right=move, Home/End/Delete, Ctrl-A/E/K\nBackkill: Ctrl-U/W\nQuit: Esc or :quit"
+            "Status: live shell\nTempo: {DEFAULT_TEMPO_BPM} BPM\nAudio: cycle-locked\nExport: :render <binding> <path> [cycles]\nInput: Tab=complete, Up/Down=history, Left/Right=move, Home/End/Delete\nEdit: Ctrl-A/E/K\nDelete: Ctrl-D\nBackkill: Ctrl-U/W\nWordmove: Alt-B/F\nQuit: Esc or :quit"
         )
     }
 
@@ -316,6 +325,14 @@ impl SessionTui {
 
     fn move_cursor_right(&mut self) {
         self.cursor_index = next_char_boundary(&self.input, self.cursor_index);
+    }
+
+    fn move_cursor_previous_word(&mut self) {
+        self.cursor_index = previous_word_boundary(&self.input, self.cursor_index);
+    }
+
+    fn move_cursor_next_word(&mut self) {
+        self.cursor_index = next_word_boundary(&self.input, self.cursor_index);
     }
 
     const fn move_cursor_home(&mut self) {
@@ -436,6 +453,32 @@ fn previous_word_boundary(input: &str, index: usize) -> usize {
     cursor
 }
 
+fn next_word_boundary(input: &str, index: usize) -> usize {
+    let mut cursor = index;
+
+    while cursor < input.len() {
+        let Some(character) = input[cursor..].chars().next() else {
+            break;
+        };
+        if !character.is_whitespace() {
+            break;
+        }
+        cursor = next_char_boundary(input, cursor);
+    }
+
+    while cursor < input.len() {
+        let Some(character) = input[cursor..].chars().next() else {
+            break;
+        };
+        if character.is_whitespace() {
+            break;
+        }
+        cursor = next_char_boundary(input, cursor);
+    }
+
+    cursor
+}
+
 struct TerminalGuard;
 
 impl TerminalGuard {
@@ -473,6 +516,15 @@ mod tests {
         KeyEvent {
             code,
             modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        }
+    }
+
+    fn alt(code: KeyCode) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::ALT,
             kind: KeyEventKind::Press,
             state: crossterm::event::KeyEventState::NONE,
         }
@@ -684,5 +736,73 @@ mod tests {
 
         assert_eq!(app.input, "bd ");
         assert_eq!(app.cursor_index, app.input.len());
+    }
+
+    #[test]
+    fn ctrl_d_deletes_character_after_cursor() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        for code in [
+            KeyCode::Char('d'),
+            KeyCode::Char('r'),
+            KeyCode::Char('u'),
+            KeyCode::Char('m'),
+            KeyCode::Char('s'),
+            KeyCode::Left,
+            KeyCode::Left,
+        ] {
+            handle_key_event(&mut app, press(code));
+        }
+
+        handle_key_event(&mut app, ctrl(KeyCode::Char('d')));
+
+        assert_eq!(app.input, "drus");
+    }
+
+    #[test]
+    fn alt_b_moves_cursor_to_start_of_previous_word() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        for code in [
+            KeyCode::Char('b'),
+            KeyCode::Char('d'),
+            KeyCode::Char(' '),
+            KeyCode::Char('s'),
+            KeyCode::Char('n'),
+            KeyCode::Char(' '),
+            KeyCode::Char('c'),
+            KeyCode::Char('p'),
+        ] {
+            handle_key_event(&mut app, press(code));
+        }
+
+        handle_key_event(&mut app, alt(KeyCode::Char('b')));
+        handle_key_event(&mut app, alt(KeyCode::Char('b')));
+        handle_key_event(&mut app, press(KeyCode::Char('!')));
+
+        assert_eq!(app.input, "bd !sn cp");
+        assert_eq!(app.cursor_index, 4);
+    }
+
+    #[test]
+    fn alt_f_moves_cursor_to_end_of_next_word() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        for code in [
+            KeyCode::Char('b'),
+            KeyCode::Char('d'),
+            KeyCode::Char(' '),
+            KeyCode::Char('s'),
+            KeyCode::Char('n'),
+            KeyCode::Char(' '),
+            KeyCode::Char('c'),
+            KeyCode::Char('p'),
+        ] {
+            handle_key_event(&mut app, press(code));
+        }
+
+        handle_key_event(&mut app, press(KeyCode::Home));
+        handle_key_event(&mut app, alt(KeyCode::Char('f')));
+        handle_key_event(&mut app, press(KeyCode::Char('!')));
+
+        assert_eq!(app.input, "bd! sn cp");
+        assert_eq!(app.cursor_index, 3);
     }
 }
