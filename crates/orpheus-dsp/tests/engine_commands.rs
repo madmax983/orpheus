@@ -82,3 +82,10 @@ fn tiny_positive_tempo_returns_error_instead_of_panicking() {
     let error = renderer.render_into_interleaved(&mut output).unwrap_err();
     assert!(matches!(error, EngineError::FrameOverflow));
 }
+
+#[test]
+fn split_handle_equality_is_reflexive() {
+    let (handle, _renderer) = EngineHandle::split_for_test();
+
+    assert!(handle == handle);
+}

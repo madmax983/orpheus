@@ -231,7 +231,8 @@ impl PartialEq for EngineHandle {
                     && left.core.pending_pattern_name == right.core.pending_pattern_name
                     && left.core.last_swap_frame == right.core.last_swap_frame
             }
-            (None | Some(_), None) | (None, Some(_)) => false,
+            (None, None) => std::ptr::eq(self, other),
+            (None, Some(_)) | (Some(_), None) => false,
         }
     }
 }
