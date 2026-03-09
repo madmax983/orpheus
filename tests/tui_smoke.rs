@@ -5,4 +5,5 @@ fn tui_boots_and_renders_initial_frame() {
     assert!(frame.contains("Bindings"));
     assert!(frame.contains("REPL"));
     assert!(frame.contains("Transport"));
+    assert!(frame.contains(":render"));
 }

@@ -193,7 +193,7 @@ impl SessionTui {
 
     fn transport_body() -> String {
         format!(
-            "Status: live shell\nTempo: {DEFAULT_TEMPO_BPM} BPM\nAudio: cycle-locked\nQuit: Esc or :quit"
+            "Status: live shell\nTempo: {DEFAULT_TEMPO_BPM} BPM\nAudio: cycle-locked\nExport: :render <binding> <path> [cycles]\nQuit: Esc or :quit"
         )
     }
 }
