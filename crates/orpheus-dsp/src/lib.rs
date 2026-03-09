@@ -1,13 +1,11 @@
 //! Audio engine for Orpheus.
 
-/// Minimal engine handle placeholder used to link the workspace.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct EngineHandle;
+mod command;
+mod engine;
+mod scheduler;
+mod voice;
 
-impl EngineHandle {
-    /// Returns a no-op engine handle for the bootstrap smoke test.
-    #[must_use]
-    pub const fn stub() -> Self {
-        Self
-    }
-}
+pub use command::EngineCommand;
+pub use engine::{EngineError, EngineHandle};
+pub use scheduler::Scheduler;
+pub use voice::VoiceKind;
