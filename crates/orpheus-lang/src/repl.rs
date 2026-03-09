@@ -71,7 +71,7 @@ where
     Ok(())
 }
 
-struct ReplSession {
+pub(crate) struct ReplSession {
     mode: ReplMode,
     engine: EngineHandle,
     bindings: BTreeMap<String, Value>,
@@ -84,7 +84,7 @@ impl ReplSession {
         Self::with_engine(EngineHandle::stub())
     }
 
-    const fn with_engine(engine: EngineHandle) -> Self {
+    pub(crate) const fn with_engine(engine: EngineHandle) -> Self {
         Self {
             mode: ReplMode::Loose,
             engine,
@@ -93,7 +93,7 @@ impl ReplSession {
         }
     }
 
-    fn eval_line(&mut self, source: &str) -> Result<String, String> {
+    pub(crate) fn eval_line(&mut self, source: &str) -> Result<String, String> {
         let Some((name, ty)) = infer_into_bindings(source, self.mode, &mut self.type_bindings)
             .map_err(|error| error.to_string())?
         else {
@@ -130,6 +130,13 @@ impl ReplSession {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn binding_summaries(&self) -> Vec<String> {
+        self.type_bindings
+            .iter()
+            .map(|(name, ty)| format!("{name}: {ty}"))
+            .collect()
     }
 }
 

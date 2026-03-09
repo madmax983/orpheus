@@ -1,3 +1,5 @@
+use std::io::IsTerminal;
+
 use anyhow::{Context, anyhow};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream};
@@ -12,7 +14,11 @@ fn main() -> anyhow::Result<()> {
         }
     };
 
-    orpheus_lang::repl::run_stdio_with_engine(engine)?;
+    if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
+        orpheus_lang::tui::run_with_engine(engine)?;
+    } else {
+        orpheus_lang::repl::run_stdio_with_engine(engine)?;
+    }
     Ok(())
 }
 
