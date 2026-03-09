@@ -85,6 +85,15 @@ fn handle_key_event(app: &mut SessionTui, key: KeyEvent) {
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.should_quit = true;
         }
+        KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.move_cursor_home();
+        }
+        KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.move_cursor_end();
+        }
+        KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.kill_to_end();
+        }
         KeyCode::Left => app.move_cursor_left(),
         KeyCode::Right => app.move_cursor_right(),
         KeyCode::Home => app.move_cursor_home(),
@@ -214,7 +223,7 @@ impl SessionTui {
 
     fn transport_body() -> String {
         format!(
-            "Status: live shell\nTempo: {DEFAULT_TEMPO_BPM} BPM\nAudio: cycle-locked\nExport: :render <binding> <path> [cycles]\nInput: Tab=complete, Up/Down=history, Left/Right=move, Home/End/Delete\nQuit: Esc or :quit"
+            "Status: live shell\nTempo: {DEFAULT_TEMPO_BPM} BPM\nAudio: cycle-locked\nExport: :render <binding> <path> [cycles]\nInput: Tab=complete, Up/Down=history, Left/Right=move, Home/End/Delete, Ctrl-A/E/K\nQuit: Esc or :quit"
         )
     }
 
@@ -321,6 +330,15 @@ impl SessionTui {
         self.history_index = None;
     }
 
+    fn kill_to_end(&mut self) {
+        if self.cursor_index >= self.input.len() {
+            return;
+        }
+
+        self.input.truncate(self.cursor_index);
+        self.history_index = None;
+    }
+
     fn display_input_with_cursor(&self) -> String {
         let (left, right) = self.input.split_at(self.cursor_index);
         format!("{left}|{right}")
@@ -391,6 +409,15 @@ mod tests {
         KeyEvent {
             code,
             modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        }
+    }
+
+    fn ctrl(code: KeyCode) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::CONTROL,
             kind: KeyEventKind::Press,
             state: crossterm::event::KeyEventState::NONE,
         }
@@ -518,5 +545,46 @@ mod tests {
         }
 
         assert_eq!(app.input, "drus");
+    }
+
+    #[test]
+    fn ctrl_a_and_ctrl_e_move_cursor_to_line_edges() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        for code in [
+            KeyCode::Char('d'),
+            KeyCode::Char('r'),
+            KeyCode::Char('u'),
+            KeyCode::Char('m'),
+            KeyCode::Char('s'),
+        ] {
+            handle_key_event(&mut app, press(code));
+        }
+
+        handle_key_event(&mut app, ctrl(KeyCode::Char('a')));
+        handle_key_event(&mut app, press(KeyCode::Char('!')));
+        handle_key_event(&mut app, ctrl(KeyCode::Char('e')));
+        handle_key_event(&mut app, press(KeyCode::Char('?')));
+
+        assert_eq!(app.input, "!drums?");
+    }
+
+    #[test]
+    fn ctrl_k_deletes_from_cursor_to_line_end() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        for code in [
+            KeyCode::Char('d'),
+            KeyCode::Char('r'),
+            KeyCode::Char('u'),
+            KeyCode::Char('m'),
+            KeyCode::Char('s'),
+            KeyCode::Left,
+            KeyCode::Left,
+        ] {
+            handle_key_event(&mut app, press(code));
+        }
+
+        handle_key_event(&mut app, ctrl(KeyCode::Char('k')));
+
+        assert_eq!(app.input, "dru");
     }
 }
