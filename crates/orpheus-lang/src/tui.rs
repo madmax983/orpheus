@@ -87,10 +87,13 @@ fn handle_key_event(app: &mut SessionTui, key: KeyEvent) {
         }
         KeyCode::Left => app.move_cursor_left(),
         KeyCode::Right => app.move_cursor_right(),
+        KeyCode::Home => app.move_cursor_home(),
+        KeyCode::End => app.move_cursor_end(),
         KeyCode::Up => app.recall_previous_history(),
         KeyCode::Down => app.recall_next_history(),
         KeyCode::Tab => app.complete_input(),
         KeyCode::Backspace => app.backspace(),
+        KeyCode::Delete => app.delete(),
         KeyCode::Enter => app.submit_line(),
         KeyCode::Char(character) => app.insert_character(character),
         _ => {}
@@ -211,7 +214,7 @@ impl SessionTui {
 
     fn transport_body() -> String {
         format!(
-            "Status: live shell\nTempo: {DEFAULT_TEMPO_BPM} BPM\nAudio: cycle-locked\nExport: :render <binding> <path> [cycles]\nInput: Tab=complete, Up/Down=history, Left/Right=move\nQuit: Esc or :quit"
+            "Status: live shell\nTempo: {DEFAULT_TEMPO_BPM} BPM\nAudio: cycle-locked\nExport: :render <binding> <path> [cycles]\nInput: Tab=complete, Up/Down=history, Left/Right=move, Home/End/Delete\nQuit: Esc or :quit"
         )
     }
 
@@ -298,6 +301,24 @@ impl SessionTui {
 
     fn move_cursor_right(&mut self) {
         self.cursor_index = next_char_boundary(&self.input, self.cursor_index);
+    }
+
+    const fn move_cursor_home(&mut self) {
+        self.cursor_index = 0;
+    }
+
+    fn move_cursor_end(&mut self) {
+        self.cursor_index = self.input.len();
+    }
+
+    fn delete(&mut self) {
+        if self.cursor_index >= self.input.len() {
+            return;
+        }
+
+        let next = next_char_boundary(&self.input, self.cursor_index);
+        self.input.replace_range(self.cursor_index..next, "");
+        self.history_index = None;
     }
 
     fn display_input_with_cursor(&self) -> String {
@@ -458,5 +479,44 @@ mod tests {
         }
 
         assert!(app.repl_body().contains("> dru|ms"));
+    }
+
+    #[test]
+    fn home_and_end_move_cursor_for_insertion() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        for code in [
+            KeyCode::Char('d'),
+            KeyCode::Char('r'),
+            KeyCode::Char('u'),
+            KeyCode::Char('m'),
+            KeyCode::Char('s'),
+            KeyCode::Home,
+            KeyCode::Char('!'),
+            KeyCode::End,
+            KeyCode::Char('?'),
+        ] {
+            handle_key_event(&mut app, press(code));
+        }
+
+        assert_eq!(app.input, "!drums?");
+    }
+
+    #[test]
+    fn delete_removes_character_after_cursor() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        for code in [
+            KeyCode::Char('d'),
+            KeyCode::Char('r'),
+            KeyCode::Char('u'),
+            KeyCode::Char('m'),
+            KeyCode::Char('s'),
+            KeyCode::Left,
+            KeyCode::Left,
+            KeyCode::Delete,
+        ] {
+            handle_key_event(&mut app, press(code));
+        }
+
+        assert_eq!(app.input, "drus");
     }
 }
