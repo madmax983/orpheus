@@ -1,5 +1,5 @@
 use std::io;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::execute;
@@ -16,6 +16,7 @@ use ratatui::{Frame, Terminal};
 use crate::repl::ReplSession;
 
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
+const STATUS_TOAST_TTL: Duration = Duration::from_secs(3);
 const DEFAULT_TEMPO_BPM: u32 = 120;
 const COMMAND_HINTS: [(&str, &str); 2] = [
     (":quit", ":quit"),
@@ -61,6 +62,7 @@ where
     B: Backend,
 {
     while !app.should_quit {
+        app.clear_status_if_expired(Instant::now());
         terminal.draw(|frame| render_session_frame(frame, app))?;
 
         if !event::poll(EVENT_POLL_INTERVAL)? {
@@ -192,6 +194,7 @@ struct SessionTui {
     history: Vec<String>,
     history_index: Option<usize>,
     status_message: Option<String>,
+    status_expires_at: Option<Instant>,
     input: String,
     cursor_index: usize,
     show_help: bool,
@@ -209,6 +212,7 @@ impl SessionTui {
             history: Vec::new(),
             history_index: None,
             status_message: None,
+            status_expires_at: None,
             input: String::new(),
             cursor_index: 0,
             show_help: false,
@@ -233,15 +237,15 @@ impl SessionTui {
         }
 
         if line.starts_with(':') {
-            self.status_message = Some(
-                self.session
-                    .eval_line(&line)
-                    .unwrap_or_else(|message| message),
-            );
+            let message = self
+                .session
+                .eval_line(&line)
+                .unwrap_or_else(|message| message);
+            self.set_status_message(message);
             return;
         }
 
-        self.status_message = None;
+        self.clear_status_message();
         self.transcript.push(format!("> {line}"));
         match self.session.eval_line(&line) {
             Ok(message) => self.transcript.push(message),
@@ -427,21 +431,40 @@ impl SessionTui {
 
     fn clear_transcript(&mut self) {
         self.transcript.clear();
-        self.status_message = Some("transcript cleared".to_owned());
+        self.set_status_message("transcript cleared");
     }
 
     fn toggle_help(&mut self) {
         self.show_help = !self.show_help;
-        self.status_message = Some(if self.show_help {
-            "help overlay shown".to_owned()
+        self.set_status_message(if self.show_help {
+            "help overlay shown"
         } else {
-            "help overlay hidden".to_owned()
+            "help overlay hidden"
         });
     }
 
     fn close_help(&mut self) {
         self.show_help = false;
-        self.status_message = Some("help overlay hidden".to_owned());
+        self.set_status_message("help overlay hidden");
+    }
+
+    fn set_status_message(&mut self, message: impl Into<String>) {
+        self.status_message = Some(message.into());
+        self.status_expires_at = Some(Instant::now() + STATUS_TOAST_TTL);
+    }
+
+    fn clear_status_message(&mut self) {
+        self.status_message = None;
+        self.status_expires_at = None;
+    }
+
+    fn clear_status_if_expired(&mut self, now: Instant) {
+        if self
+            .status_expires_at
+            .is_some_and(|expires_at| now >= expires_at)
+        {
+            self.clear_status_message();
+        }
     }
 
     fn display_input_with_cursor(&self) -> String {
@@ -582,7 +605,7 @@ impl Drop for TerminalGuard {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
     use orpheus_dsp::EngineHandle;
@@ -956,9 +979,31 @@ mod tests {
         app.submit_line();
 
         assert_eq!(app.transcript, transcript_before);
-        assert_eq!(app.status_message.as_deref(), Some(expected_message.as_str()));
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some(expected_message.as_str())
+        );
         assert!(output_path.exists());
         let _ = fs::remove_file(output_path);
+    }
+
+    #[test]
+    fn status_toast_expires_after_ttl() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.toggle_help();
+        assert_eq!(app.status_message.as_deref(), Some("help overlay shown"));
+
+        app.status_expires_at = Some(
+            Instant::now()
+                .checked_sub(Duration::from_millis(1))
+                .unwrap_or_else(|| panic!("subtracting one millisecond from now should succeed")),
+        );
+        app.clear_status_if_expired(Instant::now());
+
+        assert!(app.status_message.is_none());
+        assert!(app.status_expires_at.is_none());
+        let frame = render_frame_for_test(&app, 80, 24);
+        assert!(!frame.contains("Note:"));
     }
 
     fn render_frame_for_test(app: &SessionTui, width: u16, height: u16) -> String {
