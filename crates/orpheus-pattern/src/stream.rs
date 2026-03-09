@@ -1,0 +1,77 @@
+use core::cmp::{max, min};
+
+use crate::{Event, Pattern, PatternError, TimeSpan};
+
+/// A finite explicit-time event stream.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventStream<T> {
+    events: Vec<Event<T>>,
+}
+
+impl<T> EventStream<T> {
+    /// Creates an event stream from explicit-time events.
+    #[must_use]
+    pub fn new(mut events: Vec<Event<T>>) -> Self {
+        events.sort_by(|left, right| {
+            left.part
+                .start()
+                .cmp(right.part.start())
+                .then(left.part.end().cmp(right.part.end()))
+        });
+        Self { events }
+    }
+
+    /// Queries the stream over the half-open window `span`.
+    ///
+    /// # Errors
+    ///
+    /// Returns any span-construction error encountered while clipping stored
+    /// events to the query window.
+    pub fn try_query(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, PatternError>
+    where
+        T: Clone,
+    {
+        if span.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut events = Vec::new();
+        for event in &self.events {
+            let whole = event.whole.as_ref().unwrap_or(&event.part);
+            if let Some(part) = clip_span(whole, span)? {
+                events.push(Event {
+                    whole: if part == *whole {
+                        None
+                    } else {
+                        Some(whole.clone())
+                    },
+                    part,
+                    value: event.value.clone(),
+                });
+            }
+        }
+
+        Ok(events)
+    }
+}
+
+impl<T> Pattern<T> for EventStream<T>
+where
+    T: Clone + Send + Sync,
+{
+    fn query(&self, span: TimeSpan) -> Vec<Event<T>> {
+        self.try_query(&span)
+            .unwrap_or_else(|error| panic!("event stream query failed for span {span:?}: {error}"))
+    }
+}
+
+fn clip_span(span: &TimeSpan, query: &TimeSpan) -> Result<Option<TimeSpan>, PatternError> {
+    let start = max(span.start(), query.start()).clone();
+    let end = min(span.end(), query.end()).clone();
+
+    if start >= end {
+        return Ok(None);
+    }
+
+    TimeSpan::new(start, end).map(Some)
+}

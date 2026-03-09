@@ -1,7 +1,9 @@
 use core::cmp::{max, min};
 use core::fmt;
 
-use orpheus_pattern::{CyclePattern, Event, PatternError, PatternNode, Rational, TimeSpan};
+use orpheus_pattern::{
+    CyclePattern, Event, EventStream, PatternError, PatternNode, Rational, TimeSpan,
+};
 
 use crate::eval::EvalError;
 
@@ -167,6 +169,12 @@ impl SamplePatternValue {
         }
     }
 
+    pub(crate) fn from_events(events: Vec<Event<SampleEvent>>) -> Self {
+        Self {
+            pattern: PatternRuntime::Stream(EventStream::new(events)),
+        }
+    }
+
     /// Queries the pattern over the default unit cycle `[0, 1)`.
     ///
     /// # Panics
@@ -272,11 +280,18 @@ impl NumberPatternValue {
     pub(crate) fn try_query(&self, span: &TimeSpan) -> Result<Vec<Event<f64>>, EvalError> {
         self.pattern.try_query(span)
     }
+
+    pub(crate) fn from_events(events: Vec<Event<f64>>) -> Self {
+        Self {
+            pattern: PatternRuntime::Stream(EventStream::new(events)),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
 enum PatternRuntime<T> {
     Cycle(CyclePattern<T>),
+    Stream(EventStream<T>),
     Stack(Vec<Self>),
     Fast { factor: i64, inner: Box<Self> },
     Slow { factor: i64, inner: Box<Self> },
@@ -291,6 +306,9 @@ where
     fn try_query(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
         match self {
             Self::Cycle(pattern) => pattern
+                .try_query(span)
+                .map_err(|error| map_pattern_error(&error)),
+            Self::Stream(stream) => stream
                 .try_query(span)
                 .map_err(|error| map_pattern_error(&error)),
             Self::Stack(layers) => {

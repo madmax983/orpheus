@@ -101,6 +101,7 @@ impl Inferencer {
         match expr {
             Expr::Seq(items) => self.infer_homogeneous(items, "sequence items"),
             Expr::Stack(layers) => self.infer_homogeneous(layers, "`stack` layers"),
+            Expr::Stream(items) => self.infer_homogeneous(items, "`stream` items"),
             Expr::Pipe { lhs, rhs } => {
                 let lhs_ty = self.infer_expr(lhs)?;
                 let rhs_ty = self.infer_expr(rhs)?;
@@ -114,6 +115,33 @@ impl Inferencer {
                 }
                 Ok(callee_ty)
             }
+            Expr::At { start, pattern } => {
+                let start_ty = self.infer_expr(start)?;
+                self.unify(start_ty, Type::pattern(Type::Number))?;
+                self.infer_expr(pattern)
+            }
+            Expr::Meter {
+                beats,
+                unit,
+                pattern,
+            } => {
+                let beats_ty = self.infer_expr(beats)?;
+                self.unify(beats_ty, Type::pattern(Type::Number))?;
+                let unit_ty = self.infer_expr(unit)?;
+                self.unify(unit_ty, Type::pattern(Type::Number))?;
+                self.infer_expr(pattern)
+            }
+            Expr::Beat(value) => {
+                let value_ty = self.infer_expr(value)?;
+                self.unify(value_ty, Type::pattern(Type::Number))?;
+                Ok(Type::pattern(Type::Number))
+            }
+            Expr::Section { pattern, cycles } => {
+                let cycles_ty = self.infer_expr(cycles)?;
+                self.unify(cycles_ty, Type::pattern(Type::Number))?;
+                self.infer_expr(pattern)
+            }
+            Expr::SeqSections(items) => self.infer_homogeneous(items, "`seq_sections` items"),
             Expr::Group(items) => self.infer_homogeneous(items, "group items"),
             Expr::Ident(name) => self.infer_ident(name),
             Expr::Rest => Err(TypeError::new(

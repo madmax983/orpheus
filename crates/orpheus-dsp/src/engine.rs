@@ -8,9 +8,9 @@ use crate::sample_bank::SampleBank;
 use crate::scheduler::Scheduler;
 use crate::voice::ActiveVoice;
 
-const DEFAULT_SAMPLE_RATE: u32 = 48_000;
+pub const DEFAULT_SAMPLE_RATE: u32 = 48_000;
 const DEFAULT_CHANNELS: u16 = 2;
-const DEFAULT_TEMPO_BPM: f32 = 120.0;
+pub const DEFAULT_TEMPO_BPM: f32 = 120.0;
 const BEATS_PER_CYCLE: f64 = 4.0;
 const MAX_ACTIVE_VOICES: usize = 32;
 
@@ -444,7 +444,7 @@ const fn default_stream_config() -> StreamConfig {
     }
 }
 
-fn frames_per_cycle(sample_rate: u32, tempo_bpm: f32) -> Result<u64, EngineError> {
+pub fn frames_per_cycle(sample_rate: u32, tempo_bpm: f32) -> Result<u64, EngineError> {
     use std::time::Duration;
 
     if !tempo_bpm.is_finite() || tempo_bpm <= 0.0 {

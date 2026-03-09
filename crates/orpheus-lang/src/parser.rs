@@ -181,7 +181,7 @@ fn build_stack(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
 
 fn build_call(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
     let mut inner = pair.into_inner();
-    let callee = Expr::Ident(next_pair(&mut inner, "call callee")?.as_str().to_owned());
+    let callee_name = next_pair(&mut inner, "call callee")?.as_str().to_owned();
     let args = if let Some(args_pair) = inner.next() {
         args_pair
             .into_inner()
@@ -191,10 +191,40 @@ fn build_call(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
         Vec::new()
     };
 
-    Ok(Expr::Call {
-        callee: Box::new(callee),
-        args,
-    })
+    match callee_name.as_str() {
+        "stream" => Ok(Expr::Stream(args)),
+        "at" => match args.as_slice() {
+            [start, pattern] => Ok(Expr::At {
+                start: Box::new(start.clone()),
+                pattern: Box::new(pattern.clone()),
+            }),
+            _ => Err(ParseError::new("`at` requires exactly two arguments")),
+        },
+        "meter" => match args.as_slice() {
+            [beats, unit, pattern] => Ok(Expr::Meter {
+                beats: Box::new(beats.clone()),
+                unit: Box::new(unit.clone()),
+                pattern: Box::new(pattern.clone()),
+            }),
+            _ => Err(ParseError::new("`meter` requires exactly three arguments")),
+        },
+        "beat" => match args.as_slice() {
+            [value] => Ok(Expr::Beat(Box::new(value.clone()))),
+            _ => Err(ParseError::new("`beat` requires exactly one argument")),
+        },
+        "section" => match args.as_slice() {
+            [pattern, cycles] => Ok(Expr::Section {
+                pattern: Box::new(pattern.clone()),
+                cycles: Box::new(cycles.clone()),
+            }),
+            _ => Err(ParseError::new("`section` requires exactly two arguments")),
+        },
+        "seq_sections" => Ok(Expr::SeqSections(args)),
+        _ => Ok(Expr::Call {
+            callee: Box::new(Expr::Ident(callee_name)),
+            args,
+        }),
+    }
 }
 
 fn build_group(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {

@@ -3,11 +3,13 @@
 mod cycle;
 mod event;
 mod rational;
+mod stream;
 mod time;
 
 pub use cycle::{CyclePattern, Pattern, PatternNode};
 pub use event::Event;
 pub use rational::Rational;
+pub use stream::EventStream;
 pub use time::TimeSpan;
 
 use core::fmt;

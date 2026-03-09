@@ -105,6 +105,25 @@ fn gain_updates_sample_event_amplitude() {
 }
 
 #[test]
+fn meter_translates_beats_into_cycle_relative_time() {
+    let module = eval_module(
+        "bridge = meter(4, 4, stream(at(beat(2), bd)))",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("bridge")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].part.start().numerator(), 1);
+    assert_eq!(events[0].part.start().denominator(), 2);
+}
+
+#[test]
 fn loose_mode_still_rejects_unresolved_identifiers_until_placeholders_exist() {
     assert_eval_error_contains(
         "drums = mystery",
