@@ -81,7 +81,7 @@ fn handle_key_event(app: &mut SessionTui, key: KeyEvent) {
     }
 
     match key.code {
-        KeyCode::Esc if app.show_help => app.show_help = false,
+        KeyCode::Esc if app.show_help => app.close_help(),
         KeyCode::Esc => app.should_quit = true,
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.should_quit = true;
@@ -153,7 +153,7 @@ fn render_session_frame(frame: &mut Frame<'_>, app: &SessionTui) {
     );
 
     frame.render_widget(
-        Paragraph::new(SessionTui::transport_body())
+        Paragraph::new(app.transport_body())
             .block(Block::default().title("Transport").borders(Borders::ALL))
             .wrap(Wrap { trim: false }),
         right,
@@ -191,6 +191,7 @@ struct SessionTui {
     transcript: Vec<String>,
     history: Vec<String>,
     history_index: Option<usize>,
+    status_message: Option<String>,
     input: String,
     cursor_index: usize,
     show_help: bool,
@@ -207,6 +208,7 @@ impl SessionTui {
             ],
             history: Vec::new(),
             history_index: None,
+            status_message: None,
             input: String::new(),
             cursor_index: 0,
             show_help: false,
@@ -226,11 +228,20 @@ impl SessionTui {
 
         self.history.push(line.clone());
         if line == ":quit" {
-            self.transcript.push("> :quit".to_owned());
             self.should_quit = true;
             return;
         }
 
+        if line.starts_with(':') {
+            self.status_message = Some(
+                self.session
+                    .eval_line(&line)
+                    .unwrap_or_else(|message| message),
+            );
+            return;
+        }
+
+        self.status_message = None;
         self.transcript.push(format!("> {line}"));
         match self.session.eval_line(&line) {
             Ok(message) => self.transcript.push(message),
@@ -254,10 +265,19 @@ impl SessionTui {
         lines.join("\n")
     }
 
-    fn transport_body() -> String {
-        format!(
-            "Status: live shell\nTempo: {DEFAULT_TEMPO_BPM} BPM\nAudio: cycle-locked\nExport: :render <binding> <path> [cycles]\nHelp: ?\nQuit: Esc or :quit"
-        )
+    fn transport_body(&self) -> String {
+        let mut lines = vec![
+            "Status: live shell".to_owned(),
+            format!("Tempo: {DEFAULT_TEMPO_BPM} BPM"),
+            "Audio: cycle-locked".to_owned(),
+            "Export: :render <binding> <path> [cycles]".to_owned(),
+            "Help: ?".to_owned(),
+        ];
+        if let Some(message) = &self.status_message {
+            lines.push(format!("Note: {message}"));
+        }
+        lines.push("Quit: Esc or :quit".to_owned());
+        lines.join("\n")
     }
 
     const fn help_overlay_body() -> &'static str {
@@ -407,10 +427,21 @@ impl SessionTui {
 
     fn clear_transcript(&mut self) {
         self.transcript.clear();
+        self.status_message = Some("transcript cleared".to_owned());
     }
 
-    const fn toggle_help(&mut self) {
+    fn toggle_help(&mut self) {
         self.show_help = !self.show_help;
+        self.status_message = Some(if self.show_help {
+            "help overlay shown".to_owned()
+        } else {
+            "help overlay hidden".to_owned()
+        });
+    }
+
+    fn close_help(&mut self) {
+        self.show_help = false;
+        self.status_message = Some("help overlay hidden".to_owned());
     }
 
     fn display_input_with_cursor(&self) -> String {
@@ -550,6 +581,9 @@ impl Drop for TerminalGuard {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
     use orpheus_dsp::EngineHandle;
     use ratatui::Terminal;
@@ -885,6 +919,7 @@ mod tests {
         let mut app = SessionTui::new(EngineHandle::stub());
 
         handle_key_event(&mut app, press(KeyCode::Char('?')));
+        assert_eq!(app.status_message.as_deref(), Some("help overlay shown"));
         let overlay_frame = render_frame_for_test(&app, 80, 24);
         assert!(overlay_frame.contains("Help"));
         assert!(overlay_frame.contains("Ctrl-A/E/K"));
@@ -894,10 +929,36 @@ mod tests {
         handle_key_event(&mut app, press(KeyCode::Esc));
 
         assert!(!app.should_quit);
+        assert_eq!(app.status_message.as_deref(), Some("help overlay hidden"));
         let normal_frame = render_frame_for_test(&app, 80, 24);
         assert!(!normal_frame.contains("Toggle: ?"));
         assert!(!normal_frame.contains("Words: Alt-B/F"));
         assert!(normal_frame.contains("Help: ?"));
+    }
+
+    #[test]
+    fn render_command_uses_status_toast_instead_of_transcript() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = "drums = bd sn".to_owned();
+        app.submit_line();
+        let transcript_before = app.transcript.clone();
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_else(|error| panic!("system clock should be after unix epoch: {error}"))
+            .as_nanos();
+        let output_path = std::env::temp_dir().join(format!("orpheus-tui-toast-{unique}.wav"));
+        let expected_message = format!(
+            "rendered `drums` to `{}` (1 cycle(s))",
+            output_path.display()
+        );
+        app.input = format!(":render drums {}", output_path.display());
+
+        app.submit_line();
+
+        assert_eq!(app.transcript, transcript_before);
+        assert_eq!(app.status_message.as_deref(), Some(expected_message.as_str()));
+        assert!(output_path.exists());
+        let _ = fs::remove_file(output_path);
     }
 
     fn render_frame_for_test(app: &SessionTui, width: u16, height: u16) -> String {
