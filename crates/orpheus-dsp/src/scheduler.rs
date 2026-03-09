@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use orpheus_pattern::{Event, Rational};
 
 use crate::engine::EngineError;
@@ -13,7 +15,7 @@ pub struct ScheduledTrigger {
 /// Sample-clock scheduler that bridges exact pattern time to audio frames.
 #[derive(Clone, Debug, Default)]
 pub struct Scheduler {
-    triggers: Vec<ScheduledTrigger>,
+    triggers: VecDeque<ScheduledTrigger>,
 }
 
 impl Scheduler {
@@ -51,12 +53,23 @@ impl Scheduler {
     where
         I: IntoIterator<Item = Event<&'a str>>,
     {
+        let mut pending = Vec::new();
         for event in events {
             let offset = rational_to_frame_offset(event.part.start(), frames_per_cycle)?;
             let frame = cycle_start_frame
                 .checked_add(offset)
                 .ok_or(EngineError::FrameOverflow)?;
-            self.schedule_trigger(frame, event.value)?;
+            let voice = VoiceKind::from_token(event.value)
+                .ok_or_else(|| EngineError::UnknownVoice(event.value.into()))?;
+            pending.push(ScheduledTrigger {
+                frame,
+                token: event.value.into(),
+                voice,
+            });
+        }
+
+        for trigger in pending {
+            self.insert_trigger(trigger);
         }
 
         Ok(())
@@ -66,17 +79,24 @@ impl Scheduler {
     /// for simultaneous events.
     #[must_use]
     pub fn drain_due_events(&mut self, frame: u64) -> Vec<String> {
-        self.drain_due(frame)
-            .into_iter()
-            .map(|trigger| trigger.token.into())
-            .collect()
+        let mut due = Vec::new();
+        while let Some(trigger) = self.pop_due(frame) {
+            due.push(trigger.token.into());
+        }
+        due
     }
 
-    pub fn drain_due(&mut self, frame: u64) -> Vec<ScheduledTrigger> {
-        let count = self
+    /// Pops the next trigger due on or before `frame`.
+    pub fn pop_due(&mut self, frame: u64) -> Option<ScheduledTrigger> {
+        if self
             .triggers
-            .partition_point(|trigger| trigger.frame <= frame);
-        self.triggers.drain(..count).collect()
+            .front()
+            .is_some_and(|trigger| trigger.frame <= frame)
+        {
+            self.triggers.pop_front()
+        } else {
+            None
+        }
     }
 
     /// Schedules one built-in voice token at an absolute sample frame.
@@ -87,16 +107,21 @@ impl Scheduler {
     pub fn schedule_trigger(&mut self, frame: u64, token: &str) -> Result<(), EngineError> {
         let voice =
             VoiceKind::from_token(token).ok_or_else(|| EngineError::UnknownVoice(token.into()))?;
-        let trigger = ScheduledTrigger {
+        self.insert_trigger(ScheduledTrigger {
             frame,
             token: token.into(),
             voice,
-        };
+        });
+        Ok(())
+    }
+
+    fn insert_trigger(&mut self, trigger: ScheduledTrigger) {
         let index = self
             .triggers
-            .partition_point(|existing| existing.frame <= trigger.frame);
+            .iter()
+            .position(|existing| existing.frame > trigger.frame)
+            .unwrap_or(self.triggers.len());
         self.triggers.insert(index, trigger);
-        Ok(())
     }
 }
 

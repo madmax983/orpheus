@@ -41,3 +41,13 @@ fn tempo_command_updates_cycle_length() {
 
     assert!(engine.frames_per_cycle_for_test() > before);
 }
+
+#[test]
+fn split_engine_allows_commands_to_cross_into_renderer() {
+    let (mut handle, mut renderer) = EngineHandle::split_for_test();
+
+    handle.enqueue(EngineCommand::SwapPattern("verse".into()));
+    let _ = renderer.render_test_block(renderer.frames_until_boundary_for_test());
+
+    assert_eq!(renderer.active_pattern_name_for_test(), Some("verse"));
+}
