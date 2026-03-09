@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::io::{self, BufRead, Write};
 
-use orpheus_dsp::{EngineCommand, EngineHandle, PatternUpdate};
+use orpheus_dsp::{EngineCommand, EngineHandle, PatternUpdate, TransportSnapshot};
 
 use crate::eval::eval_into_bindings;
 use crate::render_sample_pattern_to_wav;
@@ -77,6 +77,7 @@ pub(crate) struct ReplSession {
     engine: EngineHandle,
     bindings: BTreeMap<String, Value>,
     type_bindings: BTreeMap<String, Type>,
+    last_loaded_pattern_name: Option<String>,
 }
 
 impl ReplSession {
@@ -91,6 +92,7 @@ impl ReplSession {
             engine,
             bindings: BTreeMap::new(),
             type_bindings: BTreeMap::new(),
+            last_loaded_pattern_name: None,
         }
     }
 
@@ -190,6 +192,7 @@ impl ReplSession {
             self.engine
                 .enqueue(EngineCommand::LoadPattern(update))
                 .map_err(|error| error.to_string())?;
+            self.last_loaded_pattern_name = Some(name.to_owned());
         }
 
         Ok(())
@@ -200,6 +203,19 @@ impl ReplSession {
             .iter()
             .map(|(name, ty)| format!("{name}: {ty}"))
             .collect()
+    }
+
+    pub(crate) fn last_loaded_pattern_name(&self) -> Option<&str> {
+        self.last_loaded_pattern_name.as_deref()
+    }
+
+    pub(crate) fn transport_snapshot(&self) -> TransportSnapshot {
+        self.engine.transport_snapshot()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn render_test_block_for_tui(&mut self, frames: u64) -> Vec<f32> {
+        self.engine.render_test_block(frames)
     }
 }
 
@@ -276,5 +292,16 @@ mod tests {
         let error = session.eval_line(":render nope out.wav 1").unwrap_err();
 
         assert!(error.contains("no binding named `nope`"));
+    }
+
+    #[test]
+    fn last_loaded_pattern_name_tracks_sample_bindings() {
+        let mut session = ReplSession::new();
+
+        session.eval_line("drums = bd sn cp sn").unwrap();
+        assert_eq!(session.last_loaded_pattern_name(), Some("drums"));
+
+        session.eval_line("warp = fast(2)").unwrap();
+        assert_eq!(session.last_loaded_pattern_name(), Some("drums"));
     }
 }

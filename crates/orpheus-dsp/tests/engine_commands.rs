@@ -182,3 +182,24 @@ fn tempo_change_mid_cycle_does_not_strand_future_pattern_swaps() {
 
     assert_eq!(engine.active_pattern_name_for_test(), Some("bridge"));
 }
+
+#[test]
+fn transport_snapshot_tracks_current_cycle_progress() {
+    let mut engine = EngineHandle::stub();
+    let frames_per_cycle = engine.frames_per_cycle_for_test();
+
+    let snapshot = engine.transport_snapshot();
+    assert_eq!(snapshot.current_frame(), 0);
+    assert_eq!(snapshot.current_cycle_start_frame(), 0);
+    assert_eq!(snapshot.frames_per_cycle(), frames_per_cycle);
+
+    let _ = engine.render_test_block(frames_per_cycle + (frames_per_cycle / 4));
+
+    let snapshot = engine.transport_snapshot();
+    assert_eq!(snapshot.frames_per_cycle(), frames_per_cycle);
+    assert_eq!(snapshot.current_cycle_start_frame(), frames_per_cycle);
+    assert_eq!(
+        snapshot.current_frame(),
+        frames_per_cycle + (frames_per_cycle / 4)
+    );
+}

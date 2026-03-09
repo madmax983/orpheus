@@ -270,10 +270,15 @@ impl SessionTui {
     }
 
     fn transport_body(&self) -> String {
+        let transport = self.session.transport_snapshot();
         let mut lines = vec![
             "Status: live shell".to_owned(),
             format!("Tempo: {DEFAULT_TEMPO_BPM} BPM"),
-            "Audio: cycle-locked".to_owned(),
+            format!("Cycle: {}", format_cycle_position(&transport)),
+            format!(
+                "Pattern: {}",
+                self.session.last_loaded_pattern_name().unwrap_or("none")
+            ),
             "Export: :render <binding> <path> [cycles]".to_owned(),
             "Help: ?".to_owned(),
         ];
@@ -583,6 +588,20 @@ fn centered_rect(area: Rect, width_percent: u16, height_percent: u16) -> Rect {
         .areas(vertical);
 
     horizontal
+}
+
+fn format_cycle_position(snapshot: &orpheus_dsp::TransportSnapshot) -> String {
+    let frames_per_cycle = snapshot.frames_per_cycle();
+    if frames_per_cycle == 0 {
+        return "0.000".to_owned();
+    }
+
+    let cycle_index = snapshot.current_cycle_start_frame() / frames_per_cycle;
+    let cycle_offset = snapshot
+        .current_frame()
+        .saturating_sub(snapshot.current_cycle_start_frame());
+    let progress_millis = cycle_offset.saturating_mul(1000) / frames_per_cycle;
+    format!("{cycle_index}.{progress_millis:03}")
 }
 
 struct TerminalGuard;
@@ -1004,6 +1023,19 @@ mod tests {
         assert!(app.status_expires_at.is_none());
         let frame = render_frame_for_test(&app, 80, 24);
         assert!(!frame.contains("Note:"));
+    }
+
+    #[test]
+    fn transport_reports_cycle_progress_and_last_loaded_pattern() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = "drums = bd sn".to_owned();
+        app.submit_line();
+        let frames_per_cycle = app.session.transport_snapshot().frames_per_cycle();
+        let _ = app.session.render_test_block_for_tui(frames_per_cycle / 2);
+
+        let frame = render_frame_for_test(&app, 80, 24);
+        assert!(frame.contains("Pattern: drums"));
+        assert!(frame.contains("Cycle: 0.500"));
     }
 
     fn render_frame_for_test(app: &SessionTui, width: u16, height: u16) -> String {

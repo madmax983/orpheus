@@ -1,6 +1,8 @@
 use cpal::{BufferSize, SampleRate, StreamConfig};
 use orpheus_pattern::Event;
 use rtrb::{Consumer, Producer};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use thiserror::Error;
 
 use crate::command::{EngineCommand, PatternUpdate, new_command_queue};
@@ -13,6 +15,57 @@ const DEFAULT_CHANNELS: u16 = 2;
 pub const DEFAULT_TEMPO_BPM: f32 = 120.0;
 const BEATS_PER_CYCLE: f64 = 4.0;
 const MAX_ACTIVE_VOICES: usize = 32;
+
+/// A UI-readable snapshot of the transport clock.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TransportSnapshot {
+    current_frame: u64,
+    current_cycle_start_frame: u64,
+    frames_per_cycle: u64,
+}
+
+impl TransportSnapshot {
+    #[must_use]
+    pub const fn current_frame(&self) -> u64 {
+        self.current_frame
+    }
+
+    #[must_use]
+    pub const fn current_cycle_start_frame(&self) -> u64 {
+        self.current_cycle_start_frame
+    }
+
+    #[must_use]
+    pub const fn frames_per_cycle(&self) -> u64 {
+        self.frames_per_cycle
+    }
+}
+
+#[derive(Debug, Default)]
+struct SharedTransport {
+    current_frame: AtomicU64,
+    current_cycle_start_frame: AtomicU64,
+    frames_per_cycle: AtomicU64,
+}
+
+impl SharedTransport {
+    fn publish(&self, core: &EngineCore) {
+        self.current_frame
+            .store(core.current_frame, Ordering::Relaxed);
+        self.current_cycle_start_frame
+            .store(core.current_cycle_start_frame, Ordering::Relaxed);
+        self.frames_per_cycle
+            .store(core.frames_per_cycle, Ordering::Relaxed);
+    }
+
+    fn snapshot(&self) -> TransportSnapshot {
+        TransportSnapshot {
+            current_frame: self.current_frame.load(Ordering::Relaxed),
+            current_cycle_start_frame: self.current_cycle_start_frame.load(Ordering::Relaxed),
+            frames_per_cycle: self.frames_per_cycle.load(Ordering::Relaxed),
+        }
+    }
+}
 
 /// Errors raised by the minimal Orpheus audio engine.
 #[derive(Debug, Error)]
@@ -176,17 +229,22 @@ impl EngineCore {
 pub struct RenderEngine {
     command_rx: Consumer<EngineCommand>,
     core: EngineCore,
+    transport: Arc<SharedTransport>,
 }
 
 impl RenderEngine {
     fn new(
         command_rx: Consumer<EngineCommand>,
         config: &StreamConfig,
+        transport: Arc<SharedTransport>,
     ) -> Result<Self, EngineError> {
-        Ok(Self {
+        let engine = Self {
             command_rx,
             core: EngineCore::new(config)?,
-        })
+            transport,
+        };
+        engine.publish_transport();
+        Ok(engine)
     }
 
     /// Applies any queued commands and renders into an interleaved output buffer.
@@ -197,7 +255,9 @@ impl RenderEngine {
     /// contain a whole number of frames for this renderer's channel layout.
     pub fn render_into_interleaved(&mut self, output: &mut [f32]) -> Result<(), EngineError> {
         self.drain_commands()?;
-        self.core.render_into_interleaved(output)
+        let result = self.core.render_into_interleaved(output);
+        self.publish_transport();
+        result
     }
 
     /// Reports whether the most recent swap became active before a cycle boundary.
@@ -261,6 +321,10 @@ impl RenderEngine {
         }
         Ok(())
     }
+
+    fn publish_transport(&self) {
+        self.transport.publish(&self.core);
+    }
 }
 
 /// UI-side command producer for the current minimal engine slice.
@@ -268,6 +332,7 @@ impl RenderEngine {
 pub struct EngineHandle {
     command_tx: Producer<EngineCommand>,
     test_renderer: Option<RenderEngine>,
+    transport: Arc<SharedTransport>,
 }
 
 impl PartialEq for EngineHandle {
@@ -326,11 +391,13 @@ impl EngineHandle {
         config: &StreamConfig,
     ) -> Result<(Self, RenderEngine), EngineError> {
         let (command_tx, command_rx) = new_command_queue();
-        let renderer = RenderEngine::new(command_rx, config)?;
+        let transport = Arc::new(SharedTransport::default());
+        let renderer = RenderEngine::new(command_rx, config, Arc::clone(&transport))?;
         Ok((
             Self {
                 command_tx,
                 test_renderer: None,
+                transport,
             },
             renderer,
         ))
@@ -421,6 +488,12 @@ impl EngineHandle {
     #[must_use]
     pub fn frames_per_cycle_for_test(&self) -> u64 {
         self.test_renderer_ref().frames_per_cycle_for_test()
+    }
+
+    /// Returns a UI-readable transport snapshot for the current engine state.
+    #[must_use]
+    pub fn transport_snapshot(&self) -> TransportSnapshot {
+        self.transport.snapshot()
     }
 
     fn test_renderer_mut(&mut self) -> &mut RenderEngine {
