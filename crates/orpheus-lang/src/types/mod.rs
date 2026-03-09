@@ -83,6 +83,16 @@ impl TypedModule {
         Self { bindings }
     }
 
+    #[must_use]
+    pub(crate) fn get(&self, name: &str) -> Option<&Type> {
+        self.bindings.get(name)
+    }
+
+    #[must_use]
+    pub fn contains_key(&self, name: &str) -> bool {
+        self.bindings.contains_key(name)
+    }
+
     /// Returns the inferred type for a named binding.
     ///
     /// # Panics

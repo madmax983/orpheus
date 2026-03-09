@@ -4,14 +4,16 @@ mod ast;
 mod builtins;
 mod diagnostics;
 mod eval;
+mod loader;
 mod parser;
 pub mod repl;
 mod types;
 mod value;
 
 pub use ast::{Expr, Module, Stmt};
-pub use diagnostics::{ParseError, TypeError};
+pub use diagnostics::{LoadError, ParseError, TypeError};
 pub use eval::{EvalError, eval_module};
+pub use loader::load_file_strict;
 pub use parser::parse_module;
 pub use types::{Type, TypedModule, infer_module};
 pub use value::{NumberPatternValue, SampleEvent, SamplePatternValue, Value};

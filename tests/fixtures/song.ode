@@ -1,0 +1,2 @@
+use "drums.ode" (drums)
+song = fast(2, drums)

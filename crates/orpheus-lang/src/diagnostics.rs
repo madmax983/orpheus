@@ -46,3 +46,25 @@ impl Display for TypeError {
 }
 
 impl Error for TypeError {}
+
+/// A file-loading error produced while resolving strict `.ode` modules.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LoadError {
+    message: Box<str>,
+}
+
+impl LoadError {
+    pub(crate) fn new(message: impl Into<Box<str>>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+impl Display for LoadError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl Error for LoadError {}
