@@ -6,4 +6,6 @@ fn tui_boots_and_renders_initial_frame() {
     assert!(frame.contains("REPL"));
     assert!(frame.contains("Transport"));
     assert!(frame.contains(":render"));
+    assert!(frame.contains("Tab=complete"));
+    assert!(frame.contains("Up/Down=history"));
 }
