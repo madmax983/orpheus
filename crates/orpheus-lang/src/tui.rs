@@ -94,6 +94,12 @@ fn handle_key_event(app: &mut SessionTui, key: KeyEvent) {
         KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.kill_to_end();
         }
+        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.kill_to_start();
+        }
+        KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.delete_previous_word();
+        }
         KeyCode::Left => app.move_cursor_left(),
         KeyCode::Right => app.move_cursor_right(),
         KeyCode::Home => app.move_cursor_home(),
@@ -223,7 +229,7 @@ impl SessionTui {
 
     fn transport_body() -> String {
         format!(
-            "Status: live shell\nTempo: {DEFAULT_TEMPO_BPM} BPM\nAudio: cycle-locked\nExport: :render <binding> <path> [cycles]\nInput: Tab=complete, Up/Down=history, Left/Right=move, Home/End/Delete, Ctrl-A/E/K\nQuit: Esc or :quit"
+            "Status: live shell\nTempo: {DEFAULT_TEMPO_BPM} BPM\nAudio: cycle-locked\nExport: :render <binding> <path> [cycles]\nInput: Tab=complete, Up/Down=history, Left/Right=move, Home/End/Delete, Ctrl-A/E/K\nBackkill: Ctrl-U/W\nQuit: Esc or :quit"
         )
     }
 
@@ -339,6 +345,27 @@ impl SessionTui {
         self.history_index = None;
     }
 
+    fn kill_to_start(&mut self) {
+        if self.cursor_index == 0 {
+            return;
+        }
+
+        self.input.replace_range(..self.cursor_index, "");
+        self.cursor_index = 0;
+        self.history_index = None;
+    }
+
+    fn delete_previous_word(&mut self) {
+        if self.cursor_index == 0 {
+            return;
+        }
+
+        let start = previous_word_boundary(&self.input, self.cursor_index);
+        self.input.replace_range(start..self.cursor_index, "");
+        self.cursor_index = start;
+        self.history_index = None;
+    }
+
     fn display_input_with_cursor(&self) -> String {
         let (left, right) = self.input.split_at(self.cursor_index);
         format!("{left}|{right}")
@@ -378,6 +405,34 @@ fn next_char_boundary(input: &str, index: usize) -> usize {
     while cursor < input.len() && !input.is_char_boundary(cursor) {
         cursor += 1;
     }
+    cursor
+}
+
+fn previous_word_boundary(input: &str, index: usize) -> usize {
+    let mut cursor = index;
+
+    while cursor > 0 {
+        let previous = previous_char_boundary(input, cursor);
+        let Some(character) = input[..cursor].chars().next_back() else {
+            break;
+        };
+        if !character.is_whitespace() {
+            break;
+        }
+        cursor = previous;
+    }
+
+    while cursor > 0 {
+        let previous = previous_char_boundary(input, cursor);
+        let Some(character) = input[..cursor].chars().next_back() else {
+            break;
+        };
+        if character.is_whitespace() {
+            break;
+        }
+        cursor = previous;
+    }
+
     cursor
 }
 
@@ -586,5 +641,48 @@ mod tests {
         handle_key_event(&mut app, ctrl(KeyCode::Char('k')));
 
         assert_eq!(app.input, "dru");
+    }
+
+    #[test]
+    fn ctrl_u_deletes_from_cursor_back_to_start() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        for code in [
+            KeyCode::Char('d'),
+            KeyCode::Char('r'),
+            KeyCode::Char('u'),
+            KeyCode::Char('m'),
+            KeyCode::Char('s'),
+            KeyCode::Left,
+            KeyCode::Left,
+        ] {
+            handle_key_event(&mut app, press(code));
+        }
+
+        handle_key_event(&mut app, ctrl(KeyCode::Char('u')));
+
+        assert_eq!(app.input, "ms");
+        assert_eq!(app.cursor_index, 0);
+    }
+
+    #[test]
+    fn ctrl_w_skips_trailing_whitespace_and_deletes_previous_word() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        for code in [
+            KeyCode::Char('b'),
+            KeyCode::Char('d'),
+            KeyCode::Char(' '),
+            KeyCode::Char('s'),
+            KeyCode::Char('n'),
+            KeyCode::Char(' '),
+            KeyCode::Char(' '),
+            KeyCode::Char(' '),
+        ] {
+            handle_key_event(&mut app, press(code));
+        }
+
+        handle_key_event(&mut app, ctrl(KeyCode::Char('w')));
+
+        assert_eq!(app.input, "bd ");
+        assert_eq!(app.cursor_index, app.input.len());
     }
 }
