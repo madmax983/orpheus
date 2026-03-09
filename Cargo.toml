@@ -12,6 +12,7 @@ rust-version = "1.85"
 version = "0.1.0"
 
 [workspace.dependencies]
+anyhow = "1"
 cpal = "0.15"
 orpheus-dsp = { path = "crates/orpheus-dsp" }
 orpheus-lang = { path = "crates/orpheus-lang" }
@@ -38,6 +39,12 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+anyhow.workspace = true
+cpal.workspace = true
 orpheus-dsp.workspace = true
 orpheus-lang.workspace = true
 orpheus-pattern.workspace = true
+
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"

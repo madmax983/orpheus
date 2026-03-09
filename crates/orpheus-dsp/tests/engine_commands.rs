@@ -1,4 +1,5 @@
-use orpheus_dsp::{EngineCommand, EngineError, EngineHandle};
+use orpheus_dsp::{EngineCommand, EngineError, EngineHandle, PatternUpdate};
+use orpheus_pattern::{Event, Rational, TimeSpan};
 
 #[test]
 fn pattern_swap_is_deferred_until_cycle_boundary() {
@@ -88,4 +89,72 @@ fn split_handle_equality_is_reflexive() {
     let (handle, _renderer) = EngineHandle::split_for_test();
 
     assert!(handle == handle);
+}
+
+#[test]
+fn loaded_pattern_hot_swap_waits_for_the_next_cycle_boundary() {
+    let mut engine = EngineHandle::stub();
+    let quarter = Rational::new(1, 4).unwrap();
+    let intro = PatternUpdate::new(
+        "drums",
+        vec![Event {
+            whole: None,
+            part: TimeSpan::new(Rational::zero(), quarter.clone()).unwrap(),
+            value: Box::<str>::from("bd"),
+        }],
+    );
+    let backbeat = PatternUpdate::new(
+        "backbeat",
+        vec![Event {
+            whole: None,
+            part: TimeSpan::new(Rational::zero(), quarter).unwrap(),
+            value: Box::<str>::from("sn"),
+        }],
+    );
+
+    engine.enqueue(EngineCommand::LoadPattern(intro)).unwrap();
+    let _ = engine.render_test_block(256);
+    engine
+        .enqueue(EngineCommand::LoadPattern(backbeat))
+        .unwrap();
+    let _ = engine.render_test_block(engine.frames_until_boundary_for_test().saturating_sub(1));
+
+    assert_eq!(engine.active_pattern_name_for_test(), Some("drums"));
+
+    let _ = engine.render_test_block(engine.frames_until_boundary_for_test());
+
+    assert_eq!(engine.active_pattern_name_for_test(), Some("backbeat"));
+}
+
+#[test]
+fn initial_loaded_pattern_is_audible_in_the_first_render_block() {
+    let mut engine = EngineHandle::stub();
+    let quarter = Rational::new(1, 4).unwrap();
+    let pattern = PatternUpdate::new(
+        "drums",
+        vec![Event {
+            whole: None,
+            part: TimeSpan::new(Rational::zero(), quarter).unwrap(),
+            value: Box::<str>::from("bd"),
+        }],
+    );
+
+    engine.enqueue(EngineCommand::LoadPattern(pattern)).unwrap();
+    let rendered = engine.render_test_block(256);
+
+    assert!(rendered.iter().any(|sample| sample.abs() > f32::EPSILON));
+}
+
+#[test]
+fn tempo_change_mid_cycle_does_not_strand_future_pattern_swaps() {
+    let mut engine = EngineHandle::stub();
+
+    let _ = engine.render_test_block(4_096);
+    engine.enqueue(EngineCommand::SetTempo(10_000.0)).unwrap();
+    engine
+        .enqueue(EngineCommand::SwapPattern("bridge".into()))
+        .unwrap();
+    let _ = engine.render_test_block(engine.frames_until_boundary_for_test() + 256);
+
+    assert_eq!(engine.active_pattern_name_for_test(), Some("bridge"));
 }

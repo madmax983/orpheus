@@ -1,8 +1,9 @@
 use cpal::{BufferSize, SampleRate, StreamConfig};
+use orpheus_pattern::Event;
 use rtrb::{Consumer, Producer};
 use thiserror::Error;
 
-use crate::command::{EngineCommand, new_command_queue};
+use crate::command::{EngineCommand, PatternUpdate, new_command_queue};
 use crate::scheduler::Scheduler;
 use crate::voice::ActiveVoice;
 
@@ -39,8 +40,11 @@ struct EngineCore {
     channels: usize,
     current_frame: u64,
     frames_per_cycle: u64,
-    active_pattern_name: Option<String>,
-    pending_pattern_name: Option<String>,
+    current_cycle_start_frame: u64,
+    next_cycle_boundary_frame: u64,
+    active_pattern: Option<PatternUpdate>,
+    pending_pattern: Option<PatternUpdate>,
+    prime_initial_pattern: bool,
     last_swap_frame: Option<u64>,
 }
 
@@ -58,8 +62,11 @@ impl EngineCore {
             channels: usize::from(config.channels),
             current_frame: 0,
             frames_per_cycle,
-            active_pattern_name: None,
-            pending_pattern_name: None,
+            current_cycle_start_frame: 0,
+            next_cycle_boundary_frame: frames_per_cycle,
+            active_pattern: None,
+            pending_pattern: None,
+            prime_initial_pattern: false,
             last_swap_frame: None,
         })
     }
@@ -67,14 +74,54 @@ impl EngineCore {
     fn apply_command(&mut self, command: EngineCommand) -> Result<(), EngineError> {
         match command {
             EngineCommand::SwapPattern(pattern_name) => {
-                self.pending_pattern_name = Some(pattern_name);
+                self.pending_pattern = Some(PatternUpdate::silent(pattern_name));
+                self.prime_initial_pattern = false;
+                Ok(())
+            }
+            EngineCommand::LoadPattern(pattern) => {
+                self.pending_pattern = Some(pattern);
+                self.prime_initial_pattern =
+                    self.active_pattern.is_none() && self.current_frame == 0;
                 Ok(())
             }
             EngineCommand::SetTempo(tempo_bpm) => {
                 self.frames_per_cycle = frames_per_cycle(self.sample_rate, tempo_bpm)?;
+                if self.current_frame == self.current_cycle_start_frame {
+                    self.next_cycle_boundary_frame = self
+                        .current_cycle_start_frame
+                        .checked_add(self.frames_per_cycle)
+                        .ok_or(EngineError::FrameOverflow)?;
+                }
                 Ok(())
             }
         }
+    }
+
+    fn begin_cycle(&mut self) -> Result<(), EngineError> {
+        self.current_cycle_start_frame = self.current_frame;
+        self.next_cycle_boundary_frame = self
+            .current_frame
+            .checked_add(self.frames_per_cycle)
+            .ok_or(EngineError::FrameOverflow)?;
+
+        if let Some(pattern) = self.pending_pattern.take() {
+            self.active_pattern = Some(pattern);
+            self.last_swap_frame = Some(self.current_frame);
+        }
+
+        if let Some(pattern) = self.active_pattern.as_ref() {
+            self.scheduler.schedule_cycle_events(
+                self.current_cycle_start_frame,
+                self.frames_per_cycle,
+                pattern.events().iter().map(|event| Event {
+                    whole: event.whole.clone(),
+                    part: event.part.clone(),
+                    value: event.value.as_ref(),
+                }),
+            )?;
+        }
+
+        Ok(())
     }
 
     fn render_into_interleaved(&mut self, output: &mut [f32]) -> Result<(), EngineError> {
@@ -83,6 +130,11 @@ impl EngineCore {
         }
 
         for frame in output.chunks_exact_mut(self.channels) {
+            if self.prime_initial_pattern {
+                self.prime_initial_pattern = false;
+                self.begin_cycle()?;
+            }
+
             while let Some(trigger) = self.scheduler.pop_due(self.current_frame) {
                 self.activate_voice(trigger.voice);
             }
@@ -93,11 +145,8 @@ impl EngineCore {
             }
 
             self.current_frame = self.current_frame.saturating_add(1);
-            if self.current_frame % self.frames_per_cycle == 0 {
-                if let Some(pattern_name) = self.pending_pattern_name.take() {
-                    self.active_pattern_name = Some(pattern_name);
-                    self.last_swap_frame = Some(self.current_frame);
-                }
+            if self.current_frame == self.next_cycle_boundary_frame {
+                self.begin_cycle()?;
             }
         }
 
@@ -105,12 +154,8 @@ impl EngineCore {
     }
 
     const fn frames_until_boundary(&self) -> u64 {
-        let progress = self.current_frame % self.frames_per_cycle;
-        if progress == 0 {
-            self.frames_per_cycle
-        } else {
-            self.frames_per_cycle - progress
-        }
+        self.next_cycle_boundary_frame
+            .saturating_sub(self.current_frame)
     }
 
     fn activate_voice(&mut self, voice: crate::VoiceKind) {
@@ -189,7 +234,7 @@ impl RenderEngine {
     /// Returns the active pattern name after the most recently completed cycle.
     #[must_use]
     pub fn active_pattern_name_for_test(&self) -> Option<&str> {
-        self.core.active_pattern_name.as_deref()
+        self.core.active_pattern.as_ref().map(PatternUpdate::name)
     }
 
     /// Returns how many frames remain before the next cycle boundary.
@@ -227,8 +272,11 @@ impl PartialEq for EngineHandle {
                     && left.core.channels == right.core.channels
                     && left.core.current_frame == right.core.current_frame
                     && left.core.frames_per_cycle == right.core.frames_per_cycle
-                    && left.core.active_pattern_name == right.core.active_pattern_name
-                    && left.core.pending_pattern_name == right.core.pending_pattern_name
+                    && left.core.current_cycle_start_frame == right.core.current_cycle_start_frame
+                    && left.core.next_cycle_boundary_frame == right.core.next_cycle_boundary_frame
+                    && left.core.active_pattern == right.core.active_pattern
+                    && left.core.pending_pattern == right.core.pending_pattern
+                    && left.core.prime_initial_pattern == right.core.prime_initial_pattern
                     && left.core.last_swap_frame == right.core.last_swap_frame
             }
             (None, None) => std::ptr::eq(self, other),

@@ -5,6 +5,7 @@ mod builtins;
 mod diagnostics;
 mod eval;
 mod parser;
+pub mod repl;
 mod value;
 
 pub use ast::{Expr, Module, Stmt};

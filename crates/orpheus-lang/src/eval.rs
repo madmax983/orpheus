@@ -50,6 +50,18 @@ pub fn eval_module(source: &str, mode: ReplMode) -> Result<BTreeMap<String, Valu
     Evaluator::new(mode).eval_module(&parsed)
 }
 
+pub fn eval_into_bindings(
+    source: &str,
+    mode: ReplMode,
+    bindings: &mut BTreeMap<String, Value>,
+) -> Result<Option<(String, Value)>, EvalError> {
+    let parsed = parse_module(source)?;
+    let mut evaluator = Evaluator::with_bindings(mode, bindings.clone());
+    let last_binding = evaluator.eval_statements(&parsed.statements)?;
+    *bindings = evaluator.bindings;
+    Ok(last_binding)
+}
+
 struct Evaluator {
     mode: ReplMode,
     bindings: BTreeMap<String, Value>,
@@ -57,23 +69,35 @@ struct Evaluator {
 
 impl Evaluator {
     const fn new(mode: ReplMode) -> Self {
-        Self {
-            mode,
-            bindings: BTreeMap::new(),
-        }
+        Self::with_bindings(mode, BTreeMap::new())
+    }
+
+    const fn with_bindings(mode: ReplMode, bindings: BTreeMap<String, Value>) -> Self {
+        Self { mode, bindings }
     }
 
     fn eval_module(mut self, module: &Module) -> Result<BTreeMap<String, Value>, EvalError> {
-        for statement in &module.statements {
+        self.eval_statements(&module.statements)?;
+        Ok(self.bindings)
+    }
+
+    fn eval_statements(
+        &mut self,
+        statements: &[Stmt],
+    ) -> Result<Option<(String, Value)>, EvalError> {
+        let mut last_binding = None;
+
+        for statement in statements {
             match statement {
                 Stmt::Binding { name, expr } => {
                     let value = self.eval_expr(expr)?;
-                    self.bindings.insert(name.clone(), value);
+                    self.bindings.insert(name.clone(), value.clone());
+                    last_binding = Some((name.clone(), value));
                 }
             }
         }
 
-        Ok(self.bindings)
+        Ok(last_binding)
     }
 
     fn eval_expr(&self, expr: &Expr) -> Result<Value, EvalError> {
