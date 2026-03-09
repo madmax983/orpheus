@@ -85,18 +85,14 @@ fn handle_key_event(app: &mut SessionTui, key: KeyEvent) {
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.should_quit = true;
         }
+        KeyCode::Left => app.move_cursor_left(),
+        KeyCode::Right => app.move_cursor_right(),
         KeyCode::Up => app.recall_previous_history(),
         KeyCode::Down => app.recall_next_history(),
         KeyCode::Tab => app.complete_input(),
-        KeyCode::Backspace => {
-            app.input.pop();
-            app.history_index = None;
-        }
+        KeyCode::Backspace => app.backspace(),
         KeyCode::Enter => app.submit_line(),
-        KeyCode::Char(character) => {
-            app.input.push(character);
-            app.history_index = None;
-        }
+        KeyCode::Char(character) => app.insert_character(character),
         _ => {}
     }
 }
@@ -153,6 +149,7 @@ struct SessionTui {
     history: Vec<String>,
     history_index: Option<usize>,
     input: String,
+    cursor_index: usize,
     should_quit: bool,
 }
 
@@ -167,6 +164,7 @@ impl SessionTui {
             history: Vec::new(),
             history_index: None,
             input: String::new(),
+            cursor_index: 0,
             should_quit: false,
         }
     }
@@ -174,6 +172,7 @@ impl SessionTui {
     fn submit_line(&mut self) {
         let line = self.input.trim().to_owned();
         self.input.clear();
+        self.cursor_index = 0;
         self.history_index = None;
 
         if line.is_empty() {
@@ -205,14 +204,14 @@ impl SessionTui {
 
     fn repl_body(&self) -> String {
         let mut lines = self.transcript.clone();
-        lines.push(format!("> {}", self.input));
+        lines.push(format!("> {}", self.display_input_with_cursor()));
         lines.push(self.input_hint());
         lines.join("\n")
     }
 
     fn transport_body() -> String {
         format!(
-            "Status: live shell\nTempo: {DEFAULT_TEMPO_BPM} BPM\nAudio: cycle-locked\nExport: :render <binding> <path> [cycles]\nInput: Tab=complete, Up/Down=history\nQuit: Esc or :quit"
+            "Status: live shell\nTempo: {DEFAULT_TEMPO_BPM} BPM\nAudio: cycle-locked\nExport: :render <binding> <path> [cycles]\nInput: Tab=complete, Up/Down=history, Left/Right=move\nQuit: Esc or :quit"
         )
     }
 
@@ -229,6 +228,7 @@ impl SessionTui {
         } else {
             format!("{command} ")
         };
+        self.cursor_index = self.input.len();
         self.history_index = None;
     }
 
@@ -242,6 +242,7 @@ impl SessionTui {
 
         self.history_index = Some(next_index);
         self.input = self.history[next_index].clone();
+        self.cursor_index = self.input.len();
     }
 
     fn recall_next_history(&mut self) {
@@ -253,11 +254,13 @@ impl SessionTui {
         if next >= self.history.len() {
             self.history_index = None;
             self.input.clear();
+            self.cursor_index = 0;
             return;
         }
 
         self.history_index = Some(next);
         self.input = self.history[next].clone();
+        self.cursor_index = self.input.len();
     }
 
     fn input_hint(&self) -> String {
@@ -271,6 +274,36 @@ impl SessionTui {
 
         "Hint: Tab completes commands. Up/Down recalls history.".to_owned()
     }
+
+    fn insert_character(&mut self, character: char) {
+        self.input.insert(self.cursor_index, character);
+        self.cursor_index += character.len_utf8();
+        self.history_index = None;
+    }
+
+    fn backspace(&mut self) {
+        if self.cursor_index == 0 {
+            return;
+        }
+
+        let previous = previous_char_boundary(&self.input, self.cursor_index);
+        self.input.replace_range(previous..self.cursor_index, "");
+        self.cursor_index = previous;
+        self.history_index = None;
+    }
+
+    fn move_cursor_left(&mut self) {
+        self.cursor_index = previous_char_boundary(&self.input, self.cursor_index);
+    }
+
+    fn move_cursor_right(&mut self) {
+        self.cursor_index = next_char_boundary(&self.input, self.cursor_index);
+    }
+
+    fn display_input_with_cursor(&self) -> String {
+        let (left, right) = self.input.split_at(self.cursor_index);
+        format!("{left}|{right}")
+    }
 }
 
 fn matching_command(prefix: &str) -> Option<(&'static str, &'static str)> {
@@ -283,6 +316,30 @@ fn matching_command(prefix: &str) -> Option<(&'static str, &'static str)> {
     } else {
         Some(command_match)
     }
+}
+
+fn previous_char_boundary(input: &str, index: usize) -> usize {
+    if index == 0 {
+        return 0;
+    }
+
+    let mut cursor = index - 1;
+    while !input.is_char_boundary(cursor) {
+        cursor -= 1;
+    }
+    cursor
+}
+
+fn next_char_boundary(input: &str, index: usize) -> usize {
+    if index >= input.len() {
+        return input.len();
+    }
+
+    let mut cursor = index + 1;
+    while cursor < input.len() && !input.is_char_boundary(cursor) {
+        cursor += 1;
+    }
+    cursor
 }
 
 struct TerminalGuard;
@@ -322,6 +379,7 @@ mod tests {
     fn tab_completes_render_command_prefix() {
         let mut app = SessionTui::new(EngineHandle::stub());
         app.input = ":ren".to_owned();
+        app.cursor_index = app.input.len();
 
         handle_key_event(&mut app, press(KeyCode::Tab));
 
@@ -353,10 +411,52 @@ mod tests {
     fn repl_body_shows_completion_hint_for_partial_command() {
         let mut app = SessionTui::new(EngineHandle::stub());
         app.input = ":ren".to_owned();
+        app.cursor_index = app.input.len();
 
         assert!(
             app.repl_body()
                 .contains("Hint: Tab -> :render <binding> <path> [cycles]")
         );
+    }
+
+    #[test]
+    fn left_right_and_backspace_edit_at_cursor() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        for code in [
+            KeyCode::Char('d'),
+            KeyCode::Char('r'),
+            KeyCode::Char('m'),
+            KeyCode::Char('s'),
+            KeyCode::Left,
+            KeyCode::Left,
+            KeyCode::Char('u'),
+        ] {
+            handle_key_event(&mut app, press(code));
+        }
+
+        assert_eq!(app.input, "drums");
+
+        handle_key_event(&mut app, press(KeyCode::Right));
+        handle_key_event(&mut app, press(KeyCode::Backspace));
+
+        assert_eq!(app.input, "drus");
+    }
+
+    #[test]
+    fn repl_body_marks_the_cursor_position_inside_input() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        for code in [
+            KeyCode::Char('d'),
+            KeyCode::Char('r'),
+            KeyCode::Char('u'),
+            KeyCode::Char('m'),
+            KeyCode::Char('s'),
+            KeyCode::Left,
+            KeyCode::Left,
+        ] {
+            handle_key_event(&mut app, press(code));
+        }
+
+        assert!(app.repl_body().contains("> dru|ms"));
     }
 }
