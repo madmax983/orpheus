@@ -38,7 +38,7 @@ struct EngineCore {
     frames_per_cycle: u64,
     active_pattern_name: Option<String>,
     pending_pattern_name: Option<String>,
-    swap_applied_before_boundary: bool,
+    last_swap_frame: Option<u64>,
 }
 
 impl EngineCore {
@@ -57,7 +57,7 @@ impl EngineCore {
             frames_per_cycle,
             active_pattern_name: None,
             pending_pattern_name: None,
-            swap_applied_before_boundary: false,
+            last_swap_frame: None,
         })
     }
 
@@ -95,6 +95,7 @@ impl EngineCore {
             if self.current_frame % self.frames_per_cycle == 0 {
                 if let Some(pattern_name) = self.pending_pattern_name.take() {
                     self.active_pattern_name = Some(pattern_name);
+                    self.last_swap_frame = Some(self.current_frame);
                 }
             }
         }
@@ -175,7 +176,9 @@ impl EngineHandle {
     pub fn swap_applied_before_boundary(&mut self) -> bool {
         self.drain_commands()
             .unwrap_or_else(|error| panic!("swap check failed while draining commands: {error}"));
-        self.core.swap_applied_before_boundary
+        self.core
+            .last_swap_frame
+            .is_some_and(|frame| frame % self.core.frames_per_cycle != 0)
     }
 
     /// Schedules a built-in test trigger at an absolute sample frame.

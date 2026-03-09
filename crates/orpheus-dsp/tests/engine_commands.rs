@@ -5,7 +5,9 @@ fn pattern_swap_is_deferred_until_cycle_boundary() {
     let mut engine = EngineHandle::stub();
 
     engine.enqueue(EngineCommand::SwapPattern("verse".into()));
+    let _ = engine.render_test_block(engine.frames_until_boundary_for_test().saturating_sub(1));
 
+    assert_eq!(engine.active_pattern_name_for_test(), None);
     assert!(!engine.swap_applied_before_boundary());
 }
 
