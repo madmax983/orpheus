@@ -13,5 +13,6 @@ fn tui_boots_and_renders_initial_frame() {
     assert!(frame.contains("Ctrl-A/E/K"));
     assert!(frame.contains("Ctrl-U/W"));
     assert!(frame.contains("Ctrl-D"));
+    assert!(frame.contains("Ctrl-L"));
     assert!(frame.contains("Alt-B/F"));
 }

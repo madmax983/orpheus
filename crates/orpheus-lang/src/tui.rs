@@ -97,6 +97,9 @@ fn handle_key_event(app: &mut SessionTui, key: KeyEvent) {
         KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.kill_to_end();
         }
+        KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.clear_transcript();
+        }
         KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.kill_to_start();
         }
@@ -238,7 +241,7 @@ impl SessionTui {
 
     fn transport_body() -> String {
         format!(
-            "Status: live shell\nTempo: {DEFAULT_TEMPO_BPM} BPM\nAudio: cycle-locked\nExport: :render <binding> <path> [cycles]\nInput: Tab=complete, Up/Down=history, Left/Right=move, Home/End/Delete\nEdit: Ctrl-A/E/K\nDelete: Ctrl-D\nBackkill: Ctrl-U/W\nWordmove: Alt-B/F\nQuit: Esc or :quit"
+            "Status: live shell\nTempo: {DEFAULT_TEMPO_BPM} BPM\nAudio: cycle-locked\nExport: :render <binding> <path> [cycles]\nInput: Tab=complete, Up/Down=history, Left/Right=move, Home/End/Delete\nEdit: Ctrl-A/E/K\nDelete: Ctrl-D\nScreen: Ctrl-L\nBackkill: Ctrl-U/W\nWordmove: Alt-B/F\nQuit: Esc or :quit"
         )
     }
 
@@ -381,6 +384,10 @@ impl SessionTui {
         self.input.replace_range(start..self.cursor_index, "");
         self.cursor_index = start;
         self.history_index = None;
+    }
+
+    fn clear_transcript(&mut self) {
+        self.transcript.clear();
     }
 
     fn display_input_with_cursor(&self) -> String {
@@ -804,5 +811,25 @@ mod tests {
 
         assert_eq!(app.input, "bd! sn cp");
         assert_eq!(app.cursor_index, 3);
+    }
+
+    #[test]
+    fn ctrl_l_clears_transcript_but_keeps_bindings() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = "drums = bd sn".to_owned();
+        app.submit_line();
+        app.input = "song = drums".to_owned();
+        app.submit_line();
+        let bindings_before = app.session.binding_summaries();
+        app.input = "warp".to_owned();
+        app.cursor_index = app.input.len();
+
+        handle_key_event(&mut app, ctrl(KeyCode::Char('l')));
+
+        let repl_body = app.repl_body();
+        assert!(!repl_body.contains("> drums = bd sn"));
+        assert!(!repl_body.contains("> song = drums"));
+        assert!(repl_body.contains("> warp|"));
+        assert_eq!(app.session.binding_summaries(), bindings_before);
     }
 }
