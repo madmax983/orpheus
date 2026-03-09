@@ -9,8 +9,8 @@ use crossterm::terminal::{
 use orpheus_dsp::EngineHandle;
 use ratatui::backend::{Backend, CrosstermBackend, TestBackend};
 use ratatui::buffer::Buffer;
-use ratatui::layout::{Constraint, Direction, Layout};
-use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Wrap};
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 use ratatui::{Frame, Terminal};
 
 use crate::repl::ReplSession;
@@ -81,10 +81,12 @@ fn handle_key_event(app: &mut SessionTui, key: KeyEvent) {
     }
 
     match key.code {
+        KeyCode::Esc if app.show_help => app.show_help = false,
         KeyCode::Esc => app.should_quit = true,
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.should_quit = true;
         }
+        KeyCode::Char('?') => app.toggle_help(),
         KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.move_cursor_home();
         }
@@ -156,6 +158,17 @@ fn render_session_frame(frame: &mut Frame<'_>, app: &SessionTui) {
             .wrap(Wrap { trim: false }),
         right,
     );
+
+    if app.show_help {
+        let overlay_area = centered_rect(frame.area(), 68, 60);
+        frame.render_widget(Clear, overlay_area);
+        frame.render_widget(
+            Paragraph::new(SessionTui::help_overlay_body())
+                .block(Block::default().title("Help").borders(Borders::ALL))
+                .wrap(Wrap { trim: false }),
+            overlay_area,
+        );
+    }
 }
 
 fn buffer_to_string(buffer: &Buffer) -> String {
@@ -180,6 +193,7 @@ struct SessionTui {
     history_index: Option<usize>,
     input: String,
     cursor_index: usize,
+    show_help: bool,
     should_quit: bool,
 }
 
@@ -195,6 +209,7 @@ impl SessionTui {
             history_index: None,
             input: String::new(),
             cursor_index: 0,
+            show_help: false,
             should_quit: false,
         }
     }
@@ -241,8 +256,12 @@ impl SessionTui {
 
     fn transport_body() -> String {
         format!(
-            "Status: live shell\nTempo: {DEFAULT_TEMPO_BPM} BPM\nAudio: cycle-locked\nExport: :render <binding> <path> [cycles]\nInput: Tab=complete, Up/Down=history, Left/Right=move, Home/End/Delete\nEdit: Ctrl-A/E/K\nDelete: Ctrl-D\nScreen: Ctrl-L\nBackkill: Ctrl-U/W\nWordmove: Alt-B/F\nQuit: Esc or :quit"
+            "Status: live shell\nTempo: {DEFAULT_TEMPO_BPM} BPM\nAudio: cycle-locked\nExport: :render <binding> <path> [cycles]\nHelp: ?\nQuit: Esc or :quit"
         )
+    }
+
+    const fn help_overlay_body() -> &'static str {
+        "Toggle: ?\nClose: Esc\nCommands: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
     }
 
     fn complete_input(&mut self) {
@@ -390,6 +409,10 @@ impl SessionTui {
         self.transcript.clear();
     }
 
+    const fn toggle_help(&mut self) {
+        self.show_help = !self.show_help;
+    }
+
     fn display_input_with_cursor(&self) -> String {
         let (left, right) = self.input.split_at(self.cursor_index);
         format!("{left}|{right}")
@@ -486,6 +509,28 @@ fn next_word_boundary(input: &str, index: usize) -> usize {
     cursor
 }
 
+fn centered_rect(area: Rect, width_percent: u16, height_percent: u16) -> Rect {
+    let [_, vertical, _] = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - height_percent) / 2),
+            Constraint::Percentage(height_percent),
+            Constraint::Percentage((100 - height_percent) / 2),
+        ])
+        .areas(area);
+
+    let [_, horizontal, _] = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - width_percent) / 2),
+            Constraint::Percentage(width_percent),
+            Constraint::Percentage((100 - width_percent) / 2),
+        ])
+        .areas(vertical);
+
+    horizontal
+}
+
 struct TerminalGuard;
 
 impl TerminalGuard {
@@ -507,8 +552,10 @@ impl Drop for TerminalGuard {
 mod tests {
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
     use orpheus_dsp::EngineHandle;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
 
-    use super::{SessionTui, handle_key_event};
+    use super::{SessionTui, buffer_to_string, handle_key_event, render_session_frame};
 
     fn press(code: KeyCode) -> KeyEvent {
         KeyEvent {
@@ -634,12 +681,12 @@ mod tests {
             KeyCode::Home,
             KeyCode::Char('!'),
             KeyCode::End,
-            KeyCode::Char('?'),
+            KeyCode::Char('.'),
         ] {
             handle_key_event(&mut app, press(code));
         }
 
-        assert_eq!(app.input, "!drums?");
+        assert_eq!(app.input, "!drums.");
     }
 
     #[test]
@@ -677,9 +724,9 @@ mod tests {
         handle_key_event(&mut app, ctrl(KeyCode::Char('a')));
         handle_key_event(&mut app, press(KeyCode::Char('!')));
         handle_key_event(&mut app, ctrl(KeyCode::Char('e')));
-        handle_key_event(&mut app, press(KeyCode::Char('?')));
+        handle_key_event(&mut app, press(KeyCode::Char('.')));
 
-        assert_eq!(app.input, "!drums?");
+        assert_eq!(app.input, "!drums.");
     }
 
     #[test]
@@ -831,5 +878,35 @@ mod tests {
         assert!(!repl_body.contains("> song = drums"));
         assert!(repl_body.contains("> warp|"));
         assert_eq!(app.session.binding_summaries(), bindings_before);
+    }
+
+    #[test]
+    fn question_mark_toggles_help_overlay_and_escape_closes_it_first() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+
+        handle_key_event(&mut app, press(KeyCode::Char('?')));
+        let overlay_frame = render_frame_for_test(&app, 80, 24);
+        assert!(overlay_frame.contains("Help"));
+        assert!(overlay_frame.contains("Ctrl-A/E/K"));
+        assert!(overlay_frame.contains("Alt-B/F"));
+        assert!(!app.should_quit);
+
+        handle_key_event(&mut app, press(KeyCode::Esc));
+
+        assert!(!app.should_quit);
+        let normal_frame = render_frame_for_test(&app, 80, 24);
+        assert!(!normal_frame.contains("Toggle: ?"));
+        assert!(!normal_frame.contains("Words: Alt-B/F"));
+        assert!(normal_frame.contains("Help: ?"));
+    }
+
+    fn render_frame_for_test(app: &SessionTui, width: u16, height: u16) -> String {
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend)
+            .unwrap_or_else(|error| panic!("test backend should create a terminal: {error}"));
+        terminal
+            .draw(|frame| render_session_frame(frame, app))
+            .unwrap_or_else(|error| panic!("test backend should render one frame: {error}"));
+        buffer_to_string(terminal.backend().buffer())
     }
 }
