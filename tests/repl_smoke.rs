@@ -37,3 +37,13 @@ fn repl_reuses_prior_bindings_across_lines() {
         .success()
         .stdout(contains("[Pattern<Sample>] ok").count(2));
 }
+
+#[test]
+fn repl_prints_inferred_function_types() {
+    let mut cmd = cargo_bin_cmd!("orpheus");
+
+    cmd.write_stdin("warp = fast(2)\n:quit\n")
+        .assert()
+        .success()
+        .stdout(contains("[Function("));
+}

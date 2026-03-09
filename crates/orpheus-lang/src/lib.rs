@@ -6,12 +6,14 @@ mod diagnostics;
 mod eval;
 mod parser;
 pub mod repl;
+mod types;
 mod value;
 
 pub use ast::{Expr, Module, Stmt};
-pub use diagnostics::ParseError;
+pub use diagnostics::{ParseError, TypeError};
 pub use eval::{EvalError, eval_module};
 pub use parser::parse_module;
+pub use types::{Type, TypedModule, infer_module};
 pub use value::{NumberPatternValue, SampleEvent, SamplePatternValue, Value};
 
 /// REPL type-checking mode for the bootstrap workspace.

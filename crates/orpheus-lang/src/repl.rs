@@ -4,7 +4,8 @@ use std::io::{self, BufRead, Write};
 use orpheus_dsp::{EngineCommand, EngineHandle, PatternUpdate};
 
 use crate::eval::eval_into_bindings;
-use crate::{ReplMode, Value};
+use crate::types::infer_into_bindings;
+use crate::{ReplMode, Type, Value};
 
 /// Runs the phase-one Orpheus REPL over standard input and output.
 ///
@@ -74,6 +75,7 @@ struct ReplSession {
     mode: ReplMode,
     engine: EngineHandle,
     bindings: BTreeMap<String, Value>,
+    type_bindings: BTreeMap<String, Type>,
 }
 
 impl ReplSession {
@@ -87,18 +89,25 @@ impl ReplSession {
             mode: ReplMode::Loose,
             engine,
             bindings: BTreeMap::new(),
+            type_bindings: BTreeMap::new(),
         }
     }
 
-    fn eval_line(&mut self, source: &str) -> Result<&'static str, String> {
-        let Some((name, value)) = eval_into_bindings(source, self.mode, &mut self.bindings)
+    fn eval_line(&mut self, source: &str) -> Result<String, String> {
+        let Some((name, ty)) = infer_into_bindings(source, self.mode, &mut self.type_bindings)
             .map_err(|error| error.to_string())?
         else {
             return Err("no bindings were produced".into());
         };
+        let Some((value_name, value)) = eval_into_bindings(source, self.mode, &mut self.bindings)
+            .map_err(|error| error.to_string())?
+        else {
+            return Err("no bindings were produced".into());
+        };
+        debug_assert_eq!(name, value_name);
 
         self.push_pattern_update(&name, &value)?;
-        Ok(success_banner(&value))
+        Ok(success_banner(&ty))
     }
 
     fn push_pattern_update(&mut self, name: &str, value: &Value) -> Result<(), String> {
@@ -124,12 +133,8 @@ impl ReplSession {
     }
 }
 
-const fn success_banner(value: &Value) -> &'static str {
-    match value {
-        Value::SamplePattern(_) => "[Pattern<Sample>] ok",
-        Value::NumberPattern(_) => "[Pattern<Number>] ok",
-        Value::Function(_) => "[Function] ok",
-    }
+fn success_banner(ty: &Type) -> String {
+    format!("[{ty}] ok")
 }
 
 #[cfg(test)]
@@ -142,11 +147,11 @@ mod tests {
 
         assert_eq!(
             session.eval_line("drums = bd sn cp sn"),
-            Ok("[Pattern<Sample>] ok")
+            Ok("[Pattern<Sample>] ok".to_owned())
         );
         assert_eq!(
             session.eval_line("copy = drums"),
-            Ok("[Pattern<Sample>] ok")
+            Ok("[Pattern<Sample>] ok".to_owned())
         );
     }
 

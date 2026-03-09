@@ -24,3 +24,25 @@ impl Display for ParseError {
 }
 
 impl Error for ParseError {}
+
+/// A type inference error produced while analyzing Orpheus source.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TypeError {
+    message: Box<str>,
+}
+
+impl TypeError {
+    pub(crate) fn new(message: impl Into<Box<str>>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+impl Display for TypeError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl Error for TypeError {}
