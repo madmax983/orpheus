@@ -4,6 +4,7 @@ use std::io::{self, BufRead, Write};
 use orpheus_dsp::{EngineCommand, EngineHandle, PatternUpdate};
 
 use crate::eval::eval_into_bindings;
+use crate::render_sample_pattern_to_wav;
 use crate::types::infer_into_bindings;
 use crate::{ReplMode, Type, Value};
 
@@ -94,6 +95,10 @@ impl ReplSession {
     }
 
     pub(crate) fn eval_line(&mut self, source: &str) -> Result<String, String> {
+        if source.starts_with(':') {
+            return self.eval_command(source);
+        }
+
         let Some((name, ty)) = infer_into_bindings(source, self.mode, &mut self.type_bindings)
             .map_err(|error| error.to_string())?
         else {
@@ -108,6 +113,64 @@ impl ReplSession {
 
         self.push_pattern_update(&name, &value)?;
         Ok(success_banner(&ty))
+    }
+
+    fn eval_command(&self, source: &str) -> Result<String, String> {
+        let command = source.trim_start_matches(':').trim();
+        let Some((name, args)) = command.split_once(char::is_whitespace) else {
+            return match command {
+                "render" => Err(render_usage().to_owned()),
+                "" => Err("empty REPL command".to_owned()),
+                other => Err(format!("unknown REPL command `:{other}`")),
+            };
+        };
+
+        match name {
+            "render" => self.render_binding(args),
+            other => Err(format!("unknown REPL command `:{other}`")),
+        }
+    }
+
+    fn render_binding(&self, args: &str) -> Result<String, String> {
+        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        if tokens.len() < 2 {
+            return Err(render_usage().to_owned());
+        }
+
+        let cycles = if tokens.len() >= 3 {
+            tokens
+                .last()
+                .and_then(|token| token.parse::<u64>().ok())
+                .unwrap_or(1)
+        } else {
+            1
+        };
+        let path_end = if tokens.len() >= 3 && tokens.last().unwrap().parse::<u64>().is_ok() {
+            tokens.len() - 1
+        } else {
+            tokens.len()
+        };
+
+        let binding_name = tokens[0];
+        let path = tokens[1..path_end].join(" ");
+        if path.is_empty() {
+            return Err(render_usage().to_owned());
+        }
+
+        let value = self
+            .bindings
+            .get(binding_name)
+            .ok_or_else(|| format!("no binding named `{binding_name}`"))?;
+        let Value::SamplePattern(pattern) = value else {
+            return Err(format!(
+                "binding `{binding_name}` is not a sample pattern and cannot be rendered"
+            ));
+        };
+
+        render_sample_pattern_to_wav(pattern, &path, cycles).map_err(|error| error.to_string())?;
+        Ok(format!(
+            "rendered `{binding_name}` to `{path}` ({cycles} cycle(s))"
+        ))
     }
 
     fn push_pattern_update(&mut self, name: &str, value: &Value) -> Result<(), String> {
@@ -144,9 +207,24 @@ fn success_banner(ty: &Type) -> String {
     format!("[{ty}] ok")
 }
 
+const fn render_usage() -> &'static str {
+    "usage: :render <binding> <path> [cycles]"
+}
+
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
     use super::ReplSession;
+
+    fn temp_wav_path() -> std::path::PathBuf {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("orpheus render {timestamp}.wav"))
+    }
 
     #[test]
     fn eval_line_reuses_prior_bindings() {
@@ -172,5 +250,31 @@ mod tests {
             .render_test_block(session.engine.frames_until_boundary_for_test() + 256);
 
         assert!(rendered.iter().any(|sample| sample.abs() > f32::EPSILON));
+    }
+
+    #[test]
+    fn render_command_exports_a_bound_pattern() {
+        let mut session = ReplSession::new();
+        let path = temp_wav_path();
+
+        session.eval_line("song = bd sn cp sn").unwrap();
+        let message = session
+            .eval_line(&format!(":render song {} 2", path.display()))
+            .unwrap();
+
+        assert!(message.contains("rendered `song`"));
+        assert!(path.exists());
+        assert!(fs::metadata(&path).unwrap().len() > 44);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn render_command_rejects_unknown_bindings() {
+        let mut session = ReplSession::new();
+
+        let error = session.eval_line(":render nope out.wav 1").unwrap_err();
+
+        assert!(error.contains("no binding named `nope`"));
     }
 }

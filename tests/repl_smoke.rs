@@ -1,5 +1,15 @@
 use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::str::contains;
+use std::fs;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+fn temp_wav_path() -> std::path::PathBuf {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    std::env::temp_dir().join(format!("orpheus smoke render {timestamp}.wav"))
+}
 
 #[test]
 fn repl_accepts_pattern_and_reports_success() {
@@ -46,4 +56,22 @@ fn repl_prints_inferred_function_types() {
         .assert()
         .success()
         .stdout(contains("[Function("));
+}
+
+#[test]
+fn repl_render_command_exports_wav() {
+    let mut cmd = cargo_bin_cmd!("orpheus");
+    let path = temp_wav_path();
+
+    cmd.write_stdin(format!(
+        "song = bd sn cp sn\n:render song {} 2\n:quit\n",
+        path.display()
+    ))
+    .assert()
+    .success()
+    .stdout(contains("rendered `song`"));
+
+    assert!(path.exists());
+    assert!(fs::metadata(&path).unwrap().len() > 44);
+    let _ = fs::remove_file(path);
 }
