@@ -17,6 +17,8 @@ const MAX_ACTIVE_VOICES: usize = 32;
 pub enum EngineError {
     #[error("audio output must have at least one channel")]
     InvalidChannelCount,
+    #[error("engine command queue is full")]
+    CommandQueueFull,
     #[error("tempo must be a finite positive value")]
     InvalidTempo,
     #[error("pattern time produced a negative cycle offset")]
@@ -217,6 +219,25 @@ pub struct EngineHandle {
     test_renderer: Option<RenderEngine>,
 }
 
+impl PartialEq for EngineHandle {
+    fn eq(&self, other: &Self) -> bool {
+        match (self.test_renderer.as_ref(), other.test_renderer.as_ref()) {
+            (Some(left), Some(right)) => {
+                left.core.sample_rate == right.core.sample_rate
+                    && left.core.channels == right.core.channels
+                    && left.core.current_frame == right.core.current_frame
+                    && left.core.frames_per_cycle == right.core.frames_per_cycle
+                    && left.core.active_pattern_name == right.core.active_pattern_name
+                    && left.core.pending_pattern_name == right.core.pending_pattern_name
+                    && left.core.last_swap_frame == right.core.last_swap_frame
+            }
+            (None | Some(_), None) | (None, Some(_)) => false,
+        }
+    }
+}
+
+impl Eq for EngineHandle {}
+
 impl EngineHandle {
     /// Creates a deterministic single-thread test harness without opening an audio device.
     ///
@@ -274,13 +295,14 @@ impl EngineHandle {
 
     /// Enqueues a command for the render thread to observe on the next render call.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the bounded command queue is exhausted.
-    pub fn enqueue(&mut self, command: EngineCommand) {
+    /// Returns [`EngineError::CommandQueueFull`] when the bounded command queue
+    /// has no remaining capacity.
+    pub fn enqueue(&mut self, command: EngineCommand) -> Result<(), EngineError> {
         self.command_tx
             .push(command)
-            .unwrap_or_else(|_| panic!("engine command queue overflowed"));
+            .map_err(|_| EngineError::CommandQueueFull)
     }
 
     /// Reports whether a deferred pattern swap leaked through before the next
@@ -374,7 +396,12 @@ fn frames_per_cycle(sample_rate: u32, tempo_bpm: f32) -> Result<u64, EngineError
         return Err(EngineError::InvalidTempo);
     }
 
-    let cycle_duration = Duration::from_secs_f64((60.0 * BEATS_PER_CYCLE) / f64::from(tempo_bpm));
+    let cycle_seconds = (60.0 * BEATS_PER_CYCLE) / f64::from(tempo_bpm);
+    if !cycle_seconds.is_finite() || cycle_seconds > Duration::MAX.as_secs_f64() {
+        return Err(EngineError::FrameOverflow);
+    }
+
+    let cycle_duration = Duration::from_secs_f64(cycle_seconds);
     let frames = cycle_duration
         .as_nanos()
         .checked_mul(u128::from(sample_rate))
