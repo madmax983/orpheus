@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::io::{self, BufRead, Write};
 
@@ -77,7 +78,39 @@ pub(crate) struct ReplSession {
     engine: EngineHandle,
     bindings: BTreeMap<String, Value>,
     type_bindings: BTreeMap<String, Type>,
+    pattern_display: RefCell<PatternDisplayState>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct PatternDisplayState {
+    active_pattern_name: Option<String>,
+    pending_pattern_name: Option<String>,
+    pending_enqueued_after_publish: Option<u64>,
     last_loaded_pattern_name: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct TransportView {
+    snapshot: TransportSnapshot,
+    active_pattern_name: Option<String>,
+    pending_pattern_name: Option<String>,
+}
+
+impl TransportView {
+    #[must_use]
+    pub const fn snapshot(&self) -> &TransportSnapshot {
+        &self.snapshot
+    }
+
+    #[must_use]
+    pub fn active_pattern_name(&self) -> Option<&str> {
+        self.active_pattern_name.as_deref()
+    }
+
+    #[must_use]
+    pub fn pending_pattern_name(&self) -> Option<&str> {
+        self.pending_pattern_name.as_deref()
+    }
 }
 
 impl ReplSession {
@@ -86,13 +119,13 @@ impl ReplSession {
         Self::with_engine(EngineHandle::stub())
     }
 
-    pub(crate) const fn with_engine(engine: EngineHandle) -> Self {
+    pub(crate) fn with_engine(engine: EngineHandle) -> Self {
         Self {
             mode: ReplMode::Loose,
             engine,
             bindings: BTreeMap::new(),
             type_bindings: BTreeMap::new(),
-            last_loaded_pattern_name: None,
+            pattern_display: RefCell::new(PatternDisplayState::default()),
         }
     }
 
@@ -232,6 +265,7 @@ impl ReplSession {
 
     fn push_pattern_update(&mut self, name: &str, value: &Value) -> Result<(), String> {
         if let Value::SamplePattern(pattern) = value {
+            let enqueue_publish = self.engine.transport_snapshot().publish_epoch();
             let update = PatternUpdate::new(
                 name,
                 pattern
@@ -247,7 +281,15 @@ impl ReplSession {
             self.engine
                 .enqueue(EngineCommand::LoadPattern(update))
                 .map_err(|error| error.to_string())?;
-            self.last_loaded_pattern_name = Some(name.to_owned());
+            let mut display = self.pattern_display.borrow_mut();
+            if display.active_pattern_name.is_none() && enqueue_publish != 0 {
+                if let Some(last_loaded_pattern_name) = display.last_loaded_pattern_name.clone() {
+                    display.active_pattern_name = Some(last_loaded_pattern_name);
+                }
+            }
+            display.last_loaded_pattern_name = Some(name.to_owned());
+            display.pending_pattern_name = Some(name.to_owned());
+            display.pending_enqueued_after_publish = Some(enqueue_publish);
         }
 
         Ok(())
@@ -260,12 +302,42 @@ impl ReplSession {
             .collect()
     }
 
-    pub(crate) fn last_loaded_pattern_name(&self) -> Option<&str> {
-        self.last_loaded_pattern_name.as_deref()
+    #[cfg(test)]
+    pub(crate) fn last_loaded_pattern_name(&self) -> Option<String> {
+        self.pattern_display
+            .borrow()
+            .last_loaded_pattern_name
+            .clone()
     }
 
     pub(crate) fn transport_snapshot(&self) -> TransportSnapshot {
-        self.engine.transport_snapshot()
+        self.transport_view().snapshot
+    }
+
+    pub(crate) fn transport_view(&self) -> TransportView {
+        let snapshot = self.engine.transport_snapshot();
+        let mut display = self.pattern_display.borrow_mut();
+        if let Some(pending_name) = display.pending_pattern_name.clone() {
+            let enqueued_after_publish = display
+                .pending_enqueued_after_publish
+                .unwrap_or_else(|| snapshot.publish_epoch());
+            if !snapshot.has_pending_pattern() && snapshot.publish_epoch() != enqueued_after_publish
+            {
+                display.active_pattern_name = Some(pending_name);
+                display.pending_pattern_name = None;
+                display.pending_enqueued_after_publish = None;
+            }
+        } else if display.active_pattern_name.is_none() && snapshot.current_frame() != 0 {
+            if let Some(last_loaded_pattern_name) = display.last_loaded_pattern_name.clone() {
+                display.active_pattern_name = Some(last_loaded_pattern_name);
+            }
+        }
+
+        TransportView {
+            snapshot,
+            active_pattern_name: display.active_pattern_name.clone(),
+            pending_pattern_name: display.pending_pattern_name.clone(),
+        }
     }
 
     #[cfg(test)]
@@ -406,9 +478,39 @@ mod tests {
         let mut session = ReplSession::new();
 
         session.eval_line("drums = bd sn cp sn").unwrap();
-        assert_eq!(session.last_loaded_pattern_name(), Some("drums"));
+        assert_eq!(session.last_loaded_pattern_name(), Some("drums".to_owned()));
 
         session.eval_line("warp = fast(2)").unwrap();
-        assert_eq!(session.last_loaded_pattern_name(), Some("drums"));
+        assert_eq!(session.last_loaded_pattern_name(), Some("drums".to_owned()));
+    }
+
+    #[test]
+    fn transport_view_tracks_active_and_pending_pattern_names() {
+        let mut session = ReplSession::new();
+
+        session.eval_line("drums = bd sn").unwrap();
+        let view = session.transport_view();
+        assert_eq!(view.active_pattern_name(), None);
+        assert_eq!(view.pending_pattern_name(), Some("drums"));
+
+        let _ = session.render_test_block_for_tui(256);
+        let view = session.transport_view();
+        assert_eq!(view.active_pattern_name(), Some("drums"));
+        assert_eq!(view.pending_pattern_name(), None);
+
+        session.eval_line("backbeat = sn cp").unwrap();
+        let view = session.transport_view();
+        assert_eq!(view.active_pattern_name(), Some("drums"));
+        assert_eq!(view.pending_pattern_name(), Some("backbeat"));
+
+        let _ = session.render_test_block_for_tui(1);
+        let view = session.transport_view();
+        assert_eq!(view.active_pattern_name(), Some("drums"));
+        assert_eq!(view.pending_pattern_name(), Some("backbeat"));
+
+        let _ = session.render_test_block_for_tui(session.engine.frames_until_boundary_for_test());
+        let view = session.transport_view();
+        assert_eq!(view.active_pattern_name(), Some("backbeat"));
+        assert_eq!(view.pending_pattern_name(), None);
     }
 }

@@ -15,7 +15,7 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 use ratatui::{Frame, Terminal};
 
-use crate::repl::ReplSession;
+use crate::repl::{ReplSession, TransportView};
 
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const STATUS_TOAST_TTL: Duration = Duration::from_secs(3);
@@ -273,10 +273,13 @@ impl SessionTui {
     #[cfg(test)]
     fn repl_body(&self) -> String {
         let mut lines = self.transcript.clone();
-        lines.push(format!(
-            "Transport: {}",
-            format_transport_status(&self.session.transport_snapshot())
-        ));
+        let transport = self.session.transport_view();
+        let mut transport_line = format!("Transport: {}", format_transport_status(&transport));
+        if let Some(pending_pattern_name) = transport.pending_pattern_name() {
+            transport_line.push_str(" -> ");
+            transport_line.push_str(pending_pattern_name);
+        }
+        lines.push(transport_line);
         lines.push(format!("> {}", self.display_input_with_cursor()));
         lines.push(self.input_hint());
         lines.join("\n")
@@ -289,42 +292,41 @@ impl SessionTui {
             .cloned()
             .map(Line::raw)
             .collect::<Vec<_>>();
-        let transport = self.session.transport_snapshot();
-        lines.push(Line::from(vec![
-            Span::raw("Transport: "),
-            Span::styled(
-                format_transport_status(&transport),
-                transport_status_style(&transport),
-            ),
-        ]));
+        let transport = self.session.transport_view();
+        lines.push(transport_status_line("Transport: ", &transport, true));
         lines.push(Line::raw(format!("> {}", self.display_input_with_cursor())));
         lines.push(Line::raw(self.input_hint()));
         Text::from(lines)
     }
 
     fn transport_text(&self) -> Text<'static> {
-        let transport = self.session.transport_snapshot();
+        let transport = self.session.transport_view();
         let mut lines = vec![
-            Line::from(vec![
-                Span::raw("Status: "),
-                Span::styled(
-                    format_transport_status(&transport),
-                    transport_status_style(&transport),
-                ),
-            ]),
-            Line::raw(format!("Tempo: {} BPM", format_tempo_bpm(&transport))),
-            Line::raw(format!("Cycle: {}", format_cycle_position(&transport))),
+            transport_status_line("Status: ", &transport, false),
+            Line::raw(format!(
+                "Tempo: {} BPM",
+                format_tempo_bpm(transport.snapshot())
+            )),
+            Line::raw(format!(
+                "Cycle: {}",
+                format_cycle_position(transport.snapshot())
+            )),
             Line::raw(format!(
                 "Pattern: {}",
-                self.session.last_loaded_pattern_name().unwrap_or("none")
+                transport.active_pattern_name().unwrap_or("none")
             )),
+        ];
+        if let Some(pending_pattern_name) = transport.pending_pattern_name() {
+            lines.push(Line::raw(format!("Next: {pending_pattern_name}")));
+        }
+        lines.extend([
             Line::raw("Space: toggle"),
             Line::raw("empty input only"),
             Line::raw("Transport: :play / :stop"),
             Line::raw("Set: :tempo <bpm>"),
             Line::raw("Export: :render <binding> <path> [cycles]"),
             Line::raw("Help: ?"),
-        ];
+        ]);
         if let Some(message) = &self.status_message {
             lines.push(Line::raw(format!("Note: {message}")));
         }
@@ -677,22 +679,22 @@ enum UiTransportState {
     Queued,
 }
 
-const fn transport_state(snapshot: &orpheus_dsp::TransportSnapshot) -> UiTransportState {
-    if snapshot.has_pending_pattern() {
-        if snapshot.is_playing() {
+fn transport_state(view: &TransportView) -> UiTransportState {
+    if view.pending_pattern_name().is_some() {
+        if view.snapshot().has_pending_pattern() && view.snapshot().is_playing() {
             UiTransportState::Syncing
         } else {
             UiTransportState::Queued
         }
-    } else if snapshot.is_playing() {
+    } else if view.snapshot().is_playing() {
         UiTransportState::Playing
     } else {
         UiTransportState::Stopped
     }
 }
 
-const fn format_transport_status(snapshot: &orpheus_dsp::TransportSnapshot) -> &'static str {
-    match transport_state(snapshot) {
+fn format_transport_status(view: &TransportView) -> &'static str {
+    match transport_state(view) {
         UiTransportState::Playing => "playing",
         UiTransportState::Stopped => "stopped",
         UiTransportState::Syncing => "syncing",
@@ -700,14 +702,32 @@ const fn format_transport_status(snapshot: &orpheus_dsp::TransportSnapshot) -> &
     }
 }
 
-fn transport_status_style(snapshot: &orpheus_dsp::TransportSnapshot) -> Style {
-    let color = match transport_state(snapshot) {
+fn transport_status_style(view: &TransportView) -> Style {
+    let color = match transport_state(view) {
         UiTransportState::Playing => Color::Green,
         UiTransportState::Stopped => Color::Yellow,
         UiTransportState::Syncing => Color::Cyan,
         UiTransportState::Queued => Color::Blue,
     };
     Style::default().fg(color).add_modifier(Modifier::BOLD)
+}
+
+fn transport_status_line(
+    prefix: &'static str,
+    view: &TransportView,
+    include_target: bool,
+) -> Line<'static> {
+    let mut spans = vec![
+        Span::raw(prefix),
+        Span::styled(format_transport_status(view), transport_status_style(view)),
+    ];
+    if include_target {
+        if let Some(pending_pattern_name) = view.pending_pattern_name() {
+            spans.push(Span::raw(" -> "));
+            spans.push(Span::raw(pending_pattern_name.to_owned()));
+        }
+    }
+    Line::from(spans)
 }
 
 struct TerminalGuard;
@@ -811,9 +831,27 @@ mod tests {
         let _ = app.session.render_test_block_for_tui(1);
 
         let frame = render_frame_for_test(&app, 80, 24);
-        assert!(frame.contains("Transport: syncing"));
+        assert!(frame.contains("Transport: syncing -> backbeat"));
         assert!(frame.contains("Status: syncing"));
-        assert!(frame.contains("Pattern: backbeat"));
+        assert!(frame.contains("Next: backbeat"));
+        assert!(frame.contains("Pattern: drums"));
+    }
+
+    #[test]
+    fn transport_shows_queued_target_before_engine_observes_pattern_swap() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = "drums = bd sn".to_owned();
+        app.submit_line();
+        let _ = app.session.render_test_block_for_tui(256);
+
+        app.input = "backbeat = sn cp".to_owned();
+        app.submit_line();
+
+        let frame = render_frame_for_test(&app, 80, 24);
+        assert!(frame.contains("Transport: queued -> backbeat"));
+        assert!(frame.contains("Status: queued"));
+        assert!(frame.contains("Next: backbeat"));
+        assert!(frame.contains("Pattern: drums"));
     }
 
     #[test]

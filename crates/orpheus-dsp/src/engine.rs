@@ -19,6 +19,7 @@ const MAX_ACTIVE_VOICES: usize = 32;
 /// A UI-readable snapshot of the transport clock.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TransportSnapshot {
+    publish_epoch: u64,
     current_frame: u64,
     current_cycle_start_frame: u64,
     frames_per_cycle: u64,
@@ -28,6 +29,11 @@ pub struct TransportSnapshot {
 }
 
 impl TransportSnapshot {
+    #[must_use]
+    pub const fn publish_epoch(&self) -> u64 {
+        self.publish_epoch
+    }
+
     #[must_use]
     pub const fn current_frame(&self) -> u64 {
         self.current_frame
@@ -61,6 +67,7 @@ impl TransportSnapshot {
 
 #[derive(Debug, Default)]
 struct SharedTransport {
+    publish_epoch: AtomicU64,
     current_frame: AtomicU64,
     current_cycle_start_frame: AtomicU64,
     frames_per_cycle: AtomicU64,
@@ -71,6 +78,7 @@ struct SharedTransport {
 
 impl SharedTransport {
     fn publish(&self, core: &EngineCore) {
+        self.publish_epoch.fetch_add(1, Ordering::Relaxed);
         self.current_frame
             .store(core.current_frame, Ordering::Relaxed);
         self.current_cycle_start_frame
@@ -86,6 +94,7 @@ impl SharedTransport {
 
     fn snapshot(&self) -> TransportSnapshot {
         TransportSnapshot {
+            publish_epoch: self.publish_epoch.load(Ordering::Relaxed),
             current_frame: self.current_frame.load(Ordering::Relaxed),
             current_cycle_start_frame: self.current_cycle_start_frame.load(Ordering::Relaxed),
             frames_per_cycle: self.frames_per_cycle.load(Ordering::Relaxed),
