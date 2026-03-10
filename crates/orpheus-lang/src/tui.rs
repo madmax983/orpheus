@@ -362,21 +362,10 @@ impl SessionTui {
 
     fn transport_text(&self) -> Text<'static> {
         let transport = self.session.transport_view();
-        let mut lines = vec![
-            transport_status_line("Status: ", &transport, false),
-            Line::raw(format!(
-                "Tempo: {} BPM",
-                format_tempo_bpm(transport.snapshot())
-            )),
-            Line::raw(format!(
-                "Cycle: {}",
-                format_cycle_position(transport.snapshot())
-            )),
-            Line::raw(format!(
-                "Pattern: {}",
-                transport.active_pattern_name().unwrap_or("none")
-            )),
-        ];
+        let mut lines = vec![Line::raw(format!(
+            "Pattern: {}",
+            transport.active_pattern_name().unwrap_or("none")
+        ))];
         if let Some(pending_pattern_name) = transport.pending_pattern_name() {
             lines.push(Line::raw(format!("Next: {pending_pattern_name}")));
         }
@@ -1217,7 +1206,6 @@ mod tests {
 
         let frame = render_frame_for_test(&app, 80, 24);
         assert!(frame.contains("Transport: syncing -> backbeat"));
-        assert!(frame.contains("Status: syncing"));
         assert!(frame.contains("Next: backbeat"));
         assert!(frame.contains("Pattern: drums"));
     }
@@ -1234,9 +1222,19 @@ mod tests {
 
         let frame = render_frame_for_test(&app, 80, 24);
         assert!(frame.contains("Transport: queued -> backbeat"));
-        assert!(frame.contains("Status: queued"));
         assert!(frame.contains("Next: backbeat"));
         assert!(frame.contains("Pattern: drums"));
+    }
+
+    #[test]
+    fn transport_pane_omits_footer_redundant_metrics() {
+        let app = SessionTui::new(EngineHandle::stub());
+
+        let frame = render_frame_for_test(&app, 80, 24);
+        assert!(frame.contains("Pattern: none"));
+        assert!(!frame.contains("Status: "));
+        assert!(!frame.contains("Tempo: "));
+        assert!(!frame.contains("Cycle: "));
     }
 
     #[test]
@@ -1360,15 +1358,16 @@ mod tests {
         assert_eq!(repl_cell.fg, Color::Cyan);
         assert!(repl_cell.modifier.contains(Modifier::BOLD));
 
-        let transport_buffer = render_buffer_for_test(&app, 80, 24);
-        let (status_line_x, status_y) = find_text_in_buffer(&transport_buffer, "Status: syncing")
-            .unwrap_or_else(|| panic!("rendered transport should contain syncing status"));
-        let status_x = status_line_x
-            + u16::try_from("Status: ".len())
-                .unwrap_or_else(|error| panic!("status prefix length should fit in u16: {error}"));
-        let status_cell = &transport_buffer[(status_x, status_y)];
-        assert_eq!(status_cell.fg, Color::Cyan);
-        assert!(status_cell.modifier.contains(Modifier::BOLD));
+        let footer_buffer = render_buffer_for_test(&app, 80, 24);
+        let footer_line = buffer_line(&footer_buffer, 23);
+        assert!(footer_line.contains("syncing"));
+        let syncing_x = footer_line
+            .find("syncing")
+            .and_then(|x| u16::try_from(x).ok())
+            .unwrap_or_else(|| panic!("footer should contain syncing status"));
+        let syncing_cell = &footer_buffer[(syncing_x, 23)];
+        assert_eq!(syncing_cell.fg, Color::Cyan);
+        assert!(syncing_cell.modifier.contains(Modifier::BOLD));
     }
 
     #[test]
@@ -1964,35 +1963,7 @@ mod tests {
     }
 
     #[test]
-    fn transport_status_uses_distinct_styles() {
-        let mut app = SessionTui::new(EngineHandle::stub());
-
-        let playing_buffer = render_buffer_for_test(&app, 80, 24);
-        let (playing_line_x, playing_y) = find_text_in_buffer(&playing_buffer, "Status: playing")
-            .unwrap_or_else(|| panic!("rendered transport should contain playing status"));
-        let playing_x = playing_line_x
-            + u16::try_from("Status: ".len())
-                .unwrap_or_else(|error| panic!("status prefix length should fit in u16: {error}"));
-        let playing_cell = &playing_buffer[(playing_x, playing_y)];
-        assert_eq!(playing_cell.fg, Color::Green);
-        assert!(playing_cell.modifier.contains(Modifier::BOLD));
-
-        handle_key_event(&mut app, press(KeyCode::Char(' ')));
-        let _ = app.session.render_test_block_for_tui(1);
-
-        let stopped_buffer = render_buffer_for_test(&app, 80, 24);
-        let (stopped_line_x, stopped_y) = find_text_in_buffer(&stopped_buffer, "Status: stopped")
-            .unwrap_or_else(|| panic!("rendered transport should contain stopped status"));
-        let stopped_x = stopped_line_x
-            + u16::try_from("Status: ".len())
-                .unwrap_or_else(|error| panic!("status prefix length should fit in u16: {error}"));
-        let stopped_cell = &stopped_buffer[(stopped_x, stopped_y)];
-        assert_eq!(stopped_cell.fg, Color::Yellow);
-        assert!(stopped_cell.modifier.contains(Modifier::BOLD));
-    }
-
-    #[test]
-    fn transport_reports_cycle_progress_and_last_loaded_pattern() {
+    fn transport_reports_last_loaded_pattern() {
         let mut app = SessionTui::new(EngineHandle::stub());
         app.input = "drums = bd sn".to_owned();
         app.submit_line();
@@ -2001,18 +1972,6 @@ mod tests {
 
         let frame = render_frame_for_test(&app, 80, 24);
         assert!(frame.contains("Pattern: drums"));
-        assert!(frame.contains("Cycle: 0.500"));
-    }
-
-    #[test]
-    fn transport_reports_live_engine_tempo() {
-        let mut app = SessionTui::new(EngineHandle::stub());
-        app.input = ":tempo 90".to_owned();
-        app.submit_line();
-        let _ = app.session.render_test_block_for_tui(1);
-
-        let frame = render_frame_for_test(&app, 80, 24);
-        assert!(frame.contains("Tempo: 90 BPM"));
     }
 
     #[test]
@@ -2026,7 +1985,7 @@ mod tests {
         let _ = app.session.render_test_block_for_tui(1);
 
         let frame = render_frame_for_test(&app, 80, 24);
-        assert!(frame.contains("Status: stopped"));
+        assert!(frame.contains("Pattern: drums"));
         assert!(frame.contains("Space"));
         assert!(frame.contains("empty input"));
         assert!(frame.contains(":play"));
