@@ -91,6 +91,10 @@ fn handle_key_event(app: &mut SessionTui, key: KeyEvent) {
             app.should_quit = true;
         }
         KeyCode::Char('?') => app.toggle_help(),
+        KeyCode::Char(' ') if key.modifiers.is_empty() && app.show_help => {}
+        KeyCode::Char(' ') if key.modifiers.is_empty() && app.input.is_empty() => {
+            app.toggle_transport_hotkey();
+        }
         KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.move_cursor_home();
         }
@@ -281,6 +285,7 @@ impl SessionTui {
                 "Pattern: {}",
                 self.session.last_loaded_pattern_name().unwrap_or("none")
             ),
+            "Hotkey: Space toggle".to_owned(),
             "Transport: :play / :stop".to_owned(),
             "Set: :tempo <bpm>".to_owned(),
             "Export: :render <binding> <path> [cycles]".to_owned(),
@@ -294,7 +299,7 @@ impl SessionTui {
     }
 
     const fn help_overlay_body() -> &'static str {
-        "Toggle: ?\nClose: Esc\nTransport: :play, :stop, :tempo <bpm>\nExport: :render <binding> <path> [cycles]\nSession: :quit\nInput: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
+        "Toggle: ?\nClose: Esc\nTransport: Space toggle, :play, :stop, :tempo <bpm>\nExport: :render <binding> <path> [cycles]\nSession: :quit\nInput: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
     }
 
     fn complete_input(&mut self) {
@@ -455,6 +460,19 @@ impl SessionTui {
     fn close_help(&mut self) {
         self.show_help = false;
         self.set_status_message("help overlay hidden");
+    }
+
+    fn toggle_transport_hotkey(&mut self) {
+        let command = if self.session.transport_snapshot().is_playing() {
+            ":stop"
+        } else {
+            ":play"
+        };
+        let message = self
+            .session
+            .eval_line(command)
+            .unwrap_or_else(|error| error);
+        self.set_status_message(message);
     }
 
     fn set_status_message(&mut self, message: impl Into<String>) {
@@ -978,6 +996,37 @@ mod tests {
     }
 
     #[test]
+    fn space_toggles_transport_when_input_is_empty() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = "drums = bd sn".to_owned();
+        app.submit_line();
+        let _ = app.session.render_test_block_for_tui(256);
+
+        handle_key_event(&mut app, press(KeyCode::Char(' ')));
+        let _ = app.session.render_test_block_for_tui(1);
+        assert_eq!(app.status_message.as_deref(), Some("transport stopped"));
+        assert!(!app.session.transport_snapshot().is_playing());
+
+        handle_key_event(&mut app, press(KeyCode::Char(' ')));
+        let _ = app.session.render_test_block_for_tui(1);
+        assert_eq!(app.status_message.as_deref(), Some("transport playing"));
+        assert!(app.session.transport_snapshot().is_playing());
+    }
+
+    #[test]
+    fn space_still_inserts_a_character_while_editing_input() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = "bd".to_owned();
+        app.cursor_index = app.input.len();
+
+        handle_key_event(&mut app, press(KeyCode::Char(' ')));
+
+        assert_eq!(app.input, "bd ");
+        assert_eq!(app.cursor_index, app.input.len());
+        assert!(app.session.transport_snapshot().is_playing());
+    }
+
+    #[test]
     fn question_mark_toggles_help_overlay_and_escape_closes_it_first() {
         let mut app = SessionTui::new(EngineHandle::stub());
 
@@ -985,6 +1034,7 @@ mod tests {
         assert_eq!(app.status_message.as_deref(), Some("help overlay shown"));
         let overlay_frame = render_frame_for_test(&app, 80, 24);
         assert!(overlay_frame.contains("Help"));
+        assert!(overlay_frame.contains("Space"));
         assert!(overlay_frame.contains(":play"));
         assert!(overlay_frame.contains(":stop"));
         assert!(overlay_frame.contains(":tempo <bpm>"));
@@ -1086,6 +1136,7 @@ mod tests {
 
         let frame = render_frame_for_test(&app, 80, 24);
         assert!(frame.contains("Status: stopped"));
+        assert!(frame.contains("Space"));
         assert!(frame.contains(":play"));
         assert!(frame.contains(":stop"));
     }
