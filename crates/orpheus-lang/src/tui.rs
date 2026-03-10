@@ -412,6 +412,11 @@ impl SessionTui {
                     format_transport_status(&transport).to_owned(),
                     transport_status_style(&transport),
                 ),
+                Span::styled(" | ", key_legend_style()),
+                Span::styled(
+                    format!("{} BPM", format_tempo_bpm(transport.snapshot())),
+                    key_legend_style(),
+                ),
             ])
         }
     }
@@ -1712,6 +1717,7 @@ mod tests {
         assert!(footer_line.contains("? help"));
         assert!(footer_line.contains("Space toggle"));
         assert!(footer_line.contains("playing"));
+        assert!(footer_line.contains("120 BPM"));
 
         let playing_x = footer_line
             .find("playing")
@@ -1742,6 +1748,19 @@ mod tests {
         let stopped_cell = &buffer[(stopped_x, 23)];
         assert_eq!(stopped_cell.fg, Color::Yellow);
         assert!(stopped_cell.modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn tempo_command_updates_footer_tempo_readout() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = ":tempo 90".to_owned();
+        app.submit_line();
+        let _ = app.session.render_test_block_for_tui(1);
+
+        let buffer = render_buffer_for_test(&app, 80, 24);
+        let footer_line = buffer_line(&buffer, 23);
+        assert!(footer_line.contains("90 BPM"));
+        assert!(footer_line.contains("playing"));
     }
 
     #[test]
