@@ -24,6 +24,7 @@ pub struct TransportSnapshot {
     frames_per_cycle: u64,
     tempo_bpm_bits: u32,
     is_playing: bool,
+    has_pending_pattern: bool,
 }
 
 impl TransportSnapshot {
@@ -51,6 +52,11 @@ impl TransportSnapshot {
     pub const fn is_playing(&self) -> bool {
         self.is_playing
     }
+
+    #[must_use]
+    pub const fn has_pending_pattern(&self) -> bool {
+        self.has_pending_pattern
+    }
 }
 
 #[derive(Debug, Default)]
@@ -60,6 +66,7 @@ struct SharedTransport {
     frames_per_cycle: AtomicU64,
     tempo_bpm_bits: AtomicU32,
     is_playing: AtomicBool,
+    has_pending_pattern: AtomicBool,
 }
 
 impl SharedTransport {
@@ -73,6 +80,8 @@ impl SharedTransport {
         self.tempo_bpm_bits
             .store(core.tempo_bpm.to_bits(), Ordering::Relaxed);
         self.is_playing.store(core.is_playing, Ordering::Relaxed);
+        self.has_pending_pattern
+            .store(core.pending_pattern.is_some(), Ordering::Relaxed);
     }
 
     fn snapshot(&self) -> TransportSnapshot {
@@ -82,6 +91,7 @@ impl SharedTransport {
             frames_per_cycle: self.frames_per_cycle.load(Ordering::Relaxed),
             tempo_bpm_bits: self.tempo_bpm_bits.load(Ordering::Relaxed),
             is_playing: self.is_playing.load(Ordering::Relaxed),
+            has_pending_pattern: self.has_pending_pattern.load(Ordering::Relaxed),
         }
     }
 }

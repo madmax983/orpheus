@@ -228,6 +228,48 @@ fn loaded_pattern_hot_swap_waits_for_the_next_cycle_boundary() {
 }
 
 #[test]
+fn transport_snapshot_reports_pending_pattern_until_boundary() {
+    let mut engine = EngineHandle::stub();
+    let quarter = Rational::new(1, 4).unwrap();
+    let intro = PatternUpdate::new(
+        "drums",
+        vec![Event {
+            whole: None,
+            part: TimeSpan::new(Rational::zero(), quarter.clone()).unwrap(),
+            value: Box::<str>::from("bd"),
+        }],
+    );
+    let backbeat = PatternUpdate::new(
+        "backbeat",
+        vec![Event {
+            whole: None,
+            part: TimeSpan::new(Rational::zero(), quarter).unwrap(),
+            value: Box::<str>::from("sn"),
+        }],
+    );
+
+    engine.enqueue(EngineCommand::LoadPattern(intro)).unwrap();
+    let _ = engine.render_test_block(256);
+
+    engine
+        .enqueue(EngineCommand::LoadPattern(backbeat))
+        .unwrap();
+    let _ = engine.render_test_block(1);
+
+    let snapshot = engine.transport_snapshot();
+    assert!(snapshot.is_playing());
+    assert!(snapshot.has_pending_pattern());
+    assert_eq!(engine.active_pattern_name_for_test(), Some("drums"));
+
+    let _ = engine.render_test_block(engine.frames_until_boundary_for_test());
+
+    let snapshot = engine.transport_snapshot();
+    assert!(snapshot.is_playing());
+    assert!(!snapshot.has_pending_pattern());
+    assert_eq!(engine.active_pattern_name_for_test(), Some("backbeat"));
+}
+
+#[test]
 fn initial_loaded_pattern_is_audible_in_the_first_render_block() {
     let mut engine = EngineHandle::stub();
     let quarter = Rational::new(1, 4).unwrap();

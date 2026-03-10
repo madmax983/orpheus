@@ -669,19 +669,43 @@ fn format_tempo_bpm(snapshot: &orpheus_dsp::TransportSnapshot) -> String {
     }
 }
 
-const fn format_transport_status(snapshot: &orpheus_dsp::TransportSnapshot) -> &'static str {
-    if snapshot.is_playing() {
-        "playing"
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum UiTransportState {
+    Playing,
+    Stopped,
+    Syncing,
+    Queued,
+}
+
+const fn transport_state(snapshot: &orpheus_dsp::TransportSnapshot) -> UiTransportState {
+    if snapshot.has_pending_pattern() {
+        if snapshot.is_playing() {
+            UiTransportState::Syncing
+        } else {
+            UiTransportState::Queued
+        }
+    } else if snapshot.is_playing() {
+        UiTransportState::Playing
     } else {
-        "stopped"
+        UiTransportState::Stopped
+    }
+}
+
+const fn format_transport_status(snapshot: &orpheus_dsp::TransportSnapshot) -> &'static str {
+    match transport_state(snapshot) {
+        UiTransportState::Playing => "playing",
+        UiTransportState::Stopped => "stopped",
+        UiTransportState::Syncing => "syncing",
+        UiTransportState::Queued => "queued",
     }
 }
 
 fn transport_status_style(snapshot: &orpheus_dsp::TransportSnapshot) -> Style {
-    let color = if snapshot.is_playing() {
-        Color::Green
-    } else {
-        Color::Yellow
+    let color = match transport_state(snapshot) {
+        UiTransportState::Playing => Color::Green,
+        UiTransportState::Stopped => Color::Yellow,
+        UiTransportState::Syncing => Color::Cyan,
+        UiTransportState::Queued => Color::Blue,
     };
     Style::default().fg(color).add_modifier(Modifier::BOLD)
 }
@@ -773,6 +797,56 @@ mod tests {
         let stopped_cell = &stopped_buffer[(stopped_x, stopped_y)];
         assert_eq!(stopped_cell.fg, Color::Yellow);
         assert!(stopped_cell.modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn transport_shows_syncing_while_pattern_swap_is_pending() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = "drums = bd sn".to_owned();
+        app.submit_line();
+        let _ = app.session.render_test_block_for_tui(256);
+
+        app.input = "backbeat = sn cp".to_owned();
+        app.submit_line();
+        let _ = app.session.render_test_block_for_tui(1);
+
+        let frame = render_frame_for_test(&app, 80, 24);
+        assert!(frame.contains("Transport: syncing"));
+        assert!(frame.contains("Status: syncing"));
+        assert!(frame.contains("Pattern: backbeat"));
+    }
+
+    #[test]
+    fn syncing_transport_state_uses_cyan_bold_styles() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = "drums = bd sn".to_owned();
+        app.submit_line();
+        let _ = app.session.render_test_block_for_tui(256);
+
+        app.input = "backbeat = sn cp".to_owned();
+        app.submit_line();
+        let _ = app.session.render_test_block_for_tui(1);
+
+        let repl_buffer = render_buffer_for_test(&app, 80, 24);
+        let (repl_line_x, repl_y) = find_text_in_buffer(&repl_buffer, "Transport: syncing")
+            .unwrap_or_else(|| panic!("rendered repl should contain syncing status"));
+        let repl_x = repl_line_x
+            + u16::try_from("Transport: ".len()).unwrap_or_else(|error| {
+                panic!("transport prefix length should fit in u16: {error}")
+            });
+        let repl_cell = &repl_buffer[(repl_x, repl_y)];
+        assert_eq!(repl_cell.fg, Color::Cyan);
+        assert!(repl_cell.modifier.contains(Modifier::BOLD));
+
+        let transport_buffer = render_buffer_for_test(&app, 80, 24);
+        let (status_line_x, status_y) = find_text_in_buffer(&transport_buffer, "Status: syncing")
+            .unwrap_or_else(|| panic!("rendered transport should contain syncing status"));
+        let status_x = status_line_x
+            + u16::try_from("Status: ".len())
+                .unwrap_or_else(|error| panic!("status prefix length should fit in u16: {error}"));
+        let status_cell = &transport_buffer[(status_x, status_y)];
+        assert_eq!(status_cell.fg, Color::Cyan);
+        assert!(status_cell.modifier.contains(Modifier::BOLD));
     }
 
     #[test]
