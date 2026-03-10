@@ -149,7 +149,7 @@ fn render_session_frame(frame: &mut Frame<'_>, app: &SessionTui) {
         .constraints([Constraint::Percentage(58), Constraint::Percentage(42)])
         .areas(left);
 
-    let binding_items = app.binding_lines();
+    let binding_items = app.binding_lines(bindings.height);
     frame.render_widget(
         List::new(binding_items).block(Block::default().title("Bindings").borders(Borders::ALL)),
         bindings,
@@ -261,7 +261,7 @@ impl SessionTui {
         }
     }
 
-    fn binding_lines(&self) -> Vec<ListItem<'static>> {
+    fn binding_lines(&self, bindings_height: u16) -> Vec<ListItem<'static>> {
         let transport = self.session.transport_view();
         let bindings = self.session.binding_summaries();
         if bindings.is_empty() {
@@ -271,9 +271,7 @@ impl SessionTui {
                 .into_iter()
                 .map(|summary| binding_list_item(summary, &transport))
                 .collect::<Vec<_>>();
-            if transport.active_pattern_name().is_some()
-                || transport.pending_pattern_name().is_some()
-            {
+            if should_show_binding_legend(bindings_height, items.len(), &transport) {
                 items.push(ListItem::new(""));
                 items.push(binding_legend_item(&transport));
             }
@@ -786,6 +784,20 @@ fn binding_legend_item(transport: &TransportView) -> ListItem<'static> {
     ]))
 }
 
+fn should_show_binding_legend(
+    bindings_height: u16,
+    binding_count: usize,
+    transport: &TransportView,
+) -> bool {
+    if transport.active_pattern_name().is_none() && transport.pending_pattern_name().is_none() {
+        return false;
+    }
+
+    let visible_rows = usize::from(bindings_height.saturating_sub(2));
+    const MIN_BINDING_LEGEND_ROWS: usize = 6;
+    visible_rows >= MIN_BINDING_LEGEND_ROWS && visible_rows >= binding_count.saturating_add(2)
+}
+
 struct TerminalGuard;
 
 impl TerminalGuard {
@@ -965,6 +977,21 @@ mod tests {
         app.submit_line();
 
         let frame = render_frame_for_test(&app, 120, 24);
+        assert!(!frame.contains("Legend: [live] active  [next] pending"));
+    }
+
+    #[test]
+    fn bindings_pane_hides_marker_legend_on_short_terminal_heights() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = "drums = bd sn".to_owned();
+        app.submit_line();
+        let _ = app.session.render_test_block_for_tui(256);
+        app.input = "backbeat = sn cp".to_owned();
+        app.submit_line();
+
+        let frame = render_frame_for_test(&app, 120, 10);
+        assert!(frame.contains("[live] drums: Pattern<Sample>"));
+        assert!(frame.contains("[next] backbeat: Pattern<Sample>"));
         assert!(!frame.contains("Legend: [live] active  [next] pending"));
     }
 
