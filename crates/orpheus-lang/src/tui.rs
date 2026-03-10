@@ -154,10 +154,14 @@ fn handle_key_event(app: &mut SessionTui, key: KeyEvent) {
 }
 
 fn render_session_frame(frame: &mut Frame<'_>, app: &SessionTui) {
+    let [body, footer] = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(1)])
+        .areas(frame.area());
     let [left, right] = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(72), Constraint::Percentage(28)])
-        .areas(frame.area());
+        .areas(body);
     let [bindings, repl] = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(58), Constraint::Percentage(42)])
@@ -183,6 +187,13 @@ fn render_session_frame(frame: &mut Frame<'_>, app: &SessionTui) {
             .block(Block::default().title("Transport").borders(Borders::ALL))
             .wrap(Wrap { trim: false }),
         right,
+    );
+
+    frame.render_widget(
+        Paragraph::new(SessionTui::key_legend_text())
+            .style(key_legend_style())
+            .wrap(Wrap { trim: false }),
+        footer,
     );
 
     if app.show_help {
@@ -383,6 +394,10 @@ impl SessionTui {
 
     const fn help_overlay_footer() -> &'static str {
         "Esc close   ? toggle   Ctrl-C quit"
+    }
+
+    const fn key_legend_text() -> &'static str {
+        "? help   Space toggle(empty)   PgUp/PgDn bindings"
     }
 
     fn complete_input(&mut self) {
@@ -805,6 +820,12 @@ fn help_overlay_footer_style() -> Style {
     Style::default().fg(Color::Gray).add_modifier(Modifier::DIM)
 }
 
+fn key_legend_style() -> Style {
+    Style::default()
+        .fg(Color::DarkGray)
+        .add_modifier(Modifier::DIM)
+}
+
 fn format_cycle_position(snapshot: &orpheus_dsp::TransportSnapshot) -> String {
     let frames_per_cycle = snapshot.frames_per_cycle();
     if frames_per_cycle == 0 {
@@ -1166,13 +1187,13 @@ mod tests {
         let scrolled_frame = render_frame_for_test(&app, 120, 12);
         assert!(!scrolled_frame.contains("b00: Function(Pattern<t1>) -> Pattern<t1>"));
         assert!(scrolled_frame.contains("b06: Function(Pattern<t1>) -> Pattern<t1>"));
-        assert!(scrolled_frame.contains("Bindings 5-9/12"));
+        assert!(scrolled_frame.contains("Bindings 4-7/12"));
 
         handle_key_event(&mut app, press(KeyCode::PageUp));
 
         let restored_frame = render_frame_for_test(&app, 120, 12);
         assert!(restored_frame.contains("b00: Function(Pattern<t1>) -> Pattern<t1>"));
-        assert!(restored_frame.contains("Bindings 1-5/12"));
+        assert!(restored_frame.contains("Bindings 1-4/12"));
     }
 
     #[test]
@@ -1633,6 +1654,16 @@ mod tests {
         assert!(overlay_frame.contains("Esc close"));
         assert!(overlay_frame.contains("? toggle"));
         assert!(overlay_frame.contains("Ctrl-C quit"));
+    }
+
+    #[test]
+    fn main_frame_shows_live_key_legend() {
+        let app = SessionTui::new(EngineHandle::stub());
+
+        let frame = render_frame_for_test(&app, 80, 24);
+        assert!(frame.contains("? help"));
+        assert!(frame.contains("Space toggle"));
+        assert!(frame.contains("PgUp/PgDn bindings"));
     }
 
     #[test]

@@ -16,5 +16,8 @@ fn tui_boots_and_renders_initial_frame() {
     assert!(frame.contains("Pattern: none"));
     assert!(frame.contains("Transport: playing"));
     assert!(frame.contains("Help: ?"));
+    assert!(frame.contains("? help"));
+    assert!(frame.contains("Space toggle"));
+    assert!(frame.contains("PgUp/PgDn bindings"));
     assert!(!frame.contains("Ctrl-A/E/K"));
 }
