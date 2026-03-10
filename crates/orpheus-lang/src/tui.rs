@@ -381,6 +381,10 @@ impl SessionTui {
         "Toggle: ?\nClose: Esc\nTransport: Space toggle, :play, :stop, :tempo <bpm>\nExport: :render <binding> <path> [cycles]\nSession: :quit\nBindings: PgUp/PgDn\nInput: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
     }
 
+    const fn help_overlay_footer() -> &'static str {
+        "Esc close   ? toggle   Ctrl-C quit"
+    }
+
     fn complete_input(&mut self) {
         if !self.input.starts_with(':') {
             return;
@@ -722,18 +726,28 @@ fn render_help_overlay(frame: &mut Frame<'_>) {
     render_modal_backdrop(frame, overlay_area);
     frame.render_widget(Clear, overlay_area);
     let border_style = help_overlay_border_style();
+    let block = Block::default()
+        .title("Help")
+        .title_style(border_style)
+        .border_style(border_style)
+        .borders(Borders::ALL);
+    let inner = block.inner(overlay_area);
+    let [body_area, footer_area] = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(1)])
+        .areas(inner);
+    frame.render_widget(block.style(Style::default().bg(Color::Black)), overlay_area);
     frame.render_widget(
         Paragraph::new(SessionTui::help_overlay_body())
             .style(Style::default().bg(Color::Black))
-            .block(
-                Block::default()
-                    .title("Help")
-                    .title_style(border_style)
-                    .border_style(border_style)
-                    .borders(Borders::ALL),
-            )
             .wrap(Wrap { trim: false }),
-        overlay_area,
+        body_area,
+    );
+    frame.render_widget(
+        Paragraph::new(SessionTui::help_overlay_footer())
+            .style(help_overlay_footer_style())
+            .wrap(Wrap { trim: false }),
+        footer_area,
     );
 }
 
@@ -785,6 +799,10 @@ fn help_overlay_border_style() -> Style {
     Style::default()
         .fg(Color::Cyan)
         .add_modifier(Modifier::BOLD)
+}
+
+fn help_overlay_footer_style() -> Style {
+    Style::default().fg(Color::Gray).add_modifier(Modifier::DIM)
 }
 
 fn format_cycle_position(snapshot: &orpheus_dsp::TransportSnapshot) -> String {
@@ -1604,6 +1622,17 @@ mod tests {
         let border_cell = &buffer[(overlay_area.x, overlay_area.y)];
         assert_eq!(border_cell.fg, Color::Cyan);
         assert!(border_cell.modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn help_overlay_shows_close_footer_controls() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        handle_key_event(&mut app, press(KeyCode::Char('?')));
+
+        let overlay_frame = render_frame_for_test(&app, 80, 24);
+        assert!(overlay_frame.contains("Esc close"));
+        assert!(overlay_frame.contains("? toggle"));
+        assert!(overlay_frame.contains("Ctrl-C quit"));
     }
 
     #[test]
