@@ -99,6 +99,11 @@ impl Scheduler {
         }
     }
 
+    /// Removes all scheduled triggers.
+    pub fn clear(&mut self) {
+        self.triggers.clear();
+    }
+
     /// Schedules one built-in voice token at an absolute sample frame.
     ///
     /// # Errors

@@ -2,7 +2,7 @@ use cpal::{BufferSize, SampleRate, StreamConfig};
 use orpheus_pattern::Event;
 use rtrb::{Consumer, Producer};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use thiserror::Error;
 
 use crate::command::{EngineCommand, PatternUpdate, new_command_queue};
@@ -23,6 +23,7 @@ pub struct TransportSnapshot {
     current_cycle_start_frame: u64,
     frames_per_cycle: u64,
     tempo_bpm_bits: u32,
+    is_playing: bool,
 }
 
 impl TransportSnapshot {
@@ -45,6 +46,11 @@ impl TransportSnapshot {
     pub const fn tempo_bpm(&self) -> f32 {
         f32::from_bits(self.tempo_bpm_bits)
     }
+
+    #[must_use]
+    pub const fn is_playing(&self) -> bool {
+        self.is_playing
+    }
 }
 
 #[derive(Debug, Default)]
@@ -53,6 +59,7 @@ struct SharedTransport {
     current_cycle_start_frame: AtomicU64,
     frames_per_cycle: AtomicU64,
     tempo_bpm_bits: AtomicU32,
+    is_playing: AtomicBool,
 }
 
 impl SharedTransport {
@@ -65,6 +72,7 @@ impl SharedTransport {
             .store(core.frames_per_cycle, Ordering::Relaxed);
         self.tempo_bpm_bits
             .store(core.tempo_bpm.to_bits(), Ordering::Relaxed);
+        self.is_playing.store(core.is_playing, Ordering::Relaxed);
     }
 
     fn snapshot(&self) -> TransportSnapshot {
@@ -73,6 +81,7 @@ impl SharedTransport {
             current_cycle_start_frame: self.current_cycle_start_frame.load(Ordering::Relaxed),
             frames_per_cycle: self.frames_per_cycle.load(Ordering::Relaxed),
             tempo_bpm_bits: self.tempo_bpm_bits.load(Ordering::Relaxed),
+            is_playing: self.is_playing.load(Ordering::Relaxed),
         }
     }
 }
@@ -105,6 +114,7 @@ struct EngineCore {
     channels: usize,
     current_frame: u64,
     tempo_bpm: f32,
+    is_playing: bool,
     frames_per_cycle: u64,
     current_cycle_start_frame: u64,
     next_cycle_boundary_frame: u64,
@@ -129,6 +139,7 @@ impl EngineCore {
             channels: usize::from(config.channels),
             current_frame: 0,
             tempo_bpm: DEFAULT_TEMPO_BPM,
+            is_playing: true,
             frames_per_cycle,
             current_cycle_start_frame: 0,
             next_cycle_boundary_frame: frames_per_cycle,
@@ -162,6 +173,14 @@ impl EngineCore {
                         .checked_add(self.frames_per_cycle)
                         .ok_or(EngineError::FrameOverflow)?;
                 }
+                Ok(())
+            }
+            EngineCommand::PlayTransport => {
+                self.play_transport();
+                Ok(())
+            }
+            EngineCommand::StopTransport => {
+                self.stop_transport();
                 Ok(())
             }
         }
@@ -200,6 +219,11 @@ impl EngineCore {
         }
 
         for frame in output.chunks_exact_mut(self.channels) {
+            if !self.is_playing {
+                frame.fill(0.0);
+                continue;
+            }
+
             if self.prime_initial_pattern {
                 self.prime_initial_pattern = false;
                 self.begin_cycle()?;
@@ -235,6 +259,36 @@ impl EngineCore {
                 |sample| ActiveVoice::from_sample(sample, self.sample_rate),
             ));
         }
+    }
+
+    fn play_transport(&mut self) {
+        if self.is_playing {
+            return;
+        }
+
+        if let Some(pattern) = self.pending_pattern.take() {
+            self.active_pattern = Some(pattern);
+        }
+        self.next_cycle_boundary_frame = self.frames_per_cycle;
+        self.prime_initial_pattern = self.active_pattern.is_some();
+        self.is_playing = true;
+    }
+
+    fn stop_transport(&mut self) {
+        if let Some(pattern) = self.pending_pattern.take() {
+            self.active_pattern = Some(pattern);
+        }
+
+        self.scheduler.clear();
+        for slot in &mut self.active_voices {
+            *slot = None;
+        }
+        self.current_frame = 0;
+        self.current_cycle_start_frame = 0;
+        self.next_cycle_boundary_frame = self.frames_per_cycle;
+        self.prime_initial_pattern = self.active_pattern.is_some();
+        self.last_swap_frame = None;
+        self.is_playing = false;
     }
 }
 

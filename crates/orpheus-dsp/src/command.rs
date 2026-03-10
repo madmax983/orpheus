@@ -42,6 +42,10 @@ pub enum EngineCommand {
     LoadPattern(PatternUpdate),
     /// Updates the transport tempo in beats per minute.
     SetTempo(f32),
+    /// Starts transport playback from the current rewound position.
+    PlayTransport,
+    /// Stops transport playback, silencing output and rewinding to the start.
+    StopTransport,
 }
 
 pub fn new_command_queue() -> (Producer<EngineCommand>, Consumer<EngineCommand>) {

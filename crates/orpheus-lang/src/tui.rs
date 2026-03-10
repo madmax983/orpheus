@@ -17,9 +17,11 @@ use crate::repl::ReplSession;
 
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const STATUS_TOAST_TTL: Duration = Duration::from_secs(3);
-const COMMAND_HINTS: [(&str, &str); 3] = [
+const COMMAND_HINTS: [(&str, &str); 5] = [
+    (":play", ":play"),
     (":quit", ":quit"),
     (":render", ":render <binding> <path> [cycles]"),
+    (":stop", ":stop"),
     (":tempo", ":tempo <bpm>"),
 ];
 
@@ -272,13 +274,14 @@ impl SessionTui {
     fn transport_body(&self) -> String {
         let transport = self.session.transport_snapshot();
         let mut lines = vec![
-            "Status: live shell".to_owned(),
+            format!("Status: {}", format_transport_status(&transport)),
             format!("Tempo: {} BPM", format_tempo_bpm(&transport)),
             format!("Cycle: {}", format_cycle_position(&transport)),
             format!(
                 "Pattern: {}",
                 self.session.last_loaded_pattern_name().unwrap_or("none")
             ),
+            "Transport: :play / :stop".to_owned(),
             "Set: :tempo <bpm>".to_owned(),
             "Export: :render <binding> <path> [cycles]".to_owned(),
             "Help: ?".to_owned(),
@@ -291,7 +294,7 @@ impl SessionTui {
     }
 
     const fn help_overlay_body() -> &'static str {
-        "Toggle: ?\nClose: Esc\nREPL: :tempo <bpm>, :quit\nExport: :render <binding> <path> [cycles]\nInput: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
+        "Toggle: ?\nClose: Esc\nTransport: :play, :stop, :tempo <bpm>\nExport: :render <binding> <path> [cycles]\nSession: :quit\nInput: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
     }
 
     fn complete_input(&mut self) {
@@ -611,6 +614,14 @@ fn format_tempo_bpm(snapshot: &orpheus_dsp::TransportSnapshot) -> String {
         format!("{tempo_bpm:.0}")
     } else {
         format!("{tempo_bpm:.1}")
+    }
+}
+
+const fn format_transport_status(snapshot: &orpheus_dsp::TransportSnapshot) -> &'static str {
+    if snapshot.is_playing() {
+        "playing"
+    } else {
+        "stopped"
     }
 }
 
@@ -974,6 +985,8 @@ mod tests {
         assert_eq!(app.status_message.as_deref(), Some("help overlay shown"));
         let overlay_frame = render_frame_for_test(&app, 80, 24);
         assert!(overlay_frame.contains("Help"));
+        assert!(overlay_frame.contains(":play"));
+        assert!(overlay_frame.contains(":stop"));
         assert!(overlay_frame.contains(":tempo <bpm>"));
         assert!(overlay_frame.contains(":render <binding>"));
         assert!(overlay_frame.contains("Ctrl-A/E/K"));
@@ -1059,6 +1072,22 @@ mod tests {
 
         let frame = render_frame_for_test(&app, 80, 24);
         assert!(frame.contains("Tempo: 90 BPM"));
+    }
+
+    #[test]
+    fn transport_reports_stopped_state_after_stop_command() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = "drums = bd sn".to_owned();
+        app.submit_line();
+        let _ = app.session.render_test_block_for_tui(256);
+        app.input = ":stop".to_owned();
+        app.submit_line();
+        let _ = app.session.render_test_block_for_tui(1);
+
+        let frame = render_frame_for_test(&app, 80, 24);
+        assert!(frame.contains("Status: stopped"));
+        assert!(frame.contains(":play"));
+        assert!(frame.contains(":stop"));
     }
 
     fn render_frame_for_test(app: &SessionTui, width: u16, height: u16) -> String {

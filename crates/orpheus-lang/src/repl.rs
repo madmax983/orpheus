@@ -119,18 +119,30 @@ impl ReplSession {
 
     fn eval_command(&mut self, source: &str) -> Result<String, String> {
         let command = source.trim_start_matches(':').trim();
-        let Some((name, args)) = command.split_once(char::is_whitespace) else {
-            return match command {
-                "render" => Err(render_usage().to_owned()),
-                "tempo" => Err(tempo_usage().to_owned()),
-                "" => Err("empty REPL command".to_owned()),
-                other => Err(format!("unknown REPL command `:{other}`")),
-            };
-        };
+        if command.is_empty() {
+            return Err("empty REPL command".to_owned());
+        }
+        let (name, args) = command
+            .split_once(char::is_whitespace)
+            .map_or((command, ""), |(name, args)| (name, args.trim()));
 
         match name {
-            "render" => self.render_binding(args),
-            "tempo" => self.set_tempo(args),
+            "render" => {
+                if args.is_empty() {
+                    Err(render_usage().to_owned())
+                } else {
+                    self.render_binding(args)
+                }
+            }
+            "tempo" => {
+                if args.is_empty() {
+                    Err(tempo_usage().to_owned())
+                } else {
+                    self.set_tempo(args)
+                }
+            }
+            "play" => self.play_transport(args),
+            "stop" => self.stop_transport(args),
             other => Err(format!("unknown REPL command `:{other}`")),
         }
     }
@@ -196,6 +208,28 @@ impl ReplSession {
         Ok(format!("tempo set to {tempo_bpm} BPM"))
     }
 
+    fn play_transport(&mut self, args: &str) -> Result<String, String> {
+        if !args.is_empty() {
+            return Err(play_usage().to_owned());
+        }
+
+        self.engine
+            .enqueue(EngineCommand::PlayTransport)
+            .map_err(|error| error.to_string())?;
+        Ok("transport playing".to_owned())
+    }
+
+    fn stop_transport(&mut self, args: &str) -> Result<String, String> {
+        if !args.is_empty() {
+            return Err(stop_usage().to_owned());
+        }
+
+        self.engine
+            .enqueue(EngineCommand::StopTransport)
+            .map_err(|error| error.to_string())?;
+        Ok("transport stopped".to_owned())
+    }
+
     fn push_pattern_update(&mut self, name: &str, value: &Value) -> Result<(), String> {
         if let Value::SamplePattern(pattern) = value {
             let update = PatternUpdate::new(
@@ -250,6 +284,14 @@ const fn render_usage() -> &'static str {
 
 const fn tempo_usage() -> &'static str {
     "usage: :tempo <bpm>"
+}
+
+const fn play_usage() -> &'static str {
+    "usage: :play"
+}
+
+const fn stop_usage() -> &'static str {
+    "usage: :stop"
 }
 
 #[cfg(test)]
@@ -340,6 +382,23 @@ mod tests {
         let error = session.eval_line(":tempo 0").unwrap_err();
 
         assert_eq!(error, "tempo must be a finite positive BPM");
+    }
+
+    #[test]
+    fn stop_and_play_commands_update_transport_state() {
+        let mut session = ReplSession::new();
+        session.eval_line("drums = bd sn cp sn").unwrap();
+        let _ = session.render_test_block_for_tui(256);
+
+        let stop_message = session.eval_line(":stop").unwrap();
+        let _ = session.render_test_block_for_tui(1);
+        assert_eq!(stop_message, "transport stopped");
+        assert!(!session.transport_snapshot().is_playing());
+
+        let play_message = session.eval_line(":play").unwrap();
+        let _ = session.render_test_block_for_tui(1);
+        assert_eq!(play_message, "transport playing");
+        assert!(session.transport_snapshot().is_playing());
     }
 
     #[test]

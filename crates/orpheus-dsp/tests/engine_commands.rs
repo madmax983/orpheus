@@ -131,6 +131,61 @@ fn invalid_tempo_does_not_poison_future_transport_snapshots() {
 }
 
 #[test]
+fn stop_command_rewinds_transport_and_silences_output() {
+    let mut engine = EngineHandle::stub();
+    let quarter = Rational::new(1, 4).unwrap();
+    let pattern = PatternUpdate::new(
+        "drums",
+        vec![Event {
+            whole: None,
+            part: TimeSpan::new(Rational::zero(), quarter).unwrap(),
+            value: Box::<str>::from("bd"),
+        }],
+    );
+
+    engine.enqueue(EngineCommand::LoadPattern(pattern)).unwrap();
+    let _ = engine.render_test_block(256);
+    let _ = engine.render_test_block(engine.frames_per_cycle_for_test() / 2);
+    engine.enqueue(EngineCommand::StopTransport).unwrap();
+
+    let rendered = engine.render_test_block(128);
+    let snapshot = engine.transport_snapshot();
+
+    assert!(!snapshot.is_playing());
+    assert_eq!(snapshot.current_frame(), 0);
+    assert_eq!(snapshot.current_cycle_start_frame(), 0);
+    assert!(rendered.iter().all(|sample| sample.abs() <= f32::EPSILON));
+}
+
+#[test]
+fn play_command_restarts_pattern_from_cycle_start_after_stop() {
+    let mut engine = EngineHandle::stub();
+    let quarter = Rational::new(1, 4).unwrap();
+    let pattern = PatternUpdate::new(
+        "drums",
+        vec![Event {
+            whole: None,
+            part: TimeSpan::new(Rational::zero(), quarter).unwrap(),
+            value: Box::<str>::from("bd"),
+        }],
+    );
+
+    engine.enqueue(EngineCommand::LoadPattern(pattern)).unwrap();
+    let _ = engine.render_test_block(256);
+    let _ = engine.render_test_block(engine.frames_per_cycle_for_test() / 2);
+    engine.enqueue(EngineCommand::StopTransport).unwrap();
+    let _ = engine.render_test_block(64);
+    engine.enqueue(EngineCommand::PlayTransport).unwrap();
+
+    let rendered = engine.render_test_block(256);
+    let snapshot = engine.transport_snapshot();
+
+    assert!(snapshot.is_playing());
+    assert!(snapshot.current_frame() > 0);
+    assert!(rendered.iter().any(|sample| sample.abs() > f32::EPSILON));
+}
+
+#[test]
 fn split_handle_equality_is_reflexive() {
     let (handle, _renderer) = EngineHandle::split_for_test();
 

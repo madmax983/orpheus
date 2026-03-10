@@ -85,3 +85,14 @@ fn repl_tempo_command_reports_success() {
         .success()
         .stdout(contains("tempo set to 90 BPM"));
 }
+
+#[test]
+fn repl_stop_and_play_commands_report_success() {
+    let mut cmd = cargo_bin_cmd!("orpheus");
+
+    cmd.write_stdin(":stop\n:play\n:quit\n")
+        .assert()
+        .success()
+        .stdout(contains("transport stopped"))
+        .stdout(contains("transport playing"));
+}
