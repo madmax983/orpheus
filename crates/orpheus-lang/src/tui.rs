@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::io;
 use std::time::{Duration, Instant};
 
@@ -19,6 +20,7 @@ use crate::repl::{ReplSession, TransportView};
 
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const STATUS_TOAST_TTL: Duration = Duration::from_secs(3);
+const MIN_BINDING_LEGEND_ROWS: usize = 6;
 const COMMAND_HINTS: [(&str, &str); 5] = [
     (":play", ":play"),
     (":quit", ":quit"),
@@ -128,6 +130,8 @@ fn handle_key_event(app: &mut SessionTui, key: KeyEvent) {
         KeyCode::Right => app.move_cursor_right(),
         KeyCode::Home => app.move_cursor_home(),
         KeyCode::End => app.move_cursor_end(),
+        KeyCode::PageUp => app.scroll_bindings_up(),
+        KeyCode::PageDown => app.scroll_bindings_down(),
         KeyCode::Up => app.recall_previous_history(),
         KeyCode::Down => app.recall_next_history(),
         KeyCode::Tab => app.complete_input(),
@@ -149,9 +153,11 @@ fn render_session_frame(frame: &mut Frame<'_>, app: &SessionTui) {
         .constraints([Constraint::Percentage(58), Constraint::Percentage(42)])
         .areas(left);
 
-    let binding_items = app.binding_lines(bindings.height);
+    app.record_bindings_height(bindings.height);
+    let (bindings_title, binding_items) = app.binding_pane(bindings.height);
     frame.render_widget(
-        List::new(binding_items).block(Block::default().title("Bindings").borders(Borders::ALL)),
+        List::new(binding_items)
+            .block(Block::default().title(bindings_title).borders(Borders::ALL)),
         bindings,
     );
 
@@ -205,6 +211,8 @@ struct SessionTui {
     status_expires_at: Option<Instant>,
     input: String,
     cursor_index: usize,
+    bindings_scroll: usize,
+    bindings_last_height: Cell<u16>,
     show_help: bool,
     should_quit: bool,
 }
@@ -223,6 +231,8 @@ impl SessionTui {
             status_expires_at: None,
             input: String::new(),
             cursor_index: 0,
+            bindings_scroll: 0,
+            bindings_last_height: Cell::new(0),
             show_help: false,
             should_quit: false,
         }
@@ -261,6 +271,23 @@ impl SessionTui {
         }
     }
 
+    fn binding_pane(&self, bindings_height: u16) -> (String, Vec<ListItem<'static>>) {
+        let items = self.binding_lines(bindings_height);
+        let viewport_rows = binding_viewport_rows(bindings_height);
+        if items.len() <= viewport_rows {
+            return ("Bindings".to_owned(), items);
+        }
+
+        let max_scroll = items.len().saturating_sub(viewport_rows);
+        let offset = self.bindings_scroll.min(max_scroll);
+        let start = offset + 1;
+        let end = (offset + viewport_rows).min(items.len());
+        (
+            format!("Bindings {start}-{end}/{} PgUp/PgDn", items.len()),
+            items.into_iter().skip(offset).take(viewport_rows).collect(),
+        )
+    }
+
     fn binding_lines(&self, bindings_height: u16) -> Vec<ListItem<'static>> {
         let transport = self.session.transport_view();
         let bindings = self.session.binding_summaries();
@@ -277,6 +304,10 @@ impl SessionTui {
             }
             items
         }
+    }
+
+    fn record_bindings_height(&self, bindings_height: u16) {
+        self.bindings_last_height.set(bindings_height);
     }
 
     #[cfg(test)]
@@ -344,7 +375,7 @@ impl SessionTui {
     }
 
     const fn help_overlay_body() -> &'static str {
-        "Toggle: ?\nClose: Esc\nTransport: Space toggle, :play, :stop, :tempo <bpm>\nExport: :render <binding> <path> [cycles]\nSession: :quit\nInput: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
+        "Toggle: ?\nClose: Esc\nTransport: Space toggle, :play, :stop, :tempo <bpm>\nExport: :render <binding> <path> [cycles]\nSession: :quit\nBindings: PgUp/PgDn\nInput: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
     }
 
     fn complete_input(&mut self) {
@@ -537,6 +568,32 @@ impl SessionTui {
         {
             self.clear_status_message();
         }
+    }
+
+    fn scroll_bindings_up(&mut self) {
+        self.bindings_scroll = self
+            .bindings_scroll
+            .saturating_sub(self.binding_scroll_step());
+    }
+
+    fn scroll_bindings_down(&mut self) {
+        self.bindings_scroll = self
+            .bindings_scroll
+            .saturating_add(self.binding_scroll_step())
+            .min(self.max_binding_scroll());
+    }
+
+    fn binding_scroll_step(&self) -> usize {
+        binding_viewport_rows(self.bindings_last_height.get())
+            .saturating_sub(1)
+            .max(1)
+    }
+
+    fn max_binding_scroll(&self) -> usize {
+        let bindings_height = self.bindings_last_height.get();
+        self.binding_lines(bindings_height)
+            .len()
+            .saturating_sub(binding_viewport_rows(bindings_height))
     }
 
     fn display_input_with_cursor(&self) -> String {
@@ -794,8 +851,11 @@ fn should_show_binding_legend(
     }
 
     let visible_rows = usize::from(bindings_height.saturating_sub(2));
-    const MIN_BINDING_LEGEND_ROWS: usize = 6;
     visible_rows >= MIN_BINDING_LEGEND_ROWS && visible_rows >= binding_count.saturating_add(2)
+}
+
+fn binding_viewport_rows(bindings_height: u16) -> usize {
+    usize::from(bindings_height.saturating_sub(2)).max(1)
 }
 
 struct TerminalGuard;
@@ -993,6 +1053,32 @@ mod tests {
         assert!(frame.contains("[live] drums: Pattern<Sample>"));
         assert!(frame.contains("[next] backbeat: Pattern<Sample>"));
         assert!(!frame.contains("Legend: [live] active  [next] pending"));
+    }
+
+    #[test]
+    fn page_down_and_page_up_scroll_long_bindings_pane() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        for index in 0..12 {
+            app.input = format!("b{index:02} = fast(2)");
+            app.submit_line();
+        }
+
+        let initial_frame = render_frame_for_test(&app, 120, 12);
+        assert!(initial_frame.contains("b00: Function(Pattern<t1>) -> Pattern<t1>"));
+        assert!(!initial_frame.contains("b11: Function(Pattern<t1>) -> Pattern<t1>"));
+
+        handle_key_event(&mut app, press(KeyCode::PageDown));
+
+        let scrolled_frame = render_frame_for_test(&app, 120, 12);
+        assert!(!scrolled_frame.contains("b00: Function(Pattern<t1>) -> Pattern<t1>"));
+        assert!(scrolled_frame.contains("b06: Function(Pattern<t1>) -> Pattern<t1>"));
+        assert!(scrolled_frame.contains("Bindings 5-9/12"));
+
+        handle_key_event(&mut app, press(KeyCode::PageUp));
+
+        let restored_frame = render_frame_for_test(&app, 120, 12);
+        assert!(restored_frame.contains("b00: Function(Pattern<t1>) -> Pattern<t1>"));
+        assert!(restored_frame.contains("Bindings 1-5/12"));
     }
 
     #[test]
@@ -1370,6 +1456,7 @@ mod tests {
         assert!(overlay_frame.contains(":stop"));
         assert!(overlay_frame.contains(":tempo <bpm>"));
         assert!(overlay_frame.contains(":render <binding>"));
+        assert!(overlay_frame.contains("Bindings: PgUp/PgDn"));
         assert!(overlay_frame.contains("Ctrl-A/E/K"));
         assert!(overlay_frame.contains("Alt-B/F"));
         assert!(!app.should_quit);
