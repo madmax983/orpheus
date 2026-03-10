@@ -291,7 +291,7 @@ impl SessionTui {
     }
 
     const fn help_overlay_body() -> &'static str {
-        "Toggle: ?\nClose: Esc\nCommands: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
+        "Toggle: ?\nClose: Esc\nREPL: :tempo <bpm>, :quit\nExport: :render <binding> <path> [cycles]\nInput: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
     }
 
     fn complete_input(&mut self) {
@@ -974,6 +974,8 @@ mod tests {
         assert_eq!(app.status_message.as_deref(), Some("help overlay shown"));
         let overlay_frame = render_frame_for_test(&app, 80, 24);
         assert!(overlay_frame.contains("Help"));
+        assert!(overlay_frame.contains(":tempo <bpm>"));
+        assert!(overlay_frame.contains(":render <binding>"));
         assert!(overlay_frame.contains("Ctrl-A/E/K"));
         assert!(overlay_frame.contains("Alt-B/F"));
         assert!(!app.should_quit);
