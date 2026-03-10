@@ -189,16 +189,16 @@ fn render_session_frame(frame: &mut Frame<'_>, app: &SessionTui) {
         right,
     );
 
-    frame.render_widget(
-        Paragraph::new(SessionTui::key_legend_text())
-            .style(key_legend_style())
-            .wrap(Wrap { trim: false }),
-        footer,
-    );
-
     if app.show_help {
         render_help_overlay(frame);
     }
+
+    frame.render_widget(
+        Paragraph::new(app.frame_footer_text())
+            .style(frame_footer_style(app.show_help))
+            .wrap(Wrap { trim: false }),
+        footer,
+    );
 }
 
 fn buffer_to_string(buffer: &Buffer) -> String {
@@ -398,6 +398,14 @@ impl SessionTui {
 
     const fn key_legend_text() -> &'static str {
         "? help   Space toggle(empty)   PgUp/PgDn bindings"
+    }
+
+    const fn frame_footer_text(&self) -> &'static str {
+        if self.show_help {
+            Self::help_overlay_footer()
+        } else {
+            Self::key_legend_text()
+        }
     }
 
     fn complete_input(&mut self) {
@@ -824,6 +832,14 @@ fn key_legend_style() -> Style {
     Style::default()
         .fg(Color::DarkGray)
         .add_modifier(Modifier::DIM)
+}
+
+fn frame_footer_style(show_help: bool) -> Style {
+    if show_help {
+        help_overlay_footer_style().bg(Color::DarkGray)
+    } else {
+        key_legend_style()
+    }
 }
 
 fn format_cycle_position(snapshot: &orpheus_dsp::TransportSnapshot) -> String {
@@ -1667,6 +1683,19 @@ mod tests {
     }
 
     #[test]
+    fn help_open_footer_switches_to_modal_controls() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        handle_key_event(&mut app, press(KeyCode::Char('?')));
+
+        let buffer = render_buffer_for_test(&app, 80, 24);
+        let footer_line = buffer_line(&buffer, 23);
+        assert!(footer_line.contains("Esc close"));
+        assert!(footer_line.contains("? toggle"));
+        assert!(footer_line.contains("Ctrl-C quit"));
+        assert!(!footer_line.contains("Space toggle"));
+    }
+
+    #[test]
     fn render_command_uses_status_toast_instead_of_transcript() {
         let mut app = SessionTui::new(EngineHandle::stub());
         app.input = "drums = bd sn".to_owned();
@@ -1809,10 +1838,7 @@ mod tests {
 
     fn find_text_in_buffer(buffer: &ratatui::buffer::Buffer, needle: &str) -> Option<(u16, u16)> {
         for y in 0..buffer.area.height {
-            let mut line = String::new();
-            for x in 0..buffer.area.width {
-                line.push_str(buffer[(x, y)].symbol());
-            }
+            let line = buffer_line(buffer, y);
             if let Some(x) = line.find(needle) {
                 let x = u16::try_from(x)
                     .unwrap_or_else(|error| panic!("needle offset should fit in u16: {error}"));
@@ -1820,5 +1846,13 @@ mod tests {
             }
         }
         None
+    }
+
+    fn buffer_line(buffer: &ratatui::buffer::Buffer, y: u16) -> String {
+        let mut line = String::new();
+        for x in 0..buffer.area.width {
+            line.push_str(buffer[(x, y)].symbol());
+        }
+        line
     }
 }
