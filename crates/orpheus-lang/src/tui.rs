@@ -262,11 +262,15 @@ impl SessionTui {
     }
 
     fn binding_lines(&self) -> Vec<ListItem<'static>> {
+        let transport = self.session.transport_view();
         let bindings = self.session.binding_summaries();
         if bindings.is_empty() {
             vec![ListItem::new("No bindings yet")]
         } else {
-            bindings.into_iter().map(ListItem::new).collect()
+            bindings
+                .into_iter()
+                .map(|summary| binding_list_item(summary, &transport))
+                .collect()
         }
     }
 
@@ -730,6 +734,41 @@ fn transport_status_line(
     Line::from(spans)
 }
 
+fn binding_list_item(summary: String, transport: &TransportView) -> ListItem<'static> {
+    let name = summary
+        .split_once(": ")
+        .map_or(summary.as_str(), |(name, _)| name);
+    if transport.active_pattern_name() == Some(name) {
+        return ListItem::new(Line::from(vec![
+            Span::styled("[live] ", live_binding_style()),
+            Span::raw(summary),
+        ]));
+    }
+    if transport.pending_pattern_name() == Some(name) {
+        return ListItem::new(Line::from(vec![
+            Span::styled("[next] ", pending_binding_style(transport)),
+            Span::raw(summary),
+        ]));
+    }
+    ListItem::new(summary)
+}
+
+fn live_binding_style() -> Style {
+    Style::default()
+        .fg(Color::Green)
+        .add_modifier(Modifier::BOLD)
+}
+
+fn pending_binding_style(transport: &TransportView) -> Style {
+    let color = match transport_state(transport) {
+        UiTransportState::Queued => Color::Blue,
+        UiTransportState::Playing | UiTransportState::Stopped | UiTransportState::Syncing => {
+            Color::Cyan
+        }
+    };
+    Style::default().fg(color).add_modifier(Modifier::BOLD)
+}
+
 struct TerminalGuard;
 
 impl TerminalGuard {
@@ -852,6 +891,41 @@ mod tests {
         assert!(frame.contains("Status: queued"));
         assert!(frame.contains("Next: backbeat"));
         assert!(frame.contains("Pattern: drums"));
+    }
+
+    #[test]
+    fn bindings_pane_marks_live_and_next_patterns() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = "drums = bd sn".to_owned();
+        app.submit_line();
+        let _ = app.session.render_test_block_for_tui(256);
+        app.input = "warp = fast(2)".to_owned();
+        app.submit_line();
+        app.input = "backbeat = sn cp".to_owned();
+        app.submit_line();
+
+        let frame = render_frame_for_test(&app, 120, 24);
+        assert!(frame.contains("[live] drums: Pattern<Sample>"));
+        assert!(frame.contains("warp: Function(Pattern<t1>) -> Pattern<t1>"));
+        assert!(frame.contains("[next] backbeat: Pattern<Sample>"));
+    }
+
+    #[test]
+    fn bindings_pane_promotes_next_pattern_after_cycle_boundary() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = "drums = bd sn".to_owned();
+        app.submit_line();
+        let _ = app.session.render_test_block_for_tui(256);
+        app.input = "backbeat = sn cp".to_owned();
+        app.submit_line();
+        let _ = app
+            .session
+            .render_test_block_for_tui(app.session.frames_until_boundary_for_tui());
+
+        let frame = render_frame_for_test(&app, 120, 24);
+        assert!(frame.contains("[live] backbeat: Pattern<Sample>"));
+        assert!(!frame.contains("[next] backbeat: Pattern<Sample>"));
+        assert!(!frame.contains("[live] drums: Pattern<Sample>"));
     }
 
     #[test]

@@ -344,6 +344,11 @@ impl ReplSession {
     pub(crate) fn render_test_block_for_tui(&mut self, frames: u64) -> Vec<f32> {
         self.engine.render_test_block(frames)
     }
+
+    #[cfg(test)]
+    pub(crate) fn frames_until_boundary_for_tui(&self) -> u64 {
+        self.engine.frames_until_boundary_for_test()
+    }
 }
 
 fn success_banner(ty: &Type) -> String {
