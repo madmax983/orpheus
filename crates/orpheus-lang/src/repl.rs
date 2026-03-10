@@ -117,11 +117,12 @@ impl ReplSession {
         Ok(success_banner(&ty))
     }
 
-    fn eval_command(&self, source: &str) -> Result<String, String> {
+    fn eval_command(&mut self, source: &str) -> Result<String, String> {
         let command = source.trim_start_matches(':').trim();
         let Some((name, args)) = command.split_once(char::is_whitespace) else {
             return match command {
                 "render" => Err(render_usage().to_owned()),
+                "tempo" => Err(tempo_usage().to_owned()),
                 "" => Err("empty REPL command".to_owned()),
                 other => Err(format!("unknown REPL command `:{other}`")),
             };
@@ -129,6 +130,7 @@ impl ReplSession {
 
         match name {
             "render" => self.render_binding(args),
+            "tempo" => self.set_tempo(args),
             other => Err(format!("unknown REPL command `:{other}`")),
         }
     }
@@ -173,6 +175,25 @@ impl ReplSession {
         Ok(format!(
             "rendered `{binding_name}` to `{path}` ({cycles} cycle(s))"
         ))
+    }
+
+    fn set_tempo(&mut self, args: &str) -> Result<String, String> {
+        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        if tokens.len() != 1 {
+            return Err(tempo_usage().to_owned());
+        }
+
+        let tempo_bpm = tokens[0]
+            .parse::<f32>()
+            .map_err(|_| "tempo must be a finite positive BPM".to_owned())?;
+        if !tempo_bpm.is_finite() || tempo_bpm <= 0.0 {
+            return Err("tempo must be a finite positive BPM".to_owned());
+        }
+
+        self.engine
+            .enqueue(EngineCommand::SetTempo(tempo_bpm))
+            .map_err(|error| error.to_string())?;
+        Ok(format!("tempo set to {tempo_bpm} BPM"))
     }
 
     fn push_pattern_update(&mut self, name: &str, value: &Value) -> Result<(), String> {
@@ -225,6 +246,10 @@ fn success_banner(ty: &Type) -> String {
 
 const fn render_usage() -> &'static str {
     "usage: :render <binding> <path> [cycles]"
+}
+
+const fn tempo_usage() -> &'static str {
+    "usage: :tempo <bpm>"
 }
 
 #[cfg(test)]
@@ -292,6 +317,29 @@ mod tests {
         let error = session.eval_line(":render nope out.wav 1").unwrap_err();
 
         assert!(error.contains("no binding named `nope`"));
+    }
+
+    #[test]
+    fn tempo_command_updates_engine_transport() {
+        let mut session = ReplSession::new();
+
+        let message = session.eval_line(":tempo 90").unwrap();
+        let _ = session.render_test_block_for_tui(1);
+
+        assert_eq!(message, "tempo set to 90 BPM");
+        assert_eq!(
+            session.transport_snapshot().tempo_bpm().to_bits(),
+            90.0_f32.to_bits()
+        );
+    }
+
+    #[test]
+    fn tempo_command_rejects_non_positive_values() {
+        let mut session = ReplSession::new();
+
+        let error = session.eval_line(":tempo 0").unwrap_err();
+
+        assert_eq!(error, "tempo must be a finite positive BPM");
     }
 
     #[test]

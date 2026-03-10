@@ -17,9 +17,10 @@ use crate::repl::ReplSession;
 
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const STATUS_TOAST_TTL: Duration = Duration::from_secs(3);
-const COMMAND_HINTS: [(&str, &str); 2] = [
+const COMMAND_HINTS: [(&str, &str); 3] = [
     (":quit", ":quit"),
     (":render", ":render <binding> <path> [cycles]"),
+    (":tempo", ":tempo <bpm>"),
 ];
 
 /// Runs the interactive ratatui session shell with the provided audio engine.
@@ -278,6 +279,7 @@ impl SessionTui {
                 "Pattern: {}",
                 self.session.last_loaded_pattern_name().unwrap_or("none")
             ),
+            "Set: :tempo <bpm>".to_owned(),
             "Export: :render <binding> <path> [cycles]".to_owned(),
             "Help: ?".to_owned(),
         ];
@@ -635,7 +637,7 @@ mod tests {
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-    use orpheus_dsp::{EngineCommand, EngineHandle};
+    use orpheus_dsp::EngineHandle;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
@@ -1048,9 +1050,9 @@ mod tests {
 
     #[test]
     fn transport_reports_live_engine_tempo() {
-        let mut engine = EngineHandle::stub();
-        engine.enqueue(EngineCommand::SetTempo(90.0)).unwrap();
-        let mut app = SessionTui::new(engine);
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = ":tempo 90".to_owned();
+        app.submit_line();
         let _ = app.session.render_test_block_for_tui(1);
 
         let frame = render_frame_for_test(&app, 80, 24);

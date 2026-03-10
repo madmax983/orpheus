@@ -75,3 +75,13 @@ fn repl_render_command_exports_wav() {
     assert!(fs::metadata(&path).unwrap().len() > 44);
     let _ = fs::remove_file(path);
 }
+
+#[test]
+fn repl_tempo_command_reports_success() {
+    let mut cmd = cargo_bin_cmd!("orpheus");
+
+    cmd.write_stdin(":tempo 90\n:quit\n")
+        .assert()
+        .success()
+        .stdout(contains("tempo set to 90 BPM"));
+}
