@@ -10,6 +10,8 @@ use orpheus_dsp::EngineHandle;
 use ratatui::backend::{Backend, CrosstermBackend, TestBackend};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 use ratatui::{Frame, Terminal};
 
@@ -154,7 +156,7 @@ fn render_session_frame(frame: &mut Frame<'_>, app: &SessionTui) {
     );
 
     frame.render_widget(
-        Paragraph::new(app.repl_body())
+        Paragraph::new(app.repl_text())
             .block(Block::default().title("REPL").borders(Borders::ALL))
             .wrap(Wrap { trim: false }),
         repl,
@@ -268,6 +270,7 @@ impl SessionTui {
         }
     }
 
+    #[cfg(test)]
     fn repl_body(&self) -> String {
         let mut lines = self.transcript.clone();
         lines.push(format!(
@@ -277,6 +280,26 @@ impl SessionTui {
         lines.push(format!("> {}", self.display_input_with_cursor()));
         lines.push(self.input_hint());
         lines.join("\n")
+    }
+
+    fn repl_text(&self) -> Text<'static> {
+        let mut lines = self
+            .transcript
+            .iter()
+            .cloned()
+            .map(Line::raw)
+            .collect::<Vec<_>>();
+        let transport = self.session.transport_snapshot();
+        lines.push(Line::from(vec![
+            Span::raw("Transport: "),
+            Span::styled(
+                format_transport_status(&transport),
+                transport_status_style(&transport),
+            ),
+        ]));
+        lines.push(Line::raw(format!("> {}", self.display_input_with_cursor())));
+        lines.push(Line::raw(self.input_hint()));
+        Text::from(lines)
     }
 
     fn transport_body(&self) -> String {
@@ -648,6 +671,15 @@ const fn format_transport_status(snapshot: &orpheus_dsp::TransportSnapshot) -> &
     }
 }
 
+fn transport_status_style(snapshot: &orpheus_dsp::TransportSnapshot) -> Style {
+    let color = if snapshot.is_playing() {
+        Color::Green
+    } else {
+        Color::Yellow
+    };
+    Style::default().fg(color).add_modifier(Modifier::BOLD)
+}
+
 struct TerminalGuard;
 
 impl TerminalGuard {
@@ -674,6 +706,7 @@ mod tests {
     use orpheus_dsp::EngineHandle;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
+    use ratatui::style::{Color, Modifier};
 
     use super::{SessionTui, buffer_to_string, handle_key_event, render_session_frame};
 
@@ -702,6 +735,38 @@ mod tests {
             kind: KeyEventKind::Press,
             state: crossterm::event::KeyEventState::NONE,
         }
+    }
+
+    #[test]
+    fn repl_transport_state_uses_distinct_styles() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+
+        let playing_buffer = render_buffer_for_test(&app, 80, 24);
+        let (playing_line_x, playing_y) =
+            find_text_in_buffer(&playing_buffer, "Transport: playing")
+                .unwrap_or_else(|| panic!("rendered repl should contain playing status"));
+        let playing_x = playing_line_x
+            + u16::try_from("Transport: ".len()).unwrap_or_else(|error| {
+                panic!("transport prefix length should fit in u16: {error}")
+            });
+        let playing_cell = &playing_buffer[(playing_x, playing_y)];
+        assert_eq!(playing_cell.fg, Color::Green);
+        assert!(playing_cell.modifier.contains(Modifier::BOLD));
+
+        handle_key_event(&mut app, press(KeyCode::Char(' ')));
+        let _ = app.session.render_test_block_for_tui(1);
+
+        let stopped_buffer = render_buffer_for_test(&app, 80, 24);
+        let (stopped_line_x, stopped_y) =
+            find_text_in_buffer(&stopped_buffer, "Transport: stopped")
+                .unwrap_or_else(|| panic!("rendered repl should contain stopped status"));
+        let stopped_x = stopped_line_x
+            + u16::try_from("Transport: ".len()).unwrap_or_else(|error| {
+                panic!("transport prefix length should fit in u16: {error}")
+            });
+        let stopped_cell = &stopped_buffer[(stopped_x, stopped_y)];
+        assert_eq!(stopped_cell.fg, Color::Yellow);
+        assert!(stopped_cell.modifier.contains(Modifier::BOLD));
     }
 
     #[test]
@@ -1157,5 +1222,34 @@ mod tests {
             .draw(|frame| render_session_frame(frame, app))
             .unwrap_or_else(|error| panic!("test backend should render one frame: {error}"));
         buffer_to_string(terminal.backend().buffer())
+    }
+
+    fn render_buffer_for_test(
+        app: &SessionTui,
+        width: u16,
+        height: u16,
+    ) -> ratatui::buffer::Buffer {
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend)
+            .unwrap_or_else(|error| panic!("test backend should create a terminal: {error}"));
+        terminal
+            .draw(|frame| render_session_frame(frame, app))
+            .unwrap_or_else(|error| panic!("test backend should render one frame: {error}"));
+        terminal.backend().buffer().clone()
+    }
+
+    fn find_text_in_buffer(buffer: &ratatui::buffer::Buffer, needle: &str) -> Option<(u16, u16)> {
+        for y in 0..buffer.area.height {
+            let mut line = String::new();
+            for x in 0..buffer.area.width {
+                line.push_str(buffer[(x, y)].symbol());
+            }
+            if let Some(x) = line.find(needle) {
+                let x = u16::try_from(x)
+                    .unwrap_or_else(|error| panic!("needle offset should fit in u16: {error}"));
+                return Some((x, y));
+            }
+        }
+        None
     }
 }
