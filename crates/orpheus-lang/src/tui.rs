@@ -21,6 +21,13 @@ use crate::repl::{ReplSession, TransportView};
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const STATUS_TOAST_TTL: Duration = Duration::from_secs(3);
 const MIN_BINDING_LEGEND_ROWS: usize = 6;
+const FULL_KEY_LEGEND: &str = "? help   Space toggle(empty)   PgUp/PgDn bindings";
+const MEDIUM_KEY_LEGEND: &str = "? help   Space   PgUp/PgDn";
+const COMPACT_KEY_LEGEND: &str = "? Space Pg";
+const FULL_HELP_FOOTER: &str = "Esc close   ? toggle   Ctrl-C quit";
+const MEDIUM_HELP_FOOTER: &str = "Esc close   ?   Ctrl-C";
+const COMPACT_HELP_FOOTER: &str = "Esc ? Ctrl-C";
+const MIN_HELP_FOOTER: &str = "Esc ?";
 const COMMAND_HINTS: [(&str, &str); 5] = [
     (":play", ":play"),
     (":quit", ":quit"),
@@ -194,7 +201,7 @@ fn render_session_frame(frame: &mut Frame<'_>, app: &SessionTui) {
     }
 
     frame.render_widget(
-        Paragraph::new(app.frame_footer_line())
+        Paragraph::new(app.frame_footer_line(footer.width))
             .style(frame_footer_style(app.show_help))
             .wrap(Wrap { trim: false }),
         footer,
@@ -393,36 +400,14 @@ impl SessionTui {
     }
 
     const fn help_overlay_footer() -> &'static str {
-        "Esc close   ? toggle   Ctrl-C quit"
+        FULL_HELP_FOOTER
     }
 
-    const fn key_legend_text() -> &'static str {
-        "? help   Space toggle(empty)   PgUp/PgDn bindings"
-    }
-
-    fn frame_footer_line(&self) -> Line<'static> {
+    fn frame_footer_line(&self, width: u16) -> Line<'static> {
         if self.show_help {
-            Line::styled(Self::help_overlay_footer(), help_overlay_footer_style())
+            help_footer_line(width)
         } else {
-            let transport = self.session.transport_view();
-            Line::from(vec![
-                Span::styled(Self::key_legend_text(), key_legend_style()),
-                Span::styled(" | ", key_legend_style()),
-                Span::styled(
-                    format_transport_status(&transport).to_owned(),
-                    transport_status_style(&transport),
-                ),
-                Span::styled(" | ", key_legend_style()),
-                Span::styled(
-                    format!("{} BPM", format_tempo_bpm(transport.snapshot())),
-                    key_legend_style(),
-                ),
-                Span::styled(" | ", key_legend_style()),
-                Span::styled(
-                    format_cycle_position(transport.snapshot()),
-                    key_legend_style(),
-                ),
-            ])
+            normal_footer_line(width, &self.session.transport_view())
         }
     }
 
@@ -858,6 +843,129 @@ fn frame_footer_style(show_help: bool) -> Style {
     } else {
         key_legend_style()
     }
+}
+
+#[derive(Clone, Copy)]
+struct FooterCandidate<'a> {
+    legend: Option<&'a str>,
+    tempo: Option<&'a str>,
+    cycle: Option<&'a str>,
+}
+
+impl<'a> FooterCandidate<'a> {
+    const fn new(legend: Option<&'a str>, tempo: Option<&'a str>, cycle: Option<&'a str>) -> Self {
+        Self {
+            legend,
+            tempo,
+            cycle,
+        }
+    }
+
+    const fn width(&self, state: &str) -> usize {
+        let mut width = 0;
+        if let Some(legend) = self.legend {
+            width += legend.len();
+        }
+        width = footer_width_with_optional_segment(width, state.len());
+        if let Some(tempo) = self.tempo {
+            width = footer_width_with_optional_segment(width, tempo.len());
+        }
+        if let Some(cycle) = self.cycle {
+            width = footer_width_with_optional_segment(width, cycle.len());
+        }
+        width
+    }
+
+    fn render(self, state: &str, transport: &TransportView) -> Line<'static> {
+        let mut spans = Vec::new();
+        if let Some(legend) = self.legend {
+            spans.push(Span::styled(legend.to_owned(), key_legend_style()));
+        }
+        push_footer_segment(
+            &mut spans,
+            Span::styled(state.to_owned(), transport_status_style(transport)),
+        );
+        if let Some(tempo) = self.tempo {
+            push_footer_segment(
+                &mut spans,
+                Span::styled(tempo.to_owned(), key_legend_style()),
+            );
+        }
+        if let Some(cycle) = self.cycle {
+            push_footer_segment(
+                &mut spans,
+                Span::styled(cycle.to_owned(), key_legend_style()),
+            );
+        }
+        Line::from(spans)
+    }
+}
+
+fn help_footer_line(width: u16) -> Line<'static> {
+    let width = usize::from(width);
+    for footer in [
+        FULL_HELP_FOOTER,
+        MEDIUM_HELP_FOOTER,
+        COMPACT_HELP_FOOTER,
+        MIN_HELP_FOOTER,
+    ] {
+        if footer.len() <= width {
+            return Line::styled(footer, help_overlay_footer_style());
+        }
+    }
+    Line::styled("?", help_overlay_footer_style())
+}
+
+fn normal_footer_line(width: u16, transport: &TransportView) -> Line<'static> {
+    let state = format_transport_status(transport).to_owned();
+    let tempo_full = format!("{} BPM", format_tempo_bpm(transport.snapshot()));
+    let tempo_compact = format_tempo_bpm(transport.snapshot());
+    let cycle = format_cycle_position(transport.snapshot());
+    let width = usize::from(width);
+    let candidates = [
+        FooterCandidate::new(
+            Some(FULL_KEY_LEGEND),
+            Some(tempo_full.as_str()),
+            Some(cycle.as_str()),
+        ),
+        FooterCandidate::new(
+            Some(MEDIUM_KEY_LEGEND),
+            Some(tempo_full.as_str()),
+            Some(cycle.as_str()),
+        ),
+        FooterCandidate::new(
+            Some(COMPACT_KEY_LEGEND),
+            Some(tempo_full.as_str()),
+            Some(cycle.as_str()),
+        ),
+        FooterCandidate::new(None, Some(tempo_full.as_str()), Some(cycle.as_str())),
+        FooterCandidate::new(None, Some(tempo_compact.as_str()), Some(cycle.as_str())),
+        FooterCandidate::new(None, None, Some(cycle.as_str())),
+        FooterCandidate::new(None, None, None),
+    ];
+
+    for candidate in candidates {
+        if candidate.width(&state) <= width {
+            return candidate.render(&state, transport);
+        }
+    }
+
+    Line::styled(state, transport_status_style(transport))
+}
+
+const fn footer_width_with_optional_segment(existing_width: usize, segment_width: usize) -> usize {
+    if existing_width == 0 {
+        segment_width
+    } else {
+        existing_width + 3 + segment_width
+    }
+}
+
+fn push_footer_segment(spans: &mut Vec<Span<'static>>, span: Span<'static>) {
+    if !spans.is_empty() {
+        spans.push(Span::styled(" | ", key_legend_style()));
+    }
+    spans.push(span);
 }
 
 fn format_cycle_position(snapshot: &orpheus_dsp::TransportSnapshot) -> String {
@@ -1781,6 +1889,31 @@ mod tests {
         let footer_line = buffer_line(&buffer, 23);
         assert!(footer_line.contains("0.500"));
         assert!(footer_line.contains("playing"));
+    }
+
+    #[test]
+    fn narrow_footer_uses_compact_legend_but_keeps_transport_metrics() {
+        let app = SessionTui::new(EngineHandle::stub());
+
+        let buffer = render_buffer_for_test(&app, 48, 24);
+        let footer_line = buffer_line(&buffer, 23);
+        assert!(footer_line.contains("? Space Pg"));
+        assert!(footer_line.contains("playing"));
+        assert!(footer_line.contains("120 BPM"));
+        assert!(footer_line.contains("0.000"));
+        assert!(!footer_line.contains("toggle(empty)"));
+    }
+
+    #[test]
+    fn narrow_help_footer_compacts_close_controls() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        handle_key_event(&mut app, press(KeyCode::Char('?')));
+
+        let buffer = render_buffer_for_test(&app, 16, 24);
+        let footer_line = buffer_line(&buffer, 23);
+        assert!(footer_line.contains("Esc ? Ctrl-C"));
+        assert!(!footer_line.contains("toggle"));
+        assert!(!footer_line.contains("close"));
     }
 
     #[test]
