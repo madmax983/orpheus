@@ -186,14 +186,7 @@ fn render_session_frame(frame: &mut Frame<'_>, app: &SessionTui) {
     );
 
     if app.show_help {
-        let overlay_area = centered_rect(frame.area(), 68, 60);
-        frame.render_widget(Clear, overlay_area);
-        frame.render_widget(
-            Paragraph::new(SessionTui::help_overlay_body())
-                .block(Block::default().title("Help").borders(Borders::ALL))
-                .wrap(Wrap { trim: false }),
-            overlay_area,
-        );
+        render_help_overlay(frame);
     }
 }
 
@@ -724,6 +717,76 @@ fn centered_rect(area: Rect, width_percent: u16, height_percent: u16) -> Rect {
     horizontal
 }
 
+fn render_help_overlay(frame: &mut Frame<'_>) {
+    let overlay_area = centered_rect(frame.area(), 68, 60);
+    render_modal_backdrop(frame, overlay_area);
+    frame.render_widget(Clear, overlay_area);
+    let border_style = help_overlay_border_style();
+    frame.render_widget(
+        Paragraph::new(SessionTui::help_overlay_body())
+            .style(Style::default().bg(Color::Black))
+            .block(
+                Block::default()
+                    .title("Help")
+                    .title_style(border_style)
+                    .border_style(border_style)
+                    .borders(Borders::ALL),
+            )
+            .wrap(Wrap { trim: false }),
+        overlay_area,
+    );
+}
+
+fn render_modal_backdrop(frame: &mut Frame<'_>, overlay_area: Rect) {
+    let backdrop_style = Style::default().bg(Color::DarkGray);
+    for area in modal_backdrop_areas(frame.area(), overlay_area) {
+        if area.width == 0 || area.height == 0 {
+            continue;
+        }
+        frame.render_widget(Block::default().style(backdrop_style), area);
+    }
+}
+
+const fn modal_backdrop_areas(area: Rect, overlay_area: Rect) -> [Rect; 4] {
+    let area_bottom = area.y.saturating_add(area.height);
+    let area_right = area.x.saturating_add(area.width);
+    let overlay_bottom = overlay_area.y.saturating_add(overlay_area.height);
+    let overlay_right = overlay_area.x.saturating_add(overlay_area.width);
+
+    [
+        Rect::new(
+            area.x,
+            area.y,
+            area.width,
+            overlay_area.y.saturating_sub(area.y),
+        ),
+        Rect::new(
+            area.x,
+            overlay_bottom,
+            area.width,
+            area_bottom.saturating_sub(overlay_bottom),
+        ),
+        Rect::new(
+            area.x,
+            overlay_area.y,
+            overlay_area.x.saturating_sub(area.x),
+            overlay_area.height,
+        ),
+        Rect::new(
+            overlay_right,
+            overlay_area.y,
+            area_right.saturating_sub(overlay_right),
+            overlay_area.height,
+        ),
+    ]
+}
+
+fn help_overlay_border_style() -> Style {
+    Style::default()
+        .fg(Color::Cyan)
+        .add_modifier(Modifier::BOLD)
+}
+
 fn format_cycle_position(snapshot: &orpheus_dsp::TransportSnapshot) -> String {
     let frames_per_cycle = snapshot.frames_per_cycle();
     if frames_per_cycle == 0 {
@@ -894,9 +957,12 @@ mod tests {
     use orpheus_dsp::EngineHandle;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
+    use ratatui::layout::Rect;
     use ratatui::style::{Color, Modifier};
 
-    use super::{SessionTui, buffer_to_string, handle_key_event, render_session_frame};
+    use super::{
+        SessionTui, buffer_to_string, centered_rect, handle_key_event, render_session_frame,
+    };
 
     fn press(code: KeyCode) -> KeyEvent {
         KeyEvent {
@@ -1522,6 +1588,22 @@ mod tests {
         handle_key_event(&mut app, press(KeyCode::Char('?')));
         handle_key_event(&mut app, ctrl(KeyCode::Char('c')));
         assert!(app.should_quit);
+    }
+
+    #[test]
+    fn help_overlay_renders_modal_backdrop_and_accented_border() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        handle_key_event(&mut app, press(KeyCode::Char('?')));
+
+        let buffer = render_buffer_for_test(&app, 80, 24);
+        let overlay_area = centered_rect(Rect::new(0, 0, 80, 24), 68, 60);
+
+        let backdrop_cell = &buffer[(0, 0)];
+        assert_eq!(backdrop_cell.bg, Color::DarkGray);
+
+        let border_cell = &buffer[(overlay_area.x, overlay_area.y)];
+        assert_eq!(border_cell.fg, Color::Cyan);
+        assert!(border_cell.modifier.contains(Modifier::BOLD));
     }
 
     #[test]
