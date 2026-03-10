@@ -194,7 +194,7 @@ fn render_session_frame(frame: &mut Frame<'_>, app: &SessionTui) {
     }
 
     frame.render_widget(
-        Paragraph::new(app.frame_footer_text())
+        Paragraph::new(app.frame_footer_line())
             .style(frame_footer_style(app.show_help))
             .wrap(Wrap { trim: false }),
         footer,
@@ -400,11 +400,19 @@ impl SessionTui {
         "? help   Space toggle(empty)   PgUp/PgDn bindings"
     }
 
-    const fn frame_footer_text(&self) -> &'static str {
+    fn frame_footer_line(&self) -> Line<'static> {
         if self.show_help {
-            Self::help_overlay_footer()
+            Line::styled(Self::help_overlay_footer(), help_overlay_footer_style())
         } else {
-            Self::key_legend_text()
+            let transport = self.session.transport_view();
+            Line::from(vec![
+                Span::styled(Self::key_legend_text(), key_legend_style()),
+                Span::styled(" | ", key_legend_style()),
+                Span::styled(
+                    format_transport_status(&transport).to_owned(),
+                    transport_status_style(&transport),
+                ),
+            ])
         }
     }
 
@@ -1693,6 +1701,47 @@ mod tests {
         assert!(footer_line.contains("? toggle"));
         assert!(footer_line.contains("Ctrl-C quit"));
         assert!(!footer_line.contains("Space toggle"));
+    }
+
+    #[test]
+    fn main_footer_shows_live_transport_state() {
+        let app = SessionTui::new(EngineHandle::stub());
+
+        let buffer = render_buffer_for_test(&app, 80, 24);
+        let footer_line = buffer_line(&buffer, 23);
+        assert!(footer_line.contains("? help"));
+        assert!(footer_line.contains("Space toggle"));
+        assert!(footer_line.contains("playing"));
+
+        let playing_x = footer_line
+            .find("playing")
+            .and_then(|x| u16::try_from(x).ok())
+            .unwrap_or_else(|| panic!("footer should contain playing status"));
+        let playing_cell = &buffer[(playing_x, 23)];
+        assert_eq!(playing_cell.fg, Color::Green);
+        assert!(playing_cell.modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn stopped_transport_updates_footer_state_accent() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = "drums = bd sn".to_owned();
+        app.submit_line();
+        let _ = app.session.render_test_block_for_tui(256);
+        handle_key_event(&mut app, press(KeyCode::Char(' ')));
+        let _ = app.session.render_test_block_for_tui(1);
+
+        let buffer = render_buffer_for_test(&app, 80, 24);
+        let footer_line = buffer_line(&buffer, 23);
+        assert!(footer_line.contains("stopped"));
+
+        let stopped_x = footer_line
+            .find("stopped")
+            .and_then(|x| u16::try_from(x).ok())
+            .unwrap_or_else(|| panic!("footer should contain stopped status"));
+        let stopped_cell = &buffer[(stopped_x, 23)];
+        assert_eq!(stopped_cell.fg, Color::Yellow);
+        assert!(stopped_cell.modifier.contains(Modifier::BOLD));
     }
 
     #[test]
