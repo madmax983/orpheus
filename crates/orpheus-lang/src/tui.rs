@@ -417,6 +417,11 @@ impl SessionTui {
                     format!("{} BPM", format_tempo_bpm(transport.snapshot())),
                     key_legend_style(),
                 ),
+                Span::styled(" | ", key_legend_style()),
+                Span::styled(
+                    format_cycle_position(transport.snapshot()),
+                    key_legend_style(),
+                ),
             ])
         }
     }
@@ -1718,6 +1723,7 @@ mod tests {
         assert!(footer_line.contains("Space toggle"));
         assert!(footer_line.contains("playing"));
         assert!(footer_line.contains("120 BPM"));
+        assert!(footer_line.contains("0.000"));
 
         let playing_x = footer_line
             .find("playing")
@@ -1760,6 +1766,20 @@ mod tests {
         let buffer = render_buffer_for_test(&app, 80, 24);
         let footer_line = buffer_line(&buffer, 23);
         assert!(footer_line.contains("90 BPM"));
+        assert!(footer_line.contains("playing"));
+    }
+
+    #[test]
+    fn render_progress_updates_footer_cycle_readout() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = "drums = bd sn".to_owned();
+        app.submit_line();
+        let frames_per_cycle = app.session.transport_snapshot().frames_per_cycle();
+        let _ = app.session.render_test_block_for_tui(frames_per_cycle / 2);
+
+        let buffer = render_buffer_for_test(&app, 80, 24);
+        let footer_line = buffer_line(&buffer, 23);
+        assert!(footer_line.contains("0.500"));
         assert!(footer_line.contains("playing"));
     }
 
