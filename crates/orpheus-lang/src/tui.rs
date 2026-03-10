@@ -163,7 +163,7 @@ fn render_session_frame(frame: &mut Frame<'_>, app: &SessionTui) {
     );
 
     frame.render_widget(
-        Paragraph::new(app.transport_body())
+        Paragraph::new(app.transport_text())
             .block(Block::default().title("Transport").borders(Borders::ALL))
             .wrap(Wrap { trim: false }),
         right,
@@ -302,28 +302,34 @@ impl SessionTui {
         Text::from(lines)
     }
 
-    fn transport_body(&self) -> String {
+    fn transport_text(&self) -> Text<'static> {
         let transport = self.session.transport_snapshot();
         let mut lines = vec![
-            format!("Status: {}", format_transport_status(&transport)),
-            format!("Tempo: {} BPM", format_tempo_bpm(&transport)),
-            format!("Cycle: {}", format_cycle_position(&transport)),
-            format!(
+            Line::from(vec![
+                Span::raw("Status: "),
+                Span::styled(
+                    format_transport_status(&transport),
+                    transport_status_style(&transport),
+                ),
+            ]),
+            Line::raw(format!("Tempo: {} BPM", format_tempo_bpm(&transport))),
+            Line::raw(format!("Cycle: {}", format_cycle_position(&transport))),
+            Line::raw(format!(
                 "Pattern: {}",
                 self.session.last_loaded_pattern_name().unwrap_or("none")
-            ),
-            "Space: toggle".to_owned(),
-            "empty input only".to_owned(),
-            "Transport: :play / :stop".to_owned(),
-            "Set: :tempo <bpm>".to_owned(),
-            "Export: :render <binding> <path> [cycles]".to_owned(),
-            "Help: ?".to_owned(),
+            )),
+            Line::raw("Space: toggle"),
+            Line::raw("empty input only"),
+            Line::raw("Transport: :play / :stop"),
+            Line::raw("Set: :tempo <bpm>"),
+            Line::raw("Export: :render <binding> <path> [cycles]"),
+            Line::raw("Help: ?"),
         ];
         if let Some(message) = &self.status_message {
-            lines.push(format!("Note: {message}"));
+            lines.push(Line::raw(format!("Note: {message}")));
         }
-        lines.push("Quit: Esc or :quit".to_owned());
-        lines.join("\n")
+        lines.push(Line::raw("Quit: Esc or :quit"));
+        Text::from(lines)
     }
 
     const fn help_overlay_body() -> &'static str {
@@ -1170,6 +1176,34 @@ mod tests {
         assert!(app.status_expires_at.is_none());
         let frame = render_frame_for_test(&app, 80, 24);
         assert!(!frame.contains("Note:"));
+    }
+
+    #[test]
+    fn transport_status_uses_distinct_styles() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+
+        let playing_buffer = render_buffer_for_test(&app, 80, 24);
+        let (playing_line_x, playing_y) = find_text_in_buffer(&playing_buffer, "Status: playing")
+            .unwrap_or_else(|| panic!("rendered transport should contain playing status"));
+        let playing_x = playing_line_x
+            + u16::try_from("Status: ".len())
+                .unwrap_or_else(|error| panic!("status prefix length should fit in u16: {error}"));
+        let playing_cell = &playing_buffer[(playing_x, playing_y)];
+        assert_eq!(playing_cell.fg, Color::Green);
+        assert!(playing_cell.modifier.contains(Modifier::BOLD));
+
+        handle_key_event(&mut app, press(KeyCode::Char(' ')));
+        let _ = app.session.render_test_block_for_tui(1);
+
+        let stopped_buffer = render_buffer_for_test(&app, 80, 24);
+        let (stopped_line_x, stopped_y) = find_text_in_buffer(&stopped_buffer, "Status: stopped")
+            .unwrap_or_else(|| panic!("rendered transport should contain stopped status"));
+        let stopped_x = stopped_line_x
+            + u16::try_from("Status: ".len())
+                .unwrap_or_else(|error| panic!("status prefix length should fit in u16: {error}"));
+        let stopped_cell = &stopped_buffer[(stopped_x, stopped_y)];
+        assert_eq!(stopped_cell.fg, Color::Yellow);
+        assert!(stopped_cell.modifier.contains(Modifier::BOLD));
     }
 
     #[test]
