@@ -88,14 +88,24 @@ fn handle_key_event(app: &mut SessionTui, key: KeyEvent) {
         return;
     }
 
+    if app.show_help {
+        match key.code {
+            KeyCode::Esc => app.close_help(),
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                app.should_quit = true;
+            }
+            KeyCode::Char('?') if key.modifiers.is_empty() => app.toggle_help(),
+            _ => {}
+        }
+        return;
+    }
+
     match key.code {
-        KeyCode::Esc if app.show_help => app.close_help(),
         KeyCode::Esc => app.should_quit = true,
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.should_quit = true;
         }
         KeyCode::Char('?') => app.toggle_help(),
-        KeyCode::Char(' ') if key.modifiers.is_empty() && app.show_help => {}
         KeyCode::Char(' ') if key.modifiers.is_empty() && app.input.is_empty() => {
             app.toggle_transport_hotkey();
         }
@@ -1469,6 +1479,49 @@ mod tests {
         assert!(!normal_frame.contains("Toggle: ?"));
         assert!(!normal_frame.contains("Words: Alt-B/F"));
         assert!(normal_frame.contains("Help: ?"));
+    }
+
+    #[test]
+    fn help_overlay_is_modal_and_swallows_editing_and_scroll_keys() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        for index in 0..12 {
+            app.input = format!("b{index:02} = fast(2)");
+            app.submit_line();
+        }
+        let bindings_before = app.session.binding_summaries();
+        let transcript_before = app.transcript.clone();
+        app.input = "bd".to_owned();
+        app.cursor_index = app.input.len();
+
+        handle_key_event(&mut app, press(KeyCode::Char('?')));
+        handle_key_event(&mut app, press(KeyCode::PageDown));
+        handle_key_event(&mut app, press(KeyCode::Char('x')));
+        handle_key_event(&mut app, press(KeyCode::Backspace));
+        handle_key_event(&mut app, press(KeyCode::Enter));
+
+        assert!(app.show_help);
+        assert_eq!(app.input, "bd");
+        assert_eq!(app.cursor_index, 2);
+        assert_eq!(app.bindings_scroll, 0);
+        assert_eq!(app.transcript, transcript_before);
+        assert_eq!(app.session.binding_summaries(), bindings_before);
+        assert!(!app.should_quit);
+    }
+
+    #[test]
+    fn help_overlay_allows_question_mark_toggle_and_ctrl_c_quit() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+
+        handle_key_event(&mut app, press(KeyCode::Char('?')));
+        assert!(app.show_help);
+
+        handle_key_event(&mut app, press(KeyCode::Char('?')));
+        assert!(!app.show_help);
+        assert_eq!(app.status_message.as_deref(), Some("help overlay hidden"));
+
+        handle_key_event(&mut app, press(KeyCode::Char('?')));
+        handle_key_event(&mut app, ctrl(KeyCode::Char('c')));
+        assert!(app.should_quit);
     }
 
     #[test]
