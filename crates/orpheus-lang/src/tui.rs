@@ -17,7 +17,6 @@ use crate::repl::ReplSession;
 
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const STATUS_TOAST_TTL: Duration = Duration::from_secs(3);
-const DEFAULT_TEMPO_BPM: u32 = 120;
 const COMMAND_HINTS: [(&str, &str); 2] = [
     (":quit", ":quit"),
     (":render", ":render <binding> <path> [cycles]"),
@@ -273,7 +272,7 @@ impl SessionTui {
         let transport = self.session.transport_snapshot();
         let mut lines = vec![
             "Status: live shell".to_owned(),
-            format!("Tempo: {DEFAULT_TEMPO_BPM} BPM"),
+            format!("Tempo: {} BPM", format_tempo_bpm(&transport)),
             format!("Cycle: {}", format_cycle_position(&transport)),
             format!(
                 "Pattern: {}",
@@ -604,6 +603,15 @@ fn format_cycle_position(snapshot: &orpheus_dsp::TransportSnapshot) -> String {
     format!("{cycle_index}.{progress_millis:03}")
 }
 
+fn format_tempo_bpm(snapshot: &orpheus_dsp::TransportSnapshot) -> String {
+    let tempo_bpm = snapshot.tempo_bpm();
+    if tempo_bpm.fract().abs() < f32::EPSILON {
+        format!("{tempo_bpm:.0}")
+    } else {
+        format!("{tempo_bpm:.1}")
+    }
+}
+
 struct TerminalGuard;
 
 impl TerminalGuard {
@@ -627,7 +635,7 @@ mod tests {
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-    use orpheus_dsp::EngineHandle;
+    use orpheus_dsp::{EngineCommand, EngineHandle};
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
@@ -1036,6 +1044,17 @@ mod tests {
         let frame = render_frame_for_test(&app, 80, 24);
         assert!(frame.contains("Pattern: drums"));
         assert!(frame.contains("Cycle: 0.500"));
+    }
+
+    #[test]
+    fn transport_reports_live_engine_tempo() {
+        let mut engine = EngineHandle::stub();
+        engine.enqueue(EngineCommand::SetTempo(90.0)).unwrap();
+        let mut app = SessionTui::new(engine);
+        let _ = app.session.render_test_block_for_tui(1);
+
+        let frame = render_frame_for_test(&app, 80, 24);
+        assert!(frame.contains("Tempo: 90 BPM"));
     }
 
     fn render_frame_for_test(app: &SessionTui, width: u16, height: u16) -> String {

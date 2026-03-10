@@ -2,7 +2,7 @@ use cpal::{BufferSize, SampleRate, StreamConfig};
 use orpheus_pattern::Event;
 use rtrb::{Consumer, Producer};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use thiserror::Error;
 
 use crate::command::{EngineCommand, PatternUpdate, new_command_queue};
@@ -22,6 +22,7 @@ pub struct TransportSnapshot {
     current_frame: u64,
     current_cycle_start_frame: u64,
     frames_per_cycle: u64,
+    tempo_bpm_bits: u32,
 }
 
 impl TransportSnapshot {
@@ -39,6 +40,11 @@ impl TransportSnapshot {
     pub const fn frames_per_cycle(&self) -> u64 {
         self.frames_per_cycle
     }
+
+    #[must_use]
+    pub const fn tempo_bpm(&self) -> f32 {
+        f32::from_bits(self.tempo_bpm_bits)
+    }
 }
 
 #[derive(Debug, Default)]
@@ -46,6 +52,7 @@ struct SharedTransport {
     current_frame: AtomicU64,
     current_cycle_start_frame: AtomicU64,
     frames_per_cycle: AtomicU64,
+    tempo_bpm_bits: AtomicU32,
 }
 
 impl SharedTransport {
@@ -56,6 +63,8 @@ impl SharedTransport {
             .store(core.current_cycle_start_frame, Ordering::Relaxed);
         self.frames_per_cycle
             .store(core.frames_per_cycle, Ordering::Relaxed);
+        self.tempo_bpm_bits
+            .store(core.tempo_bpm.to_bits(), Ordering::Relaxed);
     }
 
     fn snapshot(&self) -> TransportSnapshot {
@@ -63,6 +72,7 @@ impl SharedTransport {
             current_frame: self.current_frame.load(Ordering::Relaxed),
             current_cycle_start_frame: self.current_cycle_start_frame.load(Ordering::Relaxed),
             frames_per_cycle: self.frames_per_cycle.load(Ordering::Relaxed),
+            tempo_bpm_bits: self.tempo_bpm_bits.load(Ordering::Relaxed),
         }
     }
 }
@@ -94,6 +104,7 @@ struct EngineCore {
     sample_rate: u32,
     channels: usize,
     current_frame: u64,
+    tempo_bpm: f32,
     frames_per_cycle: u64,
     current_cycle_start_frame: u64,
     next_cycle_boundary_frame: u64,
@@ -117,6 +128,7 @@ impl EngineCore {
             sample_rate: config.sample_rate.0,
             channels: usize::from(config.channels),
             current_frame: 0,
+            tempo_bpm: DEFAULT_TEMPO_BPM,
             frames_per_cycle,
             current_cycle_start_frame: 0,
             next_cycle_boundary_frame: frames_per_cycle,
@@ -141,7 +153,9 @@ impl EngineCore {
                 Ok(())
             }
             EngineCommand::SetTempo(tempo_bpm) => {
-                self.frames_per_cycle = frames_per_cycle(self.sample_rate, tempo_bpm)?;
+                let frames_per_cycle = frames_per_cycle(self.sample_rate, tempo_bpm)?;
+                self.tempo_bpm = tempo_bpm;
+                self.frames_per_cycle = frames_per_cycle;
                 if self.current_frame == self.current_cycle_start_frame {
                     self.next_cycle_boundary_frame = self
                         .current_cycle_start_frame

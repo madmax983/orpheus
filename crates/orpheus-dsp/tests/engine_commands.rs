@@ -109,6 +109,28 @@ fn tiny_positive_tempo_returns_error_instead_of_panicking() {
 }
 
 #[test]
+fn invalid_tempo_does_not_poison_future_transport_snapshots() {
+    let (mut handle, mut renderer) = EngineHandle::split_for_test();
+
+    handle
+        .enqueue(EngineCommand::SetTempo(f32::MIN_POSITIVE))
+        .unwrap();
+
+    let mut output = [0.0_f32; 2];
+    let error = renderer.render_into_interleaved(&mut output).unwrap_err();
+    assert!(matches!(error, EngineError::FrameOverflow));
+
+    renderer
+        .render_into_interleaved(&mut output)
+        .unwrap_or_else(|error| panic!("subsequent render should succeed: {error}"));
+
+    assert_eq!(
+        handle.transport_snapshot().tempo_bpm().to_bits(),
+        120.0_f32.to_bits()
+    );
+}
+
+#[test]
 fn split_handle_equality_is_reflexive() {
     let (handle, _renderer) = EngineHandle::split_for_test();
 
@@ -201,5 +223,25 @@ fn transport_snapshot_tracks_current_cycle_progress() {
     assert_eq!(
         snapshot.current_frame(),
         frames_per_cycle + (frames_per_cycle / 4)
+    );
+}
+
+#[test]
+fn transport_snapshot_tracks_tempo_changes() {
+    let mut engine = EngineHandle::stub();
+
+    assert_eq!(
+        engine.transport_snapshot().tempo_bpm().to_bits(),
+        120.0_f32.to_bits()
+    );
+
+    engine.enqueue(EngineCommand::SetTempo(90.0)).unwrap();
+    let _ = engine.render_test_block(1);
+
+    let snapshot = engine.transport_snapshot();
+    assert_eq!(snapshot.tempo_bpm().to_bits(), 90.0_f32.to_bits());
+    assert_eq!(
+        snapshot.frames_per_cycle(),
+        engine.frames_per_cycle_for_test()
     );
 }
