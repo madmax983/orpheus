@@ -15,6 +15,7 @@ version = "0.1.0"
 anyhow = "1"
 cpal = "0.15"
 crossterm = "0.28"
+flacenc = "0.5"
 hound = "3.5"
 orpheus-dsp = { path = "crates/orpheus-dsp" }
 orpheus-lang = { path = "crates/orpheus-lang" }

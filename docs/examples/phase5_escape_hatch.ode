@@ -1,0 +1,18 @@
+verse = meter(4, 4) stream(
+  at(beat(0), bd),
+  at(beat(1), sn),
+  at(beat(2), cp),
+  at(beat(3), sn)
+)
+
+bridge = meter(3, 4) stream(
+  at(beat(0), hh),
+  at(beat(1), hh),
+  at(beat(2), cp)
+)
+
+song = seq_sections(
+  section(verse, 4),
+  section(bridge, 2),
+  section(verse, 4)
+)

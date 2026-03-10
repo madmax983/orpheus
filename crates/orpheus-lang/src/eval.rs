@@ -3,7 +3,7 @@ use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::path::Path;
 
-use orpheus_dsp::{OfflineRenderError, render_events_to_wav};
+use orpheus_dsp::{OfflineRenderError, SampleBank, render_events_to_file_with_bank};
 use orpheus_pattern::{Event, PatternNode, Rational, TimeSpan};
 
 use crate::ReplMode;
@@ -41,7 +41,7 @@ impl From<ParseError> for EvalError {
     }
 }
 
-/// Error raised while rendering an Orpheus sample pattern to a WAV file.
+/// Error raised while rendering an Orpheus sample pattern to an audio file.
 #[derive(Debug)]
 pub enum RenderError {
     Eval(EvalError),
@@ -101,19 +101,38 @@ pub fn eval_into_bindings(
     Ok(last_binding)
 }
 
-/// Renders a sample pattern to a deterministic stereo WAV file.
+/// Renders a sample pattern to a deterministic stereo audio file selected by
+/// the target extension.
 ///
-/// The current export path renders with the same built-in voices as the live
-/// engine at the default v0 transport settings.
+/// Supported extensions:
+/// - `.wav`
+/// - `.flac`
 ///
 /// # Errors
 ///
 /// Returns [`RenderError`] if pattern querying fails or if the offline audio
-/// renderer cannot write the target WAV file.
-pub fn render_sample_pattern_to_wav(
+/// renderer cannot write the target file.
+pub fn render_sample_pattern_to_file(
     pattern: &SamplePatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,
+) -> Result<(), RenderError> {
+    let sample_bank = SampleBank::load_builtin();
+    render_sample_pattern_to_file_with_bank(pattern, path, cycle_count, &sample_bank)
+}
+
+/// Renders a sample pattern to a deterministic stereo audio file using the
+/// supplied sample bank overrides.
+///
+/// # Errors
+///
+/// Returns [`RenderError`] if pattern querying fails or if the offline audio
+/// renderer cannot write the target file.
+pub fn render_sample_pattern_to_file_with_bank(
+    pattern: &SamplePatternValue,
+    path: impl AsRef<Path>,
+    cycle_count: u64,
+    sample_bank: &SampleBank,
 ) -> Result<(), RenderError> {
     if cycle_count == 0 {
         return Err(EvalError::new("rendering requires at least one cycle").into());
@@ -130,8 +149,22 @@ pub fn render_sample_pattern_to_wav(
         })
         .collect::<Vec<_>>();
 
-    render_events_to_wav(path, &rendered_events, cycle_count)?;
+    render_events_to_file_with_bank(path, &rendered_events, cycle_count, sample_bank)?;
     Ok(())
+}
+
+/// Renders a sample pattern to a deterministic stereo WAV file.
+///
+/// # Errors
+///
+/// Returns [`RenderError`] if pattern querying fails or if the offline audio
+/// renderer cannot write the target WAV file.
+pub fn render_sample_pattern_to_wav(
+    pattern: &SamplePatternValue,
+    path: impl AsRef<Path>,
+    cycle_count: u64,
+) -> Result<(), RenderError> {
+    render_sample_pattern_to_file(pattern, path, cycle_count)
 }
 
 struct Evaluator {

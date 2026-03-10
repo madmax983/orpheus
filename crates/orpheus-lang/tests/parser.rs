@@ -95,6 +95,29 @@ fn parses_function_calls_with_numeric_arguments() {
 }
 
 #[test]
+fn parses_meter_annotation_prefix_form() {
+    let expr = binding_expr("bridge = meter(4, 4) stream(at(beat(0), bd), at(beat(2), sn))");
+
+    assert_eq!(
+        expr,
+        Expr::Meter {
+            beats: Box::new(Expr::Number(4.0)),
+            unit: Box::new(Expr::Number(4.0)),
+            pattern: Box::new(Expr::Stream(vec![
+                Expr::At {
+                    start: Box::new(Expr::Beat(Box::new(Expr::Number(0.0)))),
+                    pattern: Box::new(Expr::Ident("bd".to_owned())),
+                },
+                Expr::At {
+                    start: Box::new(Expr::Beat(Box::new(Expr::Number(2.0)))),
+                    pattern: Box::new(Expr::Ident("sn".to_owned())),
+                },
+            ])),
+        }
+    );
+}
+
+#[test]
 fn rejects_bindings_without_equals() {
     assert_parse_error_contains("drums bd sn", &["="]);
 }

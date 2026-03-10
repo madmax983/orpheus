@@ -1,7 +1,11 @@
 use orpheus_dsp::{
     EngineCommand, EngineError, EngineHandle, PatternUpdate, load_builtin_sample_for_test,
+    load_sample_bank_from_directory,
 };
 use orpheus_pattern::{Event, Rational, TimeSpan};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]
 fn pattern_swap_is_deferred_until_cycle_boundary() {
@@ -341,4 +345,86 @@ fn transport_snapshot_tracks_tempo_changes() {
         snapshot.frames_per_cycle(),
         engine.frames_per_cycle_for_test()
     );
+}
+
+#[test]
+fn sample_bank_reload_waits_until_cycle_boundary() {
+    let mut engine = EngineHandle::stub();
+    let directory = temp_directory("sample-bank-reload");
+    write_wav(directory.join("bd.wav"), &[0.1, 0.0, 0.0, 0.0]);
+    let first_bank = load_sample_bank_from_directory(&directory).unwrap();
+    engine
+        .enqueue(EngineCommand::ReplaceSampleBank(first_bank))
+        .unwrap();
+
+    let half = Rational::new(1, 2).unwrap();
+    let pattern = PatternUpdate::new(
+        "drums",
+        vec![
+            Event {
+                whole: None,
+                part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+                value: Box::<str>::from("bd"),
+            },
+            Event {
+                whole: None,
+                part: TimeSpan::new(half, Rational::new(3, 4).unwrap()).unwrap(),
+                value: Box::<str>::from("bd"),
+            },
+        ],
+    );
+    engine.enqueue(EngineCommand::LoadPattern(pattern)).unwrap();
+
+    let first_trigger = engine.render_test_block(4);
+    assert!((first_trigger[0] - 0.1).abs() < f32::EPSILON);
+    assert!((first_trigger[1] - 0.1).abs() < f32::EPSILON);
+
+    write_wav(directory.join("bd.wav"), &[0.9, 0.0, 0.0, 0.0]);
+    let second_bank = load_sample_bank_from_directory(&directory).unwrap();
+    engine
+        .enqueue(EngineCommand::ReplaceSampleBank(second_bank))
+        .unwrap();
+
+    let frames_per_cycle = engine.transport_snapshot().frames_per_cycle();
+    let frames_until_second_trigger = (frames_per_cycle / 2).saturating_sub(4);
+    let _ = engine.render_test_block(frames_until_second_trigger);
+    let second_trigger_same_cycle = engine.render_test_block(4);
+    assert!((second_trigger_same_cycle[0] - 0.1).abs() < f32::EPSILON);
+    assert!((second_trigger_same_cycle[1] - 0.1).abs() < f32::EPSILON);
+
+    let _ = engine.render_test_block(engine.frames_until_boundary_for_test());
+    let first_trigger_next_cycle = engine.render_test_block(4);
+    assert!((first_trigger_next_cycle[0] - 0.9).abs() < f32::EPSILON);
+    assert!((first_trigger_next_cycle[1] - 0.9).abs() < f32::EPSILON);
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+fn temp_directory(name: &str) -> PathBuf {
+    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join("test-artifacts");
+    fs::create_dir_all(&directory).unwrap();
+
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let directory = directory.join(format!("{unique}-{name}"));
+    fs::create_dir_all(&directory).unwrap();
+    directory
+}
+
+fn write_wav(path: impl AsRef<Path>, frames: &[f32]) {
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: 48_000,
+        bits_per_sample: 32,
+        sample_format: hound::SampleFormat::Float,
+    };
+    let mut writer = hound::WavWriter::create(path, spec).unwrap();
+    for sample in frames {
+        writer.write_sample(*sample).unwrap();
+    }
+    writer.finalize().unwrap();
 }

@@ -9,6 +9,7 @@ workspace = true
 
 [dependencies]
 cpal.workspace = true
+flacenc.workspace = true
 hound.workspace = true
 orpheus-pattern.workspace = true
 rtrb.workspace = true

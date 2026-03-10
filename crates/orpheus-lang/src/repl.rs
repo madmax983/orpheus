@@ -1,11 +1,15 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::io::{self, BufRead, Write};
+use std::path::{Path, PathBuf};
 
-use orpheus_dsp::{EngineCommand, EngineHandle, PatternUpdate, TransportSnapshot};
+use orpheus_dsp::{
+    EngineCommand, EngineHandle, PatternUpdate, SampleBank, TransportSnapshot,
+    load_sample_bank_from_directory,
+};
 
-use crate::eval::eval_into_bindings;
-use crate::render_sample_pattern_to_wav;
+use crate::eval::{eval_into_bindings, render_sample_pattern_to_file_with_bank};
+use crate::loader::load_file_runtime_strict;
 use crate::types::infer_into_bindings;
 use crate::{ReplMode, Type, Value};
 
@@ -30,10 +34,26 @@ pub fn run_stdio() -> io::Result<()> {
 /// Returns any terminal I/O failure encountered while reading input or
 /// writing REPL output.
 pub fn run_stdio_with_engine(engine: EngineHandle) -> io::Result<()> {
+    run_stdio_with_engine_and_path(engine, None)
+}
+
+/// Runs the phase-one Orpheus REPL with an optional startup `.ode` preload.
+///
+/// # Errors
+///
+/// Returns startup file load failures or terminal I/O failures encountered
+/// while the REPL is active.
+pub fn run_stdio_with_engine_and_path(
+    engine: EngineHandle,
+    startup_path: Option<&Path>,
+) -> io::Result<()> {
     let stdin = io::stdin();
     let stdout = io::stdout();
     let stderr = io::stderr();
     let mut session = ReplSession::with_engine(engine);
+    if let Some(path) = startup_path {
+        session.open_file(path).map_err(io::Error::other)?;
+    }
 
     run_with_handles(stdin.lock(), stdout.lock(), stderr.lock(), &mut session)
 }
@@ -76,6 +96,8 @@ where
 pub(crate) struct ReplSession {
     mode: ReplMode,
     engine: EngineHandle,
+    sample_bank: SampleBank,
+    sample_directory: Option<PathBuf>,
     bindings: BTreeMap<String, Value>,
     type_bindings: BTreeMap<String, Type>,
     pattern_display: RefCell<PatternDisplayState>,
@@ -123,6 +145,8 @@ impl ReplSession {
         Self {
             mode: ReplMode::Loose,
             engine,
+            sample_bank: SampleBank::load_builtin(),
+            sample_directory: None,
             bindings: BTreeMap::new(),
             type_bindings: BTreeMap::new(),
             pattern_display: RefCell::new(PatternDisplayState::default()),
@@ -174,6 +198,21 @@ impl ReplSession {
                     self.set_tempo(args)
                 }
             }
+            "samples" => {
+                if args.is_empty() {
+                    Err(samples_usage().to_owned())
+                } else {
+                    self.load_sample_directory(args)
+                }
+            }
+            "open" => {
+                if args.is_empty() {
+                    Err(open_usage().to_owned())
+                } else {
+                    self.open_file(args)
+                }
+            }
+            "reload-samples" => self.reload_sample_directory(args),
             "play" => self.play_transport(args),
             "stop" => self.stop_transport(args),
             other => Err(format!("unknown REPL command `:{other}`")),
@@ -216,7 +255,8 @@ impl ReplSession {
             ));
         };
 
-        render_sample_pattern_to_wav(pattern, &path, cycles).map_err(|error| error.to_string())?;
+        render_sample_pattern_to_file_with_bank(pattern, &path, cycles, &self.sample_bank)
+            .map_err(|error| error.to_string())?;
         Ok(format!(
             "rendered `{binding_name}` to `{path}` ({cycles} cycle(s))"
         ))
@@ -239,6 +279,69 @@ impl ReplSession {
             .enqueue(EngineCommand::SetTempo(tempo_bpm))
             .map_err(|error| error.to_string())?;
         Ok(format!("tempo set to {tempo_bpm} BPM"))
+    }
+
+    fn load_sample_directory(&mut self, args: &str) -> Result<String, String> {
+        let directory = PathBuf::from(args);
+        let sample_bank =
+            load_sample_bank_from_directory(&directory).map_err(|error| error.to_string())?;
+        let available_tokens = sample_bank.available_tokens();
+        self.sample_bank = sample_bank.clone();
+        self.sample_directory = Some(directory.clone());
+        self.engine
+            .enqueue(EngineCommand::ReplaceSampleBank(sample_bank))
+            .map_err(|error| error.to_string())?;
+        Ok(format!(
+            "loaded sample overrides from `{}` ({})",
+            directory.display(),
+            available_tokens.join(", ")
+        ))
+    }
+
+    pub(crate) fn open_file(&mut self, path: impl AsRef<Path>) -> Result<String, String> {
+        let path = path.as_ref();
+        let loaded = load_file_runtime_strict(path).map_err(|error| error.to_string())?;
+        let binding_names = loaded
+            .type_bindings
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ");
+        let last_binding_name = loaded.last_binding_name.clone();
+
+        self.bindings = loaded.value_bindings;
+        self.type_bindings = loaded.type_bindings;
+        *self.pattern_display.borrow_mut() = PatternDisplayState::default();
+
+        if let Some(name) = last_binding_name {
+            if let Some(value) = self.bindings.get(&name).cloned() {
+                self.push_pattern_update(&name, &value)?;
+            }
+        }
+
+        Ok(format!("opened `{}` ({binding_names})", path.display()))
+    }
+
+    fn reload_sample_directory(&mut self, args: &str) -> Result<String, String> {
+        if !args.is_empty() {
+            return Err(reload_samples_usage().to_owned());
+        }
+
+        let Some(directory) = self.sample_directory.clone() else {
+            return Err("no sample directory has been configured".to_owned());
+        };
+        let sample_bank =
+            load_sample_bank_from_directory(&directory).map_err(|error| error.to_string())?;
+        let available_tokens = sample_bank.available_tokens();
+        self.sample_bank = sample_bank.clone();
+        self.engine
+            .enqueue(EngineCommand::ReplaceSampleBank(sample_bank))
+            .map_err(|error| error.to_string())?;
+        Ok(format!(
+            "reloaded sample overrides from `{}` ({})",
+            directory.display(),
+            available_tokens.join(", ")
+        ))
     }
 
     fn play_transport(&mut self, args: &str) -> Result<String, String> {
@@ -363,6 +466,18 @@ const fn tempo_usage() -> &'static str {
     "usage: :tempo <bpm>"
 }
 
+const fn samples_usage() -> &'static str {
+    "usage: :samples <directory>"
+}
+
+const fn open_usage() -> &'static str {
+    "usage: :open <path>"
+}
+
+const fn reload_samples_usage() -> &'static str {
+    "usage: :reload-samples"
+}
+
 const fn play_usage() -> &'static str {
     "usage: :play"
 }
@@ -374,9 +489,19 @@ const fn stop_usage() -> &'static str {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::ReplSession;
+
+    fn fixture(name: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("tests")
+            .join("fixtures")
+            .join(name)
+    }
 
     fn temp_wav_path() -> std::path::PathBuf {
         let timestamp = SystemTime::now()
@@ -427,6 +552,86 @@ mod tests {
         assert!(fs::metadata(&path).unwrap().len() > 44);
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn samples_command_loads_directory_overrides_for_live_playback() {
+        let mut session = ReplSession::new();
+        let directory = temp_directory("repl-samples");
+        write_wav(directory.join("bd.wav"), &[0.25, 0.0, 0.0, 0.0]);
+
+        let message = session
+            .eval_line(&format!(":samples {}", directory.display()))
+            .unwrap();
+        session.eval_line("drums = bd").unwrap();
+        let rendered = session.render_test_block_for_tui(4);
+
+        assert!(message.contains("loaded"));
+        assert!((rendered[0] - 0.25).abs() < f32::EPSILON);
+        assert!((rendered[1] - 0.25).abs() < f32::EPSILON);
+
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn reload_samples_command_swaps_sample_bank_at_cycle_boundary() {
+        let mut session = ReplSession::new();
+        let directory = temp_directory("repl-reload");
+        write_wav(directory.join("bd.wav"), &[0.1, 0.0, 0.0, 0.0]);
+
+        session
+            .eval_line(&format!(":samples {}", directory.display()))
+            .unwrap();
+        session.eval_line("drums = bd bd").unwrap();
+
+        let first_trigger = session.render_test_block_for_tui(4);
+        assert!((first_trigger[0] - 0.1).abs() < f32::EPSILON);
+
+        write_wav(directory.join("bd.wav"), &[0.9, 0.0, 0.0, 0.0]);
+        let message = session.eval_line(":reload-samples").unwrap();
+        assert!(message.contains("reloaded"));
+
+        let frames_per_cycle = session.transport_snapshot().frames_per_cycle();
+        let frames_until_second_trigger = (frames_per_cycle / 2).saturating_sub(4);
+        let _ = session.render_test_block_for_tui(frames_until_second_trigger);
+        let second_trigger_same_cycle = session.render_test_block_for_tui(4);
+        assert!((second_trigger_same_cycle[0] - 0.1).abs() < f32::EPSILON);
+
+        let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
+        let first_trigger_next_cycle = session.render_test_block_for_tui(4);
+        assert!((first_trigger_next_cycle[0] - 0.9).abs() < f32::EPSILON);
+
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn open_command_replaces_session_bindings_from_ode_file() {
+        let mut session = ReplSession::new();
+        let song = fixture("song.ode");
+
+        session.eval_line("scratch = 1").unwrap();
+
+        let message = session
+            .eval_line(&format!(":open {}", song.display()))
+            .unwrap();
+
+        assert!(message.contains("opened"));
+        assert_eq!(
+            session.binding_summaries(),
+            vec![
+                "drums: Pattern<Sample>".to_owned(),
+                "song: Pattern<Sample>".to_owned()
+            ]
+        );
+        assert_eq!(session.last_loaded_pattern_name(), Some("song".to_owned()));
+        assert_eq!(
+            session.eval_line("copy = song"),
+            Ok("[Pattern<Sample>] ok".to_owned())
+        );
+        assert_eq!(
+            session.eval_line(":render scratch out.wav 1"),
+            Err("no binding named `scratch`".to_owned())
+        );
     }
 
     #[test]
@@ -517,5 +722,31 @@ mod tests {
         let view = session.transport_view();
         assert_eq!(view.active_pattern_name(), Some("backbeat"));
         assert_eq!(view.pending_pattern_name(), None);
+    }
+
+    fn temp_directory(name: &str) -> PathBuf {
+        let directory = std::env::temp_dir().join(format!(
+            "orpheus-samples-{name}-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        directory
+    }
+
+    fn write_wav(path: impl AsRef<Path>, frames: &[f32]) {
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: 48_000,
+            bits_per_sample: 32,
+            sample_format: hound::SampleFormat::Float,
+        };
+        let mut writer = hound::WavWriter::create(path, spec).unwrap();
+        for sample in frames {
+            writer.write_sample(*sample).unwrap();
+        }
+        writer.finalize().unwrap();
     }
 }

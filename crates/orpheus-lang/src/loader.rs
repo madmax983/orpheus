@@ -3,13 +3,21 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::diagnostics::LoadError;
+use crate::eval::eval_into_bindings;
 use crate::types::infer_into_bindings;
-use crate::{ReplMode, Type, TypedModule};
+use crate::{ReplMode, Type, TypedModule, Value};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct ImportSpec {
     path: Box<str>,
     names: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct StrictLoadedFile {
+    pub type_bindings: BTreeMap<String, Type>,
+    pub value_bindings: BTreeMap<String, Value>,
+    pub last_binding_name: Option<String>,
 }
 
 /// Loads a strict `.ode` file, resolves its imports, and infers its bindings.
@@ -20,13 +28,19 @@ struct ImportSpec {
 /// an imported name is missing, or strict-mode inference fails.
 pub fn load_file_strict(path: impl AsRef<Path>) -> Result<TypedModule, LoadError> {
     let mut visiting = BTreeSet::new();
+    let loaded = load_file_strict_inner(path.as_ref(), &mut visiting)?;
+    Ok(TypedModule::new(loaded.type_bindings))
+}
+
+pub fn load_file_runtime_strict(path: impl AsRef<Path>) -> Result<StrictLoadedFile, LoadError> {
+    let mut visiting = BTreeSet::new();
     load_file_strict_inner(path.as_ref(), &mut visiting)
 }
 
 fn load_file_strict_inner(
     path: &Path,
     visiting: &mut BTreeSet<PathBuf>,
-) -> Result<TypedModule, LoadError> {
+) -> Result<StrictLoadedFile, LoadError> {
     let canonical = path
         .canonicalize()
         .map_err(|error| LoadError::new(format!("{}: {error}", path.display())))?;
@@ -46,31 +60,58 @@ fn load_file_strict_inner(
         ))
     })?;
     let (imports, body) = split_imports(&source, &canonical)?;
-    let mut bindings = BTreeMap::<String, Type>::new();
+    let mut type_bindings = BTreeMap::<String, Type>::new();
+    let mut value_bindings = BTreeMap::<String, Value>::new();
 
     for import in imports {
         let imported_path = parent.join(import.path.as_ref());
         let imported_module = load_file_strict_inner(&imported_path, visiting)?;
         for name in import.names {
-            let Some(ty) = imported_module.get(&name).cloned() else {
+            let Some(ty) = imported_module.type_bindings.get(&name).cloned() else {
                 return Err(LoadError::new(format!(
                     "{}: unresolved name `{name}` imported from {}",
                     canonical.display(),
                     imported_path.display()
                 )));
             };
-            bindings.insert(name, ty);
+            let Some(value) = imported_module.value_bindings.get(&name).cloned() else {
+                return Err(LoadError::new(format!(
+                    "{}: unresolved value `{name}` imported from {}",
+                    canonical.display(),
+                    imported_path.display()
+                )));
+            };
+            type_bindings.insert(name.clone(), ty);
+            value_bindings.insert(name, value);
         }
     }
 
-    if !body.trim().is_empty() {
-        infer_into_bindings(&body, ReplMode::Strict, &mut bindings)
+    let result = if body.trim().is_empty() {
+        Ok(StrictLoadedFile {
+            type_bindings,
+            value_bindings,
+            last_binding_name: None,
+        })
+    } else {
+        let last_type_binding = infer_into_bindings(&body, ReplMode::Strict, &mut type_bindings)
             .map_err(|error| LoadError::new(format!("{}: {error}", canonical.display())))?;
-    }
-    let infer_result = TypedModule::new(bindings);
+        let last_value_binding =
+            eval_into_bindings(&body, ReplMode::Strict, &mut value_bindings)
+                .map_err(|error| LoadError::new(format!("{}: {error}", canonical.display())))?;
+        debug_assert_eq!(
+            last_type_binding.as_ref().map(|(name, _)| name),
+            last_value_binding.as_ref().map(|(name, _)| name)
+        );
+
+        Ok(StrictLoadedFile {
+            type_bindings,
+            value_bindings,
+            last_binding_name: last_type_binding.map(|(name, _)| name),
+        })
+    };
 
     visiting.remove(&canonical);
-    Ok(infer_result)
+    result
 }
 
 fn split_imports(source: &str, path: &Path) -> Result<(Vec<ImportSpec>, String), LoadError> {

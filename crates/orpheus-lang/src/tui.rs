@@ -1,5 +1,6 @@
 use std::cell::Cell;
 use std::io;
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -28,7 +29,8 @@ const FULL_HELP_FOOTER: &str = "Esc close   ? toggle   Ctrl-C quit";
 const MEDIUM_HELP_FOOTER: &str = "Esc close   ?   Ctrl-C";
 const COMPACT_HELP_FOOTER: &str = "Esc ? Ctrl-C";
 const MIN_HELP_FOOTER: &str = "Esc ?";
-const COMMAND_HINTS: [(&str, &str); 5] = [
+const COMMAND_HINTS: [(&str, &str); 6] = [
+    (":open", ":open <path>"),
     (":play", ":play"),
     (":quit", ":quit"),
     (":render", ":render <binding> <path> [cycles]"),
@@ -43,10 +45,24 @@ const COMMAND_HINTS: [(&str, &str); 5] = [
 /// Returns any terminal initialization, draw, input polling, or terminal
 /// restoration failure encountered while the shell is active.
 pub fn run_with_engine(engine: EngineHandle) -> io::Result<()> {
+    run_with_engine_and_path(engine, None)
+}
+
+/// Runs the interactive ratatui session shell with an optional startup `.ode`
+/// preload.
+///
+/// # Errors
+///
+/// Returns startup file load failures or terminal initialization, draw, input
+/// polling, or restoration failures encountered while the shell is active.
+pub fn run_with_engine_and_path(
+    engine: EngineHandle,
+    startup_path: Option<&Path>,
+) -> io::Result<()> {
     let _terminal_guard = TerminalGuard::enter()?;
     let backend = CrosstermBackend::new(io::stdout());
     let mut terminal = Terminal::new(backend)?;
-    let mut app = SessionTui::new(engine);
+    let mut app = SessionTui::try_new(engine, startup_path)?;
     let result = run_event_loop(&mut terminal, &mut app);
     terminal.show_cursor()?;
     result
@@ -240,7 +256,12 @@ struct SessionTui {
 
 impl SessionTui {
     fn new(engine: EngineHandle) -> Self {
-        Self {
+        Self::try_new(engine, None)
+            .unwrap_or_else(|error| panic!("default TUI session should initialize: {error}"))
+    }
+
+    fn try_new(engine: EngineHandle, startup_path: Option<&Path>) -> io::Result<Self> {
+        let mut app = Self {
             session: ReplSession::with_engine(engine),
             transcript: vec![
                 "Interactive shell ready.".to_owned(),
@@ -256,7 +277,12 @@ impl SessionTui {
             bindings_last_height: Cell::new(0),
             show_help: false,
             should_quit: false,
+        };
+        if let Some(path) = startup_path {
+            let message = app.session.open_file(path).map_err(io::Error::other)?;
+            app.transcript.push(message);
         }
+        Ok(app)
     }
 
     fn submit_line(&mut self) {
@@ -372,6 +398,7 @@ impl SessionTui {
         lines.extend([
             Line::raw("Space: toggle"),
             Line::raw("empty input only"),
+            Line::raw("Open: :open <path>"),
             Line::raw("Transport: :play / :stop"),
             Line::raw("Set: :tempo <bpm>"),
             Line::raw("Export: :render <binding> <path> [cycles]"),
@@ -385,7 +412,7 @@ impl SessionTui {
     }
 
     const fn help_overlay_body() -> &'static str {
-        "Toggle: ?\nClose: Esc\nTransport: Space toggle, :play, :stop, :tempo <bpm>\nExport: :render <binding> <path> [cycles]\nSession: :quit\nBindings: PgUp/PgDn\nInput: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
+        "Toggle: ?\nClose: Esc\nTransport: Space toggle, :play, :stop, :tempo <bpm>\nExport: :render <binding> <path> [cycles]\nSession: :open <path>, :quit\nBindings: PgUp/PgDn\nInput: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
     }
 
     const fn help_overlay_footer() -> &'static str {
@@ -1121,6 +1148,7 @@ impl Drop for TerminalGuard {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::PathBuf;
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -1133,6 +1161,15 @@ mod tests {
     use super::{
         SessionTui, buffer_to_string, centered_rect, handle_key_event, render_session_frame,
     };
+
+    fn fixture(name: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("tests")
+            .join("fixtures")
+            .join(name)
+    }
 
     fn press(code: KeyCode) -> KeyEvent {
         KeyEvent {
@@ -1191,6 +1228,28 @@ mod tests {
         let stopped_cell = &stopped_buffer[(stopped_x, stopped_y)];
         assert_eq!(stopped_cell.fg, Color::Yellow);
         assert!(stopped_cell.modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn startup_file_preloads_bindings_and_transport_target() {
+        let song = fixture("song.ode");
+        let app = SessionTui::try_new(EngineHandle::stub(), Some(song.as_path())).unwrap();
+
+        assert_eq!(
+            app.session.binding_summaries(),
+            vec![
+                "drums: Pattern<Sample>".to_owned(),
+                "song: Pattern<Sample>".to_owned()
+            ]
+        );
+        assert_eq!(
+            app.session.transport_view().pending_pattern_name(),
+            Some("song")
+        );
+
+        let frame = render_frame_for_test(&app, 80, 24);
+        assert!(frame.contains("song: Pattern<Sample>"));
+        assert!(frame.contains("drums: Pattern<Sample>"));
     }
 
     #[test]
@@ -1711,6 +1770,7 @@ mod tests {
         assert!(overlay_frame.contains(":play"));
         assert!(overlay_frame.contains(":stop"));
         assert!(overlay_frame.contains(":tempo <bpm>"));
+        assert!(overlay_frame.contains(":open <path>"));
         assert!(overlay_frame.contains(":render <binding>"));
         assert!(overlay_frame.contains("Bindings: PgUp/PgDn"));
         assert!(overlay_frame.contains("Ctrl-A/E/K"));
@@ -1988,6 +2048,7 @@ mod tests {
         assert!(frame.contains("Pattern: drums"));
         assert!(frame.contains("Space"));
         assert!(frame.contains("empty input"));
+        assert!(frame.contains(":open <path>"));
         assert!(frame.contains(":play"));
         assert!(frame.contains(":stop"));
     }

@@ -31,3 +31,14 @@ fn meter_stream_and_sections_infer_sample_patterns() {
 
     assert_eq!(typed.type_of("song").to_string(), "Pattern<Sample>");
 }
+
+#[test]
+fn meter_prefix_annotation_infers_sample_patterns() {
+    let typed = infer_module(
+        "song = seq_sections(section(meter(4, 4) stream(at(beat(0), bd), at(beat(2), sn)), 2))",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(typed.type_of("song").to_string(), "Pattern<Sample>");
+}

@@ -1,4 +1,7 @@
+use std::env;
+use std::ffi::OsString;
 use std::io::IsTerminal;
+use std::path::PathBuf;
 
 use anyhow::{Context, anyhow};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -6,6 +9,7 @@ use cpal::{SampleFormat, Stream};
 use orpheus_dsp::EngineHandle;
 
 fn main() -> anyhow::Result<()> {
+    let startup_path = startup_path_from_args(env::args_os().skip(1))?;
     let (engine, _stream) = match start_live_audio() {
         Ok((engine, stream)) => (engine, Some(stream)),
         Err(error) => {
@@ -15,11 +19,22 @@ fn main() -> anyhow::Result<()> {
     };
 
     if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
-        orpheus_lang::tui::run_with_engine(engine)?;
+        orpheus_lang::tui::run_with_engine_and_path(engine, startup_path.as_deref())?;
     } else {
-        orpheus_lang::repl::run_stdio_with_engine(engine)?;
+        orpheus_lang::repl::run_stdio_with_engine_and_path(engine, startup_path.as_deref())?;
     }
     Ok(())
+}
+
+fn startup_path_from_args(
+    args: impl IntoIterator<Item = OsString>,
+) -> anyhow::Result<Option<PathBuf>> {
+    let args = args.into_iter().collect::<Vec<_>>();
+    match args.as_slice() {
+        [] => Ok(None),
+        [path] => Ok(Some(PathBuf::from(path))),
+        _ => Err(anyhow!("usage: orpheus [path/to/song.ode]")),
+    }
 }
 
 fn start_live_audio() -> anyhow::Result<(EngineHandle, Stream)> {

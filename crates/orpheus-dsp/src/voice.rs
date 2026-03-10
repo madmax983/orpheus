@@ -16,6 +16,16 @@ pub enum VoiceKind {
 }
 
 impl VoiceKind {
+    #[must_use]
+    pub const fn token(self) -> &'static str {
+        match self {
+            Self::KickLike => "bd",
+            Self::SnareLike => "sn",
+            Self::ClapLike => "cp",
+            Self::HiHatLike => "hh",
+        }
+    }
+
     /// Resolves a phase-one drum token to the current synthesized fallback.
     #[must_use]
     pub fn from_token(token: &str) -> Option<Self> {

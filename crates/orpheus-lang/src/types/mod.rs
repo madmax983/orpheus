@@ -84,11 +84,6 @@ impl TypedModule {
     }
 
     #[must_use]
-    pub(crate) fn get(&self, name: &str) -> Option<&Type> {
-        self.bindings.get(name)
-    }
-
-    #[must_use]
     pub fn contains_key(&self, name: &str) -> bool {
         self.bindings.contains_key(name)
     }

@@ -139,6 +139,7 @@ struct EngineCore {
     next_cycle_boundary_frame: u64,
     active_pattern: Option<PatternUpdate>,
     pending_pattern: Option<PatternUpdate>,
+    pending_sample_bank: Option<SampleBank>,
     prime_initial_pattern: bool,
     last_swap_frame: Option<u64>,
 }
@@ -164,6 +165,7 @@ impl EngineCore {
             next_cycle_boundary_frame: frames_per_cycle,
             active_pattern: None,
             pending_pattern: None,
+            pending_sample_bank: None,
             prime_initial_pattern: false,
             last_swap_frame: None,
         })
@@ -180,6 +182,10 @@ impl EngineCore {
                 self.pending_pattern = Some(pattern);
                 self.prime_initial_pattern =
                     self.active_pattern.is_none() && self.current_frame == 0;
+                Ok(())
+            }
+            EngineCommand::ReplaceSampleBank(sample_bank) => {
+                self.pending_sample_bank = Some(sample_bank);
                 Ok(())
             }
             EngineCommand::SetTempo(tempo_bpm) => {
@@ -211,6 +217,10 @@ impl EngineCore {
             .current_frame
             .checked_add(self.frames_per_cycle)
             .ok_or(EngineError::FrameOverflow)?;
+
+        if let Some(sample_bank) = self.pending_sample_bank.take() {
+            self.sample_bank = sample_bank;
+        }
 
         if let Some(pattern) = self.pending_pattern.take() {
             self.active_pattern = Some(pattern);

@@ -1,6 +1,8 @@
 use orpheus_pattern::Event;
 use rtrb::{Consumer, Producer, RingBuffer};
 
+use crate::sample_bank::SampleBank;
+
 /// A fully resolved unit-cycle pattern ready for audio-thread scheduling.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PatternUpdate {
@@ -40,6 +42,8 @@ pub enum EngineCommand {
     SwapPattern(String),
     /// Swaps in a concrete unit-cycle pattern at the next cycle boundary.
     LoadPattern(PatternUpdate),
+    /// Replaces the sample bank at the next cycle boundary.
+    ReplaceSampleBank(SampleBank),
     /// Updates the transport tempo in beats per minute.
     SetTempo(f32),
     /// Starts transport playback from the current rewound position.

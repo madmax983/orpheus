@@ -206,6 +206,10 @@ fn build_call(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
                 unit: Box::new(unit.clone()),
                 pattern: Box::new(pattern.clone()),
             }),
+            [_, _] => Ok(Expr::Call {
+                callee: Box::new(Expr::Ident(callee_name)),
+                args,
+            }),
             _ => Err(ParseError::new("`meter` requires exactly three arguments")),
         },
         "beat" => match args.as_slice() {
@@ -248,6 +252,10 @@ fn build_number(pair: &Pair<'_, Rule>) -> Result<Expr, ParseError> {
 }
 
 fn collapse_sequence(items: Vec<Expr>, context: &'static str) -> Result<Expr, ParseError> {
+    if let Some(expr) = collapse_meter_annotation(&items)? {
+        return Ok(expr);
+    }
+
     match items.len() {
         0 => Err(ParseError::new(format!("missing {context} items"))),
         1 => Ok(items
@@ -256,4 +264,36 @@ fn collapse_sequence(items: Vec<Expr>, context: &'static str) -> Result<Expr, Pa
             .ok_or_else(|| ParseError::new(format!("missing {context} item")))?),
         _ => Ok(Expr::Seq(items)),
     }
+}
+
+fn collapse_meter_annotation(items: &[Expr]) -> Result<Option<Expr>, ParseError> {
+    let Some((first, rest)) = items.split_first() else {
+        return Ok(None);
+    };
+
+    let Expr::Call { callee, args } = first else {
+        return Ok(None);
+    };
+    let Expr::Ident(name) = callee.as_ref() else {
+        return Ok(None);
+    };
+    if name != "meter" {
+        return Ok(None);
+    }
+
+    let [beats, unit] = args.as_slice() else {
+        return Ok(None);
+    };
+    if rest.is_empty() {
+        return Err(ParseError::new(
+            "`meter` annotation requires a following pattern expression",
+        ));
+    }
+
+    let pattern = collapse_sequence(rest.to_vec(), "meter annotation")?;
+    Ok(Some(Expr::Meter {
+        beats: Box::new(beats.clone()),
+        unit: Box::new(unit.clone()),
+        pattern: Box::new(pattern),
+    }))
 }
