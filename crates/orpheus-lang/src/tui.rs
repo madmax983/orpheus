@@ -267,10 +267,17 @@ impl SessionTui {
         if bindings.is_empty() {
             vec![ListItem::new("No bindings yet")]
         } else {
-            bindings
+            let mut items = bindings
                 .into_iter()
                 .map(|summary| binding_list_item(summary, &transport))
-                .collect()
+                .collect::<Vec<_>>();
+            if transport.active_pattern_name().is_some()
+                || transport.pending_pattern_name().is_some()
+            {
+                items.push(ListItem::new(""));
+                items.push(binding_legend_item(&transport));
+            }
+            items
         }
     }
 
@@ -769,6 +776,16 @@ fn pending_binding_style(transport: &TransportView) -> Style {
     Style::default().fg(color).add_modifier(Modifier::BOLD)
 }
 
+fn binding_legend_item(transport: &TransportView) -> ListItem<'static> {
+    ListItem::new(Line::from(vec![
+        Span::raw("Legend: "),
+        Span::styled("[live]", live_binding_style()),
+        Span::raw(" active  "),
+        Span::styled("[next]", pending_binding_style(transport)),
+        Span::raw(" pending"),
+    ]))
+}
+
 struct TerminalGuard;
 
 impl TerminalGuard {
@@ -926,6 +943,29 @@ mod tests {
         assert!(frame.contains("[live] backbeat: Pattern<Sample>"));
         assert!(!frame.contains("[next] backbeat: Pattern<Sample>"));
         assert!(!frame.contains("[live] drums: Pattern<Sample>"));
+    }
+
+    #[test]
+    fn bindings_pane_shows_marker_legend_when_pattern_markers_are_present() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = "drums = bd sn".to_owned();
+        app.submit_line();
+        let _ = app.session.render_test_block_for_tui(256);
+        app.input = "backbeat = sn cp".to_owned();
+        app.submit_line();
+
+        let frame = render_frame_for_test(&app, 120, 24);
+        assert!(frame.contains("Legend: [live] active  [next] pending"));
+    }
+
+    #[test]
+    fn bindings_pane_hides_marker_legend_without_pattern_markers() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = "warp = fast(2)".to_owned();
+        app.submit_line();
+
+        let frame = render_frame_for_test(&app, 120, 24);
+        assert!(!frame.contains("Legend: [live] active  [next] pending"));
     }
 
     #[test]
