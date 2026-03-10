@@ -14,6 +14,7 @@ fn tui_boots_and_renders_initial_frame() {
     assert!(frame.contains("Hint: Tab completes commands."));
     assert!(frame.contains("Cycle: 0.000"));
     assert!(frame.contains("Pattern: none"));
+    assert!(frame.contains("Transport: playing"));
     assert!(frame.contains("Help: ?"));
     assert!(!frame.contains("Ctrl-A/E/K"));
 }

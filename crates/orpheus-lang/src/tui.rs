@@ -270,6 +270,10 @@ impl SessionTui {
 
     fn repl_body(&self) -> String {
         let mut lines = self.transcript.clone();
+        lines.push(format!(
+            "Transport: {}",
+            format_transport_status(&self.session.transport_snapshot())
+        ));
         lines.push(format!("> {}", self.display_input_with_cursor()));
         lines.push(self.input_hint());
         lines.join("\n")
@@ -1007,11 +1011,13 @@ mod tests {
         let _ = app.session.render_test_block_for_tui(1);
         assert_eq!(app.status_message.as_deref(), Some("transport stopped"));
         assert!(!app.session.transport_snapshot().is_playing());
+        assert!(app.repl_body().contains("Transport: stopped"));
 
         handle_key_event(&mut app, press(KeyCode::Char(' ')));
         let _ = app.session.render_test_block_for_tui(1);
         assert_eq!(app.status_message.as_deref(), Some("transport playing"));
         assert!(app.session.transport_snapshot().is_playing());
+        assert!(app.repl_body().contains("Transport: playing"));
     }
 
     #[test]
