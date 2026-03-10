@@ -285,7 +285,8 @@ impl SessionTui {
                 "Pattern: {}",
                 self.session.last_loaded_pattern_name().unwrap_or("none")
             ),
-            "Hotkey: Space toggle".to_owned(),
+            "Space: toggle".to_owned(),
+            "empty input only".to_owned(),
             "Transport: :play / :stop".to_owned(),
             "Set: :tempo <bpm>".to_owned(),
             "Export: :render <binding> <path> [cycles]".to_owned(),
@@ -1137,6 +1138,7 @@ mod tests {
         let frame = render_frame_for_test(&app, 80, 24);
         assert!(frame.contains("Status: stopped"));
         assert!(frame.contains("Space"));
+        assert!(frame.contains("empty input"));
         assert!(frame.contains(":play"));
         assert!(frame.contains(":stop"));
     }

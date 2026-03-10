@@ -10,6 +10,7 @@ fn tui_boots_and_renders_initial_frame() {
     assert!(frame.contains(":play"));
     assert!(frame.contains(":stop"));
     assert!(frame.contains("Space"));
+    assert!(frame.contains("empty input"));
     assert!(frame.contains("Hint: Tab completes commands."));
     assert!(frame.contains("Cycle: 0.000"));
     assert!(frame.contains("Pattern: none"));
