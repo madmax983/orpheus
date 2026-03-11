@@ -15,6 +15,7 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "sample" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Sample))),
         "rate" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Rate))),
         "slice" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Slice))),
+        "slice_idx" => Some(Value::Function(BuiltinFn::new(BuiltinKind::SliceIdx))),
         _ => None,
     }
 }
@@ -101,13 +102,14 @@ impl BuiltinKind {
             Self::Sample => "sample",
             Self::Rate => "rate",
             Self::Slice => "slice",
+            Self::SliceIdx => "slice_idx",
         }
     }
 
     const fn arity(self) -> usize {
         match self {
             Self::Fast | Self::Slow | Self::Gain | Self::Rate => 2,
-            Self::Slice => 3,
+            Self::Slice | Self::SliceIdx => 3,
             Self::Rev | Self::Sample => 1,
         }
     }
@@ -121,6 +123,7 @@ impl BuiltinKind {
             Self::Sample => apply_sample(args),
             Self::Rate => apply_rate(args),
             Self::Slice => apply_slice(args),
+            Self::SliceIdx => apply_slice_idx(args),
         }
     }
 }
@@ -259,6 +262,42 @@ fn apply_slice(args: Vec<Value>) -> Result<Value, EvalError> {
     }
 }
 
+fn apply_slice_idx(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let index = extract_whole_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`slice_idx` requires an index argument"))?,
+        "slice_idx index",
+        false,
+    )?;
+    let segments = extract_whole_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`slice_idx` requires a segment count argument"))?,
+        "slice_idx segments",
+        true,
+    )?;
+    if index >= segments {
+        return Err(EvalError::new("`slice_idx` requires index < segments"));
+    }
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`slice_idx` requires a pattern argument"))?;
+    let start = f64::from(index) / f64::from(segments);
+    let end = f64::from(index.checked_add(1).ok_or_else(|| {
+        EvalError::new("`slice_idx index` exceeded the supported evaluator range")
+    })?) / f64::from(segments);
+
+    match pattern {
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.slice(start, end))),
+        Value::NumberPattern(_) => Err(EvalError::new(
+            "`slice_idx` only applies to sample patterns",
+        )),
+        Value::Function(_) | Value::String(_) => Err(EvalError::new(
+            "`slice_idx` expected a sample pattern as its final argument",
+        )),
+    }
+}
+
 fn extract_positive_integer_factor(value: Value, builtin_name: &str) -> Result<i64, EvalError> {
     let number = extract_constant_number(value, builtin_name)?;
 
@@ -271,6 +310,37 @@ fn extract_positive_integer_factor(value: Value, builtin_name: &str) -> Result<i
     let integer = format!("{number:.0}").parse::<i64>().map_err(|_| {
         EvalError::new(format!(
             "`{builtin_name}` factor exceeded the supported evaluator range"
+        ))
+    })?;
+
+    Ok(integer)
+}
+
+fn extract_whole_number(
+    value: Value,
+    context: &str,
+    positive_only: bool,
+) -> Result<u32, EvalError> {
+    let number = extract_constant_number(value, context)?;
+    let valid = number.is_finite()
+        && number >= 0.0
+        && number.fract().abs() <= f64::EPSILON
+        && (!positive_only || number > 0.0);
+
+    if !valid {
+        let requirement = if positive_only {
+            "a positive whole number"
+        } else {
+            "a whole number"
+        };
+        return Err(EvalError::new(format!(
+            "`{context}` requires {requirement}"
+        )));
+    }
+
+    let integer = format!("{number:.0}").parse::<u32>().map_err(|_| {
+        EvalError::new(format!(
+            "`{context}` exceeded the supported evaluator range"
         ))
     })?;
 

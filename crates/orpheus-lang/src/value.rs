@@ -16,6 +16,7 @@ pub enum BuiltinKind {
     Sample,
     Rate,
     Slice,
+    SliceIdx,
 }
 
 #[derive(Clone, Debug)]

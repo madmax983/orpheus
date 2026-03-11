@@ -186,6 +186,45 @@ fn rate_and_slice_builtins_update_sample_event_playback_params() {
 }
 
 #[test]
+fn slice_idx_builtin_maps_zero_based_segments_into_normalized_slice_bounds() {
+    let module = eval_module(
+        r#"lead = sample("amen") |> slice_idx(3, 8)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].value.sample(), "amen");
+    assert!((events[0].value.slice_start() - 0.375).abs() < f64::EPSILON);
+    assert!((events[0].value.slice_end() - 0.5).abs() < f64::EPSILON);
+}
+
+#[test]
+fn slice_idx_composes_with_existing_slice_bounds() {
+    let module = eval_module(
+        r#"lead = sample("amen") |> slice(0.25, 0.75) |> slice_idx(1, 2)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 1);
+    assert!((events[0].value.slice_start() - 0.5).abs() < f64::EPSILON);
+    assert!((events[0].value.slice_end() - 0.75).abs() < f64::EPSILON);
+}
+
+#[test]
 fn evaluating_multiple_top_level_bindings_reuses_prior_definitions() {
     let module = eval_module("verse = bd sn\nsong = fast(2, verse)", ReplMode::Loose).unwrap();
 
@@ -235,5 +274,33 @@ fn transform_calls_inside_sequences_report_specific_guidance() {
             "function call `fast` cannot appear inside a pattern sequence",
             "pipe",
         ],
+    );
+}
+
+#[test]
+fn slice_idx_rejects_non_integer_arguments() {
+    assert_eval_error_contains(
+        r#"lead = sample("amen") |> slice_idx(1.5, 8)"#,
+        ReplMode::Loose,
+        &["`slice_idx index` requires a whole number"],
+    );
+    assert_eval_error_contains(
+        r#"lead = sample("amen") |> slice_idx(1, 8.5)"#,
+        ReplMode::Loose,
+        &["`slice_idx segments` requires a positive whole number"],
+    );
+}
+
+#[test]
+fn slice_idx_rejects_out_of_range_indices() {
+    assert_eval_error_contains(
+        r#"lead = sample("amen") |> slice_idx(8, 8)"#,
+        ReplMode::Loose,
+        &["`slice_idx` requires index < segments"],
+    );
+    assert_eval_error_contains(
+        r#"lead = sample("amen") |> slice_idx(0, 0)"#,
+        ReplMode::Loose,
+        &["`slice_idx segments` requires a positive whole number"],
     );
 }

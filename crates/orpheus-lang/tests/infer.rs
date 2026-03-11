@@ -73,6 +73,17 @@ fn rate_and_slice_builtins_preserve_sample_pattern_types() {
 }
 
 #[test]
+fn slice_idx_preserves_sample_pattern_types() {
+    let typed = infer_module(
+        r#"lead = sample("amen") |> slice_idx(3, 8)"#,
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(typed.type_of("lead").to_string(), "Pattern<Sample>");
+}
+
+#[test]
 fn multiple_top_level_bindings_infer_in_order() {
     let typed = infer_module("verse = bd sn\nsong = fast(2, verse)", ReplMode::Strict).unwrap();
 

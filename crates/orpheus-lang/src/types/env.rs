@@ -95,6 +95,17 @@ impl TypeEnv {
                 Type::pattern(Type::Sample),
             )),
         );
+        env.insert(
+            "slice_idx",
+            TypeScheme::monomorphic(Type::curried(
+                vec![
+                    Type::pattern(Type::Number),
+                    Type::pattern(Type::Number),
+                    Type::pattern(Type::Sample),
+                ],
+                Type::pattern(Type::Sample),
+            )),
+        );
 
         env
     }

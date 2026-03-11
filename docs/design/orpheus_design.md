@@ -65,6 +65,12 @@ drums = bd sn cp sn
   |> every(4, fast(2))
   |> rev
 
+-- Sample transforms compose on explicit sample tokens
+chop = sample("amen")
+  |> slice_idx(3, 8)
+  |> rate(0.5)
+  |> gain(0.7)
+
 -- Named patterns compose freely
 verse_drums = stack(kick_pattern, snare_pattern, hat_pattern)
   |> gain(0.8)
@@ -509,6 +515,7 @@ The current live workflow keeps filesystem access off the audio thread:
 
 - `:samples <directory>` scans WAV overrides and stages them for the next cycle boundary.
 - `:reload-samples` rescans the previously configured directory and hot-swaps the bank at the next cycle boundary.
+- `sample("token") |> slice(start, end)` uses normalized `[0, 1]` bounds, while `slice_idx(i, n)` is the zero-based shorthand for the `i`th segment out of `n`.
 - Supported filename aliases map onto the built-in drum tokens:
   - `bd` or `kick`
   - `sn` or `snare`
