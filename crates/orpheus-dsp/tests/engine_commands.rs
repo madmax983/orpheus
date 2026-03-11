@@ -1,6 +1,6 @@
 use orpheus_dsp::{
-    EngineCommand, EngineError, EngineHandle, PatternUpdate, load_builtin_sample_for_test,
-    load_sample_bank_from_directory,
+    EngineCommand, EngineError, EngineHandle, PatternUpdate, SampleTrigger,
+    load_builtin_sample_for_test, load_sample_bank_from_directory,
 };
 use orpheus_pattern::{Event, Rational, TimeSpan};
 use std::fs;
@@ -143,7 +143,7 @@ fn stop_command_rewinds_transport_and_silences_output() {
         vec![Event {
             whole: None,
             part: TimeSpan::new(Rational::zero(), quarter).unwrap(),
-            value: Box::<str>::from("bd"),
+            value: SampleTrigger::named("bd"),
         }],
     );
 
@@ -170,7 +170,7 @@ fn play_command_restarts_pattern_from_cycle_start_after_stop() {
         vec![Event {
             whole: None,
             part: TimeSpan::new(Rational::zero(), quarter).unwrap(),
-            value: Box::<str>::from("bd"),
+            value: SampleTrigger::named("bd"),
         }],
     );
 
@@ -205,7 +205,7 @@ fn loaded_pattern_hot_swap_waits_for_the_next_cycle_boundary() {
         vec![Event {
             whole: None,
             part: TimeSpan::new(Rational::zero(), quarter.clone()).unwrap(),
-            value: Box::<str>::from("bd"),
+            value: SampleTrigger::named("bd"),
         }],
     );
     let backbeat = PatternUpdate::new(
@@ -213,7 +213,7 @@ fn loaded_pattern_hot_swap_waits_for_the_next_cycle_boundary() {
         vec![Event {
             whole: None,
             part: TimeSpan::new(Rational::zero(), quarter).unwrap(),
-            value: Box::<str>::from("sn"),
+            value: SampleTrigger::named("sn"),
         }],
     );
 
@@ -240,7 +240,7 @@ fn transport_snapshot_reports_pending_pattern_until_boundary() {
         vec![Event {
             whole: None,
             part: TimeSpan::new(Rational::zero(), quarter.clone()).unwrap(),
-            value: Box::<str>::from("bd"),
+            value: SampleTrigger::named("bd"),
         }],
     );
     let backbeat = PatternUpdate::new(
@@ -248,7 +248,7 @@ fn transport_snapshot_reports_pending_pattern_until_boundary() {
         vec![Event {
             whole: None,
             part: TimeSpan::new(Rational::zero(), quarter).unwrap(),
-            value: Box::<str>::from("sn"),
+            value: SampleTrigger::named("sn"),
         }],
     );
 
@@ -282,7 +282,7 @@ fn initial_loaded_pattern_is_audible_in_the_first_render_block() {
         vec![Event {
             whole: None,
             part: TimeSpan::new(Rational::zero(), quarter).unwrap(),
-            value: Box::<str>::from("bd"),
+            value: SampleTrigger::named("bd"),
         }],
     );
 
@@ -364,12 +364,12 @@ fn sample_bank_reload_waits_until_cycle_boundary() {
             Event {
                 whole: None,
                 part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
-                value: Box::<str>::from("bd"),
+                value: SampleTrigger::named("bd"),
             },
             Event {
                 whole: None,
                 part: TimeSpan::new(half, Rational::new(3, 4).unwrap()).unwrap(),
-                value: Box::<str>::from("bd"),
+                value: SampleTrigger::named("bd"),
             },
         ],
     );
@@ -420,7 +420,7 @@ fn manifest_mapped_sample_token_plays_through_live_engine() {
         vec![Event {
             whole: None,
             part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
-            value: Box::<str>::from("vox_ah"),
+            value: SampleTrigger::named("vox_ah"),
         }],
     );
     engine.enqueue(EngineCommand::LoadPattern(pattern)).unwrap();
@@ -429,6 +429,44 @@ fn manifest_mapped_sample_token_plays_through_live_engine() {
 
     assert!((rendered[0] - 0.42).abs() < f32::EPSILON);
     assert!((rendered[1] - 0.42).abs() < f32::EPSILON);
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn live_engine_applies_sample_gain_rate_and_slice() {
+    let mut engine = EngineHandle::stub();
+    let directory = temp_directory("sample-params-live");
+    fs::write(
+        directory.join("samples.ron"),
+        "(\n  tokens: {\n    \"vox_ah\": \"vox.wav\",\n  },\n)\n",
+    )
+    .unwrap();
+    write_wav(directory.join("vox.wav"), &[0.2, 0.4, 0.6, 0.8]);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+    engine
+        .enqueue(EngineCommand::ReplaceSampleBank(bank))
+        .unwrap();
+
+    let pattern = PatternUpdate::new(
+        "vox",
+        vec![Event {
+            whole: None,
+            part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+            value: SampleTrigger::named("vox_ah")
+                .with_gain(0.5)
+                .with_rate(2.0)
+                .with_slice(0.25, 1.0),
+        }],
+    );
+    engine.enqueue(EngineCommand::LoadPattern(pattern)).unwrap();
+
+    let rendered = engine.render_test_block(4);
+
+    assert!((rendered[0] - 0.2).abs() < f32::EPSILON);
+    assert!((rendered[1] - 0.2).abs() < f32::EPSILON);
+    assert!((rendered[2] - 0.4).abs() < f32::EPSILON);
+    assert!((rendered[3] - 0.4).abs() < f32::EPSILON);
 
     fs::remove_dir_all(directory).unwrap();
 }

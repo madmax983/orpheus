@@ -1,5 +1,6 @@
 use core::f32::consts::TAU;
 
+use crate::SampleTrigger;
 use crate::sample_bank::PlaybackSample;
 
 /// Built-in synthesized drum voices used by the current live playback path.
@@ -57,6 +58,8 @@ enum ActiveVoiceState {
         frames: std::sync::Arc<[f32]>,
         frame_position: f64,
         frame_step: f64,
+        frame_limit: f64,
+        gain: f64,
     },
 }
 
@@ -80,12 +83,24 @@ impl ActiveVoice {
         }
     }
 
-    pub fn from_sample(sample: &PlaybackSample, output_sample_rate: u32) -> Self {
+    pub fn from_sample(
+        sample: &PlaybackSample,
+        output_sample_rate: u32,
+        trigger: &SampleTrigger,
+    ) -> Self {
+        let frame_count_u32 = u32::try_from(sample.frames().len())
+            .unwrap_or_else(|_| panic!("sample frame count exceeded supported playback range"));
+        let frame_count = f64::from(frame_count_u32);
+        let frame_position = trigger.slice_start() * frame_count;
+        let frame_limit = trigger.slice_end() * frame_count;
         Self {
             state: ActiveVoiceState::Sample {
                 frames: sample.frames().clone(),
-                frame_position: 0.0,
-                frame_step: f64::from(sample.sample_rate_hz()) / f64::from(output_sample_rate),
+                frame_position,
+                frame_step: (f64::from(sample.sample_rate_hz()) / f64::from(output_sample_rate))
+                    * trigger.rate(),
+                frame_limit,
+                gain: trigger.gain(),
             },
         }
     }
@@ -137,9 +152,14 @@ impl ActiveVoice {
                 frames,
                 frame_position,
                 frame_step,
+                frame_limit,
+                gain,
             } => {
+                if *frame_position >= *frame_limit {
+                    return None;
+                }
                 let index = frame_position.floor() as usize;
-                let sample = *frames.get(index)?;
+                let sample = (f64::from(*frames.get(index)?) * *gain) as f32;
                 *frame_position += *frame_step;
                 Some(sample)
             }

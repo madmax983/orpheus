@@ -13,6 +13,8 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "rev" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Rev))),
         "gain" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Gain))),
         "sample" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Sample))),
+        "rate" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Rate))),
+        "slice" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Slice))),
         _ => None,
     }
 }
@@ -97,12 +99,15 @@ impl BuiltinKind {
             Self::Rev => "rev",
             Self::Gain => "gain",
             Self::Sample => "sample",
+            Self::Rate => "rate",
+            Self::Slice => "slice",
         }
     }
 
     const fn arity(self) -> usize {
         match self {
-            Self::Fast | Self::Slow | Self::Gain => 2,
+            Self::Fast | Self::Slow | Self::Gain | Self::Rate => 2,
+            Self::Slice => 3,
             Self::Rev | Self::Sample => 1,
         }
     }
@@ -114,6 +119,8 @@ impl BuiltinKind {
             Self::Rev => apply_rev(args),
             Self::Gain => apply_gain(args),
             Self::Sample => apply_sample(args),
+            Self::Rate => apply_rate(args),
+            Self::Slice => apply_slice(args),
         }
     }
 }
@@ -204,6 +211,54 @@ fn apply_sample(args: Vec<Value>) -> Result<Value, EvalError> {
     Ok(Value::SamplePattern(SamplePatternValue::atom(&token)))
 }
 
+fn apply_rate(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let rate = extract_positive_finite_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`rate` requires a rate argument"))?,
+        "rate",
+    )?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`rate` requires a pattern argument"))?;
+
+    match pattern {
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.rate(rate))),
+        Value::NumberPattern(_) => Err(EvalError::new("`rate` only applies to sample patterns")),
+        Value::Function(_) | Value::String(_) => Err(EvalError::new(
+            "`rate` expected a sample pattern as its final argument",
+        )),
+    }
+}
+
+fn apply_slice(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let start = extract_unit_interval_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`slice` requires a start argument"))?,
+        "slice start",
+    )?;
+    let end = extract_unit_interval_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`slice` requires an end argument"))?,
+        "slice end",
+    )?;
+    if start >= end {
+        return Err(EvalError::new("`slice` requires start < end"));
+    }
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`slice` requires a pattern argument"))?;
+
+    match pattern {
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.slice(start, end))),
+        Value::NumberPattern(_) => Err(EvalError::new("`slice` only applies to sample patterns")),
+        Value::Function(_) | Value::String(_) => Err(EvalError::new(
+            "`slice` expected a sample pattern as its final argument",
+        )),
+    }
+}
+
 fn extract_positive_integer_factor(value: Value, builtin_name: &str) -> Result<i64, EvalError> {
     let number = extract_constant_number(value, builtin_name)?;
 
@@ -230,6 +285,30 @@ fn extract_gain(value: Value) -> Result<f64, EvalError> {
     }
 
     Ok(gain)
+}
+
+fn extract_positive_finite_number(value: Value, builtin_name: &str) -> Result<f64, EvalError> {
+    let number = extract_constant_number(value, builtin_name)?;
+
+    if !number.is_finite() || number <= 0.0 {
+        return Err(EvalError::new(format!(
+            "`{builtin_name}` requires a positive finite numeric value"
+        )));
+    }
+
+    Ok(number)
+}
+
+fn extract_unit_interval_number(value: Value, context: &str) -> Result<f64, EvalError> {
+    let number = extract_constant_number(value, context)?;
+
+    if !number.is_finite() || !(0.0..=1.0).contains(&number) {
+        return Err(EvalError::new(format!(
+            "`{context}` must be within the closed interval [0, 1]"
+        )));
+    }
+
+    Ok(number)
 }
 
 fn extract_constant_number(value: Value, builtin_name: &str) -> Result<f64, EvalError> {

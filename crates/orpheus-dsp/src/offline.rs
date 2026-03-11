@@ -9,6 +9,7 @@ use flacenc::source::MemSource;
 use orpheus_pattern::Event;
 use thiserror::Error;
 
+use crate::SampleTrigger;
 use crate::engine::{DEFAULT_SAMPLE_RATE, DEFAULT_TEMPO_BPM, EngineError, frames_per_cycle};
 use crate::sample_bank::SampleBank;
 use crate::scheduler::Scheduler;
@@ -61,7 +62,7 @@ pub enum OfflineRenderError {
 /// file cannot be written.
 pub fn render_events_to_file(
     path: impl AsRef<Path>,
-    events: &[Event<Box<str>>],
+    events: &[Event<SampleTrigger>],
     cycle_count: u64,
 ) -> Result<(), OfflineRenderError> {
     let builtin_bank = SampleBank::load_builtin();
@@ -77,7 +78,7 @@ pub fn render_events_to_file(
 /// file cannot be written.
 pub fn render_events_to_file_with_bank(
     path: impl AsRef<Path>,
-    events: &[Event<Box<str>>],
+    events: &[Event<SampleTrigger>],
     cycle_count: u64,
     sample_bank: &SampleBank,
 ) -> Result<(), OfflineRenderError> {
@@ -99,7 +100,7 @@ pub fn render_events_to_file_with_bank(
 /// cannot be written.
 pub fn render_events_to_wav(
     path: impl AsRef<Path>,
-    events: &[Event<Box<str>>],
+    events: &[Event<SampleTrigger>],
     cycle_count: u64,
 ) -> Result<(), OfflineRenderError> {
     let builtin_bank = SampleBank::load_builtin();
@@ -108,7 +109,7 @@ pub fn render_events_to_wav(
 }
 
 fn render_events_to_pcm(
-    events: &[Event<Box<str>>],
+    events: &[Event<SampleTrigger>],
     cycle_count: u64,
     sample_bank: &SampleBank,
 ) -> Result<Vec<i32>, OfflineRenderError> {
@@ -131,7 +132,7 @@ fn render_events_to_pcm(
         events.iter().map(|event| Event {
             whole: event.whole.clone(),
             part: event.part.clone(),
-            value: event.value.as_ref(),
+            value: &event.value,
         }),
     )?;
 
@@ -143,7 +144,7 @@ fn render_events_to_pcm(
             activate_voice(
                 &mut active_voices,
                 sample_bank,
-                trigger.token.as_ref(),
+                &trigger.trigger,
                 trigger.fallback_voice,
                 DEFAULT_SAMPLE_RATE,
             )?;
@@ -222,18 +223,22 @@ fn write_flac(path: &Path, samples: &[i32]) -> Result<(), OfflineRenderError> {
 fn activate_voice(
     active_voices: &mut [Option<ActiveVoice>],
     sample_bank: &SampleBank,
-    token: &str,
+    trigger: &SampleTrigger,
     fallback_voice: Option<VoiceKind>,
     sample_rate: u32,
 ) -> Result<(), OfflineRenderError> {
     if let Some(slot) = active_voices.iter_mut().find(|slot| slot.is_none()) {
-        *slot = Some(if let Some(sample) = sample_bank.get_by_token(token) {
-            ActiveVoice::from_sample(sample, sample_rate)
-        } else if let Some(voice) = fallback_voice {
-            ActiveVoice::new(voice, sample_rate)
-        } else {
-            return Err(OfflineRenderError::UnknownSampleToken(token.into()));
-        });
+        *slot = Some(
+            if let Some(sample) = sample_bank.get_by_token(trigger.token()) {
+                ActiveVoice::from_sample(sample, sample_rate, trigger)
+            } else if let Some(voice) = fallback_voice {
+                ActiveVoice::new(voice, sample_rate)
+            } else {
+                return Err(OfflineRenderError::UnknownSampleToken(
+                    trigger.token().into(),
+                ));
+            },
+        );
     }
 
     Ok(())

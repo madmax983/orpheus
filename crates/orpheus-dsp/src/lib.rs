@@ -9,7 +9,7 @@ mod sample_manifest;
 mod scheduler;
 mod voice;
 
-pub use command::{EngineCommand, PatternUpdate};
+pub use command::{EngineCommand, PatternUpdate, SampleTrigger};
 pub use engine::{EngineError, EngineHandle, RenderEngine, TransportSnapshot};
 pub use offline::{
     OfflineRenderError, render_events_to_file, render_events_to_file_with_bank,

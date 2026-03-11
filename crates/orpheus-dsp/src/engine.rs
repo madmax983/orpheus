@@ -234,7 +234,7 @@ impl EngineCore {
                 pattern.events().iter().map(|event| Event {
                     whole: event.whole.clone(),
                     part: event.part.clone(),
-                    value: event.value.as_ref(),
+                    value: &event.value,
                 }),
             )?;
         }
@@ -285,8 +285,8 @@ impl EngineCore {
         if let Some(slot) = self.active_voices.iter_mut().find(|slot| slot.is_none()) {
             *slot = self
                 .sample_bank
-                .get_by_token(trigger.token.as_ref())
-                .map(|sample| ActiveVoice::from_sample(sample, self.sample_rate))
+                .get_by_token(trigger.trigger.token())
+                .map(|sample| ActiveVoice::from_sample(sample, self.sample_rate, &trigger.trigger))
                 .or_else(|| {
                     trigger
                         .fallback_voice

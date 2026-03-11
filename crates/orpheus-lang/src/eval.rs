@@ -3,7 +3,7 @@ use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::path::Path;
 
-use orpheus_dsp::{OfflineRenderError, SampleBank, render_events_to_file_with_bank};
+use orpheus_dsp::{OfflineRenderError, SampleBank, SampleTrigger, render_events_to_file_with_bank};
 use orpheus_pattern::{Event, PatternNode, Rational, TimeSpan};
 
 use crate::ReplMode;
@@ -145,7 +145,7 @@ pub fn render_sample_pattern_to_file_with_bank(
         .map(|event| Event {
             whole: event.whole,
             part: event.part,
-            value: event.value.sample().into(),
+            value: sample_trigger_from_event(&event.value),
         })
         .collect::<Vec<_>>();
 
@@ -830,6 +830,13 @@ fn extract_string_value(value: Value, message: &str) -> Result<String, EvalError
             Err(EvalError::new(message))
         }
     }
+}
+
+fn sample_trigger_from_event(event: &SampleEvent) -> SampleTrigger {
+    SampleTrigger::named(event.sample())
+        .with_gain(event.gain())
+        .with_rate(event.rate())
+        .with_slice(event.slice_start(), event.slice_end())
 }
 
 fn extract_constant_number_rational(value: Value, context: &str) -> Result<Rational, EvalError> {

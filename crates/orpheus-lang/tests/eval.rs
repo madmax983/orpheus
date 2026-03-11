@@ -164,6 +164,28 @@ fn sample_calls_can_form_pattern_sequences() {
 }
 
 #[test]
+fn rate_and_slice_builtins_update_sample_event_playback_params() {
+    let module = eval_module(
+        r#"lead = sample("vox_ah") |> slice(0.25, 1) |> rate(2) |> gain(0.5)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].value.sample(), "vox_ah");
+    assert!((events[0].value.gain() - 0.5).abs() < f64::EPSILON);
+    assert!((events[0].value.rate() - 2.0).abs() < f64::EPSILON);
+    assert!((events[0].value.slice_start() - 0.25).abs() < f64::EPSILON);
+    assert!((events[0].value.slice_end() - 1.0).abs() < f64::EPSILON);
+}
+
+#[test]
 fn evaluating_multiple_top_level_bindings_reuses_prior_definitions() {
     let module = eval_module("verse = bd sn\nsong = fast(2, verse)", ReplMode::Loose).unwrap();
 

@@ -77,6 +77,24 @@ impl TypeEnv {
                 Type::pattern(Type::Sample),
             )),
         );
+        env.insert(
+            "rate",
+            TypeScheme::monomorphic(Type::curried(
+                vec![Type::pattern(Type::Number), Type::pattern(Type::Sample)],
+                Type::pattern(Type::Sample),
+            )),
+        );
+        env.insert(
+            "slice",
+            TypeScheme::monomorphic(Type::curried(
+                vec![
+                    Type::pattern(Type::Number),
+                    Type::pattern(Type::Number),
+                    Type::pattern(Type::Sample),
+                ],
+                Type::pattern(Type::Sample),
+            )),
+        );
 
         env
     }

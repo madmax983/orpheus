@@ -4,7 +4,7 @@ use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 
 use orpheus_dsp::{
-    EngineCommand, EngineHandle, PatternUpdate, SampleBank, TransportSnapshot,
+    EngineCommand, EngineHandle, PatternUpdate, SampleBank, SampleTrigger, TransportSnapshot,
     load_sample_bank_from_directory,
 };
 
@@ -377,7 +377,10 @@ impl ReplSession {
                     .map(|event| orpheus_pattern::Event {
                         whole: event.whole,
                         part: event.part,
-                        value: Box::<str>::from(event.value.sample()),
+                        value: SampleTrigger::named(event.value.sample())
+                            .with_gain(event.value.gain())
+                            .with_rate(event.value.rate())
+                            .with_slice(event.value.slice_start(), event.value.slice_end()),
                     })
                     .collect(),
             );
@@ -600,6 +603,34 @@ mod tests {
         let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
         let first_trigger_next_cycle = session.render_test_block_for_tui(4);
         assert!((first_trigger_next_cycle[0] - 0.9).abs() < f32::EPSILON);
+
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn sample_playback_params_flow_into_live_engine() {
+        let mut session = ReplSession::new();
+        let directory = temp_directory("repl-sample-params");
+        fs::write(
+            directory.join("samples.ron"),
+            "(\n  tokens: {\n    \"vox_ah\": \"vox.wav\",\n  },\n)\n",
+        )
+        .unwrap();
+        write_wav(directory.join("vox.wav"), &[0.2, 0.4, 0.6, 0.8]);
+
+        session
+            .eval_line(&format!(":samples {}", directory.display()))
+            .unwrap();
+        session
+            .eval_line(r#"lead = sample("vox_ah") |> slice(0.25, 1) |> rate(2) |> gain(0.5)"#)
+            .unwrap();
+
+        let rendered = session.render_test_block_for_tui(4);
+
+        assert!((rendered[0] - 0.2).abs() < f32::EPSILON);
+        assert!((rendered[1] - 0.2).abs() < f32::EPSILON);
+        assert!((rendered[2] - 0.4).abs() < f32::EPSILON);
+        assert!((rendered[3] - 0.4).abs() < f32::EPSILON);
 
         fs::remove_dir_all(directory).unwrap();
     }

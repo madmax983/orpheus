@@ -2,13 +2,14 @@ use std::collections::VecDeque;
 
 use orpheus_pattern::{Event, Rational};
 
+use crate::SampleTrigger;
 use crate::engine::EngineError;
 use crate::voice::VoiceKind;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ScheduledTrigger {
     pub frame: u64,
-    pub token: Box<str>,
+    pub trigger: SampleTrigger,
     pub fallback_voice: Option<VoiceKind>,
 }
 
@@ -51,7 +52,7 @@ impl Scheduler {
         events: I,
     ) -> Result<(), EngineError>
     where
-        I: IntoIterator<Item = Event<&'a str>>,
+        I: IntoIterator<Item = Event<&'a SampleTrigger>>,
     {
         let mut pending = Vec::new();
         for event in events {
@@ -61,8 +62,8 @@ impl Scheduler {
                 .ok_or(EngineError::FrameOverflow)?;
             pending.push(ScheduledTrigger {
                 frame,
-                token: event.value.into(),
-                fallback_voice: VoiceKind::from_token(event.value),
+                trigger: event.value.clone(),
+                fallback_voice: VoiceKind::from_token(event.value.token()),
             });
         }
 
@@ -79,7 +80,7 @@ impl Scheduler {
     pub fn drain_due_events(&mut self, frame: u64) -> Vec<String> {
         let mut due = Vec::new();
         while let Some(trigger) = self.pop_due(frame) {
-            due.push(trigger.token.into());
+            due.push(trigger.trigger.token().to_owned());
         }
         due
     }
@@ -112,7 +113,7 @@ impl Scheduler {
             VoiceKind::from_token(token).ok_or_else(|| EngineError::UnknownVoice(token.into()))?;
         self.insert_trigger(ScheduledTrigger {
             frame,
-            token: token.into(),
+            trigger: SampleTrigger::named(token),
             fallback_voice: Some(voice),
         });
         Ok(())

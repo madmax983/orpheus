@@ -1,4 +1,4 @@
-use orpheus_dsp::Scheduler;
+use orpheus_dsp::{SampleTrigger, Scheduler};
 use orpheus_pattern::{Event, Rational, TimeSpan};
 
 #[test]
@@ -18,6 +18,7 @@ fn schedule_cycle_events_converts_rational_offsets_to_sample_frames() {
     let quarter = Rational::new(1, 4).unwrap();
     let half = Rational::new(1, 2).unwrap();
     let part = TimeSpan::new(quarter, half).unwrap();
+    let trigger = SampleTrigger::named("bd");
 
     scheduler
         .schedule_cycle_events(
@@ -26,7 +27,7 @@ fn schedule_cycle_events_converts_rational_offsets_to_sample_frames() {
             [Event {
                 whole: None,
                 part,
-                value: "bd",
+                value: &trigger,
             }],
         )
         .unwrap();
@@ -38,15 +39,17 @@ fn schedule_cycle_events_converts_rational_offsets_to_sample_frames() {
 #[test]
 fn schedule_cycle_events_is_atomic_on_error() {
     let mut scheduler = Scheduler::new_for_test();
+    let good_trigger = SampleTrigger::named("bd");
+    let bad_trigger = SampleTrigger::named("vox_ah");
     let good = Event {
         whole: None,
         part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
-        value: "bd",
+        value: &good_trigger,
     };
     let bad = Event {
         whole: None,
         part: TimeSpan::new(Rational::new(-1, 4).unwrap(), Rational::zero()).unwrap(),
-        value: "vox_ah",
+        value: &bad_trigger,
     };
 
     assert!(scheduler.schedule_cycle_events(0, 64, [good, bad]).is_err());
@@ -58,6 +61,7 @@ fn schedule_cycle_events_accepts_custom_sample_tokens() {
     let mut scheduler = Scheduler::new_for_test();
     let quarter = Rational::new(1, 4).unwrap();
     let half = Rational::new(1, 2).unwrap();
+    let trigger = SampleTrigger::named("vox_ah");
 
     scheduler
         .schedule_cycle_events(
@@ -66,7 +70,7 @@ fn schedule_cycle_events_accepts_custom_sample_tokens() {
             [Event {
                 whole: None,
                 part: TimeSpan::new(quarter, half).unwrap(),
-                value: "vox_ah",
+                value: &trigger,
             }],
         )
         .unwrap();

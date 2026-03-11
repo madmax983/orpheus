@@ -14,6 +14,8 @@ pub enum BuiltinKind {
     Rev,
     Gain,
     Sample,
+    Rate,
+    Slice,
 }
 
 #[derive(Clone, Debug)]
@@ -62,6 +64,9 @@ impl Value {
 pub struct SampleEvent {
     sample: Box<str>,
     gain: f64,
+    rate: f64,
+    slice_start: f64,
+    slice_end: f64,
 }
 
 impl SampleEvent {
@@ -69,6 +74,9 @@ impl SampleEvent {
         Self {
             sample: sample.into(),
             gain: 1.0,
+            rate: 1.0,
+            slice_start: 0.0,
+            slice_end: 1.0,
         }
     }
 
@@ -81,23 +89,72 @@ impl SampleEvent {
     pub const fn gain(&self) -> f64 {
         self.gain
     }
+
+    #[must_use]
+    pub const fn rate(&self) -> f64 {
+        self.rate
+    }
+
+    #[must_use]
+    pub const fn slice_start(&self) -> f64 {
+        self.slice_start
+    }
+
+    #[must_use]
+    pub const fn slice_end(&self) -> f64 {
+        self.slice_end
+    }
 }
 
-trait GainAdjustable {
+trait PatternValueTransform {
     fn adjust_gain(&self, factor: f64) -> Self;
+    fn adjust_rate(&self, factor: f64) -> Self;
+    fn adjust_slice(&self, start: f64, end: f64) -> Self;
 }
 
-impl GainAdjustable for SampleEvent {
+impl PatternValueTransform for SampleEvent {
     fn adjust_gain(&self, factor: f64) -> Self {
         Self {
             sample: self.sample.clone(),
             gain: self.gain * factor,
+            rate: self.rate,
+            slice_start: self.slice_start,
+            slice_end: self.slice_end,
+        }
+    }
+
+    fn adjust_rate(&self, factor: f64) -> Self {
+        Self {
+            sample: self.sample.clone(),
+            gain: self.gain,
+            rate: self.rate * factor,
+            slice_start: self.slice_start,
+            slice_end: self.slice_end,
+        }
+    }
+
+    fn adjust_slice(&self, start: f64, end: f64) -> Self {
+        let current_range = self.slice_end - self.slice_start;
+        Self {
+            sample: self.sample.clone(),
+            gain: self.gain,
+            rate: self.rate,
+            slice_start: current_range.mul_add(start, self.slice_start),
+            slice_end: current_range.mul_add(end, self.slice_start),
         }
     }
 }
 
-impl GainAdjustable for f64 {
+impl PatternValueTransform for f64 {
     fn adjust_gain(&self, _factor: f64) -> Self {
+        *self
+    }
+
+    fn adjust_rate(&self, _factor: f64) -> Self {
+        *self
+    }
+
+    fn adjust_slice(&self, _start: f64, _end: f64) -> Self {
         *self
     }
 }
@@ -167,6 +224,25 @@ impl SamplePatternValue {
         Self {
             pattern: PatternRuntime::Gain {
                 factor,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn rate(self, factor: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::Rate {
+                factor,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn slice(self, start: f64, end: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::Slice {
+                start,
+                end,
                 inner: Box::new(self.pattern),
             },
         }
@@ -296,15 +372,35 @@ enum PatternRuntime<T> {
     Cycle(CyclePattern<T>),
     Stream(EventStream<T>),
     Stack(Vec<Self>),
-    Fast { factor: i64, inner: Box<Self> },
-    Slow { factor: i64, inner: Box<Self> },
-    Rev { inner: Box<Self> },
-    Gain { factor: f64, inner: Box<Self> },
+    Fast {
+        factor: i64,
+        inner: Box<Self>,
+    },
+    Slow {
+        factor: i64,
+        inner: Box<Self>,
+    },
+    Rev {
+        inner: Box<Self>,
+    },
+    Gain {
+        factor: f64,
+        inner: Box<Self>,
+    },
+    Rate {
+        factor: f64,
+        inner: Box<Self>,
+    },
+    Slice {
+        start: f64,
+        end: f64,
+        inner: Box<Self>,
+    },
 }
 
 impl<T> PatternRuntime<T>
 where
-    T: Clone + GainAdjustable + Send + Sync + fmt::Debug,
+    T: Clone + PatternValueTransform + Send + Sync + fmt::Debug,
 {
     fn try_query(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
         match self {
@@ -332,6 +428,20 @@ where
                 }
                 Ok(events)
             }
+            Self::Rate { factor, inner } => {
+                let mut events = inner.try_query(span)?;
+                for event in &mut events {
+                    event.value = event.value.adjust_rate(*factor);
+                }
+                Ok(events)
+            }
+            Self::Slice { start, end, inner } => {
+                let mut events = inner.try_query(span)?;
+                for event in &mut events {
+                    event.value = event.value.adjust_slice(*start, *end);
+                }
+                Ok(events)
+            }
         }
     }
 }
@@ -342,7 +452,7 @@ fn query_fast<T>(
     span: &TimeSpan,
 ) -> Result<Vec<Event<T>>, EvalError>
 where
-    T: Clone + GainAdjustable + Send + Sync + fmt::Debug,
+    T: Clone + PatternValueTransform + Send + Sync + fmt::Debug,
 {
     let source_span = scale_span(span, factor, 1)?;
     let mut events = inner.try_query(&source_span)?;
@@ -356,7 +466,7 @@ fn query_slow<T>(
     span: &TimeSpan,
 ) -> Result<Vec<Event<T>>, EvalError>
 where
-    T: Clone + GainAdjustable + Send + Sync + fmt::Debug,
+    T: Clone + PatternValueTransform + Send + Sync + fmt::Debug,
 {
     let source_span = scale_span(span, 1, factor)?;
     let mut events = inner.try_query(&source_span)?;
@@ -366,7 +476,7 @@ where
 
 fn query_rev<T>(inner: &PatternRuntime<T>, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError>
 where
-    T: Clone + GainAdjustable + Send + Sync + fmt::Debug,
+    T: Clone + PatternValueTransform + Send + Sync + fmt::Debug,
 {
     if span.is_empty() {
         return Ok(Vec::new());
