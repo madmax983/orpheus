@@ -9,7 +9,7 @@ use crate::voice::VoiceKind;
 pub struct ScheduledTrigger {
     pub frame: u64,
     pub token: Box<str>,
-    pub voice: VoiceKind,
+    pub fallback_voice: Option<VoiceKind>,
 }
 
 /// Sample-clock scheduler that bridges exact pattern time to audio frames.
@@ -42,8 +42,8 @@ impl Scheduler {
     ///
     /// # Errors
     ///
-    /// Returns an error if the event time is negative, overflows the sample
-    /// clock, or names a voice token without a built-in playback mapping.
+    /// Returns an error if the event time is negative or overflows the sample
+    /// clock.
     pub fn schedule_cycle_events<'a, I>(
         &mut self,
         cycle_start_frame: u64,
@@ -59,12 +59,10 @@ impl Scheduler {
             let frame = cycle_start_frame
                 .checked_add(offset)
                 .ok_or(EngineError::FrameOverflow)?;
-            let voice = VoiceKind::from_token(event.value)
-                .ok_or_else(|| EngineError::UnknownVoice(event.value.into()))?;
             pending.push(ScheduledTrigger {
                 frame,
                 token: event.value.into(),
-                voice,
+                fallback_voice: VoiceKind::from_token(event.value),
             });
         }
 
@@ -115,7 +113,7 @@ impl Scheduler {
         self.insert_trigger(ScheduledTrigger {
             frame,
             token: token.into(),
-            voice,
+            fallback_voice: Some(voice),
         });
         Ok(())
     }

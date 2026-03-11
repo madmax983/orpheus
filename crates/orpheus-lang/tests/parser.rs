@@ -7,6 +7,17 @@ fn binding_expr(source: &str) -> Expr {
     }
 }
 
+fn binding_names(source: &str) -> Vec<String> {
+    let module = parse_module(source).unwrap();
+    module
+        .statements
+        .into_iter()
+        .map(|statement| match statement {
+            Stmt::Binding { name, .. } => name,
+        })
+        .collect()
+}
+
 fn assert_parse_error_contains(source: &str, expected_fragments: &[&str]) {
     let error = parse_module(source).unwrap_err();
     let message = error.to_string();
@@ -95,6 +106,19 @@ fn parses_function_calls_with_numeric_arguments() {
 }
 
 #[test]
+fn parses_sample_call_with_string_literal() {
+    let expr = binding_expr(r#"lead = sample("vox_ah")"#);
+
+    assert_eq!(
+        expr,
+        Expr::Call {
+            callee: Box::new(Expr::Ident("sample".to_owned())),
+            args: vec![Expr::String("vox_ah".to_owned())],
+        }
+    );
+}
+
+#[test]
 fn parses_meter_annotation_prefix_form() {
     let expr = binding_expr("bridge = meter(4, 4) stream(at(beat(0), bd), at(beat(2), sn))");
 
@@ -133,9 +157,9 @@ fn rejects_stack_layers_with_double_commas() {
 }
 
 #[test]
-fn rejects_a_second_top_level_binding() {
-    assert_parse_error_contains(
-        "drums = bd sn\nbass = cp",
-        &["single top-level binding", "bass = cp"],
+fn parses_multiple_top_level_bindings() {
+    assert_eq!(
+        binding_names("drums = bd sn\nbass = cp"),
+        vec!["drums".to_owned(), "bass".to_owned()]
     );
 }

@@ -42,3 +42,29 @@ fn meter_prefix_annotation_infers_sample_patterns() {
 
     assert_eq!(typed.type_of("song").to_string(), "Pattern<Sample>");
 }
+
+#[test]
+fn sample_builtin_infers_sample_pattern_from_string_literal() {
+    let typed = infer_module(r#"lead = sample("vox_ah")"#, ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("lead").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn sample_calls_in_sequences_still_infer_sample_patterns() {
+    let typed = infer_module(
+        r#"lead = sample("vox_ah") sample("vox_oh")"#,
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(typed.type_of("lead").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn multiple_top_level_bindings_infer_in_order() {
+    let typed = infer_module("verse = bd sn\nsong = fast(2, verse)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("verse").to_string(), "Pattern<Sample>");
+    assert_eq!(typed.type_of("song").to_string(), "Pattern<Sample>");
+}

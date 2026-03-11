@@ -1,6 +1,7 @@
 use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::str::contains;
 use std::fs;
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn temp_wav_path() -> std::path::PathBuf {
@@ -9,6 +10,30 @@ fn temp_wav_path() -> std::path::PathBuf {
         .unwrap()
         .as_nanos();
     std::env::temp_dir().join(format!("orpheus smoke render {timestamp}.wav"))
+}
+
+fn temp_directory(name: &str) -> PathBuf {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let directory = std::env::temp_dir().join(format!("orpheus-{name}-{timestamp}"));
+    fs::create_dir_all(&directory).unwrap();
+    directory
+}
+
+fn write_wav(path: PathBuf, frames: &[f32]) {
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: 48_000,
+        bits_per_sample: 32,
+        sample_format: hound::SampleFormat::Float,
+    };
+    let mut writer = hound::WavWriter::create(path, spec).unwrap();
+    for sample in frames {
+        writer.write_sample(*sample).unwrap();
+    }
+    writer.finalize().unwrap();
 }
 
 #[test]
@@ -95,4 +120,32 @@ fn repl_stop_and_play_commands_report_success() {
         .success()
         .stdout(contains("transport stopped"))
         .stdout(contains("transport playing"));
+}
+
+#[test]
+fn repl_renders_manifest_backed_sample_tokens() {
+    let mut cmd = cargo_bin_cmd!("orpheus");
+    let directory = temp_directory("sample-pack");
+    fs::write(
+        directory.join("samples.ron"),
+        "(\n  tokens: {\n    \"vox_ah\": \"vox.wav\",\n  },\n)\n",
+    )
+    .unwrap();
+    write_wav(directory.join("vox.wav"), &[0.33, 0.0, 0.0, 0.0]);
+    let path = temp_wav_path();
+
+    cmd.write_stdin(format!(
+        ":samples {}\nsong = sample(\"vox_ah\")\n:render song {}\n:quit\n",
+        directory.display(),
+        path.display()
+    ))
+    .assert()
+    .success()
+    .stdout(contains("loaded sample overrides"))
+    .stdout(contains("rendered `song`"));
+
+    assert!(path.exists());
+    assert!(fs::metadata(&path).unwrap().len() > 44);
+    let _ = fs::remove_file(path);
+    let _ = fs::remove_dir_all(directory);
 }

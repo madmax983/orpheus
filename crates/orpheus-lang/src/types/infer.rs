@@ -148,6 +148,7 @@ impl Inferencer {
                 "rest markers do not have a standalone type outside pattern sequences",
             )),
             Expr::Number(_) => Ok(Type::pattern(Type::Number)),
+            Expr::String(_) => Ok(Type::String),
         }
     }
 

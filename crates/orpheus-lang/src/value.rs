@@ -13,6 +13,7 @@ pub enum BuiltinKind {
     Slow,
     Rev,
     Gain,
+    Sample,
 }
 
 #[derive(Clone, Debug)]
@@ -26,6 +27,7 @@ pub enum Value {
     SamplePattern(SamplePatternValue),
     NumberPattern(NumberPatternValue),
     Function(BuiltinFn),
+    String(String),
 }
 
 impl Value {
@@ -33,7 +35,7 @@ impl Value {
     pub const fn as_sample_pattern(&self) -> Option<&SamplePatternValue> {
         match self {
             Self::SamplePattern(pattern) => Some(pattern),
-            Self::NumberPattern(_) | Self::Function(_) => None,
+            Self::NumberPattern(_) | Self::Function(_) | Self::String(_) => None,
         }
     }
 
@@ -41,7 +43,7 @@ impl Value {
     pub const fn as_number_pattern(&self) -> Option<&NumberPatternValue> {
         match self {
             Self::NumberPattern(pattern) => Some(pattern),
-            Self::SamplePattern(_) | Self::Function(_) => None,
+            Self::SamplePattern(_) | Self::Function(_) | Self::String(_) => None,
         }
     }
 
@@ -51,6 +53,7 @@ impl Value {
             Self::SamplePattern(_) => "sample pattern",
             Self::NumberPattern(_) => "number pattern",
             Self::Function(_) => "function",
+            Self::String(_) => "string",
         }
     }
 }

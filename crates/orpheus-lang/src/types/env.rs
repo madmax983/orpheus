@@ -70,6 +70,13 @@ impl TypeEnv {
                 Type::pattern(Type::Sample),
             )),
         );
+        env.insert(
+            "sample",
+            TypeScheme::monomorphic(Type::curried(
+                vec![Type::String],
+                Type::pattern(Type::Sample),
+            )),
+        );
 
         env
     }

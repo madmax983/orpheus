@@ -284,6 +284,7 @@ impl Evaluator {
                 "rest markers can only appear inside pattern sequences",
             )),
             Expr::Number(value) => Ok(Value::NumberPattern(NumberPatternValue::constant(*value))),
+            Expr::String(value) => Ok(Value::String(value.clone())),
         }
     }
 
@@ -296,7 +297,7 @@ impl Evaluator {
             return Err(error);
         }
 
-        if let Some(nodes) = self.collect_sample_nodes(items)? {
+        if let Some(nodes) = self.collect_sample_nodes(items, meter)? {
             return Ok(Value::SamplePattern(SamplePatternValue::from_nodes(nodes)));
         }
 
@@ -318,7 +319,7 @@ impl Evaluator {
             return Err(error);
         }
 
-        if let Some(nodes) = self.collect_sample_nodes(items)? {
+        if let Some(nodes) = self.collect_sample_nodes(items, meter)? {
             return Ok(Value::SamplePattern(SamplePatternValue::from_group(nodes)));
         }
 
@@ -619,16 +620,18 @@ impl Evaluator {
             Value::Function(_) => Err(EvalError::new(
                 "functions cannot be materialized into explicit-time event streams",
             )),
+            Value::String(_) => Err(EvalError::new(
+                "strings cannot be materialized into explicit-time event streams",
+            )),
         }
     }
 
     fn apply_value(callee: Value, args: Vec<Value>) -> Result<Value, EvalError> {
         match callee {
             Value::Function(function) => function.apply(args),
-            Value::SamplePattern(_) | Value::NumberPattern(_) => Err(EvalError::new(format!(
-                "cannot call a {}",
-                callee.kind_name()
-            ))),
+            Value::SamplePattern(_) | Value::NumberPattern(_) | Value::String(_) => Err(
+                EvalError::new(format!("cannot call a {}", callee.kind_name())),
+            ),
         }
     }
 
@@ -652,7 +655,7 @@ impl Evaluator {
     fn unsupported_pattern_item_error(items: &[Expr], context: &str) -> Option<EvalError> {
         for item in items {
             match item {
-                Expr::Call { callee, .. } => {
+                Expr::Call { callee, args } => {
                     let name = match callee.as_ref() {
                         Expr::Ident(name) => name.as_str(),
                         Expr::Seq(_)
@@ -667,8 +670,12 @@ impl Evaluator {
                         | Expr::SeqSections(_)
                         | Expr::Group(_)
                         | Expr::Rest
-                        | Expr::Number(_) => "call",
+                        | Expr::Number(_)
+                        | Expr::String(_) => "call",
                     };
+                    if name == "sample" && args.len() == 1 {
+                        continue;
+                    }
                     return Some(EvalError::new(format!(
                         "function call `{name}` cannot appear inside a pattern {context} in Task 5; apply transforms with the pipe operator `|>` or call `{name}(..., pattern)` directly"
                     )));
@@ -699,7 +706,8 @@ impl Evaluator {
                 | Expr::Pipe { .. }
                 | Expr::Ident(_)
                 | Expr::Rest
-                | Expr::Number(_) => {}
+                | Expr::Number(_)
+                | Expr::String(_) => {}
             }
         }
 
@@ -709,10 +717,11 @@ impl Evaluator {
     fn collect_sample_nodes(
         &self,
         items: &[Expr],
+        meter: Option<&MeterContext>,
     ) -> Result<Option<Vec<PatternNode<SampleEvent>>>, EvalError> {
         let mut nodes = Vec::with_capacity(items.len());
         for item in items {
-            let Some(node) = self.try_sample_node(item)? else {
+            let Some(node) = self.try_sample_node(item, meter)? else {
                 return Ok(None);
             };
             nodes.push(node);
@@ -721,14 +730,29 @@ impl Evaluator {
         Ok(Some(nodes))
     }
 
-    fn try_sample_node(&self, expr: &Expr) -> Result<Option<PatternNode<SampleEvent>>, EvalError> {
+    fn try_sample_node(
+        &self,
+        expr: &Expr,
+        meter: Option<&MeterContext>,
+    ) -> Result<Option<PatternNode<SampleEvent>>, EvalError> {
         match expr {
             Expr::Ident(name) if is_sample_identifier(name) => {
                 Ok(Some(PatternNode::atom(SampleEvent::named(name))))
             }
+            Expr::Call { callee, args } if matches!(callee.as_ref(), Expr::Ident(name) if name == "sample") =>
+            {
+                let [arg] = args.as_slice() else {
+                    return Err(EvalError::new("`sample` requires exactly one argument"));
+                };
+                let sample = extract_string_value(
+                    self.eval_expr_in_meter(arg, meter)?,
+                    "`sample` requires a string argument",
+                )?;
+                Ok(Some(PatternNode::atom(SampleEvent::named(&sample))))
+            }
             Expr::Rest => Ok(Some(PatternNode::rest())),
             Expr::Group(items) => {
-                let Some(nodes) = self.collect_sample_nodes(items)? else {
+                let Some(nodes) = self.collect_sample_nodes(items, meter)? else {
                     return Ok(None);
                 };
                 Ok(Some(PatternNode::group(nodes)))
@@ -744,7 +768,8 @@ impl Evaluator {
             | Expr::Section { .. }
             | Expr::SeqSections(_)
             | Expr::Ident(_)
-            | Expr::Number(_) => Ok(None),
+            | Expr::Number(_)
+            | Expr::String(_) => Ok(None),
         }
     }
 
@@ -783,7 +808,8 @@ impl Evaluator {
             | Expr::Beat(_)
             | Expr::Section { .. }
             | Expr::SeqSections(_)
-            | Expr::Ident(_) => Ok(None),
+            | Expr::Ident(_)
+            | Expr::String(_) => Ok(None),
         }
     }
 }
@@ -791,9 +817,18 @@ impl Evaluator {
 fn extract_constant_number_value(value: Value, context: &str) -> Result<f64, EvalError> {
     match value {
         Value::NumberPattern(pattern) => pattern.constant_value(),
-        Value::SamplePattern(_) | Value::Function(_) => Err(EvalError::new(format!(
-            "{context} must resolve to a constant number"
-        ))),
+        Value::SamplePattern(_) | Value::Function(_) | Value::String(_) => Err(EvalError::new(
+            format!("{context} must resolve to a constant number"),
+        )),
+    }
+}
+
+fn extract_string_value(value: Value, message: &str) -> Result<String, EvalError> {
+    match value {
+        Value::String(string) => Ok(string),
+        Value::SamplePattern(_) | Value::NumberPattern(_) | Value::Function(_) => {
+            Err(EvalError::new(message))
+        }
     }
 }
 

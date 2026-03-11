@@ -51,4 +51,5 @@ orpheus-pattern.workspace = true
 
 [dev-dependencies]
 assert_cmd = "2"
+hound.workspace = true
 predicates = "3"

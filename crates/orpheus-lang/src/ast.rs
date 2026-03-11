@@ -48,6 +48,8 @@ pub enum Expr {
     Rest,
     /// A numeric literal.
     Number(f64),
+    /// A string literal.
+    String(String),
 }
 
 /// Phase 1 statements.

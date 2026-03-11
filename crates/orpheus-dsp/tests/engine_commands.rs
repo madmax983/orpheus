@@ -400,17 +400,54 @@ fn sample_bank_reload_waits_until_cycle_boundary() {
     fs::remove_dir_all(directory).unwrap();
 }
 
-fn temp_directory(name: &str) -> PathBuf {
-    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("target")
-        .join("test-artifacts");
-    fs::create_dir_all(&directory).unwrap();
+#[test]
+fn manifest_mapped_sample_token_plays_through_live_engine() {
+    let mut engine = EngineHandle::stub();
+    let directory = temp_directory("manifest-token-live");
+    fs::write(
+        directory.join("samples.ron"),
+        "(\n  tokens: {\n    \"vox_ah\": \"vox.wav\",\n  },\n)\n",
+    )
+    .unwrap();
+    write_wav(directory.join("vox.wav"), &[0.42, 0.0, 0.0, 0.0]);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+    engine
+        .enqueue(EngineCommand::ReplaceSampleBank(bank))
+        .unwrap();
 
+    let pattern = PatternUpdate::new(
+        "vox",
+        vec![Event {
+            whole: None,
+            part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+            value: Box::<str>::from("vox_ah"),
+        }],
+    );
+    engine.enqueue(EngineCommand::LoadPattern(pattern)).unwrap();
+
+    let rendered = engine.render_test_block(4);
+
+    assert!((rendered[0] - 0.42).abs() < f32::EPSILON);
+    assert!((rendered[1] - 0.42).abs() < f32::EPSILON);
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn temp_directory_uses_system_temp_directory() {
+    let directory = temp_directory("system-temp-check");
+
+    assert!(directory.starts_with(std::env::temp_dir()));
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+fn temp_directory(name: &str) -> PathBuf {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let directory = directory.join(format!("{unique}-{name}"));
+    let directory = std::env::temp_dir().join(format!("orpheus-dsp-{unique}-{name}"));
     fs::create_dir_all(&directory).unwrap();
     directory
 }

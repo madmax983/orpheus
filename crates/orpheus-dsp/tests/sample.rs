@@ -69,17 +69,52 @@ fn sample_directory_scan_maps_common_aliases_to_builtin_tokens() {
     fs::remove_dir_all(directory).unwrap();
 }
 
-fn temp_fixture(name: &str) -> PathBuf {
-    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("target")
-        .join("test-artifacts");
-    fs::create_dir_all(&directory).unwrap();
+#[test]
+fn sample_manifest_maps_explicit_tokens_and_aliases() {
+    let directory = temp_directory("sample-manifest");
+    write_wav(directory.join("vox.wav"), &[0.75, 0.0, 0.0, 0.0]);
+    fs::write(
+        directory.join("samples.ron"),
+        "(\n  tokens: {\n    \"vox_ah\": \"vox.wav\",\n  },\n  aliases: {\n    \"vox\": \"vox_ah\",\n  },\n)\n",
+    )
+    .unwrap();
 
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+    let direct = bank.get_by_token("vox_ah").unwrap();
+    let alias = bank.get_by_token("vox").unwrap();
+
+    assert_eq!(direct, alias);
+    assert!((direct.frames()[0] - 0.75).abs() < f32::EPSILON);
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn sample_directory_scan_infers_token_names_from_filenames() {
+    let directory = temp_directory("sample-inference");
+    write_wav(directory.join("Vox_Ah.wav"), &[0.2, 0.0, 0.0, 0.0]);
+
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+    let sample = bank.get_by_token("vox_ah").unwrap();
+
+    assert!((sample.frames()[0] - 0.2).abs() < f32::EPSILON);
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn temp_fixture_uses_system_temp_directory() {
+    let path = temp_fixture("fixture.wav");
+
+    assert!(path.starts_with(std::env::temp_dir()));
+}
+
+fn temp_fixture(name: &str) -> PathBuf {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    directory.join(format!("{unique}-{name}"))
+    std::env::temp_dir().join(format!("orpheus-dsp-{unique}-{name}"))
 }
 
 fn temp_directory(name: &str) -> PathBuf {

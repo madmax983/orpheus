@@ -14,28 +14,73 @@ struct SyntaxParser;
 
 /// Parses Phase 1 Orpheus source text into an AST module.
 ///
-/// Phase 1 intentionally accepts a single top-level binding only. Multi-binding
-/// separator rules land in a later task once the surface syntax is specified.
+/// Phase 1 accepts one or more top-level bindings. Bindings are discovered at
+/// line starts while the parser is not nested inside parentheses, then each
+/// binding body is parsed with the Phase 1 expression grammar.
 ///
 /// # Errors
 ///
 /// Returns [`ParseError`] when the source does not match the Phase 1 grammar
 /// or when the parser encounters an internal AST construction failure.
 pub fn parse_module(source: &str) -> Result<Module, ParseError> {
-    let mut pairs = SyntaxParser::parse(Rule::module, source)
+    let chunks = split_top_level_bindings(source);
+    if chunks.is_empty() {
+        return parse_single_binding_module(source, 1);
+    }
+
+    let mut statements = Vec::new();
+    for (start_line, chunk) in chunks {
+        let module = parse_single_binding_module(&chunk, start_line)?;
+        statements.extend(module.statements);
+    }
+
+    Ok(Module { statements })
+}
+
+fn parse_single_binding_module(source: &str, start_line: usize) -> Result<Module, ParseError> {
+    let padded_source = if start_line <= 1 {
+        source.to_owned()
+    } else {
+        format!("{}{}", "\n".repeat(start_line - 1), source)
+    };
+    let mut pairs = SyntaxParser::parse(Rule::module, &padded_source)
         .map_err(|error| enrich_parse_error(source, &error))?;
     let module_pair = next_pair(&mut pairs, "module")?;
     build_module(module_pair)
 }
 
+fn split_top_level_bindings(source: &str) -> Vec<(usize, String)> {
+    let mut bindings = Vec::new();
+    let mut current = String::new();
+    let mut current_start_line = 1_usize;
+    let mut paren_depth = 0_i32;
+
+    for (index, line) in source.lines().enumerate() {
+        let line_number = index + 1;
+        let trimmed = line.trim();
+        if paren_depth == 0 && !current.trim().is_empty() && looks_like_binding(trimmed) {
+            bindings.push((current_start_line, std::mem::take(&mut current)));
+            current_start_line = line_number;
+        } else if current.is_empty() && !trimmed.is_empty() {
+            current_start_line = line_number;
+        }
+
+        if !current.is_empty() {
+            current.push('\n');
+        }
+        current.push_str(line);
+        paren_depth = update_paren_depth(paren_depth, line);
+    }
+
+    if !current.trim().is_empty() {
+        bindings.push((current_start_line, current));
+    }
+
+    bindings
+}
+
 fn enrich_parse_error(source: &str, error: &PestError<Rule>) -> ParseError {
     let rendered = error.to_string();
-
-    if let Some((line_number, binding)) = second_top_level_binding(source) {
-        return ParseError::new(format!(
-            "parse error: Phase 1 accepts a single top-level binding; found another binding at line {line_number}: {binding}"
-        ));
-    }
 
     if unmatched_open_parens(source) > 0 {
         return ParseError::new(format!(
@@ -44,22 +89,6 @@ fn enrich_parse_error(source: &str, error: &PestError<Rule>) -> ParseError {
     }
 
     ParseError::new(format!("parse error: {rendered}"))
-}
-
-fn second_top_level_binding(source: &str) -> Option<(usize, &str)> {
-    source
-        .lines()
-        .enumerate()
-        .filter_map(|(index, line)| {
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some((index + 1, trimmed))
-            }
-        })
-        .skip(1)
-        .find(|(_, line)| looks_like_binding(line))
 }
 
 fn looks_like_binding(line: &str) -> bool {
@@ -77,14 +106,64 @@ fn looks_like_binding(line: &str) -> bool {
         && chars.all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
+fn update_paren_depth(current: i32, line: &str) -> i32 {
+    let mut depth = current;
+    let mut in_string = false;
+    let mut escaping = false;
+
+    for character in line.chars() {
+        if in_string {
+            if escaping {
+                escaping = false;
+                continue;
+            }
+            match character {
+                '\\' => escaping = true,
+                '"' => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+
+        match character {
+            '"' => in_string = true,
+            '(' => depth = depth.saturating_add(1),
+            ')' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+
+    depth
+}
+
 fn unmatched_open_parens(source: &str) -> usize {
-    source
-        .chars()
-        .fold(0_usize, |count, character| match character {
-            '(' => count + 1,
-            ')' => count.saturating_sub(1),
-            _ => count,
-        })
+    let mut count = 0_usize;
+    let mut in_string = false;
+    let mut escaping = false;
+
+    for character in source.chars() {
+        if in_string {
+            if escaping {
+                escaping = false;
+                continue;
+            }
+            match character {
+                '\\' => escaping = true,
+                '"' => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+
+        match character {
+            '"' => in_string = true,
+            '(' => count += 1,
+            ')' => count = count.saturating_sub(1),
+            _ => {}
+        }
+    }
+
+    count
 }
 
 fn next_pair<'a>(
@@ -158,6 +237,7 @@ fn build_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
         Rule::group => build_group(pair),
         Rule::rest => Ok(Expr::Rest),
         Rule::number => build_number(&pair),
+        Rule::string => build_string(&pair),
         Rule::identifier => Ok(Expr::Ident(pair.as_str().to_owned())),
         Rule::pipe_expr => build_pipe_expr(pair),
         Rule::sequence => build_sequence(pair),
@@ -249,6 +329,46 @@ fn build_number(pair: &Pair<'_, Rule>) -> Result<Expr, ParseError> {
                 pair.as_str()
             ))
         })
+}
+
+fn build_string(pair: &Pair<'_, Rule>) -> Result<Expr, ParseError> {
+    parse_string_literal(pair.as_str()).map(Expr::String)
+}
+
+fn parse_string_literal(literal: &str) -> Result<String, ParseError> {
+    let Some(body) = literal
+        .strip_prefix('"')
+        .and_then(|stripped| stripped.strip_suffix('"'))
+    else {
+        return Err(ParseError::new("invalid string literal delimiter"));
+    };
+
+    let mut value = String::new();
+    let mut characters = body.chars();
+    while let Some(character) = characters.next() {
+        if character != '\\' {
+            value.push(character);
+            continue;
+        }
+
+        let Some(escaped) = characters.next() else {
+            return Err(ParseError::new("unterminated string escape"));
+        };
+        match escaped {
+            '"' => value.push('"'),
+            '\\' => value.push('\\'),
+            'n' => value.push('\n'),
+            'r' => value.push('\r'),
+            't' => value.push('\t'),
+            other => {
+                return Err(ParseError::new(format!(
+                    "unsupported string escape `\\{other}`"
+                )));
+            }
+        }
+    }
+
+    Ok(value)
 }
 
 fn collapse_sequence(items: Vec<Expr>, context: &'static str) -> Result<Expr, ParseError> {

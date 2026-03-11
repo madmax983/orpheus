@@ -12,6 +12,7 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "slow" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Slow))),
         "rev" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Rev))),
         "gain" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Gain))),
+        "sample" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Sample))),
         _ => None,
     }
 }
@@ -29,7 +30,7 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
             .into_iter()
             .map(|value| match value {
                 Value::SamplePattern(pattern) => pattern,
-                Value::NumberPattern(_) | Value::Function(_) => unreachable!(),
+                Value::NumberPattern(_) | Value::Function(_) | Value::String(_) => unreachable!(),
             })
             .collect();
         return Ok(Value::SamplePattern(SamplePatternValue::stack(patterns)));
@@ -43,7 +44,7 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
             .into_iter()
             .map(|value| match value {
                 Value::NumberPattern(pattern) => pattern,
-                Value::SamplePattern(_) | Value::Function(_) => unreachable!(),
+                Value::SamplePattern(_) | Value::Function(_) | Value::String(_) => unreachable!(),
             })
             .collect();
         return Ok(Value::NumberPattern(
@@ -95,13 +96,14 @@ impl BuiltinKind {
             Self::Slow => "slow",
             Self::Rev => "rev",
             Self::Gain => "gain",
+            Self::Sample => "sample",
         }
     }
 
     const fn arity(self) -> usize {
         match self {
             Self::Fast | Self::Slow | Self::Gain => 2,
-            Self::Rev => 1,
+            Self::Rev | Self::Sample => 1,
         }
     }
 
@@ -111,6 +113,7 @@ impl BuiltinKind {
             Self::Slow => apply_slow(args),
             Self::Rev => apply_rev(args),
             Self::Gain => apply_gain(args),
+            Self::Sample => apply_sample(args),
         }
     }
 }
@@ -129,7 +132,7 @@ fn apply_fast(args: Vec<Value>) -> Result<Value, EvalError> {
     match pattern {
         Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.fast(factor))),
         Value::NumberPattern(pattern) => Ok(Value::NumberPattern(pattern.fast(factor))),
-        Value::Function(_) => Err(EvalError::new(
+        Value::Function(_) | Value::String(_) => Err(EvalError::new(
             "`fast` expected a pattern as its final argument",
         )),
     }
@@ -149,7 +152,7 @@ fn apply_slow(args: Vec<Value>) -> Result<Value, EvalError> {
     match pattern {
         Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.slow(factor))),
         Value::NumberPattern(pattern) => Ok(Value::NumberPattern(pattern.slow(factor))),
-        Value::Function(_) => Err(EvalError::new(
+        Value::Function(_) | Value::String(_) => Err(EvalError::new(
             "`slow` expected a pattern as its final argument",
         )),
     }
@@ -164,7 +167,9 @@ fn apply_rev(args: Vec<Value>) -> Result<Value, EvalError> {
     match pattern {
         Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.rev())),
         Value::NumberPattern(pattern) => Ok(Value::NumberPattern(pattern.rev())),
-        Value::Function(_) => Err(EvalError::new("`rev` expected a pattern argument")),
+        Value::Function(_) | Value::String(_) => {
+            Err(EvalError::new("`rev` expected a pattern argument"))
+        }
     }
 }
 
@@ -183,10 +188,20 @@ fn apply_gain(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::NumberPattern(_) => Err(EvalError::new(
             "`gain` only applies to sample patterns in Task 5",
         )),
-        Value::Function(_) => Err(EvalError::new(
+        Value::Function(_) | Value::String(_) => Err(EvalError::new(
             "`gain` expected a sample pattern as its final argument",
         )),
     }
+}
+
+fn apply_sample(args: Vec<Value>) -> Result<Value, EvalError> {
+    let token = extract_string(
+        args.into_iter()
+            .next()
+            .ok_or_else(|| EvalError::new("`sample` requires a token argument"))?,
+        "sample",
+    )?;
+    Ok(Value::SamplePattern(SamplePatternValue::atom(&token)))
 }
 
 fn extract_positive_integer_factor(value: Value, builtin_name: &str) -> Result<i64, EvalError> {
@@ -220,8 +235,17 @@ fn extract_gain(value: Value) -> Result<f64, EvalError> {
 fn extract_constant_number(value: Value, builtin_name: &str) -> Result<f64, EvalError> {
     match value {
         Value::NumberPattern(pattern) => pattern.constant_value(),
-        Value::SamplePattern(_) | Value::Function(_) => Err(EvalError::new(format!(
-            "`{builtin_name}` requires a constant number argument"
-        ))),
+        Value::SamplePattern(_) | Value::Function(_) | Value::String(_) => Err(EvalError::new(
+            format!("`{builtin_name}` requires a constant number argument"),
+        )),
+    }
+}
+
+fn extract_string(value: Value, builtin_name: &str) -> Result<String, EvalError> {
+    match value {
+        Value::String(string) => Ok(string),
+        Value::SamplePattern(_) | Value::NumberPattern(_) | Value::Function(_) => Err(
+            EvalError::new(format!("`{builtin_name}` requires a string argument")),
+        ),
     }
 }

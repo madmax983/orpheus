@@ -45,10 +45,31 @@ fn schedule_cycle_events_is_atomic_on_error() {
     };
     let bad = Event {
         whole: None,
-        part: TimeSpan::new(Rational::new(1, 2).unwrap(), Rational::new(3, 4).unwrap()).unwrap(),
-        value: "???",
+        part: TimeSpan::new(Rational::new(-1, 4).unwrap(), Rational::zero()).unwrap(),
+        value: "vox_ah",
     };
 
     assert!(scheduler.schedule_cycle_events(0, 64, [good, bad]).is_err());
     assert!(scheduler.drain_due_events(u64::MAX).is_empty());
+}
+
+#[test]
+fn schedule_cycle_events_accepts_custom_sample_tokens() {
+    let mut scheduler = Scheduler::new_for_test();
+    let quarter = Rational::new(1, 4).unwrap();
+    let half = Rational::new(1, 2).unwrap();
+
+    scheduler
+        .schedule_cycle_events(
+            0,
+            64,
+            [Event {
+                whole: None,
+                part: TimeSpan::new(quarter, half).unwrap(),
+                value: "vox_ah",
+            }],
+        )
+        .unwrap();
+
+    assert_eq!(scheduler.drain_due_events(16), vec!["vox_ah"]);
 }

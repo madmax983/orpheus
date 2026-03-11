@@ -44,6 +44,8 @@ pub enum OfflineRenderError {
     FlacConfig(Box<str>),
     #[error("failed to encode FLAC output: {0}")]
     FlacEncode(Box<str>),
+    #[error("unknown sample token `{0}`")]
+    UnknownSampleToken(Box<str>),
 }
 
 /// Renders explicit-time sample token events to a deterministic stereo audio
@@ -142,8 +144,9 @@ fn render_events_to_pcm(
                 &mut active_voices,
                 sample_bank,
                 trigger.token.as_ref(),
+                trigger.fallback_voice,
                 DEFAULT_SAMPLE_RATE,
-            );
+            )?;
         }
 
         let sample = mix_voices(&mut active_voices);
@@ -220,19 +223,20 @@ fn activate_voice(
     active_voices: &mut [Option<ActiveVoice>],
     sample_bank: &SampleBank,
     token: &str,
+    fallback_voice: Option<VoiceKind>,
     sample_rate: u32,
-) {
+) -> Result<(), OfflineRenderError> {
     if let Some(slot) = active_voices.iter_mut().find(|slot| slot.is_none()) {
-        *slot = Some(sample_bank.get_by_token(token).map_or_else(
-            || {
-                VoiceKind::from_token(token).map_or_else(
-                    || ActiveVoice::new(VoiceKind::KickLike, sample_rate),
-                    |voice| ActiveVoice::new(voice, sample_rate),
-                )
-            },
-            |sample| ActiveVoice::from_sample(sample, sample_rate),
-        ));
+        *slot = Some(if let Some(sample) = sample_bank.get_by_token(token) {
+            ActiveVoice::from_sample(sample, sample_rate)
+        } else if let Some(voice) = fallback_voice {
+            ActiveVoice::new(voice, sample_rate)
+        } else {
+            return Err(OfflineRenderError::UnknownSampleToken(token.into()));
+        });
     }
+
+    Ok(())
 }
 
 fn mix_voices(active_voices: &mut [Option<ActiveVoice>]) -> f32 {

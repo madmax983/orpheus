@@ -143,6 +143,38 @@ fn meter_prefix_annotation_translates_beats_into_cycle_relative_time() {
 }
 
 #[test]
+fn sample_builtin_lifts_string_literals_into_sample_patterns() {
+    let module = eval_module(r#"lead = sample("vox_ah")"#, ReplMode::Loose).unwrap();
+
+    assert_eq!(sample_names(module.get("lead").unwrap()), ["vox_ah"]);
+}
+
+#[test]
+fn sample_calls_can_form_pattern_sequences() {
+    let module = eval_module(
+        r#"lead = sample("vox_ah") sample("vox_oh")"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+
+    assert_eq!(
+        sample_names(module.get("lead").unwrap()),
+        ["vox_ah", "vox_oh"]
+    );
+}
+
+#[test]
+fn evaluating_multiple_top_level_bindings_reuses_prior_definitions() {
+    let module = eval_module("verse = bd sn\nsong = fast(2, verse)", ReplMode::Loose).unwrap();
+
+    assert_eq!(sample_names(module.get("verse").unwrap()), ["bd", "sn"]);
+    assert_eq!(
+        sample_names(module.get("song").unwrap()),
+        ["bd", "sn", "bd", "sn"]
+    );
+}
+
+#[test]
 fn loose_mode_still_rejects_unresolved_identifiers_until_placeholders_exist() {
     assert_eval_error_contains(
         "drums = mystery",

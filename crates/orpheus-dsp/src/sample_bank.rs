@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
@@ -6,12 +6,14 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::sample::{DecodedSample, SampleError, load_wav_bytes, load_wav_for_test};
+use crate::sample_manifest::{SampleManifest, SampleManifestLoadError, load_sample_manifest};
 use crate::voice::VoiceKind;
 
 const KICK_WAV: &[u8] = include_bytes!("../assets/kick.wav");
 const SNARE_WAV: &[u8] = include_bytes!("../assets/snare.wav");
 const CLAP_WAV: &[u8] = include_bytes!("../assets/clap.wav");
 const HIHAT_WAV: &[u8] = include_bytes!("../assets/hihat.wav");
+const SAMPLE_MANIFEST_FILE: &str = "samples.ron";
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlaybackSample {
@@ -96,6 +98,26 @@ pub enum SampleBankError {
         #[source]
         source: std::io::Error,
     },
+    #[error("failed to read sample manifest `{path}`: {source}")]
+    ManifestIo {
+        path: Box<str>,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("failed to parse sample manifest `{path}`: {message}")]
+    ManifestParse { path: Box<str>, message: Box<str> },
+    #[error("sample manifest `{path}` aliases `{alias}` to unknown token `{target}`")]
+    ManifestAliasTarget {
+        path: Box<str>,
+        alias: Box<str>,
+        target: Box<str>,
+    },
+    #[error("sample manifest `{path}` contains an alias cycle at `{alias}` via `{target}`")]
+    ManifestAliasCycle {
+        path: Box<str>,
+        alias: Box<str>,
+        target: Box<str>,
+    },
     #[error("failed to decode sample override `{path}`: {source}")]
     Decode {
         path: Box<str>,
@@ -107,13 +129,17 @@ pub enum SampleBankError {
 /// Loads a sample bank from built-ins plus any supported WAV overrides found in
 /// `directory`.
 ///
-/// Supported filenames map onto the current built-in drum tokens:
+/// Supported filenames load directly as lowercased token names. Drum filename
+/// aliases also keep overriding the built-in tokens:
 /// `bd`/`kick`, `sn`/`snare`, `cp`/`clap`, and `hh`/`hat`/`hihat`.
+///
+/// If `samples.ron` exists, explicit `tokens` and `aliases` are loaded after
+/// directory inference and override it.
 ///
 /// # Errors
 ///
 /// Returns [`SampleBankError`] if the directory cannot be read or if one of the
-/// supported override files fails to decode.
+/// sample files or manifest entries fail to load.
 pub fn load_sample_bank_from_directory(
     directory: impl AsRef<Path>,
 ) -> Result<SampleBank, SampleBankError> {
@@ -130,8 +156,11 @@ pub fn load_sample_bank_from_directory(
             source,
         })?;
     entries.sort_by_key(std::fs::DirEntry::file_name);
+    let manifest_path = directory.join(SAMPLE_MANIFEST_FILE);
+    let manifest = load_optional_manifest(&manifest_path)?;
 
     let mut bank = SampleBank::load_builtin();
+    let mut inferred_tokens = BTreeMap::<String, PlaybackSample>::new();
     let mut candidates: BTreeMap<&'static str, (u8, PlaybackSample)> = BTreeMap::new();
 
     for entry in entries {
@@ -142,25 +171,32 @@ pub fn load_sample_bank_from_directory(
         let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
             continue;
         };
-        let Some((token, priority)) = token_from_stem(stem) else {
-            continue;
-        };
-
         let sample = load_wav_for_test(&path).map_err(|source| SampleBankError::Decode {
             path: path.display().to_string().into_boxed_str(),
             source,
         })?;
-        match candidates.get(token) {
-            Some((existing_priority, _)) if *existing_priority <= priority => {}
-            _ => {
-                candidates.insert(token, (priority, sample.into()));
+        let playback_sample: PlaybackSample = sample.into();
+        inferred_tokens
+            .entry(inferred_token_from_stem(stem))
+            .or_insert_with(|| playback_sample.clone());
+        if let Some((token, priority)) = token_from_stem(stem) {
+            match candidates.get(token) {
+                Some((existing_priority, _)) if *existing_priority <= priority => {}
+                _ => {
+                    candidates.insert(token, (priority, playback_sample));
+                }
             }
         }
     }
 
+    for (token, sample) in inferred_tokens {
+        bank.insert_token(&token, sample);
+    }
     for (token, (_priority, sample)) in candidates {
         bank.insert_token(token, sample);
     }
+    apply_manifest_tokens(&mut bank, manifest.as_ref(), directory)?;
+    apply_manifest_aliases(&mut bank, manifest.as_ref(), &manifest_path)?;
 
     Ok(bank)
 }
@@ -204,4 +240,99 @@ fn token_from_stem(stem: &str) -> Option<(&'static str, u8)> {
         "hat" | "hihat" => Some(("hh", 1)),
         _ => None,
     }
+}
+
+fn load_optional_manifest(path: &Path) -> Result<Option<SampleManifest>, SampleBankError> {
+    if !path.is_file() {
+        return Ok(None);
+    }
+
+    load_sample_manifest(path)
+        .map(Some)
+        .map_err(|error| match error {
+            SampleManifestLoadError::Io { path, source } => {
+                SampleBankError::ManifestIo { path, source }
+            }
+            SampleManifestLoadError::Parse { path, message } => {
+                SampleBankError::ManifestParse { path, message }
+            }
+        })
+}
+
+fn apply_manifest_tokens(
+    bank: &mut SampleBank,
+    manifest: Option<&SampleManifest>,
+    directory: &Path,
+) -> Result<(), SampleBankError> {
+    let Some(manifest) = manifest else {
+        return Ok(());
+    };
+
+    for (token, relative_path) in &manifest.tokens {
+        let path = directory.join(relative_path);
+        let sample = load_wav_for_test(&path).map_err(|source| SampleBankError::Decode {
+            path: path.display().to_string().into_boxed_str(),
+            source,
+        })?;
+        bank.insert_token(token, sample.into());
+    }
+
+    Ok(())
+}
+
+fn apply_manifest_aliases(
+    bank: &mut SampleBank,
+    manifest: Option<&SampleManifest>,
+    manifest_path: &Path,
+) -> Result<(), SampleBankError> {
+    let Some(manifest) = manifest else {
+        return Ok(());
+    };
+
+    for (alias, target) in &manifest.aliases {
+        let sample = resolve_alias_target(
+            alias,
+            target,
+            &manifest.aliases,
+            bank,
+            manifest_path,
+            &mut BTreeSet::new(),
+        )?;
+        bank.insert_token(alias, sample);
+    }
+
+    Ok(())
+}
+
+fn resolve_alias_target(
+    alias: &str,
+    target: &str,
+    aliases: &BTreeMap<String, String>,
+    bank: &SampleBank,
+    manifest_path: &Path,
+    visiting: &mut BTreeSet<String>,
+) -> Result<PlaybackSample, SampleBankError> {
+    if let Some(sample) = bank.get_by_token(target) {
+        return Ok(sample.clone());
+    }
+    if !visiting.insert(target.to_owned()) {
+        return Err(SampleBankError::ManifestAliasCycle {
+            path: manifest_path.display().to_string().into_boxed_str(),
+            alias: alias.to_owned().into_boxed_str(),
+            target: target.to_owned().into_boxed_str(),
+        });
+    }
+    if let Some(next_target) = aliases.get(target) {
+        return resolve_alias_target(alias, next_target, aliases, bank, manifest_path, visiting);
+    }
+
+    Err(SampleBankError::ManifestAliasTarget {
+        path: manifest_path.display().to_string().into_boxed_str(),
+        alias: alias.to_owned().into_boxed_str(),
+        target: target.to_owned().into_boxed_str(),
+    })
+}
+
+fn inferred_token_from_stem(stem: &str) -> String {
+    stem.to_ascii_lowercase()
 }

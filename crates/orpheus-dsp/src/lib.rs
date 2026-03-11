@@ -5,6 +5,7 @@ mod engine;
 mod offline;
 mod sample;
 mod sample_bank;
+mod sample_manifest;
 mod scheduler;
 mod voice;
 

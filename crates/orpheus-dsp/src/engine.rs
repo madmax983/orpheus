@@ -259,7 +259,7 @@ impl EngineCore {
             }
 
             while let Some(trigger) = self.scheduler.pop_due(self.current_frame) {
-                self.activate_voice(trigger.voice);
+                self.activate_trigger(&trigger);
             }
 
             let mixed = mix_voices(&mut self.active_voices);
@@ -281,12 +281,17 @@ impl EngineCore {
             .saturating_sub(self.current_frame)
     }
 
-    fn activate_voice(&mut self, voice: crate::VoiceKind) {
+    fn activate_trigger(&mut self, trigger: &crate::scheduler::ScheduledTrigger) {
         if let Some(slot) = self.active_voices.iter_mut().find(|slot| slot.is_none()) {
-            *slot = Some(self.sample_bank.get(voice).map_or_else(
-                || ActiveVoice::new(voice, self.sample_rate),
-                |sample| ActiveVoice::from_sample(sample, self.sample_rate),
-            ));
+            *slot = self
+                .sample_bank
+                .get_by_token(trigger.token.as_ref())
+                .map(|sample| ActiveVoice::from_sample(sample, self.sample_rate))
+                .or_else(|| {
+                    trigger
+                        .fallback_voice
+                        .map(|voice| ActiveVoice::new(voice, self.sample_rate))
+                });
         }
     }
 
