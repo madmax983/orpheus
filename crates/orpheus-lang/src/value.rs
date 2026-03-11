@@ -257,10 +257,28 @@ impl SamplePatternValue {
         }
     }
 
+    pub(crate) fn gain_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::GainPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn pan(self, amount: f64) -> Self {
         Self {
             pattern: PatternRuntime::Pan {
                 amount,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn pan_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::PanPattern {
+                control: Box::new(control.pattern),
                 inner: Box::new(self.pattern),
             },
         }
@@ -424,8 +442,16 @@ enum PatternRuntime<T> {
         factor: f64,
         inner: Box<Self>,
     },
+    GainPattern {
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
     Pan {
         amount: f64,
+        inner: Box<Self>,
+    },
+    PanPattern {
+        control: Box<PatternRuntime<f64>>,
         inner: Box<Self>,
     },
     Rate {
@@ -469,12 +495,18 @@ where
                 }
                 Ok(events)
             }
+            Self::GainPattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::Gain)
+            }
             Self::Pan { amount, inner } => {
                 let mut events = inner.try_query(span)?;
                 for event in &mut events {
                     event.value = event.value.adjust_pan(*amount);
                 }
                 Ok(events)
+            }
+            Self::PanPattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::Pan)
             }
             Self::Rate { factor, inner } => {
                 let mut events = inner.try_query(span)?;
@@ -492,6 +524,105 @@ where
             }
         }
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ControlPatternKind {
+    Gain,
+    Pan,
+}
+
+fn apply_control_pattern<T>(
+    inner: &PatternRuntime<T>,
+    control: &PatternRuntime<f64>,
+    span: &TimeSpan,
+    kind: ControlPatternKind,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: Clone + PatternValueTransform + Send + Sync + fmt::Debug,
+{
+    let source_events = inner.try_query(span)?;
+    let control_events = control.try_query(span)?;
+    validate_control_events(&control_events, kind)?;
+    if control_events.is_empty() {
+        return Ok(source_events);
+    }
+
+    let mut composed = Vec::new();
+    for event in source_events {
+        let mut boundaries = vec![event.part.start().clone(), event.part.end().clone()];
+        let mut has_overlap = false;
+        for control_event in &control_events {
+            if let Some(overlap) = clip_span(&control_event.part, &event.part)? {
+                has_overlap = true;
+                boundaries.push(overlap.start().clone());
+                boundaries.push(overlap.end().clone());
+            }
+        }
+
+        if !has_overlap {
+            composed.push(event);
+            continue;
+        }
+
+        boundaries.sort();
+        boundaries.dedup();
+
+        for window in boundaries.windows(2) {
+            let [start, end] = window else {
+                continue;
+            };
+            if start >= end {
+                continue;
+            }
+
+            let part = build_span(start.clone(), end.clone())?;
+            let mut value = event.value.clone();
+            for control_event in &control_events {
+                if clip_span(&control_event.part, &part)?.is_some() {
+                    value = match kind {
+                        ControlPatternKind::Gain => value.adjust_gain(control_event.value),
+                        ControlPatternKind::Pan => value.adjust_pan(control_event.value),
+                    };
+                }
+            }
+
+            composed.push(Event {
+                whole: None,
+                part,
+                value,
+            });
+        }
+    }
+
+    sort_events(&mut composed);
+    Ok(composed)
+}
+
+fn validate_control_events(
+    control_events: &[Event<f64>],
+    kind: ControlPatternKind,
+) -> Result<(), EvalError> {
+    for event in control_events {
+        match kind {
+            ControlPatternKind::Gain => {
+                if !event.value.is_finite() {
+                    return Err(EvalError::new(
+                        "`gain` requires finite numeric control values",
+                    ));
+                }
+            }
+            ControlPatternKind::Pan => {
+                if !event.value.is_finite() || !(-1.0..=1.0).contains(&event.value) {
+                    return Err(EvalError::new(
+                        "`pan` requires finite control values within [-1, 1]",
+                    ));
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn query_fast<T>(

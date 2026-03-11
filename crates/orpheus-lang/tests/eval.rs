@@ -1,4 +1,5 @@
 use orpheus_lang::{ReplMode, Value, eval_module};
+use orpheus_pattern::Rational;
 
 fn sample_names(value: &Value) -> Vec<String> {
     value
@@ -184,6 +185,69 @@ fn rate_and_slice_builtins_update_sample_event_playback_params() {
     assert!((events[0].value.slice_start() - 0.25).abs() < f64::EPSILON);
     assert!((events[0].value.slice_end() - 1.0).abs() < f64::EPSILON);
     assert!((events[0].value.pan() - -1.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn gain_accepts_pattern_valued_controls_and_splits_sample_events() {
+    let module = eval_module(
+        r#"lead = sample("vox_ah") |> gain(0.25 0.75)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 2).unwrap());
+    assert!((events[0].value.gain() - 0.25).abs() < f64::EPSILON);
+    assert_eq!(events[1].part.start(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::one());
+    assert!((events[1].value.gain() - 0.75).abs() < f64::EPSILON);
+}
+
+#[test]
+fn pattern_valued_gain_controls_repeat_under_fast() {
+    let module = eval_module(
+        r#"lead = sample("vox_ah") |> gain(0.25 0.75) |> fast(2)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit();
+    let gains = events
+        .iter()
+        .map(|event| event.value.gain())
+        .collect::<Vec<_>>();
+
+    assert_eq!(gains, vec![0.25, 0.75, 0.25, 0.75]);
+}
+
+#[test]
+fn pan_accepts_pattern_valued_controls_and_composes_with_existing_pan() {
+    let module = eval_module(
+        r#"lead = sample("vox_ah") |> pan(-0.25) |> pan(0.5 -0.5)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 2);
+    assert!((events[0].value.pan() - 0.25).abs() < f64::EPSILON);
+    assert!((events[1].value.pan() - -0.75).abs() < f64::EPSILON);
 }
 
 #[test]

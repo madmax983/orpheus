@@ -569,10 +569,11 @@ mod tests {
             .unwrap();
         session.eval_line("drums = bd").unwrap();
         let rendered = session.render_test_block_for_tui(4);
+        let expected = 0.25 * edge_envelope(0, 4);
 
         assert!(message.contains("loaded"));
-        assert!((rendered[0] - 0.25).abs() < f32::EPSILON);
-        assert!((rendered[1] - 0.25).abs() < f32::EPSILON);
+        assert!((rendered[0] - expected).abs() < f32::EPSILON);
+        assert!((rendered[1] - expected).abs() < f32::EPSILON);
 
         fs::remove_dir_all(directory).unwrap();
     }
@@ -589,7 +590,8 @@ mod tests {
         session.eval_line("drums = bd bd").unwrap();
 
         let first_trigger = session.render_test_block_for_tui(4);
-        assert!((first_trigger[0] - 0.1).abs() < f32::EPSILON);
+        let first_expected = 0.1 * edge_envelope(0, 4);
+        assert!((first_trigger[0] - first_expected).abs() < f32::EPSILON);
 
         write_wav(directory.join("bd.wav"), &[0.9, 0.0, 0.0, 0.0]);
         let message = session.eval_line(":reload-samples").unwrap();
@@ -599,11 +601,12 @@ mod tests {
         let frames_until_second_trigger = (frames_per_cycle / 2).saturating_sub(4);
         let _ = session.render_test_block_for_tui(frames_until_second_trigger);
         let second_trigger_same_cycle = session.render_test_block_for_tui(4);
-        assert!((second_trigger_same_cycle[0] - 0.1).abs() < f32::EPSILON);
+        assert!((second_trigger_same_cycle[0] - first_expected).abs() < f32::EPSILON);
 
         let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
         let first_trigger_next_cycle = session.render_test_block_for_tui(4);
-        assert!((first_trigger_next_cycle[0] - 0.9).abs() < f32::EPSILON);
+        let reloaded_expected = 0.9 * edge_envelope(0, 4);
+        assert!((first_trigger_next_cycle[0] - reloaded_expected).abs() < f32::EPSILON);
 
         fs::remove_dir_all(directory).unwrap();
     }
@@ -629,10 +632,11 @@ mod tests {
             .unwrap();
 
         let rendered = session.render_test_block_for_tui(4);
-
-        assert!((rendered[0] - 0.2).abs() < f32::EPSILON);
+        let first_expected = 0.2 * edge_envelope(0, 2);
+        let second_expected = 0.4 * edge_envelope(1, 2);
+        assert!((rendered[0] - first_expected).abs() < f32::EPSILON);
         assert!(rendered[1].abs() < f32::EPSILON);
-        assert!((rendered[2] - 0.4).abs() < f32::EPSILON);
+        assert!((rendered[2] - second_expected).abs() < f32::EPSILON);
         assert!(rendered[3].abs() < f32::EPSILON);
 
         fs::remove_dir_all(directory).unwrap();
@@ -782,5 +786,20 @@ mod tests {
             writer.write_sample(*sample).unwrap();
         }
         writer.finalize().unwrap();
+    }
+
+    fn edge_envelope(frame_index: u32, total_frames: u32) -> f32 {
+        let ramp_frames = total_frames.div_ceil(2).clamp(1, 32);
+        let attack = normalized_edge_gain(frame_index, ramp_frames);
+        let release = normalized_edge_gain(
+            total_frames.saturating_sub(frame_index.saturating_add(1)),
+            ramp_frames,
+        );
+        attack.min(release)
+    }
+
+    #[allow(clippy::cast_precision_loss)]
+    fn normalized_edge_gain(distance_from_edge: u32, ramp_frames: u32) -> f32 {
+        (((distance_from_edge as f32) + 0.5) / (ramp_frames as f32)).min(1.0)
     }
 }

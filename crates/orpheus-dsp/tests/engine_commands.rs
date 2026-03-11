@@ -49,19 +49,21 @@ fn built_in_bd_trigger_prefers_embedded_wav_frames() {
 
     engine.schedule_test_trigger(0, "bd");
     let rendered = engine.render_test_block(4);
+    let total_output_frames =
+        u32::try_from(sample.frames.len()).unwrap_or_else(|_| panic!("sample too large for test"));
 
     let expected = vec![
-        sample.frames[0],
-        sample.frames[0],
-        sample.frames[1],
-        sample.frames[1],
-        sample.frames[2],
-        sample.frames[2],
-        sample.frames[3],
-        sample.frames[3],
+        sample.frames[0] * edge_envelope(0, total_output_frames),
+        sample.frames[0] * edge_envelope(0, total_output_frames),
+        sample.frames[1] * edge_envelope(1, total_output_frames),
+        sample.frames[1] * edge_envelope(1, total_output_frames),
+        sample.frames[2] * edge_envelope(2, total_output_frames),
+        sample.frames[2] * edge_envelope(2, total_output_frames),
+        sample.frames[3] * edge_envelope(3, total_output_frames),
+        sample.frames[3] * edge_envelope(3, total_output_frames),
     ];
 
-    assert_eq!(rendered, expected);
+    assert_samples_close(&rendered, &expected);
 }
 
 #[test]
@@ -376,8 +378,9 @@ fn sample_bank_reload_waits_until_cycle_boundary() {
     engine.enqueue(EngineCommand::LoadPattern(pattern)).unwrap();
 
     let first_trigger = engine.render_test_block(4);
-    assert!((first_trigger[0] - 0.1).abs() < f32::EPSILON);
-    assert!((first_trigger[1] - 0.1).abs() < f32::EPSILON);
+    let first_sample = 0.1 * edge_envelope(0, 4);
+    assert!((first_trigger[0] - first_sample).abs() < f32::EPSILON);
+    assert!((first_trigger[1] - first_sample).abs() < f32::EPSILON);
 
     write_wav(directory.join("bd.wav"), &[0.9, 0.0, 0.0, 0.0]);
     let second_bank = load_sample_bank_from_directory(&directory).unwrap();
@@ -389,13 +392,14 @@ fn sample_bank_reload_waits_until_cycle_boundary() {
     let frames_until_second_trigger = (frames_per_cycle / 2).saturating_sub(4);
     let _ = engine.render_test_block(frames_until_second_trigger);
     let second_trigger_same_cycle = engine.render_test_block(4);
-    assert!((second_trigger_same_cycle[0] - 0.1).abs() < f32::EPSILON);
-    assert!((second_trigger_same_cycle[1] - 0.1).abs() < f32::EPSILON);
+    assert!((second_trigger_same_cycle[0] - first_sample).abs() < f32::EPSILON);
+    assert!((second_trigger_same_cycle[1] - first_sample).abs() < f32::EPSILON);
 
     let _ = engine.render_test_block(engine.frames_until_boundary_for_test());
     let first_trigger_next_cycle = engine.render_test_block(4);
-    assert!((first_trigger_next_cycle[0] - 0.9).abs() < f32::EPSILON);
-    assert!((first_trigger_next_cycle[1] - 0.9).abs() < f32::EPSILON);
+    let reloaded_sample = 0.9 * edge_envelope(0, 4);
+    assert!((first_trigger_next_cycle[0] - reloaded_sample).abs() < f32::EPSILON);
+    assert!((first_trigger_next_cycle[1] - reloaded_sample).abs() < f32::EPSILON);
 
     fs::remove_dir_all(directory).unwrap();
 }
@@ -426,9 +430,10 @@ fn manifest_mapped_sample_token_plays_through_live_engine() {
     engine.enqueue(EngineCommand::LoadPattern(pattern)).unwrap();
 
     let rendered = engine.render_test_block(4);
+    let expected = 0.42 * edge_envelope(0, 4);
 
-    assert!((rendered[0] - 0.42).abs() < f32::EPSILON);
-    assert!((rendered[1] - 0.42).abs() < f32::EPSILON);
+    assert!((rendered[0] - expected).abs() < f32::EPSILON);
+    assert!((rendered[1] - expected).abs() < f32::EPSILON);
 
     fs::remove_dir_all(directory).unwrap();
 }
@@ -473,15 +478,26 @@ fn manifest_region_token_plays_through_live_engine_with_default_rate() {
     engine.enqueue(EngineCommand::LoadPattern(pattern)).unwrap();
 
     let rendered = engine.render_test_block(8);
+    let expected = vec![
+        0.6 * edge_envelope(0, 4),
+        0.6 * edge_envelope(0, 4),
+        0.6 * edge_envelope(1, 4),
+        0.6 * edge_envelope(1, 4),
+        0.8 * edge_envelope(2, 4),
+        0.8 * edge_envelope(2, 4),
+        0.8 * edge_envelope(3, 4),
+        0.8 * edge_envelope(3, 4),
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+    ];
 
-    assert!((rendered[0] - 0.6).abs() < f32::EPSILON);
-    assert!((rendered[1] - 0.6).abs() < f32::EPSILON);
-    assert!((rendered[2] - 0.6).abs() < f32::EPSILON);
-    assert!((rendered[3] - 0.6).abs() < f32::EPSILON);
-    assert!((rendered[4] - 0.8).abs() < f32::EPSILON);
-    assert!((rendered[5] - 0.8).abs() < f32::EPSILON);
-    assert!((rendered[6] - 0.8).abs() < f32::EPSILON);
-    assert!((rendered[7] - 0.8).abs() < f32::EPSILON);
+    assert_samples_close(&rendered, &expected);
 
     fs::remove_dir_all(directory).unwrap();
 }
@@ -515,11 +531,18 @@ fn live_engine_applies_sample_gain_rate_and_slice() {
     engine.enqueue(EngineCommand::LoadPattern(pattern)).unwrap();
 
     let rendered = engine.render_test_block(4);
+    let expected = vec![
+        0.2 * edge_envelope(0, 2),
+        0.2 * edge_envelope(0, 2),
+        0.4 * edge_envelope(1, 2),
+        0.4 * edge_envelope(1, 2),
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+    ];
 
-    assert!((rendered[0] - 0.2).abs() < f32::EPSILON);
-    assert!((rendered[1] - 0.2).abs() < f32::EPSILON);
-    assert!((rendered[2] - 0.4).abs() < f32::EPSILON);
-    assert!((rendered[3] - 0.4).abs() < f32::EPSILON);
+    assert_samples_close(&rendered, &expected);
 
     fs::remove_dir_all(directory).unwrap();
 }
@@ -550,8 +573,47 @@ fn live_engine_applies_sample_pan_balance() {
     engine.enqueue(EngineCommand::LoadPattern(pattern)).unwrap();
 
     let rendered = engine.render_test_block(4);
+    let expected = vec![0.0, 0.5 * edge_envelope(0, 4), 0.0, 0.0];
+    assert_samples_close(&rendered[..4], &expected);
 
-    assert_eq!(&rendered[..4], &[0.0, 0.5, 0.0, 0.0]);
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn live_engine_applies_edge_ramps_to_sample_playback() {
+    let mut engine = EngineHandle::stub();
+    let directory = temp_directory("sample-ramp-live");
+    fs::write(
+        directory.join("samples.ron"),
+        "(\n  tokens: {\n    \"vox_ah\": \"vox.wav\",\n  },\n)\n",
+    )
+    .unwrap();
+    write_wav(directory.join("vox.wav"), &[1.0, 1.0, 1.0, 1.0]);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+    engine
+        .enqueue(EngineCommand::ReplaceSampleBank(bank))
+        .unwrap();
+
+    let pattern = PatternUpdate::new(
+        "vox",
+        vec![Event {
+            whole: None,
+            part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+            value: SampleTrigger::named("vox_ah"),
+        }],
+    );
+    engine.enqueue(EngineCommand::LoadPattern(pattern)).unwrap();
+
+    let rendered = engine.render_test_block(8);
+    let left = [rendered[0], rendered[2], rendered[4], rendered[6]];
+
+    assert!(left[0] > 0.0);
+    assert!(left[0] < left[1]);
+    assert!((left[1] - left[2]).abs() < f32::EPSILON);
+    assert!(left[3] > 0.0);
+    assert!(left[3] < left[2]);
+    assert!((rendered[0] - rendered[1]).abs() < f32::EPSILON);
+    assert!((rendered[6] - rendered[7]).abs() < f32::EPSILON);
 
     fs::remove_dir_all(directory).unwrap();
 }
@@ -587,4 +649,26 @@ fn write_wav(path: impl AsRef<Path>, frames: &[f32]) {
         writer.write_sample(*sample).unwrap();
     }
     writer.finalize().unwrap();
+}
+
+fn edge_envelope(frame_index: u32, total_frames: u32) -> f32 {
+    let ramp_frames = total_frames.div_ceil(2).clamp(1, 32);
+    let attack = normalized_edge_gain(frame_index, ramp_frames);
+    let release = normalized_edge_gain(
+        total_frames.saturating_sub(frame_index.saturating_add(1)),
+        ramp_frames,
+    );
+    attack.min(release)
+}
+
+#[allow(clippy::cast_precision_loss)]
+fn normalized_edge_gain(distance_from_edge: u32, ramp_frames: u32) -> f32 {
+    (((distance_from_edge as f32) + 0.5) / (ramp_frames as f32)).min(1.0)
+}
+
+fn assert_samples_close(actual: &[f32], expected: &[f32]) {
+    assert_eq!(actual.len(), expected.len());
+    for (left, right) in actual.iter().zip(expected) {
+        assert!((left - right).abs() < f32::EPSILON);
+    }
 }

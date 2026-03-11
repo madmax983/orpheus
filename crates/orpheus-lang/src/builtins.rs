@@ -1,5 +1,5 @@
 use crate::eval::EvalError;
-use crate::value::{BuiltinFn, BuiltinKind, SamplePatternValue, Value};
+use crate::value::{BuiltinFn, BuiltinKind, NumberPatternValue, SamplePatternValue, Value};
 
 pub fn is_sample_identifier(name: &str) -> bool {
     matches!(name, "bd" | "sn" | "cp" | "hh")
@@ -188,7 +188,7 @@ fn apply_rev(args: Vec<Value>) -> Result<Value, EvalError> {
 
 fn apply_gain(args: Vec<Value>) -> Result<Value, EvalError> {
     let mut args = args.into_iter();
-    let gain = extract_gain(
+    let gain = extract_gain_control(
         args.next()
             .ok_or_else(|| EvalError::new("`gain` requires a gain argument"))?,
     )?;
@@ -197,7 +197,10 @@ fn apply_gain(args: Vec<Value>) -> Result<Value, EvalError> {
         .ok_or_else(|| EvalError::new("`gain` requires a pattern argument"))?;
 
     match pattern {
-        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.gain(gain))),
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match gain {
+            NumericControl::Constant(gain) => pattern.gain(gain),
+            NumericControl::Pattern(control) => pattern.gain_pattern(control),
+        })),
         Value::NumberPattern(_) => Err(EvalError::new(
             "`gain` only applies to sample patterns in Task 5",
         )),
@@ -209,7 +212,7 @@ fn apply_gain(args: Vec<Value>) -> Result<Value, EvalError> {
 
 fn apply_pan(args: Vec<Value>) -> Result<Value, EvalError> {
     let mut args = args.into_iter();
-    let pan = extract_pan(
+    let pan = extract_pan_control(
         args.next()
             .ok_or_else(|| EvalError::new("`pan` requires a pan argument"))?,
     )?;
@@ -218,7 +221,10 @@ fn apply_pan(args: Vec<Value>) -> Result<Value, EvalError> {
         .ok_or_else(|| EvalError::new("`pan` requires a pattern argument"))?;
 
     match pattern {
-        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.pan(pan))),
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match pan {
+            NumericControl::Constant(pan) => pattern.pan(pan),
+            NumericControl::Pattern(control) => pattern.pan_pattern(control),
+        })),
         Value::NumberPattern(_) => Err(EvalError::new("`pan` only applies to sample patterns")),
         Value::Function(_) | Value::String(_) => Err(EvalError::new(
             "`pan` expected a sample pattern as its final argument",
@@ -369,26 +375,89 @@ fn extract_whole_number(
     Ok(integer)
 }
 
-fn extract_gain(value: Value) -> Result<f64, EvalError> {
-    let gain = extract_constant_number(value, "gain")?;
-
-    if !gain.is_finite() {
-        return Err(EvalError::new("`gain` requires a finite numeric value"));
-    }
-
-    Ok(gain)
+enum NumericControl {
+    Constant(f64),
+    Pattern(NumberPatternValue),
 }
 
-fn extract_pan(value: Value) -> Result<f64, EvalError> {
-    let pan = extract_constant_number(value, "pan")?;
-
-    if !pan.is_finite() || !(-1.0..=1.0).contains(&pan) {
-        return Err(EvalError::new(
-            "`pan` requires a finite number within [-1, 1]",
-        ));
+fn extract_gain_control(value: Value) -> Result<NumericControl, EvalError> {
+    let pattern = extract_number_pattern(value, "gain")?;
+    if let Ok(gain) = pattern.constant_value() {
+        if !gain.is_finite() {
+            return Err(EvalError::new("`gain` requires a finite numeric value"));
+        }
+        return Ok(NumericControl::Constant(gain));
     }
 
-    Ok(pan)
+    validate_numeric_control_pattern(&pattern, "gain", |value| {
+        if value.is_finite() {
+            Ok(())
+        } else {
+            Err(EvalError::new(
+                "`gain` requires finite numeric control values",
+            ))
+        }
+    })?;
+
+    Ok(NumericControl::Pattern(pattern))
+}
+
+fn extract_pan_control(value: Value) -> Result<NumericControl, EvalError> {
+    let pattern = extract_number_pattern(value, "pan")?;
+    if let Ok(pan) = pattern.constant_value() {
+        if !pan.is_finite() || !(-1.0..=1.0).contains(&pan) {
+            return Err(EvalError::new(
+                "`pan` requires a finite number within [-1, 1]",
+            ));
+        }
+        return Ok(NumericControl::Constant(pan));
+    }
+
+    validate_numeric_control_pattern(&pattern, "pan", |value| {
+        if value.is_finite() && (-1.0..=1.0).contains(&value) {
+            Ok(())
+        } else {
+            Err(EvalError::new(
+                "`pan` requires finite control values within [-1, 1]",
+            ))
+        }
+    })?;
+
+    Ok(NumericControl::Pattern(pattern))
+}
+
+fn validate_numeric_control_pattern<F>(
+    pattern: &NumberPatternValue,
+    builtin_name: &str,
+    validate: F,
+) -> Result<(), EvalError>
+where
+    F: Fn(f64) -> Result<(), EvalError>,
+{
+    let events = pattern.try_query(&orpheus_pattern::TimeSpan::unit())?;
+    if events.is_empty() {
+        return Ok(());
+    }
+    for event in events {
+        validate(event.value).map_err(|error| {
+            EvalError::new(format!(
+                "`{builtin_name}` control pattern is invalid: {error}"
+            ))
+        })?;
+    }
+    Ok(())
+}
+
+fn extract_number_pattern(
+    value: Value,
+    builtin_name: &str,
+) -> Result<NumberPatternValue, EvalError> {
+    match value {
+        Value::NumberPattern(pattern) => Ok(pattern),
+        Value::SamplePattern(_) | Value::Function(_) | Value::String(_) => Err(EvalError::new(
+            format!("`{builtin_name}` requires a numeric pattern argument"),
+        )),
+    }
 }
 
 fn extract_positive_finite_number(value: Value, builtin_name: &str) -> Result<f64, EvalError> {

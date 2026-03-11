@@ -36,12 +36,15 @@ fn offline_render_applies_sample_gain_rate_and_slice() {
         .take(4)
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
+    let expected = vec![
+        pcm16(0.2 * edge_envelope(0, 2)),
+        pcm16(0.2 * edge_envelope(0, 2)),
+        pcm16(0.4 * edge_envelope(1, 2)),
+        pcm16(0.4 * edge_envelope(1, 2)),
+    ];
 
     assert_eq!(samples.len(), 4);
-    assert!((i32::from(samples[0]) - 6_554).abs() <= 1);
-    assert!((i32::from(samples[1]) - 6_554).abs() <= 1);
-    assert!((i32::from(samples[2]) - 13_107).abs() <= 1);
-    assert!((i32::from(samples[3]) - 13_107).abs() <= 1);
+    assert_eq!(samples, expected);
 
     let _ = fs::remove_file(path);
     fs::remove_dir_all(directory).unwrap();
@@ -89,12 +92,15 @@ fn offline_render_uses_manifest_region_defaults_and_composes_explicit_slice() {
         .take(4)
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
+    let expected = vec![
+        pcm16(0.5 * edge_envelope(0, 2)),
+        pcm16(0.5 * edge_envelope(0, 2)),
+        pcm16(0.6 * edge_envelope(1, 2)),
+        pcm16(0.6 * edge_envelope(1, 2)),
+    ];
 
     assert_eq!(samples.len(), 4);
-    assert!((i32::from(samples[0]) - 16_384).abs() <= 1);
-    assert!((i32::from(samples[1]) - 16_384).abs() <= 1);
-    assert!((i32::from(samples[2]) - 19_660).abs() <= 1);
-    assert!((i32::from(samples[3]) - 19_660).abs() <= 1);
+    assert_eq!(samples, expected);
 
     let _ = fs::remove_file(path);
     fs::remove_dir_all(directory).unwrap();
@@ -127,7 +133,48 @@ fn offline_render_applies_sample_pan_balance() {
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
-    assert_eq!(samples, vec![16_384, 0, 0, 0]);
+    assert_eq!(samples, vec![pcm16(0.5 * edge_envelope(0, 4)), 0, 0, 0]);
+
+    let _ = fs::remove_file(path);
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn offline_render_applies_edge_ramps_to_sample_playback() {
+    let directory = temp_directory("sample-ramp-offline");
+    fs::write(
+        directory.join("samples.ron"),
+        "(\n  tokens: {\n    \"vox_ah\": \"vox.wav\",\n  },\n)\n",
+    )
+    .unwrap();
+    write_wav(directory.join("vox.wav"), &[1.0, 1.0, 1.0, 1.0]);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+    let path = temp_wav_path();
+
+    let events = vec![Event {
+        whole: None,
+        part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+        value: SampleTrigger::named("vox_ah"),
+    }];
+
+    render_events_to_file_with_bank(&path, &events, 1, &bank).unwrap();
+
+    let mut reader = hound::WavReader::open(&path).unwrap();
+    let samples = reader
+        .samples::<i16>()
+        .take(8)
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let left = [samples[0], samples[2], samples[4], samples[6]];
+
+    assert_eq!(samples.len(), 8);
+    assert!(left[0] > 0);
+    assert!(left[0] < left[1]);
+    assert_eq!(left[1], left[2]);
+    assert!(left[3] > 0);
+    assert!(left[3] < left[2]);
+    assert_eq!(samples[0], samples[1]);
+    assert_eq!(samples[6], samples[7]);
 
     let _ = fs::remove_file(path);
     fs::remove_dir_all(directory).unwrap();
@@ -163,4 +210,24 @@ fn write_wav(path: impl AsRef<Path>, frames: &[f32]) {
         writer.write_sample(*sample).unwrap();
     }
     writer.finalize().unwrap();
+}
+
+fn edge_envelope(frame_index: u32, total_frames: u32) -> f32 {
+    let ramp_frames = total_frames.div_ceil(2).clamp(1, 32);
+    let attack = normalized_edge_gain(frame_index, ramp_frames);
+    let release = normalized_edge_gain(
+        total_frames.saturating_sub(frame_index.saturating_add(1)),
+        ramp_frames,
+    );
+    attack.min(release)
+}
+
+#[allow(clippy::cast_precision_loss)]
+fn normalized_edge_gain(distance_from_edge: u32, ramp_frames: u32) -> f32 {
+    (((distance_from_edge as f32) + 0.5) / (ramp_frames as f32)).min(1.0)
+}
+
+#[allow(clippy::cast_possible_truncation)]
+fn pcm16(sample: f32) -> i16 {
+    (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)).round() as i16
 }
