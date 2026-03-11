@@ -244,17 +244,19 @@ fn apply_sample(args: Vec<Value>) -> Result<Value, EvalError> {
 
 fn apply_rate(args: Vec<Value>) -> Result<Value, EvalError> {
     let mut args = args.into_iter();
-    let rate = extract_positive_finite_number(
+    let rate = extract_rate_control(
         args.next()
             .ok_or_else(|| EvalError::new("`rate` requires a rate argument"))?,
-        "rate",
     )?;
     let pattern = args
         .next()
         .ok_or_else(|| EvalError::new("`rate` requires a pattern argument"))?;
 
     match pattern {
-        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.rate(rate))),
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match rate {
+            NumericControl::Constant(rate) => pattern.rate(rate),
+            NumericControl::Pattern(control) => pattern.rate_pattern(control),
+        })),
         Value::NumberPattern(_) => Err(EvalError::new("`rate` only applies to sample patterns")),
         Value::Function(_) | Value::String(_) => Err(EvalError::new(
             "`rate` expected a sample pattern as its final argument",
@@ -426,6 +428,30 @@ fn extract_pan_control(value: Value) -> Result<NumericControl, EvalError> {
     Ok(NumericControl::Pattern(pattern))
 }
 
+fn extract_rate_control(value: Value) -> Result<NumericControl, EvalError> {
+    let pattern = extract_number_pattern(value, "rate")?;
+    if let Ok(rate) = pattern.constant_value() {
+        if !rate.is_finite() || rate.abs() <= f64::EPSILON {
+            return Err(EvalError::new(
+                "`rate` requires a finite non-zero numeric value",
+            ));
+        }
+        return Ok(NumericControl::Constant(rate));
+    }
+
+    validate_numeric_control_pattern(&pattern, "rate", |value| {
+        if value.is_finite() && value.abs() > f64::EPSILON {
+            Ok(())
+        } else {
+            Err(EvalError::new(
+                "`rate` requires finite non-zero control values",
+            ))
+        }
+    })?;
+
+    Ok(NumericControl::Pattern(pattern))
+}
+
 fn validate_numeric_control_pattern<F>(
     pattern: &NumberPatternValue,
     builtin_name: &str,
@@ -458,18 +484,6 @@ fn extract_number_pattern(
             format!("`{builtin_name}` requires a numeric pattern argument"),
         )),
     }
-}
-
-fn extract_positive_finite_number(value: Value, builtin_name: &str) -> Result<f64, EvalError> {
-    let number = extract_constant_number(value, builtin_name)?;
-
-    if !number.is_finite() || number <= 0.0 {
-        return Err(EvalError::new(format!(
-            "`{builtin_name}` requires a positive finite numeric value"
-        )));
-    }
-
-    Ok(number)
 }
 
 fn extract_unit_interval_number(value: Value, context: &str) -> Result<f64, EvalError> {

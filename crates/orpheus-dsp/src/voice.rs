@@ -102,16 +102,25 @@ impl ActiveVoice {
         let frame_count_u32 = u32::try_from(sample.frames().len())
             .unwrap_or_else(|_| panic!("sample frame count exceeded supported playback range"));
         let frame_count = f64::from(frame_count_u32);
-        let frame_position = trigger.slice_start() * frame_count;
-        let frame_limit = trigger.slice_end() * frame_count;
+        let slice_start = trigger.slice_start() * frame_count;
+        let slice_end = trigger.slice_end() * frame_count;
         let frame_step =
             (f64::from(sample.sample_rate_hz()) / f64::from(output_sample_rate)) * trigger.rate();
-        let output_frame_count = (((frame_limit - frame_position) / frame_step).ceil())
-            .clamp(1.0, f64::from(u32::MAX)) as u32;
+        let output_frame_count = if frame_step.abs() <= f64::EPSILON {
+            1
+        } else {
+            (((slice_end - slice_start) / frame_step.abs()).ceil())
+                .clamp(1.0, f64::from(u32::MAX)) as u32
+        };
         let edge_ramp_frames = output_frame_count
             .div_ceil(2)
             .clamp(1, MAX_SAMPLE_EDGE_RAMP_FRAMES);
         let (left_gain, right_gain) = stereo_gains_for_pan(trigger.pan());
+        let (frame_position, frame_limit) = if frame_step.is_sign_negative() {
+            (slice_end, slice_start)
+        } else {
+            (slice_start, slice_end)
+        };
         Self {
             state: ActiveVoiceState::Sample {
                 frames: sample.frames().clone(),
@@ -181,10 +190,20 @@ impl ActiveVoice {
                 total_output_frames,
                 edge_ramp_frames,
             } => {
-                if *frame_position >= *frame_limit {
+                if *rendered_frames >= *total_output_frames {
                     return None;
                 }
-                let index = frame_position.floor() as usize;
+                let index = if frame_step.is_sign_negative() {
+                    if *frame_position <= *frame_limit {
+                        return None;
+                    }
+                    (frame_position.ceil() as usize).checked_sub(1)?
+                } else {
+                    if *frame_position >= *frame_limit {
+                        return None;
+                    }
+                    frame_position.floor() as usize
+                };
                 let envelope =
                     sample_edge_envelope(*rendered_frames, *total_output_frames, *edge_ramp_frames);
                 let sample = (f64::from(*frames.get(index)?) * *gain * envelope) as f32;

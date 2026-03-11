@@ -188,6 +188,60 @@ fn rate_and_slice_builtins_update_sample_event_playback_params() {
 }
 
 #[test]
+fn negative_rate_is_preserved_on_sample_events() {
+    let module = eval_module(r#"lead = sample("vox_ah") |> rate(-1)"#, ReplMode::Loose).unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 1);
+    assert!((events[0].value.rate() - -1.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn rate_accepts_pattern_valued_controls_and_splits_sample_events() {
+    let module = eval_module(r#"lead = sample("vox_ah") |> rate(0.5 2)"#, ReplMode::Loose).unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 2).unwrap());
+    assert!((events[0].value.rate() - 0.5).abs() < f64::EPSILON);
+    assert_eq!(events[1].part.start(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::one());
+    assert!((events[1].value.rate() - 2.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn pattern_valued_rate_controls_repeat_under_fast() {
+    let module = eval_module(
+        r#"lead = sample("vox_ah") |> rate(0.5 2) |> fast(2)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit();
+    let rates = events
+        .iter()
+        .map(|event| event.value.rate())
+        .collect::<Vec<_>>();
+
+    assert_eq!(rates, vec![0.5, 2.0, 0.5, 2.0]);
+}
+
+#[test]
 fn gain_accepts_pattern_valued_controls_and_splits_sample_events() {
     let module = eval_module(
         r#"lead = sample("vox_ah") |> gain(0.25 0.75)"#,

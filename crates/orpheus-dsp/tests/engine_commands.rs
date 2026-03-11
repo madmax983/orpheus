@@ -619,6 +619,48 @@ fn live_engine_applies_edge_ramps_to_sample_playback() {
 }
 
 #[test]
+fn live_engine_supports_negative_rate_reverse_playback() {
+    let mut engine = EngineHandle::stub();
+    let directory = temp_directory("sample-reverse-live");
+    fs::write(
+        directory.join("samples.ron"),
+        "(\n  tokens: {\n    \"vox_ah\": \"vox.wav\",\n  },\n)\n",
+    )
+    .unwrap();
+    write_wav(directory.join("vox.wav"), &[0.1, 0.2, 0.3, 0.4]);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+    engine
+        .enqueue(EngineCommand::ReplaceSampleBank(bank))
+        .unwrap();
+
+    let pattern = PatternUpdate::new(
+        "vox",
+        vec![Event {
+            whole: None,
+            part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+            value: SampleTrigger::named("vox_ah").with_rate(-1.0),
+        }],
+    );
+    engine.enqueue(EngineCommand::LoadPattern(pattern)).unwrap();
+
+    let rendered = engine.render_test_block(4);
+    let expected = vec![
+        0.4 * edge_envelope(0, 4),
+        0.4 * edge_envelope(0, 4),
+        0.3 * edge_envelope(1, 4),
+        0.3 * edge_envelope(1, 4),
+        0.2 * edge_envelope(2, 4),
+        0.2 * edge_envelope(2, 4),
+        0.1 * edge_envelope(3, 4),
+        0.1 * edge_envelope(3, 4),
+    ];
+
+    assert_samples_close(&rendered, &expected);
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn temp_directory_uses_system_temp_directory() {
     let directory = temp_directory("system-temp-check");
 

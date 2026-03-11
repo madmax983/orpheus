@@ -293,6 +293,15 @@ impl SamplePatternValue {
         }
     }
 
+    pub(crate) fn rate_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::RatePattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn slice(self, start: f64, end: f64) -> Self {
         Self {
             pattern: PatternRuntime::Slice {
@@ -458,6 +467,10 @@ enum PatternRuntime<T> {
         factor: f64,
         inner: Box<Self>,
     },
+    RatePattern {
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
     Slice {
         start: f64,
         end: f64,
@@ -515,6 +528,9 @@ where
                 }
                 Ok(events)
             }
+            Self::RatePattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::Rate)
+            }
             Self::Slice { start, end, inner } => {
                 let mut events = inner.try_query(span)?;
                 for event in &mut events {
@@ -530,6 +546,7 @@ where
 enum ControlPatternKind {
     Gain,
     Pan,
+    Rate,
 }
 
 fn apply_control_pattern<T>(
@@ -583,6 +600,7 @@ where
                     value = match kind {
                         ControlPatternKind::Gain => value.adjust_gain(control_event.value),
                         ControlPatternKind::Pan => value.adjust_pan(control_event.value),
+                        ControlPatternKind::Rate => value.adjust_rate(control_event.value),
                     };
                 }
             }
@@ -616,6 +634,13 @@ fn validate_control_events(
                 if !event.value.is_finite() || !(-1.0..=1.0).contains(&event.value) {
                     return Err(EvalError::new(
                         "`pan` requires finite control values within [-1, 1]",
+                    ));
+                }
+            }
+            ControlPatternKind::Rate => {
+                if !event.value.is_finite() || event.value.abs() <= f64::EPSILON {
+                    return Err(EvalError::new(
+                        "`rate` requires finite non-zero control values",
                     ));
                 }
             }

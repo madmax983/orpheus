@@ -180,6 +180,49 @@ fn offline_render_applies_edge_ramps_to_sample_playback() {
     fs::remove_dir_all(directory).unwrap();
 }
 
+#[test]
+fn offline_render_supports_negative_rate_reverse_playback() {
+    let directory = temp_directory("sample-reverse-offline");
+    fs::write(
+        directory.join("samples.ron"),
+        "(\n  tokens: {\n    \"vox_ah\": \"vox.wav\",\n  },\n)\n",
+    )
+    .unwrap();
+    write_wav(directory.join("vox.wav"), &[0.1, 0.2, 0.3, 0.4]);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+    let path = temp_wav_path();
+
+    let events = vec![Event {
+        whole: None,
+        part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+        value: SampleTrigger::named("vox_ah").with_rate(-1.0),
+    }];
+
+    render_events_to_file_with_bank(&path, &events, 1, &bank).unwrap();
+
+    let mut reader = hound::WavReader::open(&path).unwrap();
+    let samples = reader
+        .samples::<i16>()
+        .take(8)
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let expected = vec![
+        pcm16(0.4 * edge_envelope(0, 4)),
+        pcm16(0.4 * edge_envelope(0, 4)),
+        pcm16(0.3 * edge_envelope(1, 4)),
+        pcm16(0.3 * edge_envelope(1, 4)),
+        pcm16(0.2 * edge_envelope(2, 4)),
+        pcm16(0.2 * edge_envelope(2, 4)),
+        pcm16(0.1 * edge_envelope(3, 4)),
+        pcm16(0.1 * edge_envelope(3, 4)),
+    ];
+
+    assert_eq!(samples, expected);
+
+    let _ = fs::remove_file(path);
+    fs::remove_dir_all(directory).unwrap();
+}
+
 fn temp_directory(name: &str) -> PathBuf {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
