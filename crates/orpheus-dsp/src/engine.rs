@@ -262,9 +262,16 @@ impl EngineCore {
                 self.activate_trigger(&trigger);
             }
 
-            let mixed = mix_voices(&mut self.active_voices);
-            for sample in frame {
-                *sample = mixed;
+            let (left, right) = mix_voices(&mut self.active_voices);
+            if let Some(first) = frame.first_mut() {
+                *first = left;
+            }
+            if frame.len() >= 2 {
+                frame[1] = right;
+            }
+            let mono_fill = (left + right) * 0.5;
+            for sample in frame.iter_mut().skip(2) {
+                *sample = mono_fill;
             }
 
             self.current_frame = self.current_frame.saturating_add(1);
@@ -285,12 +292,14 @@ impl EngineCore {
         if let Some(slot) = self.active_voices.iter_mut().find(|slot| slot.is_none()) {
             *slot = self
                 .sample_bank
-                .get_by_token(trigger.trigger.token())
-                .map(|sample| ActiveVoice::from_sample(sample, self.sample_rate, &trigger.trigger))
+                .resolve_trigger(&trigger.trigger)
+                .map(|(sample, resolved_trigger)| {
+                    ActiveVoice::from_sample(sample, self.sample_rate, &resolved_trigger)
+                })
                 .or_else(|| {
-                    trigger
-                        .fallback_voice
-                        .map(|voice| ActiveVoice::new(voice, self.sample_rate))
+                    trigger.fallback_voice.map(|voice| {
+                        ActiveVoice::new_with_pan(voice, self.sample_rate, trigger.trigger.pan())
+                    })
                 });
         }
     }
@@ -645,16 +654,18 @@ pub fn frames_per_cycle(sample_rate: u32, tempo_bpm: f32) -> Result<u64, EngineE
     Ok(frames)
 }
 
-fn mix_voices(active_voices: &mut [Option<ActiveVoice>]) -> f32 {
-    let mut mixed = 0.0_f32;
+fn mix_voices(active_voices: &mut [Option<ActiveVoice>]) -> (f32, f32) {
+    let mut left = 0.0_f32;
+    let mut right = 0.0_f32;
     for slot in active_voices {
         if let Some(voice) = slot.as_mut() {
-            if let Some(sample) = voice.next_sample() {
-                mixed += sample;
+            if let Some((voice_left, voice_right)) = voice.next_stereo_frame() {
+                left += voice_left;
+                right += voice_right;
             } else {
                 *slot = None;
             }
         }
     }
-    mixed.clamp(-1.0, 1.0)
+    (left.clamp(-1.0, 1.0), right.clamp(-1.0, 1.0))
 }

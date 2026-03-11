@@ -166,7 +166,7 @@ fn sample_calls_can_form_pattern_sequences() {
 #[test]
 fn rate_and_slice_builtins_update_sample_event_playback_params() {
     let module = eval_module(
-        r#"lead = sample("vox_ah") |> slice(0.25, 1) |> rate(2) |> gain(0.5)"#,
+        r#"lead = sample("vox_ah") |> slice(0.25, 1) |> rate(2) |> gain(0.5) |> pan(-1)"#,
         ReplMode::Loose,
     )
     .unwrap();
@@ -183,6 +183,7 @@ fn rate_and_slice_builtins_update_sample_event_playback_params() {
     assert!((events[0].value.rate() - 2.0).abs() < f64::EPSILON);
     assert!((events[0].value.slice_start() - 0.25).abs() < f64::EPSILON);
     assert!((events[0].value.slice_end() - 1.0).abs() < f64::EPSILON);
+    assert!((events[0].value.pan() - -1.0).abs() < f64::EPSILON);
 }
 
 #[test]
@@ -302,5 +303,14 @@ fn slice_idx_rejects_out_of_range_indices() {
         r#"lead = sample("amen") |> slice_idx(0, 0)"#,
         ReplMode::Loose,
         &["`slice_idx segments` requires a positive whole number"],
+    );
+}
+
+#[test]
+fn pan_rejects_out_of_range_values() {
+    assert_eval_error_contains(
+        r#"lead = sample("amen") |> pan(1.5)"#,
+        ReplMode::Loose,
+        &["`pan` requires a finite number within [-1, 1]"],
     );
 }

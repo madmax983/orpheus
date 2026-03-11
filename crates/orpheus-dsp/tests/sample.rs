@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use orpheus_dsp::{
-    SampleError, load_builtin_sample_for_test, load_sample_bank_from_directory, load_wav_for_test,
+    SampleBankError, SampleError, load_builtin_sample_for_test, load_sample_bank_from_directory,
+    load_wav_for_test,
 };
 
 fn fixture(name: &str) -> PathBuf {
@@ -85,6 +86,35 @@ fn sample_manifest_maps_explicit_tokens_and_aliases() {
 
     assert_eq!(direct, alias);
     assert!((direct.frames()[0] - 0.75).abs() < f32::EPSILON);
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn sample_manifest_rejects_regions_targeting_unknown_tokens() {
+    let directory = temp_directory("sample-region-errors");
+    fs::write(
+        directory.join("samples.ron"),
+        concat!(
+            "(\n",
+            "  regions: {\n",
+            "    \"ghost\": (\n",
+            "      token: \"missing\",\n",
+            "      start: 0.0,\n",
+            "      end: 0.5,\n",
+            "    ),\n",
+            "  },\n",
+            ")\n"
+        ),
+    )
+    .unwrap();
+
+    let error = load_sample_bank_from_directory(&directory).unwrap_err();
+
+    assert!(matches!(
+        error,
+        SampleBankError::ManifestRegionTarget { .. }
+    ));
 
     fs::remove_dir_all(directory).unwrap();
 }

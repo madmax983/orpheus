@@ -43,6 +43,8 @@ impl VoiceKind {
 #[derive(Clone, Debug)]
 pub struct ActiveVoice {
     state: ActiveVoiceState,
+    left_gain: f64,
+    right_gain: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -64,13 +66,14 @@ enum ActiveVoiceState {
 }
 
 impl ActiveVoice {
-    pub fn new(kind: VoiceKind, sample_rate: u32) -> Self {
+    pub fn new_with_pan(kind: VoiceKind, sample_rate: u32, pan: f64) -> Self {
         let duration_frames = match kind {
             VoiceKind::KickLike => sample_rate / 3,
             VoiceKind::SnareLike => sample_rate / 5,
             VoiceKind::ClapLike => sample_rate / 6,
             VoiceKind::HiHatLike => sample_rate / 8,
         };
+        let (left_gain, right_gain) = stereo_gains_for_pan(pan);
 
         Self {
             state: ActiveVoiceState::Synth {
@@ -80,6 +83,8 @@ impl ActiveVoice {
                 sample_rate_hz: f64::from(sample_rate),
                 noise_state: 0x00C0_FFEE_u32,
             },
+            left_gain,
+            right_gain,
         }
     }
 
@@ -93,6 +98,7 @@ impl ActiveVoice {
         let frame_count = f64::from(frame_count_u32);
         let frame_position = trigger.slice_start() * frame_count;
         let frame_limit = trigger.slice_end() * frame_count;
+        let (left_gain, right_gain) = stereo_gains_for_pan(trigger.pan());
         Self {
             state: ActiveVoiceState::Sample {
                 frames: sample.frames().clone(),
@@ -102,6 +108,8 @@ impl ActiveVoice {
                 frame_limit,
                 gain: trigger.gain(),
             },
+            left_gain,
+            right_gain,
         }
     }
 
@@ -110,7 +118,7 @@ impl ActiveVoice {
         clippy::cast_precision_loss,
         clippy::cast_sign_loss
     )]
-    pub fn next_sample(&mut self) -> Option<f32> {
+    fn next_mono_sample(&mut self) -> Option<f32> {
         match &mut self.state {
             ActiveVoiceState::Synth {
                 kind,
@@ -165,6 +173,15 @@ impl ActiveVoice {
             }
         }
     }
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+    pub fn next_stereo_frame(&mut self) -> Option<(f32, f32)> {
+        let sample = self.next_mono_sample()?;
+        Some((
+            (f64::from(sample) * self.left_gain) as f32,
+            (f64::from(sample) * self.right_gain) as f32,
+        ))
+    }
 }
 
 fn next_noise(noise_state: &mut u32) -> f64 {
@@ -173,4 +190,11 @@ fn next_noise(noise_state: &mut u32) -> f64 {
         .wrapping_add(1_013_904_223);
     let normalized = f64::from((*noise_state >> 8) & 0x00FF_FFFF) / 16_777_215.0;
     (normalized * 2.0) - 1.0
+}
+
+fn stereo_gains_for_pan(pan: f64) -> (f64, f64) {
+    let pan = pan.clamp(-1.0, 1.0);
+    let left = if pan > 0.0 { 1.0 - pan } else { 1.0 };
+    let right = if pan < 0.0 { 1.0 + pan } else { 1.0 };
+    (left, right)
 }

@@ -379,6 +379,7 @@ impl ReplSession {
                         part: event.part,
                         value: SampleTrigger::named(event.value.sample())
                             .with_gain(event.value.gain())
+                            .with_pan(event.value.pan())
                             .with_rate(event.value.rate())
                             .with_slice(event.value.slice_start(), event.value.slice_end()),
                     })
@@ -622,15 +623,17 @@ mod tests {
             .eval_line(&format!(":samples {}", directory.display()))
             .unwrap();
         session
-            .eval_line(r#"lead = sample("vox_ah") |> slice(0.25, 1) |> rate(2) |> gain(0.5)"#)
+            .eval_line(
+                r#"lead = sample("vox_ah") |> slice(0.25, 1) |> rate(2) |> gain(0.5) |> pan(-1)"#,
+            )
             .unwrap();
 
         let rendered = session.render_test_block_for_tui(4);
 
         assert!((rendered[0] - 0.2).abs() < f32::EPSILON);
-        assert!((rendered[1] - 0.2).abs() < f32::EPSILON);
+        assert!(rendered[1].abs() < f32::EPSILON);
         assert!((rendered[2] - 0.4).abs() < f32::EPSILON);
-        assert!((rendered[3] - 0.4).abs() < f32::EPSILON);
+        assert!(rendered[3].abs() < f32::EPSILON);
 
         fs::remove_dir_all(directory).unwrap();
     }

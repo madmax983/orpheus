@@ -835,6 +835,7 @@ fn extract_string_value(value: Value, message: &str) -> Result<String, EvalError
 fn sample_trigger_from_event(event: &SampleEvent) -> SampleTrigger {
     SampleTrigger::named(event.sample())
         .with_gain(event.gain())
+        .with_pan(event.pan())
         .with_rate(event.rate())
         .with_slice(event.slice_start(), event.slice_end())
 }

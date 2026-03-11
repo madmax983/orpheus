@@ -64,7 +64,7 @@ fn sample_calls_in_sequences_still_infer_sample_patterns() {
 #[test]
 fn rate_and_slice_builtins_preserve_sample_pattern_types() {
     let typed = infer_module(
-        r#"lead = sample("vox_ah") |> slice(0.25, 1) |> rate(2)"#,
+        r#"lead = sample("vox_ah") |> slice(0.25, 1) |> rate(2) |> pan(0.5)"#,
         ReplMode::Strict,
     )
     .unwrap();

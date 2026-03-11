@@ -5,8 +5,11 @@ use std::sync::Arc;
 
 use thiserror::Error;
 
+use crate::SampleTrigger;
 use crate::sample::{DecodedSample, SampleError, load_wav_bytes, load_wav_for_test};
-use crate::sample_manifest::{SampleManifest, SampleManifestLoadError, load_sample_manifest};
+use crate::sample_manifest::{
+    SampleManifest, SampleManifestLoadError, SampleRegion, load_sample_manifest,
+};
 use crate::voice::VoiceKind;
 
 const KICK_WAV: &[u8] = include_bytes!("../assets/kick.wav");
@@ -54,7 +57,48 @@ impl From<DecodedSample> for PlaybackSample {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SampleBank {
-    samples: BTreeMap<Box<str>, PlaybackSample>,
+    samples: BTreeMap<Box<str>, SampleEntry>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct SampleEntry {
+    sample: PlaybackSample,
+    rate: f64,
+    slice_start: f64,
+    slice_end: f64,
+}
+
+impl SampleEntry {
+    const fn direct(sample: PlaybackSample) -> Self {
+        Self {
+            sample,
+            rate: 1.0,
+            slice_start: 0.0,
+            slice_end: 1.0,
+        }
+    }
+
+    fn compose_region(&self, region: &SampleRegion) -> Self {
+        let current_range = self.slice_end - self.slice_start;
+        Self {
+            sample: self.sample.clone(),
+            rate: self.rate * region.rate,
+            slice_start: current_range.mul_add(region.start, self.slice_start),
+            slice_end: current_range.mul_add(region.end, self.slice_start),
+        }
+    }
+
+    fn compose_trigger(&self, trigger: &SampleTrigger) -> SampleTrigger {
+        let current_range = self.slice_end - self.slice_start;
+        SampleTrigger::named(trigger.token())
+            .with_gain(trigger.gain())
+            .with_pan(trigger.pan())
+            .with_rate(self.rate * trigger.rate())
+            .with_slice(
+                current_range.mul_add(trigger.slice_start(), self.slice_start),
+                current_range.mul_add(trigger.slice_end(), self.slice_start),
+            )
+    }
 }
 
 impl SampleBank {
@@ -63,7 +107,8 @@ impl SampleBank {
         let mut bank = Self::default();
         for token in ["bd", "sn", "cp", "hh"] {
             if let Ok(sample) = load_builtin_sample_for_test(token) {
-                bank.samples.insert(token.into(), sample.into());
+                bank.samples
+                    .insert(token.into(), SampleEntry::direct(sample.into()));
             }
         }
         bank
@@ -76,7 +121,7 @@ impl SampleBank {
 
     #[must_use]
     pub fn get_by_token(&self, token: &str) -> Option<&PlaybackSample> {
-        self.samples.get(token)
+        self.samples.get(token).map(|entry| &entry.sample)
     }
 
     #[must_use]
@@ -85,7 +130,19 @@ impl SampleBank {
     }
 
     fn insert_token(&mut self, token: &str, sample: PlaybackSample) {
-        self.samples.insert(token.into(), sample);
+        self.insert_entry(token, SampleEntry::direct(sample));
+    }
+
+    fn insert_entry(&mut self, token: &str, entry: SampleEntry) {
+        self.samples.insert(token.into(), entry);
+    }
+
+    pub(crate) fn resolve_trigger(
+        &self,
+        trigger: &SampleTrigger,
+    ) -> Option<(&PlaybackSample, SampleTrigger)> {
+        let entry = self.samples.get(trigger.token())?;
+        Some((&entry.sample, entry.compose_trigger(trigger)))
     }
 }
 
@@ -118,6 +175,18 @@ pub enum SampleBankError {
         alias: Box<str>,
         target: Box<str>,
     },
+    #[error("sample manifest `{path}` region `{region}` targets unknown token `{target}`")]
+    ManifestRegionTarget {
+        path: Box<str>,
+        region: Box<str>,
+        target: Box<str>,
+    },
+    #[error("sample manifest `{path}` contains a region cycle at `{region}` via `{target}`")]
+    ManifestRegionCycle {
+        path: Box<str>,
+        region: Box<str>,
+        target: Box<str>,
+    },
     #[error("failed to decode sample override `{path}`: {source}")]
     Decode {
         path: Box<str>,
@@ -133,8 +202,8 @@ pub enum SampleBankError {
 /// aliases also keep overriding the built-in tokens:
 /// `bd`/`kick`, `sn`/`snare`, `cp`/`clap`, and `hh`/`hat`/`hihat`.
 ///
-/// If `samples.ron` exists, explicit `tokens` and `aliases` are loaded after
-/// directory inference and override it.
+/// If `samples.ron` exists, explicit `tokens`, `regions`, and `aliases` are
+/// loaded after directory inference and override it.
 ///
 /// # Errors
 ///
@@ -196,6 +265,7 @@ pub fn load_sample_bank_from_directory(
         bank.insert_token(token, sample);
     }
     apply_manifest_tokens(&mut bank, manifest.as_ref(), directory)?;
+    apply_manifest_regions(&mut bank, manifest.as_ref(), &manifest_path)?;
     apply_manifest_aliases(&mut bank, manifest.as_ref(), &manifest_path)?;
 
     Ok(bank)
@@ -298,7 +368,31 @@ fn apply_manifest_aliases(
             manifest_path,
             &mut BTreeSet::new(),
         )?;
-        bank.insert_token(alias, sample);
+        bank.insert_entry(alias, sample);
+    }
+
+    Ok(())
+}
+
+fn apply_manifest_regions(
+    bank: &mut SampleBank,
+    manifest: Option<&SampleManifest>,
+    manifest_path: &Path,
+) -> Result<(), SampleBankError> {
+    let Some(manifest) = manifest else {
+        return Ok(());
+    };
+
+    for (region_name, region) in &manifest.regions {
+        let entry = resolve_region_target(
+            region_name,
+            region,
+            &manifest.regions,
+            bank,
+            manifest_path,
+            &mut BTreeSet::from([region_name.clone()]),
+        )?;
+        bank.insert_entry(region_name, entry);
     }
 
     Ok(())
@@ -311,8 +405,8 @@ fn resolve_alias_target(
     bank: &SampleBank,
     manifest_path: &Path,
     visiting: &mut BTreeSet<String>,
-) -> Result<PlaybackSample, SampleBankError> {
-    if let Some(sample) = bank.get_by_token(target) {
+) -> Result<SampleEntry, SampleBankError> {
+    if let Some(sample) = bank.samples.get(target) {
         return Ok(sample.clone());
     }
     if !visiting.insert(target.to_owned()) {
@@ -331,6 +425,45 @@ fn resolve_alias_target(
         alias: alias.to_owned().into_boxed_str(),
         target: target.to_owned().into_boxed_str(),
     })
+}
+
+fn resolve_region_target(
+    region_name: &str,
+    region: &SampleRegion,
+    regions: &BTreeMap<String, SampleRegion>,
+    bank: &SampleBank,
+    manifest_path: &Path,
+    visiting: &mut BTreeSet<String>,
+) -> Result<SampleEntry, SampleBankError> {
+    let base = if let Some(entry) = bank.samples.get(region.token.as_str()) {
+        entry.clone()
+    } else if let Some(next_region) = regions.get(region.token.as_str()) {
+        if !visiting.insert(region.token.clone()) {
+            return Err(SampleBankError::ManifestRegionCycle {
+                path: manifest_path.display().to_string().into_boxed_str(),
+                region: region_name.to_owned().into_boxed_str(),
+                target: region.token.clone().into_boxed_str(),
+            });
+        }
+        let resolved = resolve_region_target(
+            region_name,
+            next_region,
+            regions,
+            bank,
+            manifest_path,
+            visiting,
+        );
+        visiting.remove(region.token.as_str());
+        resolved?
+    } else {
+        return Err(SampleBankError::ManifestRegionTarget {
+            path: manifest_path.display().to_string().into_boxed_str(),
+            region: region_name.to_owned().into_boxed_str(),
+            target: region.token.clone().into_boxed_str(),
+        });
+    };
+
+    Ok(base.compose_region(region))
 }
 
 fn inferred_token_from_stem(stem: &str) -> String {

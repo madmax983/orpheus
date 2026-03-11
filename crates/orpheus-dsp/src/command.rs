@@ -11,6 +11,7 @@ pub struct SampleTrigger {
     rate: f64,
     slice_start: f64,
     slice_end: f64,
+    pan: f64,
 }
 
 impl SampleTrigger {
@@ -22,6 +23,7 @@ impl SampleTrigger {
             rate: 1.0,
             slice_start: 0.0,
             slice_end: 1.0,
+            pan: 0.0,
         }
     }
 
@@ -41,6 +43,12 @@ impl SampleTrigger {
     pub const fn with_slice(mut self, start: f64, end: f64) -> Self {
         self.slice_start = start;
         self.slice_end = end;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_pan(mut self, pan: f64) -> Self {
+        self.pan = pan;
         self
     }
 
@@ -67,6 +75,11 @@ impl SampleTrigger {
     #[must_use]
     pub const fn slice_end(&self) -> f64 {
         self.slice_end
+    }
+
+    #[must_use]
+    pub const fn pan(&self) -> f64 {
+        self.pan
     }
 }
 

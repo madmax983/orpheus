@@ -13,6 +13,7 @@ pub enum BuiltinKind {
     Slow,
     Rev,
     Gain,
+    Pan,
     Sample,
     Rate,
     Slice,
@@ -65,6 +66,7 @@ impl Value {
 pub struct SampleEvent {
     sample: Box<str>,
     gain: f64,
+    pan: f64,
     rate: f64,
     slice_start: f64,
     slice_end: f64,
@@ -75,6 +77,7 @@ impl SampleEvent {
         Self {
             sample: sample.into(),
             gain: 1.0,
+            pan: 0.0,
             rate: 1.0,
             slice_start: 0.0,
             slice_end: 1.0,
@@ -89,6 +92,11 @@ impl SampleEvent {
     #[must_use]
     pub const fn gain(&self) -> f64 {
         self.gain
+    }
+
+    #[must_use]
+    pub const fn pan(&self) -> f64 {
+        self.pan
     }
 
     #[must_use]
@@ -109,6 +117,7 @@ impl SampleEvent {
 
 trait PatternValueTransform {
     fn adjust_gain(&self, factor: f64) -> Self;
+    fn adjust_pan(&self, amount: f64) -> Self;
     fn adjust_rate(&self, factor: f64) -> Self;
     fn adjust_slice(&self, start: f64, end: f64) -> Self;
 }
@@ -118,6 +127,18 @@ impl PatternValueTransform for SampleEvent {
         Self {
             sample: self.sample.clone(),
             gain: self.gain * factor,
+            pan: self.pan,
+            rate: self.rate,
+            slice_start: self.slice_start,
+            slice_end: self.slice_end,
+        }
+    }
+
+    fn adjust_pan(&self, amount: f64) -> Self {
+        Self {
+            sample: self.sample.clone(),
+            gain: self.gain,
+            pan: (self.pan + amount).clamp(-1.0, 1.0),
             rate: self.rate,
             slice_start: self.slice_start,
             slice_end: self.slice_end,
@@ -128,6 +149,7 @@ impl PatternValueTransform for SampleEvent {
         Self {
             sample: self.sample.clone(),
             gain: self.gain,
+            pan: self.pan,
             rate: self.rate * factor,
             slice_start: self.slice_start,
             slice_end: self.slice_end,
@@ -139,6 +161,7 @@ impl PatternValueTransform for SampleEvent {
         Self {
             sample: self.sample.clone(),
             gain: self.gain,
+            pan: self.pan,
             rate: self.rate,
             slice_start: current_range.mul_add(start, self.slice_start),
             slice_end: current_range.mul_add(end, self.slice_start),
@@ -148,6 +171,10 @@ impl PatternValueTransform for SampleEvent {
 
 impl PatternValueTransform for f64 {
     fn adjust_gain(&self, _factor: f64) -> Self {
+        *self
+    }
+
+    fn adjust_pan(&self, _amount: f64) -> Self {
         *self
     }
 
@@ -225,6 +252,15 @@ impl SamplePatternValue {
         Self {
             pattern: PatternRuntime::Gain {
                 factor,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn pan(self, amount: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::Pan {
+                amount,
                 inner: Box::new(self.pattern),
             },
         }
@@ -388,6 +424,10 @@ enum PatternRuntime<T> {
         factor: f64,
         inner: Box<Self>,
     },
+    Pan {
+        amount: f64,
+        inner: Box<Self>,
+    },
     Rate {
         factor: f64,
         inner: Box<Self>,
@@ -426,6 +466,13 @@ where
                 let mut events = inner.try_query(span)?;
                 for event in &mut events {
                     event.value = event.value.adjust_gain(*factor);
+                }
+                Ok(events)
+            }
+            Self::Pan { amount, inner } => {
+                let mut events = inner.try_query(span)?;
+                for event in &mut events {
+                    event.value = event.value.adjust_pan(*amount);
                 }
                 Ok(events)
             }

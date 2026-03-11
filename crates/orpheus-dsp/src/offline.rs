@@ -150,11 +150,9 @@ fn render_events_to_pcm(
             )?;
         }
 
-        let sample = mix_voices(&mut active_voices);
-        let pcm = float_to_pcm16(sample);
-        let pcm = i32::from(pcm);
-        rendered.push(pcm);
-        rendered.push(pcm);
+        let (left, right) = mix_voices(&mut active_voices);
+        rendered.push(i32::from(float_to_pcm16(left)));
+        rendered.push(i32::from(float_to_pcm16(right)));
     }
 
     Ok(rendered)
@@ -229,10 +227,10 @@ fn activate_voice(
 ) -> Result<(), OfflineRenderError> {
     if let Some(slot) = active_voices.iter_mut().find(|slot| slot.is_none()) {
         *slot = Some(
-            if let Some(sample) = sample_bank.get_by_token(trigger.token()) {
-                ActiveVoice::from_sample(sample, sample_rate, trigger)
+            if let Some((sample, resolved_trigger)) = sample_bank.resolve_trigger(trigger) {
+                ActiveVoice::from_sample(sample, sample_rate, &resolved_trigger)
             } else if let Some(voice) = fallback_voice {
-                ActiveVoice::new(voice, sample_rate)
+                ActiveVoice::new_with_pan(voice, sample_rate, trigger.pan())
             } else {
                 return Err(OfflineRenderError::UnknownSampleToken(
                     trigger.token().into(),
@@ -244,18 +242,20 @@ fn activate_voice(
     Ok(())
 }
 
-fn mix_voices(active_voices: &mut [Option<ActiveVoice>]) -> f32 {
-    let mut mixed = 0.0_f32;
+fn mix_voices(active_voices: &mut [Option<ActiveVoice>]) -> (f32, f32) {
+    let mut left = 0.0_f32;
+    let mut right = 0.0_f32;
     for slot in active_voices {
         if let Some(voice) = slot.as_mut() {
-            if let Some(sample) = voice.next_sample() {
-                mixed += sample;
+            if let Some((voice_left, voice_right)) = voice.next_stereo_frame() {
+                left += voice_left;
+                right += voice_right;
             } else {
                 *slot = None;
             }
         }
     }
-    mixed.clamp(-1.0, 1.0)
+    (left.clamp(-1.0, 1.0), right.clamp(-1.0, 1.0))
 }
 
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]

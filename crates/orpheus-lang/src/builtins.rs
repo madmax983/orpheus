@@ -12,6 +12,7 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "slow" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Slow))),
         "rev" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Rev))),
         "gain" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Gain))),
+        "pan" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Pan))),
         "sample" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Sample))),
         "rate" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Rate))),
         "slice" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Slice))),
@@ -99,6 +100,7 @@ impl BuiltinKind {
             Self::Slow => "slow",
             Self::Rev => "rev",
             Self::Gain => "gain",
+            Self::Pan => "pan",
             Self::Sample => "sample",
             Self::Rate => "rate",
             Self::Slice => "slice",
@@ -108,7 +110,7 @@ impl BuiltinKind {
 
     const fn arity(self) -> usize {
         match self {
-            Self::Fast | Self::Slow | Self::Gain | Self::Rate => 2,
+            Self::Fast | Self::Slow | Self::Gain | Self::Pan | Self::Rate => 2,
             Self::Slice | Self::SliceIdx => 3,
             Self::Rev | Self::Sample => 1,
         }
@@ -120,6 +122,7 @@ impl BuiltinKind {
             Self::Slow => apply_slow(args),
             Self::Rev => apply_rev(args),
             Self::Gain => apply_gain(args),
+            Self::Pan => apply_pan(args),
             Self::Sample => apply_sample(args),
             Self::Rate => apply_rate(args),
             Self::Slice => apply_slice(args),
@@ -200,6 +203,25 @@ fn apply_gain(args: Vec<Value>) -> Result<Value, EvalError> {
         )),
         Value::Function(_) | Value::String(_) => Err(EvalError::new(
             "`gain` expected a sample pattern as its final argument",
+        )),
+    }
+}
+
+fn apply_pan(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let pan = extract_pan(
+        args.next()
+            .ok_or_else(|| EvalError::new("`pan` requires a pan argument"))?,
+    )?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`pan` requires a pattern argument"))?;
+
+    match pattern {
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.pan(pan))),
+        Value::NumberPattern(_) => Err(EvalError::new("`pan` only applies to sample patterns")),
+        Value::Function(_) | Value::String(_) => Err(EvalError::new(
+            "`pan` expected a sample pattern as its final argument",
         )),
     }
 }
@@ -355,6 +377,18 @@ fn extract_gain(value: Value) -> Result<f64, EvalError> {
     }
 
     Ok(gain)
+}
+
+fn extract_pan(value: Value) -> Result<f64, EvalError> {
+    let pan = extract_constant_number(value, "pan")?;
+
+    if !pan.is_finite() || !(-1.0..=1.0).contains(&pan) {
+        return Err(EvalError::new(
+            "`pan` requires a finite number within [-1, 1]",
+        ));
+    }
+
+    Ok(pan)
 }
 
 fn extract_positive_finite_number(value: Value, builtin_name: &str) -> Result<f64, EvalError> {

@@ -434,6 +434,59 @@ fn manifest_mapped_sample_token_plays_through_live_engine() {
 }
 
 #[test]
+fn manifest_region_token_plays_through_live_engine_with_default_rate() {
+    let mut engine = EngineHandle::stub();
+    let directory = temp_directory("manifest-region-live");
+    fs::write(
+        directory.join("samples.ron"),
+        concat!(
+            "(\n",
+            "  tokens: {\n",
+            "    \"amen\": \"amen.wav\",\n",
+            "  },\n",
+            "  regions: {\n",
+            "    \"amen_tail\": (\n",
+            "      token: \"amen\",\n",
+            "      start: 0.5,\n",
+            "      end: 1.0,\n",
+            "      rate: 0.5,\n",
+            "    ),\n",
+            "  },\n",
+            ")\n"
+        ),
+    )
+    .unwrap();
+    write_wav(directory.join("amen.wav"), &[0.2, 0.4, 0.6, 0.8]);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+    engine
+        .enqueue(EngineCommand::ReplaceSampleBank(bank))
+        .unwrap();
+
+    let pattern = PatternUpdate::new(
+        "amen",
+        vec![Event {
+            whole: None,
+            part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+            value: SampleTrigger::named("amen_tail"),
+        }],
+    );
+    engine.enqueue(EngineCommand::LoadPattern(pattern)).unwrap();
+
+    let rendered = engine.render_test_block(8);
+
+    assert!((rendered[0] - 0.6).abs() < f32::EPSILON);
+    assert!((rendered[1] - 0.6).abs() < f32::EPSILON);
+    assert!((rendered[2] - 0.6).abs() < f32::EPSILON);
+    assert!((rendered[3] - 0.6).abs() < f32::EPSILON);
+    assert!((rendered[4] - 0.8).abs() < f32::EPSILON);
+    assert!((rendered[5] - 0.8).abs() < f32::EPSILON);
+    assert!((rendered[6] - 0.8).abs() < f32::EPSILON);
+    assert!((rendered[7] - 0.8).abs() < f32::EPSILON);
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn live_engine_applies_sample_gain_rate_and_slice() {
     let mut engine = EngineHandle::stub();
     let directory = temp_directory("sample-params-live");
@@ -467,6 +520,38 @@ fn live_engine_applies_sample_gain_rate_and_slice() {
     assert!((rendered[1] - 0.2).abs() < f32::EPSILON);
     assert!((rendered[2] - 0.4).abs() < f32::EPSILON);
     assert!((rendered[3] - 0.4).abs() < f32::EPSILON);
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn live_engine_applies_sample_pan_balance() {
+    let mut engine = EngineHandle::stub();
+    let directory = temp_directory("sample-pan-live");
+    fs::write(
+        directory.join("samples.ron"),
+        "(\n  tokens: {\n    \"vox_ah\": \"vox.wav\",\n  },\n)\n",
+    )
+    .unwrap();
+    write_wav(directory.join("vox.wav"), &[0.5, 0.0, 0.0, 0.0]);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+    engine
+        .enqueue(EngineCommand::ReplaceSampleBank(bank))
+        .unwrap();
+
+    let pattern = PatternUpdate::new(
+        "vox",
+        vec![Event {
+            whole: None,
+            part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+            value: SampleTrigger::named("vox_ah").with_pan(1.0),
+        }],
+    );
+    engine.enqueue(EngineCommand::LoadPattern(pattern)).unwrap();
+
+    let rendered = engine.render_test_block(4);
+
+    assert_eq!(&rendered[..4], &[0.0, 0.5, 0.0, 0.0]);
 
     fs::remove_dir_all(directory).unwrap();
 }

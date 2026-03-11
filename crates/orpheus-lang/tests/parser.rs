@@ -106,6 +106,20 @@ fn parses_function_calls_with_numeric_arguments() {
 }
 
 #[test]
+fn parses_negative_numeric_arguments() {
+    let expr = binding_expr("lead = pan(-1)");
+    match &expr {
+        Expr::Call { callee, args } => {
+            assert!(matches!(callee.as_ref(), Expr::Ident(name) if name == "pan"));
+            assert!(
+                matches!(args.as_slice(), [Expr::Number(value)] if (*value + 1.0).abs() < f64::EPSILON)
+            );
+        }
+        other => panic!("unexpected AST: {other:#?}"),
+    }
+}
+
+#[test]
 fn parses_sample_call_with_string_literal() {
     let expr = binding_expr(r#"lead = sample("vox_ah")"#);
 

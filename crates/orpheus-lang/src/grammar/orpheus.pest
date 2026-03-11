@@ -17,7 +17,7 @@ call = { identifier ~ "(" ~ padding ~ call_args? ~ padding ~ ")" }
 call_args = { pipe_expr ~ (padding ~ "," ~ padding ~ pipe_expr)* }
 
 identifier = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
-number = @{ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
+number = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
 string = @{ "\"" ~ string_char* ~ "\"" }
 string_char = { escape | !("\"" | NEWLINE) ~ ANY }
 escape = { "\\" ~ ("\"" | "\\" | "n" | "r" | "t") }

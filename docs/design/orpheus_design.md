@@ -69,6 +69,7 @@ drums = bd sn cp sn
 chop = sample("amen")
   |> slice_idx(3, 8)
   |> rate(0.5)
+  |> pan(-0.5)
   |> gain(0.7)
 
 -- Named patterns compose freely
@@ -516,6 +517,29 @@ The current live workflow keeps filesystem access off the audio thread:
 - `:samples <directory>` scans WAV overrides and stages them for the next cycle boundary.
 - `:reload-samples` rescans the previously configured directory and hot-swaps the bank at the next cycle boundary.
 - `sample("token") |> slice(start, end)` uses normalized `[0, 1]` bounds, while `slice_idx(i, n)` is the zero-based shorthand for the `i`th segment out of `n`.
+- `pan(amount)` accepts a static balance value in `[-1, 1]`, where `-1` is full left, `1` is full right, and `0` keeps the current centered stereo output.
+- `samples.ron` can also define named regions over an existing token:
+
+```ron
+(
+  tokens: {
+    "amen": "breaks/amen.wav",
+  },
+  regions: {
+    "amen_tail": (
+      token: "amen",
+      start: 0.5,
+      end: 1.0,
+      rate: 0.5,
+    ),
+  },
+  aliases: {
+    "break_tail": "amen_tail",
+  },
+)
+```
+
+- `sample("amen_tail")` now resolves through that manifest region, and later transforms like `slice(...)`, `slice_idx(...)`, and `rate(...)` compose relative to the region instead of replacing it.
 - Supported filename aliases map onto the built-in drum tokens:
   - `bd` or `kick`
   - `sn` or `snare`
