@@ -109,8 +109,8 @@ impl ActiveVoice {
         let output_frame_count = if frame_step.abs() <= f64::EPSILON {
             1
         } else {
-            (((slice_end - slice_start) / frame_step.abs()).ceil())
-                .clamp(1.0, f64::from(u32::MAX)) as u32
+            (((slice_end - slice_start) / frame_step.abs()).ceil()).clamp(1.0, f64::from(u32::MAX))
+                as u32
         };
         let edge_ramp_frames = output_frame_count
             .div_ceil(2)

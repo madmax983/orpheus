@@ -294,31 +294,28 @@ fn apply_slice(args: Vec<Value>) -> Result<Value, EvalError> {
 
 fn apply_slice_idx(args: Vec<Value>) -> Result<Value, EvalError> {
     let mut args = args.into_iter();
-    let index = extract_whole_number(
-        args.next()
-            .ok_or_else(|| EvalError::new("`slice_idx` requires an index argument"))?,
-        "slice_idx index",
-        false,
-    )?;
+    let index_arg = args
+        .next()
+        .ok_or_else(|| EvalError::new("`slice_idx` requires an index argument"))?;
     let segments = extract_whole_number(
         args.next()
             .ok_or_else(|| EvalError::new("`slice_idx` requires a segment count argument"))?,
         "slice_idx segments",
         true,
     )?;
-    if index >= segments {
-        return Err(EvalError::new("`slice_idx` requires index < segments"));
-    }
+    let index = extract_slice_idx_control(index_arg, segments)?;
     let pattern = args
         .next()
         .ok_or_else(|| EvalError::new("`slice_idx` requires a pattern argument"))?;
-    let start = f64::from(index) / f64::from(segments);
-    let end = f64::from(index.checked_add(1).ok_or_else(|| {
-        EvalError::new("`slice_idx index` exceeded the supported evaluator range")
-    })?) / f64::from(segments);
 
     match pattern {
-        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.slice(start, end))),
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match index {
+            SliceIndexControl::Constant(index) => {
+                let (start, end) = slice_idx_bounds(index, segments)?;
+                pattern.slice(start, end)
+            }
+            SliceIndexControl::Pattern(control) => pattern.slice_idx_pattern(control, segments),
+        })),
         Value::NumberPattern(_) => Err(EvalError::new(
             "`slice_idx` only applies to sample patterns",
         )),
@@ -379,6 +376,11 @@ fn extract_whole_number(
 
 enum NumericControl {
     Constant(f64),
+    Pattern(NumberPatternValue),
+}
+
+enum SliceIndexControl {
+    Constant(u32),
     Pattern(NumberPatternValue),
 }
 
@@ -452,6 +454,21 @@ fn extract_rate_control(value: Value) -> Result<NumericControl, EvalError> {
     Ok(NumericControl::Pattern(pattern))
 }
 
+fn extract_slice_idx_control(value: Value, segments: u32) -> Result<SliceIndexControl, EvalError> {
+    let pattern = extract_number_pattern(value, "slice_idx")?;
+    if let Ok(index) = pattern.constant_value() {
+        return Ok(SliceIndexControl::Constant(validate_slice_idx_constant(
+            index, segments,
+        )?));
+    }
+
+    validate_numeric_control_pattern(&pattern, "slice_idx", |value| {
+        validate_slice_idx_control_value(value, segments)
+    })?;
+
+    Ok(SliceIndexControl::Pattern(pattern))
+}
+
 fn validate_numeric_control_pattern<F>(
     pattern: &NumberPatternValue,
     builtin_name: &str,
@@ -472,6 +489,45 @@ where
         })?;
     }
     Ok(())
+}
+
+fn validate_slice_idx_constant(value: f64, segments: u32) -> Result<u32, EvalError> {
+    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
+        return Err(EvalError::new("`slice_idx index` requires a whole number"));
+    }
+
+    let index = format!("{value:.0}")
+        .parse::<u32>()
+        .map_err(|_| EvalError::new("`slice_idx index` exceeded the supported evaluator range"))?;
+    if index >= segments {
+        return Err(EvalError::new("`slice_idx` requires index < segments"));
+    }
+
+    Ok(index)
+}
+
+fn validate_slice_idx_control_value(value: f64, segments: u32) -> Result<(), EvalError> {
+    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
+        return Err(EvalError::new(
+            "`slice_idx` requires whole-number control values",
+        ));
+    }
+    if value >= f64::from(segments) {
+        return Err(EvalError::new(
+            "`slice_idx` requires control values with index < segments",
+        ));
+    }
+
+    Ok(())
+}
+
+fn slice_idx_bounds(index: u32, segments: u32) -> Result<(f64, f64), EvalError> {
+    let start = f64::from(index) / f64::from(segments);
+    let end = f64::from(index.checked_add(1).ok_or_else(|| {
+        EvalError::new("`slice_idx index` exceeded the supported evaluator range")
+    })?) / f64::from(segments);
+
+    Ok((start, end))
 }
 
 fn extract_number_pattern(

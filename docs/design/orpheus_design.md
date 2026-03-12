@@ -517,6 +517,7 @@ The current live workflow keeps filesystem access off the audio thread:
 - `:samples <directory>` scans WAV overrides and stages them for the next cycle boundary.
 - `:reload-samples` rescans the previously configured directory and hot-swaps the bank at the next cycle boundary.
 - `sample("token") |> slice(start, end)` uses normalized `[0, 1]` bounds, while `slice_idx(i, n)` is the zero-based shorthand for the `i`th segment out of `n`.
+- `slice_idx(index_pattern, n)` also accepts a patterned index when `n` is constant, so `sample("amen") |> slice_idx(0 3 1 7, 8)` becomes a rhythmic chop pattern without hand-writing normalized fractions.
 - `pan(amount)` accepts a static balance value in `[-1, 1]`, where `-1` is full left, `1` is full right, and `0` keeps the current centered stereo output.
 - `samples.ron` can also define named regions over an existing token:
 

@@ -312,6 +312,16 @@ impl SamplePatternValue {
         }
     }
 
+    pub(crate) fn slice_idx_pattern(self, control: NumberPatternValue, segments: u32) -> Self {
+        Self {
+            pattern: PatternRuntime::SliceIdxPattern {
+                control: Box::new(control.pattern),
+                segments,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn from_events(events: Vec<Event<SampleEvent>>) -> Self {
         Self {
             pattern: PatternRuntime::Stream(EventStream::new(events)),
@@ -476,6 +486,11 @@ enum PatternRuntime<T> {
         end: f64,
         inner: Box<Self>,
     },
+    SliceIdxPattern {
+        control: Box<PatternRuntime<f64>>,
+        segments: u32,
+        inner: Box<Self>,
+    },
 }
 
 impl<T> PatternRuntime<T>
@@ -538,6 +553,11 @@ where
                 }
                 Ok(events)
             }
+            Self::SliceIdxPattern {
+                control,
+                segments,
+                inner,
+            } => apply_slice_idx_pattern(inner, control, *segments, span),
         }
     }
 }
@@ -648,6 +668,105 @@ fn validate_control_events(
     }
 
     Ok(())
+}
+
+fn apply_slice_idx_pattern<T>(
+    inner: &PatternRuntime<T>,
+    control: &PatternRuntime<f64>,
+    segments: u32,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: Clone + PatternValueTransform + Send + Sync + fmt::Debug,
+{
+    let source_events = inner.try_query(span)?;
+    let control_events = control.try_query(span)?;
+    validate_slice_idx_control_events(&control_events, segments)?;
+    if control_events.is_empty() {
+        return Ok(source_events);
+    }
+
+    let mut composed = Vec::new();
+    for event in source_events {
+        let mut boundaries = vec![event.part.start().clone(), event.part.end().clone()];
+        let mut has_overlap = false;
+        for control_event in &control_events {
+            if let Some(overlap) = clip_span(&control_event.part, &event.part)? {
+                has_overlap = true;
+                boundaries.push(overlap.start().clone());
+                boundaries.push(overlap.end().clone());
+            }
+        }
+
+        if !has_overlap {
+            composed.push(event);
+            continue;
+        }
+
+        boundaries.sort();
+        boundaries.dedup();
+
+        for window in boundaries.windows(2) {
+            let [start, end] = window else {
+                continue;
+            };
+            if start >= end {
+                continue;
+            }
+
+            let part = build_span(start.clone(), end.clone())?;
+            let mut value = event.value.clone();
+            for control_event in &control_events {
+                if clip_span(&control_event.part, &part)?.is_some() {
+                    let index = whole_number_from_slice_idx_value(control_event.value)?;
+                    let slice_start = f64::from(index) / f64::from(segments);
+                    let slice_end = f64::from(index.checked_add(1).ok_or_else(|| {
+                        EvalError::new(
+                            "`slice_idx` control index exceeded the supported evaluator range",
+                        )
+                    })?) / f64::from(segments);
+                    value = value.adjust_slice(slice_start, slice_end);
+                }
+            }
+
+            composed.push(Event {
+                whole: None,
+                part,
+                value,
+            });
+        }
+    }
+
+    sort_events(&mut composed);
+    Ok(composed)
+}
+
+fn validate_slice_idx_control_events(
+    control_events: &[Event<f64>],
+    segments: u32,
+) -> Result<(), EvalError> {
+    for event in control_events {
+        let index = whole_number_from_slice_idx_value(event.value)?;
+        if index >= segments {
+            return Err(EvalError::new(
+                "`slice_idx` requires control values with index < segments",
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn whole_number_from_slice_idx_value(value: f64) -> Result<u32, EvalError> {
+    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
+        return Err(EvalError::new(
+            "`slice_idx` requires whole-number control values",
+        ));
+    }
+
+    format!("{value:.0}").parse::<u32>().map_err(|_| {
+        EvalError::new("`slice_idx` control value exceeded the supported evaluator range")
+    })
 }
 
 fn query_fast<T>(

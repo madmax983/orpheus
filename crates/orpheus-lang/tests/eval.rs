@@ -344,6 +344,63 @@ fn slice_idx_composes_with_existing_slice_bounds() {
 }
 
 #[test]
+fn slice_idx_accepts_pattern_valued_indices_and_splits_sample_events() {
+    let module = eval_module(
+        r#"lead = sample("amen") |> slice_idx(0 3 1 7, 8)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 4);
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 4).unwrap());
+    assert!((events[0].value.slice_start() - 0.0).abs() < f64::EPSILON);
+    assert!((events[0].value.slice_end() - 0.125).abs() < f64::EPSILON);
+
+    assert_eq!(events[1].part.start(), &Rational::new(1, 4).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::new(1, 2).unwrap());
+    assert!((events[1].value.slice_start() - 0.375).abs() < f64::EPSILON);
+    assert!((events[1].value.slice_end() - 0.5).abs() < f64::EPSILON);
+
+    assert_eq!(events[2].part.start(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[2].part.end(), &Rational::new(3, 4).unwrap());
+    assert!((events[2].value.slice_start() - 0.125).abs() < f64::EPSILON);
+    assert!((events[2].value.slice_end() - 0.25).abs() < f64::EPSILON);
+
+    assert_eq!(events[3].part.start(), &Rational::new(3, 4).unwrap());
+    assert_eq!(events[3].part.end(), &Rational::one());
+    assert!((events[3].value.slice_start() - 0.875).abs() < f64::EPSILON);
+    assert!((events[3].value.slice_end() - 1.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn pattern_valued_slice_idx_repeats_under_fast() {
+    let module = eval_module(
+        r#"lead = sample("amen") |> slice_idx(0 3, 8) |> fast(2)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit();
+    let slice_starts = events
+        .iter()
+        .map(|event| event.value.slice_start())
+        .collect::<Vec<_>>();
+
+    assert_eq!(slice_starts, vec![0.0, 0.375, 0.0, 0.375]);
+}
+
+#[test]
 fn evaluating_multiple_top_level_bindings_reuses_prior_definitions() {
     let module = eval_module("verse = bd sn\nsong = fast(2, verse)", ReplMode::Loose).unwrap();
 
@@ -407,6 +464,11 @@ fn slice_idx_rejects_non_integer_arguments() {
         r#"lead = sample("amen") |> slice_idx(1, 8.5)"#,
         ReplMode::Loose,
         &["`slice_idx segments` requires a positive whole number"],
+    );
+    assert_eval_error_contains(
+        r#"lead = sample("amen") |> slice_idx(0 1.5, 8)"#,
+        ReplMode::Loose,
+        &["`slice_idx` requires whole-number control values"],
     );
 }
 
