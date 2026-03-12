@@ -377,12 +377,28 @@ impl SessionTui {
             .transcript
             .iter()
             .cloned()
-            .map(Line::raw)
+            .map(|line| {
+                if line.starts_with("> ") {
+                    Line::styled(line, Style::default().fg(Color::DarkGray))
+                } else if line.starts_with("! ") {
+                    Line::styled(
+                        line,
+                        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                    )
+                } else if line.starts_with('[') {
+                    Line::styled(line, Style::default().fg(Color::Green))
+                } else {
+                    Line::raw(line)
+                }
+            })
             .collect::<Vec<_>>();
         let transport = self.session.transport_view();
         lines.push(transport_status_line("Transport: ", &transport, true));
         lines.push(Line::raw(format!("> {}", self.display_input_with_cursor())));
-        lines.push(Line::raw(self.input_hint()));
+        lines.push(Line::styled(
+            self.input_hint(),
+            Style::default().fg(Color::DarkGray),
+        ));
         Text::from(lines)
     }
 
