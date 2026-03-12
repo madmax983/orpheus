@@ -331,6 +331,20 @@ impl SamplePatternValue {
         }
     }
 
+    pub(crate) fn slice_pattern(
+        self,
+        start_control: NumberPatternValue,
+        end_control: NumberPatternValue,
+    ) -> Self {
+        Self {
+            pattern: PatternRuntime::SlicePattern {
+                start_control: Box::new(start_control.pattern),
+                end_control: Box::new(end_control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn slice_idx_pattern(self, control: NumberPatternValue, segments: u32) -> Self {
         Self {
             pattern: PatternRuntime::SliceIdxPattern {
@@ -513,6 +527,11 @@ enum PatternRuntime<T> {
         end: f64,
         inner: Box<Self>,
     },
+    SlicePattern {
+        start_control: Box<PatternRuntime<f64>>,
+        end_control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
     SliceIdxPattern {
         control: Box<PatternRuntime<f64>>,
         segments: u32,
@@ -592,6 +611,11 @@ where
                 }
                 Ok(events)
             }
+            Self::SlicePattern {
+                start_control,
+                end_control,
+                inner,
+            } => apply_slice_pattern(inner, start_control, end_control, span),
             Self::SliceIdxPattern {
                 control,
                 segments,
@@ -724,6 +748,94 @@ fn semitones_to_rate_multiplier(semitones: f64) -> f64 {
     (semitones / 12.0).exp2()
 }
 
+fn apply_slice_pattern<T>(
+    inner: &PatternRuntime<T>,
+    start_control: &PatternRuntime<f64>,
+    end_control: &PatternRuntime<f64>,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: Clone + PatternValueTransform + Send + Sync + fmt::Debug,
+{
+    let source_events = inner.try_query(span)?;
+    let start_events = start_control.try_query(span)?;
+    let end_events = end_control.try_query(span)?;
+    validate_slice_endpoint_events(&start_events, "slice start")?;
+    validate_slice_endpoint_events(&end_events, "slice end")?;
+    if start_events.is_empty() && end_events.is_empty() {
+        return Ok(source_events);
+    }
+
+    let mut composed = Vec::new();
+    for event in source_events {
+        let mut boundaries = vec![event.part.start().clone(), event.part.end().clone()];
+        let mut has_overlap = false;
+        for control_event in &start_events {
+            if let Some(overlap) = clip_span(&control_event.part, &event.part)? {
+                has_overlap = true;
+                boundaries.push(overlap.start().clone());
+                boundaries.push(overlap.end().clone());
+            }
+        }
+        for control_event in &end_events {
+            if let Some(overlap) = clip_span(&control_event.part, &event.part)? {
+                has_overlap = true;
+                boundaries.push(overlap.start().clone());
+                boundaries.push(overlap.end().clone());
+            }
+        }
+
+        if !has_overlap {
+            composed.push(event);
+            continue;
+        }
+
+        boundaries.sort();
+        boundaries.dedup();
+
+        for window in boundaries.windows(2) {
+            let [start, end] = window else {
+                continue;
+            };
+            if start >= end {
+                continue;
+            }
+
+            let part = build_span(start.clone(), end.clone())?;
+            let mut relative_start = 0.0;
+            let mut relative_end = 1.0;
+            for control_event in &start_events {
+                if clip_span(&control_event.part, &part)?.is_some() {
+                    relative_start = control_event.value;
+                }
+            }
+            for control_event in &end_events {
+                if clip_span(&control_event.part, &part)?.is_some() {
+                    relative_end = control_event.value;
+                }
+            }
+
+            if relative_start >= relative_end {
+                return Err(EvalError::new(
+                    "`slice` requires control values with start < end",
+                ));
+            }
+
+            composed.push(Event {
+                whole: None,
+                part,
+                value: event
+                    .value
+                    .clone()
+                    .adjust_slice(relative_start, relative_end),
+            });
+        }
+    }
+
+    sort_events(&mut composed);
+    Ok(composed)
+}
+
 fn apply_slice_idx_pattern<T>(
     inner: &PatternRuntime<T>,
     control: &PatternRuntime<f64>,
@@ -793,6 +905,21 @@ where
 
     sort_events(&mut composed);
     Ok(composed)
+}
+
+fn validate_slice_endpoint_events(
+    control_events: &[Event<f64>],
+    context: &str,
+) -> Result<(), EvalError> {
+    for event in control_events {
+        if !event.value.is_finite() || !(0.0..=1.0).contains(&event.value) {
+            return Err(EvalError::new(format!(
+                "`{context}` requires finite control values within [0, 1]"
+            )));
+        }
+    }
+
+    Ok(())
 }
 
 fn validate_slice_idx_control_events(

@@ -1,3 +1,5 @@
+use orpheus_pattern::{Rational, TimeSpan};
+
 use crate::eval::EvalError;
 use crate::value::{BuiltinFn, BuiltinKind, NumberPatternValue, SamplePatternValue, Value};
 
@@ -291,25 +293,35 @@ fn apply_rate(args: Vec<Value>) -> Result<Value, EvalError> {
 
 fn apply_slice(args: Vec<Value>) -> Result<Value, EvalError> {
     let mut args = args.into_iter();
-    let start = extract_unit_interval_number(
+    let start = extract_slice_endpoint_control(
         args.next()
             .ok_or_else(|| EvalError::new("`slice` requires a start argument"))?,
         "slice start",
     )?;
-    let end = extract_unit_interval_number(
+    let end = extract_slice_endpoint_control(
         args.next()
             .ok_or_else(|| EvalError::new("`slice` requires an end argument"))?,
         "slice end",
     )?;
-    if start >= end {
-        return Err(EvalError::new("`slice` requires start < end"));
-    }
     let pattern = args
         .next()
         .ok_or_else(|| EvalError::new("`slice` requires a pattern argument"))?;
 
     match pattern {
-        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.slice(start, end))),
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match (start, end) {
+            (NumericControl::Constant(start), NumericControl::Constant(end)) => {
+                if start >= end {
+                    return Err(EvalError::new("`slice` requires start < end"));
+                }
+                pattern.slice(start, end)
+            }
+            (start, end) => {
+                let start_pattern = numeric_control_to_pattern(start);
+                let end_pattern = numeric_control_to_pattern(end);
+                validate_slice_control_patterns(&start_pattern, &end_pattern)?;
+                pattern.slice_pattern(start_pattern, end_pattern)
+            }
+        })),
         Value::NumberPattern(_) => Err(EvalError::new("`slice` only applies to sample patterns")),
         Value::Function(_) | Value::String(_) => Err(EvalError::new(
             "`slice` expected a sample pattern as its final argument",
@@ -479,6 +491,33 @@ fn extract_rate_control(value: Value) -> Result<NumericControl, EvalError> {
     Ok(NumericControl::Pattern(pattern))
 }
 
+fn extract_slice_endpoint_control(
+    value: Value,
+    context: &str,
+) -> Result<NumericControl, EvalError> {
+    let pattern = extract_number_pattern(value, context)?;
+    if let Ok(number) = pattern.constant_value() {
+        if !number.is_finite() || !(0.0..=1.0).contains(&number) {
+            return Err(EvalError::new(format!(
+                "`{context}` must be within the closed interval [0, 1]"
+            )));
+        }
+        return Ok(NumericControl::Constant(number));
+    }
+
+    validate_numeric_control_pattern(&pattern, context, |value| {
+        if value.is_finite() && (0.0..=1.0).contains(&value) {
+            Ok(())
+        } else {
+            Err(EvalError::new(format!(
+                "`{context}` requires finite control values within [0, 1]"
+            )))
+        }
+    })?;
+
+    Ok(NumericControl::Pattern(pattern))
+}
+
 fn extract_pitch_control(value: Value) -> Result<NumericControl, EvalError> {
     let pattern = extract_number_pattern(value, "pitch")?;
     if let Ok(semitones) = pattern.constant_value() {
@@ -577,6 +616,94 @@ fn slice_idx_bounds(index: u32, segments: u32) -> Result<(f64, f64), EvalError> 
     Ok((start, end))
 }
 
+fn numeric_control_to_pattern(control: NumericControl) -> NumberPatternValue {
+    match control {
+        NumericControl::Constant(value) => NumberPatternValue::constant(value),
+        NumericControl::Pattern(pattern) => pattern,
+    }
+}
+
+fn validate_slice_control_patterns(
+    start_pattern: &NumberPatternValue,
+    end_pattern: &NumberPatternValue,
+) -> Result<(), EvalError> {
+    let unit = TimeSpan::unit();
+    let start_events = start_pattern.try_query(&unit)?;
+    let end_events = end_pattern.try_query(&unit)?;
+    let mut boundaries = vec![unit.start().clone(), unit.end().clone()];
+
+    for event in &start_events {
+        if let Some(overlap) = clip_control_span(&event.part, &unit)? {
+            boundaries.push(overlap.start().clone());
+            boundaries.push(overlap.end().clone());
+        }
+    }
+    for event in &end_events {
+        if let Some(overlap) = clip_control_span(&event.part, &unit)? {
+            boundaries.push(overlap.start().clone());
+            boundaries.push(overlap.end().clone());
+        }
+    }
+
+    boundaries.sort();
+    boundaries.dedup();
+
+    for window in boundaries.windows(2) {
+        let [start, end] = window else {
+            continue;
+        };
+        if start >= end {
+            continue;
+        }
+        let part = build_control_span(start.clone(), end.clone())?;
+        let mut current_start = 0.0;
+        let mut current_end = 1.0;
+
+        for event in &start_events {
+            if clip_control_span(&event.part, &part)?.is_some() {
+                current_start = event.value;
+            }
+        }
+        for event in &end_events {
+            if clip_control_span(&event.part, &part)?.is_some() {
+                current_end = event.value;
+            }
+        }
+
+        if current_start >= current_end {
+            return Err(EvalError::new(
+                "`slice` requires control values with start < end",
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn clip_control_span(span: &TimeSpan, query: &TimeSpan) -> Result<Option<TimeSpan>, EvalError> {
+    let start = if span.start() > query.start() {
+        span.start().clone()
+    } else {
+        query.start().clone()
+    };
+    let end = if span.end() < query.end() {
+        span.end().clone()
+    } else {
+        query.end().clone()
+    };
+
+    if start >= end {
+        return Ok(None);
+    }
+
+    build_control_span(start, end).map(Some)
+}
+
+fn build_control_span(start: Rational, end: Rational) -> Result<TimeSpan, EvalError> {
+    TimeSpan::new(start, end)
+        .map_err(|error| EvalError::new(format!("slice control span became invalid: {error}")))
+}
+
 fn extract_number_pattern(
     value: Value,
     builtin_name: &str,
@@ -587,18 +714,6 @@ fn extract_number_pattern(
             format!("`{builtin_name}` requires a numeric pattern argument"),
         )),
     }
-}
-
-fn extract_unit_interval_number(value: Value, context: &str) -> Result<f64, EvalError> {
-    let number = extract_constant_number(value, context)?;
-
-    if !number.is_finite() || !(0.0..=1.0).contains(&number) {
-        return Err(EvalError::new(format!(
-            "`{context}` must be within the closed interval [0, 1]"
-        )));
-    }
-
-    Ok(number)
 }
 
 fn extract_constant_number(value: Value, builtin_name: &str) -> Result<f64, EvalError> {

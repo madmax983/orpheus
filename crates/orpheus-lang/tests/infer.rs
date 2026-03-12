@@ -73,6 +73,17 @@ fn rate_and_slice_builtins_preserve_sample_pattern_types() {
 }
 
 #[test]
+fn pattern_valued_slice_preserves_sample_pattern_types() {
+    let typed = infer_module(
+        r#"lead = sample("amen") |> slice(0 0.25, 0.5 1)"#,
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(typed.type_of("lead").to_string(), "Pattern<Sample>");
+}
+
+#[test]
 fn dynamic_and_negative_rate_preserve_sample_pattern_types() {
     let typed = infer_module(
         r#"lead = sample("vox_ah") |> rate(0.5 -1)"#,

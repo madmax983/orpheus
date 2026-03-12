@@ -269,6 +269,62 @@ fn pattern_valued_pitch_controls_repeat_under_fast() {
 }
 
 #[test]
+fn slice_accepts_pattern_valued_start_and_end_controls() {
+    let module = eval_module(
+        r#"lead = sample("amen") |> slice(0 0.25, 0.5 1)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 2).unwrap());
+    assert!((events[0].value.slice_start() - 0.0).abs() < f64::EPSILON);
+    assert!((events[0].value.slice_end() - 0.5).abs() < f64::EPSILON);
+    assert_eq!(events[1].part.start(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::one());
+    assert!((events[1].value.slice_start() - 0.25).abs() < f64::EPSILON);
+    assert!((events[1].value.slice_end() - 1.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn pattern_valued_slice_controls_compose_with_pitch_and_fast() {
+    let module = eval_module(
+        r#"lead = sample("amen") |> slice(0 0.25, 0.5 1) |> pitch(0 12) |> fast(2)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 4);
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event.value.slice_start())
+            .collect::<Vec<_>>(),
+        vec![0.0, 0.25, 0.0, 0.25]
+    );
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event.value.rate())
+            .collect::<Vec<_>>(),
+        vec![1.0, 2.0, 1.0, 2.0]
+    );
+}
+
+#[test]
 fn rate_accepts_pattern_valued_controls_and_splits_sample_events() {
     let module = eval_module(r#"lead = sample("vox_ah") |> rate(0.5 2)"#, ReplMode::Loose).unwrap();
     let events = module
@@ -536,6 +592,15 @@ fn slice_idx_rejects_non_integer_arguments() {
         r#"lead = sample("amen") |> slice_idx(0 1.5, 8)"#,
         ReplMode::Loose,
         &["`slice_idx` requires whole-number control values"],
+    );
+}
+
+#[test]
+fn slice_rejects_pattern_controls_with_start_not_before_end() {
+    assert_eval_error_contains(
+        r#"lead = sample("amen") |> slice(0.5 0.75, 0.5 1)"#,
+        ReplMode::Loose,
+        &["`slice` requires control values with start < end"],
     );
 }
 
