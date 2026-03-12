@@ -16,6 +16,8 @@ Orpheus is a Cargo workspace with a root binary crate and three library crates u
 - Put architecture decisions in `docs/adr/`
 - Keep proof-oriented work under `proofs/`
 - Run `cargo fmt --all`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test --workspace --all-targets --all-features` for workspace verification as appropriate to the task
+- CI coverage writes LCOV output to `target/llvm-cov/lcov.info` via `cargo llvm-cov`
+- GitHub Actions uploads coverage to Codecov when `CODECOV_TOKEN` is configured in repository secrets
 - Keep the audio-thread path allocation-free and lock-free once DSP work begins
 
 ## Initial Layout
