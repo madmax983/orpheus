@@ -1,11 +1,14 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use orpheus_dsp::{
     SampleTrigger, load_sample_bank_from_directory, render_events_to_file_with_bank,
 };
 use orpheus_pattern::{Event, Rational, TimeSpan};
+
+static UNIQUE_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 
 #[test]
 fn offline_render_applies_sample_gain_rate_and_slice() {
@@ -224,21 +227,23 @@ fn offline_render_supports_negative_rate_reverse_playback() {
 }
 
 fn temp_directory(name: &str) -> PathBuf {
-    let unique = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let directory = std::env::temp_dir().join(format!("orpheus-dsp-{unique}-{name}"));
+    let directory =
+        std::env::temp_dir().join(format!("orpheus-dsp-{}-{name}", unique_temp_suffix()));
     fs::create_dir_all(&directory).unwrap();
     directory
 }
 
 fn temp_wav_path() -> PathBuf {
-    let unique = SystemTime::now()
+    std::env::temp_dir().join(format!("orpheus-dsp-render-{}.wav", unique_temp_suffix()))
+}
+
+fn unique_temp_suffix() -> String {
+    let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    std::env::temp_dir().join(format!("orpheus-dsp-render-{unique}.wav"))
+    let counter = UNIQUE_TEMP_ID.fetch_add(1, Ordering::Relaxed);
+    format!("{timestamp}-{counter}")
 }
 
 fn write_wav(path: impl AsRef<Path>, frames: &[f32]) {

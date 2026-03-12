@@ -1,11 +1,14 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use orpheus_dsp::{
     SampleBankError, SampleError, load_builtin_sample_for_test, load_sample_bank_from_directory,
     load_wav_for_test,
 };
+
+static UNIQUE_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -140,17 +143,22 @@ fn temp_fixture_uses_system_temp_directory() {
 }
 
 fn temp_fixture(name: &str) -> PathBuf {
-    let unique = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    std::env::temp_dir().join(format!("orpheus-dsp-{unique}-{name}"))
+    std::env::temp_dir().join(format!("orpheus-dsp-{}-{name}", unique_temp_suffix()))
 }
 
 fn temp_directory(name: &str) -> PathBuf {
     let directory = temp_fixture(name);
     fs::create_dir_all(&directory).unwrap();
     directory
+}
+
+fn unique_temp_suffix() -> String {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let counter = UNIQUE_TEMP_ID.fetch_add(1, Ordering::Relaxed);
+    format!("{timestamp}-{counter}")
 }
 
 fn write_wav(path: PathBuf, frames: &[f32]) {

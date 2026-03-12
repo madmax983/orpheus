@@ -69,6 +69,7 @@ drums = bd sn cp sn
 chop = sample("amen")
   |> slice_idx(3, 8)
   |> rate(0.5)
+  |> pitch(7)
   |> pan(-0.5)
   |> gain(0.7)
 
@@ -518,6 +519,7 @@ The current live workflow keeps filesystem access off the audio thread:
 - `:reload-samples` rescans the previously configured directory and hot-swaps the bank at the next cycle boundary.
 - `sample("token") |> slice(start, end)` uses normalized `[0, 1]` bounds, while `slice_idx(i, n)` is the zero-based shorthand for the `i`th segment out of `n`.
 - `slice_idx(index_pattern, n)` also accepts a patterned index when `n` is constant, so `sample("amen") |> slice_idx(0 3 1 7, 8)` becomes a rhythmic chop pattern without hand-writing normalized fractions.
+- `pitch(semitones)` maps semitone offsets onto sample-rate multipliers and also accepts `Pattern<Number>` controls, so `pitch(12)` is an octave up and `pitch(0 12 -12)` becomes a transposition pattern.
 - `pan(amount)` accepts a static balance value in `[-1, 1]`, where `-1` is full left, `1` is full right, and `0` keeps the current centered stereo output.
 - `samples.ron` can also define named regions over an existing token:
 

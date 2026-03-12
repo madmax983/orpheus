@@ -1,8 +1,11 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use assert_cmd::Command;
+
+static UNIQUE_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -21,11 +24,10 @@ fn docs_example(name: &str) -> PathBuf {
 #[test]
 fn startup_ode_argument_preloads_bindings_for_repl_commands() {
     let song = fixture("song.ode");
-    let unique = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let output = std::env::temp_dir().join(format!("orpheus-startup-preload-{unique}.wav"));
+    let output = std::env::temp_dir().join(format!(
+        "orpheus-startup-preload-{}.wav",
+        unique_temp_suffix()
+    ));
 
     let assert = Command::new(env!("CARGO_BIN_EXE_orpheus"))
         .arg(&song)
@@ -44,11 +46,10 @@ fn startup_ode_argument_preloads_bindings_for_repl_commands() {
 #[test]
 fn startup_ode_argument_accepts_multi_binding_phase5_example() {
     let song = docs_example("phase5_escape_hatch.ode");
-    let unique = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let output = std::env::temp_dir().join(format!("orpheus-phase5-startup-{unique}.wav"));
+    let output = std::env::temp_dir().join(format!(
+        "orpheus-phase5-startup-{}.wav",
+        unique_temp_suffix()
+    ));
 
     let assert = Command::new(env!("CARGO_BIN_EXE_orpheus"))
         .arg(&song)
@@ -62,4 +63,13 @@ fn startup_ode_argument_accepts_multi_binding_phase5_example() {
     assert!(fs::metadata(&output).unwrap().len() > 44);
 
     let _ = fs::remove_file(output);
+}
+
+fn unique_temp_suffix() -> String {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let counter = UNIQUE_TEMP_ID.fetch_add(1, Ordering::Relaxed);
+    format!("{timestamp}-{counter}")
 }

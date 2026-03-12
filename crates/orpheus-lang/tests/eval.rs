@@ -202,6 +202,73 @@ fn negative_rate_is_preserved_on_sample_events() {
 }
 
 #[test]
+fn pitch_builtin_maps_semitones_to_rate_multipliers() {
+    let up = eval_module(r#"lead = sample("vox_ah") |> pitch(12)"#, ReplMode::Loose).unwrap();
+    let up_events = up
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit();
+    assert_eq!(up_events.len(), 1);
+    assert!((up_events[0].value.rate() - 2.0).abs() < f64::EPSILON);
+
+    let down = eval_module(r#"lead = sample("vox_ah") |> pitch(-12)"#, ReplMode::Loose).unwrap();
+    let down_events = down
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit();
+    assert_eq!(down_events.len(), 1);
+    assert!((down_events[0].value.rate() - 0.5).abs() < f64::EPSILON);
+}
+
+#[test]
+fn pitch_accepts_pattern_valued_controls_and_composes_with_existing_rate() {
+    let module = eval_module(
+        r#"lead = sample("vox_ah") |> rate(0.5) |> pitch(12 -12)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 2).unwrap());
+    assert!((events[0].value.rate() - 1.0).abs() < f64::EPSILON);
+    assert_eq!(events[1].part.start(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::one());
+    assert!((events[1].value.rate() - 0.25).abs() < f64::EPSILON);
+}
+
+#[test]
+fn pattern_valued_pitch_controls_repeat_under_fast() {
+    let module = eval_module(
+        r#"lead = sample("vox_ah") |> pitch(0 12) |> fast(2)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit();
+    let rates = events
+        .iter()
+        .map(|event| event.value.rate())
+        .collect::<Vec<_>>();
+
+    assert_eq!(rates, vec![1.0, 2.0, 1.0, 2.0]);
+}
+
+#[test]
 fn rate_accepts_pattern_valued_controls_and_splits_sample_events() {
     let module = eval_module(r#"lead = sample("vox_ah") |> rate(0.5 2)"#, ReplMode::Loose).unwrap();
     let events = module

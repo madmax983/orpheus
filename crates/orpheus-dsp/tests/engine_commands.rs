@@ -5,7 +5,10 @@ use orpheus_dsp::{
 use orpheus_pattern::{Event, Rational, TimeSpan};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+static UNIQUE_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 
 #[test]
 fn pattern_swap_is_deferred_until_cycle_boundary() {
@@ -670,13 +673,19 @@ fn temp_directory_uses_system_temp_directory() {
 }
 
 fn temp_directory(name: &str) -> PathBuf {
-    let unique = SystemTime::now()
+    let directory =
+        std::env::temp_dir().join(format!("orpheus-dsp-{}-{name}", unique_temp_suffix()));
+    fs::create_dir_all(&directory).unwrap();
+    directory
+}
+
+fn unique_temp_suffix() -> String {
+    let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let directory = std::env::temp_dir().join(format!("orpheus-dsp-{unique}-{name}"));
-    fs::create_dir_all(&directory).unwrap();
-    directory
+    let counter = UNIQUE_TEMP_ID.fetch_add(1, Ordering::Relaxed);
+    format!("{timestamp}-{counter}")
 }
 
 fn write_wav(path: impl AsRef<Path>, frames: &[f32]) {

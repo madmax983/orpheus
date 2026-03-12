@@ -14,6 +14,7 @@ pub enum BuiltinKind {
     Rev,
     Gain,
     Pan,
+    Pitch,
     Sample,
     Rate,
     Slice,
@@ -284,6 +285,24 @@ impl SamplePatternValue {
         }
     }
 
+    pub(crate) fn pitch(self, semitones: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::Pitch {
+                semitones,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn pitch_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::PitchPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn rate(self, factor: f64) -> Self {
         Self {
             pattern: PatternRuntime::Rate {
@@ -473,6 +492,14 @@ enum PatternRuntime<T> {
         control: Box<PatternRuntime<f64>>,
         inner: Box<Self>,
     },
+    Pitch {
+        semitones: f64,
+        inner: Box<Self>,
+    },
+    PitchPattern {
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
     Rate {
         factor: f64,
         inner: Box<Self>,
@@ -536,6 +563,18 @@ where
             Self::PanPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Pan)
             }
+            Self::Pitch { semitones, inner } => {
+                let mut events = inner.try_query(span)?;
+                for event in &mut events {
+                    event.value = event
+                        .value
+                        .adjust_rate(semitones_to_rate_multiplier(*semitones));
+                }
+                Ok(events)
+            }
+            Self::PitchPattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::Pitch)
+            }
             Self::Rate { factor, inner } => {
                 let mut events = inner.try_query(span)?;
                 for event in &mut events {
@@ -566,6 +605,7 @@ where
 enum ControlPatternKind {
     Gain,
     Pan,
+    Pitch,
     Rate,
 }
 
@@ -620,6 +660,9 @@ where
                     value = match kind {
                         ControlPatternKind::Gain => value.adjust_gain(control_event.value),
                         ControlPatternKind::Pan => value.adjust_pan(control_event.value),
+                        ControlPatternKind::Pitch => {
+                            value.adjust_rate(semitones_to_rate_multiplier(control_event.value))
+                        }
                         ControlPatternKind::Rate => value.adjust_rate(control_event.value),
                     };
                 }
@@ -657,6 +700,13 @@ fn validate_control_events(
                     ));
                 }
             }
+            ControlPatternKind::Pitch => {
+                if !event.value.is_finite() {
+                    return Err(EvalError::new(
+                        "`pitch` requires finite numeric control values",
+                    ));
+                }
+            }
             ControlPatternKind::Rate => {
                 if !event.value.is_finite() || event.value.abs() <= f64::EPSILON {
                     return Err(EvalError::new(
@@ -668,6 +718,10 @@ fn validate_control_events(
     }
 
     Ok(())
+}
+
+fn semitones_to_rate_multiplier(semitones: f64) -> f64 {
+    (semitones / 12.0).exp2()
 }
 
 fn apply_slice_idx_pattern<T>(

@@ -13,6 +13,7 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "rev" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Rev))),
         "gain" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Gain))),
         "pan" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Pan))),
+        "pitch" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Pitch))),
         "sample" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Sample))),
         "rate" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Rate))),
         "slice" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Slice))),
@@ -101,6 +102,7 @@ impl BuiltinKind {
             Self::Rev => "rev",
             Self::Gain => "gain",
             Self::Pan => "pan",
+            Self::Pitch => "pitch",
             Self::Sample => "sample",
             Self::Rate => "rate",
             Self::Slice => "slice",
@@ -110,7 +112,7 @@ impl BuiltinKind {
 
     const fn arity(self) -> usize {
         match self {
-            Self::Fast | Self::Slow | Self::Gain | Self::Pan | Self::Rate => 2,
+            Self::Fast | Self::Slow | Self::Gain | Self::Pan | Self::Pitch | Self::Rate => 2,
             Self::Slice | Self::SliceIdx => 3,
             Self::Rev | Self::Sample => 1,
         }
@@ -123,6 +125,7 @@ impl BuiltinKind {
             Self::Rev => apply_rev(args),
             Self::Gain => apply_gain(args),
             Self::Pan => apply_pan(args),
+            Self::Pitch => apply_pitch(args),
             Self::Sample => apply_sample(args),
             Self::Rate => apply_rate(args),
             Self::Slice => apply_slice(args),
@@ -228,6 +231,28 @@ fn apply_pan(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::NumberPattern(_) => Err(EvalError::new("`pan` only applies to sample patterns")),
         Value::Function(_) | Value::String(_) => Err(EvalError::new(
             "`pan` expected a sample pattern as its final argument",
+        )),
+    }
+}
+
+fn apply_pitch(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let pitch = extract_pitch_control(
+        args.next()
+            .ok_or_else(|| EvalError::new("`pitch` requires a semitone argument"))?,
+    )?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`pitch` requires a pattern argument"))?;
+
+    match pattern {
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match pitch {
+            NumericControl::Constant(semitones) => pattern.pitch(semitones),
+            NumericControl::Pattern(control) => pattern.pitch_pattern(control),
+        })),
+        Value::NumberPattern(_) => Err(EvalError::new("`pitch` only applies to sample patterns")),
+        Value::Function(_) | Value::String(_) => Err(EvalError::new(
+            "`pitch` expected a sample pattern as its final argument",
         )),
     }
 }
@@ -447,6 +472,28 @@ fn extract_rate_control(value: Value) -> Result<NumericControl, EvalError> {
         } else {
             Err(EvalError::new(
                 "`rate` requires finite non-zero control values",
+            ))
+        }
+    })?;
+
+    Ok(NumericControl::Pattern(pattern))
+}
+
+fn extract_pitch_control(value: Value) -> Result<NumericControl, EvalError> {
+    let pattern = extract_number_pattern(value, "pitch")?;
+    if let Ok(semitones) = pattern.constant_value() {
+        if !semitones.is_finite() {
+            return Err(EvalError::new("`pitch` requires a finite numeric value"));
+        }
+        return Ok(NumericControl::Constant(semitones));
+    }
+
+    validate_numeric_control_pattern(&pattern, "pitch", |value| {
+        if value.is_finite() {
+            Ok(())
+        } else {
+            Err(EvalError::new(
+                "`pitch` requires finite numeric control values",
             ))
         }
     })?;

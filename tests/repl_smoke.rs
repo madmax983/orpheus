@@ -2,24 +2,28 @@ use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::str::contains;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+static UNIQUE_TEMP_ID: AtomicU64 = AtomicU64::new(0);
+
 fn temp_wav_path() -> std::path::PathBuf {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    std::env::temp_dir().join(format!("orpheus smoke render {timestamp}.wav"))
+    std::env::temp_dir().join(format!("orpheus-smoke-render-{}.wav", unique_temp_suffix()))
 }
 
 fn temp_directory(name: &str) -> PathBuf {
+    let directory = std::env::temp_dir().join(format!("orpheus-{name}-{}", unique_temp_suffix()));
+    fs::create_dir_all(&directory).unwrap();
+    directory
+}
+
+fn unique_temp_suffix() -> String {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let directory = std::env::temp_dir().join(format!("orpheus-{name}-{timestamp}"));
-    fs::create_dir_all(&directory).unwrap();
-    directory
+    let counter = UNIQUE_TEMP_ID.fetch_add(1, Ordering::Relaxed);
+    format!("{timestamp}-{counter}")
 }
 
 fn write_wav(path: PathBuf, frames: &[f32]) {

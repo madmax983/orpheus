@@ -84,6 +84,17 @@ fn dynamic_and_negative_rate_preserve_sample_pattern_types() {
 }
 
 #[test]
+fn pitch_preserves_sample_pattern_types() {
+    let typed = infer_module(
+        r#"lead = sample("vox_ah") |> pitch(0 12 -12)"#,
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(typed.type_of("lead").to_string(), "Pattern<Sample>");
+}
+
+#[test]
 fn pattern_valued_gain_and_pan_preserve_sample_pattern_types() {
     let typed = infer_module(
         r#"lead = sample("vox_ah") |> gain(0.25 0.75) |> pan(-0.5 0.5)"#,

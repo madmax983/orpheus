@@ -1,17 +1,25 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use orpheus_lang::{
     ReplMode, eval_module, render_sample_pattern_to_file, render_sample_pattern_to_wav,
 };
 
+static UNIQUE_TEMP_ID: AtomicU64 = AtomicU64::new(0);
+
 fn temp_wav_path() -> PathBuf {
+    std::env::temp_dir().join(format!("orpheus-render-smoke-{}.wav", unique_temp_suffix()))
+}
+
+fn unique_temp_suffix() -> String {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    std::env::temp_dir().join(format!("orpheus-render-smoke-{timestamp}.wav"))
+    let counter = UNIQUE_TEMP_ID.fetch_add(1, Ordering::Relaxed);
+    format!("{timestamp}-{counter}")
 }
 
 #[test]
