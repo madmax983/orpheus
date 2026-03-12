@@ -14,6 +14,8 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "slow" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Slow))),
         "rev" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Rev))),
         "gain" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Gain))),
+        "hpf" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Hpf))),
+        "lpf" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Lpf))),
         "pan" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Pan))),
         "pitch" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Pitch))),
         "sample" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Sample))),
@@ -103,6 +105,8 @@ impl BuiltinKind {
             Self::Slow => "slow",
             Self::Rev => "rev",
             Self::Gain => "gain",
+            Self::Hpf => "hpf",
+            Self::Lpf => "lpf",
             Self::Pan => "pan",
             Self::Pitch => "pitch",
             Self::Sample => "sample",
@@ -114,7 +118,14 @@ impl BuiltinKind {
 
     const fn arity(self) -> usize {
         match self {
-            Self::Fast | Self::Slow | Self::Gain | Self::Pan | Self::Pitch | Self::Rate => 2,
+            Self::Fast
+            | Self::Slow
+            | Self::Gain
+            | Self::Hpf
+            | Self::Lpf
+            | Self::Pan
+            | Self::Pitch
+            | Self::Rate => 2,
             Self::Slice | Self::SliceIdx => 3,
             Self::Rev | Self::Sample => 1,
         }
@@ -126,6 +137,8 @@ impl BuiltinKind {
             Self::Slow => apply_slow(args),
             Self::Rev => apply_rev(args),
             Self::Gain => apply_gain(args),
+            Self::Hpf => apply_hpf(args),
+            Self::Lpf => apply_lpf(args),
             Self::Pan => apply_pan(args),
             Self::Pitch => apply_pitch(args),
             Self::Sample => apply_sample(args),
@@ -211,6 +224,52 @@ fn apply_gain(args: Vec<Value>) -> Result<Value, EvalError> {
         )),
         Value::Function(_) | Value::String(_) => Err(EvalError::new(
             "`gain` expected a sample pattern as its final argument",
+        )),
+    }
+}
+
+fn apply_hpf(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let cutoff_hz = extract_filter_cutoff_control(
+        args.next()
+            .ok_or_else(|| EvalError::new("`hpf` requires a cutoff argument"))?,
+        "hpf",
+    )?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`hpf` requires a pattern argument"))?;
+
+    match pattern {
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match cutoff_hz {
+            NumericControl::Constant(cutoff_hz) => pattern.hpf(cutoff_hz),
+            NumericControl::Pattern(control) => pattern.hpf_pattern(control),
+        })),
+        Value::NumberPattern(_) => Err(EvalError::new("`hpf` only applies to sample patterns")),
+        Value::Function(_) | Value::String(_) => Err(EvalError::new(
+            "`hpf` expected a sample pattern as its final argument",
+        )),
+    }
+}
+
+fn apply_lpf(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let cutoff_hz = extract_filter_cutoff_control(
+        args.next()
+            .ok_or_else(|| EvalError::new("`lpf` requires a cutoff argument"))?,
+        "lpf",
+    )?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`lpf` requires a pattern argument"))?;
+
+    match pattern {
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match cutoff_hz {
+            NumericControl::Constant(cutoff_hz) => pattern.lpf(cutoff_hz),
+            NumericControl::Pattern(control) => pattern.lpf_pattern(control),
+        })),
+        Value::NumberPattern(_) => Err(EvalError::new("`lpf` only applies to sample patterns")),
+        Value::Function(_) | Value::String(_) => Err(EvalError::new(
+            "`lpf` expected a sample pattern as its final argument",
         )),
     }
 }
@@ -461,6 +520,33 @@ fn extract_pan_control(value: Value) -> Result<NumericControl, EvalError> {
             Err(EvalError::new(
                 "`pan` requires finite control values within [-1, 1]",
             ))
+        }
+    })?;
+
+    Ok(NumericControl::Pattern(pattern))
+}
+
+fn extract_filter_cutoff_control(
+    value: Value,
+    builtin_name: &str,
+) -> Result<NumericControl, EvalError> {
+    let pattern = extract_number_pattern(value, builtin_name)?;
+    if let Ok(cutoff_hz) = pattern.constant_value() {
+        if !cutoff_hz.is_finite() || cutoff_hz <= f64::EPSILON {
+            return Err(EvalError::new(format!(
+                "`{builtin_name}` requires a positive finite numeric value"
+            )));
+        }
+        return Ok(NumericControl::Constant(cutoff_hz));
+    }
+
+    validate_numeric_control_pattern(&pattern, builtin_name, |value| {
+        if value.is_finite() && value > f64::EPSILON {
+            Ok(())
+        } else {
+            Err(EvalError::new(format!(
+                "`{builtin_name}` requires positive finite control values"
+            )))
         }
     })?;
 

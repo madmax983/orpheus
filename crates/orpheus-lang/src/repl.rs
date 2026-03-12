@@ -377,11 +377,20 @@ impl ReplSession {
                     .map(|event| orpheus_pattern::Event {
                         whole: event.whole,
                         part: event.part,
-                        value: SampleTrigger::named(event.value.sample())
-                            .with_gain(event.value.gain())
-                            .with_pan(event.value.pan())
-                            .with_rate(event.value.rate())
-                            .with_slice(event.value.slice_start(), event.value.slice_end()),
+                        value: {
+                            let mut trigger = SampleTrigger::named(event.value.sample())
+                                .with_gain(event.value.gain())
+                                .with_pan(event.value.pan())
+                                .with_rate(event.value.rate())
+                                .with_slice(event.value.slice_start(), event.value.slice_end());
+                            if let Some(cutoff_hz) = event.value.hpf_cutoff_hz() {
+                                trigger = trigger.with_hpf_cutoff_hz(cutoff_hz);
+                            }
+                            if let Some(cutoff_hz) = event.value.lpf_cutoff_hz() {
+                                trigger = trigger.with_lpf_cutoff_hz(cutoff_hz);
+                            }
+                            trigger
+                        },
                     })
                     .collect(),
             );

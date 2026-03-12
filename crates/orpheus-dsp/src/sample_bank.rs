@@ -90,14 +90,21 @@ impl SampleEntry {
 
     fn compose_trigger(&self, trigger: &SampleTrigger) -> SampleTrigger {
         let current_range = self.slice_end - self.slice_start;
-        SampleTrigger::named(trigger.token())
+        let mut composed = SampleTrigger::named(trigger.token())
             .with_gain(trigger.gain())
             .with_pan(trigger.pan())
             .with_rate(self.rate * trigger.rate())
             .with_slice(
                 current_range.mul_add(trigger.slice_start(), self.slice_start),
                 current_range.mul_add(trigger.slice_end(), self.slice_start),
-            )
+            );
+        if let Some(cutoff_hz) = trigger.hpf_cutoff_hz() {
+            composed = composed.with_hpf_cutoff_hz(cutoff_hz);
+        }
+        if let Some(cutoff_hz) = trigger.lpf_cutoff_hz() {
+            composed = composed.with_lpf_cutoff_hz(cutoff_hz);
+        }
+        composed
     }
 }
 

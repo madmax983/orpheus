@@ -63,38 +63,13 @@ impl TypeEnv {
                 ty: Type::curried(vec![alpha_pattern.clone()], alpha_pattern),
             },
         );
-        env.insert(
-            "gain",
-            TypeScheme::monomorphic(Type::curried(
-                vec![Type::pattern(Type::Number), Type::pattern(Type::Sample)],
-                Type::pattern(Type::Sample),
-            )),
-        );
-        env.insert(
-            "pan",
-            TypeScheme::monomorphic(Type::curried(
-                vec![Type::pattern(Type::Number), Type::pattern(Type::Sample)],
-                Type::pattern(Type::Sample),
-            )),
-        );
-        env.insert(
-            "pitch",
-            TypeScheme::monomorphic(Type::curried(
-                vec![Type::pattern(Type::Number), Type::pattern(Type::Sample)],
-                Type::pattern(Type::Sample),
-            )),
-        );
+        for name in ["gain", "hpf", "lpf", "pan", "pitch", "rate"] {
+            env.insert(name, sample_control_scheme());
+        }
         env.insert(
             "sample",
             TypeScheme::monomorphic(Type::curried(
                 vec![Type::String],
-                Type::pattern(Type::Sample),
-            )),
-        );
-        env.insert(
-            "rate",
-            TypeScheme::monomorphic(Type::curried(
-                vec![Type::pattern(Type::Number), Type::pattern(Type::Sample)],
                 Type::pattern(Type::Sample),
             )),
         );
@@ -132,4 +107,11 @@ impl TypeEnv {
     pub fn get(&self, name: &str) -> Option<&TypeScheme> {
         self.entries.get(name)
     }
+}
+
+fn sample_control_scheme() -> TypeScheme {
+    TypeScheme::monomorphic(Type::curried(
+        vec![Type::pattern(Type::Number), Type::pattern(Type::Sample)],
+        Type::pattern(Type::Sample),
+    ))
 }

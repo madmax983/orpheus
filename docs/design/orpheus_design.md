@@ -521,6 +521,7 @@ The current live workflow keeps filesystem access off the audio thread:
 - `slice(start_pattern, end_pattern)` can also take patterned endpoints, letting sample windows move independently as long as each segment satisfies `0 <= start < end <= 1`.
 - `slice_idx(index_pattern, n)` also accepts a patterned index when `n` is constant, so `sample("amen") |> slice_idx(0 3 1 7, 8)` becomes a rhythmic chop pattern without hand-writing normalized fractions.
 - `pitch(semitones)` maps semitone offsets onto sample-rate multipliers and also accepts `Pattern<Number>` controls, so `pitch(12)` is an octave up and `pitch(0 12 -12)` becomes a transposition pattern.
+- `lpf(cutoff)` and `hpf(cutoff)` accept positive cutoff frequencies in Hz and also support `Pattern<Number>` controls for per-event sample filtering.
 - `pan(amount)` accepts a static balance value in `[-1, 1]`, where `-1` is full left, `1` is full right, and `0` keeps the current centered stereo output.
 - `samples.ron` can also define named regions over an existing token:
 
@@ -574,7 +575,7 @@ The current live workflow keeps filesystem access off the audio thread:
 
 - [ ] Type inference: Hindley-Milner with dual-mode (loose/strict)
 - [ ] Core transformations: `fast`, `slow`, `rev`, `every`, `sometimes`, `shift`, `degrade`
-- [ ] Control signal patterns: `gain`, `pan`, `lpf`, `hpf` accepting `Pattern<Number>`
+- [x] Control signal patterns: `gain`, `pan`, `lpf`, `hpf` accepting `Pattern<Number>`
 - [ ] Note literals: `C4`, `Eb3`, `F#5` parsed as `Pattern<Note>`
 - [ ] `.ode` file loading with `use` imports
 - [ ] Error reporting with source locations

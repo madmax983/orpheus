@@ -143,6 +143,51 @@ fn offline_render_applies_sample_pan_balance() {
 }
 
 #[test]
+fn offline_render_applies_sample_low_pass_filter() {
+    let directory = temp_directory("sample-lpf-offline");
+    fs::write(
+        directory.join("samples.ron"),
+        "(\n  tokens: {\n    \"vox_ah\": \"vox.wav\",\n  },\n)\n",
+    )
+    .unwrap();
+    write_wav(directory.join("vox.wav"), &[1.0, 0.0, 0.0, 0.0]);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+    let path = temp_wav_path();
+    let cutoff_hz = 1_200.0;
+
+    let events = vec![Event {
+        whole: None,
+        part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+        value: SampleTrigger::named("vox_ah").with_lpf_cutoff_hz(cutoff_hz),
+    }];
+
+    render_events_to_file_with_bank(&path, &events, 1, &bank).unwrap();
+
+    let mut reader = hound::WavReader::open(&path).unwrap();
+    let samples = reader
+        .samples::<i16>()
+        .take(8)
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let filtered = apply_one_pole_low_pass(&[1.0, 0.0, 0.0, 0.0], cutoff_hz, 48_000);
+    let expected = vec![
+        pcm16(filtered[0] * edge_envelope(0, 4)),
+        pcm16(filtered[0] * edge_envelope(0, 4)),
+        pcm16(filtered[1] * edge_envelope(1, 4)),
+        pcm16(filtered[1] * edge_envelope(1, 4)),
+        pcm16(filtered[2] * edge_envelope(2, 4)),
+        pcm16(filtered[2] * edge_envelope(2, 4)),
+        pcm16(filtered[3] * edge_envelope(3, 4)),
+        pcm16(filtered[3] * edge_envelope(3, 4)),
+    ];
+
+    assert_eq!(samples, expected);
+
+    let _ = fs::remove_file(path);
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn offline_render_applies_edge_ramps_to_sample_playback() {
     let directory = temp_directory("sample-ramp-offline");
     fs::write(
@@ -258,6 +303,30 @@ fn write_wav(path: impl AsRef<Path>, frames: &[f32]) {
         writer.write_sample(*sample).unwrap();
     }
     writer.finalize().unwrap();
+}
+
+#[allow(clippy::cast_possible_truncation)]
+fn apply_one_pole_low_pass(input: &[f32], cutoff_hz: f64, sample_rate_hz: u32) -> Vec<f32> {
+    let alpha = low_pass_alpha(cutoff_hz, sample_rate_hz);
+    let mut state = 0.0_f64;
+    input
+        .iter()
+        .map(|sample| {
+            state += alpha * (f64::from(*sample) - state);
+            state as f32
+        })
+        .collect()
+}
+
+fn low_pass_alpha(cutoff_hz: f64, sample_rate_hz: u32) -> f64 {
+    let cutoff_hz = normalized_cutoff_hz(cutoff_hz, sample_rate_hz);
+    let omega = (std::f64::consts::TAU * cutoff_hz) / f64::from(sample_rate_hz);
+    omega / (1.0 + omega)
+}
+
+fn normalized_cutoff_hz(cutoff_hz: f64, sample_rate_hz: u32) -> f64 {
+    let nyquist = (f64::from(sample_rate_hz) / 2.0) - 1.0;
+    cutoff_hz.clamp(1.0, nyquist.max(1.0))
 }
 
 fn edge_envelope(frame_index: u32, total_frames: u32) -> f32 {

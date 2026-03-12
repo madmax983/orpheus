@@ -64,6 +64,8 @@ enum ActiveVoiceState {
         frame_step: f64,
         frame_limit: f64,
         gain: f64,
+        high_pass: Option<OnePoleHighPass>,
+        low_pass: Option<OnePoleLowPass>,
         rendered_frames: u32,
         total_output_frames: u32,
         edge_ramp_frames: u32,
@@ -128,6 +130,12 @@ impl ActiveVoice {
                 frame_step,
                 frame_limit,
                 gain: trigger.gain(),
+                high_pass: trigger
+                    .hpf_cutoff_hz()
+                    .map(|cutoff_hz| OnePoleHighPass::new(output_sample_rate, cutoff_hz)),
+                low_pass: trigger
+                    .lpf_cutoff_hz()
+                    .map(|cutoff_hz| OnePoleLowPass::new(output_sample_rate, cutoff_hz)),
                 rendered_frames: 0,
                 total_output_frames: output_frame_count,
                 edge_ramp_frames,
@@ -186,6 +194,8 @@ impl ActiveVoice {
                 frame_step,
                 frame_limit,
                 gain,
+                high_pass,
+                low_pass,
                 rendered_frames,
                 total_output_frames,
                 edge_ramp_frames,
@@ -204,9 +214,16 @@ impl ActiveVoice {
                     }
                     frame_position.floor() as usize
                 };
+                let mut sample = f64::from(*frames.get(index)?) * *gain;
+                if let Some(filter) = low_pass {
+                    sample = filter.process(sample);
+                }
+                if let Some(filter) = high_pass {
+                    sample = filter.process(sample);
+                }
                 let envelope =
                     sample_edge_envelope(*rendered_frames, *total_output_frames, *edge_ramp_frames);
-                let sample = (f64::from(*frames.get(index)?) * *gain * envelope) as f32;
+                let sample = (sample * envelope) as f32;
                 *frame_position += *frame_step;
                 *rendered_frames = rendered_frames.saturating_add(1);
                 Some(sample)
@@ -250,4 +267,57 @@ fn sample_edge_envelope(frame_index: u32, total_frames: u32, ramp_frames: u32) -
 
 fn normalized_edge_gain(distance_from_edge: u32, ramp_frames: u32) -> f64 {
     ((f64::from(distance_from_edge) + 0.5) / f64::from(ramp_frames)).min(1.0)
+}
+
+#[derive(Clone, Copy, Debug)]
+struct OnePoleLowPass {
+    alpha: f64,
+    state: f64,
+}
+
+impl OnePoleLowPass {
+    fn new(sample_rate_hz: u32, cutoff_hz: f64) -> Self {
+        let omega = (core::f64::consts::TAU * normalized_cutoff_hz(cutoff_hz, sample_rate_hz))
+            / f64::from(sample_rate_hz);
+        Self {
+            alpha: omega / (1.0 + omega),
+            state: 0.0,
+        }
+    }
+
+    fn process(&mut self, input: f64) -> f64 {
+        self.state += self.alpha * (input - self.state);
+        self.state
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct OnePoleHighPass {
+    alpha: f64,
+    previous_input: f64,
+    previous_output: f64,
+}
+
+impl OnePoleHighPass {
+    fn new(sample_rate_hz: u32, cutoff_hz: f64) -> Self {
+        let omega = (core::f64::consts::TAU * normalized_cutoff_hz(cutoff_hz, sample_rate_hz))
+            / f64::from(sample_rate_hz);
+        Self {
+            alpha: 1.0 / (1.0 + omega),
+            previous_input: 0.0,
+            previous_output: 0.0,
+        }
+    }
+
+    fn process(&mut self, input: f64) -> f64 {
+        let output = self.alpha * (self.previous_output + input - self.previous_input);
+        self.previous_input = input;
+        self.previous_output = output;
+        output
+    }
+}
+
+fn normalized_cutoff_hz(cutoff_hz: f64, sample_rate_hz: u32) -> f64 {
+    let nyquist = (f64::from(sample_rate_hz) / 2.0) - 1.0;
+    cutoff_hz.clamp(1.0, nyquist.max(1.0))
 }

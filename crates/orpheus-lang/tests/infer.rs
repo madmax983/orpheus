@@ -117,6 +117,17 @@ fn pattern_valued_gain_and_pan_preserve_sample_pattern_types() {
 }
 
 #[test]
+fn filter_builtins_preserve_sample_pattern_types() {
+    let typed = infer_module(
+        r#"lead = sample("vox_ah") |> lpf(400 800) |> hpf(100 200)"#,
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(typed.type_of("lead").to_string(), "Pattern<Sample>");
+}
+
+#[test]
 fn slice_idx_preserves_sample_pattern_types() {
     let typed = infer_module(
         r#"lead = sample("amen") |> slice_idx(3, 8)"#,

@@ -583,6 +583,49 @@ fn live_engine_applies_sample_pan_balance() {
 }
 
 #[test]
+fn live_engine_applies_sample_high_pass_filter() {
+    let mut engine = EngineHandle::stub();
+    let directory = temp_directory("sample-hpf-live");
+    fs::write(
+        directory.join("samples.ron"),
+        "(\n  tokens: {\n    \"vox_ah\": \"vox.wav\",\n  },\n)\n",
+    )
+    .unwrap();
+    write_wav(directory.join("vox.wav"), &[1.0, 1.0, 1.0, 1.0]);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+    engine
+        .enqueue(EngineCommand::ReplaceSampleBank(bank))
+        .unwrap();
+    let cutoff_hz = 1_200.0;
+
+    let pattern = PatternUpdate::new(
+        "vox",
+        vec![Event {
+            whole: None,
+            part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+            value: SampleTrigger::named("vox_ah").with_hpf_cutoff_hz(cutoff_hz),
+        }],
+    );
+    engine.enqueue(EngineCommand::LoadPattern(pattern)).unwrap();
+
+    let rendered = engine.render_test_block(4);
+    let filtered = apply_one_pole_high_pass(&[1.0, 1.0, 1.0, 1.0], cutoff_hz, 48_000);
+    let expected = vec![
+        filtered[0] * edge_envelope(0, 4),
+        filtered[0] * edge_envelope(0, 4),
+        filtered[1] * edge_envelope(1, 4),
+        filtered[1] * edge_envelope(1, 4),
+        filtered[2] * edge_envelope(2, 4),
+        filtered[2] * edge_envelope(2, 4),
+        filtered[3] * edge_envelope(3, 4),
+        filtered[3] * edge_envelope(3, 4),
+    ];
+    assert_samples_approx(&rendered, &expected, 1.0e-6);
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn live_engine_applies_edge_ramps_to_sample_playback() {
     let mut engine = EngineHandle::stub();
     let directory = temp_directory("sample-ramp-live");
@@ -722,4 +765,39 @@ fn assert_samples_close(actual: &[f32], expected: &[f32]) {
     for (left, right) in actual.iter().zip(expected) {
         assert!((left - right).abs() < f32::EPSILON);
     }
+}
+
+fn assert_samples_approx(actual: &[f32], expected: &[f32], tolerance: f32) {
+    assert_eq!(actual.len(), expected.len());
+    for (left, right) in actual.iter().zip(expected) {
+        assert!((left - right).abs() <= tolerance);
+    }
+}
+
+#[allow(clippy::cast_possible_truncation)]
+fn apply_one_pole_high_pass(input: &[f32], cutoff_hz: f64, sample_rate_hz: u32) -> Vec<f32> {
+    let alpha = high_pass_alpha(cutoff_hz, sample_rate_hz);
+    let mut previous_input = 0.0_f64;
+    let mut previous_output = 0.0_f64;
+    input
+        .iter()
+        .map(|sample| {
+            let input = f64::from(*sample);
+            let output = alpha * (previous_output + input - previous_input);
+            previous_input = input;
+            previous_output = output;
+            output as f32
+        })
+        .collect()
+}
+
+fn high_pass_alpha(cutoff_hz: f64, sample_rate_hz: u32) -> f64 {
+    let cutoff_hz = normalized_cutoff_hz(cutoff_hz, sample_rate_hz);
+    let omega = (std::f64::consts::TAU * cutoff_hz) / f64::from(sample_rate_hz);
+    1.0 / (1.0 + omega)
+}
+
+fn normalized_cutoff_hz(cutoff_hz: f64, sample_rate_hz: u32) -> f64 {
+    let nyquist = (f64::from(sample_rate_hz) / 2.0) - 1.0;
+    cutoff_hz.clamp(1.0, nyquist.max(1.0))
 }

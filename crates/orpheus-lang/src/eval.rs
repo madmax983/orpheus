@@ -833,11 +833,18 @@ fn extract_string_value(value: Value, message: &str) -> Result<String, EvalError
 }
 
 fn sample_trigger_from_event(event: &SampleEvent) -> SampleTrigger {
-    SampleTrigger::named(event.sample())
+    let mut trigger = SampleTrigger::named(event.sample())
         .with_gain(event.gain())
         .with_pan(event.pan())
         .with_rate(event.rate())
-        .with_slice(event.slice_start(), event.slice_end())
+        .with_slice(event.slice_start(), event.slice_end());
+    if let Some(cutoff_hz) = event.hpf_cutoff_hz() {
+        trigger = trigger.with_hpf_cutoff_hz(cutoff_hz);
+    }
+    if let Some(cutoff_hz) = event.lpf_cutoff_hz() {
+        trigger = trigger.with_lpf_cutoff_hz(cutoff_hz);
+    }
+    trigger
 }
 
 fn extract_constant_number_rational(value: Value, context: &str) -> Result<Rational, EvalError> {

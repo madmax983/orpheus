@@ -13,6 +13,8 @@ pub enum BuiltinKind {
     Slow,
     Rev,
     Gain,
+    Hpf,
+    Lpf,
     Pan,
     Pitch,
     Sample,
@@ -67,6 +69,8 @@ impl Value {
 pub struct SampleEvent {
     sample: Box<str>,
     gain: f64,
+    hpf_cutoff_hz: Option<f64>,
+    lpf_cutoff_hz: Option<f64>,
     pan: f64,
     rate: f64,
     slice_start: f64,
@@ -78,6 +82,8 @@ impl SampleEvent {
         Self {
             sample: sample.into(),
             gain: 1.0,
+            hpf_cutoff_hz: None,
+            lpf_cutoff_hz: None,
             pan: 0.0,
             rate: 1.0,
             slice_start: 0.0,
@@ -93,6 +99,16 @@ impl SampleEvent {
     #[must_use]
     pub const fn gain(&self) -> f64 {
         self.gain
+    }
+
+    #[must_use]
+    pub const fn hpf_cutoff_hz(&self) -> Option<f64> {
+        self.hpf_cutoff_hz
+    }
+
+    #[must_use]
+    pub const fn lpf_cutoff_hz(&self) -> Option<f64> {
+        self.lpf_cutoff_hz
     }
 
     #[must_use]
@@ -118,6 +134,8 @@ impl SampleEvent {
 
 trait PatternValueTransform {
     fn adjust_gain(&self, factor: f64) -> Self;
+    fn adjust_hpf(&self, cutoff_hz: f64) -> Self;
+    fn adjust_lpf(&self, cutoff_hz: f64) -> Self;
     fn adjust_pan(&self, amount: f64) -> Self;
     fn adjust_rate(&self, factor: f64) -> Self;
     fn adjust_slice(&self, start: f64, end: f64) -> Self;
@@ -128,6 +146,34 @@ impl PatternValueTransform for SampleEvent {
         Self {
             sample: self.sample.clone(),
             gain: self.gain * factor,
+            hpf_cutoff_hz: self.hpf_cutoff_hz,
+            lpf_cutoff_hz: self.lpf_cutoff_hz,
+            pan: self.pan,
+            rate: self.rate,
+            slice_start: self.slice_start,
+            slice_end: self.slice_end,
+        }
+    }
+
+    fn adjust_hpf(&self, cutoff_hz: f64) -> Self {
+        Self {
+            sample: self.sample.clone(),
+            gain: self.gain,
+            hpf_cutoff_hz: Some(cutoff_hz),
+            lpf_cutoff_hz: self.lpf_cutoff_hz,
+            pan: self.pan,
+            rate: self.rate,
+            slice_start: self.slice_start,
+            slice_end: self.slice_end,
+        }
+    }
+
+    fn adjust_lpf(&self, cutoff_hz: f64) -> Self {
+        Self {
+            sample: self.sample.clone(),
+            gain: self.gain,
+            hpf_cutoff_hz: self.hpf_cutoff_hz,
+            lpf_cutoff_hz: Some(cutoff_hz),
             pan: self.pan,
             rate: self.rate,
             slice_start: self.slice_start,
@@ -139,6 +185,8 @@ impl PatternValueTransform for SampleEvent {
         Self {
             sample: self.sample.clone(),
             gain: self.gain,
+            hpf_cutoff_hz: self.hpf_cutoff_hz,
+            lpf_cutoff_hz: self.lpf_cutoff_hz,
             pan: (self.pan + amount).clamp(-1.0, 1.0),
             rate: self.rate,
             slice_start: self.slice_start,
@@ -150,6 +198,8 @@ impl PatternValueTransform for SampleEvent {
         Self {
             sample: self.sample.clone(),
             gain: self.gain,
+            hpf_cutoff_hz: self.hpf_cutoff_hz,
+            lpf_cutoff_hz: self.lpf_cutoff_hz,
             pan: self.pan,
             rate: self.rate * factor,
             slice_start: self.slice_start,
@@ -162,6 +212,8 @@ impl PatternValueTransform for SampleEvent {
         Self {
             sample: self.sample.clone(),
             gain: self.gain,
+            hpf_cutoff_hz: self.hpf_cutoff_hz,
+            lpf_cutoff_hz: self.lpf_cutoff_hz,
             pan: self.pan,
             rate: self.rate,
             slice_start: current_range.mul_add(start, self.slice_start),
@@ -172,6 +224,14 @@ impl PatternValueTransform for SampleEvent {
 
 impl PatternValueTransform for f64 {
     fn adjust_gain(&self, _factor: f64) -> Self {
+        *self
+    }
+
+    fn adjust_hpf(&self, _cutoff_hz: f64) -> Self {
+        *self
+    }
+
+    fn adjust_lpf(&self, _cutoff_hz: f64) -> Self {
         *self
     }
 
@@ -261,6 +321,42 @@ impl SamplePatternValue {
     pub(crate) fn gain_pattern(self, control: NumberPatternValue) -> Self {
         Self {
             pattern: PatternRuntime::GainPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn hpf(self, cutoff_hz: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::Hpf {
+                cutoff_hz,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn hpf_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::HpfPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn lpf(self, cutoff_hz: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::Lpf {
+                cutoff_hz,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn lpf_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::LpfPattern {
                 control: Box::new(control.pattern),
                 inner: Box::new(self.pattern),
             },
@@ -498,6 +594,22 @@ enum PatternRuntime<T> {
         control: Box<PatternRuntime<f64>>,
         inner: Box<Self>,
     },
+    Hpf {
+        cutoff_hz: f64,
+        inner: Box<Self>,
+    },
+    HpfPattern {
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
+    Lpf {
+        cutoff_hz: f64,
+        inner: Box<Self>,
+    },
+    LpfPattern {
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
     Pan {
         amount: f64,
         inner: Box<Self>,
@@ -572,6 +684,26 @@ where
             Self::GainPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Gain)
             }
+            Self::Hpf { cutoff_hz, inner } => {
+                let mut events = inner.try_query(span)?;
+                for event in &mut events {
+                    event.value = event.value.adjust_hpf(*cutoff_hz);
+                }
+                Ok(events)
+            }
+            Self::HpfPattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::Hpf)
+            }
+            Self::Lpf { cutoff_hz, inner } => {
+                let mut events = inner.try_query(span)?;
+                for event in &mut events {
+                    event.value = event.value.adjust_lpf(*cutoff_hz);
+                }
+                Ok(events)
+            }
+            Self::LpfPattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::Lpf)
+            }
             Self::Pan { amount, inner } => {
                 let mut events = inner.try_query(span)?;
                 for event in &mut events {
@@ -628,6 +760,8 @@ where
 #[derive(Clone, Copy, Debug)]
 enum ControlPatternKind {
     Gain,
+    Hpf,
+    Lpf,
     Pan,
     Pitch,
     Rate,
@@ -683,6 +817,8 @@ where
                 if clip_span(&control_event.part, &part)?.is_some() {
                     value = match kind {
                         ControlPatternKind::Gain => value.adjust_gain(control_event.value),
+                        ControlPatternKind::Hpf => value.adjust_hpf(control_event.value),
+                        ControlPatternKind::Lpf => value.adjust_lpf(control_event.value),
                         ControlPatternKind::Pan => value.adjust_pan(control_event.value),
                         ControlPatternKind::Pitch => {
                             value.adjust_rate(semitones_to_rate_multiplier(control_event.value))
@@ -714,6 +850,20 @@ fn validate_control_events(
                 if !event.value.is_finite() {
                     return Err(EvalError::new(
                         "`gain` requires finite numeric control values",
+                    ));
+                }
+            }
+            ControlPatternKind::Hpf => {
+                if !event.value.is_finite() || event.value <= f64::EPSILON {
+                    return Err(EvalError::new(
+                        "`hpf` requires positive finite control values",
+                    ));
+                }
+            }
+            ControlPatternKind::Lpf => {
+                if !event.value.is_finite() || event.value <= f64::EPSILON {
+                    return Err(EvalError::new(
+                        "`lpf` requires positive finite control values",
                     ));
                 }
             }

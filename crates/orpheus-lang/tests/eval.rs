@@ -188,6 +188,60 @@ fn rate_and_slice_builtins_update_sample_event_playback_params() {
 }
 
 #[test]
+fn filter_builtins_update_sample_event_filter_params() {
+    let module = eval_module(
+        r#"lead = sample("vox_ah") |> lpf(800) |> hpf(200)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].value.sample(), "vox_ah");
+    assert_eq!(events[0].value.lpf_cutoff_hz(), Some(800.0));
+    assert_eq!(events[0].value.hpf_cutoff_hz(), Some(200.0));
+}
+
+#[test]
+fn pattern_valued_filter_controls_split_sample_events() {
+    let module = eval_module(
+        r#"lead = sample("vox_ah") |> lpf(400 800) |> hpf(100 200)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[0].value.lpf_cutoff_hz(), Some(400.0));
+    assert_eq!(events[0].value.hpf_cutoff_hz(), Some(100.0));
+    assert_eq!(events[1].part.start(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::one());
+    assert_eq!(events[1].value.lpf_cutoff_hz(), Some(800.0));
+    assert_eq!(events[1].value.hpf_cutoff_hz(), Some(200.0));
+}
+
+#[test]
+fn lpf_rejects_non_positive_cutoff_controls() {
+    assert_eval_error_contains(
+        r#"lead = sample("vox_ah") |> lpf(0)"#,
+        ReplMode::Loose,
+        &["`lpf` requires a positive finite numeric value"],
+    );
+}
+
+#[test]
 fn negative_rate_is_preserved_on_sample_events() {
     let module = eval_module(r#"lead = sample("vox_ah") |> rate(-1)"#, ReplMode::Loose).unwrap();
     let events = module

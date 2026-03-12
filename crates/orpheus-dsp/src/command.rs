@@ -8,6 +8,8 @@ use crate::sample_bank::SampleBank;
 pub struct SampleTrigger {
     token: Box<str>,
     gain: f64,
+    hpf_cutoff_hz: Option<f64>,
+    lpf_cutoff_hz: Option<f64>,
     rate: f64,
     slice_start: f64,
     slice_end: f64,
@@ -20,6 +22,8 @@ impl SampleTrigger {
         Self {
             token: token.into(),
             gain: 1.0,
+            hpf_cutoff_hz: None,
+            lpf_cutoff_hz: None,
             rate: 1.0,
             slice_start: 0.0,
             slice_end: 1.0,
@@ -30,6 +34,18 @@ impl SampleTrigger {
     #[must_use]
     pub const fn with_gain(mut self, gain: f64) -> Self {
         self.gain = gain;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_hpf_cutoff_hz(mut self, cutoff_hz: f64) -> Self {
+        self.hpf_cutoff_hz = Some(cutoff_hz);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_lpf_cutoff_hz(mut self, cutoff_hz: f64) -> Self {
+        self.lpf_cutoff_hz = Some(cutoff_hz);
         self
     }
 
@@ -60,6 +76,16 @@ impl SampleTrigger {
     #[must_use]
     pub const fn gain(&self) -> f64 {
         self.gain
+    }
+
+    #[must_use]
+    pub const fn hpf_cutoff_hz(&self) -> Option<f64> {
+        self.hpf_cutoff_hz
+    }
+
+    #[must_use]
+    pub const fn lpf_cutoff_hz(&self) -> Option<f64> {
+        self.lpf_cutoff_hz
     }
 
     #[must_use]
