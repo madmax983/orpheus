@@ -68,3 +68,26 @@ impl Display for LoadError {
 }
 
 impl Error for LoadError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_error_display() {
+        let err = ParseError::new("syntax error");
+        assert_eq!(err.to_string(), "syntax error");
+    }
+
+    #[test]
+    fn type_error_display() {
+        let err = TypeError::new("type mismatch");
+        assert_eq!(err.to_string(), "type mismatch");
+    }
+
+    #[test]
+    fn load_error_display() {
+        let err = LoadError::new("file not found");
+        assert_eq!(err.to_string(), "file not found");
+    }
+}
