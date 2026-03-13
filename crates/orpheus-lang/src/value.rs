@@ -5,10 +5,11 @@ use orpheus_pattern::{
     CyclePattern, Event, EventStream, PatternError, PatternNode, Rational, TimeSpan,
 };
 
-use crate::eval::EvalError;
+use crate::{builtins::apply_builtin_function, eval::EvalError};
 
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    Every,
     Fast,
     Slow,
     Shift,
@@ -142,6 +143,11 @@ trait PatternValueTransform {
     fn adjust_slice(&self, start: f64, end: f64) -> Self;
 }
 
+trait PatternRuntimeValue: Clone + PatternValueTransform + Send + Sync + fmt::Debug + Sized {
+    fn into_runtime_value(pattern: PatternRuntime<Self>) -> Value;
+    fn try_from_runtime_value(value: Value) -> Result<PatternRuntime<Self>, EvalError>;
+}
+
 impl PatternValueTransform for SampleEvent {
     fn adjust_gain(&self, factor: f64) -> Self {
         Self {
@@ -249,6 +255,36 @@ impl PatternValueTransform for f64 {
     }
 }
 
+impl PatternRuntimeValue for SampleEvent {
+    fn into_runtime_value(pattern: PatternRuntime<Self>) -> Value {
+        Value::SamplePattern(SamplePatternValue { pattern })
+    }
+
+    fn try_from_runtime_value(value: Value) -> Result<PatternRuntime<Self>, EvalError> {
+        match value {
+            Value::SamplePattern(pattern) => Ok(pattern.pattern),
+            Value::NumberPattern(_) | Value::Function(_) | Value::String(_) => Err(EvalError::new(
+                "transform returned an incompatible value; expected Pattern<Sample>",
+            )),
+        }
+    }
+}
+
+impl PatternRuntimeValue for f64 {
+    fn into_runtime_value(pattern: PatternRuntime<Self>) -> Value {
+        Value::NumberPattern(NumberPatternValue { pattern })
+    }
+
+    fn try_from_runtime_value(value: Value) -> Result<PatternRuntime<Self>, EvalError> {
+        match value {
+            Value::NumberPattern(pattern) => Ok(pattern.pattern),
+            Value::SamplePattern(_) | Value::Function(_) | Value::String(_) => Err(EvalError::new(
+                "transform returned an incompatible value; expected Pattern<Number>",
+            )),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct SamplePatternValue {
     pattern: PatternRuntime<SampleEvent>,
@@ -288,6 +324,16 @@ impl SamplePatternValue {
         Self {
             pattern: PatternRuntime::Fast {
                 factor,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn every(self, period: i64, transform: BuiltinFn) -> Self {
+        Self {
+            pattern: PatternRuntime::Every {
+                period,
+                transform,
                 inner: Box::new(self.pattern),
             },
         }
@@ -528,6 +574,16 @@ impl NumberPatternValue {
         }
     }
 
+    pub(crate) fn every(self, period: i64, transform: BuiltinFn) -> Self {
+        Self {
+            pattern: PatternRuntime::Every {
+                period,
+                transform,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn slow(self, factor: i64) -> Self {
         Self {
             pattern: PatternRuntime::Slow {
@@ -593,7 +649,13 @@ impl NumberPatternValue {
 enum PatternRuntime<T> {
     Cycle(CyclePattern<T>),
     Stream(EventStream<T>),
+    ExplicitCycle(EventStream<T>),
     Stack(Vec<Self>),
+    Every {
+        period: i64,
+        transform: BuiltinFn,
+        inner: Box<Self>,
+    },
     Fast {
         factor: i64,
         inner: Box<Self>,
@@ -676,7 +738,7 @@ enum PatternRuntime<T> {
 
 impl<T> PatternRuntime<T>
 where
-    T: Clone + PatternValueTransform + Send + Sync + fmt::Debug,
+    T: PatternRuntimeValue,
 {
     fn try_query(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
         match self {
@@ -686,14 +748,13 @@ where
             Self::Stream(stream) => stream
                 .try_query(span)
                 .map_err(|error| map_pattern_error(&error)),
-            Self::Stack(layers) => {
-                let mut events = Vec::new();
-                for layer in layers {
-                    events.extend(layer.try_query(span)?);
-                }
-                sort_events(&mut events);
-                Ok(events)
-            }
+            Self::ExplicitCycle(stream) => query_explicit_cycle(stream, span),
+            Self::Stack(layers) => query_stack(layers, span),
+            Self::Every {
+                period,
+                transform,
+                inner,
+            } => query_every(inner, transform, *period, span),
             Self::Fast { factor, inner } => query_fast(inner, *factor, span),
             Self::Slow { factor, inner } => query_slow(inner, *factor, span),
             Self::Shift { offset, inner } => query_shift(inner, offset, span),
@@ -781,6 +842,18 @@ where
     }
 }
 
+fn query_stack<T>(layers: &[PatternRuntime<T>], span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    let mut events = Vec::new();
+    for layer in layers {
+        events.extend(layer.try_query(span)?);
+    }
+    sort_events(&mut events);
+    Ok(events)
+}
+
 #[derive(Clone, Copy, Debug)]
 enum ControlPatternKind {
     Gain,
@@ -798,7 +871,7 @@ fn apply_control_pattern<T>(
     kind: ControlPatternKind,
 ) -> Result<Vec<Event<T>>, EvalError>
 where
-    T: Clone + PatternValueTransform + Send + Sync + fmt::Debug,
+    T: PatternRuntimeValue,
 {
     let source_events = inner.try_query(span)?;
     let control_events = control.try_query(span)?;
@@ -929,7 +1002,7 @@ fn apply_slice_pattern<T>(
     span: &TimeSpan,
 ) -> Result<Vec<Event<T>>, EvalError>
 where
-    T: Clone + PatternValueTransform + Send + Sync + fmt::Debug,
+    T: PatternRuntimeValue,
 {
     let source_events = inner.try_query(span)?;
     let start_events = start_control.try_query(span)?;
@@ -1017,7 +1090,7 @@ fn apply_slice_idx_pattern<T>(
     span: &TimeSpan,
 ) -> Result<Vec<Event<T>>, EvalError>
 where
-    T: Clone + PatternValueTransform + Send + Sync + fmt::Debug,
+    T: PatternRuntimeValue,
 {
     let source_events = inner.try_query(span)?;
     let control_events = control.try_query(span)?;
@@ -1130,11 +1203,88 @@ fn query_fast<T>(
     span: &TimeSpan,
 ) -> Result<Vec<Event<T>>, EvalError>
 where
-    T: Clone + PatternValueTransform + Send + Sync + fmt::Debug,
+    T: PatternRuntimeValue,
 {
     let source_span = scale_span(span, factor, 1)?;
     let mut events = inner.try_query(&source_span)?;
     rescale_events(&mut events, 1, factor)?;
+    Ok(events)
+}
+
+fn query_explicit_cycle<T>(
+    stream: &EventStream<T>,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut events = Vec::new();
+    let start_cycle = floor_rational(span.start());
+    let end_cycle = ceil_rational(span.end());
+
+    for cycle in start_cycle..end_cycle {
+        let repeated_cycle_span = cycle_span(cycle)?;
+        let Some(query_slice) = clip_span(&repeated_cycle_span, span)? else {
+            continue;
+        };
+        let cycle_offset = rational_from_parts(cycle, 1)?;
+        let local_offset = rational_sub(&Rational::zero(), &cycle_offset)?;
+        let local_query = translate_span(&query_slice, &local_offset)?;
+        let mut cycle_events = stream
+            .try_query(&local_query)
+            .map_err(|error| map_pattern_error(&error))?;
+        shift_events(&mut cycle_events, &cycle_offset)?;
+        events.extend(cycle_events);
+    }
+
+    sort_events(&mut events);
+    Ok(events)
+}
+
+fn query_every<T>(
+    inner: &PatternRuntime<T>,
+    transform: &BuiltinFn,
+    period: i64,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let period = i128::from(period);
+    let mut events = Vec::new();
+    let start_cycle = floor_rational(span.start());
+    let end_cycle = ceil_rational(span.end());
+
+    for cycle in start_cycle..end_cycle {
+        let cycle_span = cycle_span(cycle)?;
+        let Some(query_slice) = clip_span(&cycle_span, span)? else {
+            continue;
+        };
+        if cycle.rem_euclid(period) == 0 {
+            let cycle_offset = rational_from_parts(cycle, 1)?;
+            let local_offset = rational_sub(&Rational::zero(), &cycle_offset)?;
+            let local_query = translate_span(&query_slice, &local_offset)?;
+            let localized = localize_cycle_runtime(inner, cycle)?;
+            let transformed =
+                apply_builtin_function(transform, vec![T::into_runtime_value(localized)])?;
+            let mut transformed_events =
+                T::try_from_runtime_value(transformed)?.try_query(&local_query)?;
+            shift_events(&mut transformed_events, &cycle_offset)?;
+            events.extend(transformed_events);
+        } else {
+            events.extend(inner.try_query(&query_slice)?);
+        }
+    }
+
+    sort_events(&mut events);
     Ok(events)
 }
 
@@ -1144,7 +1294,7 @@ fn query_slow<T>(
     span: &TimeSpan,
 ) -> Result<Vec<Event<T>>, EvalError>
 where
-    T: Clone + PatternValueTransform + Send + Sync + fmt::Debug,
+    T: PatternRuntimeValue,
 {
     let source_span = scale_span(span, 1, factor)?;
     let mut events = inner.try_query(&source_span)?;
@@ -1158,7 +1308,7 @@ fn query_shift<T>(
     span: &TimeSpan,
 ) -> Result<Vec<Event<T>>, EvalError>
 where
-    T: Clone + PatternValueTransform + Send + Sync + fmt::Debug,
+    T: PatternRuntimeValue,
 {
     let inverse_offset = rational_sub(&Rational::zero(), offset)?;
     let source_span = translate_span(span, &inverse_offset)?;
@@ -1169,7 +1319,7 @@ where
 
 fn query_rev<T>(inner: &PatternRuntime<T>, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError>
 where
-    T: Clone + PatternValueTransform + Send + Sync + fmt::Debug,
+    T: PatternRuntimeValue,
 {
     if span.is_empty() {
         return Ok(Vec::new());
@@ -1198,6 +1348,28 @@ where
 
     sort_events(&mut events);
     Ok(events)
+}
+
+fn localize_cycle_runtime<T>(
+    inner: &PatternRuntime<T>,
+    cycle: i128,
+) -> Result<PatternRuntime<T>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    let cycle_span = cycle_span(cycle)?;
+    let cycle_offset = rational_from_parts(cycle, 1)?;
+    let local_offset = rational_sub(&Rational::zero(), &cycle_offset)?;
+    let mut localized_events = inner.try_query(&cycle_span)?;
+
+    for event in &mut localized_events {
+        event.part = translate_span(&event.part, &local_offset)?;
+        event.whole = None;
+    }
+
+    Ok(PatternRuntime::ExplicitCycle(EventStream::new(
+        localized_events,
+    )))
 }
 
 fn rescale_events<T>(
@@ -1343,7 +1515,19 @@ const fn ceil_rational(value: &Rational) -> i128 {
 
 #[cfg(test)]
 mod tests {
-    use super::cycle_span;
+    use super::{
+        BuiltinFn, BuiltinKind, NumberPatternValue, SampleEvent, SamplePatternValue, Value,
+        cycle_span,
+    };
+    use orpheus_pattern::{PatternNode, Rational, TimeSpan};
+
+    fn unary_transform(kind: BuiltinKind, args: Vec<Value>) -> BuiltinFn {
+        let function = BuiltinFn::new(kind);
+        match function.apply(args).unwrap() {
+            Value::Function(function) => function,
+            other => panic!("expected partially applied unary transform, got {other:?}"),
+        }
+    }
 
     #[test]
     fn cycle_span_supports_indices_above_i64_range() {
@@ -1354,5 +1538,61 @@ mod tests {
         assert_eq!(span.start().denominator(), 1);
         assert_eq!(span.end().numerator(), start_cycle + 1);
         assert_eq!(span.end().denominator(), 1);
+    }
+
+    #[test]
+    fn every_uses_the_transformed_pattern_only_on_matching_cycles() {
+        let base = SamplePatternValue::from_nodes(vec![
+            PatternNode::atom(SampleEvent::named("bd")),
+            PatternNode::atom(SampleEvent::named("sn")),
+        ]);
+        let transform = unary_transform(
+            BuiltinKind::Fast,
+            vec![Value::NumberPattern(NumberPatternValue::constant(2.0))],
+        );
+        let pattern = base.every(2, transform);
+        let span = TimeSpan::new(Rational::zero(), Rational::new(2, 1).unwrap()).unwrap();
+        let events = pattern.try_query(&span).unwrap();
+
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.value.sample())
+                .collect::<Vec<_>>(),
+            vec!["bd", "sn", "bd", "sn", "bd", "sn"]
+        );
+        assert_eq!(events[0].part.start(), &Rational::zero());
+        assert_eq!(events[0].part.end(), &Rational::new(1, 4).unwrap());
+        assert_eq!(events[3].part.start(), &Rational::new(3, 4).unwrap());
+        assert_eq!(events[3].part.end(), &Rational::one());
+        assert_eq!(events[4].part.start(), &Rational::one());
+        assert_eq!(events[4].part.end(), &Rational::new(3, 2).unwrap());
+        assert_eq!(events[5].part.start(), &Rational::new(3, 2).unwrap());
+        assert_eq!(events[5].part.end(), &Rational::new(2, 1).unwrap());
+    }
+
+    #[test]
+    fn every_fast_localizes_nested_cycle_varying_patterns() {
+        let base = SamplePatternValue::from_nodes(vec![
+            PatternNode::atom(SampleEvent::named("bd")),
+            PatternNode::atom(SampleEvent::named("sn")),
+            PatternNode::atom(SampleEvent::named("cp")),
+        ]);
+        let rev = unary_transform(BuiltinKind::Rev, Vec::new());
+        let fast_two = unary_transform(
+            BuiltinKind::Fast,
+            vec![Value::NumberPattern(NumberPatternValue::constant(2.0))],
+        );
+        let nested = base.every(3, rev);
+        let pattern = nested.every(2, fast_two);
+        let events = pattern.try_query(&TimeSpan::unit()).unwrap();
+
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.value.sample())
+                .collect::<Vec<_>>(),
+            vec!["cp", "sn", "bd", "cp", "sn", "bd"]
+        );
     }
 }

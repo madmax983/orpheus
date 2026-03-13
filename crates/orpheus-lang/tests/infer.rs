@@ -1,4 +1,4 @@
-use orpheus_lang::{ReplMode, infer_module};
+use orpheus_lang::{ReplMode, Type, infer_module};
 
 #[test]
 fn loose_mode_infers_number_sequences_as_number_patterns() {
@@ -28,6 +28,27 @@ fn shift_preserves_pattern_types() {
 
     assert_eq!(sample_typed.type_of("drums").to_string(), "Pattern<Sample>");
     assert_eq!(number_typed.type_of("swing").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn every_infers_a_polymorphic_pattern_transform_function() {
+    let typed = infer_module("warp = every(2, fast(2))", ReplMode::Strict).unwrap();
+
+    match typed.type_of("warp") {
+        Type::Function(args, ret) => {
+            assert_eq!(args.len(), 1);
+            assert_eq!(args[0], *ret.clone());
+            assert!(matches!(args[0], Type::Pattern(_)));
+        }
+        other => panic!("expected function type, got {other:?}"),
+    }
+}
+
+#[test]
+fn every_preserves_sample_pattern_types() {
+    let typed = infer_module("drums = every(2, fast(2), bd sn)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
 }
 
 #[test]

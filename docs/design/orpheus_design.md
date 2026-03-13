@@ -523,6 +523,7 @@ The current live workflow keeps filesystem access off the audio thread:
 - `slice_idx(index_pattern, n)` also accepts a patterned index when `n` is constant, so `sample("amen") |> slice_idx(0 3 1 7, 8)` becomes a rhythmic chop pattern without hand-writing normalized fractions.
 - `pitch(semitones)` maps semitone offsets onto sample-rate multipliers and also accepts `Pattern<Number>` controls, so `pitch(12)` is an octave up and `pitch(0 12 -12)` becomes a transposition pattern.
 - `lpf(cutoff)` and `hpf(cutoff)` accept positive cutoff frequencies in Hz and also support `Pattern<Number>` controls for per-event sample filtering.
+- `every(n, f)` accepts unary pattern transforms like `fast(2)` or `shift(0.125)` and applies them on cycle numbers divisible by `n`.
 - `pan(amount)` accepts a static balance value in `[-1, 1]`, where `-1` is full left, `1` is full right, and `0` keeps the current centered stereo output.
 - `samples.ron` can also define named regions over an existing token:
 
