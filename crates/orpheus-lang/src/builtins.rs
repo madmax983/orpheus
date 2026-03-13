@@ -10,6 +10,7 @@ pub fn is_sample_identifier(name: &str) -> bool {
 pub fn builtin_value(name: &str) -> Option<Value> {
     match name {
         "bd" | "sn" | "cp" | "hh" => Some(Value::SamplePattern(SamplePatternValue::atom(name))),
+        "every" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Every))),
         "fast" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Fast))),
         "slow" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Slow))),
         "shift" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Shift))),
@@ -76,32 +77,38 @@ impl BuiltinFn {
     }
 
     pub(crate) fn apply(self, args: Vec<Value>) -> Result<Value, EvalError> {
-        let mut combined = self.bound_args;
-        combined.extend(args);
-
-        if combined.len() < self.kind.arity() {
-            return Ok(Value::Function(Self {
-                kind: self.kind,
-                bound_args: combined,
-            }));
-        }
-
-        if combined.len() > self.kind.arity() {
-            return Err(EvalError::new(format!(
-                "`{}` expected {} argument(s), got {}",
-                self.kind.name(),
-                self.kind.arity(),
-                combined.len()
-            )));
-        }
-
-        self.kind.execute(combined)
+        apply_builtin_function(&self, args)
     }
+}
+
+pub fn apply_builtin_function(function: &BuiltinFn, args: Vec<Value>) -> Result<Value, EvalError> {
+    let kind = function.kind;
+    let mut combined = function.bound_args.clone();
+    combined.extend(args);
+
+    if combined.len() < kind.arity() {
+        return Ok(Value::Function(BuiltinFn {
+            kind,
+            bound_args: combined,
+        }));
+    }
+
+    if combined.len() > kind.arity() {
+        return Err(EvalError::new(format!(
+            "`{}` expected {} argument(s), got {}",
+            kind.name(),
+            kind.arity(),
+            combined.len()
+        )));
+    }
+
+    kind.execute(combined)
 }
 
 impl BuiltinKind {
     const fn name(self) -> &'static str {
         match self {
+            Self::Every => "every",
             Self::Fast => "fast",
             Self::Slow => "slow",
             Self::Shift => "shift",
@@ -120,6 +127,7 @@ impl BuiltinKind {
 
     const fn arity(self) -> usize {
         match self {
+            Self::Every | Self::Slice | Self::SliceIdx => 3,
             Self::Fast
             | Self::Slow
             | Self::Shift
@@ -129,13 +137,13 @@ impl BuiltinKind {
             | Self::Pan
             | Self::Pitch
             | Self::Rate => 2,
-            Self::Slice | Self::SliceIdx => 3,
             Self::Rev | Self::Sample => 1,
         }
     }
 
     fn execute(self, args: Vec<Value>) -> Result<Value, EvalError> {
         match self {
+            Self::Every => apply_every(args),
             Self::Fast => apply_fast(args),
             Self::Slow => apply_slow(args),
             Self::Shift => apply_shift(args),
@@ -150,6 +158,35 @@ impl BuiltinKind {
             Self::Slice => apply_slice(args),
             Self::SliceIdx => apply_slice_idx(args),
         }
+    }
+}
+
+fn apply_every(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let period = extract_positive_integer_factor(
+        args.next()
+            .ok_or_else(|| EvalError::new("`every` requires a cycle count argument"))?,
+        "every",
+    )?;
+    let transform = args
+        .next()
+        .ok_or_else(|| EvalError::new("`every` requires a transform argument"))?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`every` requires a pattern argument"))?;
+
+    match pattern {
+        Value::SamplePattern(pattern) => {
+            let transform = extract_unary_pattern_transform(transform)?;
+            Ok(Value::SamplePattern(pattern.every(period, transform)))
+        }
+        Value::NumberPattern(pattern) => {
+            let transform = extract_unary_pattern_transform(transform)?;
+            Ok(Value::NumberPattern(pattern.every(period, transform)))
+        }
+        Value::Function(_) | Value::String(_) => Err(EvalError::new(
+            "`every` expected a pattern as its final argument",
+        )),
     }
 }
 
@@ -431,6 +468,24 @@ fn extract_constant_rational_offset(
 ) -> Result<Rational, EvalError> {
     let number = extract_constant_number(value, builtin_name)?;
     f64_to_rational(number, &format!("`{builtin_name}` offset"))
+}
+
+fn extract_unary_pattern_transform(transform: Value) -> Result<BuiltinFn, EvalError> {
+    match transform {
+        Value::Function(function) => {
+            let remaining = function.kind.arity() - function.bound_args.len();
+            if remaining == 1 {
+                Ok(function)
+            } else {
+                Err(EvalError::new(
+                    "`every` requires a unary pattern transform as its second argument",
+                ))
+            }
+        }
+        Value::SamplePattern(_) | Value::NumberPattern(_) | Value::String(_) => Err(
+            EvalError::new("`every` requires a unary pattern transform as its second argument"),
+        ),
+    }
 }
 
 fn extract_whole_number(

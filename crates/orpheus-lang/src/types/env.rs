@@ -67,6 +67,20 @@ impl TypeEnv {
             },
         );
         env.insert(
+            "every",
+            TypeScheme {
+                vars: vec![alpha],
+                ty: Type::curried(
+                    vec![
+                        Type::pattern(Type::Number),
+                        Type::function(vec![alpha_pattern.clone()], alpha_pattern.clone()),
+                        alpha_pattern.clone(),
+                    ],
+                    alpha_pattern.clone(),
+                ),
+            },
+        );
+        env.insert(
             "rev",
             TypeScheme {
                 vars: vec![alpha],

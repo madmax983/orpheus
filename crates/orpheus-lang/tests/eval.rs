@@ -67,6 +67,28 @@ fn fast_pipe_repeats_the_pattern_within_the_cycle() {
 }
 
 #[test]
+fn every_applies_its_transform_on_cycle_zero() {
+    let module = eval_module("drums = bd sn |> every(2, fast(2))", ReplMode::Loose).unwrap();
+    assert_eq!(
+        sample_names(module.get("drums").unwrap()),
+        ["bd", "sn", "bd", "sn"]
+    );
+}
+
+#[test]
+fn every_transforms_the_selected_cycle_in_isolation() {
+    let module = eval_module(
+        "drums = every(2, fast(2), every(3, rev, bd sn cp))",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    assert_eq!(
+        sample_names(module.get("drums").unwrap()),
+        ["cp", "sn", "bd", "cp", "sn", "bd"]
+    );
+}
+
+#[test]
 fn slow_pipe_stretches_the_pattern() {
     let module = eval_module("drums = bd sn |> slow(2)", ReplMode::Loose).unwrap();
     assert_eq!(sample_names(module.get("drums").unwrap()), ["bd"]);
@@ -126,6 +148,17 @@ fn shift_rotates_number_patterns_forward_within_the_cycle() {
 fn direct_call_matches_pipe_application_for_fast() {
     let direct = eval_module("drums = fast(2, bd sn)", ReplMode::Loose).unwrap();
     let piped = eval_module("drums = bd sn |> fast(2)", ReplMode::Loose).unwrap();
+
+    assert_eq!(
+        sample_names(direct.get("drums").unwrap()),
+        sample_names(piped.get("drums").unwrap())
+    );
+}
+
+#[test]
+fn direct_call_matches_pipe_application_for_every() {
+    let direct = eval_module("drums = every(2, fast(2), bd sn)", ReplMode::Loose).unwrap();
+    let piped = eval_module("drums = bd sn |> every(2, fast(2))", ReplMode::Loose).unwrap();
 
     assert_eq!(
         sample_names(direct.get("drums").unwrap()),
@@ -677,6 +710,11 @@ fn builtin_type_errors_report_which_argument_shape_is_required() {
         "drums = fast(bd, bd sn)",
         ReplMode::Loose,
         &["`fast` requires a constant number argument"],
+    );
+    assert_eval_error_contains(
+        "drums = every(2, fast, bd sn)",
+        ReplMode::Loose,
+        &["`every` requires a unary pattern transform as its second argument"],
     );
     assert_eval_error_contains(
         "drums = shift(0 0.25, bd sn)",
