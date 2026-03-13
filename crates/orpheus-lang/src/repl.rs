@@ -1,7 +1,9 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
+
+use crossterm::style::Stylize;
 
 use orpheus_dsp::{
     EngineCommand, EngineHandle, PatternUpdate, SampleBank, SampleTrigger, TransportSnapshot,
@@ -85,8 +87,28 @@ where
         }
 
         match session.eval_line(trimmed) {
-            Ok(message) => writeln!(stdout, "{message}")?,
-            Err(message) => writeln!(stderr, "{message}")?,
+            Ok(message) => {
+                if io::stdout().is_terminal() && message.starts_with('[') {
+                    let (type_str, rest) = message.split_once("] ").unwrap_or(("", message.as_str()));
+                    if !type_str.is_empty() {
+                        writeln!(
+                            stdout,
+                            "{}{}",
+                            format!("{type_str}] ").dark_grey(),
+                            rest.green()
+                        )?;
+                        continue;
+                    }
+                }
+                writeln!(stdout, "{message}")?;
+            }
+            Err(message) => {
+                if io::stderr().is_terminal() {
+                    writeln!(stderr, "{}", message.red().bold())?;
+                } else {
+                    writeln!(stderr, "{message}")?;
+                }
+            }
         }
     }
 

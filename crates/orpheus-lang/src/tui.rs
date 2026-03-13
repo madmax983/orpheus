@@ -342,7 +342,7 @@ impl SessionTui {
             vec![ListItem::new("No bindings yet")]
         } else {
             let mut items = bindings
-                .into_iter()
+                .iter()
                 .map(|summary| binding_list_item(summary, &transport))
                 .collect::<Vec<_>>();
             if should_show_binding_legend(bindings_height, items.len(), &transport) {
@@ -386,7 +386,11 @@ impl SessionTui {
                         Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
                     )
                 } else if line.starts_with('[') {
-                    Line::styled(line, Style::default().fg(Color::Green))
+                    let (type_str, rest) = line.split_once("] ").unwrap_or(("", line.as_str()));
+                    Line::from(vec![
+                        Span::styled(format!("{type_str}] "), Style::default().fg(Color::DarkGray)),
+                        Span::styled(rest.to_owned(), Style::default().fg(Color::Green)),
+                    ])
                 } else {
                     Line::raw(line)
                 }
@@ -1082,23 +1086,27 @@ fn transport_status_line(
     Line::from(spans)
 }
 
-fn binding_list_item(summary: String, transport: &TransportView) -> ListItem<'static> {
-    let name = summary
+fn binding_list_item(summary: &str, transport: &TransportView) -> ListItem<'static> {
+    let (name, ty) = summary
         .split_once(": ")
-        .map_or(summary.as_str(), |(name, _)| name);
+        .unwrap_or((summary, ""));
+
+    let mut spans = Vec::new();
+
     if transport.active_pattern_name() == Some(name) {
-        return ListItem::new(Line::from(vec![
-            Span::styled("[live] ", live_binding_style()),
-            Span::raw(summary),
-        ]));
+        spans.push(Span::styled("[live] ", live_binding_style()));
+    } else if transport.pending_pattern_name() == Some(name) {
+        spans.push(Span::styled("[next] ", pending_binding_style(transport)));
     }
-    if transport.pending_pattern_name() == Some(name) {
-        return ListItem::new(Line::from(vec![
-            Span::styled("[next] ", pending_binding_style(transport)),
-            Span::raw(summary),
-        ]));
+
+    spans.push(Span::styled(name.to_owned(), Style::default().add_modifier(Modifier::BOLD).fg(Color::White)));
+
+    if !ty.is_empty() {
+        spans.push(Span::raw(": "));
+        spans.push(Span::styled(ty.to_owned(), Style::default().fg(Color::DarkGray)));
     }
-    ListItem::new(summary)
+
+    ListItem::new(Line::from(spans))
 }
 
 fn live_binding_style() -> Style {
