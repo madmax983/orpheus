@@ -1,3 +1,8 @@
+//! Finite event streams in explicit time.
+//!
+//! Unlike repeating patterns, an [`EventStream`] has a definite end and represents
+//! a fixed sequence of scheduled events.
+
 use core::cmp::{max, min};
 
 use crate::{Event, Pattern, PatternError, TimeSpan};
@@ -10,6 +15,22 @@ pub struct EventStream<T> {
 
 impl<T> EventStream<T> {
     /// Creates an event stream from explicit-time events.
+    ///
+    /// The events are sorted by their start time when the stream is created.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::{Event, EventStream, Rational, TimeSpan};
+    ///
+    /// let event = Event {
+    ///     whole: None,
+    ///     part: TimeSpan::unit(),
+    ///     value: "bd",
+    /// };
+    ///
+    /// let stream = EventStream::new(vec![event]);
+    /// ```
     #[must_use]
     pub fn new(mut events: Vec<Event<T>>) -> Self {
         events.sort_by(|left, right| {

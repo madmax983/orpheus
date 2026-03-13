@@ -1,3 +1,8 @@
+//! Exact rational numbers for continuous time.
+//!
+//! Orpheus uses rational numbers to avoid floating-point drift when sequencing
+//! repeating patterns.
+
 use core::cmp::Ordering;
 use core::ops::Add;
 
@@ -12,6 +17,25 @@ pub struct Rational {
 
 impl Rational {
     /// Creates a normalized rational with a positive denominator.
+    ///
+    /// The numerator and denominator are reduced by their greatest common
+    /// divisor. Negative signs are always pulled into the numerator.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::Rational;
+    ///
+    /// // Fractions are reduced to their simplest form.
+    /// let two_fourths = Rational::new(2, 4).unwrap();
+    /// assert_eq!(two_fourths.numerator(), 1);
+    /// assert_eq!(two_fourths.denominator(), 2);
+    ///
+    /// // Denominators are always positive.
+    /// let negative_half = Rational::new(1, -2).unwrap();
+    /// assert_eq!(negative_half.numerator(), -1);
+    /// assert_eq!(negative_half.denominator(), 2);
+    /// ```
     ///
     /// # Errors
     ///

@@ -1,4 +1,17 @@
 //! Temporal pattern engine for Orpheus.
+//!
+//! This crate provides the data structures and semantics for scheduling events
+//! in time. Time in Orpheus is continuous and represented exactly using rational
+//! numbers.
+//!
+//! There are two main concepts of time provided here:
+//! - **Cycle Patterns:** Infinitely repeating structures (like `CyclePattern`)
+//!   that map elements to fractions of a unit cycle.
+//! - **Explicit Streams:** Finite sequences of events (like `EventStream`) that
+//!   have a definite start and end.
+//!
+//! Both of these implement the [`Pattern`] trait, which allows querying them
+//! over a given half-open window of time called a [`TimeSpan`].
 
 mod cycle;
 mod event;

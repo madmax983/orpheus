@@ -1,3 +1,9 @@
+//! Repeating cycles and subdivision patterns.
+//!
+//! Cycle patterns map structural descriptions (like sequences of notes) onto an
+//! infinitely repeating unit of time called a cycle. Groups within the sequence
+//! evenly subdivide the duration allocated to them by their parent.
+
 use core::cmp::{max, min};
 
 use crate::{Event, PatternError, Rational, TimeSpan};
@@ -21,6 +27,14 @@ pub enum PatternNode<T> {
 
 impl<T> PatternNode<T> {
     /// Creates an atomic pattern node.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::PatternNode;
+    ///
+    /// let note = PatternNode::atom("bd");
+    /// ```
     #[must_use]
     pub const fn atom(value: T) -> Self {
         Self::Atom(value)

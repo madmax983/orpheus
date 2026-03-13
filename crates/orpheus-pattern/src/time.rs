@@ -1,3 +1,9 @@
+//! Continuous time representation for patterns.
+//!
+//! Orpheus uses half-open time intervals to represent when events occur and how
+//! long they last. All time is continuous and represented exactly using rational
+//! numbers.
+
 use core::cmp::Ordering;
 
 use crate::{PatternError, Rational};
@@ -11,6 +17,18 @@ pub struct TimeSpan {
 
 impl TimeSpan {
     /// Creates a half-open span if and only if its bounds are ordered.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::{Rational, TimeSpan};
+    ///
+    /// let start = Rational::new(1, 4).unwrap();
+    /// let end = Rational::new(3, 4).unwrap();
+    /// let span = TimeSpan::new(start, end).unwrap();
+    ///
+    /// assert_eq!(span.start_numer(), 1);
+    /// ```
     ///
     /// # Errors
     ///
