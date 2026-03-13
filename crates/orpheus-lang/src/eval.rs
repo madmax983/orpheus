@@ -3,6 +3,8 @@ use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::path::Path;
 
+use std::io::Write;
+
 use orpheus_dsp::{OfflineRenderError, SampleBank, SampleTrigger, render_events_to_file_with_bank};
 use orpheus_pattern::{Event, PatternNode, Rational, TimeSpan};
 
@@ -119,6 +121,133 @@ pub fn render_sample_pattern_to_file(
 ) -> Result<(), RenderError> {
     let sample_bank = SampleBank::load_builtin();
     render_sample_pattern_to_file_with_bank(pattern, path, cycle_count, &sample_bank)
+}
+
+/// Exports a sample pattern's evaluated events to a CSV file.
+///
+/// # Errors
+///
+/// Returns [`EvalError`] if pattern querying fails or if the file cannot be written.
+pub fn export_sample_pattern_to_csv(
+    pattern: &SamplePatternValue,
+    path: impl AsRef<Path>,
+    cycle_count: u64,
+) -> Result<(), EvalError> {
+    if cycle_count == 0 {
+        return Err(EvalError::new("exporting requires at least one cycle"));
+    }
+
+    let span = render_span(cycle_count)?;
+    let events = pattern.try_query(&span)?;
+    let path = path.as_ref();
+
+    let mut file = std::fs::File::create(path).map_err(|e| EvalError::new(e.to_string()))?;
+    writeln!(
+        file,
+        "start_num,start_den,start_float,end_num,end_den,end_float,sample,gain,pan,rate,hpf_cutoff_hz,lpf_cutoff_hz"
+    )
+    .map_err(|e| EvalError::new(e.to_string()))?;
+
+    for event in events {
+        let start_float = {
+            #[allow(clippy::cast_precision_loss)]
+            let start_num = event.part.start().numerator() as f64;
+            #[allow(clippy::cast_precision_loss)]
+            let start_den = event.part.start().denominator() as f64;
+            start_num / start_den
+        };
+        let end_float = {
+            #[allow(clippy::cast_precision_loss)]
+            let end_num = event.part.end().numerator() as f64;
+            #[allow(clippy::cast_precision_loss)]
+            let end_den = event.part.end().denominator() as f64;
+            end_num / end_den
+        };
+        let hpf = event
+            .value
+            .hpf_cutoff_hz()
+            .map_or_else(String::new, |v| format!("{v:.6}"));
+        let lpf = event
+            .value
+            .lpf_cutoff_hz()
+            .map_or_else(String::new, |v| format!("{v:.6}"));
+        writeln!(
+            file,
+            "{},{},{:.6},{},{},{:.6},{},{:.6},{:.6},{:.6},{},{}",
+            event.part.start().numerator(),
+            event.part.start().denominator(),
+            start_float,
+            event.part.end().numerator(),
+            event.part.end().denominator(),
+            end_float,
+            event.value.sample(),
+            event.value.gain(),
+            event.value.pan(),
+            event.value.rate(),
+            hpf,
+            lpf
+        )
+        .map_err(|e| EvalError::new(e.to_string()))?;
+    }
+
+    Ok(())
+}
+
+/// Exports a number pattern's evaluated events to a CSV file.
+///
+/// # Errors
+///
+/// Returns [`EvalError`] if pattern querying fails or if the file cannot be written.
+pub fn export_number_pattern_to_csv(
+    pattern: &NumberPatternValue,
+    path: impl AsRef<Path>,
+    cycle_count: u64,
+) -> Result<(), EvalError> {
+    if cycle_count == 0 {
+        return Err(EvalError::new("exporting requires at least one cycle"));
+    }
+
+    let span = render_span(cycle_count)?;
+    let events = pattern.try_query(&span)?;
+    let path = path.as_ref();
+
+    let mut file = std::fs::File::create(path).map_err(|e| EvalError::new(e.to_string()))?;
+    writeln!(
+        file,
+        "start_num,start_den,start_float,end_num,end_den,end_float,value"
+    )
+    .map_err(|e| EvalError::new(e.to_string()))?;
+
+    for event in events {
+        let start_float = {
+            #[allow(clippy::cast_precision_loss)]
+            let start_num = event.part.start().numerator() as f64;
+            #[allow(clippy::cast_precision_loss)]
+            let start_den = event.part.start().denominator() as f64;
+            start_num / start_den
+        };
+        let end_float = {
+            #[allow(clippy::cast_precision_loss)]
+            let end_num = event.part.end().numerator() as f64;
+            #[allow(clippy::cast_precision_loss)]
+            let end_den = event.part.end().denominator() as f64;
+            end_num / end_den
+        };
+        writeln!(
+            file,
+            "{},{},{:.6},{},{},{:.6},{:.6}",
+            event.part.start().numerator(),
+            event.part.start().denominator(),
+            start_float,
+            event.part.end().numerator(),
+            event.part.end().denominator(),
+            end_float,
+            event.value
+        )
+        .map_err(|e| EvalError::new(e.to_string()))?;
+    }
+
+    Ok(())
 }
 
 /// Renders a sample pattern to a deterministic stereo audio file using the
