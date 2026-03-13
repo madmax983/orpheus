@@ -1,6 +1,36 @@
+//! Events scheduled in exact time.
+//!
+//! An event represents a value that is conceptually active over a given span of
+//! time.
+
 use crate::TimeSpan;
 
 /// Value scheduled over an exact time span.
+///
+/// When an event is returned by a pattern query window, it may be clipped. The
+/// `part` field shows the portion of the event that falls inside the queried
+/// window. If the event was clipped, the `whole` field holds the original unclipped
+/// duration.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_pattern::{Event, Rational, TimeSpan};
+///
+/// let whole_span = TimeSpan::unit();
+/// let part_span = TimeSpan::new(
+///     Rational::new(1, 2).unwrap(),
+///     Rational::one(),
+/// ).unwrap();
+///
+/// // Represents an event that originally lasted the whole cycle,
+/// // but was clipped to just the second half by the query window.
+/// let event = Event {
+///     whole: Some(whole_span),
+///     part: part_span,
+///     value: "bd",
+/// };
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Event<T> {
     /// The full span the event conceptually occupies.
