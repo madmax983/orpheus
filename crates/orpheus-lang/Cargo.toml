@@ -17,3 +17,4 @@ ratatui.workspace = true
 
 [dev-dependencies]
 hound.workspace = true
+proptest = { workspace = true }

@@ -469,14 +469,12 @@ impl SamplePatternValue {
 
     /// Queries the pattern over the default unit cycle `[0, 1)`.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if an internal runtime transform produces an invalid span or
-    /// overflows the evaluator's bounded rational arithmetic.
-    #[must_use]
-    pub fn query_unit(&self) -> Vec<Event<SampleEvent>> {
+    /// Returns an error if an internal runtime transform produces an invalid
+    /// span or overflows the evaluator's bounded rational arithmetic.
+    pub fn query_unit(&self) -> Result<Vec<Event<SampleEvent>>, EvalError> {
         self.try_query(&TimeSpan::unit())
-            .unwrap_or_else(|error| panic!("sample pattern query failed: {error}"))
     }
 
     pub(crate) fn try_query(&self, span: &TimeSpan) -> Result<Vec<Event<SampleEvent>>, EvalError> {
@@ -556,14 +554,12 @@ impl NumberPatternValue {
 
     /// Queries the pattern over the default unit cycle `[0, 1)`.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if an internal runtime transform produces an invalid span or
-    /// overflows the evaluator's bounded rational arithmetic.
-    #[must_use]
-    pub fn query_unit(&self) -> Vec<Event<f64>> {
+    /// Returns an error if an internal runtime transform produces an invalid
+    /// span or overflows the evaluator's bounded rational arithmetic.
+    pub fn query_unit(&self) -> Result<Vec<Event<f64>>, EvalError> {
         self.try_query(&TimeSpan::unit())
-            .unwrap_or_else(|error| panic!("number pattern query failed: {error}"))
     }
 
     pub(crate) fn constant_value(&self) -> Result<f64, EvalError> {
