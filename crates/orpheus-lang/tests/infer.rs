@@ -22,6 +22,15 @@ fn rev_preserves_sample_pattern_types() {
 }
 
 #[test]
+fn shift_preserves_pattern_types() {
+    let sample_typed = infer_module("drums = shift(0.25, bd sn)", ReplMode::Strict).unwrap();
+    let number_typed = infer_module("swing = shift(0.5, 1 2)", ReplMode::Strict).unwrap();
+
+    assert_eq!(sample_typed.type_of("drums").to_string(), "Pattern<Sample>");
+    assert_eq!(number_typed.type_of("swing").to_string(), "Pattern<Number>");
+}
+
+#[test]
 fn meter_stream_and_sections_infer_sample_patterns() {
     let typed = infer_module(
         "song = seq_sections(section(meter(4, 4, stream(at(beat(0), bd), at(beat(2), sn))), 2))",

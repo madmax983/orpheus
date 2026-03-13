@@ -1,6 +1,6 @@
 use orpheus_pattern::{Rational, TimeSpan};
 
-use crate::eval::EvalError;
+use crate::eval::{EvalError, f64_to_rational};
 use crate::value::{BuiltinFn, BuiltinKind, NumberPatternValue, SamplePatternValue, Value};
 
 pub fn is_sample_identifier(name: &str) -> bool {
@@ -12,6 +12,7 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "bd" | "sn" | "cp" | "hh" => Some(Value::SamplePattern(SamplePatternValue::atom(name))),
         "fast" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Fast))),
         "slow" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Slow))),
+        "shift" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Shift))),
         "rev" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Rev))),
         "gain" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Gain))),
         "hpf" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Hpf))),
@@ -103,6 +104,7 @@ impl BuiltinKind {
         match self {
             Self::Fast => "fast",
             Self::Slow => "slow",
+            Self::Shift => "shift",
             Self::Rev => "rev",
             Self::Gain => "gain",
             Self::Hpf => "hpf",
@@ -120,6 +122,7 @@ impl BuiltinKind {
         match self {
             Self::Fast
             | Self::Slow
+            | Self::Shift
             | Self::Gain
             | Self::Hpf
             | Self::Lpf
@@ -135,6 +138,7 @@ impl BuiltinKind {
         match self {
             Self::Fast => apply_fast(args),
             Self::Slow => apply_slow(args),
+            Self::Shift => apply_shift(args),
             Self::Rev => apply_rev(args),
             Self::Gain => apply_gain(args),
             Self::Hpf => apply_hpf(args),
@@ -185,6 +189,26 @@ fn apply_slow(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::NumberPattern(pattern) => Ok(Value::NumberPattern(pattern.slow(factor))),
         Value::Function(_) | Value::String(_) => Err(EvalError::new(
             "`slow` expected a pattern as its final argument",
+        )),
+    }
+}
+
+fn apply_shift(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let offset = extract_constant_rational_offset(
+        args.next()
+            .ok_or_else(|| EvalError::new("`shift` requires an offset argument"))?,
+        "shift",
+    )?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`shift` requires a pattern argument"))?;
+
+    match pattern {
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.shift(offset))),
+        Value::NumberPattern(pattern) => Ok(Value::NumberPattern(pattern.shift(offset))),
+        Value::Function(_) | Value::String(_) => Err(EvalError::new(
+            "`shift` expected a pattern as its final argument",
         )),
     }
 }
@@ -437,6 +461,14 @@ fn extract_positive_integer_factor(value: Value, builtin_name: &str) -> Result<i
     })?;
 
     Ok(integer)
+}
+
+fn extract_constant_rational_offset(
+    value: Value,
+    builtin_name: &str,
+) -> Result<Rational, EvalError> {
+    let number = extract_constant_number(value, builtin_name)?;
+    f64_to_rational(number, &format!("`{builtin_name}` offset"))
 }
 
 fn extract_whole_number(
@@ -804,7 +836,9 @@ fn extract_number_pattern(
 
 fn extract_constant_number(value: Value, builtin_name: &str) -> Result<f64, EvalError> {
     match value {
-        Value::NumberPattern(pattern) => pattern.constant_value(),
+        Value::NumberPattern(pattern) => pattern.constant_value().map_err(|_| {
+            EvalError::new(format!("`{builtin_name}` requires a constant number argument"))
+        }),
         Value::SamplePattern(_) | Value::Function(_) | Value::String(_) => Err(EvalError::new(
             format!("`{builtin_name}` requires a constant number argument"),
         )),

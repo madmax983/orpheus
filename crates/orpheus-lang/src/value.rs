@@ -11,6 +11,7 @@ use crate::eval::EvalError;
 pub enum BuiltinKind {
     Fast,
     Slow,
+    Shift,
     Rev,
     Gain,
     Hpf,
@@ -301,6 +302,15 @@ impl SamplePatternValue {
         }
     }
 
+    pub(crate) fn shift(self, offset: Rational) -> Self {
+        Self {
+            pattern: PatternRuntime::Shift {
+                offset,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn rev(self) -> Self {
         Self {
             pattern: PatternRuntime::Rev {
@@ -527,6 +537,15 @@ impl NumberPatternValue {
         }
     }
 
+    pub(crate) fn shift(self, offset: Rational) -> Self {
+        Self {
+            pattern: PatternRuntime::Shift {
+                offset,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn rev(self) -> Self {
         Self {
             pattern: PatternRuntime::Rev {
@@ -581,6 +600,10 @@ enum PatternRuntime<T> {
     },
     Slow {
         factor: i64,
+        inner: Box<Self>,
+    },
+    Shift {
+        offset: Rational,
         inner: Box<Self>,
     },
     Rev {
@@ -673,6 +696,7 @@ where
             }
             Self::Fast { factor, inner } => query_fast(inner, *factor, span),
             Self::Slow { factor, inner } => query_slow(inner, *factor, span),
+            Self::Shift { offset, inner } => query_shift(inner, offset, span),
             Self::Rev { inner } => query_rev(inner, span),
             Self::Gain { factor, inner } => {
                 let mut events = inner.try_query(span)?;
@@ -1128,6 +1152,21 @@ where
     Ok(events)
 }
 
+fn query_shift<T>(
+    inner: &PatternRuntime<T>,
+    offset: &Rational,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: Clone + PatternValueTransform + Send + Sync + fmt::Debug,
+{
+    let inverse_offset = rational_sub(&Rational::zero(), offset)?;
+    let source_span = translate_span(span, &inverse_offset)?;
+    let mut events = inner.try_query(&source_span)?;
+    shift_events(&mut events, offset)?;
+    Ok(events)
+}
+
 fn query_rev<T>(inner: &PatternRuntime<T>, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError>
 where
     T: Clone + PatternValueTransform + Send + Sync + fmt::Debug,
@@ -1185,6 +1224,18 @@ fn sort_events<T>(events: &mut [Event<T>]) {
     });
 }
 
+fn shift_events<T>(events: &mut [Event<T>], offset: &Rational) -> Result<(), EvalError> {
+    for event in &mut *events {
+        event.part = translate_span(&event.part, offset)?;
+        if let Some(whole) = event.whole.take() {
+            event.whole = Some(translate_span(&whole, offset)?);
+        }
+    }
+
+    sort_events(events);
+    Ok(())
+}
+
 fn cycle_span(cycle: i128) -> Result<TimeSpan, EvalError> {
     let start = rational_from_parts(cycle, 1)?;
     let end = rational_from_parts(
@@ -1224,6 +1275,13 @@ fn scale_span(span: &TimeSpan, numerator: i64, denominator: i64) -> Result<TimeS
     build_span(
         rational_mul_parts(span.start(), numerator, denominator)?,
         rational_mul_parts(span.end(), numerator, denominator)?,
+    )
+}
+
+fn translate_span(span: &TimeSpan, offset: &Rational) -> Result<TimeSpan, EvalError> {
+    build_span(
+        rational_add(span.start(), offset)?,
+        rational_add(span.end(), offset)?,
     )
 }
 

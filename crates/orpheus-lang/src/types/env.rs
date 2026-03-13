@@ -57,6 +57,16 @@ impl TypeEnv {
             },
         );
         env.insert(
+            "shift",
+            TypeScheme {
+                vars: vec![alpha],
+                ty: Type::curried(
+                    vec![Type::pattern(Type::Number), alpha_pattern.clone()],
+                    alpha_pattern.clone(),
+                ),
+            },
+        );
+        env.insert(
             "rev",
             TypeScheme {
                 vars: vec![alpha],

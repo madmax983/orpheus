@@ -121,6 +121,7 @@ drums |> every(4, fast(2))
 -- Chaining reads top-to-bottom as a transformation pipeline
 drums = bd sn cp sn
   |> every(4, fast(2))     -- every 4th cycle, double speed
+  |> shift(0.125)          -- push the groove an eighth of a cycle later
   |> sometimes(rev)         -- randomly reverse
   |> gain(0.7)              -- reduce volume
 ```

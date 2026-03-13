@@ -852,7 +852,7 @@ fn extract_constant_number_rational(value: Value, context: &str) -> Result<Ratio
     f64_to_rational(constant, context)
 }
 
-fn f64_to_rational(value: f64, context: &str) -> Result<Rational, EvalError> {
+pub fn f64_to_rational(value: f64, context: &str) -> Result<Rational, EvalError> {
     if !value.is_finite() {
         return Err(EvalError::new(format!("{context} must be finite")));
     }

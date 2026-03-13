@@ -82,6 +82,47 @@ fn rev_reverses_events_within_each_cycle() {
 }
 
 #[test]
+fn shift_rotates_sample_events_forward_within_the_cycle() {
+    let module = eval_module("drums = bd sn |> shift(0.25)", ReplMode::Loose).unwrap();
+    let events = module
+        .get("drums")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 3);
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 4).unwrap());
+    assert_eq!(events[0].value.sample(), "sn");
+    assert_eq!(events[1].part.start(), &Rational::new(1, 4).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::new(3, 4).unwrap());
+    assert_eq!(events[1].value.sample(), "bd");
+    assert_eq!(events[2].part.start(), &Rational::new(3, 4).unwrap());
+    assert_eq!(events[2].part.end(), &Rational::one());
+    assert_eq!(events[2].value.sample(), "sn");
+}
+
+#[test]
+fn shift_rotates_number_patterns_forward_within_the_cycle() {
+    let module = eval_module("swing = shift(0.5, 1 2)", ReplMode::Loose).unwrap();
+    let events = module
+        .get("swing")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 2).unwrap());
+    assert!((events[0].value - 2.0).abs() < f64::EPSILON);
+    assert_eq!(events[1].part.start(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::one());
+    assert!((events[1].value - 1.0).abs() < f64::EPSILON);
+}
+
+#[test]
 fn direct_call_matches_pipe_application_for_fast() {
     let direct = eval_module("drums = fast(2, bd sn)", ReplMode::Loose).unwrap();
     let piped = eval_module("drums = bd sn |> fast(2)", ReplMode::Loose).unwrap();
@@ -90,6 +131,27 @@ fn direct_call_matches_pipe_application_for_fast() {
         sample_names(direct.get("drums").unwrap()),
         sample_names(piped.get("drums").unwrap())
     );
+}
+
+#[test]
+fn direct_call_matches_pipe_application_for_shift() {
+    let direct = eval_module("drums = shift(0.25, bd sn)", ReplMode::Loose).unwrap();
+    let piped = eval_module("drums = bd sn |> shift(0.25)", ReplMode::Loose).unwrap();
+
+    let direct_events = direct
+        .get("drums")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit();
+    let piped_events = piped
+        .get("drums")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(direct_events, piped_events);
 }
 
 #[test]
@@ -615,6 +677,11 @@ fn builtin_type_errors_report_which_argument_shape_is_required() {
         "drums = fast(bd, bd sn)",
         ReplMode::Loose,
         &["`fast` requires a constant number argument"],
+    );
+    assert_eval_error_contains(
+        "drums = shift(0 0.25, bd sn)",
+        ReplMode::Loose,
+        &["`shift` requires a constant number argument"],
     );
 }
 
