@@ -47,14 +47,15 @@ fn repl_accepts_pattern_and_reports_success() {
     cmd.write_stdin("drums = bd sn cp sn\n:quit\n")
         .assert()
         .success()
-        .stdout(contains("[Pattern<Sample>] ok"));
+        .stdout(contains("✓ bound drums: Pattern<Sample>"));
 }
 
 #[test]
 fn repl_ignores_blank_lines_before_quit() {
     let mut cmd = cargo_bin_cmd!("orpheus");
 
-    cmd.write_stdin("\n\n:quit\n").assert().success().stdout("");
+    // the prompt is colorized, so we just check for multiple ">" appearances
+    cmd.write_stdin("\n\n:quit\n").assert().success().stdout(contains(">").count(3));
 }
 
 #[test]
@@ -74,7 +75,8 @@ fn repl_reuses_prior_bindings_across_lines() {
     cmd.write_stdin("drums = bd sn cp sn\ncopy = drums\n:quit\n")
         .assert()
         .success()
-        .stdout(contains("[Pattern<Sample>] ok").count(2));
+        .stdout(contains("✓ bound drums: Pattern<Sample>"))
+        .stdout(contains("✓ bound copy: Pattern<Sample>"));
 }
 
 #[test]
@@ -84,7 +86,7 @@ fn repl_prints_inferred_function_types() {
     cmd.write_stdin("warp = fast(2)\n:quit\n")
         .assert()
         .success()
-        .stdout(contains("[Function("));
+        .stdout(contains("✓ bound warp: Function("));
 }
 
 #[test]
