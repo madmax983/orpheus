@@ -191,6 +191,13 @@ impl ReplSession {
                     self.render_binding(args)
                 }
             }
+            "export" => {
+                if args.is_empty() {
+                    Err(export_usage().to_owned())
+                } else {
+                    self.export_binding(args)
+                }
+            }
             "tempo" => {
                 if args.is_empty() {
                     Err(tempo_usage().to_owned())
@@ -259,6 +266,59 @@ impl ReplSession {
             .map_err(|error| error.to_string())?;
         Ok(format!(
             "rendered `{binding_name}` to `{path}` ({cycles} cycle(s))"
+        ))
+    }
+
+    fn export_binding(&self, args: &str) -> Result<String, String> {
+        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        if tokens.len() < 2 {
+            return Err(export_usage().to_owned());
+        }
+
+        let cycles = if tokens.len() >= 3 {
+            tokens
+                .last()
+                .and_then(|token| token.parse::<u64>().ok())
+                .unwrap_or(1)
+        } else {
+            1
+        };
+        let path_end = if tokens.len() >= 3 && tokens.last().unwrap().parse::<u64>().is_ok() {
+            tokens.len() - 1
+        } else {
+            tokens.len()
+        };
+
+        let binding_name = tokens[0];
+        let path = tokens[1..path_end].join(" ");
+        if path.is_empty() {
+            return Err(export_usage().to_owned());
+        }
+
+        let value = self
+            .bindings
+            .get(binding_name)
+            .ok_or_else(|| format!("no binding named `{binding_name}`"))?;
+
+        match value {
+            Value::SamplePattern(pattern) => {
+                crate::eval::export_sample_pattern_to_csv(pattern, &path, cycles)
+                    .map_err(|error| error.to_string())?;
+            }
+            Value::NumberPattern(pattern) => {
+                crate::eval::export_number_pattern_to_csv(pattern, &path, cycles)
+                    .map_err(|error| error.to_string())?;
+            }
+            Value::Function(_) | Value::String(_) => {
+                return Err(format!(
+                    "binding `{binding_name}` is a {} and cannot be exported",
+                    value.kind_name()
+                ));
+            }
+        }
+
+        Ok(format!(
+            "exported `{binding_name}` to `{path}` ({cycles} cycle(s))"
         ))
     }
 
@@ -475,6 +535,10 @@ const fn render_usage() -> &'static str {
     "usage: :render <binding> <path> [cycles]"
 }
 
+const fn export_usage() -> &'static str {
+    "usage: :export <binding> <path> [cycles]"
+}
+
 const fn tempo_usage() -> &'static str {
     "usage: :tempo <bpm>"
 }
@@ -523,6 +587,10 @@ mod tests {
         std::env::temp_dir().join(format!("orpheus-render-{}.wav", unique_temp_suffix()))
     }
 
+    fn temp_csv_path() -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("orpheus-export-{}.csv", unique_temp_suffix()))
+    }
+
     #[test]
     fn eval_line_reuses_prior_bindings() {
         let mut session = ReplSession::new();
@@ -562,6 +630,50 @@ mod tests {
         assert!(message.contains("rendered `song`"));
         assert!(path.exists());
         assert!(fs::metadata(&path).unwrap().len() > 44);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn export_command_exports_a_bound_pattern_to_csv() {
+        let mut session = ReplSession::new();
+        let path = temp_csv_path();
+
+        session.eval_line("song = bd sn cp sn").unwrap();
+        let message = session
+            .eval_line(&format!(":export song {} 2", path.display()))
+            .unwrap();
+
+        assert!(message.contains("exported `song`"));
+        assert!(path.exists());
+        let contents = fs::read_to_string(&path).unwrap();
+        assert!(contents.contains(
+            "start_num,start_den,start_float,end_num,end_den,end_float,sample,gain,pan,rate"
+        ));
+        assert!(contents.contains("bd"));
+        assert!(contents.contains("sn"));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn export_command_exports_number_pattern_to_csv() {
+        let mut session = ReplSession::new();
+        let path = temp_csv_path();
+
+        session.eval_line("notes = 1 2 3").unwrap();
+        let message = session
+            .eval_line(&format!(":export notes {} 1", path.display()))
+            .unwrap();
+
+        assert!(message.contains("exported `notes`"));
+        assert!(path.exists());
+        let contents = fs::read_to_string(&path).unwrap();
+        assert!(
+            contents.contains("start_num,start_den,start_float,end_num,end_den,end_float,value")
+        );
+        assert!(contents.contains('1'));
+        assert!(contents.contains('2'));
 
         let _ = fs::remove_file(path);
     }
