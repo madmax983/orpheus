@@ -76,6 +76,15 @@ fn every_applies_its_transform_on_cycle_zero() {
 }
 
 #[test]
+fn sometimes_applies_its_transform_on_cycle_zero() {
+    let module = eval_module("drums = bd sn |> sometimes(fast(2))", ReplMode::Loose).unwrap();
+    assert_eq!(
+        sample_names(module.get("drums").unwrap()),
+        ["bd", "sn", "bd", "sn"]
+    );
+}
+
+#[test]
 fn every_transforms_the_selected_cycle_in_isolation() {
     let module = eval_module(
         "drums = every(2, fast(2), every(3, rev, bd sn cp))",
@@ -715,6 +724,11 @@ fn builtin_type_errors_report_which_argument_shape_is_required() {
         "drums = every(2, fast, bd sn)",
         ReplMode::Loose,
         &["`every` requires a unary pattern transform as its second argument"],
+    );
+    assert_eval_error_contains(
+        "drums = sometimes(fast, bd sn)",
+        ReplMode::Loose,
+        &["`sometimes` requires a unary pattern transform as its first argument"],
     );
     assert_eval_error_contains(
         "drums = shift(0 0.25, bd sn)",

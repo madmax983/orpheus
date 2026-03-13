@@ -11,6 +11,7 @@ pub fn builtin_value(name: &str) -> Option<Value> {
     match name {
         "bd" | "sn" | "cp" | "hh" => Some(Value::SamplePattern(SamplePatternValue::atom(name))),
         "every" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Every))),
+        "sometimes" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Sometimes))),
         "fast" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Fast))),
         "slow" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Slow))),
         "shift" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Shift))),
@@ -73,7 +74,14 @@ impl BuiltinFn {
         Self {
             kind,
             bound_args: Vec::new(),
+            site_salt: None,
         }
+    }
+
+    #[must_use]
+    pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
+        self.site_salt = Some(site_salt);
+        self
     }
 
     pub(crate) fn apply(self, args: Vec<Value>) -> Result<Value, EvalError> {
@@ -90,6 +98,7 @@ pub fn apply_builtin_function(function: &BuiltinFn, args: Vec<Value>) -> Result<
         return Ok(Value::Function(BuiltinFn {
             kind,
             bound_args: combined,
+            site_salt: function.site_salt,
         }));
     }
 
@@ -102,13 +111,14 @@ pub fn apply_builtin_function(function: &BuiltinFn, args: Vec<Value>) -> Result<
         )));
     }
 
-    kind.execute(combined)
+    kind.execute(function, combined)
 }
 
 impl BuiltinKind {
     const fn name(self) -> &'static str {
         match self {
             Self::Every => "every",
+            Self::Sometimes => "sometimes",
             Self::Fast => "fast",
             Self::Slow => "slow",
             Self::Shift => "shift",
@@ -128,7 +138,8 @@ impl BuiltinKind {
     const fn arity(self) -> usize {
         match self {
             Self::Every | Self::Slice | Self::SliceIdx => 3,
-            Self::Fast
+            Self::Sometimes
+            | Self::Fast
             | Self::Slow
             | Self::Shift
             | Self::Gain
@@ -141,9 +152,10 @@ impl BuiltinKind {
         }
     }
 
-    fn execute(self, args: Vec<Value>) -> Result<Value, EvalError> {
+    fn execute(self, function: &BuiltinFn, args: Vec<Value>) -> Result<Value, EvalError> {
         match self {
             Self::Every => apply_every(args),
+            Self::Sometimes => apply_sometimes(args, function.site_salt.unwrap_or_default()),
             Self::Fast => apply_fast(args),
             Self::Slow => apply_slow(args),
             Self::Shift => apply_shift(args),
@@ -177,15 +189,43 @@ fn apply_every(args: Vec<Value>) -> Result<Value, EvalError> {
 
     match pattern {
         Value::SamplePattern(pattern) => {
-            let transform = extract_unary_pattern_transform(transform)?;
+            let transform = extract_unary_pattern_transform(transform, "every", "second")?;
             Ok(Value::SamplePattern(pattern.every(period, transform)))
         }
         Value::NumberPattern(pattern) => {
-            let transform = extract_unary_pattern_transform(transform)?;
+            let transform = extract_unary_pattern_transform(transform, "every", "second")?;
             Ok(Value::NumberPattern(pattern.every(period, transform)))
         }
         Value::Function(_) | Value::String(_) => Err(EvalError::new(
             "`every` expected a pattern as its final argument",
+        )),
+    }
+}
+
+fn apply_sometimes(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let transform = args
+        .next()
+        .ok_or_else(|| EvalError::new("`sometimes` requires a transform argument"))?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`sometimes` requires a pattern argument"))?;
+
+    match pattern {
+        Value::SamplePattern(pattern) => {
+            let transform = extract_unary_pattern_transform(transform, "sometimes", "first")?;
+            Ok(Value::SamplePattern(
+                pattern.sometimes_with_site_salt(transform, site_salt),
+            ))
+        }
+        Value::NumberPattern(pattern) => {
+            let transform = extract_unary_pattern_transform(transform, "sometimes", "first")?;
+            Ok(Value::NumberPattern(
+                pattern.sometimes_with_site_salt(transform, site_salt),
+            ))
+        }
+        Value::Function(_) | Value::String(_) => Err(EvalError::new(
+            "`sometimes` expected a pattern as its final argument",
         )),
     }
 }
@@ -470,21 +510,26 @@ fn extract_constant_rational_offset(
     f64_to_rational(number, &format!("`{builtin_name}` offset"))
 }
 
-fn extract_unary_pattern_transform(transform: Value) -> Result<BuiltinFn, EvalError> {
+fn extract_unary_pattern_transform(
+    transform: Value,
+    builtin_name: &str,
+    argument_position: &str,
+) -> Result<BuiltinFn, EvalError> {
+    let message = format!(
+        "`{builtin_name}` requires a unary pattern transform as its {argument_position} argument"
+    );
     match transform {
         Value::Function(function) => {
             let remaining = function.kind.arity() - function.bound_args.len();
             if remaining == 1 {
                 Ok(function)
             } else {
-                Err(EvalError::new(
-                    "`every` requires a unary pattern transform as its second argument",
-                ))
+                Err(EvalError::new(message))
             }
         }
-        Value::SamplePattern(_) | Value::NumberPattern(_) | Value::String(_) => Err(
-            EvalError::new("`every` requires a unary pattern transform as its second argument"),
-        ),
+        Value::SamplePattern(_) | Value::NumberPattern(_) | Value::String(_) => {
+            Err(EvalError::new(message))
+        }
     }
 }
 

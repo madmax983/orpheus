@@ -45,8 +45,29 @@ fn every_infers_a_polymorphic_pattern_transform_function() {
 }
 
 #[test]
+fn sometimes_infers_a_polymorphic_pattern_transform_function() {
+    let typed = infer_module("warp = sometimes(fast(2))", ReplMode::Strict).unwrap();
+
+    match typed.type_of("warp") {
+        Type::Function(args, ret) => {
+            assert_eq!(args.len(), 1);
+            assert_eq!(args[0], *ret.clone());
+            assert!(matches!(args[0], Type::Pattern(_)));
+        }
+        other => panic!("expected function type, got {other:?}"),
+    }
+}
+
+#[test]
 fn every_preserves_sample_pattern_types() {
     let typed = infer_module("drums = every(2, fast(2), bd sn)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn sometimes_preserves_sample_pattern_types() {
+    let typed = infer_module("drums = sometimes(rev, bd sn)", ReplMode::Strict).unwrap();
 
     assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
 }

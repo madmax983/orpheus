@@ -35,58 +35,12 @@ impl TypeEnv {
         env.insert("hh", TypeScheme::monomorphic(Type::pattern(Type::Sample)));
 
         let alpha = TypeVarId::new(0);
-        let alpha_pattern = Type::pattern(Type::Var(alpha));
-        env.insert(
-            "fast",
-            TypeScheme {
-                vars: vec![alpha],
-                ty: Type::curried(
-                    vec![Type::pattern(Type::Number), alpha_pattern.clone()],
-                    alpha_pattern.clone(),
-                ),
-            },
-        );
-        env.insert(
-            "slow",
-            TypeScheme {
-                vars: vec![alpha],
-                ty: Type::curried(
-                    vec![Type::pattern(Type::Number), alpha_pattern.clone()],
-                    alpha_pattern.clone(),
-                ),
-            },
-        );
-        env.insert(
-            "shift",
-            TypeScheme {
-                vars: vec![alpha],
-                ty: Type::curried(
-                    vec![Type::pattern(Type::Number), alpha_pattern.clone()],
-                    alpha_pattern.clone(),
-                ),
-            },
-        );
-        env.insert(
-            "every",
-            TypeScheme {
-                vars: vec![alpha],
-                ty: Type::curried(
-                    vec![
-                        Type::pattern(Type::Number),
-                        Type::function(vec![alpha_pattern.clone()], alpha_pattern.clone()),
-                        alpha_pattern.clone(),
-                    ],
-                    alpha_pattern.clone(),
-                ),
-            },
-        );
-        env.insert(
-            "rev",
-            TypeScheme {
-                vars: vec![alpha],
-                ty: Type::curried(vec![alpha_pattern.clone()], alpha_pattern),
-            },
-        );
+        for name in ["fast", "slow", "shift"] {
+            env.insert(name, numeric_pattern_transform_scheme(alpha));
+        }
+        env.insert("every", every_transform_scheme(alpha));
+        env.insert("sometimes", sometimes_transform_scheme(alpha));
+        env.insert("rev", unary_pattern_transform_scheme(alpha));
         for name in ["gain", "hpf", "lpf", "pan", "pitch", "rate"] {
             env.insert(name, sample_control_scheme());
         }
@@ -138,4 +92,52 @@ fn sample_control_scheme() -> TypeScheme {
         vec![Type::pattern(Type::Number), Type::pattern(Type::Sample)],
         Type::pattern(Type::Sample),
     ))
+}
+
+fn numeric_pattern_transform_scheme(alpha: TypeVarId) -> TypeScheme {
+    let alpha_pattern = Type::pattern(Type::Var(alpha));
+    TypeScheme {
+        vars: vec![alpha],
+        ty: Type::curried(
+            vec![Type::pattern(Type::Number), alpha_pattern.clone()],
+            alpha_pattern,
+        ),
+    }
+}
+
+fn every_transform_scheme(alpha: TypeVarId) -> TypeScheme {
+    let alpha_pattern = Type::pattern(Type::Var(alpha));
+    TypeScheme {
+        vars: vec![alpha],
+        ty: Type::curried(
+            vec![
+                Type::pattern(Type::Number),
+                Type::function(vec![alpha_pattern.clone()], alpha_pattern.clone()),
+                alpha_pattern.clone(),
+            ],
+            alpha_pattern,
+        ),
+    }
+}
+
+fn sometimes_transform_scheme(alpha: TypeVarId) -> TypeScheme {
+    let alpha_pattern = Type::pattern(Type::Var(alpha));
+    TypeScheme {
+        vars: vec![alpha],
+        ty: Type::curried(
+            vec![
+                Type::function(vec![alpha_pattern.clone()], alpha_pattern.clone()),
+                alpha_pattern.clone(),
+            ],
+            alpha_pattern,
+        ),
+    }
+}
+
+fn unary_pattern_transform_scheme(alpha: TypeVarId) -> TypeScheme {
+    let alpha_pattern = Type::pattern(Type::Var(alpha));
+    TypeScheme {
+        vars: vec![alpha],
+        ty: Type::curried(vec![alpha_pattern.clone()], alpha_pattern),
+    }
 }

@@ -88,7 +88,7 @@ impl From<OfflineRenderError> for RenderError {
 /// unsupported expression or builtin application.
 pub fn eval_module(source: &str, mode: ReplMode) -> Result<BTreeMap<String, Value>, EvalError> {
     let parsed = parse_module(source)?;
-    Evaluator::new(mode).eval_module(&parsed)
+    Evaluator::new(mode, &parsed).eval_module(&parsed)
 }
 
 pub fn eval_into_bindings(
@@ -97,7 +97,7 @@ pub fn eval_into_bindings(
     bindings: &mut BTreeMap<String, Value>,
 ) -> Result<Option<(String, Value)>, EvalError> {
     let parsed = parse_module(source)?;
-    let mut evaluator = Evaluator::with_bindings(mode, bindings.clone());
+    let mut evaluator = Evaluator::with_bindings(mode, bindings.clone(), &parsed);
     let last_binding = evaluator.eval_statements(&parsed.statements)?;
     *bindings = evaluator.bindings;
     Ok(last_binding)
@@ -299,6 +299,7 @@ pub fn render_sample_pattern_to_wav(
 struct Evaluator {
     mode: ReplMode,
     bindings: BTreeMap<String, Value>,
+    expr_site_salts: BTreeMap<usize, u64>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -347,12 +348,16 @@ impl ExplicitValue {
 }
 
 impl Evaluator {
-    const fn new(mode: ReplMode) -> Self {
-        Self::with_bindings(mode, BTreeMap::new())
+    fn new(mode: ReplMode, module: &Module) -> Self {
+        Self::with_bindings(mode, BTreeMap::new(), module)
     }
 
-    const fn with_bindings(mode: ReplMode, bindings: BTreeMap<String, Value>) -> Self {
-        Self { mode, bindings }
+    fn with_bindings(mode: ReplMode, bindings: BTreeMap<String, Value>, module: &Module) -> Self {
+        Self {
+            mode,
+            bindings,
+            expr_site_salts: collect_expr_site_salts(module),
+        }
     }
 
     fn eval_module(mut self, module: &Module) -> Result<BTreeMap<String, Value>, EvalError> {
@@ -393,7 +398,7 @@ impl Evaluator {
             Expr::Stack(layers) => self.eval_stack(layers, meter),
             Expr::Stream(items) => self.eval_stream(items, meter),
             Expr::Pipe { lhs, rhs } => self.eval_pipe(lhs, rhs, meter),
-            Expr::Call { callee, args } => self.eval_call(callee, args, meter),
+            Expr::Call { callee, args } => self.eval_call(expr, callee, args, meter),
             Expr::At { start, pattern } => self.eval_at(start, pattern, meter),
             Expr::Meter {
                 beats,
@@ -501,23 +506,29 @@ impl Evaluator {
         let lhs_value = self.eval_expr_in_meter(lhs, meter)?;
         match rhs {
             Expr::Call { callee, args } => {
-                self.eval_call_with_args(callee, args, vec![lhs_value], meter)
+                self.eval_call_with_args(rhs, callee, args, vec![lhs_value], meter)
             }
-            _ => Self::apply_value(self.eval_expr_in_meter(rhs, meter)?, vec![lhs_value]),
+            _ => Self::apply_value(
+                self.eval_expr_in_meter(rhs, meter)?,
+                vec![lhs_value],
+                self.expr_site_salt(rhs),
+            ),
         }
     }
 
     fn eval_call(
         &self,
+        call_expr: &Expr,
         callee: &Expr,
         args: &[Expr],
         meter: Option<&MeterContext>,
     ) -> Result<Value, EvalError> {
-        self.eval_call_with_args(callee, args, Vec::new(), meter)
+        self.eval_call_with_args(call_expr, callee, args, Vec::new(), meter)
     }
 
     fn eval_call_with_args(
         &self,
+        call_expr: &Expr,
         callee: &Expr,
         args: &[Expr],
         piped_args: Vec<Value>,
@@ -529,7 +540,7 @@ impl Evaluator {
             evaluated_args.push(self.eval_expr_in_meter(arg, meter)?);
         }
         evaluated_args.extend(piped_args);
-        Self::apply_value(callee_value, evaluated_args)
+        Self::apply_value(callee_value, evaluated_args, self.expr_site_salt(call_expr))
     }
 
     fn eval_at(
@@ -760,13 +771,29 @@ impl Evaluator {
         }
     }
 
-    fn apply_value(callee: Value, args: Vec<Value>) -> Result<Value, EvalError> {
+    fn apply_value(
+        callee: Value,
+        args: Vec<Value>,
+        site_salt: Option<u64>,
+    ) -> Result<Value, EvalError> {
         match callee {
-            Value::Function(function) => function.apply(args),
+            Value::Function(function) => {
+                let function = match site_salt {
+                    Some(site_salt) if function.site_salt.is_none() => {
+                        function.with_site_salt(site_salt)
+                    }
+                    Some(_) | None => function,
+                };
+                function.apply(args)
+            }
             Value::SamplePattern(_) | Value::NumberPattern(_) | Value::String(_) => Err(
                 EvalError::new(format!("cannot call a {}", callee.kind_name())),
             ),
         }
+    }
+
+    fn expr_site_salt(&self, expr: &Expr) -> Option<u64> {
+        self.expr_site_salts.get(&expr_key(expr)).copied()
     }
 
     fn eval_ident(&self, name: &str) -> Result<Value, EvalError> {
@@ -948,6 +975,113 @@ impl Evaluator {
     }
 }
 
+const SITE_SEED_ROOT: u64 = 0xC6A4_A793_5BD1_E995;
+const ROLE_STATEMENT: u64 = 0x01;
+const ROLE_SEQ_ITEM: u64 = 0x02;
+const ROLE_STACK_LAYER: u64 = 0x03;
+const ROLE_STREAM_ITEM: u64 = 0x04;
+const ROLE_PIPE_LHS: u64 = 0x05;
+const ROLE_PIPE_RHS: u64 = 0x06;
+const ROLE_CALL_CALLEE: u64 = 0x07;
+const ROLE_CALL_ARG: u64 = 0x08;
+const ROLE_AT_START: u64 = 0x09;
+const ROLE_AT_PATTERN: u64 = 0x0A;
+const ROLE_METER_BEATS: u64 = 0x0B;
+const ROLE_METER_UNIT: u64 = 0x0C;
+const ROLE_METER_PATTERN: u64 = 0x0D;
+const ROLE_BEAT_VALUE: u64 = 0x0E;
+const ROLE_SECTION_PATTERN: u64 = 0x0F;
+const ROLE_SECTION_CYCLES: u64 = 0x10;
+const ROLE_SEQ_SECTION_ITEM: u64 = 0x11;
+const ROLE_GROUP_ITEM: u64 = 0x12;
+
+fn collect_expr_site_salts(module: &Module) -> BTreeMap<usize, u64> {
+    let mut salts = BTreeMap::new();
+    for (index, statement) in module.statements.iter().enumerate() {
+        match statement {
+            Stmt::Binding { expr, .. } => {
+                let seed = derive_site_seed(SITE_SEED_ROOT, ROLE_STATEMENT, index as u64);
+                record_expr_site_salts(expr, seed, &mut salts);
+            }
+        }
+    }
+    salts
+}
+
+fn record_expr_site_salts(expr: &Expr, seed: u64, salts: &mut BTreeMap<usize, u64>) {
+    salts.insert(expr_key(expr), seed);
+    match expr {
+        Expr::Seq(items) => record_expr_list(items, seed, ROLE_SEQ_ITEM, salts),
+        Expr::Stack(layers) => record_expr_list(layers, seed, ROLE_STACK_LAYER, salts),
+        Expr::Stream(items) => record_expr_list(items, seed, ROLE_STREAM_ITEM, salts),
+        Expr::Pipe { lhs, rhs } => {
+            record_expr_site_salts(lhs, derive_site_seed(seed, ROLE_PIPE_LHS, 0), salts);
+            record_expr_site_salts(rhs, derive_site_seed(seed, ROLE_PIPE_RHS, 0), salts);
+        }
+        Expr::Call { callee, args } => {
+            record_expr_site_salts(callee, derive_site_seed(seed, ROLE_CALL_CALLEE, 0), salts);
+            record_expr_list(args, seed, ROLE_CALL_ARG, salts);
+        }
+        Expr::At { start, pattern } => {
+            record_expr_site_salts(start, derive_site_seed(seed, ROLE_AT_START, 0), salts);
+            record_expr_site_salts(pattern, derive_site_seed(seed, ROLE_AT_PATTERN, 0), salts);
+        }
+        Expr::Meter {
+            beats,
+            unit,
+            pattern,
+        } => {
+            record_expr_site_salts(beats, derive_site_seed(seed, ROLE_METER_BEATS, 0), salts);
+            record_expr_site_salts(unit, derive_site_seed(seed, ROLE_METER_UNIT, 0), salts);
+            record_expr_site_salts(
+                pattern,
+                derive_site_seed(seed, ROLE_METER_PATTERN, 0),
+                salts,
+            );
+        }
+        Expr::Beat(value) => {
+            record_expr_site_salts(value, derive_site_seed(seed, ROLE_BEAT_VALUE, 0), salts);
+        }
+        Expr::Section { pattern, cycles } => {
+            record_expr_site_salts(
+                pattern,
+                derive_site_seed(seed, ROLE_SECTION_PATTERN, 0),
+                salts,
+            );
+            record_expr_site_salts(
+                cycles,
+                derive_site_seed(seed, ROLE_SECTION_CYCLES, 0),
+                salts,
+            );
+        }
+        Expr::SeqSections(sections) => {
+            record_expr_list(sections, seed, ROLE_SEQ_SECTION_ITEM, salts);
+        }
+        Expr::Group(items) => record_expr_list(items, seed, ROLE_GROUP_ITEM, salts),
+        Expr::Ident(_) | Expr::Rest | Expr::Number(_) | Expr::String(_) => {}
+    }
+}
+
+fn record_expr_list(items: &[Expr], seed: u64, role: u64, salts: &mut BTreeMap<usize, u64>) {
+    for (index, item) in items.iter().enumerate() {
+        record_expr_site_salts(item, derive_site_seed(seed, role, index as u64), salts);
+    }
+}
+
+const fn derive_site_seed(base: u64, role: u64, ordinal: u64) -> u64 {
+    let mut state = base
+        ^ role.wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        ^ ordinal.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    state = state.wrapping_add(0x94D0_49BB_1331_11EB);
+    state = (state ^ (state >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    state = (state ^ (state >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    state ^ (state >> 31)
+}
+
+fn expr_key(expr: &Expr) -> usize {
+    std::ptr::from_ref(expr) as usize
+}
+
 fn extract_constant_number_value(value: Value, context: &str) -> Result<f64, EvalError> {
     match value {
         Value::NumberPattern(pattern) => pattern.constant_value(),
@@ -1077,4 +1211,94 @@ fn rational_add(left: &Rational, right: &Rational) -> Result<Rational, EvalError
 fn rational_from_parts(numerator: i128, denominator: i128) -> Result<Rational, EvalError> {
     Rational::checked_from_parts(numerator, denominator)
         .map_err(|error| EvalError::new(error.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Evaluator, ReplMode, eval_module, parse_module, render_span};
+    use crate::value::{SampleEvent, Value, sometimes_applies_on_cycle};
+    use orpheus_pattern::{Event, Rational};
+
+    fn sample_events_for_span(
+        value: &Value,
+        cycle_count: u64,
+    ) -> Result<Vec<Event<SampleEvent>>, super::EvalError> {
+        value
+            .as_sample_pattern()
+            .unwrap()
+            .try_query(&render_span(cycle_count)?)
+    }
+
+    fn sample_names_in_cycle(events: &[Event<SampleEvent>], cycle: i128) -> Vec<String> {
+        let cycle_start = Rational::checked_from_parts(cycle, 1).unwrap();
+        let cycle_end = Rational::checked_from_parts(cycle + 1, 1).unwrap();
+        events
+            .iter()
+            .filter(|event| event.part.start() >= &cycle_start && event.part.end() <= &cycle_end)
+            .map(|event| event.value.sample().to_owned())
+            .collect()
+    }
+
+    fn find_call_expr_site_salt(source: &str, binding_name: &str) -> u64 {
+        let parsed = parse_module(source).unwrap();
+        let evaluator = Evaluator::new(ReplMode::Loose, &parsed);
+        let expr = parsed
+            .statements
+            .iter()
+            .find_map(|statement| match statement {
+                crate::Stmt::Binding { name, expr } if name == binding_name => Some(expr),
+                crate::Stmt::Binding { .. } => None,
+            })
+            .unwrap();
+        evaluator.expr_site_salt(expr).unwrap()
+    }
+
+    #[test]
+    fn separate_sometimes_call_sites_are_salted_independently() {
+        let source = "\
+left = sometimes(rev, bd sn)
+right = sometimes(fast(2), cp hh)";
+        let left_salt = find_call_expr_site_salt(source, "left");
+        let right_salt = find_call_expr_site_salt(source, "right");
+        let cycle = (0_i128..64)
+            .find(|cycle| {
+                sometimes_applies_on_cycle(*cycle, left_salt)
+                    != sometimes_applies_on_cycle(*cycle, right_salt)
+            })
+            .expect("expected separate call sites to diverge on some cycle");
+        let module = eval_module(source, ReplMode::Loose).unwrap();
+        let span_cycles = u64::try_from(cycle + 1).unwrap();
+        let left_events = sample_events_for_span(module.get("left").unwrap(), span_cycles).unwrap();
+        let right_events =
+            sample_events_for_span(module.get("right").unwrap(), span_cycles).unwrap();
+        let left_names = sample_names_in_cycle(&left_events, cycle);
+        let right_names = sample_names_in_cycle(&right_events, cycle);
+
+        assert_ne!(left_salt, right_salt);
+        assert_eq!(
+            left_names,
+            if sometimes_applies_on_cycle(cycle, left_salt) {
+                vec!["sn".to_owned(), "bd".to_owned()]
+            } else {
+                vec!["bd".to_owned(), "sn".to_owned()]
+            }
+        );
+        assert_eq!(
+            right_names,
+            if sometimes_applies_on_cycle(cycle, right_salt) {
+                vec![
+                    "cp".to_owned(),
+                    "hh".to_owned(),
+                    "cp".to_owned(),
+                    "hh".to_owned(),
+                ]
+            } else {
+                vec!["cp".to_owned(), "hh".to_owned()]
+            }
+        );
+        assert_ne!(
+            sometimes_applies_on_cycle(cycle, left_salt),
+            sometimes_applies_on_cycle(cycle, right_salt)
+        );
+    }
 }
