@@ -422,47 +422,52 @@ impl Evaluator {
         items: &[Expr],
         meter: Option<&MeterContext>,
     ) -> Result<Value, EvalError> {
-        if let Some(error) = Self::unsupported_pattern_item_error(items, "sequence") {
-            return Err(error);
-        }
-
-        if let Some(nodes) = self.collect_sample_nodes(items, meter)? {
-            return Ok(Value::SamplePattern(SamplePatternValue::from_nodes(nodes)));
-        }
-
-        if let Some(nodes) = self.collect_number_nodes(items)? {
-            return Ok(Value::NumberPattern(NumberPatternValue::from_nodes(nodes)));
-        }
-
-        for item in items {
-            let _ = self.eval_expr_in_meter(item, meter)?;
-        }
-
-        Err(EvalError::new(
-            "sequence items must all resolve to the same structural pattern kind",
-        ))
+        self.eval_structural_pattern(
+            items,
+            meter,
+            "sequence",
+            SamplePatternValue::from_nodes,
+            NumberPatternValue::from_nodes,
+        )
     }
 
     fn eval_group(&self, items: &[Expr], meter: Option<&MeterContext>) -> Result<Value, EvalError> {
-        if let Some(error) = Self::unsupported_pattern_item_error(items, "group") {
+        self.eval_structural_pattern(
+            items,
+            meter,
+            "group",
+            SamplePatternValue::from_group,
+            NumberPatternValue::from_group,
+        )
+    }
+
+    fn eval_structural_pattern(
+        &self,
+        items: &[Expr],
+        meter: Option<&MeterContext>,
+        context: &str,
+        from_sample_nodes: impl FnOnce(Vec<PatternNode<SampleEvent>>) -> SamplePatternValue,
+        from_number_nodes: impl FnOnce(Vec<PatternNode<f64>>) -> NumberPatternValue,
+    ) -> Result<Value, EvalError> {
+        if let Some(error) = Self::unsupported_pattern_item_error(items, context) {
             return Err(error);
         }
 
         if let Some(nodes) = self.collect_sample_nodes(items, meter)? {
-            return Ok(Value::SamplePattern(SamplePatternValue::from_group(nodes)));
+            return Ok(Value::SamplePattern(from_sample_nodes(nodes)));
         }
 
         if let Some(nodes) = self.collect_number_nodes(items)? {
-            return Ok(Value::NumberPattern(NumberPatternValue::from_group(nodes)));
+            return Ok(Value::NumberPattern(from_number_nodes(nodes)));
         }
 
         for item in items {
             let _ = self.eval_expr_in_meter(item, meter)?;
         }
 
-        Err(EvalError::new(
-            "group items must all resolve to the same structural pattern kind",
-        ))
+        Err(EvalError::new(format!(
+            "{context} items must all resolve to the same structural pattern kind"
+        )))
     }
 
     fn eval_stack(

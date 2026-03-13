@@ -229,117 +229,58 @@ fn apply_rev(args: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 fn apply_gain(args: Vec<Value>) -> Result<Value, EvalError> {
-    let mut args = args.into_iter();
-    let gain = extract_gain_control(
-        args.next()
-            .ok_or_else(|| EvalError::new("`gain` requires a gain argument"))?,
-    )?;
-    let pattern = args
-        .next()
-        .ok_or_else(|| EvalError::new("`gain` requires a pattern argument"))?;
-
-    match pattern {
-        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match gain {
-            NumericControl::Constant(gain) => pattern.gain(gain),
-            NumericControl::Pattern(control) => pattern.gain_pattern(control),
-        })),
-        Value::NumberPattern(_) => Err(EvalError::new(
-            "`gain` only applies to sample patterns in Task 5",
-        )),
-        Value::Function(_) | Value::String(_) => Err(EvalError::new(
-            "`gain` expected a sample pattern as its final argument",
-        )),
-    }
+    apply_sample_numeric_control(
+        args,
+        "gain",
+        "gain",
+        extract_gain_control,
+        SamplePatternValue::gain,
+        SamplePatternValue::gain_pattern,
+    )
 }
 
 fn apply_hpf(args: Vec<Value>) -> Result<Value, EvalError> {
-    let mut args = args.into_iter();
-    let cutoff_hz = extract_filter_cutoff_control(
-        args.next()
-            .ok_or_else(|| EvalError::new("`hpf` requires a cutoff argument"))?,
+    apply_sample_numeric_control(
+        args,
         "hpf",
-    )?;
-    let pattern = args
-        .next()
-        .ok_or_else(|| EvalError::new("`hpf` requires a pattern argument"))?;
-
-    match pattern {
-        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match cutoff_hz {
-            NumericControl::Constant(cutoff_hz) => pattern.hpf(cutoff_hz),
-            NumericControl::Pattern(control) => pattern.hpf_pattern(control),
-        })),
-        Value::NumberPattern(_) => Err(EvalError::new("`hpf` only applies to sample patterns")),
-        Value::Function(_) | Value::String(_) => Err(EvalError::new(
-            "`hpf` expected a sample pattern as its final argument",
-        )),
-    }
+        "cutoff",
+        |val| extract_filter_cutoff_control(val, "hpf"),
+        SamplePatternValue::hpf,
+        SamplePatternValue::hpf_pattern,
+    )
 }
 
 fn apply_lpf(args: Vec<Value>) -> Result<Value, EvalError> {
-    let mut args = args.into_iter();
-    let cutoff_hz = extract_filter_cutoff_control(
-        args.next()
-            .ok_or_else(|| EvalError::new("`lpf` requires a cutoff argument"))?,
+    apply_sample_numeric_control(
+        args,
         "lpf",
-    )?;
-    let pattern = args
-        .next()
-        .ok_or_else(|| EvalError::new("`lpf` requires a pattern argument"))?;
-
-    match pattern {
-        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match cutoff_hz {
-            NumericControl::Constant(cutoff_hz) => pattern.lpf(cutoff_hz),
-            NumericControl::Pattern(control) => pattern.lpf_pattern(control),
-        })),
-        Value::NumberPattern(_) => Err(EvalError::new("`lpf` only applies to sample patterns")),
-        Value::Function(_) | Value::String(_) => Err(EvalError::new(
-            "`lpf` expected a sample pattern as its final argument",
-        )),
-    }
+        "cutoff",
+        |val| extract_filter_cutoff_control(val, "lpf"),
+        SamplePatternValue::lpf,
+        SamplePatternValue::lpf_pattern,
+    )
 }
 
 fn apply_pan(args: Vec<Value>) -> Result<Value, EvalError> {
-    let mut args = args.into_iter();
-    let pan = extract_pan_control(
-        args.next()
-            .ok_or_else(|| EvalError::new("`pan` requires a pan argument"))?,
-    )?;
-    let pattern = args
-        .next()
-        .ok_or_else(|| EvalError::new("`pan` requires a pattern argument"))?;
-
-    match pattern {
-        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match pan {
-            NumericControl::Constant(pan) => pattern.pan(pan),
-            NumericControl::Pattern(control) => pattern.pan_pattern(control),
-        })),
-        Value::NumberPattern(_) => Err(EvalError::new("`pan` only applies to sample patterns")),
-        Value::Function(_) | Value::String(_) => Err(EvalError::new(
-            "`pan` expected a sample pattern as its final argument",
-        )),
-    }
+    apply_sample_numeric_control(
+        args,
+        "pan",
+        "pan",
+        extract_pan_control,
+        SamplePatternValue::pan,
+        SamplePatternValue::pan_pattern,
+    )
 }
 
 fn apply_pitch(args: Vec<Value>) -> Result<Value, EvalError> {
-    let mut args = args.into_iter();
-    let pitch = extract_pitch_control(
-        args.next()
-            .ok_or_else(|| EvalError::new("`pitch` requires a semitone argument"))?,
-    )?;
-    let pattern = args
-        .next()
-        .ok_or_else(|| EvalError::new("`pitch` requires a pattern argument"))?;
-
-    match pattern {
-        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match pitch {
-            NumericControl::Constant(semitones) => pattern.pitch(semitones),
-            NumericControl::Pattern(control) => pattern.pitch_pattern(control),
-        })),
-        Value::NumberPattern(_) => Err(EvalError::new("`pitch` only applies to sample patterns")),
-        Value::Function(_) | Value::String(_) => Err(EvalError::new(
-            "`pitch` expected a sample pattern as its final argument",
-        )),
-    }
+    apply_sample_numeric_control(
+        args,
+        "pitch",
+        "semitone",
+        extract_pitch_control,
+        SamplePatternValue::pitch,
+        SamplePatternValue::pitch_pattern,
+    )
 }
 
 fn apply_sample(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -353,25 +294,14 @@ fn apply_sample(args: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 fn apply_rate(args: Vec<Value>) -> Result<Value, EvalError> {
-    let mut args = args.into_iter();
-    let rate = extract_rate_control(
-        args.next()
-            .ok_or_else(|| EvalError::new("`rate` requires a rate argument"))?,
-    )?;
-    let pattern = args
-        .next()
-        .ok_or_else(|| EvalError::new("`rate` requires a pattern argument"))?;
-
-    match pattern {
-        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match rate {
-            NumericControl::Constant(rate) => pattern.rate(rate),
-            NumericControl::Pattern(control) => pattern.rate_pattern(control),
-        })),
-        Value::NumberPattern(_) => Err(EvalError::new("`rate` only applies to sample patterns")),
-        Value::Function(_) | Value::String(_) => Err(EvalError::new(
-            "`rate` expected a sample pattern as its final argument",
-        )),
-    }
+    apply_sample_numeric_control(
+        args,
+        "rate",
+        "rate",
+        extract_rate_control,
+        SamplePatternValue::rate,
+        SamplePatternValue::rate_pattern,
+    )
 }
 
 fn apply_slice(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -442,6 +372,38 @@ fn apply_slice_idx(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::Function(_) | Value::String(_) => Err(EvalError::new(
             "`slice_idx` expected a sample pattern as its final argument",
         )),
+    }
+}
+
+fn apply_sample_numeric_control(
+    args: Vec<Value>,
+    builtin_name: &str,
+    arg_name: &str,
+    extract_control: impl FnOnce(Value) -> Result<NumericControl, EvalError>,
+    apply_constant: impl FnOnce(SamplePatternValue, f64) -> SamplePatternValue,
+    apply_pattern: impl FnOnce(SamplePatternValue, NumberPatternValue) -> SamplePatternValue,
+) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let control_val = extract_control(args.next().ok_or_else(|| {
+        EvalError::new(format!("`{builtin_name}` requires a {arg_name} argument"))
+    })?)?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new(format!("`{builtin_name}` requires a pattern argument")))?;
+
+    match pattern {
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match control_val {
+            NumericControl::Constant(val) => apply_constant(pattern, val),
+            NumericControl::Pattern(control) => apply_pattern(pattern, control),
+        })),
+        Value::NumberPattern(_) => Err(EvalError::new(if builtin_name == "gain" {
+            format!("`{builtin_name}` only applies to sample patterns in Task 5")
+        } else {
+            format!("`{builtin_name}` only applies to sample patterns")
+        })),
+        Value::Function(_) | Value::String(_) => Err(EvalError::new(format!(
+            "`{builtin_name}` expected a sample pattern as its final argument"
+        ))),
     }
 }
 
