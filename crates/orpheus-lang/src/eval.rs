@@ -149,20 +149,8 @@ pub fn export_sample_pattern_to_csv(
     .map_err(|e| EvalError::new(e.to_string()))?;
 
     for event in events {
-        let start_float = {
-            #[allow(clippy::cast_precision_loss)]
-            let start_num = event.part.start().numerator() as f64;
-            #[allow(clippy::cast_precision_loss)]
-            let start_den = event.part.start().denominator() as f64;
-            start_num / start_den
-        };
-        let end_float = {
-            #[allow(clippy::cast_precision_loss)]
-            let end_num = event.part.end().numerator() as f64;
-            #[allow(clippy::cast_precision_loss)]
-            let end_den = event.part.end().denominator() as f64;
-            end_num / end_den
-        };
+        let start_float = f64::from(event.part.start());
+        let end_float = f64::from(event.part.end());
         let hpf = event
             .value
             .hpf_cutoff_hz()
@@ -219,20 +207,8 @@ pub fn export_number_pattern_to_csv(
     .map_err(|e| EvalError::new(e.to_string()))?;
 
     for event in events {
-        let start_float = {
-            #[allow(clippy::cast_precision_loss)]
-            let start_num = event.part.start().numerator() as f64;
-            #[allow(clippy::cast_precision_loss)]
-            let start_den = event.part.start().denominator() as f64;
-            start_num / start_den
-        };
-        let end_float = {
-            #[allow(clippy::cast_precision_loss)]
-            let end_num = event.part.end().numerator() as f64;
-            #[allow(clippy::cast_precision_loss)]
-            let end_den = event.part.end().denominator() as f64;
-            end_num / end_den
-        };
+        let start_float = f64::from(event.part.start());
+        let end_float = f64::from(event.part.end());
         writeln!(
             file,
             "{},{},{:.6},{},{},{:.6},{:.6}",
