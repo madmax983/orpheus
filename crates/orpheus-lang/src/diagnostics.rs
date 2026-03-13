@@ -68,3 +68,25 @@ impl Display for LoadError {
 }
 
 impl Error for LoadError {}
+
+/// Runtime evaluation error for bootstrap Orpheus modules.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EvalError {
+    message: Box<str>,
+}
+
+impl EvalError {
+    pub(crate) fn new(message: impl Into<Box<str>>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+impl Display for EvalError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl Error for EvalError {}

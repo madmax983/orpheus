@@ -1,6 +1,7 @@
 use orpheus_pattern::{Rational, TimeSpan};
 
-use crate::eval::{EvalError, f64_to_rational};
+use crate::diagnostics::EvalError;
+use crate::eval::f64_to_rational;
 use crate::value::{BuiltinFn, BuiltinKind, NumberPatternValue, SamplePatternValue, Value};
 
 pub fn is_sample_identifier(name: &str) -> bool {
@@ -837,7 +838,9 @@ fn extract_number_pattern(
 fn extract_constant_number(value: Value, builtin_name: &str) -> Result<f64, EvalError> {
     match value {
         Value::NumberPattern(pattern) => pattern.constant_value().map_err(|_| {
-            EvalError::new(format!("`{builtin_name}` requires a constant number argument"))
+            EvalError::new(format!(
+                "`{builtin_name}` requires a constant number argument"
+            ))
         }),
         Value::SamplePattern(_) | Value::Function(_) | Value::String(_) => Err(EvalError::new(
             format!("`{builtin_name}` requires a constant number argument"),

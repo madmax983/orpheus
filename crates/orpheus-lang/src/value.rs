@@ -5,7 +5,7 @@ use orpheus_pattern::{
     CyclePattern, Event, EventStream, PatternError, PatternNode, Rational, TimeSpan,
 };
 
-use crate::eval::EvalError;
+use crate::diagnostics::EvalError;
 
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {

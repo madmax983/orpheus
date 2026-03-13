@@ -9,31 +9,9 @@ use orpheus_pattern::{Event, PatternNode, Rational, TimeSpan};
 use crate::ReplMode;
 use crate::ast::{Expr, Module, Stmt};
 use crate::builtins::{builtin_value, is_sample_identifier, stack_values};
-use crate::diagnostics::ParseError;
+use crate::diagnostics::{EvalError, ParseError};
 use crate::parser::parse_module;
 use crate::value::{NumberPatternValue, SampleEvent, SamplePatternValue, Value};
-
-/// Runtime evaluation error for bootstrap Orpheus modules.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct EvalError {
-    message: Box<str>,
-}
-
-impl EvalError {
-    pub(crate) fn new(message: impl Into<Box<str>>) -> Self {
-        Self {
-            message: message.into(),
-        }
-    }
-}
-
-impl Display for EvalError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.message)
-    }
-}
-
-impl Error for EvalError {}
 
 impl From<ParseError> for EvalError {
     fn from(error: ParseError) -> Self {
