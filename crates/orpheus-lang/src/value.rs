@@ -936,7 +936,10 @@ where
 
     let mut composed = Vec::new();
     for event in source_events {
-        let mut boundaries = vec![event.part.start().clone(), event.part.end().clone()];
+        // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries.
+        let mut boundaries = Vec::with_capacity(2 + control_events.len() * 2);
+        boundaries.push(event.part.start().clone());
+        boundaries.push(event.part.end().clone());
         let mut has_overlap = false;
         for control_event in &control_events {
             if let Some(overlap) = clip_span(&control_event.part, &event.part)? {
@@ -1069,7 +1072,10 @@ where
 
     let mut composed = Vec::new();
     for event in source_events {
-        let mut boundaries = vec![event.part.start().clone(), event.part.end().clone()];
+        // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries.
+        let mut boundaries = Vec::with_capacity(2 + (start_events.len() + end_events.len()) * 2);
+        boundaries.push(event.part.start().clone());
+        boundaries.push(event.part.end().clone());
         let mut has_overlap = false;
         for control_event in &start_events {
             if let Some(overlap) = clip_span(&control_event.part, &event.part)? {
@@ -1155,7 +1161,10 @@ where
 
     let mut composed = Vec::new();
     for event in source_events {
-        let mut boundaries = vec![event.part.start().clone(), event.part.end().clone()];
+        // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries.
+        let mut boundaries = Vec::with_capacity(2 + control_events.len() * 2);
+        boundaries.push(event.part.start().clone());
+        boundaries.push(event.part.end().clone());
         let mut has_overlap = false;
         for control_event in &control_events {
             if let Some(overlap) = clip_span(&control_event.part, &event.part)? {

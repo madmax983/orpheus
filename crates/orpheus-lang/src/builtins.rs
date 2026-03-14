@@ -819,7 +819,10 @@ fn validate_slice_control_patterns(
     let unit = TimeSpan::unit();
     let start_events = start_pattern.try_query(&unit)?;
     let end_events = end_pattern.try_query(&unit)?;
-    let mut boundaries = vec![unit.start().clone(), unit.end().clone()];
+    // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries.
+    let mut boundaries = Vec::with_capacity(2 + (start_events.len() + end_events.len()) * 2);
+    boundaries.push(unit.start().clone());
+    boundaries.push(unit.end().clone());
 
     for event in &start_events {
         if let Some(overlap) = clip_control_span(&event.part, &unit)? {
