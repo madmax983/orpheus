@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
+use crossterm::style::Stylize;
 
 use orpheus_dsp::{
     EngineCommand, EngineHandle, PatternUpdate, SampleBank, SampleTrigger, TransportSnapshot,
@@ -34,7 +35,7 @@ pub fn run_stdio() -> io::Result<()> {
 /// Returns any terminal I/O failure encountered while reading input or
 /// writing REPL output.
 pub fn run_stdio_with_engine(engine: EngineHandle) -> io::Result<()> {
-    run_stdio_with_engine_and_path(engine, None)
+    run_stdio_with_engine_and_path(engine, None, None)
 }
 
 /// Runs the phase-one Orpheus REPL with an optional startup `.ode` preload.
@@ -46,16 +47,28 @@ pub fn run_stdio_with_engine(engine: EngineHandle) -> io::Result<()> {
 pub fn run_stdio_with_engine_and_path(
     engine: EngineHandle,
     startup_path: Option<&Path>,
+    warning: Option<String>,
 ) -> io::Result<()> {
     let stdin = io::stdin();
     let stdout = io::stdout();
     let stderr = io::stderr();
     let mut session = ReplSession::with_engine(engine);
-    if let Some(path) = startup_path {
-        session.open_file(path).map_err(io::Error::other)?;
+
+    let mut stdout = stdout.lock();
+    let mut stderr = stderr.lock();
+
+    if let Some(msg) = warning {
+        writeln!(stderr, "{}", format!("! {msg}").yellow().bold())?;
     }
 
-    run_with_handles(stdin.lock(), stdout.lock(), stderr.lock(), &mut session)
+    if let Some(path) = startup_path {
+        match session.open_file(path) {
+            Ok(msg) => writeln!(stdout, "{}", msg.green())?,
+            Err(msg) => writeln!(stderr, "{}", format!("! {msg}").red().bold())?,
+        }
+    }
+
+    run_with_handles(stdin.lock(), stdout, stderr, &mut session)
 }
 
 fn run_with_handles<R, W, E>(
@@ -71,6 +84,8 @@ where
 {
     let mut line = String::new();
     loop {
+        write!(stdout, "{}", "> ".dark_grey())?;
+        stdout.flush()?;
         line.clear();
         if reader.read_line(&mut line)? == 0 {
             break;
@@ -85,8 +100,8 @@ where
         }
 
         match session.eval_line(trimmed) {
-            Ok(message) => writeln!(stdout, "{message}")?,
-            Err(message) => writeln!(stderr, "{message}")?,
+            Ok(message) => writeln!(stdout, "{}", message.green())?,
+            Err(message) => writeln!(stderr, "{}", format!("✗ {message}").red().bold())?,
         }
     }
 
@@ -171,7 +186,7 @@ impl ReplSession {
         debug_assert_eq!(name, value_name);
 
         self.push_pattern_update(&name, &value)?;
-        Ok(success_banner(&ty))
+        Ok(success_banner(&name, &ty))
     }
 
     fn eval_command(&mut self, source: &str) -> Result<String, String> {
@@ -535,8 +550,8 @@ impl ReplSession {
     }
 }
 
-fn success_banner(ty: &Type) -> String {
-    format!("[{ty}] ok")
+fn success_banner(name: &str, ty: &Type) -> String {
+    format!("✓ bound {name}: {ty}")
 }
 
 const fn render_usage() -> &'static str {
@@ -605,11 +620,11 @@ mod tests {
 
         assert_eq!(
             session.eval_line("drums = bd sn cp sn"),
-            Ok("[Pattern<Sample>] ok".to_owned())
+            Ok("✓ bound drums: Pattern<Sample>".to_owned())
         );
         assert_eq!(
             session.eval_line("copy = drums"),
-            Ok("[Pattern<Sample>] ok".to_owned())
+            Ok("✓ bound copy: Pattern<Sample>".to_owned())
         );
     }
 
@@ -792,7 +807,7 @@ mod tests {
         assert_eq!(session.last_loaded_pattern_name(), Some("song".to_owned()));
         assert_eq!(
             session.eval_line("copy = song"),
-            Ok("[Pattern<Sample>] ok".to_owned())
+            Ok("✓ bound copy: Pattern<Sample>".to_owned())
         );
         assert_eq!(
             session.eval_line(":render scratch out.wav 1"),

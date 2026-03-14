@@ -46,7 +46,7 @@ const COMMAND_HINTS: [(&str, &str); 7] = [
 /// Returns any terminal initialization, draw, input polling, or terminal
 /// restoration failure encountered while the shell is active.
 pub fn run_with_engine(engine: EngineHandle) -> io::Result<()> {
-    run_with_engine_and_path(engine, None)
+    run_with_engine_and_path(engine, None, None)
 }
 
 /// Runs the interactive ratatui session shell with an optional startup `.ode`
@@ -59,11 +59,12 @@ pub fn run_with_engine(engine: EngineHandle) -> io::Result<()> {
 pub fn run_with_engine_and_path(
     engine: EngineHandle,
     startup_path: Option<&Path>,
+    warning: Option<String>,
 ) -> io::Result<()> {
     let _terminal_guard = TerminalGuard::enter()?;
     let backend = CrosstermBackend::new(io::stdout());
     let mut terminal = Terminal::new(backend)?;
-    let mut app = SessionTui::try_new(engine, startup_path)?;
+    let mut app = SessionTui::try_new(engine, startup_path, warning)?;
     let result = run_event_loop(&mut terminal, &mut app);
     terminal.show_cursor()?;
     result
@@ -257,17 +258,22 @@ struct SessionTui {
 
 impl SessionTui {
     fn new(engine: EngineHandle) -> Self {
-        Self::try_new(engine, None)
+        Self::try_new(engine, None, None)
             .unwrap_or_else(|error| panic!("default TUI session should initialize: {error}"))
     }
 
-    fn try_new(engine: EngineHandle, startup_path: Option<&Path>) -> io::Result<Self> {
+    fn try_new(engine: EngineHandle, startup_path: Option<&Path>, warning: Option<String>) -> io::Result<Self> {
+        let mut transcript = vec![
+            "Interactive shell ready.".to_owned(),
+            "Press Esc to quit.".to_owned(),
+        ];
+        if let Some(msg) = warning {
+            transcript.push(format!("! {msg}"));
+        }
+
         let mut app = Self {
             session: ReplSession::with_engine(engine),
-            transcript: vec![
-                "Interactive shell ready.".to_owned(),
-                "Press Esc to quit.".to_owned(),
-            ],
+            transcript,
             history: Vec::new(),
             history_index: None,
             status_message: None,
@@ -386,7 +392,7 @@ impl SessionTui {
                         line,
                         Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
                     )
-                } else if line.starts_with('[') {
+                } else if line.starts_with("✓ ") {
                     Line::styled(line, Style::default().fg(Color::Green))
                 } else {
                     Line::raw(line)
@@ -1251,7 +1257,7 @@ mod tests {
     #[test]
     fn startup_file_preloads_bindings_and_transport_target() {
         let song = fixture("song.ode");
-        let app = SessionTui::try_new(EngineHandle::stub(), Some(song.as_path())).unwrap();
+        let app = SessionTui::try_new(EngineHandle::stub(), Some(song.as_path()), None).unwrap();
 
         assert_eq!(
             app.session.binding_summaries(),
