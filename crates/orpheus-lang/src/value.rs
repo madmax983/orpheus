@@ -604,12 +604,25 @@ impl SamplePatternValue {
 
     /// Queries the pattern over the default unit cycle `[0, 1)`.
     ///
+    /// # Panics
+    ///
+    /// Panics if an internal runtime transform produces an invalid span or
+    /// overflows the evaluator's bounded rational arithmetic. For a fallible
+    /// variant, use [`PatternValue::try_query_unit`].
+    pub fn query_unit(&self) -> Vec<Event<SampleEvent>> {
+        self.try_query_unit()
+            .unwrap_or_else(|err| panic!("internal pattern evaluation error in query_unit: {:?}", err))
+    }
+
+    /// Fallible variant of [`PatternValue::query_unit`].
+    ///
+    /// Queries the pattern over the default unit cycle `[0, 1)`.
+    ///
     /// # Errors
     ///
     /// Returns an error if an internal runtime transform produces an invalid
     /// span or overflows the evaluator's bounded rational arithmetic.
-    #[must_use = "query_unit() returns a Result; ignoring it may drop query errors"]
-    pub fn query_unit(&self) -> Result<Vec<Event<SampleEvent>>, EvalError> {
+    pub fn try_query_unit(&self) -> Result<Vec<Event<SampleEvent>>, EvalError> {
         self.try_query(&TimeSpan::unit())
     }
 

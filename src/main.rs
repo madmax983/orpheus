@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use anyhow::{Context, anyhow};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream};
+use crossterm::style::Stylize;
 use orpheus_dsp::EngineHandle;
 
 fn main() -> anyhow::Result<()> {
@@ -31,9 +32,33 @@ fn startup_path_from_args(
     let args = args.into_iter().collect::<Vec<_>>();
     match args.as_slice() {
         [] => Ok(None),
-        [path] => Ok(Some(PathBuf::from(path))),
-        _ => Err(anyhow!("usage: orpheus [path/to/song.ode]")),
+        [arg] if arg == "--help" || arg == "-h" => {
+            print_help();
+            std::process::exit(0);
+        }
+        [path] => {
+            let path_str = path.to_string_lossy();
+            if path_str.starts_with('-') {
+                Err(anyhow!("error: unexpected argument '{}'\n\nusage: orpheus [OPTIONS] [FILE]", path_str))
+            } else {
+                Ok(Some(PathBuf::from(path)))
+            }
+        }
+        _ => Err(anyhow!("usage: orpheus [OPTIONS] [FILE]")),
     }
+}
+
+fn print_help() {
+    println!("{}", "🎻 Orpheus Live-Coding Environment".cyan().bold());
+    println!();
+    println!("{}", "USAGE:".yellow().bold());
+    println!("    orpheus [OPTIONS] [FILE]");
+    println!();
+    println!("{}", "ARGS:".yellow().bold());
+    println!("    <FILE>    Path to a .ode script to preload into the session.");
+    println!();
+    println!("{}", "OPTIONS:".yellow().bold());
+    println!("    -h, --help    Print help information.");
 }
 
 fn start_live_audio() -> anyhow::Result<(EngineHandle, Stream)> {

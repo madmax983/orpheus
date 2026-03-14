@@ -937,6 +937,7 @@ dependencies = [
  "anyhow",
  "assert_cmd",
  "cpal",
+ "crossterm",
  "hound",
  "orpheus-dsp",
  "orpheus-lang",
