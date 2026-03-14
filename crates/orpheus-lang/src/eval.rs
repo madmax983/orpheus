@@ -16,13 +16,41 @@ use crate::parser::parse_module;
 use crate::value::{NumberPatternValue, SampleEvent, SamplePatternValue, Value};
 
 /// Runtime evaluation error for bootstrap Orpheus modules.
+///
+/// `EvalError` occurs when an expression fails to evaluate at runtime.
+/// In Orpheus, evaluation errors often stem from invalid arithmetic on rational
+/// time domains (like dividing by zero), out-of-bounds parameters, or attempting
+/// to use an unsupported operation on a pattern.
+///
+/// # Examples
+///
+/// An `EvalError` provides an error message indicating what went wrong:
+///
+/// ```
+/// use orpheus_lang::eval::EvalError;
+///
+/// let err = EvalError::new("decimal literal exceeded the supported range");
+/// assert_eq!(err.to_string(), "decimal literal exceeded the supported range");
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EvalError {
     message: Box<str>,
 }
 
 impl EvalError {
-    pub(crate) fn new(message: impl Into<Box<str>>) -> Self {
+    /// Creates a new `EvalError` with the given message.
+    ///
+    /// The message explains what went wrong during runtime evaluation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::eval::EvalError;
+    ///
+    /// let err = EvalError::new("division by zero");
+    /// assert_eq!(err.to_string(), "division by zero");
+    /// ```
+    pub fn new(message: impl Into<Box<str>>) -> Self {
         Self {
             message: message.into(),
         }

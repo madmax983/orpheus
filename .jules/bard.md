@@ -1,0 +1,3 @@
+## 2026-03-13 - [Missing Core README]
+**Confusion:** The repository root was missing a `README.md`, making it hard for users to understand what Orpheus is, what the crates do, and how to get started (building/running).
+**Clarification:** Created a new `README.md` at the root that introduces the Orpheus philosophy, explains the architecture/crates (`orpheus-pattern`, `orpheus-dsp`, `orpheus-lang`), and gives clear getting started instructions including pre-requisites (`libasound2-dev`).
