@@ -351,7 +351,7 @@ impl ReplSession {
 
         self.engine
             .enqueue(EngineCommand::PlayTransport)
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| format!("failed to enqueue play transport command: {error}"))?;
         Ok("transport playing".to_owned())
     }
 
@@ -362,14 +362,20 @@ impl ReplSession {
 
         self.engine
             .enqueue(EngineCommand::StopTransport)
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| format!("failed to enqueue stop transport command: {error}"))?;
         Ok("transport stopped".to_owned())
     }
 
     fn push_pattern_update(&mut self, name: &str, value: &Value) -> Result<(), String> {
         if let Value::SamplePattern(pattern) = value {
             let enqueue_publish = self.engine.transport_snapshot().publish_epoch();
-            let events = pattern.query_unit().map_err(|error| error.to_string())?;
+            let events = pattern
+                .query_unit()
+                .map_err(|error| {
+                    format!(
+                        "failed to query unit span for publishing pattern `{name}`: {error}"
+                    )
+                })?;
             let update = PatternUpdate::new(
                 name,
                 events
@@ -396,7 +402,9 @@ impl ReplSession {
             );
             self.engine
                 .enqueue(EngineCommand::LoadPattern(update))
-                .map_err(|error| error.to_string())?;
+                .map_err(|error| {
+                    format!("failed to enqueue load pattern command for `{name}`: {error}")
+                })?;
             let mut display = self.pattern_display.borrow_mut();
             if display.active_pattern_name.is_none() && enqueue_publish != 0 {
                 if let Some(last_loaded_pattern_name) = display.last_loaded_pattern_name.clone() {
