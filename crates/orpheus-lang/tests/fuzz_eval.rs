@@ -12,14 +12,15 @@ proptest! {
         // will cause the test to fail. `eval_module` doesn't evaluate the pattern span itself,
         // so we must do it manually via `query_unit()`.
         let result = panic::catch_unwind(|| {
-            let res = eval_module(&source, ReplMode::Loose);
-            if let Ok(mut values) = res {
-                if let Some(val) = values.remove("a") {
-                    if let Some(pat) = val.as_sample_pattern() {
-                        let _ = pat.query_unit();
-                    }
-                }
-            }
+            let mut values = eval_module(&source, ReplMode::Loose)
+                .expect("eval_module failed");
+            let val = values
+                .remove("a")
+                .expect("binding `a` not found");
+            let pat = val
+                .as_sample_pattern()
+                .expect("value `a` is not a sample pattern");
+            let _ = pat.query_unit();
         });
 
         // If there was a panic, this assertion will fail.
