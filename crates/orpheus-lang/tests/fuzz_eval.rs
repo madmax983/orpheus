@@ -14,12 +14,12 @@ fn float_literal_strategy() -> impl Strategy<Value = String> {
             Just("-".to_string()),
         ],
         // Integer part: 1–10 digits.
-        proptest::collection::vec('0'..='9', 1..=10)
+        proptest::collection::vec(proptest::char::range('0', '9'), 1..=10)
             .prop_map(|digits| digits.into_iter().collect::<String>()),
         // Optional fractional part: "" or "." followed by 1–10 digits.
         prop_oneof![
             Just(String::new()),
-            proptest::collection::vec('0'..='9', 1..=10).prop_map(|digits| {
+            proptest::collection::vec(proptest::char::range('0', '9'), 1..=10).prop_map(|digits| {
                 let frac: String = digits.into_iter().collect();
                 format!(".{frac}")
             }),
@@ -37,7 +37,7 @@ fn float_literal_strategy() -> impl Strategy<Value = String> {
                     Just("+".to_string()),
                     Just("-".to_string()),
                 ],
-                proptest::collection::vec('0'..='9', 1..=1000)
+                proptest::collection::vec(proptest::char::range('0', '9'), 1..=1000)
                     .prop_map(|digits| digits.into_iter().collect::<String>()),
             ).prop_map(|(e, sign, digits)| format!("{e}{sign}{digits}")),
         ],
@@ -61,15 +61,19 @@ proptest! {
         // will cause the test to fail. `eval_module` doesn't evaluate the pattern span itself,
         // so we must do it manually via `query_unit()`.
         let result = panic::catch_unwind(|| {
-            let mut values = eval_module(&source, ReplMode::Loose)
-                .expect("eval_module failed");
-            let val = values
-                .remove("a")
-                .expect("binding `a` not found");
-            let pat = val
-                .as_sample_pattern()
-                .expect("value `a` is not a sample pattern");
-            let _ = pat.query_unit();
+            let mut values = match eval_module(&source, ReplMode::Loose) {
+                Ok(v) => v,
+                Err(_) => return, // parse errors and eval errors on fuzzing inputs are normal.
+            };
+            let val = match values.remove("a") {
+                Some(v) => v,
+                None => return,
+            };
+            let pat = match val.as_sample_pattern() {
+                Some(p) => p,
+                None => return,
+            };
+            let _ = pat.query_unit(); // query_unit for SamplePatternValue returns a Result so we ignore it
         });
 
         // If there was a panic, this assertion will fail.

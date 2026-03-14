@@ -142,7 +142,7 @@ fn shift_rotates_number_patterns_forward_within_the_cycle() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit();
 
     assert_eq!(events.len(), 2);
     assert_eq!(events[0].part.start(), &Rational::zero());
