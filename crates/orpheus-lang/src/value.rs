@@ -24,6 +24,7 @@ pub enum BuiltinKind {
     Rate,
     Slice,
     SliceIdx,
+    Rand,
 }
 
 #[derive(Clone, Debug)]
@@ -148,6 +149,7 @@ trait PatternValueTransform {
 trait PatternRuntimeValue: Clone + PatternValueTransform + Send + Sync + fmt::Debug + Sized {
     fn into_runtime_value(pattern: PatternRuntime<Self>) -> Value;
     fn try_from_runtime_value(value: Value) -> Result<PatternRuntime<Self>, EvalError>;
+    fn try_from_rand(value: f64) -> Result<Self, EvalError>;
 }
 
 impl PatternValueTransform for SampleEvent {
@@ -270,6 +272,10 @@ impl PatternRuntimeValue for SampleEvent {
             )),
         }
     }
+
+    fn try_from_rand(_value: f64) -> Result<Self, EvalError> {
+        Err(EvalError::new("rand only produces numbers"))
+    }
 }
 
 impl PatternRuntimeValue for f64 {
@@ -284,6 +290,10 @@ impl PatternRuntimeValue for f64 {
                 "transform returned an incompatible value; expected Pattern<Number>",
             )),
         }
+    }
+
+    fn try_from_rand(value: f64) -> Result<Self, EvalError> {
+        Ok(value)
     }
 }
 
@@ -667,13 +677,21 @@ impl NumberPatternValue {
         }
     }
 
-    pub(crate) fn try_query(&self, span: &TimeSpan) -> Result<Vec<Event<f64>>, EvalError> {
+    /// # Errors
+    /// Returns `EvalError` if querying fails.
+    pub fn try_query(&self, span: &TimeSpan) -> Result<Vec<Event<f64>>, EvalError> {
         self.pattern.try_query(span)
     }
 
     pub(crate) fn from_events(events: Vec<Event<f64>>) -> Self {
         Self {
             pattern: PatternRuntime::Stream(EventStream::new(events)),
+        }
+    }
+
+    pub(crate) const fn rand(site_salt: u64) -> Self {
+        Self {
+            pattern: PatternRuntime::Rand { site_salt },
         }
     }
 }
@@ -775,6 +793,9 @@ enum PatternRuntime<T> {
         segments: u32,
         inner: Box<Self>,
     },
+    Rand {
+        site_salt: u64,
+    },
 }
 
 impl<T> PatternRuntime<T>
@@ -854,6 +875,7 @@ where
                 segments,
                 inner,
             } => apply_slice_idx_pattern(inner, control, *segments, span),
+            Self::Rand { site_salt } => query_rand(*site_salt, span),
         }
     }
 }
@@ -1229,6 +1251,38 @@ fn whole_number_from_slice_idx_value(value: f64) -> Result<u32, EvalError> {
     })
 }
 
+fn query_rand<T>(site_salt: u64, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let numerator = span.start().numerator() as u64;
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let denominator = span.start().denominator() as u64;
+
+    let mut state = site_salt ^ numerator.rotate_left(11) ^ denominator.rotate_left(23);
+    state = state.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    state ^= state >> 30;
+    state = state.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    state ^= state >> 27;
+    state = state.wrapping_mul(0x94D0_49BB_1331_11EB);
+    state ^= state >> 31;
+
+    #[allow(clippy::cast_precision_loss)]
+    let value_f64 = (state as f64) / (u64::MAX as f64);
+    let t_val = T::try_from_rand(value_f64)?;
+
+    Ok(vec![Event {
+        whole: None,
+        part: span.clone(),
+        value: t_val,
+    }])
+}
+
 fn query_fast<T>(
     inner: &PatternRuntime<T>,
     factor: i64,
@@ -1473,7 +1527,9 @@ fn absolute_cycle_for_runtime<T>(
         PatternRuntime::Stack(layers) => layers
             .first()
             .map_or(Ok(cycle), |layer| absolute_cycle_for_runtime(layer, cycle)),
-        PatternRuntime::Cycle(_) | PatternRuntime::Stream(_) => Ok(cycle),
+        PatternRuntime::Cycle(_) | PatternRuntime::Stream(_) | PatternRuntime::Rand { .. } => {
+            Ok(cycle)
+        }
     }
 }
 
