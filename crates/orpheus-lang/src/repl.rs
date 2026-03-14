@@ -528,7 +528,7 @@ impl ReplSession {
 }
 
 fn success_banner(ty: &Type) -> String {
-    format!("[{ty}] ok")
+    format!("✓ [{ty}]")
 }
 
 const fn render_usage() -> &'static str {
@@ -597,11 +597,11 @@ mod tests {
 
         assert_eq!(
             session.eval_line("drums = bd sn cp sn"),
-            Ok("[Pattern<Sample>] ok".to_owned())
+            Ok("✓ [Pattern<Sample>]".to_owned())
         );
         assert_eq!(
             session.eval_line("copy = drums"),
-            Ok("[Pattern<Sample>] ok".to_owned())
+            Ok("✓ [Pattern<Sample>]".to_owned())
         );
     }
 
@@ -784,7 +784,7 @@ mod tests {
         assert_eq!(session.last_loaded_pattern_name(), Some("song".to_owned()));
         assert_eq!(
             session.eval_line("copy = song"),
-            Ok("[Pattern<Sample>] ok".to_owned())
+            Ok("✓ [Pattern<Sample>]".to_owned())
         );
         assert_eq!(
             session.eval_line(":render scratch out.wav 1"),

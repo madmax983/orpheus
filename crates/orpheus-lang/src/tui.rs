@@ -14,7 +14,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Padding, Paragraph, Wrap};
 use ratatui::{Frame, Terminal};
 
 use crate::repl::{ReplSession, TransportView};
@@ -194,21 +194,35 @@ fn render_session_frame(frame: &mut Frame<'_>, app: &SessionTui) {
     app.record_bindings_height(bindings.height);
     let (bindings_title, binding_items) = app.binding_pane(bindings.height);
     frame.render_widget(
-        List::new(binding_items)
-            .block(Block::default().title(bindings_title).borders(Borders::ALL)),
+        List::new(binding_items).block(
+            Block::default()
+                .title(bindings_title)
+                .borders(Borders::ALL)
+                .padding(Padding::horizontal(1)),
+        ),
         bindings,
     );
 
     frame.render_widget(
         Paragraph::new(app.repl_text())
-            .block(Block::default().title("REPL").borders(Borders::ALL))
+            .block(
+                Block::default()
+                    .title("REPL")
+                    .borders(Borders::ALL)
+                    .padding(Padding::horizontal(1)),
+            )
             .wrap(Wrap { trim: false }),
         repl,
     );
 
     frame.render_widget(
         Paragraph::new(app.transport_text())
-            .block(Block::default().title("Transport").borders(Borders::ALL))
+            .block(
+                Block::default()
+                    .title("Transport")
+                    .borders(Borders::ALL)
+                    .padding(Padding::horizontal(1)),
+            )
             .wrap(Wrap { trim: false }),
         right,
     );
@@ -315,7 +329,7 @@ impl SessionTui {
         self.transcript.push(format!("> {line}"));
         match self.session.eval_line(&line) {
             Ok(message) => self.transcript.push(message),
-            Err(message) => self.transcript.push(format!("! {message}")),
+            Err(message) => self.transcript.push(format!("✗ {message}")),
         }
     }
 
@@ -381,12 +395,12 @@ impl SessionTui {
             .map(|line| {
                 if line.starts_with("> ") {
                     Line::styled(line, Style::default().fg(Color::DarkGray))
-                } else if line.starts_with("! ") {
+                } else if line.starts_with("✗ ") {
                     Line::styled(
                         line,
                         Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
                     )
-                } else if line.starts_with('[') {
+                } else if line.starts_with("✓ ") {
                     Line::styled(line, Style::default().fg(Color::Green))
                 } else {
                     Line::raw(line)
@@ -790,7 +804,8 @@ fn render_help_overlay(frame: &mut Frame<'_>) {
         .title("Help")
         .title_style(border_style)
         .border_style(border_style)
-        .borders(Borders::ALL);
+        .borders(Borders::ALL)
+        .padding(Padding::horizontal(1));
     let inner = block.inner(overlay_area);
     let [body_area, footer_area] = Layout::default()
         .direction(Direction::Vertical)
@@ -1782,7 +1797,7 @@ mod tests {
 
         handle_key_event(&mut app, press(KeyCode::Char('?')));
         assert_eq!(app.status_message.as_deref(), Some("help overlay shown"));
-        let overlay_frame = render_frame_for_test(&app, 80, 26);
+        let overlay_frame = render_frame_for_test(&app, 85, 26);
         assert!(overlay_frame.contains("Help"));
         assert!(overlay_frame.contains("Space"));
         assert!(overlay_frame.contains(":play"));

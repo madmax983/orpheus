@@ -47,7 +47,7 @@ fn repl_accepts_pattern_and_reports_success() {
     cmd.write_stdin("drums = bd sn cp sn\n:quit\n")
         .assert()
         .success()
-        .stdout(contains("[Pattern<Sample>] ok"));
+        .stdout(contains("✓ [Pattern<Sample>]"));
 }
 
 #[test]
@@ -74,7 +74,7 @@ fn repl_reuses_prior_bindings_across_lines() {
     cmd.write_stdin("drums = bd sn cp sn\ncopy = drums\n:quit\n")
         .assert()
         .success()
-        .stdout(contains("[Pattern<Sample>] ok").count(2));
+        .stdout(contains("✓ [Pattern<Sample>]").count(2));
 }
 
 #[test]
