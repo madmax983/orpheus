@@ -60,6 +60,21 @@ pub fn run_stdio_with_engine_and_path(
     run_with_handles(stdin.lock(), stdout.lock(), stderr.lock(), &mut session)
 }
 
+/// Parses a REPL message of the form `[Type] rest` into its components.
+/// Returns `None` if the message does not match this pattern.
+fn parse_typed_message(message: &str) -> Option<(&str, &str)> {
+    if !message.starts_with('[') {
+        return None;
+    }
+
+    let (type_part, rest) = message.split_once("] ")?;
+    if type_part.is_empty() {
+        return None;
+    }
+
+    Some((type_part, rest))
+}
+
 fn run_with_handles<R, W, E>(
     mut reader: R,
     mut stdout: W,
@@ -88,9 +103,8 @@ where
 
         match session.eval_line(trimmed) {
             Ok(message) => {
-                if io::stdout().is_terminal() && message.starts_with('[') {
-                    let (type_str, rest) = message.split_once("] ").unwrap_or(("", message.as_str()));
-                    if !type_str.is_empty() {
+                if io::stdout().is_terminal() {
+                    if let Some((type_str, rest)) = parse_typed_message(&message) {
                         writeln!(
                             stdout,
                             "{}{}",
