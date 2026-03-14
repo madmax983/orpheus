@@ -710,18 +710,18 @@ fn validate_slice_control_patterns(
     let unit = TimeSpan::unit();
     let start_events = start_pattern.try_query(&unit)?;
     let end_events = end_pattern.try_query(&unit)?;
-    let mut boundaries = vec![unit.start().clone(), unit.end().clone()];
+    let mut boundaries = vec![*unit.start(), *unit.end()];
 
     for event in &start_events {
         if let Some(overlap) = clip_control_span(&event.part, &unit)? {
-            boundaries.push(overlap.start().clone());
-            boundaries.push(overlap.end().clone());
+            boundaries.push(*overlap.start());
+            boundaries.push(*overlap.end());
         }
     }
     for event in &end_events {
         if let Some(overlap) = clip_control_span(&event.part, &unit)? {
-            boundaries.push(overlap.start().clone());
-            boundaries.push(overlap.end().clone());
+            boundaries.push(*overlap.start());
+            boundaries.push(*overlap.end());
         }
     }
 
@@ -735,7 +735,7 @@ fn validate_slice_control_patterns(
         if start >= end {
             continue;
         }
-        let part = build_control_span(start.clone(), end.clone())?;
+        let part = build_control_span(*start, *end)?;
         let mut current_start = 0.0;
         let mut current_end = 1.0;
 
@@ -762,14 +762,14 @@ fn validate_slice_control_patterns(
 
 fn clip_control_span(span: &TimeSpan, query: &TimeSpan) -> Result<Option<TimeSpan>, EvalError> {
     let start = if span.start() > query.start() {
-        span.start().clone()
+        *span.start()
     } else {
-        query.start().clone()
+        *query.start()
     };
     let end = if span.end() < query.end() {
-        span.end().clone()
+        *span.end()
     } else {
-        query.end().clone()
+        *query.end()
     };
 
     if start >= end {

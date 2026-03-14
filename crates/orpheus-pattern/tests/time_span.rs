@@ -3,7 +3,7 @@ use orpheus_pattern::{PatternError, Rational, TimeSpan};
 #[test]
 fn rational_thirds_sum_exactly_to_one() {
     let third = Rational::new(1, 3).unwrap();
-    assert_eq!(third.clone() + third.clone() + third, Rational::one());
+    assert_eq!(third + third + third, Rational::one());
 }
 
 #[test]
@@ -33,7 +33,7 @@ fn rational_new_normalizes_sign_and_reduces() {
 #[test]
 fn timespan_new_accepts_zero_length_spans() {
     let point = Rational::new(3, 4).unwrap();
-    let span = TimeSpan::new(point.clone(), point).unwrap();
+    let span = TimeSpan::new(point, point).unwrap();
 
     assert_eq!(span.start(), span.end());
 }

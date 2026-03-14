@@ -809,13 +809,13 @@ where
 
     let mut composed = Vec::new();
     for event in source_events {
-        let mut boundaries = vec![event.part.start().clone(), event.part.end().clone()];
+        let mut boundaries = vec![*event.part.start(), *event.part.end()];
         let mut has_overlap = false;
         for control_event in &control_events {
             if let Some(overlap) = clip_span(&control_event.part, &event.part)? {
                 has_overlap = true;
-                boundaries.push(overlap.start().clone());
-                boundaries.push(overlap.end().clone());
+                boundaries.push(*overlap.start());
+                boundaries.push(*overlap.end());
             }
         }
 
@@ -835,7 +835,7 @@ where
                 continue;
             }
 
-            let part = build_span(start.clone(), end.clone())?;
+            let part = build_span(*start, *end)?;
             let mut value = event.value.clone();
             for control_event in &control_events {
                 if clip_span(&control_event.part, &part)?.is_some() {
@@ -942,20 +942,20 @@ where
 
     let mut composed = Vec::new();
     for event in source_events {
-        let mut boundaries = vec![event.part.start().clone(), event.part.end().clone()];
+        let mut boundaries = vec![*event.part.start(), *event.part.end()];
         let mut has_overlap = false;
         for control_event in &start_events {
             if let Some(overlap) = clip_span(&control_event.part, &event.part)? {
                 has_overlap = true;
-                boundaries.push(overlap.start().clone());
-                boundaries.push(overlap.end().clone());
+                boundaries.push(*overlap.start());
+                boundaries.push(*overlap.end());
             }
         }
         for control_event in &end_events {
             if let Some(overlap) = clip_span(&control_event.part, &event.part)? {
                 has_overlap = true;
-                boundaries.push(overlap.start().clone());
-                boundaries.push(overlap.end().clone());
+                boundaries.push(*overlap.start());
+                boundaries.push(*overlap.end());
             }
         }
 
@@ -975,7 +975,7 @@ where
                 continue;
             }
 
-            let part = build_span(start.clone(), end.clone())?;
+            let part = build_span(*start, *end)?;
             let mut relative_start = 0.0;
             let mut relative_end = 1.0;
             for control_event in &start_events {
@@ -1028,13 +1028,13 @@ where
 
     let mut composed = Vec::new();
     for event in source_events {
-        let mut boundaries = vec![event.part.start().clone(), event.part.end().clone()];
+        let mut boundaries = vec![*event.part.start(), *event.part.end()];
         let mut has_overlap = false;
         for control_event in &control_events {
             if let Some(overlap) = clip_span(&control_event.part, &event.part)? {
                 has_overlap = true;
-                boundaries.push(overlap.start().clone());
-                boundaries.push(overlap.end().clone());
+                boundaries.push(*overlap.start());
+                boundaries.push(*overlap.end());
             }
         }
 
@@ -1054,7 +1054,7 @@ where
                 continue;
             }
 
-            let part = build_span(start.clone(), end.clone())?;
+            let part = build_span(*start, *end)?;
             let mut value = event.value.clone();
             for control_event in &control_events {
                 if clip_span(&control_event.part, &part)?.is_some() {
@@ -1261,8 +1261,8 @@ fn mirror_span_in_cycle(span: &TimeSpan, cycle: i128) -> Result<TimeSpan, EvalEr
 }
 
 fn clip_span(span: &TimeSpan, query: &TimeSpan) -> Result<Option<TimeSpan>, EvalError> {
-    let start = max(span.start(), query.start()).clone();
-    let end = min(span.end(), query.end()).clone();
+    let start = *max(span.start(), query.start());
+    let end = *min(span.end(), query.end());
 
     if start >= end {
         return Ok(None);

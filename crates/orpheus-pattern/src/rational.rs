@@ -9,7 +9,7 @@ use core::ops::Add;
 use crate::PatternError;
 
 /// Exact rational time value stored in normalized form.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct Rational {
     numerator: i128,
     denominator: i128,

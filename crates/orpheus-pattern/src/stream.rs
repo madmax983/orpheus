@@ -87,8 +87,8 @@ where
 }
 
 fn clip_span(span: &TimeSpan, query: &TimeSpan) -> Result<Option<TimeSpan>, PatternError> {
-    let start = max(span.start(), query.start()).clone();
-    let end = min(span.end(), query.end()).clone();
+    let start = *max(span.start(), query.start());
+    let end = *min(span.end(), query.end());
 
     if start >= end {
         return Ok(None);
