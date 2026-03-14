@@ -473,6 +473,7 @@ impl SamplePatternValue {
     ///
     /// Returns an error if an internal runtime transform produces an invalid
     /// span or overflows the evaluator's bounded rational arithmetic.
+    #[must_use = "query_unit() returns a Result; ignoring it may drop query errors"]
     pub fn query_unit(&self) -> Result<Vec<Event<SampleEvent>>, EvalError> {
         self.try_query(&TimeSpan::unit())
     }
