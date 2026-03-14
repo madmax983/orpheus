@@ -364,3 +364,19 @@ mod tests {
         assert_eq!(larger.cmp(&smaller), Ordering::Greater);
     }
 }
+
+impl From<&Rational> for f64 {
+    fn from(value: &Rational) -> Self {
+        #[allow(clippy::cast_precision_loss)]
+        let num = value.numerator as Self;
+        #[allow(clippy::cast_precision_loss)]
+        let den = value.denominator as Self;
+        num / den
+    }
+}
+
+impl From<Rational> for f64 {
+    fn from(value: Rational) -> Self {
+        Self::from(&value)
+    }
+}
