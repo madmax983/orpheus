@@ -1,3 +1,9 @@
+//! Core runtime types and evaluator representation for Orpheus.
+//!
+//! This module defines how the language interprets expressions at runtime. It
+//! houses the `Value` type representing evaluated programs, along with its
+//! concrete representations for samples and numbers.
+
 use core::cmp::{max, min};
 use core::fmt;
 
@@ -7,6 +13,10 @@ use orpheus_pattern::{
 
 use crate::{builtins::apply_builtin_function, eval::EvalError};
 
+/// Identifies which core built-in function is being represented.
+///
+/// These variants map exactly to the standard Orpheus primitive transformations
+/// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
     Every,
@@ -27,6 +37,11 @@ pub enum BuiltinKind {
     Rand,
 }
 
+/// A partially or fully applied built-in function at runtime.
+///
+/// This structure tracks the function's identity alongside arguments that have
+/// already been supplied. It supports partial application up to the function's
+/// required arity.
 #[derive(Clone, Debug)]
 pub struct BuiltinFn {
     pub(crate) kind: BuiltinKind,
@@ -34,6 +49,10 @@ pub struct BuiltinFn {
     pub(crate) site_salt: Option<u64>,
 }
 
+/// Represents the fundamental unit of an evaluated expression.
+///
+/// Values can be sample-based audio patterns, raw numerical envelopes, primitive
+/// built-in functions, or plain strings (often used as identifiers).
 #[derive(Clone, Debug)]
 pub enum Value {
     SamplePattern(SamplePatternValue),
@@ -43,6 +62,16 @@ pub enum Value {
 }
 
 impl Value {
+    /// Attempts to unwrap the value into a concrete sample pattern.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::value::{Value, SamplePatternValue};
+    ///
+    /// let val = Value::String("foo".into());
+    /// assert!(val.as_sample_pattern().is_none());
+    /// ```
     #[must_use]
     pub const fn as_sample_pattern(&self) -> Option<&SamplePatternValue> {
         match self {
@@ -51,6 +80,16 @@ impl Value {
         }
     }
 
+    /// Attempts to unwrap the value into a concrete number pattern.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::value::{Value, NumberPatternValue};
+    ///
+    /// let val = Value::String("foo".into());
+    /// assert!(val.as_number_pattern().is_none());
+    /// ```
     #[must_use]
     pub const fn as_number_pattern(&self) -> Option<&NumberPatternValue> {
         match self {
@@ -59,6 +98,18 @@ impl Value {
         }
     }
 
+    /// Returns a human-readable description of this value's underlying type.
+    ///
+    /// This is used heavily in runtime type mismatch error messages.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::value::Value;
+    ///
+    /// let val = Value::String("foo".into());
+    /// assert_eq!(val.kind_name(), "string");
+    /// ```
     #[must_use]
     pub const fn kind_name(&self) -> &'static str {
         match self {
@@ -70,6 +121,10 @@ impl Value {
     }
 }
 
+/// A single, fully-materialized audio event bound to a slice of time.
+///
+/// This contains a sample's name along with all of its applied signal processing
+/// parameters (gain, panning, filtering, playback rate, and slicing).
 #[derive(Clone, Debug, PartialEq)]
 pub struct SampleEvent {
     sample: Box<str>,
@@ -96,41 +151,49 @@ impl SampleEvent {
         }
     }
 
+    /// The string identifier of the raw audio sample.
     #[must_use]
     pub fn sample(&self) -> &str {
         self.sample.as_ref()
     }
 
+    /// The amplitude multiplier applied to this event.
     #[must_use]
     pub const fn gain(&self) -> f64 {
         self.gain
     }
 
+    /// The high-pass filter cutoff frequency in Hertz, if one is active.
     #[must_use]
     pub const fn hpf_cutoff_hz(&self) -> Option<f64> {
         self.hpf_cutoff_hz
     }
 
+    /// The low-pass filter cutoff frequency in Hertz, if one is active.
     #[must_use]
     pub const fn lpf_cutoff_hz(&self) -> Option<f64> {
         self.lpf_cutoff_hz
     }
 
+    /// The stereo panning position, clamped between -1.0 (Left) and 1.0 (Right).
     #[must_use]
     pub const fn pan(&self) -> f64 {
         self.pan
     }
 
+    /// The playback speed multiplier. Values greater than 1 speed up and pitch up.
     #[must_use]
     pub const fn rate(&self) -> f64 {
         self.rate
     }
 
+    /// The normalized starting position `[0, 1]` within the raw audio sample.
     #[must_use]
     pub const fn slice_start(&self) -> f64 {
         self.slice_start
     }
 
+    /// The normalized ending position `[0, 1]` within the raw audio sample.
     #[must_use]
     pub const fn slice_end(&self) -> f64 {
         self.slice_end
@@ -297,6 +360,10 @@ impl PatternRuntimeValue for f64 {
     }
 }
 
+/// A delayed computation representing a sequence of audio sample events over time.
+///
+/// This pattern can be queried over specific temporal windows to yield fully-realized
+/// [`SampleEvent`]s.
 #[derive(Clone, Debug)]
 pub struct SamplePatternValue {
     pattern: PatternRuntime<SampleEvent>,
@@ -551,6 +618,10 @@ impl SamplePatternValue {
     }
 }
 
+/// A delayed computation representing a sequence of raw numbers over time.
+///
+/// Often used for controlling the parameters (such as `gain` or `pan`) of
+/// other, sample-based patterns.
 #[derive(Clone, Debug)]
 pub struct NumberPatternValue {
     pattern: PatternRuntime<f64>,
@@ -1657,6 +1728,12 @@ fn rational_from_parts(numerator: i128, denominator: i128) -> Result<Rational, E
     Rational::checked_from_parts(numerator, denominator).map_err(|error| map_pattern_error(&error))
 }
 
+/// Calculates a deterministic, pseudorandom Boolean flag indicating if the
+/// `sometimes` built-in function should apply its transformation to a given cycle.
+///
+/// This relies on the absolute cycle number and a lexical "site salt" to ensure
+/// multiple usages of `sometimes` do not synchronize their coin flips.
+#[doc(hidden)]
 pub const fn sometimes_applies_on_cycle(cycle: i128, site_salt: u64) -> bool {
     let [
         b0,
