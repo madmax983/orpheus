@@ -386,11 +386,21 @@ impl SessionTui {
                         Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
                     )
                 } else if line.starts_with('[') {
-                    let (type_str, rest) = line.split_once("] ").unwrap_or(("", line.as_str()));
-                    Line::from(vec![
-                        Span::styled(format!("{type_str}] "), Style::default().fg(Color::DarkGray)),
-                        Span::styled(rest.to_owned(), Style::default().fg(Color::Green)),
-                    ])
+                    if let Some((type_str, rest)) = line.split_once("] ") {
+                        Line::from(vec![
+                            Span::styled(
+                                format!("{type_str}] "),
+                                Style::default().fg(Color::DarkGray),
+                            ),
+                            Span::styled(
+                                rest.to_owned(),
+                                Style::default().fg(Color::Green),
+                            ),
+                        ])
+                    } else {
+                        // No "] " delimiter; fall back to styling the whole line.
+                        Line::styled(line, Style::default().fg(Color::Green))
+                    }
                 } else {
                     Line::raw(line)
                 }
