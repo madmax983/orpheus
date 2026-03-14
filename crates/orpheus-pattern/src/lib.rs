@@ -51,3 +51,29 @@ impl fmt::Display for PatternError {
 }
 
 impl std::error::Error for PatternError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pattern_error_formats_invalid_denominator() {
+        let err = PatternError::InvalidDenominator { denominator: 0 };
+        assert_eq!(err.to_string(), "rational denominator cannot be zero");
+    }
+
+    #[test]
+    fn pattern_error_formats_arithmetic_overflow() {
+        let err = PatternError::ArithmeticOverflow { operation: "addition" };
+        assert_eq!(err.to_string(), "addition exceeded the supported range");
+    }
+
+    #[test]
+    fn pattern_error_formats_invalid_span() {
+        let err = PatternError::InvalidSpan {
+            start: Rational::new(2, 1).unwrap(),
+            end: Rational::new(1, 1).unwrap(),
+        };
+        assert_eq!(err.to_string(), "time span start cannot exceed end");
+    }
+}

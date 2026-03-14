@@ -1305,4 +1305,24 @@ right = sometimes(fast(2), cp hh)";
             sometimes_applies_on_cycle(cycle, right_salt)
         );
     }
+
+    #[test]
+    fn eval_error_formats_its_message() {
+        let err = super::EvalError::new("syntax error");
+        assert_eq!(err.to_string(), "syntax error");
+    }
+
+    #[test]
+    fn render_error_formats_eval_error() {
+        let err = super::RenderError::Eval(super::EvalError::new("render failed"));
+        assert_eq!(err.to_string(), "render failed");
+        assert!(std::error::Error::source(&err).is_some());
+    }
+
+    #[test]
+    fn render_error_formats_audio_error() {
+        let err = super::RenderError::Audio(orpheus_dsp::OfflineRenderError::InvalidCycleCount);
+        assert_eq!(err.to_string(), "offline rendering requires at least one cycle");
+        assert!(std::error::Error::source(&err).is_some());
+    }
 }
