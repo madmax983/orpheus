@@ -73,6 +73,10 @@ impl TypeEnv {
                 Type::pattern(Type::Sample),
             )),
         );
+        env.insert(
+            "rand",
+            TypeScheme::monomorphic(Type::function(vec![], Type::pattern(Type::Number))),
+        );
 
         env
     }

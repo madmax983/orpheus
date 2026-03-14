@@ -1,5 +1,5 @@
 use orpheus_lang::{ReplMode, Value, eval_module};
-use orpheus_pattern::Rational;
+use orpheus_pattern::{Rational, TimeSpan};
 
 fn sample_names(value: &Value) -> Vec<String> {
     value
@@ -798,4 +798,27 @@ fn pan_rejects_out_of_range_values() {
         ReplMode::Loose,
         &["`pan` requires a finite number within [-1, 1]"],
     );
+}
+
+#[test]
+fn rand_builtin_generates_deterministic_random_numbers() {
+    let module = eval_module("r = rand()", ReplMode::Loose).unwrap();
+    let pattern = module.get("r").unwrap().as_number_pattern().unwrap();
+
+    let span1 = TimeSpan::new(Rational::zero(), Rational::new(1, 2).unwrap()).unwrap();
+    let span2 = TimeSpan::new(Rational::new(1, 2).unwrap(), Rational::one()).unwrap();
+
+    // Use try_query directly to request these explicit spans instead of querying the unit and filtering
+    let events1 = pattern.try_query(&span1).unwrap();
+    let events2 = pattern.try_query(&span2).unwrap();
+
+    assert_eq!(events1.len(), 1);
+    assert_eq!(events2.len(), 1);
+
+    let v1 = events1[0].value;
+    let v2 = events2[0].value;
+
+    assert!(v1 >= 0.0 && v1 <= 1.0);
+    assert!(v2 >= 0.0 && v2 <= 1.0);
+    assert_ne!(v1, v2);
 }

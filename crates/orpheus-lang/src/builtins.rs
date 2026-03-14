@@ -25,6 +25,7 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "rate" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Rate))),
         "slice" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Slice))),
         "slice_idx" => Some(Value::Function(BuiltinFn::new(BuiltinKind::SliceIdx))),
+        "rand" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Rand))),
         _ => None,
     }
 }
@@ -132,6 +133,7 @@ impl BuiltinKind {
             Self::Rate => "rate",
             Self::Slice => "slice",
             Self::SliceIdx => "slice_idx",
+            Self::Rand => "rand",
         }
     }
 
@@ -149,6 +151,7 @@ impl BuiltinKind {
             | Self::Pitch
             | Self::Rate => 2,
             Self::Rev | Self::Sample => 1,
+            Self::Rand => 0,
         }
     }
 
@@ -169,6 +172,7 @@ impl BuiltinKind {
             Self::Rate => apply_rate(args),
             Self::Slice => apply_slice(args),
             Self::SliceIdx => apply_slice_idx(args),
+            Self::Rand => apply_rand(args, function.site_salt.unwrap_or_default()),
         }
     }
 }
@@ -417,6 +421,11 @@ fn apply_slice(args: Vec<Value>) -> Result<Value, EvalError> {
             "`slice` expected a sample pattern as its final argument",
         )),
     }
+}
+
+#[allow(clippy::unnecessary_wraps)]
+fn apply_rand(_args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
+    Ok(Value::NumberPattern(NumberPatternValue::rand(site_salt)))
 }
 
 fn apply_slice_idx(args: Vec<Value>) -> Result<Value, EvalError> {
