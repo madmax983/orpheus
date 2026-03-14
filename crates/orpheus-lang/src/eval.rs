@@ -149,20 +149,8 @@ pub fn export_sample_pattern_to_csv(
     .map_err(|e| EvalError::new(e.to_string()))?;
 
     for event in events {
-        let start_float = {
-            #[allow(clippy::cast_precision_loss)]
-            let start_num = event.part.start().numerator() as f64;
-            #[allow(clippy::cast_precision_loss)]
-            let start_den = event.part.start().denominator() as f64;
-            start_num / start_den
-        };
-        let end_float = {
-            #[allow(clippy::cast_precision_loss)]
-            let end_num = event.part.end().numerator() as f64;
-            #[allow(clippy::cast_precision_loss)]
-            let end_den = event.part.end().denominator() as f64;
-            end_num / end_den
-        };
+        let start_float = rational_to_float(event.part.start());
+        let end_float = rational_to_float(event.part.end());
         let hpf = event
             .value
             .hpf_cutoff_hz()
@@ -219,20 +207,8 @@ pub fn export_number_pattern_to_csv(
     .map_err(|e| EvalError::new(e.to_string()))?;
 
     for event in events {
-        let start_float = {
-            #[allow(clippy::cast_precision_loss)]
-            let start_num = event.part.start().numerator() as f64;
-            #[allow(clippy::cast_precision_loss)]
-            let start_den = event.part.start().denominator() as f64;
-            start_num / start_den
-        };
-        let end_float = {
-            #[allow(clippy::cast_precision_loss)]
-            let end_num = event.part.end().numerator() as f64;
-            #[allow(clippy::cast_precision_loss)]
-            let end_den = event.part.end().denominator() as f64;
-            end_num / end_den
-        };
+        let start_float = rational_to_float(event.part.start());
+        let end_float = rational_to_float(event.part.end());
         writeln!(
             file,
             "{},{},{:.6},{},{},{:.6},{:.6}",
@@ -1211,6 +1187,11 @@ fn rational_add(left: &Rational, right: &Rational) -> Result<Rational, EvalError
 fn rational_from_parts(numerator: i128, denominator: i128) -> Result<Rational, EvalError> {
     Rational::checked_from_parts(numerator, denominator)
         .map_err(|error| EvalError::new(error.to_string()))
+}
+
+#[allow(clippy::cast_precision_loss)]
+fn rational_to_float(rational: &Rational) -> f64 {
+    (rational.numerator() as f64) / (rational.denominator() as f64)
 }
 
 #[cfg(test)]

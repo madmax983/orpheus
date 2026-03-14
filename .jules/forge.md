@@ -1,0 +1,1 @@
+# Forge's Journal\n
