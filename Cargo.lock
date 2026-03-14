@@ -966,6 +966,7 @@ dependencies = [
  "orpheus-pattern",
  "pest",
  "pest_derive",
+ "proptest",
  "ratatui",
 ]
 
