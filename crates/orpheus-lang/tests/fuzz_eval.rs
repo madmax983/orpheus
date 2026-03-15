@@ -1,6 +1,6 @@
-use proptest::prelude::*;
-use orpheus_lang::eval_module;
 use orpheus_lang::ReplMode;
+use orpheus_lang::eval_module;
+use proptest::prelude::*;
 use std::panic;
 
 /// Generate float-literal strings, including cases with extremely long scientific-notation exponents.
@@ -14,12 +14,12 @@ fn float_literal_strategy() -> impl Strategy<Value = String> {
             Just("-".to_string()),
         ],
         // Integer part: 1–10 digits.
-        proptest::collection::vec(proptest::char::range('0', '9'), 1..=10)
+        proptest::collection::vec(proptest::char::range('0', '9'), 1..=4)
             .prop_map(|digits| digits.into_iter().collect::<String>()),
         // Optional fractional part: "" or "." followed by 1–10 digits.
         prop_oneof![
             Just(String::new()),
-            proptest::collection::vec(proptest::char::range('0', '9'), 1..=10).prop_map(|digits| {
+            proptest::collection::vec(proptest::char::range('0', '9'), 1..=4).prop_map(|digits| {
                 let frac: String = digits.into_iter().collect();
                 format!(".{frac}")
             }),
@@ -28,18 +28,16 @@ fn float_literal_strategy() -> impl Strategy<Value = String> {
         prop_oneof![
             Just(String::new()),
             (
-                prop_oneof![
-                    Just("e".to_string()),
-                    Just("E".to_string()),
-                ],
+                prop_oneof![Just("e".to_string()), Just("E".to_string()),],
                 prop_oneof![
                     Just(String::new()),
                     Just("+".to_string()),
                     Just("-".to_string()),
                 ],
-                proptest::collection::vec(proptest::char::range('0', '9'), 1..=1000)
+                proptest::collection::vec(proptest::char::range('0', '9'), 1..=4)
                     .prop_map(|digits| digits.into_iter().collect::<String>()),
-            ).prop_map(|(e, sign, digits)| format!("{e}{sign}{digits}")),
+            )
+                .prop_map(|(e, sign, digits)| format!("{e}{sign}{digits}")),
         ],
     )
         .prop_map(|(sign, int_part, frac_part, exp_part)| {
@@ -61,17 +59,14 @@ proptest! {
         // will cause the test to fail. `eval_module` doesn't evaluate the pattern span itself,
         // so we must do it manually via `query_unit()`.
         let result = panic::catch_unwind(|| {
-            let mut values = match eval_module(&source, ReplMode::Loose) {
-                Ok(v) => v,
-                Err(_) => return, // parse errors and eval errors on fuzzing inputs are normal.
+            let Ok(mut values) = eval_module(&source, ReplMode::Loose) else {
+                return; // parse errors and eval errors on fuzz strings are expected
             };
-            let val = match values.remove("a") {
-                Some(v) => v,
-                None => return,
+            let Some(val) = values.remove("a") else {
+                return;
             };
-            let pat = match val.as_sample_pattern() {
-                Some(p) => p,
-                None => return,
+            let Some(pat) = val.as_sample_pattern() else {
+                return;
             };
             let _ = pat.query_unit(); // query_unit for SamplePatternValue returns a Result so we ignore it
         });

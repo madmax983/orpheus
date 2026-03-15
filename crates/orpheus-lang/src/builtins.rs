@@ -825,15 +825,35 @@ fn validate_slice_control_patterns(
     boundaries.push(unit.end().clone());
 
     for event in &start_events {
-        if let Some(overlap) = clip_control_span(&event.part, &unit)? {
-            boundaries.push(overlap.start().clone());
-            boundaries.push(overlap.end().clone());
+        let start = if event.part.start() > unit.start() {
+            event.part.start()
+        } else {
+            unit.start()
+        };
+        let end = if event.part.end() < unit.end() {
+            event.part.end()
+        } else {
+            unit.end()
+        };
+        if start < end {
+            boundaries.push(start.clone());
+            boundaries.push(end.clone());
         }
     }
     for event in &end_events {
-        if let Some(overlap) = clip_control_span(&event.part, &unit)? {
-            boundaries.push(overlap.start().clone());
-            boundaries.push(overlap.end().clone());
+        let start = if event.part.start() > unit.start() {
+            event.part.start()
+        } else {
+            unit.start()
+        };
+        let end = if event.part.end() < unit.end() {
+            event.part.end()
+        } else {
+            unit.end()
+        };
+        if start < end {
+            boundaries.push(start.clone());
+            boundaries.push(end.clone());
         }
     }
 
@@ -852,12 +872,12 @@ fn validate_slice_control_patterns(
         let mut current_end = 1.0;
 
         for event in &start_events {
-            if clip_control_span(&event.part, &part)?.is_some() {
+            if control_spans_overlap(&event.part, &part) {
                 current_start = event.value;
             }
         }
         for event in &end_events {
-            if clip_control_span(&event.part, &part)?.is_some() {
+            if control_spans_overlap(&event.part, &part) {
                 current_end = event.value;
             }
         }
@@ -872,23 +892,14 @@ fn validate_slice_control_patterns(
     Ok(())
 }
 
-fn clip_control_span(span: &TimeSpan, query: &TimeSpan) -> Result<Option<TimeSpan>, EvalError> {
-    let start = if span.start() > query.start() {
-        span.start().clone()
+fn control_spans_overlap(a: &TimeSpan, b: &TimeSpan) -> bool {
+    let start = if a.start() > b.start() {
+        a.start()
     } else {
-        query.start().clone()
+        b.start()
     };
-    let end = if span.end() < query.end() {
-        span.end().clone()
-    } else {
-        query.end().clone()
-    };
-
-    if start >= end {
-        return Ok(None);
-    }
-
-    build_control_span(start, end).map(Some)
+    let end = if a.end() < b.end() { a.end() } else { b.end() };
+    start < end
 }
 
 fn build_control_span(start: Rational, end: Rational) -> Result<TimeSpan, EvalError> {

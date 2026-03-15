@@ -721,8 +721,9 @@ impl NumberPatternValue {
     /// variant, use [`NumberPatternValue::try_query_unit`].
     #[must_use]
     pub fn query_unit(&self) -> Vec<Event<f64>> {
-        self.try_query_unit()
-            .unwrap_or_else(|err| panic!("internal pattern evaluation error in query_unit: {err:?}"))
+        self.try_query_unit().unwrap_or_else(|err| {
+            panic!("internal pattern evaluation error in query_unit: {err:?}")
+        })
     }
 
     /// Fallible variant of [`NumberPatternValue::query_unit`].
@@ -1014,10 +1015,12 @@ where
         boundaries.push(event.part.end().clone());
         let mut has_overlap = false;
         for control_event in &control_events {
-            if let Some(overlap) = clip_span(&control_event.part, &event.part)? {
+            let start = max(control_event.part.start(), event.part.start());
+            let end = min(control_event.part.end(), event.part.end());
+            if start < end {
                 has_overlap = true;
-                boundaries.push(overlap.start().clone());
-                boundaries.push(overlap.end().clone());
+                boundaries.push(start.clone());
+                boundaries.push(end.clone());
             }
         }
 
@@ -1040,7 +1043,7 @@ where
             let part = build_span(start.clone(), end.clone())?;
             let mut value = event.value.clone();
             for control_event in &control_events {
-                if clip_span(&control_event.part, &part)?.is_some() {
+                if spans_overlap(&control_event.part, &part) {
                     value = match kind {
                         ControlPatternKind::Gain => value.adjust_gain(control_event.value),
                         ControlPatternKind::Hpf => value.adjust_hpf(control_event.value),
@@ -1150,17 +1153,21 @@ where
         boundaries.push(event.part.end().clone());
         let mut has_overlap = false;
         for control_event in &start_events {
-            if let Some(overlap) = clip_span(&control_event.part, &event.part)? {
+            let start = max(control_event.part.start(), event.part.start());
+            let end = min(control_event.part.end(), event.part.end());
+            if start < end {
                 has_overlap = true;
-                boundaries.push(overlap.start().clone());
-                boundaries.push(overlap.end().clone());
+                boundaries.push(start.clone());
+                boundaries.push(end.clone());
             }
         }
         for control_event in &end_events {
-            if let Some(overlap) = clip_span(&control_event.part, &event.part)? {
+            let start = max(control_event.part.start(), event.part.start());
+            let end = min(control_event.part.end(), event.part.end());
+            if start < end {
                 has_overlap = true;
-                boundaries.push(overlap.start().clone());
-                boundaries.push(overlap.end().clone());
+                boundaries.push(start.clone());
+                boundaries.push(end.clone());
             }
         }
 
@@ -1184,12 +1191,12 @@ where
             let mut relative_start = 0.0;
             let mut relative_end = 1.0;
             for control_event in &start_events {
-                if clip_span(&control_event.part, &part)?.is_some() {
+                if spans_overlap(&control_event.part, &part) {
                     relative_start = control_event.value;
                 }
             }
             for control_event in &end_events {
-                if clip_span(&control_event.part, &part)?.is_some() {
+                if spans_overlap(&control_event.part, &part) {
                     relative_end = control_event.value;
                 }
             }
@@ -1239,10 +1246,12 @@ where
         boundaries.push(event.part.end().clone());
         let mut has_overlap = false;
         for control_event in &control_events {
-            if let Some(overlap) = clip_span(&control_event.part, &event.part)? {
+            let start = max(control_event.part.start(), event.part.start());
+            let end = min(control_event.part.end(), event.part.end());
+            if start < end {
                 has_overlap = true;
-                boundaries.push(overlap.start().clone());
-                boundaries.push(overlap.end().clone());
+                boundaries.push(start.clone());
+                boundaries.push(end.clone());
             }
         }
 
@@ -1265,7 +1274,7 @@ where
             let part = build_span(start.clone(), end.clone())?;
             let mut value = event.value.clone();
             for control_event in &control_events {
-                if clip_span(&control_event.part, &part)?.is_some() {
+                if spans_overlap(&control_event.part, &part) {
                     let index = whole_number_from_slice_idx_value(control_event.value)?;
                     let slice_start = f64::from(index) / f64::from(segments);
                     let slice_end = f64::from(index.checked_add(1).ok_or_else(|| {
@@ -1675,14 +1684,18 @@ fn mirror_span_in_cycle(span: &TimeSpan, cycle: i128) -> Result<TimeSpan, EvalEr
 }
 
 fn clip_span(span: &TimeSpan, query: &TimeSpan) -> Result<Option<TimeSpan>, EvalError> {
-    let start = max(span.start(), query.start()).clone();
-    let end = min(span.end(), query.end()).clone();
+    let start = max(span.start(), query.start());
+    let end = min(span.end(), query.end());
 
     if start >= end {
         return Ok(None);
     }
 
-    build_span(start, end).map(Some)
+    build_span(start.clone(), end.clone()).map(Some)
+}
+
+fn spans_overlap(a: &TimeSpan, b: &TimeSpan) -> bool {
+    max(a.start(), b.start()) < min(a.end(), b.end())
 }
 
 fn scale_span(span: &TimeSpan, numerator: i64, denominator: i64) -> Result<TimeSpan, EvalError> {
