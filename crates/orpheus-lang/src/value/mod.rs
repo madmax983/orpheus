@@ -1,3 +1,5 @@
+pub mod builtins;
+
 use core::cmp::{max, min};
 use core::fmt;
 
@@ -5,7 +7,8 @@ use orpheus_pattern::{
     CyclePattern, Event, EventStream, PatternError, PatternNode, Rational, TimeSpan,
 };
 
-use crate::{builtins::apply_builtin_function, eval::EvalError};
+use crate::diagnostics::EvalError;
+use builtins::apply_builtin_function;
 
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
@@ -1581,6 +1584,7 @@ fn rational_from_parts(numerator: i128, denominator: i128) -> Result<Rational, E
     Rational::checked_from_parts(numerator, denominator).map_err(|error| map_pattern_error(&error))
 }
 
+#[must_use]
 pub const fn sometimes_applies_on_cycle(cycle: i128, site_salt: u64) -> bool {
     let [
         b0,
@@ -1636,6 +1640,53 @@ const fn ceil_rational(value: &Rational) -> i128 {
     }
 }
 
+/// Converts an f64 to a Rational.
+///
+/// # Errors
+/// Returns `EvalError` if the float is not finite or cannot be converted.
+pub fn f64_to_rational(value: f64, context: &str) -> Result<Rational, EvalError> {
+    if !value.is_finite() {
+        return Err(EvalError::new(format!("{context} must be finite")));
+    }
+
+    let rendered = value.to_string();
+    if rendered.contains('e') || rendered.contains('E') {
+        return Err(EvalError::new(format!(
+            "{context} must not use scientific notation in Task 12"
+        )));
+    }
+
+    let (negative, digits) = rendered
+        .strip_prefix('-')
+        .map_or((false, rendered.as_str()), |rest| (true, rest));
+
+    let (numerator, denominator) = if let Some((whole, fractional)) = digits.split_once('.') {
+        let scale = checked_pow10(fractional.len())?;
+        let combined = format!("{whole}{fractional}");
+        let numerator = combined
+            .parse::<i128>()
+            .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?;
+        (numerator, scale)
+    } else {
+        let numerator = digits
+            .parse::<i128>()
+            .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?;
+        (numerator, 1_i128)
+    };
+
+    let signed_numerator = if negative { -numerator } else { numerator };
+    rational_from_parts(signed_numerator, denominator)
+}
+
+fn checked_pow10(exponent: usize) -> Result<i128, EvalError> {
+    let mut value = 1_i128;
+    for _ in 0..exponent {
+        value = value
+            .checked_mul(10)
+            .ok_or_else(|| EvalError::new("decimal literal exceeded the supported range"))?;
+    }
+    Ok(value)
+}
 #[cfg(test)]
 mod tests {
     use super::{

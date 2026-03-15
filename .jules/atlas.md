@@ -1,0 +1,3 @@
+**Unify Errors and Domain Modules**
+**Tangle:** A circular dependency loop existed between `eval.rs` and `builtins.rs`, with `eval.rs` exporting errors that everything needed, while `builtins.rs` required types from `value.rs`, causing a massive tangle of unstructured interdependencies.
+**Blueprint:** Extracted all error types to a dedicated `diagnostics.rs` file. Created a cohesive `value` domain module containing `mod.rs` (AST, PatternRuntime) and `builtins.rs` (Operations), successfully severing the `eval.rs` -> `builtins.rs` cyclic link and enforcing strict structural boundaries without creating a bloated 2,000-line God file.

@@ -1,84 +1,17 @@
 use std::collections::BTreeMap;
-use std::error::Error;
-use std::fmt::{self, Display, Formatter};
 use std::path::Path;
 
 use std::io::Write;
 
-use orpheus_dsp::{OfflineRenderError, SampleBank, SampleTrigger, render_events_to_file_with_bank};
+use orpheus_dsp::{SampleBank, SampleTrigger, render_events_to_file_with_bank};
 use orpheus_pattern::{Event, PatternNode, Rational, TimeSpan};
 
 use crate::ReplMode;
 use crate::ast::{Expr, Module, Stmt};
-use crate::builtins::{builtin_value, is_sample_identifier, stack_values};
-use crate::diagnostics::ParseError;
+use crate::diagnostics::{EvalError, RenderError};
 use crate::parser::parse_module;
-use crate::value::{NumberPatternValue, SampleEvent, SamplePatternValue, Value};
-
-/// Runtime evaluation error for bootstrap Orpheus modules.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct EvalError {
-    message: Box<str>,
-}
-
-impl EvalError {
-    pub(crate) fn new(message: impl Into<Box<str>>) -> Self {
-        Self {
-            message: message.into(),
-        }
-    }
-}
-
-impl Display for EvalError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.message)
-    }
-}
-
-impl Error for EvalError {}
-
-impl From<ParseError> for EvalError {
-    fn from(error: ParseError) -> Self {
-        Self::new(error.to_string())
-    }
-}
-
-/// Error raised while rendering an Orpheus sample pattern to an audio file.
-#[derive(Debug)]
-pub enum RenderError {
-    Eval(EvalError),
-    Audio(OfflineRenderError),
-}
-
-impl Display for RenderError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Eval(error) => Display::fmt(error, formatter),
-            Self::Audio(error) => Display::fmt(error, formatter),
-        }
-    }
-}
-
-impl Error for RenderError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::Eval(error) => Some(error),
-            Self::Audio(error) => Some(error),
-        }
-    }
-}
-
-impl From<EvalError> for RenderError {
-    fn from(error: EvalError) -> Self {
-        Self::Eval(error)
-    }
-}
-
-impl From<OfflineRenderError> for RenderError {
-    fn from(error: OfflineRenderError) -> Self {
-        Self::Audio(error)
-    }
-}
+use crate::value::builtins::{builtin_value, is_sample_identifier, stack_values};
+use crate::value::{NumberPatternValue, SampleEvent, SamplePatternValue, Value, f64_to_rational};
 
 /// Evaluates bootstrap Orpheus source into runtime values.
 ///
@@ -1117,51 +1050,7 @@ fn sample_trigger_from_event(event: &SampleEvent) -> SampleTrigger {
 
 fn extract_constant_number_rational(value: Value, context: &str) -> Result<Rational, EvalError> {
     let constant = extract_constant_number_value(value, context)?;
-    f64_to_rational(constant, context)
-}
-
-pub fn f64_to_rational(value: f64, context: &str) -> Result<Rational, EvalError> {
-    if !value.is_finite() {
-        return Err(EvalError::new(format!("{context} must be finite")));
-    }
-
-    let rendered = value.to_string();
-    if rendered.contains('e') || rendered.contains('E') {
-        return Err(EvalError::new(format!(
-            "{context} must not use scientific notation in Task 12"
-        )));
-    }
-
-    let (negative, digits) = rendered
-        .strip_prefix('-')
-        .map_or((false, rendered.as_str()), |rest| (true, rest));
-
-    let (numerator, denominator) = if let Some((whole, fractional)) = digits.split_once('.') {
-        let scale = checked_pow10(fractional.len())?;
-        let combined = format!("{whole}{fractional}");
-        let numerator = combined
-            .parse::<i128>()
-            .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?;
-        (numerator, scale)
-    } else {
-        let numerator = digits
-            .parse::<i128>()
-            .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?;
-        (numerator, 1_i128)
-    };
-
-    let signed_numerator = if negative { -numerator } else { numerator };
-    rational_from_parts(signed_numerator, denominator)
-}
-
-fn checked_pow10(exponent: usize) -> Result<i128, EvalError> {
-    let mut value = 1_i128;
-    for _ in 0..exponent {
-        value = value
-            .checked_mul(10)
-            .ok_or_else(|| EvalError::new("decimal literal exceeded the supported range"))?;
-    }
-    Ok(value)
+    crate::value::f64_to_rational(constant, context)
 }
 
 fn shift_events<T>(events: &mut [Event<T>], offset: &Rational) -> Result<(), EvalError> {

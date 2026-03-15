@@ -1,7 +1,9 @@
 use orpheus_pattern::{Rational, TimeSpan};
 
-use crate::eval::{EvalError, f64_to_rational};
-use crate::value::{BuiltinFn, BuiltinKind, NumberPatternValue, SamplePatternValue, Value};
+use super::{
+    BuiltinFn, BuiltinKind, NumberPatternValue, SamplePatternValue, Value, f64_to_rational,
+};
+use crate::diagnostics::EvalError;
 
 pub fn is_sample_identifier(name: &str) -> bool {
     matches!(name, "bd" | "sn" | "cp" | "hh")
@@ -70,6 +72,7 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
             kind,

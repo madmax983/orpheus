@@ -1,7 +1,6 @@
 //! Language and REPL surface for Orpheus.
 
 mod ast;
-mod builtins;
 mod diagnostics;
 mod eval;
 mod loader;
@@ -12,10 +11,10 @@ mod types;
 mod value;
 
 pub use ast::{Expr, Module, Stmt};
-pub use diagnostics::{LoadError, ParseError, TypeError};
+pub use diagnostics::{EvalError, LoadError, ParseError, RenderError, TypeError};
 pub use eval::{
-    EvalError, RenderError, eval_module, export_number_pattern_to_csv,
-    export_sample_pattern_to_csv, render_sample_pattern_to_file, render_sample_pattern_to_wav,
+    eval_module, export_number_pattern_to_csv, export_sample_pattern_to_csv,
+    render_sample_pattern_to_file, render_sample_pattern_to_wav,
 };
 pub use loader::load_file_strict;
 pub use parser::parse_module;
