@@ -92,7 +92,9 @@ impl BuiltinFn {
 
 pub fn apply_builtin_function(function: &BuiltinFn, args: Vec<Value>) -> Result<Value, EvalError> {
     let kind = function.kind;
-    let mut combined = function.bound_args.clone();
+    // PRE-ALLOCATE: avoids extra heap allocations when combining bound arguments and explicit arguments.
+    let mut combined = Vec::with_capacity(function.bound_args.len() + args.len());
+    combined.extend_from_slice(&function.bound_args);
     combined.extend(args);
 
     if combined.len() < kind.arity() {
