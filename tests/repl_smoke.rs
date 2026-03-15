@@ -55,7 +55,10 @@ fn repl_ignores_blank_lines_before_quit() {
     let mut cmd = cargo_bin_cmd!("orpheus");
 
     // the prompt is colorized, so we just check for multiple ">" appearances
-    cmd.write_stdin("\n\n:quit\n").assert().success().stdout(contains(">").count(3));
+    cmd.write_stdin("\n\n:quit\n")
+        .assert()
+        .success()
+        .stdout(contains(">").count(3));
 }
 
 #[test]
