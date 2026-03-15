@@ -27,7 +27,7 @@ use crate::value::{NumberPatternValue, SampleEvent, SamplePatternValue, Value};
 /// An `EvalError` provides an error message indicating what went wrong:
 ///
 /// ```
-/// use orpheus_lang::eval::EvalError;
+/// use orpheus_lang::EvalError;
 ///
 /// let err = EvalError::new("decimal literal exceeded the supported range");
 /// assert_eq!(err.to_string(), "decimal literal exceeded the supported range");
@@ -45,7 +45,7 @@ impl EvalError {
     /// # Examples
     ///
     /// ```
-    /// use orpheus_lang::eval::EvalError;
+/// use orpheus_lang::EvalError;
     ///
     /// let err = EvalError::new("division by zero");
     /// assert_eq!(err.to_string(), "division by zero");
