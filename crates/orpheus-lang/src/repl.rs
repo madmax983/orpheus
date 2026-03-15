@@ -429,10 +429,10 @@ impl ReplSession {
     fn push_pattern_update(&mut self, name: &str, value: &Value) -> Result<(), String> {
         if let Value::SamplePattern(pattern) = value {
             let enqueue_publish = self.engine.transport_snapshot().publish_epoch();
+            let events = pattern.query_unit().map_err(|e| e.to_string())?;
             let update = PatternUpdate::new(
                 name,
-                pattern
-                    .query_unit()
+                events
                     .into_iter()
                     .map(|event| orpheus_pattern::Event {
                         whole: event.whole,
