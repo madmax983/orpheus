@@ -41,13 +41,11 @@ fn stream_query_returns_events_in_explicit_time_order() {
 
 #[test]
 fn stream_query_handles_empty_query_window() {
-    let stream = EventStream::new(vec![
-        Event {
-            whole: None,
-            part: span(0, 1, 1, 1),
-            value: "event",
-        },
-    ]);
+    let stream = EventStream::new(vec![Event {
+        whole: None,
+        part: span(0, 1, 1, 1),
+        value: "event",
+    }]);
 
     let events = stream.query(span(2, 1, 2, 1));
     assert_eq!(events.len(), 0);
@@ -55,13 +53,11 @@ fn stream_query_handles_empty_query_window() {
 
 #[test]
 fn stream_query_clips_partial_events() {
-    let stream = EventStream::new(vec![
-        Event {
-            whole: None,
-            part: span(0, 1, 2, 1),
-            value: "long_event",
-        },
-    ]);
+    let stream = EventStream::new(vec![Event {
+        whole: None,
+        part: span(0, 1, 2, 1),
+        value: "long_event",
+    }]);
 
     let events = stream.query(span(1, 1, 3, 1));
     assert_eq!(events.len(), 1);

@@ -1081,28 +1081,11 @@ where
     // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries, eliminating allocating overhead in the hot loop.
     let mut composed = Vec::with_capacity(source_events.len());
     for event in source_events {
-        // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries.
-        let mut boundaries = Vec::with_capacity(2 + control_events.len() * 2);
-        boundaries.push(event.part.start().clone());
-        boundaries.push(event.part.end().clone());
-        let mut has_overlap = false;
-        for control_event in &control_events {
-            let start = max(control_event.part.start(), event.part.start());
-            let end = min(control_event.part.end(), event.part.end());
-            if start < end {
-                has_overlap = true;
-                boundaries.push(start.clone());
-                boundaries.push(end.clone());
-            }
-        }
-
-        if !has_overlap {
+        let Some(boundaries) = compute_event_fragment_boundaries(&event.part, &[&control_events[..]])
+        else {
             composed.push(event);
             continue;
-        }
-
-        boundaries.sort();
-        boundaries.dedup();
+        };
 
         for window in boundaries.windows(2) {
             let [start, end] = window else {
@@ -1220,37 +1203,12 @@ where
     // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries, eliminating allocating overhead in the hot loop.
     let mut composed = Vec::with_capacity(source_events.len());
     for event in source_events {
-        // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries.
-        let mut boundaries = Vec::with_capacity(2 + (start_events.len() + end_events.len()) * 2);
-        boundaries.push(event.part.start().clone());
-        boundaries.push(event.part.end().clone());
-        let mut has_overlap = false;
-        for control_event in &start_events {
-            let start = max(control_event.part.start(), event.part.start());
-            let end = min(control_event.part.end(), event.part.end());
-            if start < end {
-                has_overlap = true;
-                boundaries.push(start.clone());
-                boundaries.push(end.clone());
-            }
-        }
-        for control_event in &end_events {
-            let start = max(control_event.part.start(), event.part.start());
-            let end = min(control_event.part.end(), event.part.end());
-            if start < end {
-                has_overlap = true;
-                boundaries.push(start.clone());
-                boundaries.push(end.clone());
-            }
-        }
-
-        if !has_overlap {
+        let Some(boundaries) =
+            compute_event_fragment_boundaries(&event.part, &[&start_events[..], &end_events[..]])
+        else {
             composed.push(event);
             continue;
-        }
-
-        boundaries.sort();
-        boundaries.dedup();
+        };
 
         for window in boundaries.windows(2) {
             let [start, end] = window else {
@@ -1314,28 +1272,11 @@ where
     // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries, eliminating allocating overhead in the hot loop.
     let mut composed = Vec::with_capacity(source_events.len());
     for event in source_events {
-        // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries.
-        let mut boundaries = Vec::with_capacity(2 + control_events.len() * 2);
-        boundaries.push(event.part.start().clone());
-        boundaries.push(event.part.end().clone());
-        let mut has_overlap = false;
-        for control_event in &control_events {
-            let start = max(control_event.part.start(), event.part.start());
-            let end = min(control_event.part.end(), event.part.end());
-            if start < end {
-                has_overlap = true;
-                boundaries.push(start.clone());
-                boundaries.push(end.clone());
-            }
-        }
-
-        if !has_overlap {
+        let Some(boundaries) = compute_event_fragment_boundaries(&event.part, &[&control_events[..]])
+        else {
             composed.push(event);
             continue;
-        }
-
-        boundaries.sort();
-        boundaries.dedup();
+        };
 
         for window in boundaries.windows(2) {
             let [start, end] = window else {
@@ -1770,6 +1711,42 @@ fn clip_span(span: &TimeSpan, query: &TimeSpan) -> Result<Option<TimeSpan>, Eval
 
 fn spans_overlap(a: &TimeSpan, b: &TimeSpan) -> bool {
     max(a.start(), b.start()) < min(a.end(), b.end())
+}
+
+fn compute_event_fragment_boundaries(
+    source_span: &TimeSpan,
+    control_event_lists: &[&[Event<f64>]],
+) -> Option<Vec<Rational>> {
+    let capacity_estimate = 2 + control_event_lists
+        .iter()
+        .map(|list| list.len())
+        .sum::<usize>()
+        * 2;
+    // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries.
+    let mut boundaries = Vec::with_capacity(capacity_estimate);
+    boundaries.push(source_span.start().clone());
+    boundaries.push(source_span.end().clone());
+    let mut has_overlap = false;
+
+    for control_events in control_event_lists {
+        for control_event in *control_events {
+            let start = max(control_event.part.start(), source_span.start());
+            let end = min(control_event.part.end(), source_span.end());
+            if start < end {
+                has_overlap = true;
+                boundaries.push(start.clone());
+                boundaries.push(end.clone());
+            }
+        }
+    }
+
+    if !has_overlap {
+        return None;
+    }
+
+    boundaries.sort();
+    boundaries.dedup();
+    Some(boundaries)
 }
 
 fn scale_span(span: &TimeSpan, numerator: i64, denominator: i64) -> Result<TimeSpan, EvalError> {

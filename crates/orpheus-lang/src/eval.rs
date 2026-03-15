@@ -68,7 +68,7 @@ impl EvalError {
     /// # Examples
     ///
     /// ```
-/// use orpheus_lang::EvalError;
+    /// use orpheus_lang::EvalError;
     ///
     /// let err = EvalError::new("division by zero");
     /// assert_eq!(err.to_string(), "division by zero");
