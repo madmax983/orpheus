@@ -67,7 +67,7 @@ impl Value {
     /// # Examples
     ///
     /// ```
-    /// use orpheus_lang::value::{Value, SamplePatternValue};
+    /// use orpheus_lang::{Value, SamplePatternValue};
     ///
     /// let val = Value::String("foo".into());
     /// assert!(val.as_sample_pattern().is_none());
@@ -85,7 +85,7 @@ impl Value {
     /// # Examples
     ///
     /// ```
-    /// use orpheus_lang::value::{Value, NumberPatternValue};
+    /// use orpheus_lang::{Value, NumberPatternValue};
     ///
     /// let val = Value::String("foo".into());
     /// assert!(val.as_number_pattern().is_none());
@@ -105,7 +105,7 @@ impl Value {
     /// # Examples
     ///
     /// ```
-    /// use orpheus_lang::value::Value;
+    /// use orpheus_lang::Value;
     ///
     /// let val = Value::String("foo".into());
     /// assert_eq!(val.kind_name(), "string");
