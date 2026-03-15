@@ -78,29 +78,47 @@ struct SharedTransport {
 
 impl SharedTransport {
     fn publish(&self, core: &EngineCore) {
-        self.publish_epoch.fetch_add(1, Ordering::Relaxed);
+        // Increment epoch to an odd number to signal we are writing
+        self.publish_epoch.fetch_add(1, Ordering::SeqCst);
         self.current_frame
-            .store(core.current_frame, Ordering::Relaxed);
+            .store(core.current_frame, Ordering::SeqCst);
         self.current_cycle_start_frame
-            .store(core.current_cycle_start_frame, Ordering::Relaxed);
+            .store(core.current_cycle_start_frame, Ordering::SeqCst);
         self.frames_per_cycle
-            .store(core.frames_per_cycle, Ordering::Relaxed);
+            .store(core.frames_per_cycle, Ordering::SeqCst);
         self.tempo_bpm_bits
-            .store(core.tempo_bpm.to_bits(), Ordering::Relaxed);
-        self.is_playing.store(core.is_playing, Ordering::Relaxed);
+            .store(core.tempo_bpm.to_bits(), Ordering::SeqCst);
+        self.is_playing.store(core.is_playing, Ordering::SeqCst);
         self.has_pending_pattern
-            .store(core.pending_pattern.is_some(), Ordering::Relaxed);
+            .store(core.pending_pattern.is_some(), Ordering::SeqCst);
+        // Increment epoch to an even number to signal we are done
+        self.publish_epoch.fetch_add(1, Ordering::SeqCst);
     }
 
     fn snapshot(&self) -> TransportSnapshot {
-        TransportSnapshot {
-            publish_epoch: self.publish_epoch.load(Ordering::Relaxed),
-            current_frame: self.current_frame.load(Ordering::Relaxed),
-            current_cycle_start_frame: self.current_cycle_start_frame.load(Ordering::Relaxed),
-            frames_per_cycle: self.frames_per_cycle.load(Ordering::Relaxed),
-            tempo_bpm_bits: self.tempo_bpm_bits.load(Ordering::Relaxed),
-            is_playing: self.is_playing.load(Ordering::Relaxed),
-            has_pending_pattern: self.has_pending_pattern.load(Ordering::Relaxed),
+        loop {
+            let start_epoch = self.publish_epoch.load(Ordering::SeqCst);
+            // If odd, a write is in progress. Wait for it to finish.
+            if start_epoch % 2 != 0 {
+                std::hint::spin_loop();
+                continue;
+            }
+
+            let snap = TransportSnapshot {
+                publish_epoch: start_epoch,
+                current_frame: self.current_frame.load(Ordering::SeqCst),
+                current_cycle_start_frame: self.current_cycle_start_frame.load(Ordering::SeqCst),
+                frames_per_cycle: self.frames_per_cycle.load(Ordering::SeqCst),
+                tempo_bpm_bits: self.tempo_bpm_bits.load(Ordering::SeqCst),
+                is_playing: self.is_playing.load(Ordering::SeqCst),
+                has_pending_pattern: self.has_pending_pattern.load(Ordering::SeqCst),
+            };
+
+            let end_epoch = self.publish_epoch.load(Ordering::SeqCst);
+            // If the epoch is unchanged, we observed a consistent state.
+            if start_epoch == end_epoch {
+                return snap;
+            }
         }
     }
 }

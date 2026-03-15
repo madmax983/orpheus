@@ -24,6 +24,7 @@ proptest = "1.6.0"
 ratatui = "0.29"
 rtrb = "0.3"
 thiserror = "2"
+loom = "0.7"
 
 [workspace.lints.rust]
 unsafe_code = "warn"

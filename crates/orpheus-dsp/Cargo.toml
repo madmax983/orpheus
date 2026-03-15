@@ -14,3 +14,4 @@ hound.workspace = true
 orpheus-pattern.workspace = true
 rtrb.workspace = true
 thiserror.workspace = true
+loom.workspace = true
