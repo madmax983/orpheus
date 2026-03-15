@@ -4,6 +4,7 @@ mod ast;
 mod builtins;
 mod diagnostics;
 mod eval;
+pub(crate) mod export;
 mod loader;
 mod parser;
 pub mod repl;
@@ -13,10 +14,8 @@ mod value;
 
 pub use ast::{Expr, Module, Stmt};
 pub use diagnostics::{LoadError, ParseError, TypeError};
-pub use eval::{
-    EvalError, RenderError, eval_module, export_number_pattern_to_csv,
-    export_sample_pattern_to_csv, render_sample_pattern_to_file, render_sample_pattern_to_wav,
-};
+pub use eval::{EvalError, eval_module};
+pub use export::{RenderError, render_sample_pattern_to_file, render_sample_pattern_to_wav};
 pub use loader::load_file_strict;
 pub use parser::parse_module;
 pub use types::{Type, TypedModule, infer_module};

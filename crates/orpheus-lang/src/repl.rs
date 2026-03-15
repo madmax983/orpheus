@@ -8,7 +8,8 @@ use orpheus_dsp::{
     load_sample_bank_from_directory,
 };
 
-use crate::eval::{eval_into_bindings, render_sample_pattern_to_file_with_bank};
+use crate::eval::eval_into_bindings;
+use crate::export::render_sample_pattern_to_file_with_bank;
 use crate::loader::load_file_runtime_strict;
 use crate::types::infer_into_bindings;
 use crate::{ReplMode, Type, Value};
@@ -302,11 +303,11 @@ impl ReplSession {
 
         match value {
             Value::SamplePattern(pattern) => {
-                crate::eval::export_sample_pattern_to_csv(pattern, &path, cycles)
+                crate::export::export_sample_pattern_to_csv(pattern, &path, cycles)
                     .map_err(|error| error.to_string())?;
             }
             Value::NumberPattern(pattern) => {
-                crate::eval::export_number_pattern_to_csv(pattern, &path, cycles)
+                crate::export::export_number_pattern_to_csv(pattern, &path, cycles)
                     .map_err(|error| error.to_string())?;
             }
             Value::Function(_) | Value::String(_) => {
