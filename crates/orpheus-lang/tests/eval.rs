@@ -5,7 +5,8 @@ fn sample_names(value: &Value) -> Vec<String> {
     value
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap()
+        .query_unit()
+        .unwrap()
         .into_iter()
         .map(|event| event.value.sample().to_owned())
         .collect()
@@ -120,7 +121,8 @@ fn shift_rotates_sample_events_forward_within_the_cycle() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 3);
     assert_eq!(events[0].part.start(), &Rational::zero());
@@ -185,13 +187,15 @@ fn direct_call_matches_pipe_application_for_shift() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
     let piped_events = piped
         .get("drums")
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(direct_events, piped_events);
 }
@@ -204,7 +208,8 @@ fn gain_updates_sample_event_amplitude() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
     assert_eq!(event.len(), 1);
     assert!((event[0].value.gain() - 0.8).abs() < f64::EPSILON);
 }
@@ -221,7 +226,8 @@ fn meter_translates_beats_into_cycle_relative_time() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].part.start().numerator(), 1);
@@ -240,7 +246,8 @@ fn meter_prefix_annotation_translates_beats_into_cycle_relative_time() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].part.start().numerator(), 1);
@@ -280,7 +287,8 @@ fn rate_and_slice_builtins_update_sample_event_playback_params() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].value.sample(), "vox_ah");
@@ -303,7 +311,8 @@ fn filter_builtins_update_sample_event_filter_params() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].value.sample(), "vox_ah");
@@ -323,7 +332,8 @@ fn pattern_valued_filter_controls_split_sample_events() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 2);
     assert_eq!(events[0].part.start(), &Rational::zero());
@@ -353,7 +363,8 @@ fn negative_rate_is_preserved_on_sample_events() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 1);
     assert!((events[0].value.rate() - -1.0).abs() < f64::EPSILON);
@@ -367,7 +378,8 @@ fn pitch_builtin_maps_semitones_to_rate_multipliers() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
     assert_eq!(up_events.len(), 1);
     assert!((up_events[0].value.rate() - 2.0).abs() < f64::EPSILON);
 
@@ -377,7 +389,8 @@ fn pitch_builtin_maps_semitones_to_rate_multipliers() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
     assert_eq!(down_events.len(), 1);
     assert!((down_events[0].value.rate() - 0.5).abs() < f64::EPSILON);
 }
@@ -394,7 +407,8 @@ fn pitch_accepts_pattern_valued_controls_and_composes_with_existing_rate() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 2);
     assert_eq!(events[0].part.start(), &Rational::zero());
@@ -417,7 +431,8 @@ fn pattern_valued_pitch_controls_repeat_under_fast() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
     let rates = events
         .iter()
         .map(|event| event.value.rate())
@@ -438,7 +453,8 @@ fn slice_accepts_pattern_valued_start_and_end_controls() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 2);
     assert_eq!(events[0].part.start(), &Rational::zero());
@@ -463,7 +479,8 @@ fn pattern_valued_slice_controls_compose_with_pitch_and_fast() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 4);
     assert_eq!(
@@ -490,7 +507,8 @@ fn rate_accepts_pattern_valued_controls_and_splits_sample_events() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 2);
     assert_eq!(events[0].part.start(), &Rational::zero());
@@ -513,7 +531,8 @@ fn pattern_valued_rate_controls_repeat_under_fast() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
     let rates = events
         .iter()
         .map(|event| event.value.rate())
@@ -534,7 +553,8 @@ fn gain_accepts_pattern_valued_controls_and_splits_sample_events() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 2);
     assert_eq!(events[0].part.start(), &Rational::zero());
@@ -557,7 +577,8 @@ fn pattern_valued_gain_controls_repeat_under_fast() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
     let gains = events
         .iter()
         .map(|event| event.value.gain())
@@ -578,7 +599,8 @@ fn pan_accepts_pattern_valued_controls_and_composes_with_existing_pan() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 2);
     assert!((events[0].value.pan() - 0.25).abs() < f64::EPSILON);
@@ -597,7 +619,8 @@ fn slice_idx_builtin_maps_zero_based_segments_into_normalized_slice_bounds() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].value.sample(), "amen");
@@ -617,7 +640,8 @@ fn slice_idx_composes_with_existing_slice_bounds() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 1);
     assert!((events[0].value.slice_start() - 0.5).abs() < f64::EPSILON);
@@ -636,7 +660,8 @@ fn slice_idx_accepts_pattern_valued_indices_and_splits_sample_events() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 4);
     assert_eq!(events[0].part.start(), &Rational::zero());
@@ -672,7 +697,8 @@ fn pattern_valued_slice_idx_repeats_under_fast() {
         .unwrap()
         .as_sample_pattern()
         .unwrap()
-        .query_unit().unwrap();
+        .query_unit()
+        .unwrap();
     let slice_starts = events
         .iter()
         .map(|event| event.value.slice_start())
@@ -818,7 +844,7 @@ fn rand_builtin_generates_deterministic_random_numbers() {
     let v1 = events1[0].value;
     let v2 = events2[0].value;
 
-    assert!(v1 >= 0.0 && v1 <= 1.0);
-    assert!(v2 >= 0.0 && v2 <= 1.0);
-    assert_ne!(v1, v2);
+    assert!((0.0..=1.0).contains(&v1));
+    assert!((0.0..=1.0).contains(&v2));
+    assert!((v1 - v2).abs() > f64::EPSILON);
 }

@@ -1,15 +1,16 @@
+use crossterm::style::Stylize;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
-use crossterm::style::Stylize;
 
 use orpheus_dsp::{
     EngineCommand, EngineHandle, PatternUpdate, SampleBank, SampleTrigger, TransportSnapshot,
     load_sample_bank_from_directory,
 };
 
-use crate::eval::{eval_into_bindings, render_sample_pattern_to_file_with_bank};
+use crate::eval::eval_into_bindings;
+use crate::export::render_sample_pattern_to_file_with_bank;
 use crate::loader::load_file_runtime_strict;
 use crate::types::infer_into_bindings;
 use crate::{ReplMode, Type, Value};
@@ -317,11 +318,11 @@ impl ReplSession {
 
         match value {
             Value::SamplePattern(pattern) => {
-                crate::eval::export_sample_pattern_to_csv(pattern, &path, cycles)
+                crate::export::export_sample_pattern_to_csv(pattern, &path, cycles)
                     .map_err(|error| error.to_string())?;
             }
             Value::NumberPattern(pattern) => {
-                crate::eval::export_number_pattern_to_csv(pattern, &path, cycles)
+                crate::export::export_number_pattern_to_csv(pattern, &path, cycles)
                     .map_err(|error| error.to_string())?;
             }
             Value::Function(_) | Value::String(_) => {
@@ -444,13 +445,9 @@ impl ReplSession {
     fn push_pattern_update(&mut self, name: &str, value: &Value) -> Result<(), String> {
         if let Value::SamplePattern(pattern) = value {
             let enqueue_publish = self.engine.transport_snapshot().publish_epoch();
-            let events = pattern
-                .query_unit()
-                .map_err(|error| {
-                    format!(
-                        "failed to query unit span for publishing pattern `{name}`: {error}"
-                    )
-                })?;
+            let events = pattern.query_unit().map_err(|error| {
+                format!("failed to query unit span for publishing pattern `{name}`: {error}")
+            })?;
             let update = PatternUpdate::new(
                 name,
                 events
