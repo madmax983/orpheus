@@ -262,7 +262,11 @@ impl SessionTui {
             .unwrap_or_else(|error| panic!("default TUI session should initialize: {error}"))
     }
 
-    fn try_new(engine: EngineHandle, startup_path: Option<&Path>, warning: Option<String>) -> io::Result<Self> {
+    fn try_new(
+        engine: EngineHandle,
+        startup_path: Option<&Path>,
+        warning: Option<String>,
+    ) -> io::Result<Self> {
         let mut transcript = vec![
             "Interactive shell ready.".to_owned(),
             "Press Esc to quit.".to_owned(),

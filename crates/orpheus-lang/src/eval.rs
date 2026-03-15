@@ -1322,7 +1322,10 @@ right = sometimes(fast(2), cp hh)";
     #[test]
     fn render_error_formats_audio_error() {
         let err = super::RenderError::Audio(orpheus_dsp::OfflineRenderError::InvalidCycleCount);
-        assert_eq!(err.to_string(), "offline rendering requires at least one cycle");
+        assert_eq!(
+            err.to_string(),
+            "offline rendering requires at least one cycle"
+        );
         assert!(std::error::Error::source(&err).is_some());
     }
 }
