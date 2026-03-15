@@ -721,8 +721,9 @@ impl NumberPatternValue {
     /// variant, use [`NumberPatternValue::try_query_unit`].
     #[must_use]
     pub fn query_unit(&self) -> Vec<Event<f64>> {
-        self.try_query_unit()
-            .unwrap_or_else(|err| panic!("internal pattern evaluation error in query_unit: {err:?}"))
+        self.try_query_unit().unwrap_or_else(|err| {
+            panic!("internal pattern evaluation error in query_unit: {err:?}")
+        })
     }
 
     /// Fallible variant of [`NumberPatternValue::query_unit`].
@@ -1006,7 +1007,8 @@ where
         return Ok(source_events);
     }
 
-    let mut composed = Vec::new();
+    // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries, eliminating allocating overhead in the hot loop.
+    let mut composed = Vec::with_capacity(source_events.len());
     for event in source_events {
         // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries.
         let mut boundaries = Vec::with_capacity(2 + control_events.len() * 2);
@@ -1142,7 +1144,8 @@ where
         return Ok(source_events);
     }
 
-    let mut composed = Vec::new();
+    // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries, eliminating allocating overhead in the hot loop.
+    let mut composed = Vec::with_capacity(source_events.len());
     for event in source_events {
         // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries.
         let mut boundaries = Vec::with_capacity(2 + (start_events.len() + end_events.len()) * 2);
@@ -1231,7 +1234,8 @@ where
         return Ok(source_events);
     }
 
-    let mut composed = Vec::new();
+    // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries, eliminating allocating overhead in the hot loop.
+    let mut composed = Vec::with_capacity(source_events.len());
     for event in source_events {
         // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries.
         let mut boundaries = Vec::with_capacity(2 + control_events.len() * 2);

@@ -1,6 +1,6 @@
-use proptest::prelude::*;
-use orpheus_lang::eval_module;
 use orpheus_lang::ReplMode;
+use orpheus_lang::eval_module;
+use proptest::prelude::*;
 use std::panic;
 
 /// Generate float-literal strings, including cases with extremely long scientific-notation exponents.
@@ -28,10 +28,7 @@ fn float_literal_strategy() -> impl Strategy<Value = String> {
         prop_oneof![
             Just(String::new()),
             (
-                prop_oneof![
-                    Just("e".to_string()),
-                    Just("E".to_string()),
-                ],
+                prop_oneof![Just("e".to_string()), Just("E".to_string()),],
                 prop_oneof![
                     Just(String::new()),
                     Just("+".to_string()),
@@ -39,7 +36,8 @@ fn float_literal_strategy() -> impl Strategy<Value = String> {
                 ],
                 proptest::collection::vec(proptest::char::range('0', '9'), 1..=1000)
                     .prop_map(|digits| digits.into_iter().collect::<String>()),
-            ).prop_map(|(e, sign, digits)| format!("{e}{sign}{digits}")),
+            )
+                .prop_map(|(e, sign, digits)| format!("{e}{sign}{digits}")),
         ],
     )
         .prop_map(|(sign, int_part, frac_part, exp_part)| {

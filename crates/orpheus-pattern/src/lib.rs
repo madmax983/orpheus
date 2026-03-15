@@ -64,7 +64,9 @@ mod tests {
 
     #[test]
     fn pattern_error_formats_arithmetic_overflow() {
-        let err = PatternError::ArithmeticOverflow { operation: "addition" };
+        let err = PatternError::ArithmeticOverflow {
+            operation: "addition",
+        };
         assert_eq!(err.to_string(), "addition exceeded the supported range");
     }
 

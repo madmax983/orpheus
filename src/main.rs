@@ -12,15 +12,21 @@ fn main() -> anyhow::Result<()> {
     let startup_path = startup_path_from_args(env::args_os().skip(1))?;
     let (engine, _stream, warning) = match start_live_audio() {
         Ok((engine, stream)) => (engine, Some(stream), None),
-        Err(error) => {
-            (EngineHandle::stub(), None, Some(format!("audio output disabled: {error}")))
-        }
+        Err(error) => (
+            EngineHandle::stub(),
+            None,
+            Some(format!("audio output disabled: {error}")),
+        ),
     };
 
     if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
         orpheus_lang::tui::run_with_engine_and_path(engine, startup_path.as_deref(), warning)?;
     } else {
-        orpheus_lang::repl::run_stdio_with_engine_and_path(engine, startup_path.as_deref(), warning)?;
+        orpheus_lang::repl::run_stdio_with_engine_and_path(
+            engine,
+            startup_path.as_deref(),
+            warning,
+        )?;
     }
     Ok(())
 }
