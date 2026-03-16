@@ -49,8 +49,7 @@ fn startup_path_from_args(
             }
             if path_str.starts_with('-') {
                 return Err(anyhow!(
-                    "unexpected argument '{}' found\n\nUsage: orpheus [PATH]\n\nFor more information, try '--help'.",
-                    path_str
+                    "unexpected argument '{path_str}' found\n\nUsage: orpheus [PATH]\n\nFor more information, try '--help'."
                 ));
             }
             Ok(Some(PathBuf::from(path)))

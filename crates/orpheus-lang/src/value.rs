@@ -71,7 +71,7 @@ pub struct BuiltinFn {
 /// helper methods:
 ///
 /// ```
-/// use orpheus_lang::value::{Value, SamplePatternValue, NumberPatternValue};
+/// use orpheus_lang::{Value, SamplePatternValue, NumberPatternValue};
 ///
 /// let string_val = Value::String("hello".into());
 /// assert!(string_val.as_sample_pattern().is_none());
@@ -157,11 +157,13 @@ impl Value {
 /// useful for testing).
 ///
 /// ```
-/// use orpheus_lang::value::SampleEvent;
+/// use orpheus_lang::{SampleEvent, eval_module, ReplMode};
 ///
-/// let event = SampleEvent::named("bd");
-/// assert_eq!(event.sample(), "bd");
-/// assert_eq!(event.gain(), 1.0); // Defaults to full volume.
+/// let env = eval_module("x = bd", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+/// let events = pattern.query_unit().unwrap();
+/// assert_eq!(events[0].value.sample(), "bd");
+/// assert_eq!(events[0].value.gain(), 1.0); // Defaults to full volume.
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct SampleEvent {
@@ -410,11 +412,12 @@ impl PatternRuntimeValue for f64 {
 /// containing rational `TimeSpan`s.
 ///
 /// ```
-/// use orpheus_lang::value::{SamplePatternValue, SampleEvent};
+/// use orpheus_lang::{SamplePatternValue, SampleEvent, eval_module, ReplMode};
 /// use orpheus_pattern::{Event, TimeSpan};
 ///
 /// // Simulate the Orpheus expression `bd sn`
-/// let pattern = SamplePatternValue::atom("bd");
+/// let env = eval_module("x = bd", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
 /// let events = pattern.query_unit().unwrap();
 ///
 /// assert_eq!(events.len(), 1);
@@ -684,10 +687,11 @@ impl SamplePatternValue {
 /// You can query a number pattern just like a sample pattern.
 ///
 /// ```
-/// use orpheus_lang::value::NumberPatternValue;
+/// use orpheus_lang::{NumberPatternValue, eval_module, ReplMode};
 /// use orpheus_pattern::Event;
 ///
-/// let pattern = NumberPatternValue::constant(42.0);
+/// let env = eval_module("x = 42.0", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
 /// let events = pattern.query_unit();
 ///
 /// assert_eq!(events.len(), 1);

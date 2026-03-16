@@ -58,7 +58,7 @@ pub fn run_stdio_with_engine_and_path(
     let mut stderr = stderr.lock();
 
     if let Some(msg) = warning {
-        writeln!(stderr, "{}", format!("! {msg}").yellow().bold())?;
+        writeln!(stderr, "{}", format!("⚠️ {msg}").yellow().bold())?;
     }
 
     if let Some(path) = startup_path {
@@ -280,7 +280,7 @@ impl ReplSession {
         render_sample_pattern_to_file_with_bank(pattern, &path, cycles, &self.sample_bank)
             .map_err(|error| error.to_string())?;
         Ok(format!(
-            "rendered `{binding_name}` to `{path}` ({cycles} cycle(s))"
+            "✓ rendered `{binding_name}` to `{path}` ({cycles} cycle(s))"
         ))
     }
 
@@ -333,7 +333,7 @@ impl ReplSession {
         }
 
         Ok(format!(
-            "exported `{binding_name}` to `{path}` ({cycles} cycle(s))"
+            "✓ exported `{binding_name}` to `{path}` ({cycles} cycle(s))"
         ))
     }
 
@@ -353,7 +353,7 @@ impl ReplSession {
         self.engine
             .enqueue(EngineCommand::SetTempo(tempo_bpm))
             .map_err(|error| error.to_string())?;
-        Ok(format!("tempo set to {tempo_bpm} BPM"))
+        Ok(format!("✓ tempo set to {tempo_bpm} BPM"))
     }
 
     fn load_sample_directory(&mut self, args: &str) -> Result<String, String> {
@@ -367,7 +367,7 @@ impl ReplSession {
             .enqueue(EngineCommand::ReplaceSampleBank(sample_bank))
             .map_err(|error| error.to_string())?;
         Ok(format!(
-            "loaded sample overrides from `{}` ({})",
+            "✓ loaded sample overrides from `{}` ({})",
             directory.display(),
             available_tokens.join(", ")
         ))
@@ -394,7 +394,7 @@ impl ReplSession {
             }
         }
 
-        Ok(format!("opened `{}` ({binding_names})", path.display()))
+        Ok(format!("✓ opened `{}` ({binding_names})", path.display()))
     }
 
     fn reload_sample_directory(&mut self, args: &str) -> Result<String, String> {
@@ -413,7 +413,7 @@ impl ReplSession {
             .enqueue(EngineCommand::ReplaceSampleBank(sample_bank))
             .map_err(|error| error.to_string())?;
         Ok(format!(
-            "reloaded sample overrides from `{}` ({})",
+            "✓ reloaded sample overrides from `{}` ({})",
             directory.display(),
             available_tokens.join(", ")
         ))
@@ -427,7 +427,7 @@ impl ReplSession {
         self.engine
             .enqueue(EngineCommand::PlayTransport)
             .map_err(|error| format!("failed to enqueue play transport command: {error}"))?;
-        Ok("transport playing".to_owned())
+        Ok("✓ transport playing".to_owned())
     }
 
     fn stop_transport(&mut self, args: &str) -> Result<String, String> {
@@ -438,7 +438,7 @@ impl ReplSession {
         self.engine
             .enqueue(EngineCommand::StopTransport)
             .map_err(|error| format!("failed to enqueue stop transport command: {error}"))?;
-        Ok("transport stopped".to_owned())
+        Ok("✓ transport stopped".to_owned())
     }
 
     fn push_pattern_update(&mut self, name: &str, value: &Value) -> Result<(), String> {
@@ -827,7 +827,7 @@ mod tests {
         let message = session.eval_line(":tempo 90").unwrap();
         let _ = session.render_test_block_for_tui(1);
 
-        assert_eq!(message, "tempo set to 90 BPM");
+        assert_eq!(message, "✓ tempo set to 90 BPM");
         assert_eq!(
             session.transport_snapshot().tempo_bpm().to_bits(),
             90.0_f32.to_bits()
@@ -851,12 +851,12 @@ mod tests {
 
         let stop_message = session.eval_line(":stop").unwrap();
         let _ = session.render_test_block_for_tui(1);
-        assert_eq!(stop_message, "transport stopped");
+        assert_eq!(stop_message, "✓ transport stopped");
         assert!(!session.transport_snapshot().is_playing());
 
         let play_message = session.eval_line(":play").unwrap();
         let _ = session.render_test_block_for_tui(1);
-        assert_eq!(play_message, "transport playing");
+        assert_eq!(play_message, "✓ transport playing");
         assert!(session.transport_snapshot().is_playing());
     }
 
