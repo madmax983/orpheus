@@ -58,3 +58,33 @@ fn timespan_default_returns_unit_span() {
     let span = TimeSpan::default();
     assert_eq!(span, TimeSpan::unit());
 }
+
+#[test]
+fn timespan_is_empty_returns_true_for_zero_duration() {
+    let point = Rational::new(1, 2).unwrap();
+    let span = TimeSpan::new(point.clone(), point).unwrap();
+    assert!(span.is_empty());
+}
+
+#[test]
+fn timespan_is_empty_returns_false_for_positive_duration() {
+    let start = Rational::new(1, 4).unwrap();
+    let end = Rational::new(3, 4).unwrap();
+    let span = TimeSpan::new(start, end).unwrap();
+    assert!(!span.is_empty());
+}
+
+#[test]
+fn timespan_start_numer_returns_normalized_numerator() {
+    let start = Rational::new(2, 8).unwrap(); // Normalizes to 1/4
+    let end = Rational::new(3, 4).unwrap();
+    let span = TimeSpan::new(start, end).unwrap();
+    assert_eq!(span.start_numer(), 1);
+}
+
+#[test]
+fn timespan_unit_returns_zero_to_one() {
+    let unit = TimeSpan::unit();
+    assert_eq!(unit.start(), &Rational::zero());
+    assert_eq!(unit.end(), &Rational::one());
+}
