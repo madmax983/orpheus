@@ -1081,7 +1081,8 @@ where
     // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries, eliminating allocating overhead in the hot loop.
     let mut composed = Vec::with_capacity(source_events.len());
     for event in source_events {
-        let Some(boundaries) = compute_event_fragment_boundaries(&event.part, &[&control_events[..]])
+        let Some(boundaries) =
+            compute_event_fragment_boundaries(&event.part, &[&control_events[..]])
         else {
             composed.push(event);
             continue;
@@ -1272,7 +1273,8 @@ where
     // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries, eliminating allocating overhead in the hot loop.
     let mut composed = Vec::with_capacity(source_events.len());
     for event in source_events {
-        let Some(boundaries) = compute_event_fragment_boundaries(&event.part, &[&control_events[..]])
+        let Some(boundaries) =
+            compute_event_fragment_boundaries(&event.part, &[&control_events[..]])
         else {
             composed.push(event);
             continue;
