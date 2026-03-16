@@ -1239,7 +1239,13 @@ fn sort_events<T>(events: &mut [Event<T>]) {
     });
 }
 
-fn render_span(cycle_count: u64) -> Result<TimeSpan, EvalError> {
+/// Creates a `TimeSpan` spanning from cycle 0 to the specified `cycle_count`.
+///
+/// # Errors
+///
+/// Returns an [`EvalError`] if constructing the underlying rational span fails,
+/// which may occur if the `cycle_count` exceeds the representable range.
+pub fn render_span(cycle_count: u64) -> Result<TimeSpan, EvalError> {
     build_span(
         Rational::zero(),
         rational_from_parts(i128::from(cycle_count), 1)?,
