@@ -17,7 +17,7 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 use ratatui::{Frame, Terminal};
 
-use crate::repl::{ReplSession, TransportView};
+use crate::session::{Session, TransportView};
 
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const STATUS_TOAST_TTL: Duration = Duration::from_secs(3);
@@ -242,7 +242,7 @@ fn buffer_to_string(buffer: &Buffer) -> String {
 }
 
 struct SessionTui {
-    session: ReplSession,
+    session: Session,
     transcript: Vec<String>,
     history: Vec<String>,
     history_index: Option<usize>,
@@ -262,7 +262,11 @@ impl SessionTui {
             .unwrap_or_else(|error| panic!("default TUI session should initialize: {error}"))
     }
 
-    fn try_new(engine: EngineHandle, startup_path: Option<&Path>, warning: Option<String>) -> io::Result<Self> {
+    fn try_new(
+        engine: EngineHandle,
+        startup_path: Option<&Path>,
+        warning: Option<String>,
+    ) -> io::Result<Self> {
         let mut transcript = vec![
             "Interactive shell ready.".to_owned(),
             "Press Esc to quit.".to_owned(),
@@ -272,7 +276,7 @@ impl SessionTui {
         }
 
         let mut app = Self {
-            session: ReplSession::with_engine(engine),
+            session: Session::with_engine(engine),
             transcript,
             history: Vec::new(),
             history_index: None,
