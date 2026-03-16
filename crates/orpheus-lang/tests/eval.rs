@@ -844,7 +844,7 @@ fn rand_builtin_generates_deterministic_random_numbers() {
     let v1 = events1[0].value;
     let v2 = events2[0].value;
 
-    assert!(v1 >= 0.0 && v1 <= 1.0);
-    assert!(v2 >= 0.0 && v2 <= 1.0);
-    assert_ne!(v1, v2);
+    assert!((0.0..=1.0).contains(&v1));
+    assert!((0.0..=1.0).contains(&v2));
+    assert!((v1 - v2).abs() > f64::EPSILON);
 }
