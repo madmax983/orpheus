@@ -71,7 +71,7 @@ pub struct BuiltinFn {
 /// helper methods:
 ///
 /// ```
-/// use orpheus_lang::value::{Value, SamplePatternValue, NumberPatternValue};
+/// use orpheus_lang::{Value, SamplePatternValue, NumberPatternValue};
 ///
 /// let string_val = Value::String("hello".into());
 /// assert!(string_val.as_sample_pattern().is_none());
@@ -157,9 +157,10 @@ impl Value {
 /// useful for testing).
 ///
 /// ```
-/// use orpheus_lang::value::SampleEvent;
-///
-/// let event = SampleEvent::named("bd");
+/// # use orpheus_lang::{eval_module, ReplMode};
+/// # let env = eval_module("event = bd", ReplMode::Strict).unwrap();
+/// # let val = env.get("event").unwrap().as_sample_pattern().unwrap();
+/// # let event = &val.query_unit().unwrap()[0].value;
 /// assert_eq!(event.sample(), "bd");
 /// assert_eq!(event.gain(), 1.0); // Defaults to full volume.
 /// ```
@@ -410,11 +411,12 @@ impl PatternRuntimeValue for f64 {
 /// containing rational `TimeSpan`s.
 ///
 /// ```
-/// use orpheus_lang::value::{SamplePatternValue, SampleEvent};
+/// use orpheus_lang::{eval_module, ReplMode, SamplePatternValue, SampleEvent};
 /// use orpheus_pattern::{Event, TimeSpan};
 ///
 /// // Simulate the Orpheus expression `bd sn`
-/// let pattern = SamplePatternValue::atom("bd");
+/// let env = eval_module("pattern = bd", ReplMode::Strict).unwrap();
+/// let pattern = env.get("pattern").unwrap().as_sample_pattern().unwrap();
 /// let events = pattern.query_unit().unwrap();
 ///
 /// assert_eq!(events.len(), 1);
@@ -684,10 +686,11 @@ impl SamplePatternValue {
 /// You can query a number pattern just like a sample pattern.
 ///
 /// ```
-/// use orpheus_lang::value::NumberPatternValue;
+/// use orpheus_lang::{eval_module, ReplMode, NumberPatternValue};
 /// use orpheus_pattern::Event;
 ///
-/// let pattern = NumberPatternValue::constant(42.0);
+/// let env = eval_module("pattern = 42.0", ReplMode::Strict).unwrap();
+/// let pattern = env.get("pattern").unwrap().as_number_pattern().unwrap();
 /// let events = pattern.query_unit();
 ///
 /// assert_eq!(events.len(), 1);
@@ -1088,7 +1091,7 @@ where
         };
 
         for window in boundaries.windows(2) {
-            let [start, end] = window else {
+            let &[start, end] = window else {
                 continue;
             };
             if start >= end {
@@ -1211,7 +1214,7 @@ where
         };
 
         for window in boundaries.windows(2) {
-            let [start, end] = window else {
+            let &[start, end] = window else {
                 continue;
             };
             if start >= end {
@@ -1279,7 +1282,7 @@ where
         };
 
         for window in boundaries.windows(2) {
-            let [start, end] = window else {
+            let &[start, end] = window else {
                 continue;
             };
             if start >= end {
@@ -1713,10 +1716,10 @@ fn spans_overlap(a: &TimeSpan, b: &TimeSpan) -> bool {
     max(a.start(), b.start()) < min(a.end(), b.end())
 }
 
-fn compute_event_fragment_boundaries(
-    source_span: &TimeSpan,
-    control_event_lists: &[&[Event<f64>]],
-) -> Option<Vec<Rational>> {
+fn compute_event_fragment_boundaries<'a>(
+    source_span: &'a TimeSpan,
+    control_event_lists: &[&'a [Event<f64>]],
+) -> Option<Vec<&'a Rational>> {
     let capacity_estimate = 2 + control_event_lists
         .iter()
         .map(|list| list.len())
@@ -1724,8 +1727,8 @@ fn compute_event_fragment_boundaries(
         * 2;
     // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries.
     let mut boundaries = Vec::with_capacity(capacity_estimate);
-    boundaries.push(source_span.start().clone());
-    boundaries.push(source_span.end().clone());
+    boundaries.push(source_span.start());
+    boundaries.push(source_span.end());
     let mut has_overlap = false;
 
     for control_events in control_event_lists {
@@ -1734,8 +1737,8 @@ fn compute_event_fragment_boundaries(
             let end = min(control_event.part.end(), source_span.end());
             if start < end {
                 has_overlap = true;
-                boundaries.push(start.clone());
-                boundaries.push(end.clone());
+                boundaries.push(start);
+                boundaries.push(end);
             }
         }
     }
