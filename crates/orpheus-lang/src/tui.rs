@@ -433,15 +433,21 @@ impl SessionTui {
             Line::raw("Help: ?"),
         ]);
         if let Some(message) = &self.status_message {
-            if message.contains("error") || message.contains("failed") || message.contains("unknown") || message.contains("usage:") {
+            if message.contains("error")
+                || message.contains("failed")
+                || message.contains("unknown")
+                || message.contains("usage:")
+            {
                 lines.push(Line::styled(
                     format!("Note: ✗ {message}"),
-                    Style::default().fg(Color::LightRed).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::LightRed)
+                        .add_modifier(Modifier::BOLD),
                 ));
             } else {
                 lines.push(Line::styled(
                     format!("Note: ✓ {message}"),
-                    Style::default().fg(Color::LightGreen)
+                    Style::default().fg(Color::LightGreen),
                 ));
             }
         }

@@ -161,3 +161,62 @@ pub enum EngineCommand {
 pub fn new_command_queue() -> (Producer<EngineCommand>, Consumer<EngineCommand>) {
     RingBuffer::<EngineCommand>::new(64)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use orpheus_pattern::TimeSpan;
+
+    #[test]
+    fn sample_trigger_named_initializes_with_default_values() {
+        let trigger = SampleTrigger::named("bd");
+        assert_eq!(trigger.token(), "bd");
+        assert_eq!(trigger.gain(), 1.0);
+        assert_eq!(trigger.hpf_cutoff_hz(), None);
+        assert_eq!(trigger.lpf_cutoff_hz(), None);
+        assert_eq!(trigger.rate(), 1.0);
+        assert_eq!(trigger.slice_start(), 0.0);
+        assert_eq!(trigger.slice_end(), 1.0);
+        assert_eq!(trigger.pan(), 0.0);
+    }
+
+    #[test]
+    fn sample_trigger_builder_methods_update_fields() {
+        let trigger = SampleTrigger::named("sn")
+            .with_gain(0.8)
+            .with_hpf_cutoff_hz(500.0)
+            .with_lpf_cutoff_hz(12000.0)
+            .with_rate(1.5)
+            .with_slice(0.2, 0.8)
+            .with_pan(0.3);
+
+        assert_eq!(trigger.token(), "sn");
+        assert_eq!(trigger.gain(), 0.8);
+        assert_eq!(trigger.hpf_cutoff_hz(), Some(500.0));
+        assert_eq!(trigger.lpf_cutoff_hz(), Some(12000.0));
+        assert_eq!(trigger.rate(), 1.5);
+        assert_eq!(trigger.slice_start(), 0.2);
+        assert_eq!(trigger.slice_end(), 0.8);
+        assert_eq!(trigger.pan(), 0.3);
+    }
+
+    #[test]
+    fn pattern_update_new_stores_name_and_events() {
+        let events = vec![Event {
+            whole: None,
+            part: TimeSpan::unit(),
+            value: SampleTrigger::named("cp"),
+        }];
+
+        let update = PatternUpdate::new("my_pattern", events.clone());
+        assert_eq!(update.name(), "my_pattern");
+        assert_eq!(update.events(), events.as_slice());
+    }
+
+    #[test]
+    fn pattern_update_silent_creates_empty_events_list() {
+        let update = PatternUpdate::silent("quiet");
+        assert_eq!(update.name(), "quiet");
+        assert!(update.events().is_empty());
+    }
+}
