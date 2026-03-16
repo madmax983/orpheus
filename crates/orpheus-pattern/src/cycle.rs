@@ -9,8 +9,24 @@ use core::cmp::{max, min};
 use crate::{Event, PatternError, Rational, TimeSpan};
 
 /// Queryable temporal pattern.
+///
+/// This trait is the foundational abstraction in Orpheus for structures that
+/// map exact, rational time intervals to events. Patterns are evaluated by
+/// querying them over a half-open window of time called a [`TimeSpan`].
 pub trait Pattern<T>: Send + Sync {
     /// Returns the events whose spans intersect the half-open window `span`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::{CyclePattern, Pattern, PatternNode, TimeSpan};
+    ///
+    /// let pattern = CyclePattern::from_nodes(vec![PatternNode::atom("bd")]);
+    /// let events = pattern.query(TimeSpan::unit());
+    ///
+    /// assert_eq!(events.len(), 1);
+    /// assert_eq!(events[0].value, "bd");
+    /// ```
     fn query(&self, span: TimeSpan) -> Vec<Event<T>>;
 }
 
