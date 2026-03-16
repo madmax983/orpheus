@@ -1,3 +1,24 @@
+//! Evaluation engine for Orpheus source code.
+//!
+//! This module is responsible for translating parsed Phase 1 abstract syntax
+//! trees (ASTs) into concrete runtime `Value`s. It manages the environment
+//! (bindings), evaluates sequence and structural patterns into `PatternRuntime`s,
+//! and handles rendering those patterns into offline audio or exporting them.
+//!
+//! # Examples
+//!
+//! The entry point for evaluation is `eval_module`, which processes source
+//! code and returns a set of bound values:
+//!
+//! ```
+//! use orpheus_lang::{ReplMode, eval_module};
+//!
+//! let source = "song = fast(2, bd sn)";
+//! let bindings = eval_module(source, ReplMode::Loose).unwrap();
+//!
+//! assert!(bindings.contains_key("song"));
+//! ```
+
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
@@ -20,14 +41,16 @@ use crate::value::{NumberPatternValue, SampleEvent, SamplePatternValue, Value};
 /// `EvalError` occurs when an expression fails to evaluate at runtime.
 /// In Orpheus, evaluation errors often stem from invalid arithmetic on rational
 /// time domains (like dividing by zero), out-of-bounds parameters, or attempting
-/// to use an unsupported operation on a pattern.
+/// to use an unsupported operation on a pattern. Orpheus patterns operate in an
+/// exact, bounded rational time domain, so overflows during shifts or scaling
+/// can result in an `EvalError`.
 ///
 /// # Examples
 ///
 /// An `EvalError` provides an error message indicating what went wrong:
 ///
 /// ```
-/// use orpheus_lang::eval::EvalError;
+/// use orpheus_lang::EvalError;
 ///
 /// let err = EvalError::new("decimal literal exceeded the supported range");
 /// assert_eq!(err.to_string(), "decimal literal exceeded the supported range");
@@ -45,7 +68,7 @@ impl EvalError {
     /// # Examples
     ///
     /// ```
-    /// use orpheus_lang::eval::EvalError;
+/// use orpheus_lang::EvalError;
     ///
     /// let err = EvalError::new("division by zero");
     /// assert_eq!(err.to_string(), "division by zero");
@@ -109,6 +132,21 @@ impl From<OfflineRenderError> for RenderError {
 }
 
 /// Evaluates bootstrap Orpheus source into runtime values.
+///
+/// Given a string of Orpheus source code, this parses the text into an AST,
+/// executes it, and returns the resulting environment of named `Value`s.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module};
+///
+/// let source = "x = fast(2, bd sn)";
+/// let env = eval_module(source, ReplMode::Loose).unwrap();
+/// let val = env.get("x").unwrap();
+///
+/// assert!(val.as_sample_pattern().is_some());
+/// ```
 ///
 /// # Errors
 ///

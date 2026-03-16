@@ -38,3 +38,52 @@ fn stream_query_returns_events_in_explicit_time_order() {
     assert_eq!(events[0].value, "early");
     assert_eq!(events[1].value, "late");
 }
+
+#[test]
+fn stream_query_handles_empty_query_window() {
+    let stream = EventStream::new(vec![
+        Event {
+            whole: None,
+            part: span(0, 1, 1, 1),
+            value: "event",
+        },
+    ]);
+
+    let events = stream.query(span(2, 1, 2, 1));
+    assert_eq!(events.len(), 0);
+}
+
+#[test]
+fn stream_query_clips_partial_events() {
+    let stream = EventStream::new(vec![
+        Event {
+            whole: None,
+            part: span(0, 1, 2, 1),
+            value: "long_event",
+        },
+    ]);
+
+    let events = stream.query(span(1, 1, 3, 1));
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].part, span(1, 1, 2, 1));
+    assert_eq!(events[0].whole, Some(span(0, 1, 2, 1)));
+}
+
+#[test]
+fn stream_query_ignores_out_of_bounds_events() {
+    let stream = EventStream::new(vec![
+        Event {
+            whole: None,
+            part: span(0, 1, 1, 1),
+            value: "early",
+        },
+        Event {
+            whole: None,
+            part: span(3, 1, 4, 1),
+            value: "late",
+        },
+    ]);
+
+    let events = stream.query(span(1, 1, 2, 1));
+    assert_eq!(events.len(), 0);
+}

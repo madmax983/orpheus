@@ -343,6 +343,22 @@ fn compare_positive_rationals(
     }
 }
 
+impl From<&Rational> for f64 {
+    fn from(value: &Rational) -> Self {
+        #[allow(clippy::cast_precision_loss)]
+        let num = value.numerator as Self;
+        #[allow(clippy::cast_precision_loss)]
+        let den = value.denominator as Self;
+        num / den
+    }
+}
+
+impl From<Rational> for f64 {
+    fn from(value: Rational) -> Self {
+        Self::from(&value)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -362,21 +378,5 @@ mod tests {
 
         assert_eq!(larger.checked_cmp(&smaller), Ok(Ordering::Greater));
         assert_eq!(larger.cmp(&smaller), Ordering::Greater);
-    }
-}
-
-impl From<&Rational> for f64 {
-    fn from(value: &Rational) -> Self {
-        #[allow(clippy::cast_precision_loss)]
-        let num = value.numerator as Self;
-        #[allow(clippy::cast_precision_loss)]
-        let den = value.denominator as Self;
-        num / den
-    }
-}
-
-impl From<Rational> for f64 {
-    fn from(value: Rational) -> Self {
-        Self::from(&value)
     }
 }

@@ -52,3 +52,9 @@ fn rational_checked_add_reports_overflow() {
         })
     );
 }
+
+#[test]
+fn timespan_default_returns_unit_span() {
+    let span = TimeSpan::default();
+    assert_eq!(span, TimeSpan::unit());
+}
