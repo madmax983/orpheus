@@ -37,9 +37,39 @@ fn startup_path_from_args(
     let args = args.into_iter().collect::<Vec<_>>();
     match args.as_slice() {
         [] => Ok(None),
-        [path] => Ok(Some(PathBuf::from(path))),
+        [path] => {
+            let path_str = path.to_string_lossy();
+            if path_str == "--help" || path_str == "-h" {
+                print_help();
+                std::process::exit(0);
+            }
+            if path_str == "--version" || path_str == "-V" {
+                println!("orpheus {}", env!("CARGO_PKG_VERSION"));
+                std::process::exit(0);
+            }
+            if path_str.starts_with('-') {
+                return Err(anyhow!(
+                    "unexpected argument '{}' found\n\nUsage: orpheus [PATH]\n\nFor more information, try '--help'.",
+                    path_str
+                ));
+            }
+            Ok(Some(PathBuf::from(path)))
+        }
         _ => Err(anyhow!("usage: orpheus [path/to/song.ode]")),
     }
+}
+
+fn print_help() {
+    println!("\x1b[1;36mOrpheus\x1b[0m - A cycle-based live-coding audio environment");
+    println!();
+    println!("\x1b[1;33mUsage:\x1b[0m orpheus [OPTIONS] [PATH]");
+    println!();
+    println!("\x1b[1;33mArguments:\x1b[0m");
+    println!("  \x1b[1;32m[PATH]\x1b[0m  Optional startup .ode file to load");
+    println!();
+    println!("\x1b[1;33mOptions:\x1b[0m");
+    println!("  \x1b[1;32m-h, --help\x1b[0m     Print help");
+    println!("  \x1b[1;32m-V, --version\x1b[0m  Print version");
 }
 
 fn start_live_audio() -> anyhow::Result<(EngineHandle, Stream)> {

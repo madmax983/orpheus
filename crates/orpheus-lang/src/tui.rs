@@ -433,7 +433,17 @@ impl SessionTui {
             Line::raw("Help: ?"),
         ]);
         if let Some(message) = &self.status_message {
-            lines.push(Line::raw(format!("Note: {message}")));
+            if message.contains("error") || message.contains("failed") || message.contains("unknown") || message.contains("usage:") {
+                lines.push(Line::styled(
+                    format!("Note: ✗ {message}"),
+                    Style::default().fg(Color::LightRed).add_modifier(Modifier::BOLD)
+                ));
+            } else {
+                lines.push(Line::styled(
+                    format!("Note: ✓ {message}"),
+                    Style::default().fg(Color::LightGreen)
+                ));
+            }
         }
         lines.push(Line::raw("Quit: Esc or :quit"));
         Text::from(lines)
