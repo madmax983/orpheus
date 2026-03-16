@@ -508,6 +508,12 @@ fn extract_positive_integer_factor(value: Value, builtin_name: &str) -> Result<i
         ))
     })?;
 
+    if integer == 0 {
+        return Err(EvalError::new(format!(
+            "`{builtin_name}` requires a positive integer factor"
+        )));
+    }
+
     Ok(integer)
 }
 

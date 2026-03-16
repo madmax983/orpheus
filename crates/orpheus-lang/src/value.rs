@@ -719,9 +719,11 @@ impl NumberPatternValue {
     /// Panics if an internal runtime transform produces an invalid span or
     /// overflows the evaluator's bounded rational arithmetic. For a fallible
     /// variant, use [`PatternValue::try_query_unit`].
+    #[must_use]
     pub fn query_unit(&self) -> Vec<Event<f64>> {
-        self.try_query_unit()
-            .unwrap_or_else(|err| panic!("internal pattern evaluation error in query_unit: {:?}", err))
+        self.try_query_unit().unwrap_or_else(|err| {
+            panic!("internal pattern evaluation error in query_unit: {err:?}")
+        })
     }
 
     /// Fallible variant of [`PatternValue::query_unit`].

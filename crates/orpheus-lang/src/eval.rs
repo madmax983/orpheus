@@ -753,9 +753,17 @@ impl Evaluator {
             )));
         }
 
-        format!("{value:.0}")
+        let result = format!("{value:.0}")
             .parse::<i128>()
-            .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))
+            .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?;
+
+        if result == 0 {
+            return Err(EvalError::new(format!(
+                "{context} must be a positive integer"
+            )));
+        }
+
+        Ok(result)
     }
 
     fn value_to_explicit(value: Value) -> Result<ExplicitValue, EvalError> {
@@ -1322,7 +1330,10 @@ right = sometimes(fast(2), cp hh)";
     #[test]
     fn render_error_formats_audio_error() {
         let err = super::RenderError::Audio(orpheus_dsp::OfflineRenderError::InvalidCycleCount);
-        assert_eq!(err.to_string(), "offline rendering requires at least one cycle");
+        assert_eq!(
+            err.to_string(),
+            "offline rendering requires at least one cycle"
+        );
         assert!(std::error::Error::source(&err).is_some());
     }
 }
