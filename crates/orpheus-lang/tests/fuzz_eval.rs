@@ -61,18 +61,9 @@ proptest! {
         // will cause the test to fail. `eval_module` doesn't evaluate the pattern span itself,
         // so we must do it manually via `query_unit()`.
         let result = panic::catch_unwind(|| {
-            let mut values = match eval_module(&source, ReplMode::Loose) {
-                Ok(v) => v,
-                Err(_) => return, // parse errors and eval errors on fuzzing inputs are normal.
-            };
-            let val = match values.remove("a") {
-                Some(v) => v,
-                None => return,
-            };
-            let pat = match val.as_sample_pattern() {
-                Some(p) => p,
-                None => return,
-            };
+            let Ok(mut values) = eval_module(&source, ReplMode::Loose) else { return };
+            let Some(val) = values.remove("a") else { return };
+            let Some(pat) = val.as_sample_pattern() else { return };
             let _ = pat.query_unit(); // query_unit for SamplePatternValue returns a Result so we ignore it
         });
 

@@ -1372,6 +1372,12 @@ fn query_fast<T>(
 where
     T: PatternRuntimeValue,
 {
+    if factor > 1_000_000 {
+        return Err(EvalError::new(
+            "`fast` cycle density exceeds the supported limit",
+        ));
+    }
+
     let source_span = scale_span(span, factor, 1)?;
     let mut events = inner.try_query(&source_span)?;
     rescale_events(&mut events, 1, factor)?;
