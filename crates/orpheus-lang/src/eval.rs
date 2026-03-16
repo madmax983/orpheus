@@ -65,6 +65,11 @@ impl EvalError {
     ///
     /// The message explains what went wrong during runtime evaluation.
     ///
+    /// Common causes for `EvalError` include:
+    /// - Out-of-bounds numeric parameters.
+    /// - Arithmetic overflow during explicit time-shifts.
+    /// - Applying functions to invalid types.
+    ///
     /// # Examples
     ///
     /// ```
