@@ -1,0 +1,35 @@
+--- crates/orpheus-lang/src/value.rs
++++ crates/orpheus-lang/src/value.rs
+@@ -1064,6 +1064,32 @@
+     Ok(composed)
+ }
+
++fn apply_event_fragments<T, F>(
++    event: Event<T>,
++    control_events: &[&[Event<f64>]],
++    mut apply_fn: F,
++) -> Result<Vec<Event<T>>, EvalError>
++where
++    T: PatternRuntimeValue,
++    F: FnMut(&TimeSpan, &mut T) -> Result<(), EvalError>,
++{
++    let Some(boundaries) = compute_event_fragment_boundaries(&event.part, control_events) else {
++        return Ok(vec![event]);
++    };
++
++    let mut composed = Vec::new();
++    for window in boundaries.windows(2) {
++        let [start, end] = window else { continue };
++        if start >= end { continue; }
++        let part = build_span(start.clone(), end.clone())?;
++        let mut value = event.value.clone();
++        apply_fn(&part, &mut value)?;
++        composed.push(Event { whole: None, part, value });
++    }
++
++    Ok(composed)
++}
++
+ fn apply_control_pattern<T>(
+     inner: &PatternRuntime<T>,
+     control: &PatternRuntime<f64>,
