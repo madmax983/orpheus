@@ -8,3 +8,7 @@
 ## 2026-03-15 - Sentry Coverage Additions
 **Learning:** Adding test coverage to pure data structures (like `EventStream` and `TimeSpan`) often involves ensuring edge cases like empty inputs, default trait implementations, out-of-bounds conditions, and clipping are explicitly tested. The `Pattern` trait on `EventStream` panics on `try_query` returning an Err, but that's practically unreachable as `clip_span` enforces bounds properly.
 **Action:** Always test `Default` impls, empty data behaviors, partial interactions (clipping), and out-of-bounds boundary conditions.
+
+## 2026-03-16 - More Sentry Coverage Additions
+**Learning:** Sentry added tests validating 0 length behaviors and out of bounds clipping to EventStreams, expanding tests on structural primitives for greater coverage and compliance without mocking `TimeSpan` internally.
+**Action:** Explicitly testing empty intervals using standard APIs yields better confidence than mock bypasses when standard types securely prevent incorrect states.
