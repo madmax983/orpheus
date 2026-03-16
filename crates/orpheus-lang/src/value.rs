@@ -71,7 +71,7 @@ pub struct BuiltinFn {
 /// helper methods:
 ///
 /// ```
-/// use orpheus_lang::value::{Value, SamplePatternValue, NumberPatternValue};
+/// use orpheus_lang::Value;
 ///
 /// let string_val = Value::String("hello".into());
 /// assert!(string_val.as_sample_pattern().is_none());
@@ -157,9 +157,14 @@ impl Value {
 /// useful for testing).
 ///
 /// ```
-/// use orpheus_lang::value::SampleEvent;
+/// use orpheus_lang::{ReplMode, eval_module};
+/// use orpheus_pattern::TimeSpan;
 ///
-/// let event = SampleEvent::named("bd");
+/// let env = eval_module("x = bd", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+/// let events = pattern.try_query(&TimeSpan::unit()).unwrap();
+/// let event = &events[0].value;
+///
 /// assert_eq!(event.sample(), "bd");
 /// assert_eq!(event.gain(), 1.0); // Defaults to full volume.
 /// ```
@@ -410,11 +415,11 @@ impl PatternRuntimeValue for f64 {
 /// containing rational `TimeSpan`s.
 ///
 /// ```
-/// use orpheus_lang::value::{SamplePatternValue, SampleEvent};
+/// use orpheus_lang::{ReplMode, eval_module, SamplePatternValue, SampleEvent};
 /// use orpheus_pattern::{Event, TimeSpan};
 ///
-/// // Simulate the Orpheus expression `bd sn`
-/// let pattern = SamplePatternValue::atom("bd");
+/// let env = eval_module("x = bd", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
 /// let events = pattern.query_unit().unwrap();
 ///
 /// assert_eq!(events.len(), 1);
@@ -669,7 +674,12 @@ impl SamplePatternValue {
         self.try_query(&TimeSpan::unit())
     }
 
-    pub(crate) fn try_query(&self, span: &TimeSpan) -> Result<Vec<Event<SampleEvent>>, EvalError> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an `EvalError` if querying the underlying pattern fails,
+    /// for example, due to rational math overflow.
+    pub fn try_query(&self, span: &TimeSpan) -> Result<Vec<Event<SampleEvent>>, EvalError> {
         self.pattern.try_query(span)
     }
 }
@@ -684,10 +694,11 @@ impl SamplePatternValue {
 /// You can query a number pattern just like a sample pattern.
 ///
 /// ```
-/// use orpheus_lang::value::NumberPatternValue;
+/// use orpheus_lang::{ReplMode, eval_module, NumberPatternValue};
 /// use orpheus_pattern::Event;
 ///
-/// let pattern = NumberPatternValue::constant(42.0);
+/// let env = eval_module("x = 42.0", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
 /// let events = pattern.query_unit();
 ///
 /// assert_eq!(events.len(), 1);
@@ -1081,7 +1092,8 @@ where
     // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries, eliminating allocating overhead in the hot loop.
     let mut composed = Vec::with_capacity(source_events.len());
     for event in source_events {
-        let Some(boundaries) = compute_event_fragment_boundaries(&event.part, &[&control_events[..]])
+        let Some(boundaries) =
+            compute_event_fragment_boundaries(&event.part, &[&control_events[..]])
         else {
             composed.push(event);
             continue;
@@ -1272,7 +1284,8 @@ where
     // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries, eliminating allocating overhead in the hot loop.
     let mut composed = Vec::with_capacity(source_events.len());
     for event in source_events {
-        let Some(boundaries) = compute_event_fragment_boundaries(&event.part, &[&control_events[..]])
+        let Some(boundaries) =
+            compute_event_fragment_boundaries(&event.part, &[&control_events[..]])
         else {
             composed.push(event);
             continue;

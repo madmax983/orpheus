@@ -68,10 +68,11 @@ impl Error for ParseError {}
 /// ```
 /// use orpheus_lang::{parse_module, infer_module, ReplMode};
 ///
-/// let parsed = parse_module("song = fast(bd, sn)").unwrap();
+/// let source = "song = fast(bd, sn)";
+/// let parsed = parse_module(source).unwrap();
 /// // The `fast` transform expects a numeric multiplier as its first argument,
 /// // not a sample pattern like `bd`.
-/// let typed_result = infer_module(ReplMode::Strict, &parsed);
+/// let typed_result = infer_module(source, ReplMode::Strict);
 /// assert!(typed_result.is_err());
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
