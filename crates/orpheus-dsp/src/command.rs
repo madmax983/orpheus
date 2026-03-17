@@ -171,13 +171,13 @@ mod tests {
     fn sample_trigger_named_initializes_with_default_values() {
         let trigger = SampleTrigger::named("bd");
         assert_eq!(trigger.token(), "bd");
-        assert_eq!(trigger.gain(), 1.0);
+        assert!((trigger.gain() - 1.0).abs() < f64::EPSILON);
         assert_eq!(trigger.hpf_cutoff_hz(), None);
         assert_eq!(trigger.lpf_cutoff_hz(), None);
-        assert_eq!(trigger.rate(), 1.0);
-        assert_eq!(trigger.slice_start(), 0.0);
-        assert_eq!(trigger.slice_end(), 1.0);
-        assert_eq!(trigger.pan(), 0.0);
+        assert!((trigger.rate() - 1.0).abs() < f64::EPSILON);
+        assert!((trigger.slice_start() - 0.0).abs() < f64::EPSILON);
+        assert!((trigger.slice_end() - 1.0).abs() < f64::EPSILON);
+        assert!((trigger.pan() - 0.0).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -191,13 +191,13 @@ mod tests {
             .with_pan(0.3);
 
         assert_eq!(trigger.token(), "sn");
-        assert_eq!(trigger.gain(), 0.8);
+        assert!((trigger.gain() - 0.8).abs() < f64::EPSILON);
         assert_eq!(trigger.hpf_cutoff_hz(), Some(500.0));
         assert_eq!(trigger.lpf_cutoff_hz(), Some(12000.0));
-        assert_eq!(trigger.rate(), 1.5);
-        assert_eq!(trigger.slice_start(), 0.2);
-        assert_eq!(trigger.slice_end(), 0.8);
-        assert_eq!(trigger.pan(), 0.3);
+        assert!((trigger.rate() - 1.5).abs() < f64::EPSILON);
+        assert!((trigger.slice_start() - 0.2).abs() < f64::EPSILON);
+        assert!((trigger.slice_end() - 0.8).abs() < f64::EPSILON);
+        assert!((trigger.pan() - 0.3).abs() < f64::EPSILON);
     }
 
     #[test]
