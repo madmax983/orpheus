@@ -124,9 +124,27 @@ fn stream_try_query_preserves_whole_when_clipped() {
     assert_eq!(events[0].part, span(1, 1, 3, 2));
 }
 
-// try_query returns an error if `clip_span` errors. Since clip_span enforces
-// `start >= end` check before creating a new TimeSpan, creating an invalid
-// TimeSpan from clip_span is unreachable in practice, but we could mock
-// TimeSpan if we wanted to test this panic. Since `try_query` does not
-// generate un-ordered bounds, we cannot test the panic through normal means
-// without mocking `TimeSpan::new` which Sentry avoids.
+#[test]
+fn stream_try_query_clips_partial_events_with_correct_bounds() {
+    let stream = EventStream::new(vec![Event {
+        whole: None,
+        part: span(1, 4, 3, 4),
+        value: "mid",
+    }]);
+
+    let events = stream.try_query(&span(1, 2, 1, 1)).unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].part, span(1, 2, 3, 4));
+}
+
+#[test]
+fn stream_query_returns_empty_when_span_has_zero_duration() {
+    let stream = EventStream::new(vec![Event {
+        whole: None,
+        part: span(0, 1, 1, 1),
+        value: "event",
+    }]);
+
+    let events = stream.query(span(1, 2, 1, 2));
+    assert_eq!(events.len(), 0);
+}
