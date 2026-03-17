@@ -58,13 +58,13 @@ pub fn run_stdio_with_engine_and_path(
     let mut stderr = stderr.lock();
 
     if let Some(msg) = warning {
-        writeln!(stderr, "{}", format!("! {msg}").yellow().bold())?;
+        writeln!(stderr, "{}", format!("⚠️ {msg}").yellow().bold())?;
     }
 
     if let Some(path) = startup_path {
         match session.open_file(path) {
             Ok(msg) => writeln!(stdout, "{}", msg.green())?,
-            Err(msg) => writeln!(stderr, "{}", format!("! {msg}").yellow().bold())?,
+            Err(msg) => writeln!(stderr, "{}", format!("⚠️ {msg}").yellow().bold())?,
         }
     }
 
@@ -280,7 +280,7 @@ impl ReplSession {
         render_sample_pattern_to_file_with_bank(pattern, &path, cycles, &self.sample_bank)
             .map_err(|error| error.to_string())?;
         Ok(format!(
-            "rendered `{binding_name}` to `{path}` ({cycles} cycle(s))"
+            "✓ rendered `{binding_name}` to `{path}` ({cycles} cycle(s))"
         ))
     }
 
@@ -347,7 +347,7 @@ impl ReplSession {
         }
 
         Ok(format!(
-            "exported `{binding_name}` to `{path}` ({cycles} cycle(s))"
+            "✓ exported `{binding_name}` to `{path}` ({cycles} cycle(s))"
         ))
     }
 
@@ -381,7 +381,7 @@ impl ReplSession {
             .enqueue(EngineCommand::ReplaceSampleBank(sample_bank))
             .map_err(|error| error.to_string())?;
         Ok(format!(
-            "loaded sample overrides from `{}` ({})",
+            "✓ loaded sample overrides from `{}` ({})",
             directory.display(),
             available_tokens.join(", ")
         ))
@@ -408,7 +408,7 @@ impl ReplSession {
             }
         }
 
-        Ok(format!("opened `{}` ({binding_names})", path.display()))
+        Ok(format!("✓ opened `{}` ({binding_names})", path.display()))
     }
 
     fn reload_sample_directory(&mut self, args: &str) -> Result<String, String> {
@@ -427,7 +427,7 @@ impl ReplSession {
             .enqueue(EngineCommand::ReplaceSampleBank(sample_bank))
             .map_err(|error| error.to_string())?;
         Ok(format!(
-            "reloaded sample overrides from `{}` ({})",
+            "✓ reloaded sample overrides from `{}` ({})",
             directory.display(),
             available_tokens.join(", ")
         ))

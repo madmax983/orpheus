@@ -272,7 +272,7 @@ impl SessionTui {
             "Press Esc to quit.".to_owned(),
         ];
         if let Some(msg) = warning {
-            transcript.push(format!("! {msg}"));
+            transcript.push(format!("⚠️ {msg}"));
         }
 
         let mut app = Self {
@@ -325,7 +325,7 @@ impl SessionTui {
         self.transcript.push(format!("> {line}"));
         match self.session.eval_line(&line) {
             Ok(message) => self.transcript.push(message),
-            Err(message) => self.transcript.push(format!("! {message}")),
+            Err(message) => self.transcript.push(format!("✗ {message}")),
         }
     }
 
@@ -391,10 +391,17 @@ impl SessionTui {
             .map(|line| {
                 if line.starts_with("> ") {
                     Line::styled(line, Style::default().fg(Color::DarkGray))
-                } else if line.starts_with("! ") {
+                } else if line.starts_with("✗ ") {
                     Line::styled(
                         line,
                         Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                    )
+                } else if line.starts_with("⚠️ ") {
+                    Line::styled(
+                        line,
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
                     )
                 } else if line.starts_with("✓ ") {
                     Line::styled(line, Style::default().fg(Color::Green))
@@ -614,21 +621,21 @@ impl SessionTui {
 
     fn clear_transcript(&mut self) {
         self.transcript.clear();
-        self.set_status_message("transcript cleared");
+        self.set_status_message("✓ transcript cleared");
     }
 
     fn toggle_help(&mut self) {
         self.show_help = !self.show_help;
         self.set_status_message(if self.show_help {
-            "help overlay shown"
+            "✓ help overlay shown"
         } else {
-            "help overlay hidden"
+            "✓ help overlay hidden"
         });
     }
 
     fn close_help(&mut self) {
         self.show_help = false;
-        self.set_status_message("help overlay hidden");
+        self.set_status_message("✓ help overlay hidden");
     }
 
     fn toggle_transport_hotkey(&mut self) {
@@ -1807,7 +1814,7 @@ mod tests {
         let mut app = SessionTui::new(EngineHandle::stub());
 
         handle_key_event(&mut app, press(KeyCode::Char('?')));
-        assert_eq!(app.status_message.as_deref(), Some("help overlay shown"));
+        assert_eq!(app.status_message.as_deref(), Some("✓ help overlay shown"));
         let overlay_frame = render_frame_for_test(&app, 80, 26);
         assert!(overlay_frame.contains("Help"));
         assert!(overlay_frame.contains("Space"));
@@ -1825,7 +1832,7 @@ mod tests {
         handle_key_event(&mut app, press(KeyCode::Esc));
 
         assert!(!app.should_quit);
-        assert_eq!(app.status_message.as_deref(), Some("help overlay hidden"));
+        assert_eq!(app.status_message.as_deref(), Some("✓ help overlay hidden"));
         let normal_frame = render_frame_for_test(&app, 80, 24);
         assert!(!normal_frame.contains("Toggle: ?"));
         assert!(!normal_frame.contains("Words: Alt-B/F"));
@@ -1868,7 +1875,7 @@ mod tests {
 
         handle_key_event(&mut app, press(KeyCode::Char('?')));
         assert!(!app.show_help);
-        assert_eq!(app.status_message.as_deref(), Some("help overlay hidden"));
+        assert_eq!(app.status_message.as_deref(), Some("✓ help overlay hidden"));
 
         handle_key_event(&mut app, press(KeyCode::Char('?')));
         handle_key_event(&mut app, ctrl(KeyCode::Char('c')));
@@ -2032,7 +2039,7 @@ mod tests {
             .as_nanos();
         let output_path = std::env::temp_dir().join(format!("orpheus-tui-toast-{unique}.wav"));
         let expected_message = format!(
-            "rendered `drums` to `{}` (1 cycle(s))",
+            "✓ rendered `drums` to `{}` (1 cycle(s))",
             output_path.display()
         );
         app.input = format!(":render drums {}", output_path.display());
@@ -2052,7 +2059,7 @@ mod tests {
     fn status_toast_expires_after_ttl() {
         let mut app = SessionTui::new(EngineHandle::stub());
         app.toggle_help();
-        assert_eq!(app.status_message.as_deref(), Some("help overlay shown"));
+        assert_eq!(app.status_message.as_deref(), Some("✓ help overlay shown"));
 
         app.status_expires_at = Some(
             Instant::now()
