@@ -510,6 +510,12 @@ fn extract_positive_integer_factor(value: Value, builtin_name: &str) -> Result<i
         ))
     })?;
 
+    if integer > 1024 {
+        return Err(EvalError::new(format!(
+            "`{builtin_name}` factor exceeded the maximum allowed bound of 1024"
+        )));
+    }
+
     Ok(integer)
 }
 
@@ -940,5 +946,38 @@ fn extract_string(value: Value, builtin_name: &str) -> Result<String, EvalError>
         Value::SamplePattern(_) | Value::NumberPattern(_) | Value::Function(_) => Err(
             EvalError::new(format!("`{builtin_name}` requires a string argument")),
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // use super::*
+    use crate::{ReplMode, eval_module};
+
+    #[test]
+    fn havoc_fast_and_slow_reject_huge_factors() {
+        let source_fast = "a = fast(2048, bd)";
+        let result_fast = eval_module(source_fast, ReplMode::Loose);
+        assert!(
+            result_fast.is_err(),
+            "expected fast with huge factor to be rejected"
+        );
+        let err_msg = result_fast.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("maximum allowed bound of 1024"),
+            "unexpected error message: {err_msg}"
+        );
+
+        let source_slow = "b = slow(2048, bd)";
+        let result_slow = eval_module(source_slow, ReplMode::Loose);
+        assert!(
+            result_slow.is_err(),
+            "expected slow with huge factor to be rejected"
+        );
+        let err_msg = result_slow.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("maximum allowed bound of 1024"),
+            "unexpected error message: {err_msg}"
+        );
     }
 }
