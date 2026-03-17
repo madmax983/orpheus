@@ -37,29 +37,31 @@ impl SharedTransport {
     }
 
     fn publish(&self, core: &EngineCore) {
-        // We must increment the epoch FIRST, and make sure it is visible
-        // BEFORE the payload writes. Using SeqCst for testing the logic easily.
-        self.publish_epoch.fetch_add(1, Ordering::SeqCst);
+        // Real-world implementation using compiler_fence:
+        // Wait, loom doesn't support compiler_fence, we must use loom::sync::atomic::compiler_fence
+        // Actually loom sync doesn't have compiler_fence.
+        // We use loom::sync::atomic::fence instead of compiler_fence for tests.
+        // And use Acquire/Release on the fence. Let's do that!
 
-        self.current_frame
-            .store(core.current_frame, Ordering::SeqCst);
-        self.current_cycle_start_frame
-            .store(core.current_cycle_start_frame, Ordering::SeqCst);
-        self.frames_per_cycle
-            .store(core.frames_per_cycle, Ordering::SeqCst);
-        self.tempo_bpm_bits
-            .store(core.tempo_bpm.to_bits(), Ordering::SeqCst);
-        self.is_playing.store(core.is_playing, Ordering::SeqCst);
-        self.has_pending_pattern
-            .store(core.pending_pattern.is_some(), Ordering::SeqCst);
+        self.publish_epoch.fetch_add(1, Ordering::Relaxed);
+        loom::sync::atomic::fence(Ordering::Release);
 
-        // Increment epoch to even to signal done.
-        self.publish_epoch.fetch_add(1, Ordering::SeqCst);
+        self.current_frame.store(core.current_frame, Ordering::Relaxed);
+        self.current_cycle_start_frame.store(core.current_cycle_start_frame, Ordering::Relaxed);
+        self.frames_per_cycle.store(core.frames_per_cycle, Ordering::Relaxed);
+        self.tempo_bpm_bits.store(core.tempo_bpm.to_bits(), Ordering::Relaxed);
+        self.is_playing.store(core.is_playing, Ordering::Relaxed);
+        self.has_pending_pattern.store(core.pending_pattern.is_some(), Ordering::Relaxed);
+
+        loom::sync::atomic::fence(Ordering::Release);
+        self.publish_epoch.fetch_add(1, Ordering::Relaxed);
     }
 
     fn snapshot(&self) -> TransportSnapshot {
         loop {
-            let start_epoch = self.publish_epoch.load(Ordering::SeqCst);
+            let start_epoch = self.publish_epoch.load(Ordering::Relaxed);
+            loom::sync::atomic::fence(Ordering::Acquire);
+
             if start_epoch % 2 != 0 {
                 loom::sync::atomic::spin_loop_hint();
                 continue;
@@ -67,15 +69,17 @@ impl SharedTransport {
 
             let snap = TransportSnapshot {
                 publish_epoch: start_epoch,
-                current_frame: self.current_frame.load(Ordering::SeqCst),
-                current_cycle_start_frame: self.current_cycle_start_frame.load(Ordering::SeqCst),
-                frames_per_cycle: self.frames_per_cycle.load(Ordering::SeqCst),
-                tempo_bpm_bits: self.tempo_bpm_bits.load(Ordering::SeqCst),
-                is_playing: self.is_playing.load(Ordering::SeqCst),
-                has_pending_pattern: self.has_pending_pattern.load(Ordering::SeqCst),
+                current_frame: self.current_frame.load(Ordering::Relaxed),
+                current_cycle_start_frame: self.current_cycle_start_frame.load(Ordering::Relaxed),
+                frames_per_cycle: self.frames_per_cycle.load(Ordering::Relaxed),
+                tempo_bpm_bits: self.tempo_bpm_bits.load(Ordering::Relaxed),
+                is_playing: self.is_playing.load(Ordering::Relaxed),
+                has_pending_pattern: self.has_pending_pattern.load(Ordering::Relaxed),
             };
 
-            let end_epoch = self.publish_epoch.load(Ordering::SeqCst);
+            loom::sync::atomic::fence(Ordering::Acquire);
+            let end_epoch = self.publish_epoch.load(Ordering::Relaxed);
+
             if start_epoch == end_epoch {
                 return snap;
             }
