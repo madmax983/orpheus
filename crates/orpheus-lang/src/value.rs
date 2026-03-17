@@ -1044,7 +1044,9 @@ fn query_stack<T>(layers: &[PatternRuntime<T>], span: &TimeSpan) -> Result<Vec<E
 where
     T: PatternRuntimeValue,
 {
-    let mut events = Vec::new();
+    // ⚡ Bolt: Pre-allocate vectors inside hot evaluation loops to avoid unnecessary heap reallocations.
+    // We assume a modest default capacity proportional to the number of layers.
+    let mut events = Vec::with_capacity(layers.len() * 4);
     for layer in layers {
         events.extend(layer.try_query(span)?);
     }
@@ -1415,7 +1417,9 @@ where
         return Ok(Vec::new());
     }
 
-    let mut events = Vec::new();
+    // ⚡ Bolt: Pre-allocate vectors inside hot evaluation loops to avoid unnecessary heap reallocations.
+    // A capacity of 8 is a reasonable starting point for cycle-based event sequences.
+    let mut events = Vec::with_capacity(8);
     let start_cycle = floor_rational(span.start());
     let end_cycle = ceil_rational(span.end());
 
@@ -1485,7 +1489,8 @@ where
     T: PatternRuntimeValue,
     F: FnMut(i128) -> bool,
 {
-    let mut events = Vec::new();
+    // ⚡ Bolt: Pre-allocate vectors inside hot evaluation loops to avoid unnecessary heap reallocations.
+    let mut events = Vec::with_capacity(8);
     let start_cycle = floor_rational(span.start());
     let end_cycle = ceil_rational(span.end());
 
@@ -1553,7 +1558,8 @@ where
         return Ok(Vec::new());
     }
 
-    let mut events = Vec::new();
+    // ⚡ Bolt: Pre-allocate vectors inside hot evaluation loops to avoid unnecessary heap reallocations.
+    let mut events = Vec::with_capacity(8);
     let start_cycle = floor_rational(span.start());
     let end_cycle = ceil_rational(span.end());
 
