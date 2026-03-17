@@ -1101,7 +1101,7 @@ where
                 continue;
             }
 
-            let part = build_span(start.clone(), end.clone())?;
+            let part = build_span((*start).clone(), (*end).clone())?;
             let mut value = event.value.clone();
             for control_event in &control_events {
                 if spans_overlap(&control_event.part, &part) {
@@ -1224,7 +1224,7 @@ where
                 continue;
             }
 
-            let part = build_span(start.clone(), end.clone())?;
+            let part = build_span((*start).clone(), (*end).clone())?;
             let mut relative_start = 0.0;
             let mut relative_end = 1.0;
             for control_event in &start_events {
@@ -1293,7 +1293,7 @@ where
                 continue;
             }
 
-            let part = build_span(start.clone(), end.clone())?;
+            let part = build_span((*start).clone(), (*end).clone())?;
             let mut value = event.value.clone();
             for control_event in &control_events {
                 if spans_overlap(&control_event.part, &part) {
