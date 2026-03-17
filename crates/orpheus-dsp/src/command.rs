@@ -158,6 +158,20 @@ pub enum EngineCommand {
     StopTransport,
 }
 
+/// Creates a new lock-free ring buffer queue for safely sending commands to the audio thread.
+///
+/// This avoids lock contention between the UI thread and the real-time audio thread.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::{new_command_queue, EngineCommand};
+///
+/// let (mut producer, mut consumer) = new_command_queue();
+/// producer.push(EngineCommand::PlayTransport).unwrap();
+///
+/// assert!(matches!(consumer.pop().unwrap(), EngineCommand::PlayTransport));
+/// ```
 pub fn new_command_queue() -> (Producer<EngineCommand>, Consumer<EngineCommand>) {
     RingBuffer::<EngineCommand>::new(64)
 }

@@ -88,6 +88,22 @@ impl<T> CyclePattern<T> {
     ///
     /// Returns any arithmetic or span-construction error encountered while
     /// subdividing or shifting cycle-local events into the requested window.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::{CyclePattern, PatternNode, TimeSpan};
+    ///
+    /// let pattern = CyclePattern::new(vec![
+    ///     PatternNode::atom("a"),
+    ///     PatternNode::atom("b"),
+    /// ]);
+    /// let events = pattern.try_query(&TimeSpan::unit()).unwrap();
+    ///
+    /// assert_eq!(events.len(), 2);
+    /// assert_eq!(events[0].value, "a");
+    /// assert_eq!(events[1].value, "b");
+    /// ```
     pub fn try_query(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, PatternError>
     where
         T: Clone,

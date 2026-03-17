@@ -87,6 +87,18 @@ impl Rational {
     ///
     /// Use this instead of the `Add` impl if unrepresentable sums must be
     /// reported as data instead of panicking.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::Rational;
+    ///
+    /// let one_half = Rational::new(1, 2).unwrap();
+    /// let one_quarter = Rational::new(1, 4).unwrap();
+    /// let sum = one_half.checked_add(&one_quarter).unwrap();
+    /// assert_eq!(sum.numerator(), 3);
+    /// assert_eq!(sum.denominator(), 4);
+    /// ```
     pub fn checked_add(&self, rhs: &Self) -> Result<Self, PatternError> {
         let common_divisor = gcd(self.denominator, rhs.denominator);
         let left_scale = rhs.denominator / common_divisor;
@@ -125,6 +137,18 @@ impl Rational {
     ///
     /// Returns [`PatternError::ArithmeticOverflow`] if the intermediate
     /// numerator or denominator exceeds the supported integer range.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::Rational;
+    ///
+    /// let one_half = Rational::new(1, 2).unwrap();
+    /// let one_quarter = Rational::new(1, 4).unwrap();
+    /// let diff = one_half.checked_sub(&one_quarter).unwrap();
+    /// assert_eq!(diff.numerator(), 1);
+    /// assert_eq!(diff.denominator(), 4);
+    /// ```
     pub fn checked_sub(&self, rhs: &Self) -> Result<Self, PatternError> {
         let negated_rhs = Self::checked_normalize(rhs.numerator, -rhs.denominator)?;
         self.checked_add(&negated_rhs)
@@ -136,6 +160,18 @@ impl Rational {
     ///
     /// Returns [`PatternError::ArithmeticOverflow`] if the intermediate
     /// numerator or denominator exceeds the supported integer range.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::Rational;
+    ///
+    /// let one_half = Rational::new(1, 2).unwrap();
+    /// let three_quarters = Rational::new(3, 4).unwrap();
+    /// let product = one_half.checked_mul(&three_quarters).unwrap();
+    /// assert_eq!(product.numerator(), 3);
+    /// assert_eq!(product.denominator(), 8);
+    /// ```
     pub fn checked_mul(&self, rhs: &Self) -> Result<Self, PatternError> {
         let numerator =
             self.numerator
@@ -158,6 +194,20 @@ impl Rational {
     ///
     /// This comparison algorithm is overflow-free for valid rationals and
     /// currently returns `Ok` for all values constructible through this crate.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::Rational;
+    /// use core::cmp::Ordering;
+    ///
+    /// let one_half = Rational::new(1, 2).unwrap();
+    /// let two_quarters = Rational::new(2, 4).unwrap();
+    /// let three_quarters = Rational::new(3, 4).unwrap();
+    ///
+    /// assert_eq!(one_half.checked_cmp(&two_quarters).unwrap(), Ordering::Equal);
+    /// assert_eq!(one_half.checked_cmp(&three_quarters).unwrap(), Ordering::Less);
+    /// ```
     pub fn checked_cmp(&self, other: &Self) -> Result<Ordering, PatternError> {
         Ok(compare_rationals(self, other))
     }
@@ -169,6 +219,16 @@ impl Rational {
     /// Returns [`PatternError::InvalidDenominator`] if `denominator` is zero,
     /// or [`PatternError::ArithmeticOverflow`] if normalization cannot be
     /// represented in the bounded runtime domain.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::Rational;
+    ///
+    /// let r = Rational::checked_from_parts(2, 4).unwrap();
+    /// assert_eq!(r.numerator(), 1);
+    /// assert_eq!(r.denominator(), 2);
+    /// ```
     pub fn checked_from_parts(numerator: i128, denominator: i128) -> Result<Self, PatternError> {
         Self::checked_normalize(numerator, denominator)
     }
