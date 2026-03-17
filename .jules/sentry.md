@@ -12,3 +12,7 @@
 ## 2026-03-16 - More Sentry Coverage Additions
 **Learning:** Sentry added tests validating 0 length behaviors and out of bounds clipping to EventStreams, expanding tests on structural primitives for greater coverage and compliance without mocking `TimeSpan` internally.
 **Action:** Explicitly testing empty intervals using standard APIs yields better confidence than mock bypasses when standard types securely prevent incorrect states.
+
+## 2024-03-08 - Testing Boundaries for Builders
+**Learning:** Testing simple builder methods or structs without internal logic (like `SampleTrigger` builder) with extreme values provides no added value and violates testing boundaries.
+**Action:** Do not test trivial getters/setters unless they contain explicit bounding, clipping, or initialization logic.

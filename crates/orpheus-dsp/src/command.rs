@@ -168,6 +168,7 @@ mod tests {
     use orpheus_pattern::TimeSpan;
 
     #[test]
+    #[allow(clippy::float_cmp)]
     fn sample_trigger_named_initializes_with_default_values() {
         let trigger = SampleTrigger::named("bd");
         assert_eq!(trigger.token(), "bd");
@@ -181,6 +182,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::float_cmp)]
     fn sample_trigger_builder_methods_update_fields() {
         let trigger = SampleTrigger::named("sn")
             .with_gain(0.8)

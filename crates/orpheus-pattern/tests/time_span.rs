@@ -88,3 +88,14 @@ fn timespan_unit_returns_zero_to_one() {
     assert_eq!(unit.start(), &Rational::zero());
     assert_eq!(unit.end(), &Rational::one());
 }
+
+#[test]
+fn timespan_new_rejects_negative_duration() {
+    let start = Rational::new(3, 4).unwrap();
+    let end = Rational::new(1, 4).unwrap();
+
+    assert_eq!(
+        TimeSpan::new(start.clone(), end.clone()),
+        Err(PatternError::InvalidSpan { start, end })
+    );
+}
