@@ -31,6 +31,18 @@ use crate::TimeSpan;
 ///     value: "bd",
 /// };
 /// ```
+///
+/// Or an unclipped event:
+/// ```
+/// use orpheus_pattern::{Event, TimeSpan};
+///
+/// // Represents an event that lasted exactly the query window.
+/// let unclipped_event = Event {
+///     whole: None,
+///     part: TimeSpan::unit(),
+///     value: "sn",
+/// };
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Event<T> {
     /// The full span the event conceptually occupies.

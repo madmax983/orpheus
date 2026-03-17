@@ -42,6 +42,16 @@ impl TimeSpan {
     }
 
     /// Returns the unit cycle span `[0, 1)`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::{Rational, TimeSpan};
+    ///
+    /// let span = TimeSpan::unit();
+    /// assert_eq!(span.start(), &Rational::zero());
+    /// assert_eq!(span.end(), &Rational::one());
+    /// ```
     #[must_use]
     pub const fn unit() -> Self {
         Self {
@@ -51,24 +61,66 @@ impl TimeSpan {
     }
 
     /// Returns the inclusive start bound of the span.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::{Rational, TimeSpan};
+    ///
+    /// let span = TimeSpan::unit();
+    /// assert_eq!(span.start(), &Rational::zero());
+    /// ```
     #[must_use]
     pub const fn start(&self) -> &Rational {
         &self.start
     }
 
     /// Returns the exclusive end bound of the span.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::{Rational, TimeSpan};
+    ///
+    /// let span = TimeSpan::unit();
+    /// assert_eq!(span.end(), &Rational::one());
+    /// ```
     #[must_use]
     pub const fn end(&self) -> &Rational {
         &self.end
     }
 
     /// Returns `true` when the half-open span contains no duration.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::{Rational, TimeSpan};
+    ///
+    /// let zero = Rational::zero();
+    /// let span = TimeSpan::new(zero.clone(), zero).unwrap();
+    /// assert!(span.is_empty());
+    ///
+    /// let unit = TimeSpan::unit();
+    /// assert!(!unit.is_empty());
+    /// ```
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.start() == self.end()
     }
 
     /// Returns the normalized numerator of the span start.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::{Rational, TimeSpan};
+    ///
+    /// let start = Rational::new(3, 4).unwrap();
+    /// let end = Rational::one();
+    /// let span = TimeSpan::new(start, end).unwrap();
+    /// assert_eq!(span.start_numer(), 3);
+    /// ```
     #[must_use]
     pub const fn start_numer(&self) -> i128 {
         self.start().numerator()
