@@ -1778,13 +1778,13 @@ mod tests {
 
         handle_key_event(&mut app, press(KeyCode::Char(' ')));
         let _ = app.session.render_test_block_for_tui(1);
-        assert_eq!(app.status_message.as_deref(), Some("transport stopped"));
+        assert_eq!(app.status_message.as_deref(), Some("✓ transport stopped"));
         assert!(!app.session.transport_snapshot().is_playing());
         assert!(app.repl_body().contains("Transport: stopped"));
 
         handle_key_event(&mut app, press(KeyCode::Char(' ')));
         let _ = app.session.render_test_block_for_tui(1);
-        assert_eq!(app.status_message.as_deref(), Some("transport playing"));
+        assert_eq!(app.status_message.as_deref(), Some("✓ transport playing"));
         assert!(app.session.transport_snapshot().is_playing());
         assert!(app.repl_body().contains("Transport: playing"));
     }
