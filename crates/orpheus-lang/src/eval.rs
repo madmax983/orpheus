@@ -168,10 +168,12 @@ pub fn eval_into_bindings(
     bindings: &mut BTreeMap<String, Value>,
 ) -> Result<Option<(String, Value)>, EvalError> {
     let parsed = parse_module(source)?;
-    let mut evaluator = Evaluator::with_bindings(mode, bindings.clone(), &parsed);
-    let last_binding = evaluator.eval_statements(&parsed.statements)?;
+    // ⚡ Bolt: Use `std::mem::take` instead of `bindings.clone()` to move the BTreeMap into the evaluator.
+    // This avoids a full heap allocation and deep copy of the environment on every REPL statement.
+    let mut evaluator = Evaluator::with_bindings(mode, std::mem::take(bindings), &parsed);
+    let result = evaluator.eval_statements(&parsed.statements);
     *bindings = evaluator.bindings;
-    Ok(last_binding)
+    result
 }
 
 /// Renders a sample pattern to a deterministic stereo audio file selected by

@@ -1,1 +1,1 @@
-# just some benchmark logic or sanity checks
+cargo bench --workspace
