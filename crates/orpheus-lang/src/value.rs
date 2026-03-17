@@ -1067,6 +1067,46 @@ enum ControlPatternKind {
     Rate,
 }
 
+fn apply_event_fragments<T, F>(
+    source_events: Vec<Event<T>>,
+    control_event_lists: &[&[Event<f64>]],
+    mut apply_control: F,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+    F: FnMut(&Event<T>, &TimeSpan) -> Result<T, EvalError>,
+{
+    // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries, eliminating allocating overhead in the hot loop.
+    let mut composed = Vec::with_capacity(source_events.len());
+    for event in source_events {
+        let Some(boundaries) = compute_event_fragment_boundaries(&event.part, control_event_lists)
+        else {
+            composed.push(event);
+            continue;
+        };
+
+        for window in boundaries.windows(2) {
+            let &[start, end] = window else {
+                continue;
+            };
+            if start >= end {
+                continue;
+            }
+
+            let part = build_span(start.clone(), end.clone())?;
+            let value = apply_control(&event, &part)?;
+
+            composed.push(Event {
+                whole: None,
+                part,
+                value,
+            });
+        }
+    }
+
+    Ok(composed)
+}
+
 fn apply_control_pattern<T>(
     inner: &PatternRuntime<T>,
     control: &PatternRuntime<f64>,
@@ -1083,28 +1123,11 @@ where
         return Ok(source_events);
     }
 
-    // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries, eliminating allocating overhead in the hot loop.
-    let mut composed = Vec::with_capacity(source_events.len());
-    for event in source_events {
-        let Some(boundaries) =
-            compute_event_fragment_boundaries(&event.part, &[&control_events[..]])
-        else {
-            composed.push(event);
-            continue;
-        };
-
-        for window in boundaries.windows(2) {
-            let &[start, end] = window else {
-                continue;
-            };
-            if start >= end {
-                continue;
-            }
-
-            let part = build_span(start.clone(), end.clone())?;
+    let mut composed =
+        apply_event_fragments(source_events, &[&control_events[..]], |event, part| {
             let mut value = event.value.clone();
             for control_event in &control_events {
-                if spans_overlap(&control_event.part, &part) {
+                if spans_overlap(&control_event.part, part) {
                     value = match kind {
                         ControlPatternKind::Gain => value.adjust_gain(control_event.value),
                         ControlPatternKind::Hpf => value.adjust_hpf(control_event.value),
@@ -1117,14 +1140,8 @@ where
                     };
                 }
             }
-
-            composed.push(Event {
-                whole: None,
-                part,
-                value,
-            });
-        }
-    }
+            Ok(value)
+        })?;
 
     sort_events(&mut composed);
     Ok(composed)
@@ -1206,34 +1223,19 @@ where
         return Ok(source_events);
     }
 
-    // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries, eliminating allocating overhead in the hot loop.
-    let mut composed = Vec::with_capacity(source_events.len());
-    for event in source_events {
-        let Some(boundaries) =
-            compute_event_fragment_boundaries(&event.part, &[&start_events[..], &end_events[..]])
-        else {
-            composed.push(event);
-            continue;
-        };
-
-        for window in boundaries.windows(2) {
-            let &[start, end] = window else {
-                continue;
-            };
-            if start >= end {
-                continue;
-            }
-
-            let part = build_span(start.clone(), end.clone())?;
+    let mut composed = apply_event_fragments(
+        source_events,
+        &[&start_events[..], &end_events[..]],
+        |event, part| {
             let mut relative_start = 0.0;
             let mut relative_end = 1.0;
             for control_event in &start_events {
-                if spans_overlap(&control_event.part, &part) {
+                if spans_overlap(&control_event.part, part) {
                     relative_start = control_event.value;
                 }
             }
             for control_event in &end_events {
-                if spans_overlap(&control_event.part, &part) {
+                if spans_overlap(&control_event.part, part) {
                     relative_end = control_event.value;
                 }
             }
@@ -1244,16 +1246,12 @@ where
                 ));
             }
 
-            composed.push(Event {
-                whole: None,
-                part,
-                value: event
-                    .value
-                    .clone()
-                    .adjust_slice(relative_start, relative_end),
-            });
-        }
-    }
+            Ok(event
+                .value
+                .clone()
+                .adjust_slice(relative_start, relative_end))
+        },
+    )?;
 
     sort_events(&mut composed);
     Ok(composed)
@@ -1275,28 +1273,11 @@ where
         return Ok(source_events);
     }
 
-    // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries, eliminating allocating overhead in the hot loop.
-    let mut composed = Vec::with_capacity(source_events.len());
-    for event in source_events {
-        let Some(boundaries) =
-            compute_event_fragment_boundaries(&event.part, &[&control_events[..]])
-        else {
-            composed.push(event);
-            continue;
-        };
-
-        for window in boundaries.windows(2) {
-            let &[start, end] = window else {
-                continue;
-            };
-            if start >= end {
-                continue;
-            }
-
-            let part = build_span(start.clone(), end.clone())?;
+    let mut composed =
+        apply_event_fragments(source_events, &[&control_events[..]], |event, part| {
             let mut value = event.value.clone();
             for control_event in &control_events {
-                if spans_overlap(&control_event.part, &part) {
+                if spans_overlap(&control_event.part, part) {
                     let index = whole_number_from_slice_idx_value(control_event.value)?;
                     let slice_start = f64::from(index) / f64::from(segments);
                     let slice_end = f64::from(index.checked_add(1).ok_or_else(|| {
@@ -1307,14 +1288,8 @@ where
                     value = value.adjust_slice(slice_start, slice_end);
                 }
             }
-
-            composed.push(Event {
-                whole: None,
-                part,
-                value,
-            });
-        }
-    }
+            Ok(value)
+        })?;
 
     sort_events(&mut composed);
     Ok(composed)
