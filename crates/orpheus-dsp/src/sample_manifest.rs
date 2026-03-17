@@ -57,6 +57,28 @@ impl std::error::Error for SampleManifestLoadError {
     }
 }
 
+/// Loads a sample manifest file from the specified path, parsing its mappings
+/// into a [`SampleManifest`] so custom external audio files can be dynamically
+/// scheduled during pattern playback.
+///
+/// # Errors
+///
+/// Returns [`SampleManifestLoadError`] if the file cannot be read or if its
+/// contents fail to parse correctly.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::load_sample_manifest;
+/// use std::io::Write;
+/// use tempfile::NamedTempFile;
+///
+/// let mut file = NamedTempFile::new().unwrap();
+/// writeln!(file, "kick: /path/to/kick.wav").unwrap();
+///
+/// let manifest = load_sample_manifest(file.path()).unwrap();
+/// assert_eq!(manifest.get("kick"), Some("/path/to/kick.wav"));
+/// ```
 pub fn load_sample_manifest(
     path: impl AsRef<Path>,
 ) -> Result<SampleManifest, SampleManifestLoadError> {

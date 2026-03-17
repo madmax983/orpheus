@@ -48,6 +48,23 @@ impl<T> EventStream<T> {
     ///
     /// Returns any span-construction error encountered while clipping stored
     /// events to the query window.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::{EventStream, Event, TimeSpan, Rational};
+    ///
+    /// let event = Event {
+    ///     value: 42,
+    ///     whole: None,
+    ///     part: TimeSpan::unit(),
+    /// };
+    /// let stream = EventStream::new(vec![event]);
+    ///
+    /// let result = stream.try_query(&TimeSpan::unit()).unwrap();
+    /// assert_eq!(result.len(), 1);
+    /// assert_eq!(result[0].value, 42);
+    /// ```
     pub fn try_query(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, PatternError>
     where
         T: Clone,
