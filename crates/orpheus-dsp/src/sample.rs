@@ -118,3 +118,51 @@ fn integer_scale(bits_per_sample: u16) -> Option<f64> {
 fn normalize_int_sample(sample: i32, scale: f64) -> f32 {
     (f64::from(sample) / scale).clamp(-1.0, 1.0) as f32
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sample_error_formats_correctly() {
+        assert_eq!(
+            SampleError::UnsupportedChannelCount("test.wav".into()).to_string(),
+            "wav file `test.wav` must contain either mono or stereo audio"
+        );
+        assert_eq!(
+            SampleError::UnsupportedFloatEncoding("test.wav".into()).to_string(),
+            "wav file `test.wav` uses an unsupported float encoding"
+        );
+        assert_eq!(
+            SampleError::UnsupportedIntEncoding("test.wav".into()).to_string(),
+            "wav file `test.wav` uses an unsupported integer bit depth"
+        );
+        assert_eq!(
+            SampleError::UnknownBuiltinSample("test.wav".into()).to_string(),
+            "unknown built-in sample `test.wav`"
+        );
+    }
+
+    #[test]
+    fn integer_scale_returns_none_for_zero_bits() {
+        assert_eq!(integer_scale(0), None);
+    }
+
+    #[test]
+    fn integer_scale_returns_power_of_two_scale() {
+        assert_eq!(integer_scale(8), Some(128.0));
+        assert_eq!(integer_scale(16), Some(32768.0));
+        assert_eq!(integer_scale(24), Some(8_388_608.0));
+    }
+
+    #[test]
+    fn normalize_int_sample_clamps_to_unit_range() {
+        // Normal ranges
+        assert!((normalize_int_sample(16384, 32768.0) - 0.5).abs() < f32::EPSILON);
+        assert!((normalize_int_sample(-16384, 32768.0) - (-0.5)).abs() < f32::EPSILON);
+
+        // Out of bounds, should be clamped
+        assert!((normalize_int_sample(40000, 32768.0) - 1.0).abs() < f32::EPSILON);
+        assert!((normalize_int_sample(-40000, 32768.0) - (-1.0)).abs() < f32::EPSILON);
+    }
+}
