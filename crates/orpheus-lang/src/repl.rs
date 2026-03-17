@@ -317,10 +317,24 @@ impl ReplSession {
 
         match value {
             Value::SamplePattern(pattern) => {
-                crate::eval::export_sample_pattern_to_csv(pattern, &path, cycles)
-                    .map_err(|error| error.to_string())?;
+                if std::path::Path::new(&path)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
+                {
+                    crate::svg::export_sample_pattern_to_svg(pattern, &path, cycles)
+                        .map_err(|error| error.to_string())?;
+                } else {
+                    crate::eval::export_sample_pattern_to_csv(pattern, &path, cycles)
+                        .map_err(|error| error.to_string())?;
+                }
             }
             Value::NumberPattern(pattern) => {
+                if std::path::Path::new(&path)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
+                {
+                    return Err("number patterns cannot be exported to SVG".to_string());
+                }
                 crate::eval::export_number_pattern_to_csv(pattern, &path, cycles)
                     .map_err(|error| error.to_string())?;
             }
@@ -610,6 +624,10 @@ mod tests {
         std::env::temp_dir().join(format!("orpheus-export-{}.csv", unique_temp_suffix()))
     }
 
+    fn temp_svg_path() -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("orpheus-export-{}.svg", unique_temp_suffix()))
+    }
+
     #[test]
     fn eval_line_reuses_prior_bindings() {
         let mut session = ReplSession::new();
@@ -673,6 +691,40 @@ mod tests {
         assert!(contents.contains("sn"));
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn export_command_exports_a_bound_pattern_to_svg() {
+        let mut session = ReplSession::new();
+        let path = temp_svg_path();
+
+        session.eval_line("song = bd sn cp sn").unwrap();
+        let message = session
+            .eval_line(&format!(":export song {} 2", path.display()))
+            .unwrap();
+
+        assert!(message.contains("exported `song`"));
+        assert!(path.exists());
+        let contents = fs::read_to_string(&path).unwrap();
+        assert!(contents.contains("<svg xmlns=\"http://www.w3.org/2000/svg\""));
+        assert!(contents.contains("bd"));
+        assert!(contents.contains("sn"));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn export_command_refuses_to_export_number_pattern_to_svg() {
+        let mut session = ReplSession::new();
+        let path = temp_svg_path();
+
+        session.eval_line("notes = 1 2 3").unwrap();
+        let err = session
+            .eval_line(&format!(":export notes {} 1", path.display()))
+            .unwrap_err();
+
+        assert!(err.contains("number patterns cannot be exported to SVG"));
+        assert!(!path.exists());
     }
 
     #[test]
