@@ -16,3 +16,7 @@
 ## 2024-03-08 - Testing Boundaries for Builders
 **Learning:** Testing simple builder methods or structs without internal logic (like `SampleTrigger` builder) with extreme values provides no added value and violates testing boundaries.
 **Action:** Do not test trivial getters/setters unless they contain explicit bounding, clipping, or initialization logic.
+
+## 2026-03-18 - Type Format and Constructor Test Coverage
+**Learning:** Pure enum representations of abstract types like `Type` often lack coverage on their `Display` implementations and constructor methods (`pattern`, `function`, `curried`), hiding potential formatting bugs when type errors are reported to users.
+**Action:** Ensure type representations and ASTs have unit tests verifying their debug/display string outputs and builder patterns.
