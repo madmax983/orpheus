@@ -134,8 +134,8 @@ fn query_cycle_pattern<T: Clone>(
     let end_cycle = ceil_rational(span.end());
 
     let cycle_count = usize::try_from(end_cycle.saturating_sub(start_cycle)).unwrap_or(0);
-    // ⚡ Bolt: Pre-allocate vector using the cycle count and unit event count
-    // to reduce heap reallocations during pattern querying.
+    /// ⚡ Bolt: Pre-allocate vector using the cycle count and unit event count
+    /// to reduce heap reallocations during pattern querying.
     let mut events = Vec::with_capacity(cycle_count.saturating_mul(unit_events.len()));
 
     for cycle in start_cycle..end_cycle {
@@ -157,8 +157,8 @@ fn collect_nodes<T: Clone>(
     nodes: &[PatternNode<T>],
     span: &TimeSpan,
 ) -> Result<Vec<(TimeSpan, T)>, PatternError> {
-    // ⚡ Bolt: Pre-allocate vector using the number of top-level nodes as a lower bound
-    // to reduce heap reallocations during pattern collection.
+    /// ⚡ Bolt: Pre-allocate vector using the number of top-level nodes as a lower bound
+    /// to reduce heap reallocations during pattern collection.
     let mut events = Vec::with_capacity(nodes.len());
     collect_nodes_into(nodes, span, &mut events)?;
     Ok(events)
