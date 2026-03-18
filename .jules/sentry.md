@@ -16,3 +16,7 @@
 ## 2024-03-08 - Testing Boundaries for Builders
 **Learning:** Testing simple builder methods or structs without internal logic (like `SampleTrigger` builder) with extreme values provides no added value and violates testing boundaries.
 **Action:** Do not test trivial getters/setters unless they contain explicit bounding, clipping, or initialization logic.
+
+## 2024-03-18 - Missing Test Coverage in ActiveVoice
+**Learning:** The `ActiveVoice` enum variants and the audio processing (DSP) filters `OnePoleLowPass` and `OnePoleHighPass` in `crates/orpheus-dsp/src/voice.rs` have 0% test coverage.
+**Action:** Add tests for basic audio math components and simple voice generation boundaries since they represent core playback mechanics.

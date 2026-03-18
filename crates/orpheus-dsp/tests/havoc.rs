@@ -46,12 +46,17 @@ impl SharedTransport {
         self.publish_epoch.fetch_add(1, Ordering::Relaxed);
         loom::sync::atomic::fence(Ordering::Release);
 
-        self.current_frame.store(core.current_frame, Ordering::Relaxed);
-        self.current_cycle_start_frame.store(core.current_cycle_start_frame, Ordering::Relaxed);
-        self.frames_per_cycle.store(core.frames_per_cycle, Ordering::Relaxed);
-        self.tempo_bpm_bits.store(core.tempo_bpm.to_bits(), Ordering::Relaxed);
+        self.current_frame
+            .store(core.current_frame, Ordering::Relaxed);
+        self.current_cycle_start_frame
+            .store(core.current_cycle_start_frame, Ordering::Relaxed);
+        self.frames_per_cycle
+            .store(core.frames_per_cycle, Ordering::Relaxed);
+        self.tempo_bpm_bits
+            .store(core.tempo_bpm.to_bits(), Ordering::Relaxed);
         self.is_playing.store(core.is_playing, Ordering::Relaxed);
-        self.has_pending_pattern.store(core.pending_pattern.is_some(), Ordering::Relaxed);
+        self.has_pending_pattern
+            .store(core.pending_pattern.is_some(), Ordering::Relaxed);
 
         loom::sync::atomic::fence(Ordering::Release);
         self.publish_epoch.fetch_add(1, Ordering::Relaxed);

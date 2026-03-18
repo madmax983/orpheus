@@ -321,3 +321,117 @@ fn normalized_cutoff_hz(cutoff_hz: f64, sample_rate_hz: u32) -> f64 {
     let nyquist = (f64::from(sample_rate_hz) / 2.0) - 1.0;
     cutoff_hz.clamp(1.0, nyquist.max(1.0))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn voice_kind_token_returns_expected_strings() {
+        assert_eq!(VoiceKind::KickLike.token(), "bd");
+        assert_eq!(VoiceKind::SnareLike.token(), "sn");
+        assert_eq!(VoiceKind::ClapLike.token(), "cp");
+        assert_eq!(VoiceKind::HiHatLike.token(), "hh");
+    }
+
+    #[test]
+    fn voice_kind_from_token_parses_valid_tokens() {
+        assert_eq!(VoiceKind::from_token("bd"), Some(VoiceKind::KickLike));
+        assert_eq!(VoiceKind::from_token("sn"), Some(VoiceKind::SnareLike));
+        assert_eq!(VoiceKind::from_token("cp"), Some(VoiceKind::ClapLike));
+        assert_eq!(VoiceKind::from_token("hh"), Some(VoiceKind::HiHatLike));
+    }
+
+    #[test]
+    fn voice_kind_from_token_returns_none_for_invalid_tokens() {
+        assert_eq!(VoiceKind::from_token("invalid"), None);
+        assert_eq!(VoiceKind::from_token(""), None);
+    }
+
+    #[test]
+    fn stereo_gains_for_pan_centers_at_zero() {
+        let (left, right) = stereo_gains_for_pan(0.0);
+        assert_eq!(left, 1.0);
+        assert_eq!(right, 1.0);
+    }
+
+    #[test]
+    fn stereo_gains_for_pan_pans_hard_left() {
+        let (left, right) = stereo_gains_for_pan(-1.0);
+        assert_eq!(left, 1.0);
+        assert_eq!(right, 0.0);
+    }
+
+    #[test]
+    fn stereo_gains_for_pan_pans_hard_right() {
+        let (left, right) = stereo_gains_for_pan(1.0);
+        assert_eq!(left, 0.0);
+        assert_eq!(right, 1.0);
+    }
+
+    #[test]
+    fn stereo_gains_for_pan_clamps_out_of_bounds() {
+        let (left, right) = stereo_gains_for_pan(2.0);
+        assert_eq!(left, 0.0);
+        assert_eq!(right, 1.0);
+
+        let (left, right) = stereo_gains_for_pan(-2.0);
+        assert_eq!(left, 1.0);
+        assert_eq!(right, 0.0);
+    }
+
+    #[test]
+    fn normalized_cutoff_hz_clamps_to_nyquist() {
+        let sample_rate = 44100;
+        let nyquist = (f64::from(sample_rate) / 2.0) - 1.0;
+
+        // Over nyquist
+        assert_eq!(normalized_cutoff_hz(nyquist + 1000.0, sample_rate), nyquist);
+
+        // Under 1.0
+        assert_eq!(normalized_cutoff_hz(0.5, sample_rate), 1.0);
+
+        // Within bounds
+        assert_eq!(normalized_cutoff_hz(1000.0, sample_rate), 1000.0);
+    }
+
+    #[test]
+    fn one_pole_low_pass_initializes_state() {
+        let filter = OnePoleLowPass::new(44100, 1000.0);
+        assert_eq!(filter.state, 0.0);
+        assert!(filter.alpha > 0.0 && filter.alpha < 1.0);
+    }
+
+    #[test]
+    fn one_pole_high_pass_initializes_state() {
+        let filter = OnePoleHighPass::new(44100, 1000.0);
+        assert_eq!(filter.previous_input, 0.0);
+        assert_eq!(filter.previous_output, 0.0);
+        assert!(filter.alpha > 0.0 && filter.alpha < 1.0);
+    }
+
+    #[test]
+    fn active_voice_new_with_pan_sets_durations_correctly() {
+        let sample_rate = 48000;
+
+        let bd = ActiveVoice::new_with_pan(VoiceKind::KickLike, sample_rate, 0.0);
+        if let ActiveVoiceState::Synth {
+            duration_frames, ..
+        } = bd.state
+        {
+            assert_eq!(duration_frames, 48000 / 3);
+        } else {
+            panic!("Expected Synth state");
+        }
+
+        let sn = ActiveVoice::new_with_pan(VoiceKind::SnareLike, sample_rate, 0.0);
+        if let ActiveVoiceState::Synth {
+            duration_frames, ..
+        } = sn.state
+        {
+            assert_eq!(duration_frames, 48000 / 5);
+        } else {
+            panic!("Expected Synth state");
+        }
+    }
+}
