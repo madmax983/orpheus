@@ -100,6 +100,25 @@ impl From<ParseError> for EvalError {
 }
 
 /// Error raised while rendering an Orpheus sample pattern to an audio file.
+///
+/// A render can fail either because the pattern failed to evaluate properly into
+/// events (`EvalError`), or because the offline audio generation process encountered
+/// a problem (like an invalid path or failing to write to the file) (`OfflineRenderError`).
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{RenderError, ReplMode, eval_module, render_sample_pattern_to_file};
+///
+/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+///
+/// // Example of an invalid cycle count causing a `RenderError`.
+/// let path = std::env::temp_dir().join("render_error_example.wav");
+/// let err = render_sample_pattern_to_file(pattern, &path, 0).unwrap_err();
+///
+/// assert!(matches!(err, RenderError::Eval(_)));
+/// ```
 #[derive(Debug)]
 pub enum RenderError {
     Eval(EvalError),

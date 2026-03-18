@@ -28,6 +28,22 @@ pub use time::TimeSpan;
 use core::fmt;
 
 /// Errors produced by the pattern core time model.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_pattern::{PatternError, Rational, TimeSpan};
+///
+/// // Example of an invalid denominator error.
+/// let err = Rational::new(1, 0).unwrap_err();
+/// assert!(matches!(err, PatternError::InvalidDenominator { .. }));
+///
+/// // Example of an invalid span error.
+/// let start = Rational::new(2, 1).unwrap();
+/// let end = Rational::new(1, 1).unwrap();
+/// let err = TimeSpan::new(start, end).unwrap_err();
+/// assert!(matches!(err, PatternError::InvalidSpan { .. }));
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PatternError {
     /// A rational value was constructed with a zero denominator.
