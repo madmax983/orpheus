@@ -27,8 +27,8 @@ fn assert_parse_error_contains(source: &str, expected_fragments: &[&str]) {
         "parse error should not be empty"
     );
     assert!(
-        message.starts_with("parse error:"),
-        "parse error `{message}` did not start with `parse error:`"
+        message.starts_with("parse error at line"),
+        "parse error `{message}` did not start with `parse error at line`"
     );
     for fragment in expected_fragments {
         assert!(
@@ -157,12 +157,12 @@ fn parses_meter_annotation_prefix_form() {
 
 #[test]
 fn rejects_bindings_without_equals() {
-    assert_parse_error_contains("drums bd sn", &["="]);
+    assert_parse_error_contains("drums bd sn", &["expected binding"]);
 }
 
 #[test]
 fn rejects_unterminated_stack_groups() {
-    assert_parse_error_contains("drums = stack(bd ~, ~ sn", &[")", "expected"]);
+    assert_parse_error_contains("drums = stack(bd ~, ~ sn", &[")"]);
 }
 
 #[test]

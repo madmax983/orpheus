@@ -80,15 +80,34 @@ fn split_top_level_bindings(source: &str) -> Vec<(usize, String)> {
 }
 
 fn enrich_parse_error(source: &str, error: &PestError<Rule>) -> ParseError {
-    let rendered = error.to_string();
+    let (line, col) = match error.line_col {
+        pest::error::LineColLocation::Pos((l, c))
+        | pest::error::LineColLocation::Span((l, c), _) => (l, c),
+    };
+
+    let reason = match &error.variant {
+        pest::error::ErrorVariant::ParsingError { positives, .. } => {
+            if positives.is_empty() {
+                "unexpected token".to_owned()
+            } else {
+                let expected = positives
+                    .iter()
+                    .map(|r| format!("{r:?}"))
+                    .collect::<Vec<_>>()
+                    .join(" or ");
+                format!("expected {expected}")
+            }
+        }
+        pest::error::ErrorVariant::CustomError { message } => message.clone(),
+    };
 
     if unmatched_open_parens(source) > 0 {
         return ParseError::new(format!(
-            "parse error: missing `)` before end of input; {rendered}"
+            "parse error at line {line}, col {col}: missing `)` before end of input"
         ));
     }
 
-    ParseError::new(format!("parse error: {rendered}"))
+    ParseError::new(format!("parse error at line {line}, col {col}: {reason}"))
 }
 
 fn looks_like_binding(line: &str) -> bool {
