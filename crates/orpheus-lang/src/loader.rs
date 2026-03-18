@@ -41,9 +41,17 @@ fn load_file_strict_inner(
     path: &Path,
     visiting: &mut BTreeSet<PathBuf>,
 ) -> Result<StrictLoadedFile, LoadError> {
-    let canonical = path
-        .canonicalize()
-        .map_err(|error| LoadError::new(format!("{}: {}", path.display(), match error.kind() { std::io::ErrorKind::NotFound => "file not found".to_string(), std::io::ErrorKind::PermissionDenied => "permission denied".to_string(), _ => error.to_string(), })))?;
+    let canonical = path.canonicalize().map_err(|error| {
+        LoadError::new(format!(
+            "{}: {}",
+            path.display(),
+            match error.kind() {
+                std::io::ErrorKind::NotFound => "file not found".to_string(),
+                std::io::ErrorKind::PermissionDenied => "permission denied".to_string(),
+                _ => error.to_string(),
+            }
+        ))
+    })?;
     if !visiting.insert(canonical.clone()) {
         return Err(LoadError::new(format!(
             "{}: import cycle detected",
@@ -51,8 +59,17 @@ fn load_file_strict_inner(
         )));
     }
 
-    let source = fs::read_to_string(&canonical)
-        .map_err(|error| LoadError::new(format!("{}: {}", canonical.display(), match error.kind() { std::io::ErrorKind::NotFound => "file not found".to_string(), std::io::ErrorKind::PermissionDenied => "permission denied".to_string(), _ => error.to_string(), })))?;
+    let source = fs::read_to_string(&canonical).map_err(|error| {
+        LoadError::new(format!(
+            "{}: {}",
+            canonical.display(),
+            match error.kind() {
+                std::io::ErrorKind::NotFound => "file not found".to_string(),
+                std::io::ErrorKind::PermissionDenied => "permission denied".to_string(),
+                _ => error.to_string(),
+            }
+        ))
+    })?;
     let parent = canonical.parent().ok_or_else(|| {
         LoadError::new(format!(
             "{}: cannot resolve the parent directory for imports",
