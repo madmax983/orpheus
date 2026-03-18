@@ -7,6 +7,7 @@ mod eval;
 mod loader;
 mod parser;
 pub mod repl;
+pub mod session;
 mod svg;
 pub mod tui;
 mod types;
