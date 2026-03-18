@@ -957,46 +957,38 @@ impl Evaluator {
     }
 
     fn unsupported_pattern_item_error(items: &[Expr], context: &str) -> Option<EvalError> {
-        for item in items {
-            match item {
-                Expr::Call { callee, args } => {
-                    let name = match callee.as_ref() {
-                        Expr::Ident(name) => name.as_str(),
-                        _ => "call",
-                    };
-                    if name == "sample" && args.len() == 1 {
-                        continue;
-                    }
-                    return Some(EvalError::new(format!(
+        items.iter().find_map(|item| match item {
+            Expr::Call { callee, args } => {
+                let name = match callee.as_ref() {
+                    Expr::Ident(name) => name.as_str(),
+                    _ => "call",
+                };
+                if name == "sample" && args.len() == 1 {
+                    None
+                } else {
+                    Some(EvalError::new(format!(
                         "function call `{name}` cannot appear inside a pattern {context} in Task 5; apply transforms with the pipe operator `|>` or call `{name}(..., pattern)` directly"
-                    )));
+                    )))
                 }
-                Expr::Ident(name) if matches!(builtin_value(name), Some(Value::Function(_))) => {
-                    return Some(EvalError::new(format!(
-                        "function `{name}` cannot appear inside a pattern {context} in Task 5; apply transforms with the pipe operator `|>` or call `{name}(..., pattern)` directly"
-                    )));
-                }
-                Expr::Stream(_)
-                | Expr::At { .. }
-                | Expr::Meter { .. }
-                | Expr::Beat(_)
-                | Expr::Section { .. }
-                | Expr::SeqSections(_) => {
-                    return Some(EvalError::new(format!(
-                        "explicit-time forms cannot appear inside a pattern {context}; use `stream(...)` or lift the form outside the {context}"
-                    )));
-                }
-                Expr::Group(group_items) => {
-                    if let Some(error) = Self::unsupported_pattern_item_error(group_items, context)
-                    {
-                        return Some(error);
-                    }
-                }
-                _ => {}
             }
-        }
-
-        None
+            Expr::Ident(name) if matches!(builtin_value(name), Some(Value::Function(_))) => {
+                Some(EvalError::new(format!(
+                    "function `{name}` cannot appear inside a pattern {context} in Task 5; apply transforms with the pipe operator `|>` or call `{name}(..., pattern)` directly"
+                )))
+            }
+            Expr::Stream(_)
+            | Expr::At { .. }
+            | Expr::Meter { .. }
+            | Expr::Beat(_)
+            | Expr::Section { .. }
+            | Expr::SeqSections(_) => Some(EvalError::new(format!(
+                "explicit-time forms cannot appear inside a pattern {context}; use `stream(...)` or lift the form outside the {context}"
+            ))),
+            Expr::Group(group_items) => {
+                Self::unsupported_pattern_item_error(group_items, context)
+            }
+            _ => None,
+        })
     }
 
     fn collect_sample_nodes(
