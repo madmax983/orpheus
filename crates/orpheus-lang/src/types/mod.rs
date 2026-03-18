@@ -100,3 +100,56 @@ impl TypedModule {
             .unwrap_or_else(|| panic!("no inferred binding named `{name}`"))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn type_display_formats_correctly() {
+        assert_eq!(Type::Sample.to_string(), "Sample");
+        assert_eq!(Type::Note.to_string(), "Note");
+        assert_eq!(Type::Number.to_string(), "Number");
+        assert_eq!(Type::Duration.to_string(), "Duration");
+        assert_eq!(Type::String.to_string(), "String");
+        assert_eq!(Type::Unit.to_string(), "Unit");
+
+        assert_eq!(Type::Var(TypeVarId::new(42)).to_string(), "t42");
+        assert_eq!(Type::pattern(Type::Sample).to_string(), "Pattern<Sample>");
+        assert_eq!(
+            Type::function(
+                vec![Type::Sample, Type::Number],
+                Type::Pattern(Box::new(Type::Sample))
+            )
+            .to_string(),
+            "Function(Sample, Number) -> Pattern<Sample>"
+        );
+        assert_eq!(
+            Type::function(vec![], Type::Unit).to_string(),
+            "Function() -> Unit"
+        );
+    }
+
+    #[test]
+    fn type_constructors_build_expected_structures() {
+        assert_eq!(
+            Type::pattern(Type::Number),
+            Type::Pattern(Box::new(Type::Number))
+        );
+
+        assert_eq!(
+            Type::function(vec![Type::Sample], Type::Note),
+            Type::Function(vec![Type::Sample], Box::new(Type::Note))
+        );
+
+        assert_eq!(
+            Type::curried(vec![Type::Sample, Type::Number], Type::Note),
+            Type::Function(
+                vec![Type::Sample],
+                Box::new(Type::Function(vec![Type::Number], Box::new(Type::Note)))
+            )
+        );
+
+        assert_eq!(Type::curried(vec![], Type::Sample), Type::Sample);
+    }
+}
