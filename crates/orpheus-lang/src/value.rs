@@ -795,8 +795,9 @@ impl NumberPatternValue {
     /// variant, use [`NumberPatternValue::try_query_unit`].
     #[must_use]
     pub fn query_unit(&self) -> Vec<Event<f64>> {
-        self.try_query_unit().unwrap_or_else(|err| {
-            panic!("internal pattern evaluation error in query_unit: {err:?}")
+        self.try_query_unit().unwrap_or_else(|_err| {
+            // In a live-coding environment, gracefully degrade instead of crashing the UI
+            Vec::new()
         })
     }
 

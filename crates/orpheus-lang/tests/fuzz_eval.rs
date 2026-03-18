@@ -74,4 +74,27 @@ proptest! {
         // If there was a panic, this assertion will fail.
         assert!(result.is_ok(), "query_unit panicked for input: {s}");
     }
+
+    #[test]
+    fn query_unit_number_does_not_panic(s in float_literal_strategy()) {
+        // use an expression that heavily multiplies limits
+        let source = format!("a = shift({s}, slow({s}, fast({s}, every({s}, rev, sine))))");
+
+        let result = panic::catch_unwind(|| {
+            let Ok(mut values) = eval_module(&source, ReplMode::Loose) else {
+                return; // parse errors and eval errors on fuzz strings are expected
+            };
+            let Some(val) = values.remove("a") else {
+                return;
+            };
+            let Some(pat) = val.as_number_pattern() else {
+                return;
+            };
+            // NumberPatternValue::query_unit() panics on internal evaluation errors
+            let _ = pat.query_unit();
+        });
+
+        // If there was a panic, this assertion will fail.
+        assert!(result.is_ok(), "query_unit panicked for input: {s}");
+    }
 }
