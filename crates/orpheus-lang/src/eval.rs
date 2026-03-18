@@ -868,20 +868,7 @@ impl Evaluator {
                 Expr::Call { callee, args } => {
                     let name = match callee.as_ref() {
                         Expr::Ident(name) => name.as_str(),
-                        Expr::Seq(_)
-                        | Expr::Stack(_)
-                        | Expr::Stream(_)
-                        | Expr::Pipe { .. }
-                        | Expr::Call { .. }
-                        | Expr::At { .. }
-                        | Expr::Meter { .. }
-                        | Expr::Beat(_)
-                        | Expr::Section { .. }
-                        | Expr::SeqSections(_)
-                        | Expr::Group(_)
-                        | Expr::Rest
-                        | Expr::Number(_)
-                        | Expr::String(_) => "call",
+                        _ => "call",
                     };
                     if name == "sample" && args.len() == 1 {
                         continue;
@@ -911,13 +898,7 @@ impl Evaluator {
                         return Some(error);
                     }
                 }
-                Expr::Seq(_)
-                | Expr::Stack(_)
-                | Expr::Pipe { .. }
-                | Expr::Ident(_)
-                | Expr::Rest
-                | Expr::Number(_)
-                | Expr::String(_) => {}
+                _ => {}
             }
         }
 
@@ -967,19 +948,7 @@ impl Evaluator {
                 };
                 Ok(Some(PatternNode::group(nodes)))
             }
-            Expr::Seq(_)
-            | Expr::Stack(_)
-            | Expr::Stream(_)
-            | Expr::Pipe { .. }
-            | Expr::Call { .. }
-            | Expr::At { .. }
-            | Expr::Meter { .. }
-            | Expr::Beat(_)
-            | Expr::Section { .. }
-            | Expr::SeqSections(_)
-            | Expr::Ident(_)
-            | Expr::Number(_)
-            | Expr::String(_) => Ok(None),
+            _ => Ok(None),
         }
     }
 
@@ -1008,18 +977,7 @@ impl Evaluator {
                 };
                 Ok(Some(PatternNode::group(nodes)))
             }
-            Expr::Seq(_)
-            | Expr::Stack(_)
-            | Expr::Stream(_)
-            | Expr::Pipe { .. }
-            | Expr::Call { .. }
-            | Expr::At { .. }
-            | Expr::Meter { .. }
-            | Expr::Beat(_)
-            | Expr::Section { .. }
-            | Expr::SeqSections(_)
-            | Expr::Ident(_)
-            | Expr::String(_) => Ok(None),
+            _ => Ok(None),
         }
     }
 }
