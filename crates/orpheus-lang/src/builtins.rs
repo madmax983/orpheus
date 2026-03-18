@@ -26,6 +26,7 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "slice" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Slice))),
         "slice_idx" => Some(Value::Function(BuiltinFn::new(BuiltinKind::SliceIdx))),
         "rand" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Rand))),
+        "jux" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Jux))),
         _ => None,
     }
 }
@@ -136,6 +137,7 @@ impl BuiltinKind {
             Self::Slice => "slice",
             Self::SliceIdx => "slice_idx",
             Self::Rand => "rand",
+            Self::Jux => "jux",
         }
     }
 
@@ -151,7 +153,8 @@ impl BuiltinKind {
             | Self::Lpf
             | Self::Pan
             | Self::Pitch
-            | Self::Rate => 2,
+            | Self::Rate
+            | Self::Jux => 2,
             Self::Rev | Self::Sample => 1,
             Self::Rand => 0,
         }
@@ -175,6 +178,7 @@ impl BuiltinKind {
             Self::Slice => apply_slice(args),
             Self::SliceIdx => apply_slice_idx(args),
             Self::Rand => apply_rand(args, function.site_salt.unwrap_or_default()),
+            Self::Jux => apply_jux(args),
         }
     }
 }
@@ -204,6 +208,39 @@ fn apply_every(args: Vec<Value>) -> Result<Value, EvalError> {
         }
         Value::Function(_) | Value::String(_) => Err(EvalError::new(
             "`every` expected a pattern as its final argument",
+        )),
+    }
+}
+
+fn apply_jux(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let transform = args
+        .next()
+        .ok_or_else(|| EvalError::new("`jux` requires a transform argument"))?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`jux` requires a pattern argument"))?;
+
+    match pattern {
+        Value::SamplePattern(pattern_val) => {
+            let transform_fn = extract_unary_pattern_transform(transform, "jux", "first")?;
+            let transformed_val =
+                transform_fn.apply(vec![Value::SamplePattern(pattern_val.clone())])?;
+            let Value::SamplePattern(transformed_pattern_val) = transformed_val else {
+                return Err(EvalError::new(
+                    "`jux` transform must return a sample pattern",
+                ));
+            };
+
+            let left = pattern_val.pan(-1.0);
+            let right = transformed_pattern_val.pan(1.0);
+            Ok(Value::SamplePattern(SamplePatternValue::stack(vec![
+                left, right,
+            ])))
+        }
+        Value::NumberPattern(_) => Err(EvalError::new("`jux` only applies to sample patterns")),
+        Value::Function(_) | Value::String(_) => Err(EvalError::new(
+            "`jux` expected a sample pattern as its final argument",
         )),
     }
 }
@@ -953,6 +990,39 @@ fn extract_string(value: Value, builtin_name: &str) -> Result<String, EvalError>
 mod tests {
     // use super::*
     use crate::{ReplMode, eval_module};
+
+    #[test]
+    fn jux_applies_transform_and_pans() {
+        let source = "a = jux(rev, bd sn)";
+        let module = eval_module(source, ReplMode::Loose).unwrap();
+        let pattern = module.get("a").unwrap().as_sample_pattern().unwrap();
+
+        let events = pattern.query_unit().unwrap();
+
+        // original (bd sn) panned left
+        // rev(bd sn) -> (sn bd) panned right
+        // So we expect 4 events:
+        // [0, 1/2]: bd (pan -1.0)
+        // [0, 1/2]: sn (pan 1.0)
+        // [1/2, 1]: sn (pan -1.0)
+        // [1/2, 1]: bd (pan 1.0)
+
+        assert_eq!(events.len(), 4);
+
+        let mut left_events: Vec<_> = events.iter().filter(|e| e.value.pan() < 0.0).collect();
+        left_events.sort_by(|a, b| a.part.start().cmp(b.part.start()));
+        let mut right_events: Vec<_> = events.iter().filter(|e| e.value.pan() > 0.0).collect();
+        right_events.sort_by(|a, b| a.part.start().cmp(b.part.start()));
+
+        assert_eq!(left_events.len(), 2);
+        assert_eq!(right_events.len(), 2);
+
+        assert_eq!(left_events[0].value.sample(), "bd");
+        assert_eq!(left_events[1].value.sample(), "sn");
+
+        assert_eq!(right_events[0].value.sample(), "sn");
+        assert_eq!(right_events[1].value.sample(), "bd");
+    }
 
     #[test]
     fn havoc_fast_and_slow_reject_huge_factors() {

@@ -46,6 +46,7 @@ pub enum BuiltinKind {
     Slice,
     SliceIdx,
     Rand,
+    Jux,
 }
 
 /// A partially or fully applied built-in function at runtime.
