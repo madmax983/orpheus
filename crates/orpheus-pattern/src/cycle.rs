@@ -94,7 +94,7 @@ impl<T> CyclePattern<T> {
     /// ```
     /// use orpheus_pattern::{CyclePattern, PatternNode, TimeSpan};
     ///
-    /// let pattern = CyclePattern::new(vec![
+    /// let pattern = CyclePattern::from_nodes(vec![
     ///     PatternNode::atom("a"),
     ///     PatternNode::atom("b"),
     /// ]);
@@ -130,9 +130,16 @@ fn query_cycle_pattern<T: Clone>(
     span: &TimeSpan,
 ) -> Result<Vec<Event<T>>, PatternError> {
     let unit_events = collect_nodes(nodes, &TimeSpan::unit())?;
-    let mut events = Vec::new();
+
     let start_cycle = floor_rational(span.start());
     let end_cycle = ceil_rational(span.end());
+
+    // ⚡ Bolt: Pre-allocate vectors inside hot evaluation loops to avoid unnecessary heap reallocations.
+    // Calculate the expected number of events based on the number of unit_events and the cycle span.
+    let cycle_span = (end_cycle - start_cycle).max(0);
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let estimated_events = (cycle_span as usize).saturating_mul(unit_events.len());
+    let mut events = Vec::with_capacity(estimated_events);
 
     for cycle in start_cycle..end_cycle {
         let cycle_offset = Rational::checked_from_parts(cycle, 1)?;
