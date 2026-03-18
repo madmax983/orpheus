@@ -64,7 +64,7 @@ pub fn run_stdio_with_engine_and_path(
     if let Some(path) = startup_path {
         match session.open_file(path) {
             Ok(msg) => writeln!(stdout, "{}", msg.green())?,
-            Err(msg) => writeln!(stderr, "{}", format!("⚠️ {msg}").yellow().bold())?,
+            Err(msg) => writeln!(stderr, "{}", format!("✗ {msg}").red().bold())?,
         }
     }
 
