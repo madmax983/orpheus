@@ -40,6 +40,7 @@ impl TypeEnv {
         }
         env.insert("every", every_transform_scheme(alpha));
         env.insert("sometimes", sometimes_transform_scheme(alpha));
+        env.insert("jux", jux_transform_scheme());
         env.insert("rev", unary_pattern_transform_scheme(alpha));
         for name in ["gain", "hpf", "lpf", "pan", "pitch", "rate"] {
             env.insert(name, sample_control_scheme());
@@ -122,6 +123,17 @@ fn every_transform_scheme(alpha: TypeVarId) -> TypeScheme {
             alpha_pattern,
         ),
     }
+}
+
+fn jux_transform_scheme() -> TypeScheme {
+    let sample_pattern = Type::pattern(Type::Sample);
+    TypeScheme::monomorphic(Type::curried(
+        vec![
+            Type::function(vec![sample_pattern.clone()], sample_pattern.clone()),
+            sample_pattern.clone(),
+        ],
+        sample_pattern,
+    ))
 }
 
 fn sometimes_transform_scheme(alpha: TypeVarId) -> TypeScheme {
