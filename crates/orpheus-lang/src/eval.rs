@@ -715,6 +715,12 @@ impl Evaluator {
         };
 
         let repeat_count = self.eval_positive_integer(cycles, meter, "section cycle count")?;
+        if repeat_count > 1024 {
+            return Err(EvalError::new(
+                "section cycle count exceeded the maximum allowed bound of 1024",
+            ));
+        }
+
         let base = Self::value_to_explicit(self.eval_expr_in_meter(pattern, meter)?)?;
         let mut combined: Option<ExplicitValue> = None;
 
@@ -747,7 +753,14 @@ impl Evaluator {
             ));
         };
 
-        self.eval_positive_integer(cycles, meter, "section cycle count")
+        let count = self.eval_positive_integer(cycles, meter, "section cycle count")?;
+        if count > 1024 {
+            return Err(EvalError::new(
+                "section cycle count exceeded the maximum allowed bound of 1024",
+            ));
+        }
+
+        Ok(count)
     }
 
     fn eval_meter_context(
