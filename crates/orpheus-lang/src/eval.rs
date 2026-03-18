@@ -162,6 +162,28 @@ pub fn eval_module(source: &str, mode: ReplMode) -> Result<BTreeMap<String, Valu
     Evaluator::new(mode, &parsed).eval_module(&parsed)
 }
 
+/// Evaluates a source module directly into an existing set of bindings.
+///
+/// This is used heavily by the REPL to maintain state across multiple
+/// sequential inputs. It optionally returns the last evaluated statement's
+/// binding name and value, which is useful for printing the result of an assignment.
+///
+/// # Examples
+///
+/// ```
+/// use std::collections::BTreeMap;
+/// use orpheus_lang::{ReplMode, eval_into_bindings};
+///
+/// let mut env = BTreeMap::new();
+/// eval_into_bindings("a = 1", ReplMode::Loose, &mut env).unwrap();
+/// eval_into_bindings("b = a + 2", ReplMode::Loose, &mut env).unwrap();
+///
+/// assert!(env.contains_key("b"));
+/// ```
+///
+/// # Errors
+///
+/// Returns [`EvalError`] if parsing fails, or if evaluation encounters a runtime error.
 pub fn eval_into_bindings(
     source: &str,
     mode: ReplMode,
@@ -183,6 +205,19 @@ pub fn eval_into_bindings(
 /// - `.wav`
 /// - `.flac`
 ///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, render_sample_pattern_to_file};
+///
+/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+///
+/// // Render 4 cycles to a WAV file
+/// let path = std::env::temp_dir().join("render_sample_pattern_to_file.wav");
+/// render_sample_pattern_to_file(pattern, &path, 4).unwrap();
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`RenderError`] if pattern querying fails or if the offline audio
@@ -198,9 +233,25 @@ pub fn render_sample_pattern_to_file(
 
 /// Exports a sample pattern's evaluated events to a CSV file.
 ///
+/// The CSV file will contain columns for `start_num`, `start_den`, `start_float`,
+/// `end_num`, `end_den`, `end_float`, `sample`, `gain`, `pan`, `rate`,
+/// `hpf_cutoff_hz`, and `lpf_cutoff_hz`.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, export_sample_pattern_to_csv};
+///
+/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+///
+/// let path = std::env::temp_dir().join("export_sample_pattern.csv");
+/// export_sample_pattern_to_csv(pattern, &path, 4).unwrap();
+/// ```
+///
 /// # Errors
 ///
-/// Returns [`EvalError`] if pattern querying fails or if the file cannot be written.
+/// Returns [`EvalError`] if the cycle count is 0, if pattern querying fails, or if the file cannot be written.
 pub fn export_sample_pattern_to_csv(
     pattern: &SamplePatternValue,
     path: impl AsRef<Path>,
@@ -256,9 +307,24 @@ pub fn export_sample_pattern_to_csv(
 
 /// Exports a number pattern's evaluated events to a CSV file.
 ///
+/// The CSV file will contain columns for `start_num`, `start_den`, `start_float`,
+/// `end_num`, `end_den`, `end_float`, and `value`.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, export_number_pattern_to_csv};
+///
+/// let env = eval_module("x = 1 2 3", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
+///
+/// let path = std::env::temp_dir().join("export_number_pattern.csv");
+/// export_number_pattern_to_csv(pattern, &path, 2).unwrap();
+/// ```
+///
 /// # Errors
 ///
-/// Returns [`EvalError`] if pattern querying fails or if the file cannot be written.
+/// Returns [`EvalError`] if the cycle count is 0, if pattern querying fails, or if the file cannot be written.
 pub fn export_number_pattern_to_csv(
     pattern: &NumberPatternValue,
     path: impl AsRef<Path>,
@@ -302,10 +368,24 @@ pub fn export_number_pattern_to_csv(
 /// Renders a sample pattern to a deterministic stereo audio file using the
 /// supplied sample bank overrides.
 ///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, render_sample_pattern_to_file_with_bank};
+/// use orpheus_dsp::SampleBank;
+///
+/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+///
+/// let sample_bank = SampleBank::load_builtin();
+/// let path = std::env::temp_dir().join("render_with_bank.wav");
+/// render_sample_pattern_to_file_with_bank(pattern, &path, 2, &sample_bank).unwrap();
+/// ```
+///
 /// # Errors
 ///
-/// Returns [`RenderError`] if pattern querying fails or if the offline audio
-/// renderer cannot write the target file.
+/// Returns [`RenderError`] if pattern querying fails, if the offline audio
+/// renderer cannot write the target file, or if `cycle_count` is 0.
 pub fn render_sample_pattern_to_file_with_bank(
     pattern: &SamplePatternValue,
     path: impl AsRef<Path>,
@@ -333,10 +413,24 @@ pub fn render_sample_pattern_to_file_with_bank(
 
 /// Renders a sample pattern to a deterministic stereo WAV file.
 ///
+/// This is a convenience wrapper over `render_sample_pattern_to_file`.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, render_sample_pattern_to_wav};
+///
+/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+///
+/// let path = std::env::temp_dir().join("render_wav.wav");
+/// render_sample_pattern_to_wav(pattern, &path, 2).unwrap();
+/// ```
+///
 /// # Errors
 ///
-/// Returns [`RenderError`] if pattern querying fails or if the offline audio
-/// renderer cannot write the target WAV file.
+/// Returns [`RenderError`] if pattern querying fails, if the offline audio
+/// renderer cannot write the target WAV file, or if `cycle_count` is 0.
 pub fn render_sample_pattern_to_wav(
     pattern: &SamplePatternValue,
     path: impl AsRef<Path>,
@@ -1169,6 +1263,23 @@ fn extract_constant_number_rational(value: Value, context: &str) -> Result<Ratio
     f64_to_rational(constant, context)
 }
 
+/// Converts a 64-bit floating point number into an exact rational number representation.
+///
+/// This avoids floating-point precision drift during continuous time evaluation.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::f64_to_rational;
+///
+/// let r = f64_to_rational(1.5, "test").unwrap();
+/// assert_eq!(r.numerator(), 3);
+/// assert_eq!(r.denominator(), 2);
+/// ```
+///
+/// # Errors
+///
+/// Returns an [`EvalError`] if the float is not finite, uses scientific notation, or cannot be parsed.
 pub fn f64_to_rational(value: f64, context: &str) -> Result<Rational, EvalError> {
     if !value.is_finite() {
         return Err(EvalError::new(format!("{context} must be finite")));
@@ -1242,6 +1353,18 @@ fn sort_events<T>(events: &mut [Event<T>]) {
 }
 
 /// Creates a `TimeSpan` spanning from cycle 0 to the specified `cycle_count`.
+///
+/// This specifies a half-open time interval `[0, cycle_count)`.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::render_span;
+///
+/// let span = render_span(4).unwrap();
+/// assert_eq!(span.start().numerator(), 0);
+/// assert_eq!(span.end().numerator(), 4);
+/// ```
 ///
 /// # Errors
 ///

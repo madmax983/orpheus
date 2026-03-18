@@ -1,0 +1,8 @@
+1. Read the user requirements (acting as Bard to improve documentation).
+2. Look through `crates/orpheus-lang/src/eval.rs` for public functions.
+3. Identify documentation gaps (missing docstrings, missing `## Examples`, missing `## Errors` / `## Panics`, or just missing high-quality explanations).
+4. For each identified function, update the docs. Ensure executable code blocks (`/// `) compile.
+5. Create `.jules/bard.md` if any profound learnings appear.
+6. Verify changes with `cargo doc --no-deps --open` equivalent and `cargo clippy`, `cargo test`.
+7. Pre-commit checks step to ensure proper testing, verification, review, and reflection are done.
+8. Submit a PR titled "🎻 Bard: [documentation update]".
