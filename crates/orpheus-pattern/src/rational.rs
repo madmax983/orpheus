@@ -439,4 +439,24 @@ mod tests {
         assert_eq!(larger.checked_cmp(&smaller), Ok(Ordering::Greater));
         assert_eq!(larger.cmp(&smaller), Ordering::Greater);
     }
+
+    #[test]
+    fn checked_normalize_rejects_zero_denominator() {
+        let result = Rational::checked_from_parts(1, 0);
+        assert_eq!(
+            result,
+            Err(PatternError::InvalidDenominator { denominator: 0 })
+        );
+    }
+
+    #[test]
+    fn rational_converts_to_f64() {
+        let r = Rational::new(3, 4).unwrap();
+        let f: f64 = r.into();
+        assert_eq!(f, 0.75);
+
+        let ref_r = &Rational::new(1, 2).unwrap();
+        let f2: f64 = ref_r.into();
+        assert_eq!(f2, 0.5);
+    }
 }

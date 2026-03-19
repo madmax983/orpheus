@@ -319,4 +319,57 @@ mod tests {
 
         let _ = expect_query_result::<&str>(&span, result);
     }
+
+    #[test]
+    fn try_query_returns_empty_when_span_is_empty() {
+        let pattern = CyclePattern::from_nodes(vec![PatternNode::atom("bd")]);
+        let span = TimeSpan::new(Rational::zero(), Rational::zero()).unwrap();
+        assert_eq!(pattern.try_query(&span), Ok(vec![]));
+    }
+
+    #[test]
+    fn try_query_returns_empty_when_nodes_are_empty() {
+        let pattern: CyclePattern<&str> = CyclePattern::from_nodes(vec![]);
+        assert_eq!(pattern.try_query(&TimeSpan::unit()), Ok(vec![]));
+    }
+
+    #[test]
+    fn collect_nodes_into_handles_rest_nodes() {
+        let pattern = CyclePattern::from_nodes(vec![PatternNode::atom("a"), PatternNode::rest()]);
+        let events = pattern.try_query(&TimeSpan::unit()).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].value, "a");
+    }
+
+    #[test]
+    fn collect_nodes_into_handles_empty_group_nodes() {
+        let pattern: CyclePattern<&str> =
+            CyclePattern::from_nodes(vec![PatternNode::group(vec![])]);
+        let events = pattern.try_query(&TimeSpan::unit()).unwrap();
+        assert_eq!(events.len(), 0);
+    }
+
+    #[test]
+    fn push_cycle_events_at_offset_clips_partial_events() {
+        let pattern = CyclePattern::from_nodes(vec![PatternNode::atom("bd")]);
+        let start = Rational::new(1, 2).unwrap();
+        let end = Rational::new(3, 2).unwrap();
+        let span = TimeSpan::new(start.clone(), end.clone()).unwrap();
+        let events = pattern.try_query(&span).unwrap();
+
+        assert_eq!(events.len(), 2);
+
+        let first = &events[0];
+        assert_eq!(first.value, "bd");
+        assert_eq!(first.part, TimeSpan::new(start, Rational::one()).unwrap());
+        assert_eq!(first.whole, Some(TimeSpan::unit()));
+
+        let second = &events[1];
+        assert_eq!(second.value, "bd");
+        assert_eq!(second.part, TimeSpan::new(Rational::one(), end).unwrap());
+        assert_eq!(
+            second.whole,
+            Some(TimeSpan::new(Rational::one(), Rational::new(2, 1).unwrap()).unwrap())
+        );
+    }
 }
