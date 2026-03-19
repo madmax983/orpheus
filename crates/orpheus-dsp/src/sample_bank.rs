@@ -156,17 +156,15 @@ impl SampleBank {
 /// Errors raised while scanning a sample directory for override assets.
 #[derive(Debug, Error)]
 pub enum SampleBankError {
-    #[error("failed to read sample directory `{path}`: {source}")]
+    #[error("failed to read sample directory `{path}`: {message}")]
     DirectoryIo {
         path: Box<str>,
-        #[source]
-        source: std::io::Error,
+        message: Box<str>,
     },
-    #[error("failed to read sample manifest `{path}`: {source}")]
+    #[error("failed to read sample manifest `{path}`: {message}")]
     ManifestIo {
         path: Box<str>,
-        #[source]
-        source: std::io::Error,
+        message: Box<str>,
     },
     #[error("failed to parse sample manifest `{path}`: {message}")]
     ManifestParse { path: Box<str>, message: Box<str> },
@@ -224,12 +222,20 @@ pub fn load_sample_bank_from_directory(
     let mut entries = fs::read_dir(directory)
         .map_err(|source| SampleBankError::DirectoryIo {
             path: display_path.clone().into_boxed_str(),
-            source,
+            message: match source.kind() {
+                std::io::ErrorKind::NotFound => "file not found".into(),
+                std::io::ErrorKind::PermissionDenied => "permission denied".into(),
+                _ => source.to_string().into_boxed_str(),
+            },
         })?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|source| SampleBankError::DirectoryIo {
             path: display_path.clone().into_boxed_str(),
-            source,
+            message: match source.kind() {
+                std::io::ErrorKind::NotFound => "file not found".into(),
+                std::io::ErrorKind::PermissionDenied => "permission denied".into(),
+                _ => source.to_string().into_boxed_str(),
+            },
         })?;
     entries.sort_by_key(std::fs::DirEntry::file_name);
     let manifest_path = directory.join(SAMPLE_MANIFEST_FILE);
@@ -327,8 +333,8 @@ fn load_optional_manifest(path: &Path) -> Result<Option<SampleManifest>, SampleB
     load_sample_manifest(path)
         .map(Some)
         .map_err(|error| match error {
-            SampleManifestLoadError::Io { path, source } => {
-                SampleBankError::ManifestIo { path, source }
+            SampleManifestLoadError::Io { path, message } => {
+                SampleBankError::ManifestIo { path, message }
             }
             SampleManifestLoadError::Parse { path, message } => {
                 SampleBankError::ManifestParse { path, message }

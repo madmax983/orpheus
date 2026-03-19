@@ -29,17 +29,15 @@ pub enum OfflineRenderError {
     Engine(#[from] EngineError),
     #[error("unsupported render format `{0}`")]
     UnsupportedFormat(Box<str>),
-    #[error("failed to write audio file `{path}`: {source}")]
+    #[error("failed to write audio file `{path}`: {message}")]
     Io {
         path: Box<str>,
-        #[source]
-        source: std::io::Error,
+        message: Box<str>,
     },
-    #[error("failed to write wav file `{path}`: {source}")]
+    #[error("failed to write wav file `{path}`: {message}")]
     WavIo {
         path: Box<str>,
-        #[source]
-        source: hound::Error,
+        message: Box<str>,
     },
     #[error("failed to verify FLAC encoder config: {0}")]
     FlacConfig(Box<str>),
@@ -169,7 +167,14 @@ fn write_wav(path: &Path, samples: &[i32]) -> Result<(), OfflineRenderError> {
     let mut writer =
         hound::WavWriter::create(path, spec).map_err(|source| OfflineRenderError::WavIo {
             path: path_string.clone().into_boxed_str(),
-            source,
+            message: match &source {
+                hound::Error::IoError(io_err) => match io_err.kind() {
+                    std::io::ErrorKind::NotFound => "file not found".into(),
+                    std::io::ErrorKind::PermissionDenied => "permission denied".into(),
+                    _ => io_err.to_string().into_boxed_str(),
+                },
+                _ => source.to_string().into_boxed_str(),
+            },
         })?;
 
     for sample in samples {
@@ -179,7 +184,14 @@ fn write_wav(path: &Path, samples: &[i32]) -> Result<(), OfflineRenderError> {
             }))
             .map_err(|source| OfflineRenderError::WavIo {
                 path: path_string.clone().into_boxed_str(),
-                source,
+                message: match &source {
+                    hound::Error::IoError(io_err) => match io_err.kind() {
+                        std::io::ErrorKind::NotFound => "file not found".into(),
+                        std::io::ErrorKind::PermissionDenied => "permission denied".into(),
+                        _ => io_err.to_string().into_boxed_str(),
+                    },
+                    _ => source.to_string().into_boxed_str(),
+                },
             })?;
     }
 
@@ -187,7 +199,14 @@ fn write_wav(path: &Path, samples: &[i32]) -> Result<(), OfflineRenderError> {
         .finalize()
         .map_err(|source| OfflineRenderError::WavIo {
             path: path_string.into_boxed_str(),
-            source,
+            message: match &source {
+                hound::Error::IoError(io_err) => match io_err.kind() {
+                    std::io::ErrorKind::NotFound => "file not found".into(),
+                    std::io::ErrorKind::PermissionDenied => "permission denied".into(),
+                    _ => io_err.to_string().into_boxed_str(),
+                },
+                _ => source.to_string().into_boxed_str(),
+            },
         })?;
     Ok(())
 }
@@ -213,7 +232,11 @@ fn write_flac(path: &Path, samples: &[i32]) -> Result<(), OfflineRenderError> {
         .map_err(|error| OfflineRenderError::FlacEncode(error.to_string().into_boxed_str()))?;
     fs::write(path, sink.as_slice()).map_err(|source| OfflineRenderError::Io {
         path: path.display().to_string().into_boxed_str(),
-        source,
+        message: match source.kind() {
+            std::io::ErrorKind::NotFound => "file not found".into(),
+            std::io::ErrorKind::PermissionDenied => "permission denied".into(),
+            _ => source.to_string().into_boxed_str(),
+        },
     })?;
     Ok(())
 }

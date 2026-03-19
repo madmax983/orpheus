@@ -21,7 +21,7 @@ pub struct SampleRegion {
 pub enum SampleManifestLoadError {
     Io {
         path: Box<str>,
-        source: std::io::Error,
+        message: Box<str>,
     },
     Parse {
         path: Box<str>,
@@ -32,10 +32,10 @@ pub enum SampleManifestLoadError {
 impl std::fmt::Display for SampleManifestLoadError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Io { path, source } => {
+            Self::Io { path, message } => {
                 write!(
                     formatter,
-                    "failed to read sample manifest `{path}`: {source}"
+                    "failed to read sample manifest `{path}`: {message}"
                 )
             }
             Self::Parse { path, message } => {
@@ -51,7 +51,7 @@ impl std::fmt::Display for SampleManifestLoadError {
 impl std::error::Error for SampleManifestLoadError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Io { source, .. } => Some(source),
+            Self::Io { .. } => None,
             Self::Parse { .. } => None,
         }
     }
@@ -85,7 +85,11 @@ pub fn load_sample_manifest(
     let path = path.as_ref();
     let source = fs::read_to_string(path).map_err(|source| SampleManifestLoadError::Io {
         path: path.display().to_string().into_boxed_str(),
-        source,
+        message: match source.kind() {
+            std::io::ErrorKind::NotFound => "file not found".into(),
+            std::io::ErrorKind::PermissionDenied => "permission denied".into(),
+            _ => source.to_string().into_boxed_str(),
+        },
     })?;
     ManifestParser::new(&source)
         .parse_manifest()
