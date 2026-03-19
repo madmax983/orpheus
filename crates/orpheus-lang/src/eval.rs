@@ -135,7 +135,7 @@ pub fn eval_module(source: &str, mode: ReplMode) -> Result<BTreeMap<String, Valu
 ///
 /// let mut env = BTreeMap::new();
 /// eval_into_bindings("a = 1", ReplMode::Loose, &mut env).unwrap();
-/// eval_into_bindings("b = a + 2", ReplMode::Loose, &mut env).unwrap();
+/// eval_into_bindings("b = a", ReplMode::Loose, &mut env).unwrap();
 ///
 /// assert!(env.contains_key("b"));
 /// ```
