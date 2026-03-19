@@ -20,3 +20,7 @@
 ## 2026-03-18 - Type Format and Constructor Test Coverage
 **Learning:** Pure enum representations of abstract types like `Type` often lack coverage on their `Display` implementations and constructor methods (`pattern`, `function`, `curried`), hiding potential formatting bugs when type errors are reported to users.
 **Action:** Ensure type representations and ASTs have unit tests verifying their debug/display string outputs and builder patterns.
+
+## 2026-03-19 - Type annotations for generic tests
+**Learning:** When creating empty generic structs (like `CyclePattern::from_nodes(vec![])`) in test cases, the compiler will error out with `E0282: type annotations needed` because it lacks context to infer `T`.
+**Action:** Always provide explicit type bounds (e.g., `let pattern: CyclePattern<&str> = ...`) when instantiating empty generic containers for tests.
