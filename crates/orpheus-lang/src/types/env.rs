@@ -157,3 +157,68 @@ fn unary_pattern_transform_scheme(alpha: TypeVarId) -> TypeScheme {
         ty: Type::curried(vec![alpha_pattern.clone()], alpha_pattern),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn type_scheme_monomorphic_creates_empty_vars() {
+        let scheme = TypeScheme::monomorphic(Type::Number);
+        assert!(scheme.vars.is_empty());
+        assert_eq!(scheme.ty, Type::Number);
+    }
+
+    #[test]
+    fn type_env_builtins_contains_expected_types() {
+        let env = TypeEnv::with_builtins();
+
+        // Check monomorphic primitives.
+        let bd_scheme = env.get("bd").expect("missing bd builtin");
+        assert!(bd_scheme.vars.is_empty());
+        assert_eq!(bd_scheme.ty, Type::pattern(Type::Sample));
+
+        // Check rand function.
+        let rand_scheme = env.get("rand").expect("missing rand builtin");
+        assert!(rand_scheme.vars.is_empty());
+        assert_eq!(
+            rand_scheme.ty,
+            Type::function(vec![], Type::pattern(Type::Number))
+        );
+
+        // Check polymorphic transforms.
+        let fast_scheme = env.get("fast").expect("missing fast builtin");
+        assert_eq!(fast_scheme.vars.len(), 1);
+        let alpha = fast_scheme.vars[0];
+        assert_eq!(
+            fast_scheme.ty,
+            Type::curried(
+                vec![Type::pattern(Type::Number), Type::pattern(Type::Var(alpha))],
+                Type::pattern(Type::Var(alpha))
+            )
+        );
+
+        // Check sample controls.
+        let gain_scheme = env.get("gain").expect("missing gain builtin");
+        assert!(gain_scheme.vars.is_empty());
+        assert_eq!(
+            gain_scheme.ty,
+            Type::curried(
+                vec![Type::pattern(Type::Number), Type::pattern(Type::Sample)],
+                Type::pattern(Type::Sample)
+            )
+        );
+    }
+
+    #[test]
+    fn type_env_insert_and_get() {
+        let mut env = TypeEnv::with_builtins();
+        assert!(env.get("my_custom_var").is_none());
+
+        env.insert("my_custom_var", TypeScheme::monomorphic(Type::Duration));
+
+        let scheme = env.get("my_custom_var").unwrap();
+        assert!(scheme.vars.is_empty());
+        assert_eq!(scheme.ty, Type::Duration);
+    }
+}
