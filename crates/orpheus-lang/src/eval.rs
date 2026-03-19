@@ -22,11 +22,7 @@
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
-use std::path::Path;
 
-use std::io::Write;
-
-use orpheus_dsp::{OfflineRenderError, SampleBank, SampleTrigger, render_events_to_file_with_bank};
 use orpheus_pattern::{Event, PatternNode, Rational, TimeSpan};
 
 use crate::ReplMode;
@@ -99,43 +95,6 @@ impl From<ParseError> for EvalError {
     }
 }
 
-/// Error raised while rendering an Orpheus sample pattern to an audio file.
-#[derive(Debug)]
-pub enum RenderError {
-    Eval(EvalError),
-    Audio(OfflineRenderError),
-}
-
-impl Display for RenderError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Eval(error) => Display::fmt(error, formatter),
-            Self::Audio(error) => Display::fmt(error, formatter),
-        }
-    }
-}
-
-impl Error for RenderError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::Eval(error) => Some(error),
-            Self::Audio(error) => Some(error),
-        }
-    }
-}
-
-impl From<EvalError> for RenderError {
-    fn from(error: EvalError) -> Self {
-        Self::Eval(error)
-    }
-}
-
-impl From<OfflineRenderError> for RenderError {
-    fn from(error: OfflineRenderError) -> Self {
-        Self::Audio(error)
-    }
-}
-
 /// Evaluates bootstrap Orpheus source into runtime values.
 ///
 /// Given a string of Orpheus source code, this parses the text into an AST,
@@ -196,247 +155,6 @@ pub fn eval_into_bindings(
     let result = evaluator.eval_statements(&parsed.statements);
     *bindings = evaluator.bindings;
     result
-}
-
-/// Renders a sample pattern to a deterministic stereo audio file selected by
-/// the target extension.
-///
-/// Supported extensions:
-/// - `.wav`
-/// - `.flac`
-///
-/// # Examples
-///
-/// ```
-/// use orpheus_lang::{ReplMode, eval_module, render_sample_pattern_to_file};
-///
-/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
-/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
-///
-/// // Render 4 cycles to a WAV file
-/// let path = std::env::temp_dir().join("render_sample_pattern_to_file.wav");
-/// render_sample_pattern_to_file(pattern, &path, 4).unwrap();
-/// ```
-///
-/// # Errors
-///
-/// Returns [`RenderError`] if pattern querying fails or if the offline audio
-/// renderer cannot write the target file.
-pub fn render_sample_pattern_to_file(
-    pattern: &SamplePatternValue,
-    path: impl AsRef<Path>,
-    cycle_count: u64,
-) -> Result<(), RenderError> {
-    let sample_bank = SampleBank::load_builtin();
-    render_sample_pattern_to_file_with_bank(pattern, path, cycle_count, &sample_bank)
-}
-
-/// Exports a sample pattern's evaluated events to a CSV file.
-///
-/// The CSV file will contain columns for `start_num`, `start_den`, `start_float`,
-/// `end_num`, `end_den`, `end_float`, `sample`, `gain`, `pan`, `rate`,
-/// `hpf_cutoff_hz`, and `lpf_cutoff_hz`.
-///
-/// # Examples
-///
-/// ```
-/// use orpheus_lang::{ReplMode, eval_module, export_sample_pattern_to_csv};
-///
-/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
-/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
-///
-/// let path = std::env::temp_dir().join("export_sample_pattern.csv");
-/// export_sample_pattern_to_csv(pattern, &path, 4).unwrap();
-/// ```
-///
-/// # Errors
-///
-/// Returns [`EvalError`] if the cycle count is 0, if pattern querying fails, or if the file cannot be written.
-pub fn export_sample_pattern_to_csv(
-    pattern: &SamplePatternValue,
-    path: impl AsRef<Path>,
-    cycle_count: u64,
-) -> Result<(), EvalError> {
-    if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
-    }
-
-    let span = render_span(cycle_count)?;
-    let events = pattern.try_query(&span)?;
-    let path = path.as_ref();
-
-    let mut file = std::fs::File::create(path).map_err(|e| EvalError::new(e.to_string()))?;
-    writeln!(
-        file,
-        "start_num,start_den,start_float,end_num,end_den,end_float,sample,gain,pan,rate,hpf_cutoff_hz,lpf_cutoff_hz"
-    )
-    .map_err(|e| EvalError::new(e.to_string()))?;
-
-    for event in events {
-        let start_float = f64::from(event.part.start());
-        let end_float = f64::from(event.part.end());
-        let hpf = event
-            .value
-            .hpf_cutoff_hz()
-            .map_or_else(String::new, |v| format!("{v:.6}"));
-        let lpf = event
-            .value
-            .lpf_cutoff_hz()
-            .map_or_else(String::new, |v| format!("{v:.6}"));
-        writeln!(
-            file,
-            "{},{},{:.6},{},{},{:.6},{},{:.6},{:.6},{:.6},{},{}",
-            event.part.start().numerator(),
-            event.part.start().denominator(),
-            start_float,
-            event.part.end().numerator(),
-            event.part.end().denominator(),
-            end_float,
-            event.value.sample(),
-            event.value.gain(),
-            event.value.pan(),
-            event.value.rate(),
-            hpf,
-            lpf
-        )
-        .map_err(|e| EvalError::new(e.to_string()))?;
-    }
-
-    Ok(())
-}
-
-/// Exports a number pattern's evaluated events to a CSV file.
-///
-/// The CSV file will contain columns for `start_num`, `start_den`, `start_float`,
-/// `end_num`, `end_den`, `end_float`, and `value`.
-///
-/// # Examples
-///
-/// ```
-/// use orpheus_lang::{ReplMode, eval_module, export_number_pattern_to_csv};
-///
-/// let env = eval_module("x = 1 2 3", ReplMode::Loose).unwrap();
-/// let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
-///
-/// let path = std::env::temp_dir().join("export_number_pattern.csv");
-/// export_number_pattern_to_csv(pattern, &path, 2).unwrap();
-/// ```
-///
-/// # Errors
-///
-/// Returns [`EvalError`] if the cycle count is 0, if pattern querying fails, or if the file cannot be written.
-pub fn export_number_pattern_to_csv(
-    pattern: &NumberPatternValue,
-    path: impl AsRef<Path>,
-    cycle_count: u64,
-) -> Result<(), EvalError> {
-    if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
-    }
-
-    let span = render_span(cycle_count)?;
-    let events = pattern.try_query(&span)?;
-    let path = path.as_ref();
-
-    let mut file = std::fs::File::create(path).map_err(|e| EvalError::new(e.to_string()))?;
-    writeln!(
-        file,
-        "start_num,start_den,start_float,end_num,end_den,end_float,value"
-    )
-    .map_err(|e| EvalError::new(e.to_string()))?;
-
-    for event in events {
-        let start_float = f64::from(event.part.start());
-        let end_float = f64::from(event.part.end());
-        writeln!(
-            file,
-            "{},{},{:.6},{},{},{:.6},{:.6}",
-            event.part.start().numerator(),
-            event.part.start().denominator(),
-            start_float,
-            event.part.end().numerator(),
-            event.part.end().denominator(),
-            end_float,
-            event.value
-        )
-        .map_err(|e| EvalError::new(e.to_string()))?;
-    }
-
-    Ok(())
-}
-
-/// Renders a sample pattern to a deterministic stereo audio file using the
-/// supplied sample bank overrides.
-///
-/// # Examples
-///
-/// ```
-/// use orpheus_lang::{ReplMode, eval_module, render_sample_pattern_to_file_with_bank};
-/// use orpheus_dsp::SampleBank;
-///
-/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
-/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
-///
-/// let sample_bank = SampleBank::load_builtin();
-/// let path = std::env::temp_dir().join("render_with_bank.wav");
-/// render_sample_pattern_to_file_with_bank(pattern, &path, 2, &sample_bank).unwrap();
-/// ```
-///
-/// # Errors
-///
-/// Returns [`RenderError`] if pattern querying fails, if the offline audio
-/// renderer cannot write the target file, or if `cycle_count` is 0.
-pub fn render_sample_pattern_to_file_with_bank(
-    pattern: &SamplePatternValue,
-    path: impl AsRef<Path>,
-    cycle_count: u64,
-    sample_bank: &SampleBank,
-) -> Result<(), RenderError> {
-    if cycle_count == 0 {
-        return Err(EvalError::new("rendering requires at least one cycle").into());
-    }
-
-    let span = render_span(cycle_count)?;
-    let events = pattern.try_query(&span)?;
-    let rendered_events = events
-        .into_iter()
-        .map(|event| Event {
-            whole: event.whole,
-            part: event.part,
-            value: sample_trigger_from_event(&event.value),
-        })
-        .collect::<Vec<_>>();
-
-    render_events_to_file_with_bank(path, &rendered_events, cycle_count, sample_bank)?;
-    Ok(())
-}
-
-/// Renders a sample pattern to a deterministic stereo WAV file.
-///
-/// This is a convenience wrapper over `render_sample_pattern_to_file`.
-///
-/// # Examples
-///
-/// ```
-/// use orpheus_lang::{ReplMode, eval_module, render_sample_pattern_to_wav};
-///
-/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
-/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
-///
-/// let path = std::env::temp_dir().join("render_wav.wav");
-/// render_sample_pattern_to_wav(pattern, &path, 2).unwrap();
-/// ```
-///
-/// # Errors
-///
-/// Returns [`RenderError`] if pattern querying fails, if the offline audio
-/// renderer cannot write the target WAV file, or if `cycle_count` is 0.
-pub fn render_sample_pattern_to_wav(
-    pattern: &SamplePatternValue,
-    path: impl AsRef<Path>,
-    cycle_count: u64,
-) -> Result<(), RenderError> {
-    render_sample_pattern_to_file(pattern, path, cycle_count)
 }
 
 struct Evaluator {
@@ -1206,21 +924,6 @@ fn extract_string_value(value: Value, message: &str) -> Result<String, EvalError
     }
 }
 
-fn sample_trigger_from_event(event: &SampleEvent) -> SampleTrigger {
-    let mut trigger = SampleTrigger::named(event.sample())
-        .with_gain(event.gain())
-        .with_pan(event.pan())
-        .with_rate(event.rate())
-        .with_slice(event.slice_start(), event.slice_end());
-    if let Some(cutoff_hz) = event.hpf_cutoff_hz() {
-        trigger = trigger.with_hpf_cutoff_hz(cutoff_hz);
-    }
-    if let Some(cutoff_hz) = event.lpf_cutoff_hz() {
-        trigger = trigger.with_lpf_cutoff_hz(cutoff_hz);
-    }
-    trigger
-}
-
 fn extract_constant_number_rational(value: Value, context: &str) -> Result<Rational, EvalError> {
     let constant = extract_constant_number_value(value, context)?;
     f64_to_rational(constant, context)
@@ -1451,14 +1154,14 @@ right = sometimes(fast(2), cp hh)";
 
     #[test]
     fn render_error_formats_eval_error() {
-        let err = super::RenderError::Eval(super::EvalError::new("render failed"));
+        let err = crate::RenderError::Eval(super::EvalError::new("render failed"));
         assert_eq!(err.to_string(), "render failed");
         assert!(std::error::Error::source(&err).is_some());
     }
 
     #[test]
     fn render_error_formats_audio_error() {
-        let err = super::RenderError::Audio(orpheus_dsp::OfflineRenderError::InvalidCycleCount);
+        let err = crate::RenderError::Audio(orpheus_dsp::OfflineRenderError::InvalidCycleCount);
         assert_eq!(
             err.to_string(),
             "offline rendering requires at least one cycle"
