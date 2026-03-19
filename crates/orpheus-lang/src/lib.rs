@@ -16,9 +16,9 @@ mod value;
 pub use ast::{Expr, Module, Stmt};
 pub use diagnostics::{LoadError, ParseError, TypeError};
 pub use eval::{
-    EvalError, RenderError, eval_module, export_number_pattern_to_csv,
-    export_sample_pattern_to_csv, render_sample_pattern_to_file, render_sample_pattern_to_wav,
-    render_span,
+    EvalError, RenderError, eval_into_bindings, eval_module, export_number_pattern_to_csv,
+    export_sample_pattern_to_csv, f64_to_rational, render_sample_pattern_to_file,
+    render_sample_pattern_to_file_with_bank, render_sample_pattern_to_wav, render_span,
 };
 pub use loader::load_file_strict;
 pub use parser::parse_module;

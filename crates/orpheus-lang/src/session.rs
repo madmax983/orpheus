@@ -103,6 +103,13 @@ impl ReplSession {
             .map_or((command, ""), |(name, args)| (name, args.trim()));
 
         match name {
+            "stats" => {
+                if args.is_empty() {
+                    Err(stats_usage().to_owned())
+                } else {
+                    self.stats_binding(args)
+                }
+            }
             "render" => {
                 if args.is_empty() {
                     Err(render_usage().to_owned())
@@ -142,6 +149,61 @@ impl ReplSession {
             "play" => self.play_transport(args),
             "stop" => self.stop_transport(args),
             other => Err(format!("unknown REPL command `:{other}`")),
+        }
+    }
+
+    fn stats_binding(&self, args: &str) -> Result<String, String> {
+        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        if tokens.is_empty() {
+            return Err(stats_usage().to_owned());
+        }
+
+        let cycles = if tokens.len() >= 2 {
+            tokens[1].parse::<u64>().unwrap_or(1)
+        } else {
+            1
+        };
+
+        let binding_name = tokens[0];
+        let value = self
+            .bindings
+            .get(binding_name)
+            .ok_or_else(|| format!("no binding named `{binding_name}`"))?;
+
+        let span = crate::eval::render_span(cycles).map_err(|e| e.to_string())?;
+
+        match value {
+            Value::SamplePattern(pattern) => {
+                let events = pattern.try_query(&span).map_err(|e| e.to_string())?;
+                let count = events.len();
+                let mut unique_samples = std::collections::BTreeSet::new();
+                for event in events {
+                    unique_samples.insert(event.value.sample().to_string());
+                }
+
+                let unique_count = unique_samples.len();
+                if unique_count > 0 {
+                    let samples_list = unique_samples.into_iter().collect::<Vec<_>>().join(", ");
+                    Ok(format!(
+                        "stats for `{binding_name}` ({cycles} cycle(s)): {count} event(s), {unique_count} unique sample(s) ({samples_list})"
+                    ))
+                } else {
+                    Ok(format!(
+                        "stats for `{binding_name}` ({cycles} cycle(s)): {count} event(s), 0 unique sample(s)"
+                    ))
+                }
+            }
+            Value::NumberPattern(pattern) => {
+                let events = pattern.try_query(&span).map_err(|e| e.to_string())?;
+                let count = events.len();
+                Ok(format!(
+                    "stats for `{binding_name}` ({cycles} cycle(s)): {count} event(s)"
+                ))
+            }
+            Value::Function(_) | Value::String(_) => Err(format!(
+                "binding `{binding_name}` is a {} and cannot be queried for stats",
+                value.kind_name()
+            )),
         }
     }
 
@@ -468,6 +530,10 @@ fn success_banner(name: &str, ty: &Type) -> String {
     format!("bound {name}: {ty}")
 }
 
+const fn stats_usage() -> &'static str {
+    "usage: :stats <binding> [cycles]"
+}
+
 const fn render_usage() -> &'static str {
     "usage: :render <binding> <path> [cycles]"
 }
@@ -774,6 +840,31 @@ mod tests {
         let error = session.eval_line(":render nope out.wav 1").unwrap_err();
 
         assert!(error.contains("no binding named `nope`"));
+    }
+
+    #[test]
+    fn stats_command_outputs_sample_pattern_metrics() {
+        let mut session = ReplSession::new();
+        session.eval_line("song = bd sn").unwrap();
+
+        let message = session.eval_line(":stats song 2").unwrap();
+
+        assert!(message.contains("stats for `song` (2 cycle(s))"));
+        assert!(message.contains("4 event(s)"));
+        assert!(message.contains("2 unique sample(s)"));
+        assert!(message.contains("bd"));
+        assert!(message.contains("sn"));
+    }
+
+    #[test]
+    fn stats_command_outputs_number_pattern_metrics() {
+        let mut session = ReplSession::new();
+        session.eval_line("notes = 1 2 3").unwrap();
+
+        let message = session.eval_line(":stats notes 1").unwrap();
+
+        assert!(message.contains("stats for `notes` (1 cycle(s))"));
+        assert!(message.contains("3 event(s)"));
     }
 
     #[test]

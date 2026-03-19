@@ -29,12 +29,13 @@ const FULL_HELP_FOOTER: &str = "Esc close   ? toggle   Ctrl-C quit";
 const MEDIUM_HELP_FOOTER: &str = "Esc close   ?   Ctrl-C";
 const COMPACT_HELP_FOOTER: &str = "Esc ? Ctrl-C";
 const MIN_HELP_FOOTER: &str = "Esc ?";
-const COMMAND_HINTS: [(&str, &str); 7] = [
+const COMMAND_HINTS: [(&str, &str); 8] = [
     (":export", ":export <binding> <path> [cycles]"),
     (":open", ":open <path>"),
     (":play", ":play"),
     (":quit", ":quit"),
     (":render", ":render <binding> <path> [cycles]"),
+    (":stats", ":stats <binding> [cycles]"),
     (":stop", ":stop"),
     (":tempo", ":tempo <bpm>"),
 ];
@@ -437,6 +438,7 @@ impl SessionTui {
             Line::raw("Set: :tempo <bpm>"),
             Line::raw("Render: :render <binding> <path> [cycles]"),
             Line::raw("Export: :export <binding> <path> [cycles]"),
+            Line::raw("Stats: :stats <binding> [cycles]"),
             Line::raw("Help: ?"),
         ]);
         if let Some(message) = &self.status_message {
@@ -463,7 +465,7 @@ impl SessionTui {
     }
 
     const fn help_overlay_body() -> &'static str {
-        "Toggle: ?\nClose: Esc\nTransport: Space toggle, :play, :stop, :tempo <bpm>\nRender: :render <binding> <path> [cycles]\nExport: :export <binding> <path> [cycles]\nSession: :open <path>, :quit\nBindings: PgUp/PgDn\nInput: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
+        "Toggle: ?\nClose: Esc\nTransport: Space toggle, :play, :stop, :tempo <bpm>\nRender: :render <binding> <path> [cycles]\nExport: :export <binding> <path> [cycles]\nStats: :stats <binding> [cycles]\nSession: :open <path>, :quit\nBindings: PgUp/PgDn\nInput: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
     }
 
     const fn help_overlay_footer() -> &'static str {
