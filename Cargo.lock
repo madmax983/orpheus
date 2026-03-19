@@ -992,6 +992,7 @@ dependencies = [
  "hound",
  "orpheus-dsp",
  "orpheus-lang",
+ "orpheus-pattern",
  "predicates",
 ]
 
@@ -1026,8 +1027,6 @@ dependencies = [
 name = "orpheus-pattern"
 version = "0.1.0"
 dependencies = [
- "orpheus-dsp",
- "orpheus-lang",
  "proptest",
 ]
 
