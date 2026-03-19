@@ -80,7 +80,12 @@ fn split_top_level_bindings(source: &str) -> Vec<(usize, String)> {
 }
 
 fn enrich_parse_error(source: &str, error: &PestError<Rule>) -> ParseError {
-    let rendered = error.to_string();
+    let (line, col) = match error.line_col {
+        pest::error::LineColLocation::Pos((l, c))
+        | pest::error::LineColLocation::Span((l, c), _) => (l, c),
+    };
+    let variant_message = format!("{}", error.variant);
+    let rendered = format!("at line {line}, col {col}: {variant_message}");
 
     if unmatched_open_parens(source) > 0 {
         return ParseError::new(format!(

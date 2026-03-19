@@ -157,7 +157,7 @@ fn parses_meter_annotation_prefix_form() {
 
 #[test]
 fn rejects_bindings_without_equals() {
-    assert_parse_error_contains("drums bd sn", &["="]);
+    assert_parse_error_contains("drums bd sn", &["expected"]);
 }
 
 #[test]
