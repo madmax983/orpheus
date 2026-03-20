@@ -141,7 +141,7 @@ mod tests {
 
         // e3 starts at 0, e1 and e2 start at 1/4. e1 ends at 1/2, e2 ends at 3/4.
         // Expected order: e3, e1, e2.
-        let stream = EventStream::new(vec![e2.clone(), e1.clone(), e3.clone()]);
+        let stream = EventStream::new(vec![e2, e1, e3]);
 
         assert_eq!(stream.events[0].value, 3);
         assert_eq!(stream.events[1].value, 1);
