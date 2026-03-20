@@ -64,7 +64,7 @@ pub fn run_with_engine_and_path(
     let _terminal_guard = TerminalGuard::enter()?;
     let backend = CrosstermBackend::new(io::stdout());
     let mut terminal = Terminal::new(backend)?;
-    let mut app = SessionTui::try_new(engine, startup_path, warning)?;
+    let mut app = SessionTui::try_new(engine, startup_path, warning);
     let result = run_event_loop(&mut terminal, &mut app);
     terminal.show_cursor()?;
     result
@@ -259,14 +259,13 @@ struct SessionTui {
 impl SessionTui {
     fn new(engine: EngineHandle) -> Self {
         Self::try_new(engine, None, None)
-            .unwrap_or_else(|error| panic!("default TUI session should initialize: {error}"))
     }
 
     fn try_new(
         engine: EngineHandle,
         startup_path: Option<&Path>,
         warning: Option<String>,
-    ) -> io::Result<Self> {
+    ) -> Self {
         let mut transcript = vec![
             "Interactive shell ready.".to_owned(),
             "Press Esc to quit.".to_owned(),
@@ -290,10 +289,12 @@ impl SessionTui {
             should_quit: false,
         };
         if let Some(path) = startup_path {
-            let message = app.session.open_file(path).map_err(io::Error::other)?;
-            app.transcript.push(message);
+            match app.session.open_file(path) {
+                Ok(message) => app.transcript.push(format!("✓ {message}")),
+                Err(message) => app.transcript.push(format!("✗ {message}")),
+            }
         }
-        Ok(app)
+        app
     }
 
     fn submit_line(&mut self) {
@@ -1284,7 +1285,7 @@ mod tests {
     #[test]
     fn startup_file_preloads_bindings_and_transport_target() {
         let song = fixture("song.ode");
-        let app = SessionTui::try_new(EngineHandle::stub(), Some(song.as_path()), None).unwrap();
+        let app = SessionTui::try_new(EngineHandle::stub(), Some(song.as_path()), None);
 
         assert_eq!(
             app.session.binding_summaries(),
