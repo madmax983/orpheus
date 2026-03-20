@@ -23,7 +23,7 @@ use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
-use orpheus_pattern::{Event, PatternNode, Rational, TimeSpan};
+use orpheus_pattern::{Event, PatternError, PatternNode, Rational, TimeSpan};
 
 use crate::ReplMode;
 use crate::ast::{Expr, Module, Stmt};
@@ -91,6 +91,12 @@ impl Error for EvalError {}
 
 impl From<ParseError> for EvalError {
     fn from(error: ParseError) -> Self {
+        Self::new(error.to_string())
+    }
+}
+
+impl From<PatternError> for EvalError {
+    fn from(error: PatternError) -> Self {
         Self::new(error.to_string())
     }
 }
