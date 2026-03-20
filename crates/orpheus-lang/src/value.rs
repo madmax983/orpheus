@@ -77,6 +77,28 @@ pub struct BuiltinFn {
 /// let string_val = Value::String("hello".into());
 /// assert!(string_val.as_sample_pattern().is_none());
 /// ```
+///
+/// Under the hood, a `Value` acts as a unified currency passed between
+/// built-in functions (like `fast` or `gain`) and the core evaluation loop.
+/// This enum allows Orpheus to be dynamically typed at the expression level,
+/// deferring type resolution until execution time, which enables the REPL's
+/// highly interactive, loosely-coupled workflow.
+///
+/// # Examples
+///
+/// ```
+/// use std::collections::BTreeMap;
+/// use orpheus_lang::{eval_module, ReplMode, Value, SamplePatternValue, NumberPatternValue};
+///
+/// let source = "x = fast(2, bd) \n y = 1.5";
+/// let env = eval_module(source, ReplMode::Loose).unwrap();
+///
+/// let sample_pattern = env.get("x").unwrap();
+/// let number_pattern = env.get("y").unwrap();
+///
+/// assert!(matches!(sample_pattern, Value::SamplePattern(_)));
+/// assert!(matches!(number_pattern, Value::NumberPattern(_)));
+/// ```
 #[derive(Clone, Debug)]
 pub enum Value {
     SamplePattern(SamplePatternValue),
@@ -164,6 +186,25 @@ impl Value {
 /// # let event = &val.query_unit().unwrap()[0].value;
 /// assert_eq!(event.sample(), "bd");
 /// assert_eq!(event.gain(), 1.0); // Defaults to full volume.
+/// ```
+///
+/// # Applying Effects
+///
+/// ```
+/// use orpheus_lang::{eval_module, ReplMode};
+///
+/// // Create a pattern with a sample, customized gain, and adjusted playback rate.
+/// let source = "event = gain(0.8, rate(1.5, bd))";
+/// let env = eval_module(source, ReplMode::Strict).unwrap();
+/// let val = env.get("event").unwrap().as_sample_pattern().unwrap();
+///
+/// // Extract the first generated event.
+/// let events = val.query_unit().unwrap();
+/// let event = &events[0].value;
+///
+/// assert_eq!(event.sample(), "bd");
+/// assert_eq!(event.gain(), 0.8);
+/// assert_eq!(event.rate(), 1.5);
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct SampleEvent {
@@ -411,6 +452,14 @@ impl PatternRuntimeValue for f64 {
 /// Note that Orpheus operates on exact continuous time, returning `Event` objects
 /// containing rational `TimeSpan`s.
 ///
+/// Orpheus' defining characteristic is that patterns are not static arrays of
+/// audio data; they are mathematical functions from time to events. This delayed
+/// evaluation is what allows infinite nesting of transforms (like `fast` or `every`)
+/// without memory overhead. The `SamplePatternValue` holds the actual AST node
+/// graph representing these delayed transforms.
+///
+/// # Examples
+///
 /// ```
 /// use orpheus_lang::{eval_module, ReplMode, SamplePatternValue, SampleEvent};
 /// use orpheus_pattern::{Event, TimeSpan};
@@ -422,6 +471,22 @@ impl PatternRuntimeValue for f64 {
 ///
 /// assert_eq!(events.len(), 1);
 /// assert_eq!(events[0].value.sample(), "bd");
+/// ```
+///
+/// ```
+/// use orpheus_lang::{eval_module, ReplMode, SamplePatternValue, SampleEvent};
+/// use orpheus_pattern::{Event, TimeSpan};
+///
+/// // Simulate the Orpheus expression `bd sn`
+/// let env = eval_module("pattern = bd sn", ReplMode::Strict).unwrap();
+/// let pattern = env.get("pattern").unwrap().as_sample_pattern().unwrap();
+///
+/// // By querying the unit cycle, we get the two events inside the period [0, 1).
+/// let events = pattern.query_unit().unwrap();
+///
+/// assert_eq!(events.len(), 2);
+/// assert_eq!(events[0].value.sample(), "bd");
+/// assert_eq!(events[1].value.sample(), "sn");
 /// ```
 #[derive(Clone, Debug)]
 pub struct SamplePatternValue {

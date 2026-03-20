@@ -450,6 +450,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::float_cmp)]
     fn rational_converts_to_f64() {
         let r = Rational::new(3, 4).unwrap();
         let f: f64 = r.into();
