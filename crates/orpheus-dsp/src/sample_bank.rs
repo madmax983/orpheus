@@ -157,15 +157,9 @@ impl SampleBank {
 #[derive(Debug, Error)]
 pub enum SampleBankError {
     #[error("failed to read sample directory `{path}`: {message}")]
-    DirectoryIo {
-        path: Box<str>,
-        message: Box<str>,
-    },
+    DirectoryIo { path: Box<str>, message: Box<str> },
     #[error("failed to read sample manifest `{path}`: {message}")]
-    ManifestIo {
-        path: Box<str>,
-        message: Box<str>,
-    },
+    ManifestIo { path: Box<str>, message: Box<str> },
     #[error("failed to parse sample manifest `{path}`: {message}")]
     ManifestParse { path: Box<str>, message: Box<str> },
     #[error("sample manifest `{path}` aliases `{alias}` to unknown token `{target}`")]

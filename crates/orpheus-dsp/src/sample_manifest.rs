@@ -19,14 +19,8 @@ pub struct SampleRegion {
 
 #[derive(Debug)]
 pub enum SampleManifestLoadError {
-    Io {
-        path: Box<str>,
-        message: Box<str>,
-    },
-    Parse {
-        path: Box<str>,
-        message: Box<str>,
-    },
+    Io { path: Box<str>, message: Box<str> },
+    Parse { path: Box<str>, message: Box<str> },
 }
 
 impl std::fmt::Display for SampleManifestLoadError {
@@ -51,8 +45,7 @@ impl std::fmt::Display for SampleManifestLoadError {
 impl std::error::Error for SampleManifestLoadError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Io { .. } => None,
-            Self::Parse { .. } => None,
+            _ => None,
         }
     }
 }
