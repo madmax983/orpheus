@@ -30,15 +30,9 @@ pub enum OfflineRenderError {
     #[error("unsupported render format `{0}`")]
     UnsupportedFormat(Box<str>),
     #[error("failed to write audio file `{path}`: {message}")]
-    Io {
-        path: Box<str>,
-        message: Box<str>,
-    },
+    Io { path: Box<str>, message: Box<str> },
     #[error("failed to write wav file `{path}`: {message}")]
-    WavIo {
-        path: Box<str>,
-        message: Box<str>,
-    },
+    WavIo { path: Box<str>, message: Box<str> },
     #[error("failed to verify FLAC encoder config: {0}")]
     FlacConfig(Box<str>),
     #[error("failed to encode FLAC output: {0}")]
