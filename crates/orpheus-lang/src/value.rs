@@ -2217,12 +2217,12 @@ fn rational_sub(left: &Rational, right: &Rational) -> Result<Rational, EvalError
 
 fn rational_mul(left: &Rational, right: &Rational) -> Result<Rational, EvalError> {
     left.checked_mul(right)
-        .map_err(|error| map_pattern_error(&error))
+        .map_err(|error| EvalError::new(error.to_string()))
 }
 
 fn rational_reciprocal(value: &Rational) -> Result<Rational, EvalError> {
     Rational::checked_from_parts(value.denominator(), value.numerator())
-        .map_err(|error| map_pattern_error(&error))
+        .map_err(|error| EvalError::new(error.to_string()))
 }
 
 fn rational_mul_parts(
