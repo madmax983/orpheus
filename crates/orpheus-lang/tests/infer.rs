@@ -410,3 +410,26 @@ fn degrees_reject_string_collection_arguments() {
 
     assert!(message.contains("PitchClassSet") || message.contains("degrees"));
 }
+
+#[test]
+fn named_pitch_literals_infer_number_patterns() {
+    let typed = infer_module("melody = c4 ef4 g4 bf4", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("melody").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn named_pitch_literals_compose_with_transforms() {
+    let typed = infer_module("riff = fs4 a4 cs5 |> fast(2)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("riff").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn named_pitch_literals_report_pitch_specific_diagnostics() {
+    let error = infer_module("bad = cf", ReplMode::Strict).unwrap_err();
+    let message = error.to_string();
+
+    assert!(message.contains("pitch"));
+    assert!(message.contains("octave"));
+}

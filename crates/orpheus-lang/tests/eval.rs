@@ -937,6 +937,43 @@ fn degrees_reject_string_collection_arguments_and_fractional_steps() {
 }
 
 #[test]
+fn named_pitch_literals_map_to_absolute_semitones() {
+    let module = eval_module("melody = c4 a4 bf3 fs4", ReplMode::Loose).unwrap();
+    let events = module
+        .get("melody")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![60.0, 69.0, 58.0, 66.0]
+    );
+}
+
+#[test]
+fn named_pitch_literals_compose_with_transpose() {
+    let module = eval_module("melody = transpose(12, c4 e4 g4)", ReplMode::Loose).unwrap();
+    let events = module
+        .get("melody")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![72.0, 76.0, 79.0]
+    );
+}
+
+#[test]
+fn named_pitch_literals_report_missing_octaves() {
+    assert_eval_error_contains("bad = cf", ReplMode::Strict, &["pitch", "octave"]);
+}
+
+#[test]
 fn gain_updates_sample_event_amplitude() {
     let module = eval_module("drums = bd |> gain(0.8)", ReplMode::Loose).unwrap();
     let event = module

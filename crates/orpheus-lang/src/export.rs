@@ -502,4 +502,16 @@ mod tests {
 
         let _ = fs::remove_file(path);
     }
+
+    #[test]
+    fn named_pitch_export_preserves_absolute_melody_output() {
+        let module = eval_module("melody = c4 ef4 g4 bf4", ReplMode::Loose).unwrap();
+        let melody = module.get("melody").unwrap().as_number_pattern().unwrap();
+        let path = temp_json_path();
+
+        export_number_pattern_to_json(melody, &path, 1).unwrap();
+        assert_json_fixture_matches(&path, "named_pitch_melody_export.json");
+
+        let _ = fs::remove_file(path);
+    }
 }
