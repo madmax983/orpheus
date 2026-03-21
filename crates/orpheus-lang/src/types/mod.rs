@@ -23,6 +23,7 @@ pub enum Type {
     Note,
     Number,
     Duration,
+    PitchClassSet,
     String,
     Function(Vec<Self>, Box<Self>),
     Var(TypeVarId),
@@ -56,6 +57,7 @@ impl Display for Type {
             Self::Note => formatter.write_str("Note"),
             Self::Number => formatter.write_str("Number"),
             Self::Duration => formatter.write_str("Duration"),
+            Self::PitchClassSet => formatter.write_str("PitchClassSet"),
             Self::String => formatter.write_str("String"),
             Self::Function(args, ret) => {
                 formatter.write_str("Function(")?;
@@ -111,6 +113,7 @@ mod tests {
         assert_eq!(Type::Note.to_string(), "Note");
         assert_eq!(Type::Number.to_string(), "Number");
         assert_eq!(Type::Duration.to_string(), "Duration");
+        assert_eq!(Type::PitchClassSet.to_string(), "PitchClassSet");
         assert_eq!(Type::String.to_string(), "String");
         assert_eq!(Type::Unit.to_string(), "Unit");
 

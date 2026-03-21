@@ -664,6 +664,9 @@ impl Evaluator {
             Value::Function(_) => Err(EvalError::new(
                 "functions cannot be materialized into explicit-time event streams",
             )),
+            Value::PitchClassSet(_) => Err(EvalError::new(
+                "pitch class sets cannot be materialized into explicit-time event streams",
+            )),
             Value::String(_) => Err(EvalError::new(
                 "strings cannot be materialized into explicit-time event streams",
             )),
@@ -686,9 +689,13 @@ impl Evaluator {
                 apply_function_value(FunctionValue::Builtin(function), args)
             }
             Value::Function(function) => apply_function_value(function, args),
-            Value::SamplePattern(_) | Value::NumberPattern(_) | Value::String(_) => Err(
-                EvalError::new(format!("cannot call a {}", callee.kind_name())),
-            ),
+            Value::SamplePattern(_)
+            | Value::NumberPattern(_)
+            | Value::PitchClassSet(_)
+            | Value::String(_) => Err(EvalError::new(format!(
+                "cannot call a {}",
+                callee.kind_name()
+            ))),
         }
     }
 
@@ -975,18 +982,22 @@ fn expr_key(expr: &Expr) -> usize {
 fn extract_constant_number_value(value: Value, context: &str) -> Result<f64, EvalError> {
     match value {
         Value::NumberPattern(pattern) => pattern.constant_value(),
-        Value::SamplePattern(_) | Value::Function(_) | Value::String(_) => Err(EvalError::new(
-            format!("{context} must resolve to a constant number"),
-        )),
+        Value::SamplePattern(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new(format!(
+            "{context} must resolve to a constant number"
+        ))),
     }
 }
 
 fn extract_string_value(value: Value, message: &str) -> Result<String, EvalError> {
     match value {
         Value::String(string) => Ok(string),
-        Value::SamplePattern(_) | Value::NumberPattern(_) | Value::Function(_) => {
-            Err(EvalError::new(message))
-        }
+        Value::SamplePattern(_)
+        | Value::NumberPattern(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_) => Err(EvalError::new(message)),
     }
 }
 

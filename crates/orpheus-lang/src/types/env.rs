@@ -52,8 +52,25 @@ impl TypeEnv {
         env.insert("within", within_transform_scheme(alpha));
         env.insert("mask", mask_scheme());
         env.insert("euclid", euclid_scheme());
+        env.insert(
+            "pitch_class_set",
+            TypeScheme::monomorphic(Type::curried(
+                vec![Type::pattern(Type::Number)],
+                Type::PitchClassSet,
+            )),
+        );
         env.insert("degrees", degrees_scheme());
         env.insert("transpose", number_pattern_control_scheme());
+        for name in [
+            "ionian",
+            "dorian",
+            "phrygian",
+            "mixolydian",
+            "aeolian",
+            "minor_pentatonic",
+        ] {
+            env.insert(name, TypeScheme::monomorphic(Type::PitchClassSet));
+        }
         env.insert("jux", jux_transform_scheme());
         env.insert("rev", unary_pattern_transform_scheme(alpha));
         for name in ["gain", "hpf", "lpf", "pan", "pitch", "rate"] {
@@ -224,7 +241,7 @@ fn euclid_scheme() -> TypeScheme {
 
 fn degrees_scheme() -> TypeScheme {
     TypeScheme::monomorphic(Type::curried(
-        vec![Type::String, Type::pattern(Type::Number)],
+        vec![Type::PitchClassSet, Type::pattern(Type::Number)],
         Type::pattern(Type::Number),
     ))
 }

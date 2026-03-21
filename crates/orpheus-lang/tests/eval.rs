@@ -790,8 +790,18 @@ fn euclid_rejects_invalid_pulses_and_steps() {
 }
 
 #[test]
+fn pitch_class_set_evaluates_to_a_first_class_value() {
+    let module = eval_module("hirajoshi = pitch_class_set(0 2 3 7 8)", ReplMode::Loose).unwrap();
+
+    assert_eq!(
+        module.get("hirajoshi").unwrap().kind_name(),
+        "pitch class set"
+    );
+}
+
+#[test]
 fn degrees_map_aeolian_steps_with_octave_carry() {
-    let module = eval_module(r#"line = degrees("aeolian", 0 2 4 7 8)"#, ReplMode::Loose).unwrap();
+    let module = eval_module("line = degrees(aeolian, 0 2 4 7 8)", ReplMode::Loose).unwrap();
     let events = module
         .get("line")
         .unwrap()
@@ -808,7 +818,7 @@ fn degrees_map_aeolian_steps_with_octave_carry() {
 
 #[test]
 fn degrees_map_negative_aeolian_steps_downward() {
-    let module = eval_module(r#"line = degrees("aeolian", -2 -1 0 1)"#, ReplMode::Loose).unwrap();
+    let module = eval_module("line = degrees(aeolian, -2 -1 0 1)", ReplMode::Loose).unwrap();
     let events = module
         .get("line")
         .unwrap()
@@ -823,9 +833,30 @@ fn degrees_map_negative_aeolian_steps_downward() {
 }
 
 #[test]
+fn degrees_map_user_defined_pitch_class_sets() {
+    let module = eval_module(
+        "hirajoshi = pitch_class_set(0 2 3 7 8)\n\
+         line = degrees(hirajoshi, 0 1 2 4 5)",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("line")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![0.0, 2.0, 3.0, 8.0, 12.0]
+    );
+}
+
+#[test]
 fn degrees_transpose_shifts_number_patterns_by_semitones() {
     let module = eval_module(
-        r#"line = degrees("aeolian", 0 2 4 7 8) |> transpose(45)"#,
+        "line = degrees(aeolian, 0 2 4 7 8) |> transpose(45)",
         ReplMode::Loose,
     )
     .unwrap();
@@ -845,7 +876,7 @@ fn degrees_transpose_shifts_number_patterns_by_semitones() {
 #[test]
 fn degrees_transpose_accepts_pattern_valued_offsets() {
     let module = eval_module(
-        r#"line = degrees("aeolian", 0 2) |> transpose(12 -12)"#,
+        "line = degrees(aeolian, 0 2) |> transpose(12 -12)",
         ReplMode::Loose,
     )
     .unwrap();
@@ -863,16 +894,45 @@ fn degrees_transpose_accepts_pattern_valued_offsets() {
 }
 
 #[test]
-fn degrees_reject_unknown_collections_and_fractional_steps() {
+fn pitch_class_set_rejects_invalid_inputs() {
     assert_eval_error_contains(
-        r#"line = degrees("minor", 0 2 4)"#,
+        "bad = pitch_class_set(2 3 7 8)",
         ReplMode::Strict,
-        &["`degrees`", "unknown collection", "minor"],
+        &["pitch_class_set", "0"],
     );
     assert_eval_error_contains(
-        r#"line = degrees("aeolian", 0 1.5 2)"#,
+        "bad = pitch_class_set(0 3 3 7)",
         ReplMode::Strict,
-        &["`degrees`", "whole-number degree"],
+        &["pitch_class_set", "strictly increasing"],
+    );
+    assert_eval_error_contains(
+        "bad = pitch_class_set(0 7 3)",
+        ReplMode::Strict,
+        &["pitch_class_set", "strictly increasing"],
+    );
+    assert_eval_error_contains(
+        "bad = pitch_class_set(0 2 12)",
+        ReplMode::Strict,
+        &["pitch_class_set", "[0, 11]"],
+    );
+    assert_eval_error_contains(
+        "bad = pitch_class_set(0 2.5 7)",
+        ReplMode::Strict,
+        &["pitch_class_set", "whole number"],
+    );
+}
+
+#[test]
+fn degrees_reject_string_collection_arguments_and_fractional_steps() {
+    assert_eval_error_contains(
+        r#"line = degrees("aeolian", 0 2 4)"#,
+        ReplMode::Strict,
+        &["degrees", "pitch class set", "aeolian"],
+    );
+    assert_eval_error_contains(
+        "line = degrees(aeolian, 0 1.5 2)",
+        ReplMode::Strict,
+        &["degrees", "whole-number degree"],
     );
 }
 

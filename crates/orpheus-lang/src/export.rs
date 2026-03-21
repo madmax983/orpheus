@@ -486,10 +486,11 @@ mod tests {
     }
 
     #[test]
-    fn degrees_export_preserves_parameterized_melody_output() {
+    fn pitch_class_set_export_preserves_parameterized_melody_output() {
         let module = eval_module(
-            "walk shift pat = pat |> transpose(shift)\n\
-             melody = walk(60)(degrees(\"aeolian\", -2 0 2 4 7))",
+            "walk set pat = degrees(set, pat) |> transpose(60)\n\
+             hirajoshi = pitch_class_set(0 2 3 7 8)\n\
+             melody = walk(hirajoshi)(0 1 2 4 5)",
             ReplMode::Loose,
         )
         .unwrap();
@@ -497,7 +498,7 @@ mod tests {
         let path = temp_json_path();
 
         export_number_pattern_to_json(melody, &path, 1).unwrap();
-        assert_json_fixture_matches(&path, "degrees_melody_export.json");
+        assert_json_fixture_matches(&path, "pitch_class_set_melody_export.json");
 
         let _ = fs::remove_file(path);
     }

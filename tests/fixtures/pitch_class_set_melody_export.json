@@ -1,0 +1,51 @@
+{
+  "cycle_count": 1,
+  "events": [
+    {
+      "end_den": 5,
+      "end_float": 0.2,
+      "end_num": 1,
+      "start_den": 1,
+      "start_float": 0.0,
+      "start_num": 0,
+      "value": 60.0
+    },
+    {
+      "end_den": 5,
+      "end_float": 0.4,
+      "end_num": 2,
+      "start_den": 5,
+      "start_float": 0.2,
+      "start_num": 1,
+      "value": 62.0
+    },
+    {
+      "end_den": 5,
+      "end_float": 0.6,
+      "end_num": 3,
+      "start_den": 5,
+      "start_float": 0.4,
+      "start_num": 2,
+      "value": 63.0
+    },
+    {
+      "end_den": 5,
+      "end_float": 0.8,
+      "end_num": 4,
+      "start_den": 5,
+      "start_float": 0.6,
+      "start_num": 3,
+      "value": 68.0
+    },
+    {
+      "end_den": 1,
+      "end_float": 1.0,
+      "end_num": 1,
+      "start_den": 5,
+      "start_float": 0.8,
+      "start_num": 4,
+      "value": 72.0
+    }
+  ],
+  "kind": "number"
+}
