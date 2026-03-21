@@ -974,6 +974,107 @@ fn named_pitch_literals_report_missing_octaves() {
 }
 
 #[test]
+fn chord_stacks_interval_sets_over_a_single_root() {
+    let module = eval_module("pad = chord(c4, 0 4 7)", ReplMode::Loose).unwrap();
+    let events = module
+        .get("pad")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 3);
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![60.0, 64.0, 67.0]
+    );
+    assert!(events.iter().all(|event| event.part == TimeSpan::unit()));
+}
+
+#[test]
+fn chord_stacks_interval_sets_over_each_root_event() {
+    let module = eval_module("line = chord(c4 e4, 0 7)", ReplMode::Loose).unwrap();
+    let events = module
+        .get("line")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 4);
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![60.0, 67.0, 64.0, 71.0]
+    );
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[1].part.start(), &Rational::zero());
+    assert_eq!(events[1].part.end(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[2].part.start(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[2].part.end(), &Rational::one());
+    assert_eq!(events[3].part.start(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[3].part.end(), &Rational::one());
+}
+
+#[test]
+fn chord_composes_with_transpose() {
+    let module = eval_module(
+        "pad = chord(c4, 0 3 7 10) |> transpose(12)",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("pad")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![72.0, 75.0, 79.0, 82.0]
+    );
+}
+
+#[test]
+fn chord_accepts_degree_derived_roots() {
+    let module = eval_module(
+        "harm = chord(degrees(aeolian, 0 2) |> transpose(60), 0 3 7)",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("harm")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![60.0, 63.0, 67.0, 63.0, 66.0, 70.0]
+    );
+}
+
+#[test]
+fn chord_rejects_non_numeric_roots() {
+    assert_eval_error_contains(
+        "bad = chord(bd, 0 4 7)",
+        ReplMode::Loose,
+        &["chord", "number pattern"],
+    );
+}
+
+#[test]
+fn chord_rejects_non_numeric_intervals() {
+    assert_eval_error_contains(
+        "bad = chord(c4, bd)",
+        ReplMode::Loose,
+        &["chord", "number pattern"],
+    );
+}
+
+#[test]
 fn gain_updates_sample_event_amplitude() {
     let module = eval_module("drums = bd |> gain(0.8)", ReplMode::Loose).unwrap();
     let event = module

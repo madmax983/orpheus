@@ -38,6 +38,9 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "mask" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
             BuiltinKind::Mask,
         )))),
+        "chord" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Chord,
+        )))),
         "euclid" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
             BuiltinKind::Euclid,
         )))),
@@ -206,6 +209,7 @@ impl BuiltinKind {
             Self::Sometimes => "sometimes",
             Self::Within => "within",
             Self::Mask => "mask",
+            Self::Chord => "chord",
             Self::Euclid => "euclid",
             Self::PitchClassSet => "pitch_class_set",
             Self::Degrees => "degrees",
@@ -235,6 +239,7 @@ impl BuiltinKind {
             Self::PitchClassSet | Self::Rev | Self::Sample => 1,
             Self::Sometimes
             | Self::Mask
+            | Self::Chord
             | Self::Euclid
             | Self::Degrees
             | Self::Fast
@@ -259,6 +264,7 @@ impl BuiltinKind {
             Self::Sometimes => apply_sometimes(args, function.site_salt.unwrap_or_default()),
             Self::Within => apply_within(args),
             Self::Mask => apply_mask(args),
+            Self::Chord => apply_chord(args),
             Self::Euclid => apply_euclid(args),
             Self::PitchClassSet => apply_pitch_class_set(args),
             Self::Degrees => apply_degrees(args),
@@ -502,6 +508,21 @@ fn apply_euclid(args: Vec<Value>) -> Result<Value, EvalError> {
     Ok(Value::NumberPattern(NumberPatternValue::from_nodes(
         build_euclid_nodes(pulses, steps),
     )))
+}
+
+fn apply_chord(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let root = extract_number_pattern(
+        args.next()
+            .ok_or_else(|| EvalError::new("`chord` requires a root pattern argument"))?,
+        "chord",
+    )?;
+    let intervals = extract_interval_set(
+        args.next()
+            .ok_or_else(|| EvalError::new("`chord` requires an interval-set argument"))?,
+    )?;
+
+    Ok(Value::NumberPattern(root.chord(intervals)))
 }
 
 fn apply_pitch_class_set(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -1199,6 +1220,21 @@ fn extract_pitch_class_values(pattern: &NumberPatternValue) -> Result<Vec<i32>, 
     Ok(pitch_classes)
 }
 
+fn extract_interval_set(value: Value) -> Result<Vec<f64>, EvalError> {
+    let pattern = extract_number_pattern(value, "chord")?;
+    let events = pattern.try_query(&TimeSpan::unit())?;
+    let mut intervals = Vec::with_capacity(events.len());
+    for event in events {
+        if !event.value.is_finite() {
+            return Err(EvalError::new(
+                "`chord` requires finite numeric interval values",
+            ));
+        }
+        intervals.push(event.value);
+    }
+    Ok(intervals)
+}
+
 fn whole_number_from_pitch_class_value(value: f64) -> Result<i32, EvalError> {
     if !value.is_finite() || value.fract().abs() > f64::EPSILON {
         return Err(EvalError::new(
@@ -1399,7 +1435,7 @@ fn extract_number_pattern(
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::String(_) => Err(EvalError::new(format!(
-            "`{builtin_name}` requires a numeric pattern argument"
+            "`{builtin_name}` requires a number pattern argument"
         ))),
     }
 }
