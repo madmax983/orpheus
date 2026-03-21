@@ -1,3 +1,9 @@
+//! The `sample` module provides audio sample decoding and buffering.
+//!
+//! This module is responsible for loading audio files from disk (e.g., `.wav`), decoding
+//! them into raw floating-point channels, and storing them in memory as `DecodedSample`s
+//! so they can be instantly read by the real-time audio thread without allocation.
+
 use std::fs::File;
 use std::io::{Cursor, Read, Seek};
 use std::path::Path;

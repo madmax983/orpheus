@@ -1,3 +1,9 @@
+//! The `loader` module handles the resolution and loading of Orpheus source files.
+//!
+//! This module implements the logic for reading `.ode` files from disk, recursively
+//! resolving `import` statements, preventing cyclic dependencies during resolution,
+//! and compiling the modules with strict Hindley-Milner type inference.
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};

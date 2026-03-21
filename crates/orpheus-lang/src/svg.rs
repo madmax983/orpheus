@@ -1,3 +1,9 @@
+//! The `svg` module provides visual rendering of patterns as vector graphics.
+//!
+//! This module exports an evaluated `SamplePatternValue` into an SVG document,
+//! visualizing the scheduled events as a traditional piano roll. This is highly
+//! useful for visually debugging temporal structures and rhythmic intersections.
+
 use std::collections::BTreeSet;
 use std::io::Write;
 use std::path::Path;

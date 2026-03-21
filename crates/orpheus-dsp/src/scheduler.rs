@@ -1,3 +1,9 @@
+//! The `scheduler` module implements the precise temporal scheduling of audio events.
+//!
+//! The scheduler maintains a queue of upcoming `SampleTrigger` events and translates
+//! their logical fractional timing into exact frame-accurate offsets within the current
+//! audio buffer, ensuring sample-accurate playback without jitter.
+
 use std::collections::VecDeque;
 
 use orpheus_pattern::{Event, Rational};

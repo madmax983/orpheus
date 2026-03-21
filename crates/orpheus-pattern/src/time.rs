@@ -1,4 +1,4 @@
-//! Continuous time representation for patterns.
+//! The `time` module provides continuous time representation for patterns.
 //!
 //! Orpheus uses half-open time intervals to represent when events occur and how
 //! long they last. All time is continuous and represented exactly using rational

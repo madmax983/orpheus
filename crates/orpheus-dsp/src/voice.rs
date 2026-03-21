@@ -1,3 +1,9 @@
+//! The `voice` module implements polyphonic synthesis and sample playback.
+//!
+//! A `Voice` represents a single active audio grain or sample slice being rendered.
+//! This module handles the per-voice DSP operations including variable-rate resampling,
+//! ADSR envelopes, panning, and basic filtering (HPF/LPF).
+
 use core::f32::consts::TAU;
 
 use crate::SampleTrigger;

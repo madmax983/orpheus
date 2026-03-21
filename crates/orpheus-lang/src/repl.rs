@@ -1,3 +1,9 @@
+//! The `repl` module provides a simple standard I/O command-line interface.
+//!
+//! This module implements a basic interactive read-eval-print loop (REPL) that
+//! reads user input line-by-line from `stdin`, evaluates it against a running
+//! `ReplSession`, and prints the formatted results or errors to `stdout`.
+
 use crossterm::style::Stylize;
 use std::io::{self, BufRead, Write};
 use std::path::Path;

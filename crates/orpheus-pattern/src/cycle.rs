@@ -1,4 +1,4 @@
-//! Repeating cycles and subdivision patterns.
+//! The `cycle` module implements repeating cycles and subdivision patterns.
 //!
 //! Cycle patterns map structural descriptions (like sequences of notes) onto an
 //! infinitely repeating unit of time called a cycle. Groups within the sequence
