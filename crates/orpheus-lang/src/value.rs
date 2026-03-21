@@ -19,9 +19,7 @@ use core::cmp::{max, min};
 use core::fmt;
 use std::collections::BTreeMap;
 
-use orpheus_pattern::{
-    CyclePattern, Event, EventStream, PatternError, PatternNode, Rational, TimeSpan,
-};
+use orpheus_pattern::{CyclePattern, Event, EventStream, PatternNode, Rational, TimeSpan};
 
 use crate::{
     ReplMode,
@@ -1162,12 +1160,8 @@ where
 {
     fn try_query(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
         match self {
-            Self::Cycle(pattern) => pattern
-                .try_query(span)
-                .map_err(|error| map_pattern_error(&error)),
-            Self::Stream(stream) => stream
-                .try_query(span)
-                .map_err(|error| map_pattern_error(&error)),
+            Self::Cycle(pattern) => pattern.try_query(span).map_err(Into::into),
+            Self::Stream(stream) => stream.try_query(span).map_err(Into::into),
             Self::ExplicitCycle { stream, .. } => query_explicit_cycle(stream, span),
             Self::Stack(layers) => query_stack(layers, span),
             Self::Every {
@@ -1677,9 +1671,7 @@ where
         let cycle_offset = rational_from_parts(cycle, 1)?;
         let local_offset = rational_sub(&Rational::zero(), &cycle_offset)?;
         let local_query = translate_span(&query_slice, &local_offset)?;
-        let mut cycle_events = stream
-            .try_query(&local_query)
-            .map_err(|error| map_pattern_error(&error))?;
+        let mut cycle_events = stream.try_query(&local_query)?;
         shift_events(&mut cycle_events, &cycle_offset)?;
         events.extend(cycle_events);
     }
@@ -2212,17 +2204,15 @@ fn restore_window_localized_events<T>(
 }
 
 fn build_span(start: Rational, end: Rational) -> Result<TimeSpan, EvalError> {
-    TimeSpan::new(start, end).map_err(|error| map_pattern_error(&error))
+    Ok(TimeSpan::new(start, end)?)
 }
 
 fn rational_add(left: &Rational, right: &Rational) -> Result<Rational, EvalError> {
-    left.checked_add(right)
-        .map_err(|error| map_pattern_error(&error))
+    Ok(left.checked_add(right)?)
 }
 
 fn rational_sub(left: &Rational, right: &Rational) -> Result<Rational, EvalError> {
-    left.checked_sub(right)
-        .map_err(|error| map_pattern_error(&error))
+    Ok(left.checked_sub(right)?)
 }
 
 fn rational_mul(left: &Rational, right: &Rational) -> Result<Rational, EvalError> {
@@ -2240,15 +2230,12 @@ fn rational_mul_parts(
     numerator: i64,
     denominator: i64,
 ) -> Result<Rational, EvalError> {
-    let factor = Rational::checked_from_parts(i128::from(numerator), i128::from(denominator))
-        .map_err(|error| map_pattern_error(&error))?;
-    value
-        .checked_mul(&factor)
-        .map_err(|error| map_pattern_error(&error))
+    let factor = Rational::checked_from_parts(i128::from(numerator), i128::from(denominator))?;
+    Ok(value.checked_mul(&factor)?)
 }
 
 fn rational_from_parts(numerator: i128, denominator: i128) -> Result<Rational, EvalError> {
-    Rational::checked_from_parts(numerator, denominator).map_err(|error| map_pattern_error(&error))
+    Ok(Rational::checked_from_parts(numerator, denominator)?)
 }
 
 fn apply_unary_transform<T>(
@@ -2296,10 +2283,6 @@ pub const fn sometimes_applies_on_cycle(cycle: i128, site_salt: u64) -> bool {
     state = (state ^ (state >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
     state ^= state >> 31;
     (state & 1) != 0
-}
-
-fn map_pattern_error(error: &PatternError) -> EvalError {
-    EvalError::new(error.to_string())
 }
 
 const fn floor_rational(value: &Rational) -> i128 {
