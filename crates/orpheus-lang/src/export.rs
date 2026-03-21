@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::Path;
 
 use orpheus_dsp::{OfflineRenderError, SampleBank, SampleTrigger, render_events_to_file_with_bank};
@@ -45,6 +45,15 @@ impl From<OfflineRenderError> for RenderError {
     fn from(error: OfflineRenderError) -> Self {
         Self::Audio(error)
     }
+}
+
+fn map_io_error(error: &io::Error) -> EvalError {
+    let message = match error.kind() {
+        io::ErrorKind::NotFound => "file not found".to_owned(),
+        io::ErrorKind::PermissionDenied => "permission denied".to_owned(),
+        _ => error.to_string(),
+    };
+    EvalError::new(message)
 }
 
 /// Helper function to convert a `SampleEvent` from the evaluation phase into a
@@ -127,12 +136,12 @@ pub fn export_sample_pattern_to_csv(
     let events = pattern.try_query(&span)?;
     let path = path.as_ref();
 
-    let mut file = std::fs::File::create(path).map_err(|e| EvalError::new(e.to_string()))?;
+    let mut file = std::fs::File::create(path).map_err(|e| map_io_error(&e))?;
     writeln!(
         file,
         "start_num,start_den,start_float,end_num,end_den,end_float,sample,gain,pan,rate,hpf_cutoff_hz,lpf_cutoff_hz"
     )
-    .map_err(|e| EvalError::new(e.to_string()))?;
+    .map_err(|e| map_io_error(&e))?;
 
     for event in events {
         let start_float = f64::from(event.part.start());
@@ -161,7 +170,7 @@ pub fn export_sample_pattern_to_csv(
             hpf,
             lpf
         )
-        .map_err(|e| EvalError::new(e.to_string()))?;
+        .map_err(|e| map_io_error(&e))?;
     }
 
     Ok(())
@@ -233,12 +242,12 @@ pub fn export_number_pattern_to_csv(
     let events = pattern.try_query(&span)?;
     let path = path.as_ref();
 
-    let mut file = std::fs::File::create(path).map_err(|e| EvalError::new(e.to_string()))?;
+    let mut file = std::fs::File::create(path).map_err(|e| map_io_error(&e))?;
     writeln!(
         file,
         "start_num,start_den,start_float,end_num,end_den,end_float,value"
     )
-    .map_err(|e| EvalError::new(e.to_string()))?;
+    .map_err(|e| map_io_error(&e))?;
 
     for event in events {
         let start_float = f64::from(event.part.start());
@@ -254,7 +263,7 @@ pub fn export_number_pattern_to_csv(
             end_float,
             event.value
         )
-        .map_err(|e| EvalError::new(e.to_string()))?;
+        .map_err(|e| map_io_error(&e))?;
     }
 
     Ok(())
@@ -386,7 +395,7 @@ fn number_event_json(event: &Event<f64>) -> JsonValue {
 }
 
 fn write_json_file(path: &Path, payload: &JsonValue) -> Result<(), EvalError> {
-    let file = std::fs::File::create(path).map_err(|error| EvalError::new(error.to_string()))?;
+    let file = std::fs::File::create(path).map_err(|e| map_io_error(&e))?;
     serde_json::to_writer_pretty(file, payload).map_err(|error| EvalError::new(error.to_string()))
 }
 
