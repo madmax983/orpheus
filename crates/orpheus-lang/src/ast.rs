@@ -52,9 +52,52 @@ pub enum Expr {
     String(String),
 }
 
+impl Expr {
+    fn references_ident(&self, target: &str) -> bool {
+        match self {
+            Self::Seq(items)
+            | Self::Stack(items)
+            | Self::Stream(items)
+            | Self::SeqSections(items)
+            | Self::Group(items) => items.iter().any(|item| item.references_ident(target)),
+            Self::Pipe { lhs, rhs } => lhs.references_ident(target) || rhs.references_ident(target),
+            Self::Call { callee, args } => {
+                callee.references_ident(target)
+                    || args.iter().any(|arg| arg.references_ident(target))
+            }
+            Self::At { start, pattern } => {
+                start.references_ident(target) || pattern.references_ident(target)
+            }
+            Self::Meter {
+                beats,
+                unit,
+                pattern,
+            } => {
+                beats.references_ident(target)
+                    || unit.references_ident(target)
+                    || pattern.references_ident(target)
+            }
+            Self::Beat(value) => value.references_ident(target),
+            Self::Section { pattern, cycles } => {
+                pattern.references_ident(target) || cycles.references_ident(target)
+            }
+            Self::Ident(name) => name == target,
+            Self::Rest | Self::Number(_) | Self::String(_) => false,
+        }
+    }
+}
+
 /// Phase 1 statements.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Stmt {
     /// A top-level binding statement.
-    Binding { name: String, expr: Expr },
+    Binding {
+        name: String,
+        params: Vec<String>,
+        expr: Expr,
+    },
+}
+
+pub fn binding_expr_self_references(name: &str, params: &[String], expr: &Expr) -> bool {
+    !params.iter().any(|param| param == name) && expr.references_ident(name)
 }

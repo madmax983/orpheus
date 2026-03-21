@@ -1,7 +1,10 @@
 use orpheus_pattern::{Rational, TimeSpan};
 
-use crate::eval::{EvalError, f64_to_rational};
-use crate::value::{BuiltinFn, BuiltinKind, NumberPatternValue, SamplePatternValue, Value};
+use crate::eval::{EvalError, apply_function_value, f64_to_rational};
+use crate::value::{
+    BuiltinFn, BuiltinKind, FunctionValue, GatePatternValue, NumberPatternValue,
+    SamplePatternValue, Value,
+};
 
 pub fn is_sample_identifier(name: &str) -> bool {
     matches!(name, "bd" | "sn" | "cp" | "hh")
@@ -10,23 +13,69 @@ pub fn is_sample_identifier(name: &str) -> bool {
 pub fn builtin_value(name: &str) -> Option<Value> {
     match name {
         "bd" | "sn" | "cp" | "hh" => Some(Value::SamplePattern(SamplePatternValue::atom(name))),
-        "every" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Every))),
-        "sometimes" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Sometimes))),
-        "fast" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Fast))),
-        "slow" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Slow))),
-        "shift" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Shift))),
-        "rev" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Rev))),
-        "gain" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Gain))),
-        "hpf" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Hpf))),
-        "lpf" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Lpf))),
-        "pan" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Pan))),
-        "pitch" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Pitch))),
-        "sample" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Sample))),
-        "rate" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Rate))),
-        "slice" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Slice))),
-        "slice_idx" => Some(Value::Function(BuiltinFn::new(BuiltinKind::SliceIdx))),
-        "rand" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Rand))),
-        "jux" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Jux))),
+        "every" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Every,
+        )))),
+        "when" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::When,
+        )))),
+        "sometimes" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Sometimes,
+        )))),
+        "within" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Within,
+        )))),
+        "mask" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Mask,
+        )))),
+        "euclid" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Euclid,
+        )))),
+        "fast" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Fast,
+        )))),
+        "slow" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Slow,
+        )))),
+        "shift" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Shift,
+        )))),
+        "rev" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Rev,
+        )))),
+        "gain" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Gain,
+        )))),
+        "hpf" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Hpf,
+        )))),
+        "lpf" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Lpf,
+        )))),
+        "pan" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Pan,
+        )))),
+        "pitch" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Pitch,
+        )))),
+        "sample" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Sample,
+        )))),
+        "rate" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Rate,
+        )))),
+        "slice" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Slice,
+        )))),
+        "slice_idx" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::SliceIdx,
+        )))),
+        "rand" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Rand,
+        )))),
+        "jux" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Jux,
+        )))),
         _ => None,
     }
 }
@@ -99,11 +148,11 @@ pub fn apply_builtin_function(function: &BuiltinFn, args: Vec<Value>) -> Result<
     combined.extend(args);
 
     if combined.len() < kind.arity() {
-        return Ok(Value::Function(BuiltinFn {
+        return Ok(Value::Function(FunctionValue::Builtin(BuiltinFn {
             kind,
             bound_args: combined,
             site_salt: function.site_salt,
-        }));
+        })));
     }
 
     if combined.len() > kind.arity() {
@@ -122,7 +171,11 @@ impl BuiltinKind {
     const fn name(self) -> &'static str {
         match self {
             Self::Every => "every",
+            Self::When => "when",
             Self::Sometimes => "sometimes",
+            Self::Within => "within",
+            Self::Mask => "mask",
+            Self::Euclid => "euclid",
             Self::Fast => "fast",
             Self::Slow => "slow",
             Self::Shift => "shift",
@@ -144,7 +197,10 @@ impl BuiltinKind {
     const fn arity(self) -> usize {
         match self {
             Self::Every | Self::Slice | Self::SliceIdx => 3,
+            Self::When | Self::Within => 4,
             Self::Sometimes
+            | Self::Mask
+            | Self::Euclid
             | Self::Fast
             | Self::Slow
             | Self::Shift
@@ -163,7 +219,11 @@ impl BuiltinKind {
     fn execute(self, function: &BuiltinFn, args: Vec<Value>) -> Result<Value, EvalError> {
         match self {
             Self::Every => apply_every(args),
+            Self::When => apply_when(args),
             Self::Sometimes => apply_sometimes(args, function.site_salt.unwrap_or_default()),
+            Self::Within => apply_within(args),
+            Self::Mask => apply_mask(args),
+            Self::Euclid => apply_euclid(args),
             Self::Fast => apply_fast(args),
             Self::Slow => apply_slow(args),
             Self::Shift => apply_shift(args),
@@ -212,6 +272,51 @@ fn apply_every(args: Vec<Value>) -> Result<Value, EvalError> {
     }
 }
 
+fn apply_when(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let period = extract_positive_integer_factor(
+        args.next()
+            .ok_or_else(|| EvalError::new("`when` requires a cycle period argument"))?,
+        "when",
+    )?;
+    let offset = i64::from(extract_whole_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`when` requires a cycle offset argument"))?,
+        "`when` offset",
+        false,
+    )?);
+    if offset >= period {
+        return Err(EvalError::new(
+            "`when` requires offset less than the period",
+        ));
+    }
+
+    let transform = args
+        .next()
+        .ok_or_else(|| EvalError::new("`when` requires a transform argument"))?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`when` requires a pattern argument"))?;
+
+    match pattern {
+        Value::SamplePattern(pattern) => {
+            let transform = extract_unary_pattern_transform(transform, "when", "third")?;
+            Ok(Value::SamplePattern(
+                pattern.when(period, offset, transform),
+            ))
+        }
+        Value::NumberPattern(pattern) => {
+            let transform = extract_unary_pattern_transform(transform, "when", "third")?;
+            Ok(Value::NumberPattern(
+                pattern.when(period, offset, transform),
+            ))
+        }
+        Value::Function(_) | Value::String(_) => Err(EvalError::new(
+            "`when` expected a pattern as its final argument",
+        )),
+    }
+}
+
 fn apply_jux(args: Vec<Value>) -> Result<Value, EvalError> {
     let mut args = args.into_iter();
     let transform = args
@@ -224,8 +329,10 @@ fn apply_jux(args: Vec<Value>) -> Result<Value, EvalError> {
     match pattern {
         Value::SamplePattern(pattern_val) => {
             let transform_fn = extract_unary_pattern_transform(transform, "jux", "first")?;
-            let transformed_val =
-                transform_fn.apply(vec![Value::SamplePattern(pattern_val.clone())])?;
+            let transformed_val = apply_function_value(
+                transform_fn,
+                vec![Value::SamplePattern(pattern_val.clone())],
+            )?;
             let Value::SamplePattern(transformed_pattern_val) = transformed_val else {
                 return Err(EvalError::new(
                     "`jux` transform must return a sample pattern",
@@ -271,6 +378,91 @@ fn apply_sometimes(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError>
             "`sometimes` expected a pattern as its final argument",
         )),
     }
+}
+
+fn apply_within(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let start = extract_unit_interval_boundary(
+        args.next()
+            .ok_or_else(|| EvalError::new("`within` requires a start argument"))?,
+        "start",
+    )?;
+    let end = extract_unit_interval_boundary(
+        args.next()
+            .ok_or_else(|| EvalError::new("`within` requires an end argument"))?,
+        "end",
+    )?;
+    if start >= end {
+        return Err(EvalError::new("`within` requires start < end"));
+    }
+
+    let transform = args
+        .next()
+        .ok_or_else(|| EvalError::new("`within` requires a transform argument"))?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`within` requires a pattern argument"))?;
+
+    match pattern {
+        Value::SamplePattern(pattern) => {
+            let transform = extract_unary_pattern_transform(transform, "within", "third")?;
+            Ok(Value::SamplePattern(pattern.within(start, end, transform)))
+        }
+        Value::NumberPattern(pattern) => {
+            let transform = extract_unary_pattern_transform(transform, "within", "third")?;
+            Ok(Value::NumberPattern(pattern.within(start, end, transform)))
+        }
+        Value::Function(_) | Value::String(_) => Err(EvalError::new(
+            "`within` expected a pattern as its final argument",
+        )),
+    }
+}
+
+fn apply_mask(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let gate = extract_pattern_gate(
+        args.next()
+            .ok_or_else(|| EvalError::new("`mask` requires a gate argument"))?,
+        "mask",
+        "first",
+    )?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`mask` requires a pattern argument"))?;
+
+    match pattern {
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.mask(gate))),
+        Value::NumberPattern(pattern) => Ok(Value::NumberPattern(pattern.mask(gate))),
+        Value::Function(_) | Value::String(_) => Err(EvalError::new(
+            "`mask` expected a pattern as its final argument",
+        )),
+    }
+}
+
+fn apply_euclid(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let pulses = extract_whole_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`euclid` requires a pulses argument"))?,
+        "`euclid` pulses",
+        false,
+    )?;
+    let steps = extract_whole_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`euclid` requires a steps argument"))?,
+        "`euclid` steps",
+        true,
+    )?;
+
+    if pulses > steps {
+        return Err(EvalError::new(
+            "`euclid` requires pulses less than or equal to steps",
+        ));
+    }
+
+    Ok(Value::NumberPattern(NumberPatternValue::from_nodes(
+        build_euclid_nodes(pulses, steps),
+    )))
 }
 
 fn apply_fast(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -568,15 +760,22 @@ fn extract_unary_pattern_transform(
     transform: Value,
     builtin_name: &str,
     argument_position: &str,
-) -> Result<BuiltinFn, EvalError> {
+) -> Result<FunctionValue, EvalError> {
     let message = format!(
         "`{builtin_name}` requires a unary pattern transform as its {argument_position} argument"
     );
     match transform {
-        Value::Function(function) => {
+        Value::Function(FunctionValue::Builtin(function)) => {
             let remaining = function.kind.arity() - function.bound_args.len();
             if remaining == 1 {
-                Ok(function)
+                Ok(FunctionValue::Builtin(function))
+            } else {
+                Err(EvalError::new(message))
+            }
+        }
+        Value::Function(FunctionValue::User(function)) => {
+            if function.remaining_params.len() == 1 {
+                Ok(FunctionValue::User(function))
             } else {
                 Err(EvalError::new(message))
             }
@@ -585,6 +784,108 @@ fn extract_unary_pattern_transform(
             Err(EvalError::new(message))
         }
     }
+}
+
+fn extract_pattern_gate(
+    gate: Value,
+    builtin_name: &str,
+    argument_position: &str,
+) -> Result<GatePatternValue, EvalError> {
+    let message =
+        format!("`{builtin_name}` requires a pattern gate as its {argument_position} argument");
+    match gate {
+        Value::SamplePattern(pattern) => Ok(GatePatternValue::Sample(pattern)),
+        Value::NumberPattern(pattern) => Ok(GatePatternValue::Number(pattern)),
+        Value::Function(_) | Value::String(_) => Err(EvalError::new(message)),
+    }
+}
+
+fn build_euclid_nodes(pulses: u32, steps: u32) -> Vec<orpheus_pattern::PatternNode<f64>> {
+    let pattern = build_euclid_pattern(pulses, steps);
+    pattern
+        .into_iter()
+        .map(|open| {
+            if open {
+                orpheus_pattern::PatternNode::atom(1.0)
+            } else {
+                orpheus_pattern::PatternNode::rest()
+            }
+        })
+        .collect()
+}
+
+fn build_euclid_pattern(pulses: u32, steps: u32) -> Vec<bool> {
+    if steps == 0 {
+        return Vec::new();
+    }
+    if pulses == 0 {
+        return vec![false; usize::try_from(steps).unwrap_or_default()];
+    }
+    if pulses >= steps {
+        return vec![true; usize::try_from(steps).unwrap_or_default()];
+    }
+
+    let mut counts = Vec::new();
+    let mut remainders = vec![usize::try_from(pulses).unwrap_or_default()];
+    let mut divisor = usize::try_from(steps.saturating_sub(pulses)).unwrap_or_default();
+    let mut level = 0_usize;
+
+    while remainders[level] > 1 {
+        counts.push(divisor / remainders[level]);
+        remainders.push(divisor % remainders[level]);
+        divisor = remainders[level];
+        level += 1;
+    }
+    counts.push(divisor);
+
+    let mut pattern = Vec::with_capacity(usize::try_from(steps).unwrap_or_default());
+    build_euclid_level(
+        isize::try_from(level).unwrap_or_default(),
+        &counts,
+        &remainders,
+        &mut pattern,
+    );
+
+    if let Some(first_open) = pattern.iter().position(|step| *step) {
+        pattern.rotate_left(first_open);
+    }
+
+    pattern
+}
+
+fn build_euclid_level(
+    level: isize,
+    counts: &[usize],
+    remainders: &[usize],
+    pattern: &mut Vec<bool>,
+) {
+    if level == -1 {
+        pattern.push(false);
+        return;
+    }
+    if level == -2 {
+        pattern.push(true);
+        return;
+    }
+
+    let level_index = usize::try_from(level).unwrap_or_default();
+    for _ in 0..counts[level_index] {
+        build_euclid_level(level - 1, counts, remainders, pattern);
+    }
+    if remainders[level_index] != 0 {
+        build_euclid_level(level - 2, counts, remainders, pattern);
+    }
+}
+
+fn extract_unit_interval_boundary(value: Value, label: &str) -> Result<Rational, EvalError> {
+    let rendered = extract_constant_number(value, "within")?;
+    let rational = f64_to_rational(rendered, &format!("`within` {label}"))?;
+    if rational < Rational::zero() || rational > Rational::one() {
+        return Err(EvalError::new(format!(
+            "`within` requires {label} within [0, 1]"
+        )));
+    }
+    Ok(rational)
 }
 
 fn extract_whole_number(

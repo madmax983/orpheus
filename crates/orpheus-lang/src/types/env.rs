@@ -39,7 +39,11 @@ impl TypeEnv {
             env.insert(name, numeric_pattern_transform_scheme(alpha));
         }
         env.insert("every", every_transform_scheme(alpha));
+        env.insert("when", when_transform_scheme(alpha));
         env.insert("sometimes", sometimes_transform_scheme(alpha));
+        env.insert("within", within_transform_scheme(alpha));
+        env.insert("mask", mask_scheme());
+        env.insert("euclid", euclid_scheme());
         env.insert("jux", jux_transform_scheme());
         env.insert("rev", unary_pattern_transform_scheme(alpha));
         for name in ["gain", "hpf", "lpf", "pan", "pitch", "rate"] {
@@ -90,6 +94,10 @@ impl TypeEnv {
     pub fn get(&self, name: &str) -> Option<&TypeScheme> {
         self.entries.get(name)
     }
+
+    pub(crate) fn values(&self) -> impl Iterator<Item = &TypeScheme> {
+        self.entries.values()
+    }
 }
 
 fn sample_control_scheme() -> TypeScheme {
@@ -125,6 +133,22 @@ fn every_transform_scheme(alpha: TypeVarId) -> TypeScheme {
     }
 }
 
+fn when_transform_scheme(alpha: TypeVarId) -> TypeScheme {
+    let alpha_pattern = Type::pattern(Type::Var(alpha));
+    TypeScheme {
+        vars: vec![alpha],
+        ty: Type::curried(
+            vec![
+                Type::pattern(Type::Number),
+                Type::pattern(Type::Number),
+                Type::function(vec![alpha_pattern.clone()], alpha_pattern.clone()),
+                alpha_pattern.clone(),
+            ],
+            alpha_pattern,
+        ),
+    }
+}
+
 fn jux_transform_scheme() -> TypeScheme {
     let sample_pattern = Type::pattern(Type::Sample);
     TypeScheme::monomorphic(Type::curried(
@@ -148,6 +172,44 @@ fn sometimes_transform_scheme(alpha: TypeVarId) -> TypeScheme {
             alpha_pattern,
         ),
     }
+}
+
+fn within_transform_scheme(alpha: TypeVarId) -> TypeScheme {
+    let alpha_pattern = Type::pattern(Type::Var(alpha));
+    TypeScheme {
+        vars: vec![alpha],
+        ty: Type::curried(
+            vec![
+                Type::pattern(Type::Number),
+                Type::pattern(Type::Number),
+                Type::function(vec![alpha_pattern.clone()], alpha_pattern.clone()),
+                alpha_pattern.clone(),
+            ],
+            alpha_pattern,
+        ),
+    }
+}
+
+fn mask_scheme() -> TypeScheme {
+    let gate = TypeVarId::new(0);
+    let pattern = TypeVarId::new(1);
+    TypeScheme {
+        vars: vec![gate, pattern],
+        ty: Type::curried(
+            vec![
+                Type::pattern(Type::Var(gate)),
+                Type::pattern(Type::Var(pattern)),
+            ],
+            Type::pattern(Type::Var(pattern)),
+        ),
+    }
+}
+
+fn euclid_scheme() -> TypeScheme {
+    TypeScheme::monomorphic(Type::curried(
+        vec![Type::pattern(Type::Number), Type::pattern(Type::Number)],
+        Type::pattern(Type::Number),
+    ))
 }
 
 fn unary_pattern_transform_scheme(alpha: TypeVarId) -> TypeScheme {

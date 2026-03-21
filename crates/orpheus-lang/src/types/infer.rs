@@ -1,7 +1,7 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ReplMode;
-use crate::ast::{Expr, Module, Stmt};
+use crate::ast::{Expr, Module, Stmt, binding_expr_self_references};
 use crate::diagnostics::{ParseError, TypeError};
 use crate::parser::parse_module;
 use crate::types::env::{TypeEnv, TypeScheme};
@@ -83,11 +83,12 @@ impl Inferencer {
 
         for statement in statements {
             match statement {
-                Stmt::Binding { name, expr } => {
-                    let inferred = self.infer_expr(expr)?;
+                Stmt::Binding {
+                    name, params, expr, ..
+                } => {
+                    let inferred = self.infer_binding(name, params, expr)?;
                     let ty = self.resolve(inferred);
-                    self.env
-                        .insert(name.clone(), TypeScheme::monomorphic(ty.clone()));
+                    self.env.insert(name.clone(), self.generalize(ty.clone()));
                     self.user_bindings.insert(name.clone(), ty.clone());
                     last_binding = Some((name.clone(), ty));
                 }
@@ -97,9 +98,48 @@ impl Inferencer {
         Ok(last_binding)
     }
 
+    fn infer_binding(
+        &mut self,
+        name: &str,
+        params: &[String],
+        expr: &Expr,
+    ) -> Result<Type, TypeError> {
+        if params.is_empty() {
+            return self.infer_expr(expr);
+        }
+
+        if binding_expr_self_references(name, params, expr) {
+            return Err(TypeError::new(format!(
+                "parameterized binding `{name}` cannot contain a self-reference in v1"
+            )));
+        }
+
+        let saved_env = self.env.clone();
+        let result = (|| {
+            let mut param_types = Vec::with_capacity(params.len());
+            for param in params {
+                let ty = self.fresh_var_type();
+                self.env
+                    .insert(param.clone(), TypeScheme::monomorphic(ty.clone()));
+                param_types.push(ty);
+            }
+
+            let body_ty = self.infer_expr(expr)?;
+            Ok(Type::curried(
+                param_types
+                    .into_iter()
+                    .map(|ty| self.resolve(ty))
+                    .collect::<Vec<_>>(),
+                self.resolve(body_ty),
+            ))
+        })();
+        self.env = saved_env;
+        result
+    }
+
     fn infer_expr(&mut self, expr: &Expr) -> Result<Type, TypeError> {
         match expr {
-            Expr::Seq(items) => self.infer_homogeneous(items, "sequence items"),
+            Expr::Seq(items) => self.infer_pattern_items(items, "sequence items"),
             Expr::Stack(layers) => self.infer_homogeneous(layers, "`stack` layers"),
             Expr::Stream(items) => self.infer_homogeneous(items, "`stream` items"),
             Expr::Pipe { lhs, rhs } => {
@@ -142,7 +182,7 @@ impl Inferencer {
                 self.infer_expr(pattern)
             }
             Expr::SeqSections(items) => self.infer_homogeneous(items, "`seq_sections` items"),
-            Expr::Group(items) => self.infer_homogeneous(items, "group items"),
+            Expr::Group(items) => self.infer_pattern_items(items, "group items"),
             Expr::Ident(name) => self.infer_ident(name),
             Expr::Rest => Err(TypeError::new(
                 "rest markers do not have a standalone type outside pattern sequences",
@@ -172,6 +212,39 @@ impl Inferencer {
         Ok(self.resolve(expected))
     }
 
+    fn infer_pattern_items(&mut self, items: &[Expr], context: &str) -> Result<Type, TypeError> {
+        if items.is_empty() {
+            return Err(TypeError::new(format!("{context} cannot be empty")));
+        }
+
+        let mut expected: Option<Type> = None;
+        for item in items {
+            if matches!(item, Expr::Rest) {
+                continue;
+            }
+
+            let actual = self.infer_expr(item)?;
+            if let Some(expected_ty) = expected.clone() {
+                self.unify(expected_ty.clone(), actual.clone())
+                    .map_err(|_| {
+                        TypeError::new(format!(
+                            "{context} must all have the same type; expected {}, found {}",
+                            self.resolve(expected_ty),
+                            self.resolve(actual)
+                        ))
+                    })?;
+            } else {
+                expected = Some(actual);
+            }
+        }
+
+        if let Some(expected) = expected {
+            Ok(self.resolve(expected))
+        } else {
+            Ok(Type::pattern(self.fresh_var_type()))
+        }
+    }
+
     fn infer_ident(&mut self, name: &str) -> Result<Type, TypeError> {
         let scheme = self
             .env
@@ -199,6 +272,16 @@ impl Inferencer {
             replacements.insert(*var, self.fresh_var_type());
         }
         substitute_scheme_vars(&scheme.ty, &replacements)
+    }
+
+    fn generalize(&self, ty: Type) -> TypeScheme {
+        let ty = self.resolve(ty);
+        let env_vars = self.free_vars_in_env();
+        let vars = free_type_vars(&ty)
+            .difference(&env_vars)
+            .copied()
+            .collect::<Vec<_>>();
+        TypeScheme { vars, ty }
     }
 
     const fn fresh_var_type(&mut self) -> Type {
@@ -307,6 +390,19 @@ impl Inferencer {
             _ => None,
         }
     }
+
+    fn free_vars_in_env(&self) -> BTreeSet<TypeVarId> {
+        self.env
+            .values()
+            .flat_map(|scheme| {
+                let mut vars = free_type_vars(&scheme.ty);
+                for quantified in &scheme.vars {
+                    vars.remove(quantified);
+                }
+                vars.into_iter()
+            })
+            .collect()
+    }
 }
 
 fn substitute_scheme_vars(ty: &Type, replacements: &BTreeMap<TypeVarId, Type>) -> Type {
@@ -325,5 +421,23 @@ fn substitute_scheme_vars(ty: &Type, replacements: &BTreeMap<TypeVarId, Type>) -
         Type::Duration => Type::Duration,
         Type::String => Type::String,
         Type::Unit => Type::Unit,
+    }
+}
+
+fn free_type_vars(ty: &Type) -> BTreeSet<TypeVarId> {
+    match ty {
+        Type::Pattern(inner) => free_type_vars(inner),
+        Type::Function(args, ret) => {
+            let mut vars = BTreeSet::new();
+            for arg in args {
+                vars.extend(free_type_vars(arg));
+            }
+            vars.extend(free_type_vars(ret));
+            vars
+        }
+        Type::Var(var) => BTreeSet::from([*var]),
+        Type::Sample | Type::Note | Type::Number | Type::Duration | Type::String | Type::Unit => {
+            BTreeSet::new()
+        }
     }
 }

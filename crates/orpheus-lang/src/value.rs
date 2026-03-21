@@ -17,12 +17,17 @@
 
 use core::cmp::{max, min};
 use core::fmt;
+use std::collections::BTreeMap;
 
 use orpheus_pattern::{
     CyclePattern, Event, EventStream, PatternError, PatternNode, Rational, TimeSpan,
 };
 
-use crate::{builtins::apply_builtin_function, eval::EvalError};
+use crate::{
+    ReplMode,
+    ast::Expr,
+    eval::{EvalError, apply_function_value},
+};
 
 /// Identifies which core built-in function is being represented.
 ///
@@ -31,7 +36,11 @@ use crate::{builtins::apply_builtin_function, eval::EvalError};
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
     Every,
+    When,
     Sometimes,
+    Within,
+    Mask,
+    Euclid,
     Fast,
     Slow,
     Shift,
@@ -59,6 +68,30 @@ pub struct BuiltinFn {
     pub(crate) kind: BuiltinKind,
     pub(crate) bound_args: Vec<Value>,
     pub(crate) site_salt: Option<u64>,
+}
+
+/// A user-defined top-level curried function with captured bindings.
+#[derive(Clone, Debug)]
+pub struct UserFn {
+    pub(crate) mode: ReplMode,
+    pub(crate) remaining_params: Vec<String>,
+    pub(crate) body: Expr,
+    pub(crate) captured_bindings: BTreeMap<String, Value>,
+    pub(crate) expr_site_salts: BTreeMap<usize, u64>,
+}
+
+/// A callable runtime value, either builtin or user-defined.
+#[derive(Clone, Debug)]
+pub enum FunctionValue {
+    Builtin(BuiltinFn),
+    User(UserFn),
+}
+
+/// A gate pattern passed to structural combinators like `mask`.
+#[derive(Clone, Debug)]
+pub enum GatePatternValue {
+    Sample(SamplePatternValue),
+    Number(NumberPatternValue),
 }
 
 /// Represents the fundamental unit of an evaluated expression.
@@ -103,7 +136,7 @@ pub struct BuiltinFn {
 pub enum Value {
     SamplePattern(SamplePatternValue),
     NumberPattern(NumberPatternValue),
-    Function(BuiltinFn),
+    Function(FunctionValue),
     String(String),
 }
 
@@ -532,7 +565,7 @@ impl SamplePatternValue {
         }
     }
 
-    pub(crate) fn every(self, period: i64, transform: BuiltinFn) -> Self {
+    pub(crate) fn every(self, period: i64, transform: FunctionValue) -> Self {
         Self {
             pattern: PatternRuntime::Every {
                 period,
@@ -542,11 +575,42 @@ impl SamplePatternValue {
         }
     }
 
-    pub(crate) fn sometimes_with_site_salt(self, transform: BuiltinFn, site_salt: u64) -> Self {
+    pub(crate) fn when(self, period: i64, offset: i64, transform: FunctionValue) -> Self {
+        Self {
+            pattern: PatternRuntime::When {
+                period,
+                offset,
+                transform,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn sometimes_with_site_salt(self, transform: FunctionValue, site_salt: u64) -> Self {
         Self {
             pattern: PatternRuntime::Sometimes {
                 site_salt,
                 transform,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn within(self, start: Rational, end: Rational, transform: FunctionValue) -> Self {
+        Self {
+            pattern: PatternRuntime::Within {
+                start,
+                end,
+                transform,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn mask(self, gate: GatePatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::Mask {
+                gate: Box::new(gate.into_runtime()),
                 inner: Box::new(self.pattern),
             },
         }
@@ -806,7 +870,7 @@ impl NumberPatternValue {
         }
     }
 
-    pub(crate) fn every(self, period: i64, transform: BuiltinFn) -> Self {
+    pub(crate) fn every(self, period: i64, transform: FunctionValue) -> Self {
         Self {
             pattern: PatternRuntime::Every {
                 period,
@@ -816,11 +880,42 @@ impl NumberPatternValue {
         }
     }
 
-    pub(crate) fn sometimes_with_site_salt(self, transform: BuiltinFn, site_salt: u64) -> Self {
+    pub(crate) fn when(self, period: i64, offset: i64, transform: FunctionValue) -> Self {
+        Self {
+            pattern: PatternRuntime::When {
+                period,
+                offset,
+                transform,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn sometimes_with_site_salt(self, transform: FunctionValue, site_salt: u64) -> Self {
         Self {
             pattern: PatternRuntime::Sometimes {
                 site_salt,
                 transform,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn within(self, start: Rational, end: Rational, transform: FunctionValue) -> Self {
+        Self {
+            pattern: PatternRuntime::Within {
+                start,
+                end,
+                transform,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn mask(self, gate: GatePatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::Mask {
+                gate: Box::new(gate.into_runtime()),
                 inner: Box::new(self.pattern),
             },
         }
@@ -921,12 +1016,28 @@ enum PatternRuntime<T> {
     Stack(Vec<Self>),
     Every {
         period: i64,
-        transform: BuiltinFn,
+        transform: FunctionValue,
+        inner: Box<Self>,
+    },
+    When {
+        period: i64,
+        offset: i64,
+        transform: FunctionValue,
         inner: Box<Self>,
     },
     Sometimes {
         site_salt: u64,
-        transform: BuiltinFn,
+        transform: FunctionValue,
+        inner: Box<Self>,
+    },
+    Within {
+        start: Rational,
+        end: Rational,
+        transform: FunctionValue,
+        inner: Box<Self>,
+    },
+    Mask {
+        gate: Box<GatePatternRuntime>,
         inner: Box<Self>,
     },
     Fast {
@@ -1012,6 +1123,39 @@ enum PatternRuntime<T> {
     },
 }
 
+#[derive(Clone, Debug)]
+enum GatePatternRuntime {
+    Sample(Box<PatternRuntime<SampleEvent>>),
+    Number(Box<PatternRuntime<f64>>),
+}
+
+impl GatePatternValue {
+    fn into_runtime(self) -> GatePatternRuntime {
+        match self {
+            Self::Sample(pattern) => GatePatternRuntime::Sample(Box::new(pattern.pattern)),
+            Self::Number(pattern) => GatePatternRuntime::Number(Box::new(pattern.pattern)),
+        }
+    }
+}
+
+impl GatePatternRuntime {
+    fn query_open_spans(&self, span: &TimeSpan) -> Result<Vec<TimeSpan>, EvalError> {
+        let spans = match self {
+            Self::Sample(pattern) => pattern
+                .try_query(span)?
+                .into_iter()
+                .map(|event| event.part)
+                .collect(),
+            Self::Number(pattern) => pattern
+                .try_query(span)?
+                .into_iter()
+                .map(|event| event.part)
+                .collect(),
+        };
+        merge_open_spans(spans)
+    }
+}
+
 impl<T> PatternRuntime<T>
 where
     T: PatternRuntimeValue,
@@ -1031,11 +1175,24 @@ where
                 transform,
                 inner,
             } => query_every(inner, transform, *period, span),
+            Self::When {
+                period,
+                offset,
+                transform,
+                inner,
+            } => query_when(inner, transform, *period, *offset, span),
             Self::Sometimes {
                 site_salt,
                 transform,
                 inner,
             } => query_sometimes(inner, transform, *site_salt, span),
+            Self::Within {
+                start,
+                end,
+                transform,
+                inner,
+            } => query_within(inner, start, end, transform, span),
+            Self::Mask { gate, inner } => query_mask(inner, gate, span),
             Self::Fast { factor, inner } => query_fast(inner, *factor, span),
             Self::Slow { factor, inner } => query_slow(inner, *factor, span),
             Self::Shift { offset, inner } => query_shift(inner, offset, span),
@@ -1122,6 +1279,62 @@ where
     }
     sort_events(&mut events);
     Ok(events)
+}
+
+fn query_mask<T>(
+    inner: &PatternRuntime<T>,
+    gate: &GatePatternRuntime,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    let source_events = inner.try_query(span)?;
+    let gate_spans = gate.query_open_spans(span)?;
+    if source_events.is_empty() || gate_spans.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let gate_events = gate_spans
+        .into_iter()
+        .map(|part| Event {
+            whole: None,
+            part,
+            value: 1.0,
+        })
+        .collect::<Vec<_>>();
+    let mut masked = Vec::with_capacity(source_events.len());
+
+    for event in source_events {
+        let Some(boundaries) = compute_event_fragment_boundaries(&event.part, &[&gate_events[..]])
+        else {
+            continue;
+        };
+
+        for window in boundaries.windows(2) {
+            let &[start, end] = window else {
+                continue;
+            };
+            if start >= end {
+                continue;
+            }
+
+            let part = build_span(start.clone(), end.clone())?;
+            if gate_events
+                .iter()
+                .any(|gate_event| spans_overlap(&gate_event.part, &part))
+            {
+                masked.push(Event {
+                    whole: None,
+                    part,
+                    value: event.value.clone(),
+                });
+            }
+        }
+    }
+
+    sort_events(&mut masked);
+    Ok(masked)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1477,7 +1690,7 @@ where
 
 fn query_every<T>(
     inner: &PatternRuntime<T>,
-    transform: &BuiltinFn,
+    transform: &FunctionValue,
     period: i64,
     span: &TimeSpan,
 ) -> Result<Vec<Event<T>>, EvalError>
@@ -1494,9 +1707,30 @@ where
     })
 }
 
+fn query_when<T>(
+    inner: &PatternRuntime<T>,
+    transform: &FunctionValue,
+    period: i64,
+    offset: i64,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let period = i128::from(period);
+    let offset = i128::from(offset);
+    query_transform_cycles(inner, transform, span, |cycle| {
+        cycle.rem_euclid(period) == offset
+    })
+}
+
 fn query_sometimes<T>(
     inner: &PatternRuntime<T>,
-    transform: &BuiltinFn,
+    transform: &FunctionValue,
     site_salt: u64,
     span: &TimeSpan,
 ) -> Result<Vec<Event<T>>, EvalError>
@@ -1514,7 +1748,7 @@ where
 
 fn query_transform_cycles<T, F>(
     inner: &PatternRuntime<T>,
-    transform: &BuiltinFn,
+    transform: &FunctionValue,
     span: &TimeSpan,
     mut should_transform: F,
 ) -> Result<Vec<Event<T>>, EvalError>
@@ -1539,14 +1773,65 @@ where
             let local_offset = rational_sub(&Rational::zero(), &cycle_offset)?;
             let local_query = translate_span(&query_slice, &local_offset)?;
             let localized = localize_cycle_runtime(inner, cycle, absolute_cycle)?;
-            let transformed =
-                apply_builtin_function(transform, vec![T::into_runtime_value(localized)])?;
             let mut transformed_events =
-                T::try_from_runtime_value(transformed)?.try_query(&local_query)?;
+                apply_unary_transform(transform, localized)?.try_query(&local_query)?;
             shift_events(&mut transformed_events, &cycle_offset)?;
             events.extend(transformed_events);
         } else {
             events.extend(inner.try_query(&query_slice)?);
+        }
+    }
+
+    sort_events(&mut events);
+    Ok(events)
+}
+
+fn query_within<T>(
+    inner: &PatternRuntime<T>,
+    start: &Rational,
+    end: &Rational,
+    transform: &FunctionValue,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut events = Vec::with_capacity(8);
+    let start_cycle = floor_rational(span.start());
+    let end_cycle = ceil_rational(span.end());
+
+    for cycle in start_cycle..end_cycle {
+        let cycle_span = cycle_span(cycle)?;
+        let Some(query_slice) = clip_span(&cycle_span, span)? else {
+            continue;
+        };
+        let window_span = within_window_span(cycle, start, end)?;
+        let Some(window_query) = clip_span(&window_span, &query_slice)? else {
+            events.extend(inner.try_query(&query_slice)?);
+            continue;
+        };
+
+        if let Some(before_window) =
+            clip_between(&query_slice, cycle_span.start(), window_span.start())?
+        {
+            events.extend(inner.try_query(&before_window)?);
+        }
+
+        let absolute_cycle = absolute_cycle_for_runtime(inner, cycle)?;
+        let localized = localize_window_runtime(inner, &window_span, absolute_cycle)?;
+        let local_query = localize_span_to_window(&window_query, &window_span)?;
+        let mut transformed_events =
+            apply_unary_transform(transform, localized)?.try_query(&local_query)?;
+        restore_window_localized_events(&mut transformed_events, &window_span)?;
+        events.extend(transformed_events);
+
+        if let Some(after_window) = clip_between(&query_slice, window_span.end(), cycle_span.end())?
+        {
+            events.extend(inner.try_query(&after_window)?);
         }
     }
 
@@ -1641,6 +1926,32 @@ where
     })
 }
 
+fn localize_window_runtime<T>(
+    inner: &PatternRuntime<T>,
+    window_span: &TimeSpan,
+    origin_cycle: i128,
+) -> Result<PatternRuntime<T>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    let window_start = window_span.start().clone();
+    let width = window_width(window_span)?;
+    let normalize_factor = rational_reciprocal(&width)?;
+    let local_offset = rational_sub(&Rational::zero(), &window_start)?;
+    let mut localized_events = inner.try_query(window_span)?;
+
+    for event in &mut localized_events {
+        event.part = translate_span(&event.part, &local_offset)?;
+        event.part = scale_span_by_rational(&event.part, &normalize_factor)?;
+        event.whole = None;
+    }
+
+    Ok(PatternRuntime::ExplicitCycle {
+        origin_cycle,
+        stream: EventStream::new(localized_events),
+    })
+}
+
 fn absolute_cycle_for_runtime<T>(
     runtime: &PatternRuntime<T>,
     cycle: i128,
@@ -1650,7 +1961,10 @@ fn absolute_cycle_for_runtime<T>(
             .checked_add(cycle)
             .ok_or_else(|| EvalError::new("cycle index overflowed while localizing a pattern")),
         PatternRuntime::Every { inner, .. }
+        | PatternRuntime::When { inner, .. }
         | PatternRuntime::Sometimes { inner, .. }
+        | PatternRuntime::Within { inner, .. }
+        | PatternRuntime::Mask { inner, .. }
         | PatternRuntime::Fast { inner, .. }
         | PatternRuntime::Slow { inner, .. }
         | PatternRuntime::Shift { inner, .. }
@@ -1750,6 +2064,39 @@ fn clip_span(span: &TimeSpan, query: &TimeSpan) -> Result<Option<TimeSpan>, Eval
     build_span(start.clone(), end.clone()).map(Some)
 }
 
+fn merge_open_spans(mut spans: Vec<TimeSpan>) -> Result<Vec<TimeSpan>, EvalError> {
+    if spans.is_empty() {
+        return Ok(spans);
+    }
+
+    spans.sort_by(|left, right| {
+        left.start()
+            .cmp(right.start())
+            .then(left.end().cmp(right.end()))
+    });
+
+    let mut iter = spans.into_iter();
+    let mut current = iter.next().expect("non-empty after early return");
+    let mut merged = Vec::new();
+
+    for span in iter {
+        if span.start() <= current.end() {
+            let merged_end = if span.end() > current.end() {
+                span.end().clone()
+            } else {
+                current.end().clone()
+            };
+            current = build_span(current.start().clone(), merged_end)?;
+        } else {
+            merged.push(current);
+            current = span;
+        }
+    }
+
+    merged.push(current);
+    Ok(merged)
+}
+
 fn spans_overlap(a: &TimeSpan, b: &TimeSpan) -> bool {
     max(a.start(), b.start()) < min(a.end(), b.end())
 }
@@ -1797,11 +2144,71 @@ fn scale_span(span: &TimeSpan, numerator: i64, denominator: i64) -> Result<TimeS
     )
 }
 
+fn scale_span_by_rational(span: &TimeSpan, factor: &Rational) -> Result<TimeSpan, EvalError> {
+    build_span(
+        rational_mul(span.start(), factor)?,
+        rational_mul(span.end(), factor)?,
+    )
+}
+
 fn translate_span(span: &TimeSpan, offset: &Rational) -> Result<TimeSpan, EvalError> {
     build_span(
         rational_add(span.start(), offset)?,
         rational_add(span.end(), offset)?,
     )
+}
+
+fn clip_between(
+    query: &TimeSpan,
+    start: &Rational,
+    end: &Rational,
+) -> Result<Option<TimeSpan>, EvalError> {
+    if start >= end {
+        return Ok(None);
+    }
+    clip_span(&build_span(start.clone(), end.clone())?, query)
+}
+
+fn within_window_span(
+    cycle: i128,
+    start: &Rational,
+    end: &Rational,
+) -> Result<TimeSpan, EvalError> {
+    let cycle_start = rational_from_parts(cycle, 1)?;
+    build_span(
+        rational_add(&cycle_start, start)?,
+        rational_add(&cycle_start, end)?,
+    )
+}
+
+fn window_width(window_span: &TimeSpan) -> Result<Rational, EvalError> {
+    rational_sub(window_span.end(), window_span.start())
+}
+
+fn localize_span_to_window(span: &TimeSpan, window_span: &TimeSpan) -> Result<TimeSpan, EvalError> {
+    let width = window_width(window_span)?;
+    let normalize_factor = rational_reciprocal(&width)?;
+    let local_offset = rational_sub(&Rational::zero(), window_span.start())?;
+    let translated = translate_span(span, &local_offset)?;
+    scale_span_by_rational(&translated, &normalize_factor)
+}
+
+fn restore_window_localized_events<T>(
+    events: &mut [Event<T>],
+    window_span: &TimeSpan,
+) -> Result<(), EvalError> {
+    let width = window_width(window_span)?;
+    for event in &mut *events {
+        event.part = scale_span_by_rational(&event.part, &width)?;
+        event.part = translate_span(&event.part, window_span.start())?;
+        if let Some(whole) = event.whole.take() {
+            let scaled = scale_span_by_rational(&whole, &width)?;
+            event.whole = Some(translate_span(&scaled, window_span.start())?);
+        }
+    }
+
+    sort_events(events);
+    Ok(())
 }
 
 fn build_span(start: Rational, end: Rational) -> Result<TimeSpan, EvalError> {
@@ -1815,6 +2222,16 @@ fn rational_add(left: &Rational, right: &Rational) -> Result<Rational, EvalError
 
 fn rational_sub(left: &Rational, right: &Rational) -> Result<Rational, EvalError> {
     left.checked_sub(right)
+        .map_err(|error| map_pattern_error(&error))
+}
+
+fn rational_mul(left: &Rational, right: &Rational) -> Result<Rational, EvalError> {
+    left.checked_mul(right)
+        .map_err(|error| map_pattern_error(&error))
+}
+
+fn rational_reciprocal(value: &Rational) -> Result<Rational, EvalError> {
+    Rational::checked_from_parts(value.denominator(), value.numerator())
         .map_err(|error| map_pattern_error(&error))
 }
 
@@ -1832,6 +2249,18 @@ fn rational_mul_parts(
 
 fn rational_from_parts(numerator: i128, denominator: i128) -> Result<Rational, EvalError> {
     Rational::checked_from_parts(numerator, denominator).map_err(|error| map_pattern_error(&error))
+}
+
+fn apply_unary_transform<T>(
+    transform: &FunctionValue,
+    localized: PatternRuntime<T>,
+) -> Result<PatternRuntime<T>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    let transformed =
+        apply_function_value(transform.clone(), vec![T::into_runtime_value(localized)])?;
+    T::try_from_runtime_value(transformed)
 }
 
 /// Calculates a deterministic, pseudorandom Boolean flag indicating if the
@@ -1898,12 +2327,12 @@ const fn ceil_rational(value: &Rational) -> i128 {
 #[cfg(test)]
 mod tests {
     use super::{
-        BuiltinFn, BuiltinKind, NumberPatternValue, SampleEvent, SamplePatternValue, Value,
-        cycle_span, sometimes_applies_on_cycle,
+        BuiltinFn, BuiltinKind, FunctionValue, NumberPatternValue, SampleEvent, SamplePatternValue,
+        Value, cycle_span, sometimes_applies_on_cycle,
     };
     use orpheus_pattern::{Event, PatternNode, Rational, TimeSpan};
 
-    fn unary_transform(kind: BuiltinKind, args: Vec<Value>) -> BuiltinFn {
+    fn unary_transform(kind: BuiltinKind, args: Vec<Value>) -> FunctionValue {
         let function = BuiltinFn::new(kind);
         match function.apply(args).unwrap() {
             Value::Function(function) => function,
@@ -1915,7 +2344,7 @@ mod tests {
         kind: BuiltinKind,
         args: Vec<Value>,
         site_salt: u64,
-    ) -> BuiltinFn {
+    ) -> FunctionValue {
         let function = BuiltinFn::new(kind).with_site_salt(site_salt);
         match function.apply(args).unwrap() {
             Value::Function(function) => function,

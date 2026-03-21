@@ -1,0 +1,54 @@
+{
+  "cycle_count": 1,
+  "events": [
+    {
+      "end_den": 8,
+      "end_float": 0.125,
+      "end_num": 1,
+      "gain": 1.0,
+      "hpf_cutoff_hz": null,
+      "lpf_cutoff_hz": null,
+      "pan": 0.0,
+      "rate": 1.0,
+      "sample": "bd",
+      "slice_end": 1.0,
+      "slice_start": 0.0,
+      "start_den": 1,
+      "start_float": 0.0,
+      "start_num": 0
+    },
+    {
+      "end_den": 2,
+      "end_float": 0.5,
+      "end_num": 1,
+      "gain": 1.0,
+      "hpf_cutoff_hz": null,
+      "lpf_cutoff_hz": null,
+      "pan": 0.0,
+      "rate": 1.0,
+      "sample": "hh",
+      "slice_end": 1.0,
+      "slice_start": 0.0,
+      "start_den": 8,
+      "start_float": 0.375,
+      "start_num": 3
+    },
+    {
+      "end_den": 8,
+      "end_float": 0.875,
+      "end_num": 7,
+      "gain": 1.0,
+      "hpf_cutoff_hz": null,
+      "lpf_cutoff_hz": null,
+      "pan": 0.0,
+      "rate": 1.0,
+      "sample": "cp",
+      "slice_end": 1.0,
+      "slice_start": 0.0,
+      "start_den": 4,
+      "start_float": 0.75,
+      "start_num": 3
+    }
+  ],
+  "kind": "sample"
+}

@@ -18,9 +18,9 @@ pub use ast::{Expr, Module, Stmt};
 pub use diagnostics::{LoadError, ParseError, TypeError};
 pub use eval::{EvalError, eval_module, render_span};
 pub use export::{
-    RenderError, export_number_pattern_to_csv, export_sample_pattern_to_csv,
-    render_sample_pattern_to_file, render_sample_pattern_to_file_with_bank,
-    render_sample_pattern_to_wav,
+    RenderError, export_number_pattern_to_csv, export_number_pattern_to_json,
+    export_sample_pattern_to_csv, export_sample_pattern_to_json, render_sample_pattern_to_file,
+    render_sample_pattern_to_file_with_bank, render_sample_pattern_to_wav,
 };
 pub use loader::load_file_strict;
 pub use parser::parse_module;
