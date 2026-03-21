@@ -383,6 +383,29 @@ fn within_pipe_matches_direct_call() {
 }
 
 #[test]
+fn within_full_cycle_window_matches_direct_transform() {
+    let direct = eval_module("drums = rev(bd sn cp hh)", ReplMode::Loose).unwrap();
+    let within = eval_module("drums = bd sn cp hh |> within(0, 1, rev)", ReplMode::Loose).unwrap();
+
+    assert_eq!(
+        direct
+            .get("drums")
+            .unwrap()
+            .as_sample_pattern()
+            .unwrap()
+            .query_unit()
+            .unwrap(),
+        within
+            .get("drums")
+            .unwrap()
+            .as_sample_pattern()
+            .unwrap()
+            .query_unit()
+            .unwrap(),
+    );
+}
+
+#[test]
 fn within_accepts_parameterized_unary_transforms() {
     let module = eval_module(
         "swing amt pat = pat |> shift(amt)\n\
