@@ -433,3 +433,28 @@ fn named_pitch_literals_report_pitch_specific_diagnostics() {
     assert!(message.contains("pitch"));
     assert!(message.contains("octave"));
 }
+
+#[test]
+fn chord_infers_number_patterns() {
+    let typed = infer_module("pad = chord(c4, 0 4 7)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("pad").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn chord_infers_over_root_sequences() {
+    let typed = infer_module("line = chord(c4 e4, 0 7)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("line").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn chord_accepts_degree_derived_roots() {
+    let typed = infer_module(
+        "harm = chord(degrees(aeolian, 0 2) |> transpose(60), 0 3 7)",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(typed.type_of("harm").to_string(), "Pattern<Number>");
+}

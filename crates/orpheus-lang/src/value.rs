@@ -38,6 +38,7 @@ pub enum BuiltinKind {
     Sometimes,
     Within,
     Mask,
+    Chord,
     Euclid,
     PitchClassSet,
     Degrees,
@@ -1060,6 +1061,14 @@ impl NumberPatternValue {
                 inner: Box::new(self.pattern),
             },
         }
+    }
+
+    pub(crate) fn chord(self, intervals: Vec<f64>) -> Self {
+        let mut layers = Vec::with_capacity(intervals.len());
+        for interval in intervals {
+            layers.push(self.clone().transpose(interval));
+        }
+        Self::stack(layers)
     }
 
     pub(crate) fn transpose(self, semitones: f64) -> Self {
