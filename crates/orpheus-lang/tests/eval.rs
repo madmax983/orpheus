@@ -134,6 +134,44 @@ fn when_applies_its_transform_only_on_matching_cycle_offsets() {
 }
 
 #[test]
+fn when_applies_its_transform_on_cycles_one_and_four_in_a_five_cycle_query() {
+    let module = eval_module("drums = bd sn |> when(3, 1, rev)", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 5);
+
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event["sample"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["bd", "sn", "sn", "bd", "bd", "sn", "bd", "sn", "sn", "bd"]
+    );
+    assert_eq!(events[0]["start_num"].as_i64().unwrap(), 0);
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| {
+                (
+                    event["start_num"].as_i64().unwrap(),
+                    event["start_den"].as_i64().unwrap(),
+                )
+            })
+            .collect::<Vec<_>>(),
+        vec![
+            (0, 1),
+            (1, 2),
+            (1, 1),
+            (3, 2),
+            (2, 1),
+            (5, 2),
+            (3, 1),
+            (7, 2),
+            (4, 1),
+            (9, 2),
+        ]
+    );
+}
+
+#[test]
 fn every_transforms_the_selected_cycle_in_isolation() {
     let module = eval_module(
         "drums = every(2, fast(2), every(3, rev, bd sn cp))",
