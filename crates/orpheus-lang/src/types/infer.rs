@@ -311,6 +311,7 @@ impl Inferencer {
             | (Type::Note, Type::Note)
             | (Type::Number, Type::Number)
             | (Type::Duration, Type::Duration)
+            | (Type::PitchClassSet, Type::PitchClassSet)
             | (Type::String, Type::String)
             | (Type::Unit, Type::Unit) => Ok(()),
             (left, right) => {
@@ -349,6 +350,7 @@ impl Inferencer {
             | Type::Note
             | Type::Number
             | Type::Duration
+            | Type::PitchClassSet
             | Type::String
             | Type::Unit => false,
         }
@@ -370,6 +372,7 @@ impl Inferencer {
             Type::Note => Type::Note,
             Type::Number => Type::Number,
             Type::Duration => Type::Duration,
+            Type::PitchClassSet => Type::PitchClassSet,
             Type::String => Type::String,
             Type::Unit => Type::Unit,
         }
@@ -419,6 +422,7 @@ fn substitute_scheme_vars(ty: &Type, replacements: &BTreeMap<TypeVarId, Type>) -
         Type::Note => Type::Note,
         Type::Number => Type::Number,
         Type::Duration => Type::Duration,
+        Type::PitchClassSet => Type::PitchClassSet,
         Type::String => Type::String,
         Type::Unit => Type::Unit,
     }
@@ -436,8 +440,12 @@ fn free_type_vars(ty: &Type) -> BTreeSet<TypeVarId> {
             vars
         }
         Type::Var(var) => BTreeSet::from([*var]),
-        Type::Sample | Type::Note | Type::Number | Type::Duration | Type::String | Type::Unit => {
-            BTreeSet::new()
-        }
+        Type::Sample
+        | Type::Note
+        | Type::Number
+        | Type::Duration
+        | Type::PitchClassSet
+        | Type::String
+        | Type::Unit => BTreeSet::new(),
     }
 }

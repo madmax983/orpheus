@@ -367,8 +367,27 @@ fn euclid_masks_preserve_source_pattern_types() {
 }
 
 #[test]
-fn degrees_infer_number_patterns() {
-    let typed = infer_module(r#"line = degrees("aeolian", 0 2 4)"#, ReplMode::Strict).unwrap();
+fn pitch_class_set_infers_first_class_values() {
+    let typed = infer_module("hirajoshi = pitch_class_set(0 2 3 7 8)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("hirajoshi").to_string(), "PitchClassSet");
+}
+
+#[test]
+fn degrees_accept_canonical_pitch_class_set_bindings() {
+    let typed = infer_module("line = degrees(aeolian, 0 2 4)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("line").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn degrees_accept_user_defined_pitch_class_sets() {
+    let typed = infer_module(
+        "hirajoshi = pitch_class_set(0 2 3 7 8)\n\
+         line = degrees(hirajoshi, 0 1 2 4)",
+        ReplMode::Strict,
+    )
+    .unwrap();
 
     assert_eq!(typed.type_of("line").to_string(), "Pattern<Number>");
 }
@@ -376,10 +395,18 @@ fn degrees_infer_number_patterns() {
 #[test]
 fn degrees_transpose_preserves_number_pattern_types() {
     let typed = infer_module(
-        r#"line = degrees("aeolian", 0 2 4) |> transpose(45)"#,
+        "line = degrees(aeolian, 0 2 4) |> transpose(45)",
         ReplMode::Strict,
     )
     .unwrap();
 
     assert_eq!(typed.type_of("line").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn degrees_reject_string_collection_arguments() {
+    let error = infer_module(r#"line = degrees("aeolian", 0 2 4)"#, ReplMode::Strict).unwrap_err();
+    let message = error.to_string();
+
+    assert!(message.contains("PitchClassSet") || message.contains("degrees"));
 }

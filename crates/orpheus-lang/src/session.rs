@@ -268,7 +268,7 @@ impl ReplSession {
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 }
             }
-            Value::Function(_) | Value::String(_) => {
+            Value::PitchClassSet(_) | Value::Function(_) | Value::String(_) => {
                 return Err(format!(
                     "binding `{binding_name}` is a {} and cannot be exported",
                     value.kind_name()

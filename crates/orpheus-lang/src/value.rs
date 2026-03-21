@@ -39,6 +39,7 @@ pub enum BuiltinKind {
     Within,
     Mask,
     Euclid,
+    PitchClassSet,
     Degrees,
     Fast,
     Slow,
@@ -94,16 +95,6 @@ pub enum GatePatternValue {
     Number(NumberPatternValue),
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DegreeCollection {
-    Ionian,
-    Dorian,
-    Phrygian,
-    Mixolydian,
-    Aeolian,
-    MinorPentatonic,
-}
-
 const IONIAN_INTERVALS: [i32; 7] = [0, 2, 4, 5, 7, 9, 11];
 const DORIAN_INTERVALS: [i32; 7] = [0, 2, 3, 5, 7, 9, 10];
 const PHRYGIAN_INTERVALS: [i32; 7] = [0, 1, 3, 5, 7, 8, 10];
@@ -111,28 +102,72 @@ const MIXOLYDIAN_INTERVALS: [i32; 7] = [0, 2, 4, 5, 7, 9, 10];
 const AEOLIAN_INTERVALS: [i32; 7] = [0, 2, 3, 5, 7, 8, 10];
 const MINOR_PENTATONIC_INTERVALS: [i32; 5] = [0, 3, 5, 7, 10];
 
-impl DegreeCollection {
-    pub(crate) fn from_name(name: &str) -> Option<Self> {
-        match name {
-            "ionian" => Some(Self::Ionian),
-            "dorian" => Some(Self::Dorian),
-            "phrygian" => Some(Self::Phrygian),
-            "mixolydian" => Some(Self::Mixolydian),
-            "aeolian" => Some(Self::Aeolian),
-            "minor_pentatonic" => Some(Self::MinorPentatonic),
-            _ => None,
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PitchClassSetValue {
+    pitch_classes: Vec<i32>,
+}
+
+impl PitchClassSetValue {
+    pub(crate) fn new(pitch_classes: Vec<i32>) -> Result<Self, EvalError> {
+        if pitch_classes.first().copied() != Some(0) {
+            return Err(EvalError::new(
+                "`pitch_class_set` requires the first pitch class to be 0",
+            ));
+        }
+
+        let mut previous = None;
+        for pitch_class in &pitch_classes {
+            if !(0..=11).contains(pitch_class) {
+                return Err(EvalError::new(
+                    "`pitch_class_set` requires pitch classes within [0, 11]",
+                ));
+            }
+
+            if let Some(previous) = previous
+                && *pitch_class <= previous
+            {
+                return Err(EvalError::new(
+                    "`pitch_class_set` requires strictly increasing pitch classes",
+                ));
+            }
+            previous = Some(*pitch_class);
+        }
+
+        Ok(Self { pitch_classes })
+    }
+
+    fn from_slice(pitch_classes: &[i32]) -> Self {
+        Self {
+            pitch_classes: pitch_classes.to_vec(),
         }
     }
 
-    const fn intervals(self) -> &'static [i32] {
-        match self {
-            Self::Ionian => &IONIAN_INTERVALS,
-            Self::Dorian => &DORIAN_INTERVALS,
-            Self::Phrygian => &PHRYGIAN_INTERVALS,
-            Self::Mixolydian => &MIXOLYDIAN_INTERVALS,
-            Self::Aeolian => &AEOLIAN_INTERVALS,
-            Self::MinorPentatonic => &MINOR_PENTATONIC_INTERVALS,
-        }
+    pub(crate) fn ionian() -> Self {
+        Self::from_slice(&IONIAN_INTERVALS)
+    }
+
+    pub(crate) fn dorian() -> Self {
+        Self::from_slice(&DORIAN_INTERVALS)
+    }
+
+    pub(crate) fn phrygian() -> Self {
+        Self::from_slice(&PHRYGIAN_INTERVALS)
+    }
+
+    pub(crate) fn mixolydian() -> Self {
+        Self::from_slice(&MIXOLYDIAN_INTERVALS)
+    }
+
+    pub(crate) fn aeolian() -> Self {
+        Self::from_slice(&AEOLIAN_INTERVALS)
+    }
+
+    pub(crate) fn minor_pentatonic() -> Self {
+        Self::from_slice(&MINOR_PENTATONIC_INTERVALS)
+    }
+
+    pub(crate) fn intervals(&self) -> &[i32] {
+        &self.pitch_classes
     }
 }
 
@@ -178,6 +213,7 @@ impl DegreeCollection {
 pub enum Value {
     SamplePattern(SamplePatternValue),
     NumberPattern(NumberPatternValue),
+    PitchClassSet(PitchClassSetValue),
     Function(FunctionValue),
     String(String),
 }
@@ -197,7 +233,10 @@ impl Value {
     pub const fn as_sample_pattern(&self) -> Option<&SamplePatternValue> {
         match self {
             Self::SamplePattern(pattern) => Some(pattern),
-            Self::NumberPattern(_) | Self::Function(_) | Self::String(_) => None,
+            Self::NumberPattern(_)
+            | Self::PitchClassSet(_)
+            | Self::Function(_)
+            | Self::String(_) => None,
         }
     }
 
@@ -215,7 +254,21 @@ impl Value {
     pub const fn as_number_pattern(&self) -> Option<&NumberPatternValue> {
         match self {
             Self::NumberPattern(pattern) => Some(pattern),
-            Self::SamplePattern(_) | Self::Function(_) | Self::String(_) => None,
+            Self::SamplePattern(_)
+            | Self::PitchClassSet(_)
+            | Self::Function(_)
+            | Self::String(_) => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn as_pitch_class_set(&self) -> Option<&PitchClassSetValue> {
+        match self {
+            Self::PitchClassSet(pitch_class_set) => Some(pitch_class_set),
+            Self::SamplePattern(_)
+            | Self::NumberPattern(_)
+            | Self::Function(_)
+            | Self::String(_) => None,
         }
     }
 
@@ -236,6 +289,7 @@ impl Value {
         match self {
             Self::SamplePattern(_) => "sample pattern",
             Self::NumberPattern(_) => "number pattern",
+            Self::PitchClassSet(_) => "pitch class set",
             Self::Function(_) => "function",
             Self::String(_) => "string",
         }
@@ -363,7 +417,7 @@ trait PatternValueTransform: Sized {
     fn adjust_pan(&self, amount: f64) -> Self;
     fn adjust_rate(&self, factor: f64) -> Self;
     fn adjust_slice(&self, start: f64, end: f64) -> Self;
-    fn map_degrees(&self, collection: DegreeCollection) -> Result<Self, EvalError>;
+    fn map_degrees(&self, collection: &PitchClassSetValue) -> Result<Self, EvalError>;
     fn transpose_semitones(&self, semitones: f64) -> Result<Self, EvalError>;
 }
 
@@ -453,7 +507,7 @@ impl PatternValueTransform for SampleEvent {
         }
     }
 
-    fn map_degrees(&self, _collection: DegreeCollection) -> Result<Self, EvalError> {
+    fn map_degrees(&self, _collection: &PitchClassSetValue) -> Result<Self, EvalError> {
         Err(EvalError::new(
             "internal evaluator error: degree mapping only applies to number patterns",
         ))
@@ -491,7 +545,7 @@ impl PatternValueTransform for f64 {
         *self
     }
 
-    fn map_degrees(&self, collection: DegreeCollection) -> Result<Self, EvalError> {
+    fn map_degrees(&self, collection: &PitchClassSetValue) -> Result<Self, EvalError> {
         let degree = whole_number_from_degree_value(*self)?;
         map_degree_to_semitones(degree, collection)
     }
@@ -516,7 +570,10 @@ impl PatternRuntimeValue for SampleEvent {
     fn try_from_runtime_value(value: Value) -> Result<PatternRuntime<Self>, EvalError> {
         match value {
             Value::SamplePattern(pattern) => Ok(pattern.pattern),
-            Value::NumberPattern(_) | Value::Function(_) | Value::String(_) => Err(EvalError::new(
+            Value::NumberPattern(_)
+            | Value::PitchClassSet(_)
+            | Value::Function(_)
+            | Value::String(_) => Err(EvalError::new(
                 "transform returned an incompatible value; expected Pattern<Sample>",
             )),
         }
@@ -535,7 +592,10 @@ impl PatternRuntimeValue for f64 {
     fn try_from_runtime_value(value: Value) -> Result<PatternRuntime<Self>, EvalError> {
         match value {
             Value::NumberPattern(pattern) => Ok(pattern.pattern),
-            Value::SamplePattern(_) | Value::Function(_) | Value::String(_) => Err(EvalError::new(
+            Value::SamplePattern(_)
+            | Value::PitchClassSet(_)
+            | Value::Function(_)
+            | Value::String(_) => Err(EvalError::new(
                 "transform returned an incompatible value; expected Pattern<Number>",
             )),
         }
@@ -993,7 +1053,7 @@ impl NumberPatternValue {
         }
     }
 
-    pub(crate) fn degrees(self, collection: DegreeCollection) -> Self {
+    pub(crate) fn degrees(self, collection: PitchClassSetValue) -> Self {
         Self {
             pattern: PatternRuntime::Degrees {
                 collection,
@@ -1140,7 +1200,7 @@ enum PatternRuntime<T> {
         inner: Box<Self>,
     },
     Degrees {
-        collection: DegreeCollection,
+        collection: PitchClassSetValue,
         inner: Box<Self>,
     },
     Transpose {
@@ -1301,7 +1361,7 @@ where
             } => query_within(inner, start, end, transform, span),
             Self::Mask { gate, inner } => query_mask(inner, gate, span),
             Self::Degrees { collection, inner } => {
-                apply_value_transform(inner, span, |value| value.map_degrees(*collection))
+                apply_value_transform(inner, span, |value| value.map_degrees(collection))
             }
             Self::Transpose { semitones, inner } => {
                 apply_value_transform(inner, span, |value| value.transpose_semitones(*semitones))
@@ -1636,7 +1696,7 @@ fn whole_number_from_degree_value(value: f64) -> Result<i32, EvalError> {
         .map_err(|_| EvalError::new("`degrees` degree exceeded the supported evaluator range"))
 }
 
-fn map_degree_to_semitones(degree: i32, collection: DegreeCollection) -> Result<f64, EvalError> {
+fn map_degree_to_semitones(degree: i32, collection: &PitchClassSetValue) -> Result<f64, EvalError> {
     let intervals = collection.intervals();
     let scale_len = i32::try_from(intervals.len()).unwrap_or_default();
     let octave = degree.div_euclid(scale_len);
