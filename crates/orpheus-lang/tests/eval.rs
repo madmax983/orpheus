@@ -718,6 +718,32 @@ fn euclid_full_pulses_generates_all_steps() {
 }
 
 #[test]
+fn euclid_generates_five_open_steps_in_eight() {
+    let module = eval_module("clave = euclid(5, 8)", ReplMode::Loose).unwrap();
+    let events = module
+        .get("clave")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 5);
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| (event.part.start().clone(), event.part.end().clone()))
+            .collect::<Vec<_>>(),
+        vec![
+            (Rational::zero(), Rational::new(1, 8).unwrap()),
+            (Rational::new(1, 4).unwrap(), Rational::new(3, 8).unwrap()),
+            (Rational::new(3, 8).unwrap(), Rational::new(1, 2).unwrap()),
+            (Rational::new(5, 8).unwrap(), Rational::new(3, 4).unwrap()),
+            (Rational::new(3, 4).unwrap(), Rational::new(7, 8).unwrap()),
+        ]
+    );
+}
+
+#[test]
 fn euclid_masks_expected_slices() {
     let module = eval_module(
         "drums = mask(euclid(3, 8), bd sn cp hh bd sn cp hh)",
