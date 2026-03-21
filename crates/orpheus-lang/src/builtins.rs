@@ -926,6 +926,12 @@ fn extract_whole_number(
         ))
     })?;
 
+    if integer > 1024 {
+        return Err(EvalError::new(format!(
+            "`{context}` exceeded the maximum allowed bound of 1024"
+        )));
+    }
+
     Ok(integer)
 }
 

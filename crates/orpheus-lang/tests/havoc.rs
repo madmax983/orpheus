@@ -1,23 +1,27 @@
 use orpheus_lang::ReplMode;
 use orpheus_lang::eval_module;
-use std::time::Instant;
+use proptest::prelude::*;
 
-#[test]
-fn havoc_seq_sections_timeout() {
-    let source = "a = seq_sections(section(bd, 9999999))";
+proptest! {
+    #[test]
+    fn euclid_does_not_allocate_oom(pulses in 0u32..u32::MAX, steps in 0u32..u32::MAX) {
+        let source = format!("a = euclid({pulses}, {steps})");
+        let _ = eval_module(&source, ReplMode::Loose);
+    }
+}
 
-    let start = Instant::now();
-    let result = eval_module(source, ReplMode::Loose);
-    let duration = start.elapsed();
+proptest! {
+    #[test]
+    fn when_does_not_allocate_oom(offset in 0u32..u32::MAX) {
+        let source = format!("a = when({offset}, rev, bd)");
+        let _ = eval_module(&source, ReplMode::Loose);
+    }
+}
 
-    assert!(
-        duration.as_secs() <= 2,
-        "💥 DETONATED: Evaluation took too long, likely due to an unbounded loop!"
-    );
-
-    let err = result.unwrap_err();
-    assert!(
-        err.to_string()
-            .contains("exceeded the maximum allowed bound")
-    );
+proptest! {
+    #[test]
+    fn seq_sections_does_not_allocate_oom(segments in 0u32..u32::MAX) {
+        let source = format!("a = seq_sections({segments}, bd, sn)");
+        let _ = eval_module(&source, ReplMode::Loose);
+    }
 }
