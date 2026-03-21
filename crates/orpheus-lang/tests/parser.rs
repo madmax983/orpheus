@@ -167,6 +167,21 @@ fn parses_sample_call_with_string_literal() {
 }
 
 #[test]
+fn named_pitch_literals_parse_inside_sequences() {
+    let expr = binding_expr("melody = c4 ef4 g4 bf4");
+
+    assert_eq!(
+        expr,
+        Expr::Seq(vec![
+            Expr::Ident("c4".to_owned()),
+            Expr::Ident("ef4".to_owned()),
+            Expr::Ident("g4".to_owned()),
+            Expr::Ident("bf4".to_owned()),
+        ])
+    );
+}
+
+#[test]
 fn parses_meter_annotation_prefix_form() {
     let expr = binding_expr("bridge = meter(4, 4) stream(at(beat(0), bd), at(beat(2), sn))");
 

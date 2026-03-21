@@ -7,6 +7,7 @@ mod eval;
 pub mod export;
 mod loader;
 mod parser;
+mod pitch;
 pub mod repl;
 pub mod session;
 mod svg;

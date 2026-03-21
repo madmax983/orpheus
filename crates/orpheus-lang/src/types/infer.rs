@@ -4,6 +4,7 @@ use crate::ReplMode;
 use crate::ast::{Expr, Module, Stmt, binding_expr_self_references};
 use crate::diagnostics::{ParseError, TypeError};
 use crate::parser::parse_module;
+use crate::pitch::parse_named_pitch_literal;
 use crate::types::env::{TypeEnv, TypeScheme};
 use crate::types::{Type, TypeVarId, TypedModule};
 
@@ -246,12 +247,15 @@ impl Inferencer {
     }
 
     fn infer_ident(&mut self, name: &str) -> Result<Type, TypeError> {
-        let scheme = self
-            .env
-            .get(name)
-            .cloned()
-            .ok_or_else(|| TypeError::new(format!("unresolved identifier `{name}`")))?;
-        Ok(self.instantiate(&scheme))
+        if let Some(scheme) = self.env.get(name).cloned() {
+            return Ok(self.instantiate(&scheme));
+        }
+
+        match parse_named_pitch_literal(name) {
+            Ok(Some(_)) => Ok(Type::pattern(Type::Number)),
+            Err(error) => Err(TypeError::new(error.to_string())),
+            Ok(None) => Err(TypeError::new(format!("unresolved identifier `{name}`"))),
+        }
     }
 
     fn apply_argument(&mut self, callee_ty: Type, arg_ty: Type) -> Result<Type, TypeError> {

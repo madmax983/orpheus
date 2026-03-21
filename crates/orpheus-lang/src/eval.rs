@@ -30,6 +30,7 @@ use crate::ast::{Expr, Module, Stmt, binding_expr_self_references};
 use crate::builtins::{builtin_value, is_sample_identifier, stack_values};
 use crate::diagnostics::ParseError;
 use crate::parser::parse_module;
+use crate::pitch::parse_named_pitch_literal;
 use crate::value::{
     FunctionValue, NumberPatternValue, SampleEvent, SamplePatternValue, UserFn, Value,
 };
@@ -712,6 +713,16 @@ impl Evaluator {
             return Ok(value);
         }
 
+        match parse_named_pitch_literal(name) {
+            Ok(Some(semitones)) => {
+                return Ok(Value::NumberPattern(NumberPatternValue::constant(
+                    f64::from(semitones),
+                )));
+            }
+            Err(error) => return Err(EvalError::new(error.to_string())),
+            Ok(None) => {}
+        }
+
         match self.mode {
             ReplMode::Loose => Err(EvalError::new(format!(
                 "unresolved identifier `{name}` in loose mode; placeholder playback is not implemented in Task 5"
@@ -820,6 +831,11 @@ impl Evaluator {
     fn try_number_node(&self, expr: &Expr) -> Result<Option<PatternNode<f64>>, EvalError> {
         match expr {
             Expr::Number(value) => Ok(Some(PatternNode::atom(*value))),
+            Expr::Ident(name) => match parse_named_pitch_literal(name) {
+                Ok(Some(semitones)) => Ok(Some(PatternNode::atom(f64::from(semitones)))),
+                Err(error) => Err(EvalError::new(error.to_string())),
+                Ok(None) => Ok(None),
+            },
             Expr::Rest => Ok(Some(PatternNode::rest())),
             Expr::Group(items) => {
                 let Some(nodes) = self.collect_number_nodes(items)? else {
