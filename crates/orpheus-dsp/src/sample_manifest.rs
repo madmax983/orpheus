@@ -1,3 +1,8 @@
+//! The `sample_manifest` module provides deserialization for sample bank definitions.
+//!
+//! This module defines the expected schema for `samples.ron` files, allowing directories
+//! of audio files to be aliased and configured into structured `SampleBank`s.
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;

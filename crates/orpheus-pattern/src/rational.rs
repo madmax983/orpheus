@@ -1,4 +1,4 @@
-//! Exact rational numbers for continuous time.
+//! The `rational` module implements exact rational numbers for continuous time.
 //!
 //! Orpheus uses rational numbers to avoid floating-point drift when sequencing
 //! repeating patterns.

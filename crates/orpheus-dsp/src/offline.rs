@@ -1,3 +1,9 @@
+//! The `offline` module provides non-real-time audio rendering.
+//!
+//! This module allows evaluated patterns to be rendered directly to audio files (like `.wav`)
+//! as fast as the CPU allows, bypassing the real-time system audio callbacks. This is useful
+//! for exporting bounces, offline testing, and generating static assets.
+
 use std::fs;
 use std::path::Path;
 

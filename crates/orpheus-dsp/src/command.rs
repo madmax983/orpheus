@@ -1,3 +1,9 @@
+//! The `command` module defines the data structures used to communicate with the DSP engine.
+//!
+//! This module provides the message-passing types that flow from the language evaluation
+//! thread down to the real-time audio thread. It includes parameter definitions like
+//! `SampleTrigger` and system-level operations like `EngineCommand`.
+
 use orpheus_pattern::Event;
 use rtrb::{Consumer, Producer, RingBuffer};
 

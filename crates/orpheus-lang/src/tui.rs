@@ -1,3 +1,10 @@
+//! The `tui` module implements the advanced terminal user interface.
+//!
+//! This module provides the full-screen interactive live-coding environment using
+//! `ratatui` and `crossterm`. It visualizes the current evaluated bindings,
+//! the active audio transport state, and provides real-time feedback for errors
+//! and evaluation events.
+
 use std::cell::Cell;
 use std::io;
 use std::path::Path;

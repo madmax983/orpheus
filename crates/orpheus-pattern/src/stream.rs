@@ -1,4 +1,4 @@
-//! Finite event streams in explicit time.
+//! The `stream` module implements finite event streams in explicit time.
 //!
 //! Unlike repeating patterns, an [`EventStream`] has a definite end and represents
 //! a fixed sequence of scheduled events.

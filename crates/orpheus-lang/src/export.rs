@@ -1,3 +1,9 @@
+//! The `export` module provides utilities for rendering and saving patterns.
+//!
+//! This module allows evaluated patterns to be rendered into deterministic offline audio
+//! files (WAV), or exported as structured data formats like JSON and CSV. These
+//! formats enable interoperability with external tools, data visualization, and DAWs.
+
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::io::Write;

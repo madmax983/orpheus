@@ -1,3 +1,9 @@
+//! The `engine` module encapsulates the real-time audio rendering system.
+//!
+//! This module coordinates the interaction between system audio APIs (like ALSA or `CoreAudio`),
+//! lock-free command queues, and the internal voice scheduler. It provides a thread-safe
+//! `EngineHandle` for the front-end to control the `RenderEngine` running on the audio thread.
+
 use cpal::{BufferSize, SampleRate, StreamConfig};
 use orpheus_pattern::Event;
 use rtrb::{Consumer, Producer};

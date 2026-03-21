@@ -1,3 +1,9 @@
+//! The `sample_bank` module manages collections of loaded audio samples.
+//!
+//! A `SampleBank` acts as an in-memory repository mapping string identifiers (like "bd" or "sn")
+//! to fully decoded `DecodedSample` buffers, allowing the engine to quickly look up
+//! and trigger audio events.
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
