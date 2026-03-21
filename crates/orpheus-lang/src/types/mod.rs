@@ -131,6 +131,24 @@ mod tests {
     }
 
     #[test]
+    fn typed_module_contains_key_and_type_of_work() {
+        let mut bindings = BTreeMap::new();
+        bindings.insert("x".to_string(), Type::Number);
+        let module = TypedModule::new(bindings);
+
+        assert!(module.contains_key("x"));
+        assert!(!module.contains_key("y"));
+        assert_eq!(module.type_of("x"), &Type::Number);
+    }
+
+    #[test]
+    #[should_panic(expected = "no inferred binding named `y`")]
+    fn typed_module_type_of_panics_on_missing_key() {
+        let module = TypedModule::new(BTreeMap::new());
+        let _ = module.type_of("y");
+    }
+
+    #[test]
     fn type_constructors_build_expected_structures() {
         assert_eq!(
             Type::pattern(Type::Number),
