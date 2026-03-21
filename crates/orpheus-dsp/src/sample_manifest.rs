@@ -561,9 +561,9 @@ mod tests {
         let manifest = parser.parse_manifest().unwrap();
         let region = manifest.regions.get("slice1").unwrap();
         assert_eq!(region.token, "loop");
-        assert_eq!(region.start, 0.1);
-        assert_eq!(region.end, 0.5);
-        assert_eq!(region.rate, 1.5);
+        assert!((region.start - 0.1).abs() < f64::EPSILON);
+        assert!((region.end - 0.5).abs() < f64::EPSILON);
+        assert!((region.rate - 1.5).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -718,10 +718,10 @@ mod tests {
     #[test]
     fn parse_number_formats() {
         let mut parser = ManifestParser::new("123 +45.6 -0.78 .9");
-        assert_eq!(parser.parse_number().unwrap(), 123.0);
-        assert_eq!(parser.parse_number().unwrap(), 45.6);
-        assert_eq!(parser.parse_number().unwrap(), -0.78);
-        assert_eq!(parser.parse_number().unwrap(), 0.9);
+        assert!((parser.parse_number().unwrap() - 123.0).abs() < f64::EPSILON);
+        assert!((parser.parse_number().unwrap() - 45.6).abs() < f64::EPSILON);
+        assert!((parser.parse_number().unwrap() - (-0.78)).abs() < f64::EPSILON);
+        assert!((parser.parse_number().unwrap() - 0.9).abs() < f64::EPSILON);
     }
 
     #[test]
