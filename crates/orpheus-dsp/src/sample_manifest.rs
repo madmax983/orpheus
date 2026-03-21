@@ -554,6 +554,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::float_cmp)]
     fn parse_region_success() {
         let source =
             "( regions: { \"slice1\": ( token: \"loop\", start: 0.1, end: 0.5, rate: 1.5 ) } )";
@@ -716,6 +717,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::float_cmp)]
     fn parse_number_formats() {
         let mut parser = ManifestParser::new("123 +45.6 -0.78 .9");
         assert_eq!(parser.parse_number().unwrap(), 123.0);
