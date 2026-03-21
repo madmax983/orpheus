@@ -686,6 +686,93 @@ fn euclid_rejects_invalid_pulses_and_steps() {
 }
 
 #[test]
+fn degrees_map_aeolian_steps_with_octave_carry() {
+    let module = eval_module(r#"line = degrees("aeolian", 0 2 4 7 8)"#, ReplMode::Loose).unwrap();
+    let events = module
+        .get("line")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 5);
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![0.0, 3.0, 7.0, 12.0, 14.0]
+    );
+}
+
+#[test]
+fn degrees_map_negative_aeolian_steps_downward() {
+    let module = eval_module(r#"line = degrees("aeolian", -2 -1 0 1)"#, ReplMode::Loose).unwrap();
+    let events = module
+        .get("line")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![-4.0, -2.0, 0.0, 2.0]
+    );
+}
+
+#[test]
+fn degrees_transpose_shifts_number_patterns_by_semitones() {
+    let module = eval_module(
+        r#"line = degrees("aeolian", 0 2 4 7 8) |> transpose(45)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("line")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![45.0, 48.0, 52.0, 57.0, 59.0]
+    );
+}
+
+#[test]
+fn degrees_transpose_accepts_pattern_valued_offsets() {
+    let module = eval_module(
+        r#"line = degrees("aeolian", 0 2) |> transpose(12 -12)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("line")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![12.0, -9.0]
+    );
+}
+
+#[test]
+fn degrees_reject_unknown_collections_and_fractional_steps() {
+    assert_eval_error_contains(
+        r#"line = degrees("minor", 0 2 4)"#,
+        ReplMode::Strict,
+        &["`degrees`", "unknown collection", "minor"],
+    );
+    assert_eval_error_contains(
+        r#"line = degrees("aeolian", 0 1.5 2)"#,
+        ReplMode::Strict,
+        &["`degrees`", "whole-number degree"],
+    );
+}
+
+#[test]
 fn gain_updates_sample_event_amplitude() {
     let module = eval_module("drums = bd |> gain(0.8)", ReplMode::Loose).unwrap();
     let event = module

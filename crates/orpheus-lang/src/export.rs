@@ -484,4 +484,21 @@ mod tests {
 
         let _ = fs::remove_file(path);
     }
+
+    #[test]
+    fn degrees_export_preserves_parameterized_melody_output() {
+        let module = eval_module(
+            "walk shift pat = pat |> transpose(shift)\n\
+             melody = walk(60)(degrees(\"aeolian\", -2 0 2 4 7))",
+            ReplMode::Loose,
+        )
+        .unwrap();
+        let melody = module.get("melody").unwrap().as_number_pattern().unwrap();
+        let path = temp_json_path();
+
+        export_number_pattern_to_json(melody, &path, 1).unwrap();
+        assert_json_fixture_matches(&path, "degrees_melody_export.json");
+
+        let _ = fs::remove_file(path);
+    }
 }

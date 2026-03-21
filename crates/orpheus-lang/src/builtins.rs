@@ -12,7 +12,7 @@ use orpheus_pattern::{Rational, TimeSpan};
 
 use crate::eval::{EvalError, apply_function_value, f64_to_rational};
 use crate::value::{
-    BuiltinFn, BuiltinKind, FunctionValue, GatePatternValue, NumberPatternValue,
+    BuiltinFn, BuiltinKind, DegreeCollection, FunctionValue, GatePatternValue, NumberPatternValue,
     SamplePatternValue, Value,
 };
 
@@ -41,6 +41,9 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "euclid" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
             BuiltinKind::Euclid,
         )))),
+        "degrees" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Degrees,
+        )))),
         "fast" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
             BuiltinKind::Fast,
         )))),
@@ -67,6 +70,9 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         )))),
         "pitch" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
             BuiltinKind::Pitch,
+        )))),
+        "transpose" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Transpose,
         )))),
         "sample" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
             BuiltinKind::Sample,
@@ -186,6 +192,7 @@ impl BuiltinKind {
             Self::Within => "within",
             Self::Mask => "mask",
             Self::Euclid => "euclid",
+            Self::Degrees => "degrees",
             Self::Fast => "fast",
             Self::Slow => "slow",
             Self::Shift => "shift",
@@ -195,6 +202,7 @@ impl BuiltinKind {
             Self::Lpf => "lpf",
             Self::Pan => "pan",
             Self::Pitch => "pitch",
+            Self::Transpose => "transpose",
             Self::Sample => "sample",
             Self::Rate => "rate",
             Self::Slice => "slice",
@@ -211,6 +219,7 @@ impl BuiltinKind {
             Self::Sometimes
             | Self::Mask
             | Self::Euclid
+            | Self::Degrees
             | Self::Fast
             | Self::Slow
             | Self::Shift
@@ -219,6 +228,7 @@ impl BuiltinKind {
             | Self::Lpf
             | Self::Pan
             | Self::Pitch
+            | Self::Transpose
             | Self::Rate
             | Self::Jux => 2,
             Self::Rev | Self::Sample => 1,
@@ -234,6 +244,7 @@ impl BuiltinKind {
             Self::Within => apply_within(args),
             Self::Mask => apply_mask(args),
             Self::Euclid => apply_euclid(args),
+            Self::Degrees => apply_degrees(args),
             Self::Fast => apply_fast(args),
             Self::Slow => apply_slow(args),
             Self::Shift => apply_shift(args),
@@ -243,6 +254,7 @@ impl BuiltinKind {
             Self::Lpf => apply_lpf(args),
             Self::Pan => apply_pan(args),
             Self::Pitch => apply_pitch(args),
+            Self::Transpose => apply_transpose(args),
             Self::Sample => apply_sample(args),
             Self::Rate => apply_rate(args),
             Self::Slice => apply_slice(args),
@@ -475,6 +487,28 @@ fn apply_euclid(args: Vec<Value>) -> Result<Value, EvalError> {
     )))
 }
 
+fn apply_degrees(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let collection_name = extract_string(
+        args.next()
+            .ok_or_else(|| EvalError::new("`degrees` requires a collection name argument"))?,
+        "degrees",
+    )?;
+    let collection = DegreeCollection::from_name(&collection_name).ok_or_else(|| {
+        EvalError::new(format!(
+            "`degrees` has unknown collection `{collection_name}`"
+        ))
+    })?;
+    let pattern = extract_number_pattern(
+        args.next()
+            .ok_or_else(|| EvalError::new("`degrees` requires a pattern argument"))?,
+        "degrees",
+    )?;
+    validate_degree_pattern(&pattern)?;
+
+    Ok(Value::NumberPattern(pattern.degrees(collection)))
+}
+
 fn apply_fast(args: Vec<Value>) -> Result<Value, EvalError> {
     let mut args = args.into_iter();
     let factor = extract_positive_integer_factor(
@@ -603,6 +637,24 @@ fn apply_pitch(args: Vec<Value>) -> Result<Value, EvalError> {
         SamplePatternValue::pitch,
         SamplePatternValue::pitch_pattern,
     )
+}
+
+fn apply_transpose(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let control = extract_transpose_control(
+        args.next()
+            .ok_or_else(|| EvalError::new("`transpose` requires a semitone argument"))?,
+    )?;
+    let pattern = extract_number_pattern(
+        args.next()
+            .ok_or_else(|| EvalError::new("`transpose` requires a pattern argument"))?,
+        "transpose",
+    )?;
+
+    Ok(Value::NumberPattern(match control {
+        NumericControl::Constant(semitones) => pattern.transpose(semitones),
+        NumericControl::Pattern(control) => pattern.transpose_pattern(control),
+    }))
 }
 
 fn apply_sample(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -1064,25 +1116,50 @@ fn extract_slice_endpoint_control(
 }
 
 fn extract_pitch_control(value: Value) -> Result<NumericControl, EvalError> {
-    let pattern = extract_number_pattern(value, "pitch")?;
+    extract_finite_numeric_control(value, "pitch")
+}
+
+fn extract_transpose_control(value: Value) -> Result<NumericControl, EvalError> {
+    extract_finite_numeric_control(value, "transpose")
+}
+
+fn extract_finite_numeric_control(
+    value: Value,
+    builtin_name: &str,
+) -> Result<NumericControl, EvalError> {
+    let pattern = extract_number_pattern(value, builtin_name)?;
     if let Ok(semitones) = pattern.constant_value() {
         if !semitones.is_finite() {
-            return Err(EvalError::new("`pitch` requires a finite numeric value"));
+            return Err(EvalError::new(format!(
+                "`{builtin_name}` requires a finite numeric value"
+            )));
         }
         return Ok(NumericControl::Constant(semitones));
     }
 
-    validate_numeric_control_pattern(&pattern, "pitch", |value| {
+    validate_numeric_control_pattern(&pattern, builtin_name, |value| {
         if value.is_finite() {
             Ok(())
         } else {
-            Err(EvalError::new(
-                "`pitch` requires finite numeric control values",
-            ))
+            Err(EvalError::new(format!(
+                "`{builtin_name}` requires finite numeric control values"
+            )))
         }
     })?;
 
     Ok(NumericControl::Pattern(pattern))
+}
+
+fn validate_degree_pattern(pattern: &NumberPatternValue) -> Result<(), EvalError> {
+    let events = pattern.try_query(&TimeSpan::unit())?;
+    for event in events {
+        if !event.value.is_finite() || event.value.fract().abs() > f64::EPSILON {
+            return Err(EvalError::new(
+                "`degrees` requires whole-number degree values",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn extract_slice_idx_control(value: Value, segments: u32) -> Result<SliceIndexControl, EvalError> {
