@@ -106,6 +106,40 @@ fn parses_function_calls_with_numeric_arguments() {
 }
 
 #[test]
+fn parses_parameterized_binding_headers() {
+    let module = parse_module("swing amt pat = pat |> shift(amt)").unwrap();
+    match &module.statements[0] {
+        Stmt::Binding { name, expr, .. } => {
+            assert_eq!(name, "swing");
+            assert!(matches!(expr, Expr::Pipe { .. }));
+        }
+    }
+}
+
+#[test]
+fn parses_chained_curried_calls() {
+    let expr = binding_expr("groove = swing(0.125)(bd sn)");
+    assert_eq!(
+        expr,
+        Expr::Call {
+            callee: Box::new(Expr::Call {
+                callee: Box::new(Expr::Ident("swing".to_owned())),
+                args: vec![Expr::Number(0.125)],
+            }),
+            args: vec![Expr::Seq(vec![
+                Expr::Ident("bd".to_owned()),
+                Expr::Ident("sn".to_owned()),
+            ])],
+        }
+    );
+}
+
+#[test]
+fn duplicate_parameter_names_are_rejected() {
+    assert_parse_error_contains("swing amt amt = amt", &["duplicate", "amt"]);
+}
+
+#[test]
 fn parses_negative_numeric_arguments() {
     let expr = binding_expr("lead = pan(-1)");
     match &expr {

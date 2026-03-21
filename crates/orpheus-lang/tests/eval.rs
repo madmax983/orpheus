@@ -1,5 +1,9 @@
-use orpheus_lang::{ReplMode, Value, eval_module};
+use std::fs;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use orpheus_lang::{ReplMode, Value, eval_module, export_sample_pattern_to_json};
 use orpheus_pattern::{Rational, TimeSpan};
+use serde_json::Value as JsonValue;
 
 fn sample_names(value: &Value) -> Vec<String> {
     value
@@ -26,6 +30,24 @@ fn assert_eval_error_contains(source: &str, mode: ReplMode, expected_fragments: 
             "eval error `{message}` did not mention required fragment `{fragment}`"
         );
     }
+}
+
+fn exported_sample_events(value: &Value, cycle_count: u64) -> Vec<JsonValue> {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!(
+        "orpheus-lang-eval-export-{}-{unique}.json",
+        std::process::id()
+    ));
+    export_sample_pattern_to_json(value.as_sample_pattern().unwrap(), &path, cycle_count).unwrap();
+    let payload = fs::read_to_string(&path).unwrap();
+    let _ = fs::remove_file(&path);
+    serde_json::from_str::<JsonValue>(&payload).unwrap()["events"]
+        .as_array()
+        .unwrap()
+        .clone()
 }
 
 #[test]
@@ -83,6 +105,32 @@ fn sometimes_applies_its_transform_on_cycle_zero() {
         sample_names(module.get("drums").unwrap()),
         ["bd", "sn", "bd", "sn"]
     );
+}
+
+#[test]
+fn when_applies_its_transform_only_on_matching_cycle_offsets() {
+    let module = eval_module("drums = bd sn |> when(3, 1, rev)", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 3);
+
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event["sample"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["bd", "sn", "sn", "bd", "bd", "sn"]
+    );
+    assert_eq!(events[0]["start_num"].as_i64().unwrap(), 0);
+    assert_eq!(events[0]["start_den"].as_i64().unwrap(), 1);
+    assert_eq!(events[1]["start_num"].as_i64().unwrap(), 1);
+    assert_eq!(events[1]["start_den"].as_i64().unwrap(), 2);
+    assert_eq!(events[2]["start_num"].as_i64().unwrap(), 1);
+    assert_eq!(events[2]["start_den"].as_i64().unwrap(), 1);
+    assert_eq!(events[3]["start_num"].as_i64().unwrap(), 3);
+    assert_eq!(events[3]["start_den"].as_i64().unwrap(), 2);
+    assert_eq!(events[4]["start_num"].as_i64().unwrap(), 2);
+    assert_eq!(events[4]["start_den"].as_i64().unwrap(), 1);
+    assert_eq!(events[5]["start_num"].as_i64().unwrap(), 5);
+    assert_eq!(events[5]["start_den"].as_i64().unwrap(), 2);
 }
 
 #[test]
@@ -178,6 +226,17 @@ fn direct_call_matches_pipe_application_for_every() {
 }
 
 #[test]
+fn when_pipe_matches_direct_call() {
+    let direct = eval_module("drums = when(3, 1, rev, bd sn)", ReplMode::Loose).unwrap();
+    let piped = eval_module("drums = bd sn |> when(3, 1, rev)", ReplMode::Loose).unwrap();
+
+    assert_eq!(
+        exported_sample_events(direct.get("drums").unwrap(), 3),
+        exported_sample_events(piped.get("drums").unwrap(), 3),
+    );
+}
+
+#[test]
 fn direct_call_matches_pipe_application_for_shift() {
     let direct = eval_module("drums = shift(0.25, bd sn)", ReplMode::Loose).unwrap();
     let piped = eval_module("drums = bd sn |> shift(0.25)", ReplMode::Loose).unwrap();
@@ -198,6 +257,432 @@ fn direct_call_matches_pipe_application_for_shift() {
         .unwrap();
 
     assert_eq!(direct_events, piped_events);
+}
+
+#[test]
+fn parameterized_binding_can_be_applied_curried() {
+    let module = eval_module(
+        "swing amt pat = pat |> shift(amt)\n\
+         groove = swing(0.25)(bd sn)",
+        ReplMode::Loose,
+    )
+    .unwrap();
+
+    let events = module
+        .get("groove")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(events[0].value.sample(), "sn");
+    assert_eq!(events[1].value.sample(), "bd");
+    assert_eq!(events[2].value.sample(), "sn");
+}
+
+#[test]
+fn parameterized_binding_can_be_used_from_pipe() {
+    let direct = eval_module(
+        "swing amt pat = pat |> shift(amt)\n\
+         groove = swing(0.25)(bd sn)",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let piped = eval_module(
+        "swing amt pat = pat |> shift(amt)\n\
+         groove = bd sn |> swing(0.25)",
+        ReplMode::Loose,
+    )
+    .unwrap();
+
+    let direct_events = direct
+        .get("groove")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+    let piped_events = piped
+        .get("groove")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(direct_events, piped_events);
+}
+
+#[test]
+fn self_recursive_parameterized_binding_is_rejected() {
+    assert_eval_error_contains(
+        "loop pat = loop(pat)",
+        ReplMode::Strict,
+        &["self-reference", "loop"],
+    );
+}
+
+#[test]
+fn within_reverses_only_the_selected_window() {
+    let module = eval_module(
+        "drums = bd sn cp hh |> within(0, 0.5, rev)",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("drums")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event.value.sample())
+            .collect::<Vec<_>>(),
+        vec!["sn", "bd", "cp", "hh"]
+    );
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 4).unwrap());
+    assert_eq!(events[1].part.start(), &Rational::new(1, 4).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[2].part.start(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[2].part.end(), &Rational::new(3, 4).unwrap());
+    assert_eq!(events[3].part.start(), &Rational::new(3, 4).unwrap());
+    assert_eq!(events[3].part.end(), &Rational::one());
+}
+
+#[test]
+fn within_pipe_matches_direct_call() {
+    let direct = eval_module("drums = within(0, 0.5, rev, bd sn cp hh)", ReplMode::Loose).unwrap();
+    let piped = eval_module(
+        "drums = bd sn cp hh |> within(0, 0.5, rev)",
+        ReplMode::Loose,
+    )
+    .unwrap();
+
+    assert_eq!(
+        direct
+            .get("drums")
+            .unwrap()
+            .as_sample_pattern()
+            .unwrap()
+            .query_unit()
+            .unwrap(),
+        piped
+            .get("drums")
+            .unwrap()
+            .as_sample_pattern()
+            .unwrap()
+            .query_unit()
+            .unwrap(),
+    );
+}
+
+#[test]
+fn within_accepts_parameterized_unary_transforms() {
+    let module = eval_module(
+        "swing amt pat = pat |> shift(amt)\n\
+         drums = bd sn cp hh |> within(0, 0.5, swing(0.25))",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("drums")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event.value.sample())
+            .collect::<Vec<_>>(),
+        vec!["sn", "bd", "sn", "cp", "hh"]
+    );
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 8).unwrap());
+    assert_eq!(events[1].part.start(), &Rational::new(1, 8).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::new(3, 8).unwrap());
+    assert_eq!(events[2].part.start(), &Rational::new(3, 8).unwrap());
+    assert_eq!(events[2].part.end(), &Rational::new(1, 2).unwrap());
+}
+
+#[test]
+fn when_accepts_parameterized_unary_transforms() {
+    let module = eval_module(
+        "swing amt pat = pat |> shift(amt)\n\
+         drums = bd sn |> when(2, 1, swing(0.25))",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 2);
+
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event["sample"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["bd", "sn", "sn", "bd", "sn"]
+    );
+    assert_eq!(events[2]["start_num"].as_i64().unwrap(), 1);
+    assert_eq!(events[2]["start_den"].as_i64().unwrap(), 1);
+    assert_eq!(events[2]["end_num"].as_i64().unwrap(), 5);
+    assert_eq!(events[2]["end_den"].as_i64().unwrap(), 4);
+    assert_eq!(events[3]["start_num"].as_i64().unwrap(), 5);
+    assert_eq!(events[3]["start_den"].as_i64().unwrap(), 4);
+    assert_eq!(events[3]["end_num"].as_i64().unwrap(), 7);
+    assert_eq!(events[3]["end_den"].as_i64().unwrap(), 4);
+    assert_eq!(events[4]["start_num"].as_i64().unwrap(), 7);
+    assert_eq!(events[4]["start_den"].as_i64().unwrap(), 4);
+    assert_eq!(events[4]["end_num"].as_i64().unwrap(), 2);
+    assert_eq!(events[4]["end_den"].as_i64().unwrap(), 1);
+}
+
+#[test]
+fn within_rejects_invalid_windows() {
+    assert_eval_error_contains(
+        "drums = bd sn |> within(0.75, 0.25, rev)",
+        ReplMode::Strict,
+        &["`within`", "start < end"],
+    );
+    assert_eval_error_contains(
+        "drums = bd sn |> within(-0.25, 0.5, rev)",
+        ReplMode::Strict,
+        &["`within`", "[0, 1]"],
+    );
+}
+
+#[test]
+fn when_rejects_invalid_cycle_offsets() {
+    assert_eval_error_contains(
+        "drums = bd sn |> when(3, 3, rev)",
+        ReplMode::Strict,
+        &["`when`", "offset", "less than the period"],
+    );
+    assert_eval_error_contains(
+        "drums = bd sn |> when(3, -1, rev)",
+        ReplMode::Strict,
+        &["`when`", "offset", "whole number"],
+    );
+}
+
+#[test]
+fn mask_keeps_only_fragments_overlapping_the_gate() {
+    let module = eval_module("drums = mask(bd ~ cp ~, bd sn)", ReplMode::Loose).unwrap();
+    let events = module
+        .get("drums")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].value.sample(), "bd");
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 4).unwrap());
+    assert_eq!(events[1].value.sample(), "sn");
+    assert_eq!(events[1].part.start(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::new(3, 4).unwrap());
+}
+
+#[test]
+fn mask_pipe_matches_direct_call() {
+    let direct = eval_module("drums = mask(bd ~ cp ~, bd sn)", ReplMode::Loose).unwrap();
+    let piped = eval_module("drums = bd sn |> mask(bd ~ cp ~)", ReplMode::Loose).unwrap();
+
+    assert_eq!(
+        direct
+            .get("drums")
+            .unwrap()
+            .as_sample_pattern()
+            .unwrap()
+            .query_unit()
+            .unwrap(),
+        piped
+            .get("drums")
+            .unwrap()
+            .as_sample_pattern()
+            .unwrap()
+            .query_unit()
+            .unwrap(),
+    );
+}
+
+#[test]
+fn mask_accepts_number_pattern_gates() {
+    let sample_gate = eval_module("drums = mask(bd ~ cp ~, bd sn)", ReplMode::Loose).unwrap();
+    let number_gate = eval_module("drums = mask(1 ~ 1 ~, bd sn)", ReplMode::Loose).unwrap();
+
+    assert_eq!(
+        sample_gate
+            .get("drums")
+            .unwrap()
+            .as_sample_pattern()
+            .unwrap()
+            .query_unit()
+            .unwrap(),
+        number_gate
+            .get("drums")
+            .unwrap()
+            .as_sample_pattern()
+            .unwrap()
+            .query_unit()
+            .unwrap(),
+    );
+}
+
+#[test]
+fn mask_merges_adjacent_gate_events_into_one_open_region() {
+    let module = eval_module("drums = mask(bd sn, slow(2, bd))", ReplMode::Loose).unwrap();
+    let events = module
+        .get("drums")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].value.sample(), "bd");
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::one());
+}
+
+#[test]
+fn mask_accepts_parameterized_bindings() {
+    let module = eval_module(
+        "keep gate pat = pat |> mask(gate)\n\
+         drums = keep(bd ~ cp ~)(bd sn)",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("drums")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].value.sample(), "bd");
+    assert_eq!(events[1].value.sample(), "sn");
+}
+
+#[test]
+fn mask_rejects_non_pattern_gates() {
+    assert_eval_error_contains(
+        "drums = mask(rev, bd sn)",
+        ReplMode::Strict,
+        &["`mask`", "pattern gate"],
+    );
+}
+
+#[test]
+fn euclid_generates_three_open_steps_in_eight() {
+    let module = eval_module("clave = euclid(3, 8)", ReplMode::Loose).unwrap();
+    let events = module
+        .get("clave")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 3);
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 8).unwrap());
+    assert_eq!(events[1].part.start(), &Rational::new(3, 8).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[2].part.start(), &Rational::new(3, 4).unwrap());
+    assert_eq!(events[2].part.end(), &Rational::new(7, 8).unwrap());
+    assert!(
+        events
+            .iter()
+            .all(|event| (event.value - 1.0).abs() < f64::EPSILON)
+    );
+}
+
+#[test]
+fn euclid_zero_pulses_generates_no_events() {
+    let module = eval_module("clave = euclid(0, 8)", ReplMode::Loose).unwrap();
+    let events = module
+        .get("clave")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert!(events.is_empty());
+}
+
+#[test]
+fn euclid_full_pulses_generates_all_steps() {
+    let module = eval_module("clave = euclid(8, 8)", ReplMode::Loose).unwrap();
+    let events = module
+        .get("clave")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 8);
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 8).unwrap());
+    assert_eq!(events[7].part.start(), &Rational::new(7, 8).unwrap());
+    assert_eq!(events[7].part.end(), &Rational::one());
+}
+
+#[test]
+fn euclid_masks_expected_slices() {
+    let module = eval_module(
+        "drums = mask(euclid(3, 8), bd sn cp hh bd sn cp hh)",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("drums")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(events.len(), 3);
+    assert_eq!(events[0].value.sample(), "bd");
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 8).unwrap());
+    assert_eq!(events[1].value.sample(), "hh");
+    assert_eq!(events[1].part.start(), &Rational::new(3, 8).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[2].value.sample(), "cp");
+    assert_eq!(events[2].part.start(), &Rational::new(3, 4).unwrap());
+    assert_eq!(events[2].part.end(), &Rational::new(7, 8).unwrap());
+}
+
+#[test]
+fn euclid_rejects_invalid_pulses_and_steps() {
+    assert_eval_error_contains(
+        "clave = euclid(9, 8)",
+        ReplMode::Strict,
+        &["`euclid`", "pulses", "less than or equal to steps"],
+    );
+    assert_eval_error_contains(
+        "clave = euclid(3, 0)",
+        ReplMode::Strict,
+        &["`euclid`", "steps", "positive whole number"],
+    );
+    assert_eval_error_contains(
+        "clave = euclid(2.5, 8)",
+        ReplMode::Strict,
+        &["`euclid`", "pulses", "whole number"],
+    );
 }
 
 #[test]

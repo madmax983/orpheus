@@ -8,6 +8,13 @@ fn loose_mode_infers_number_sequences_as_number_patterns() {
 }
 
 #[test]
+fn sequences_with_rests_infer_from_non_rest_items() {
+    let typed = infer_module("drums = bd ~ cp ~", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
 fn strict_mode_rejects_mixed_stack_types() {
     let error = infer_module("layer = stack(bd sn, 1 2)", ReplMode::Strict).unwrap_err();
 
@@ -59,6 +66,20 @@ fn sometimes_infers_a_polymorphic_pattern_transform_function() {
 }
 
 #[test]
+fn when_infers_a_polymorphic_pattern_transform_function() {
+    let typed = infer_module("warp = when(3, 1, fast(2))", ReplMode::Strict).unwrap();
+
+    match typed.type_of("warp") {
+        Type::Function(args, ret) => {
+            assert_eq!(args.len(), 1);
+            assert_eq!(args[0], *ret.clone());
+            assert!(matches!(args[0], Type::Pattern(_)));
+        }
+        other => panic!("expected function type, got {other:?}"),
+    }
+}
+
+#[test]
 fn every_preserves_sample_pattern_types() {
     let typed = infer_module("drums = every(2, fast(2), bd sn)", ReplMode::Strict).unwrap();
 
@@ -68,6 +89,13 @@ fn every_preserves_sample_pattern_types() {
 #[test]
 fn sometimes_preserves_sample_pattern_types() {
     let typed = infer_module("drums = sometimes(rev, bd sn)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn when_preserves_sample_pattern_types() {
+    let typed = infer_module("drums = when(3, 1, rev, bd sn)", ReplMode::Strict).unwrap();
 
     assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
 }
@@ -206,4 +234,134 @@ fn multiple_top_level_bindings_infer_in_order() {
 
     assert_eq!(typed.type_of("verse").to_string(), "Pattern<Sample>");
     assert_eq!(typed.type_of("song").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn parameterized_binding_infers_a_curried_function_type() {
+    let typed = infer_module("swing amt pat = pat |> shift(amt)", ReplMode::Strict).unwrap();
+
+    match typed.type_of("swing") {
+        Type::Function(first_args, first_ret) => {
+            assert_eq!(first_args.as_slice(), &[Type::pattern(Type::Number)]);
+            match first_ret.as_ref() {
+                Type::Function(second_args, second_ret) => {
+                    assert_eq!(second_args.len(), 1);
+                    assert_eq!(second_args[0], *second_ret.clone());
+                    assert!(matches!(second_args[0], Type::Pattern(_)));
+                }
+                other => panic!("expected curried return function, got {other:?}"),
+            }
+        }
+        other => panic!("expected curried function type, got {other:?}"),
+    }
+}
+
+#[test]
+fn parameterized_bindings_are_generalized_at_each_use_site() {
+    let typed = infer_module(
+        "id pat = pat\n\
+         drums = id(bd sn)\n\
+         cutoff = id(400 800)",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+    assert_eq!(typed.type_of("cutoff").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn sequencing_syntax_still_parses_as_sequence() {
+    let typed = infer_module("drums = bd sn cp", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn within_preserves_sample_pattern_types() {
+    let typed = infer_module("drums = within(0, 0.5, rev, bd sn cp hh)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn within_accepts_parameterized_unary_transforms() {
+    let typed = infer_module(
+        "swing amt pat = pat |> shift(amt)\n\
+         drums = within(0, 0.5, swing(0.25), bd sn cp hh)",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn when_accepts_parameterized_unary_transforms() {
+    let typed = infer_module(
+        "swing amt pat = pat |> shift(amt)\n\
+         drums = when(2, 1, swing(0.25), bd sn)",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn mask_infers_a_polymorphic_gate_function() {
+    let typed = infer_module("mute = mask(bd ~ cp ~)", ReplMode::Strict).unwrap();
+
+    match typed.type_of("mute") {
+        Type::Function(args, ret) => {
+            assert_eq!(args.len(), 1);
+            assert_eq!(args[0], *ret.clone());
+            assert!(matches!(args[0], Type::Pattern(_)));
+        }
+        other => panic!("expected function type, got {other:?}"),
+    }
+}
+
+#[test]
+fn mask_preserves_sample_pattern_types() {
+    let typed = infer_module("drums = mask(bd ~ cp ~, bd sn)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn mask_accepts_number_pattern_gates() {
+    let typed = infer_module("drums = mask(1 ~ 1 ~, bd sn)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn mask_accepts_parameterized_bindings() {
+    let typed = infer_module(
+        "keep gate pat = pat |> mask(gate)\n\
+         drums = keep(bd ~ cp ~)(bd sn)",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn euclid_infers_number_patterns() {
+    let typed = infer_module("clave = euclid(3, 8)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("clave").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn euclid_masks_preserve_source_pattern_types() {
+    let typed = infer_module(
+        "drums = mask(euclid(3, 8), bd sn cp hh bd sn cp hh)",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
 }

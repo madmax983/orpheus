@@ -26,11 +26,13 @@ use std::fmt::{self, Display, Formatter};
 use orpheus_pattern::{Event, PatternNode, Rational, TimeSpan};
 
 use crate::ReplMode;
-use crate::ast::{Expr, Module, Stmt};
+use crate::ast::{Expr, Module, Stmt, binding_expr_self_references};
 use crate::builtins::{builtin_value, is_sample_identifier, stack_values};
 use crate::diagnostics::ParseError;
 use crate::parser::parse_module;
-use crate::value::{NumberPatternValue, SampleEvent, SamplePatternValue, Value};
+use crate::value::{
+    FunctionValue, NumberPatternValue, SampleEvent, SamplePatternValue, UserFn, Value,
+};
 
 /// Runtime evaluation error for bootstrap Orpheus modules.
 ///
@@ -234,8 +236,25 @@ impl Evaluator {
 
         for statement in statements {
             match statement {
-                Stmt::Binding { name, expr } => {
-                    let value = self.eval_expr(expr)?;
+                Stmt::Binding {
+                    name, params, expr, ..
+                } => {
+                    if !params.is_empty() && binding_expr_self_references(name, params, expr) {
+                        return Err(EvalError::new(format!(
+                            "parameterized binding `{name}` cannot contain a self-reference in v1"
+                        )));
+                    }
+                    let value = if params.is_empty() {
+                        self.eval_expr(expr)?
+                    } else {
+                        Value::Function(FunctionValue::User(UserFn {
+                            mode: self.mode,
+                            remaining_params: params.clone(),
+                            body: expr.clone(),
+                            captured_bindings: self.bindings.clone(),
+                            expr_site_salts: self.expr_site_salts.clone(),
+                        }))
+                    };
                     self.bindings.insert(name.clone(), value.clone());
                     last_binding = Some((name.clone(), value));
                 }
@@ -651,15 +670,16 @@ impl Evaluator {
         site_salt: Option<u64>,
     ) -> Result<Value, EvalError> {
         match callee {
-            Value::Function(function) => {
+            Value::Function(FunctionValue::Builtin(function)) => {
                 let function = match site_salt {
                     Some(site_salt) if function.site_salt.is_none() => {
                         function.with_site_salt(site_salt)
                     }
                     Some(_) | None => function,
                 };
-                function.apply(args)
+                apply_function_value(FunctionValue::Builtin(function), args)
             }
+            Value::Function(function) => apply_function_value(function, args),
             Value::SamplePattern(_) | Value::NumberPattern(_) | Value::String(_) => Err(
                 EvalError::new(format!("cannot call a {}", callee.kind_name())),
             ),
@@ -797,6 +817,46 @@ impl Evaluator {
             _ => Ok(None),
         }
     }
+}
+
+pub fn apply_function_value(function: FunctionValue, args: Vec<Value>) -> Result<Value, EvalError> {
+    match function {
+        FunctionValue::Builtin(function) => function.apply(args),
+        FunctionValue::User(function) => apply_user_function(function, args),
+    }
+}
+
+fn apply_user_function(mut function: UserFn, args: Vec<Value>) -> Result<Value, EvalError> {
+    let remaining = function.remaining_params.len();
+    let applied = args.len();
+    if applied > remaining {
+        return Err(EvalError::new(format!(
+            "function expected {remaining} argument(s), got {applied}"
+        )));
+    }
+
+    for (param, arg) in function
+        .remaining_params
+        .iter()
+        .take(applied)
+        .cloned()
+        .zip(args)
+    {
+        function.captured_bindings.insert(param, arg);
+    }
+
+    function.remaining_params.drain(..applied);
+
+    if !function.remaining_params.is_empty() {
+        return Ok(Value::Function(FunctionValue::User(function)));
+    }
+
+    let evaluator = Evaluator {
+        mode: function.mode,
+        bindings: function.captured_bindings,
+        expr_site_salts: function.expr_site_salts,
+    };
+    evaluator.eval_expr(&function.body)
 }
 
 const SITE_SEED_ROOT: u64 = 0xC6A4_A793_5BD1_E995;
@@ -1090,7 +1150,7 @@ mod tests {
             .statements
             .iter()
             .find_map(|statement| match statement {
-                crate::Stmt::Binding { name, expr } if name == binding_name => Some(expr),
+                crate::Stmt::Binding { name, expr, .. } if name == binding_name => Some(expr),
                 crate::Stmt::Binding { .. } => None,
             })
             .unwrap();
