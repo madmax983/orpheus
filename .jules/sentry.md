@@ -24,3 +24,6 @@
 ## 2026-03-19 - Type annotations for generic tests
 **Learning:** When creating empty generic structs (like `CyclePattern::from_nodes(vec![])`) in test cases, the compiler will error out with `E0282: type annotations needed` because it lacks context to infer `T`.
 **Action:** Always provide explicit type bounds (e.g., `let pattern: CyclePattern<&str> = ...`) when instantiating empty generic containers for tests.
+## 2025-05-20 - CSV Export Zero-Cycle Coverage
+**Learning:** `crates/orpheus-lang/src/export.rs` contained zero-cycle guard checks for CSV exporting and audio rendering, but they were not covered by tests.
+**Action:** Always add tests that deliberately provide extreme or out-of-bounds parameters (like `0` cycle counts) to assert early return guards work correctly.

@@ -286,3 +286,49 @@ pub fn render_sample_pattern_to_wav(
 ) -> Result<(), RenderError> {
     render_sample_pattern_to_file(pattern, path, cycle_count)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ReplMode, eval_module};
+
+    #[test]
+    fn export_sample_pattern_to_csv_with_zero_cycles_returns_error() {
+        let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+        let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+
+        let result = export_sample_pattern_to_csv(pattern, "dummy.csv", 0);
+
+        assert_eq!(
+            result,
+            Err(EvalError::new("exporting requires at least one cycle"))
+        );
+    }
+
+    #[test]
+    fn export_number_pattern_to_csv_with_zero_cycles_returns_error() {
+        let env = eval_module("x = 1 2 3", ReplMode::Loose).unwrap();
+        let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
+
+        let result = export_number_pattern_to_csv(pattern, "dummy.csv", 0);
+
+        assert_eq!(
+            result,
+            Err(EvalError::new("exporting requires at least one cycle"))
+        );
+    }
+
+    #[test]
+    fn render_sample_pattern_to_file_with_bank_with_zero_cycles_returns_error() {
+        let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+        let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+        let sample_bank = SampleBank::default();
+
+        let result = render_sample_pattern_to_file_with_bank(pattern, "dummy.wav", 0, &sample_bank);
+
+        assert!(matches!(
+            result,
+            Err(RenderError::Eval(ref eval_err)) if eval_err.to_string() == "rendering requires at least one cycle"
+        ));
+    }
+}

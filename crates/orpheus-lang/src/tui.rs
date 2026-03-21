@@ -261,11 +261,7 @@ impl SessionTui {
         Self::try_new(engine, None, None)
     }
 
-    fn try_new(
-        engine: EngineHandle,
-        startup_path: Option<&Path>,
-        warning: Option<String>,
-    ) -> Self {
+    fn try_new(engine: EngineHandle, startup_path: Option<&Path>, warning: Option<String>) -> Self {
         let mut transcript = vec![
             "Interactive shell ready.".to_owned(),
             "Press Esc to quit.".to_owned(),
