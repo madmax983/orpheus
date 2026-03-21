@@ -52,6 +52,8 @@ impl TypeEnv {
         env.insert("within", within_transform_scheme(alpha));
         env.insert("mask", mask_scheme());
         env.insert("euclid", euclid_scheme());
+        env.insert("degrees", degrees_scheme());
+        env.insert("transpose", number_pattern_control_scheme());
         env.insert("jux", jux_transform_scheme());
         env.insert("rev", unary_pattern_transform_scheme(alpha));
         for name in ["gain", "hpf", "lpf", "pan", "pitch", "rate"] {
@@ -214,6 +216,20 @@ fn mask_scheme() -> TypeScheme {
 }
 
 fn euclid_scheme() -> TypeScheme {
+    TypeScheme::monomorphic(Type::curried(
+        vec![Type::pattern(Type::Number), Type::pattern(Type::Number)],
+        Type::pattern(Type::Number),
+    ))
+}
+
+fn degrees_scheme() -> TypeScheme {
+    TypeScheme::monomorphic(Type::curried(
+        vec![Type::String, Type::pattern(Type::Number)],
+        Type::pattern(Type::Number),
+    ))
+}
+
+fn number_pattern_control_scheme() -> TypeScheme {
     TypeScheme::monomorphic(Type::curried(
         vec![Type::pattern(Type::Number), Type::pattern(Type::Number)],
         Type::pattern(Type::Number),

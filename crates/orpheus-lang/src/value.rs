@@ -39,6 +39,7 @@ pub enum BuiltinKind {
     Within,
     Mask,
     Euclid,
+    Degrees,
     Fast,
     Slow,
     Shift,
@@ -48,6 +49,7 @@ pub enum BuiltinKind {
     Lpf,
     Pan,
     Pitch,
+    Transpose,
     Sample,
     Rate,
     Slice,
@@ -90,6 +92,48 @@ pub enum FunctionValue {
 pub enum GatePatternValue {
     Sample(SamplePatternValue),
     Number(NumberPatternValue),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DegreeCollection {
+    Ionian,
+    Dorian,
+    Phrygian,
+    Mixolydian,
+    Aeolian,
+    MinorPentatonic,
+}
+
+const IONIAN_INTERVALS: [i32; 7] = [0, 2, 4, 5, 7, 9, 11];
+const DORIAN_INTERVALS: [i32; 7] = [0, 2, 3, 5, 7, 9, 10];
+const PHRYGIAN_INTERVALS: [i32; 7] = [0, 1, 3, 5, 7, 8, 10];
+const MIXOLYDIAN_INTERVALS: [i32; 7] = [0, 2, 4, 5, 7, 9, 10];
+const AEOLIAN_INTERVALS: [i32; 7] = [0, 2, 3, 5, 7, 8, 10];
+const MINOR_PENTATONIC_INTERVALS: [i32; 5] = [0, 3, 5, 7, 10];
+
+impl DegreeCollection {
+    pub(crate) fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "ionian" => Some(Self::Ionian),
+            "dorian" => Some(Self::Dorian),
+            "phrygian" => Some(Self::Phrygian),
+            "mixolydian" => Some(Self::Mixolydian),
+            "aeolian" => Some(Self::Aeolian),
+            "minor_pentatonic" => Some(Self::MinorPentatonic),
+            _ => None,
+        }
+    }
+
+    const fn intervals(self) -> &'static [i32] {
+        match self {
+            Self::Ionian => &IONIAN_INTERVALS,
+            Self::Dorian => &DORIAN_INTERVALS,
+            Self::Phrygian => &PHRYGIAN_INTERVALS,
+            Self::Mixolydian => &MIXOLYDIAN_INTERVALS,
+            Self::Aeolian => &AEOLIAN_INTERVALS,
+            Self::MinorPentatonic => &MINOR_PENTATONIC_INTERVALS,
+        }
+    }
 }
 
 /// Represents the fundamental unit of an evaluated expression.
@@ -312,13 +356,15 @@ impl SampleEvent {
     }
 }
 
-trait PatternValueTransform {
+trait PatternValueTransform: Sized {
     fn adjust_gain(&self, factor: f64) -> Self;
     fn adjust_hpf(&self, cutoff_hz: f64) -> Self;
     fn adjust_lpf(&self, cutoff_hz: f64) -> Self;
     fn adjust_pan(&self, amount: f64) -> Self;
     fn adjust_rate(&self, factor: f64) -> Self;
     fn adjust_slice(&self, start: f64, end: f64) -> Self;
+    fn map_degrees(&self, collection: DegreeCollection) -> Result<Self, EvalError>;
+    fn transpose_semitones(&self, semitones: f64) -> Result<Self, EvalError>;
 }
 
 trait PatternRuntimeValue: Clone + PatternValueTransform + Send + Sync + fmt::Debug + Sized {
@@ -406,6 +452,18 @@ impl PatternValueTransform for SampleEvent {
             slice_end: current_range.mul_add(end, self.slice_start),
         }
     }
+
+    fn map_degrees(&self, _collection: DegreeCollection) -> Result<Self, EvalError> {
+        Err(EvalError::new(
+            "internal evaluator error: degree mapping only applies to number patterns",
+        ))
+    }
+
+    fn transpose_semitones(&self, _semitones: f64) -> Result<Self, EvalError> {
+        Err(EvalError::new(
+            "internal evaluator error: transposition only applies to number patterns",
+        ))
+    }
 }
 
 impl PatternValueTransform for f64 {
@@ -431,6 +489,22 @@ impl PatternValueTransform for f64 {
 
     fn adjust_slice(&self, _start: f64, _end: f64) -> Self {
         *self
+    }
+
+    fn map_degrees(&self, collection: DegreeCollection) -> Result<Self, EvalError> {
+        let degree = whole_number_from_degree_value(*self)?;
+        map_degree_to_semitones(degree, collection)
+    }
+
+    fn transpose_semitones(&self, semitones: f64) -> Result<Self, EvalError> {
+        let value = *self + semitones;
+        if value.is_finite() {
+            Ok(value)
+        } else {
+            Err(EvalError::new(
+                "`transpose` produced a non-finite numeric value",
+            ))
+        }
     }
 }
 
@@ -919,6 +993,33 @@ impl NumberPatternValue {
         }
     }
 
+    pub(crate) fn degrees(self, collection: DegreeCollection) -> Self {
+        Self {
+            pattern: PatternRuntime::Degrees {
+                collection,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn transpose(self, semitones: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::Transpose {
+                semitones,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn transpose_pattern(self, control: Self) -> Self {
+        Self {
+            pattern: PatternRuntime::TransposePattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn slow(self, factor: i64) -> Self {
         Self {
             pattern: PatternRuntime::Slow {
@@ -1036,6 +1137,18 @@ enum PatternRuntime<T> {
     },
     Mask {
         gate: Box<GatePatternRuntime>,
+        inner: Box<Self>,
+    },
+    Degrees {
+        collection: DegreeCollection,
+        inner: Box<Self>,
+    },
+    Transpose {
+        semitones: f64,
+        inner: Box<Self>,
+    },
+    TransposePattern {
+        control: Box<PatternRuntime<f64>>,
         inner: Box<Self>,
     },
     Fast {
@@ -1187,6 +1300,15 @@ where
                 inner,
             } => query_within(inner, start, end, transform, span),
             Self::Mask { gate, inner } => query_mask(inner, gate, span),
+            Self::Degrees { collection, inner } => {
+                apply_value_transform(inner, span, |value| value.map_degrees(*collection))
+            }
+            Self::Transpose { semitones, inner } => {
+                apply_value_transform(inner, span, |value| value.transpose_semitones(*semitones))
+            }
+            Self::TransposePattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::Transpose)
+            }
             Self::Fast { factor, inner } => query_fast(inner, *factor, span),
             Self::Slow { factor, inner } => query_slow(inner, *factor, span),
             Self::Shift { offset, inner } => query_shift(inner, offset, span),
@@ -1257,6 +1379,22 @@ where
     let mut events = inner.try_query(span)?;
     for event in &mut events {
         mutate(&mut event.value);
+    }
+    Ok(events)
+}
+
+fn apply_value_transform<T, F>(
+    inner: &PatternRuntime<T>,
+    span: &TimeSpan,
+    mut transform: F,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+    F: FnMut(&T) -> Result<T, EvalError>,
+{
+    let mut events = inner.try_query(span)?;
+    for event in &mut events {
+        event.value = transform(&event.value)?;
     }
     Ok(events)
 }
@@ -1339,6 +1477,7 @@ enum ControlPatternKind {
     Pan,
     Pitch,
     Rate,
+    Transpose,
 }
 
 fn apply_event_fragments<T, F>(
@@ -1402,15 +1541,18 @@ where
         for control_event in &control_events {
             if spans_overlap(&control_event.part, part) {
                 new_value = match kind {
-                    ControlPatternKind::Gain => new_value.adjust_gain(control_event.value),
-                    ControlPatternKind::Hpf => new_value.adjust_hpf(control_event.value),
-                    ControlPatternKind::Lpf => new_value.adjust_lpf(control_event.value),
-                    ControlPatternKind::Pan => new_value.adjust_pan(control_event.value),
-                    ControlPatternKind::Pitch => {
+                    ControlPatternKind::Gain => Ok(new_value.adjust_gain(control_event.value)),
+                    ControlPatternKind::Hpf => Ok(new_value.adjust_hpf(control_event.value)),
+                    ControlPatternKind::Lpf => Ok(new_value.adjust_lpf(control_event.value)),
+                    ControlPatternKind::Pan => Ok(new_value.adjust_pan(control_event.value)),
+                    ControlPatternKind::Pitch => Ok(
                         new_value.adjust_rate(semitones_to_rate_multiplier(control_event.value))
+                    ),
+                    ControlPatternKind::Rate => Ok(new_value.adjust_rate(control_event.value)),
+                    ControlPatternKind::Transpose => {
+                        new_value.transpose_semitones(control_event.value)
                     }
-                    ControlPatternKind::Rate => new_value.adjust_rate(control_event.value),
-                };
+                }?;
             }
         }
         Ok(Some(new_value))
@@ -1465,6 +1607,13 @@ fn validate_control_events(
                     ));
                 }
             }
+            ControlPatternKind::Transpose => {
+                if !event.value.is_finite() {
+                    return Err(EvalError::new(
+                        "`transpose` requires finite numeric control values",
+                    ));
+                }
+            }
         }
     }
 
@@ -1473,6 +1622,30 @@ fn validate_control_events(
 
 fn semitones_to_rate_multiplier(semitones: f64) -> f64 {
     (semitones / 12.0).exp2()
+}
+
+fn whole_number_from_degree_value(value: f64) -> Result<i32, EvalError> {
+    if !value.is_finite() || value.fract().abs() > f64::EPSILON {
+        return Err(EvalError::new(
+            "`degrees` requires whole-number degree values",
+        ));
+    }
+
+    format!("{value:.0}")
+        .parse::<i32>()
+        .map_err(|_| EvalError::new("`degrees` degree exceeded the supported evaluator range"))
+}
+
+fn map_degree_to_semitones(degree: i32, collection: DegreeCollection) -> Result<f64, EvalError> {
+    let intervals = collection.intervals();
+    let scale_len = i32::try_from(intervals.len()).unwrap_or_default();
+    let octave = degree.div_euclid(scale_len);
+    let index = usize::try_from(degree.rem_euclid(scale_len)).unwrap_or_default();
+    let semitones = octave
+        .checked_mul(12)
+        .and_then(|value| value.checked_add(intervals[index]))
+        .ok_or_else(|| EvalError::new("`degrees` exceeded the supported evaluator range"))?;
+    Ok(f64::from(semitones))
 }
 
 fn apply_slice_pattern<T>(
@@ -1957,6 +2130,9 @@ fn absolute_cycle_for_runtime<T>(
         | PatternRuntime::Sometimes { inner, .. }
         | PatternRuntime::Within { inner, .. }
         | PatternRuntime::Mask { inner, .. }
+        | PatternRuntime::Degrees { inner, .. }
+        | PatternRuntime::Transpose { inner, .. }
+        | PatternRuntime::TransposePattern { inner, .. }
         | PatternRuntime::Fast { inner, .. }
         | PatternRuntime::Slow { inner, .. }
         | PatternRuntime::Shift { inner, .. }

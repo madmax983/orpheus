@@ -365,3 +365,21 @@ fn euclid_masks_preserve_source_pattern_types() {
 
     assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
 }
+
+#[test]
+fn degrees_infer_number_patterns() {
+    let typed = infer_module(r#"line = degrees("aeolian", 0 2 4)"#, ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("line").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn degrees_transpose_preserves_number_pattern_types() {
+    let typed = infer_module(
+        r#"line = degrees("aeolian", 0 2 4) |> transpose(45)"#,
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(typed.type_of("line").to_string(), "Pattern<Number>");
+}
