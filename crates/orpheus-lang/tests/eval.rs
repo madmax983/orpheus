@@ -556,6 +556,23 @@ fn mask_merges_adjacent_gate_events_into_one_open_region() {
 }
 
 #[test]
+fn mask_drops_source_events_with_no_gate_overlap() {
+    let module = eval_module("drums = mask(~ cp ~ ~, bd sn)", ReplMode::Loose).unwrap();
+    let events = module
+        .get("drums")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].value.sample(), "bd");
+    assert_eq!(events[0].part.start(), &Rational::new(1, 4).unwrap());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 2).unwrap());
+}
+
+#[test]
 fn mask_accepts_parameterized_bindings() {
     let module = eval_module(
         "keep gate pat = pat |> mask(gate)\n\
