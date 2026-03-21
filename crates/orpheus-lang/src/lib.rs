@@ -5,6 +5,7 @@ mod builtins;
 mod diagnostics;
 mod eval;
 pub mod export;
+pub mod json;
 mod loader;
 mod parser;
 pub mod repl;
@@ -22,6 +23,7 @@ pub use export::{
     render_sample_pattern_to_file, render_sample_pattern_to_file_with_bank,
     render_sample_pattern_to_wav,
 };
+pub use json::{export_number_pattern_to_json, export_sample_pattern_to_json};
 pub use loader::load_file_strict;
 pub use parser::parse_module;
 pub use svg::export_sample_pattern_to_svg;
