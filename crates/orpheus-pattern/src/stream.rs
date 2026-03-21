@@ -73,7 +73,8 @@ impl<T> EventStream<T> {
             return Ok(Vec::new());
         }
 
-        let mut events = Vec::new();
+        // ⚡ Bolt: Pre-allocate vector to the maximum possible size to prevent heap reallocations during stream querying.
+        let mut events = Vec::with_capacity(self.events.len());
         for event in &self.events {
             let whole = event.whole.as_ref().unwrap_or(&event.part);
             if let Some(part) = clip_span(whole, span)? {
