@@ -1,3 +1,13 @@
+//! The `builtins` module implements the standard library of pattern transformations and controls.
+//!
+//! This module houses the execution logic for all primitive functions available in the
+//! Orpheus language, mapping parsed AST function calls to operations on `Pattern`s
+//! (e.g., `fast`, `jux`, `rev`, `gain`). It handles argument extraction, error reporting
+//! for mismatched arity, and the application of polymorphic types during evaluation.
+//!
+//! Note that functions like `stack_values` handles variadic list processing, whereas types like
+//! `BuiltinFn` encapsulate fixed-arity curried transformations.
+
 use orpheus_pattern::{Rational, TimeSpan};
 
 use crate::eval::{EvalError, apply_function_value, f64_to_rational};

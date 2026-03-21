@@ -1,3 +1,11 @@
+//! The `types::env` module implements Hindley-Milner type environments.
+//!
+//! A type environment (`TypeEnv`) maps variable names to `TypeScheme`s, which allow
+//! polymorphic functions (like `fast` or `rev`) to be instantiated with different concrete
+//! types at different call sites.
+//!
+//! The environment is pre-populated with standard built-in functions via `TypeEnv::with_builtins()`.
+
 use std::collections::BTreeMap;
 
 use crate::types::{Type, TypeVarId};

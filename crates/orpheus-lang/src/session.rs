@@ -1,3 +1,13 @@
+//! The `session` module manages the interactive state of an Orpheus environment.
+//!
+//! This module forms the bridge between the textual inputs of the user (via the REPL or TUI)
+//! and the executing backend, managing the bindings of variables, the loading of external
+//! sample banks, and real-time DSP commands (like tempo changes or transport control).
+//!
+//! The central type is [`ReplSession`], which maintains a [`BTreeMap`] of variable names to
+//! typed Orpheus [`Value`]s and interfaces directly with the `orpheus_dsp` layer via an
+//! [`EngineHandle`].
+
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
