@@ -733,10 +733,11 @@ impl PatternRuntimeValue for f64 {
         sort_events(&mut events);
         let mut inverted = Vec::with_capacity(events.len());
         let mut index = 0;
+        let mut cluster = Vec::new();
 
         while index < events.len() {
             let span = events[index].part.clone();
-            let mut cluster = Vec::new();
+            cluster.clear();
             while index < events.len() && events[index].part == span {
                 let event = events[index].clone();
                 if !event.value.is_finite() {
@@ -747,7 +748,7 @@ impl PatternRuntimeValue for f64 {
             }
 
             invert_event_cluster(&mut cluster, count)?;
-            inverted.extend(cluster);
+            inverted.append(&mut cluster);
         }
 
         Ok(inverted)
@@ -760,10 +761,11 @@ impl PatternRuntimeValue for f64 {
         sort_events(&mut events);
         let mut dropped = Vec::with_capacity(events.len());
         let mut index = 0;
+        let mut cluster = Vec::new();
 
         while index < events.len() {
             let span = events[index].part.clone();
-            let mut cluster = Vec::new();
+            cluster.clear();
             while index < events.len() && events[index].part == span {
                 let event = events[index].clone();
                 if !event.value.is_finite() {
@@ -774,7 +776,7 @@ impl PatternRuntimeValue for f64 {
             }
 
             drop_event_cluster(&mut cluster, count)?;
-            dropped.extend(cluster);
+            dropped.append(&mut cluster);
         }
 
         Ok(dropped)
@@ -2671,9 +2673,12 @@ fn merge_open_spans(mut spans: Vec<TimeSpan>) -> Result<Vec<TimeSpan>, EvalError
             .then(left.end().cmp(right.end()))
     });
 
+    // ⚡ Bolt: Pre-allocate vector using the initial span count as the maximum bound
+    // to reduce heap reallocations during merge operations.
+    let capacity = spans.len();
     let mut iter = spans.into_iter();
     let mut current = iter.next().expect("non-empty after early return");
-    let mut merged = Vec::new();
+    let mut merged = Vec::with_capacity(capacity);
 
     for span in iter {
         if span.start() <= current.end() {
