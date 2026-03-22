@@ -93,6 +93,26 @@ pub fn render_sample_pattern_to_file(
     render_sample_pattern_to_file_with_bank(pattern, path, cycle_count, &sample_bank)
 }
 
+fn export_pattern_events_to_csv<T, F>(
+    events: &[Event<T>],
+    path: impl AsRef<Path>,
+    header: &str,
+    mut write_event: F,
+) -> Result<(), EvalError>
+where
+    F: FnMut(&mut std::fs::File, &Event<T>) -> Result<(), EvalError>,
+{
+    let path = path.as_ref();
+    let mut file = std::fs::File::create(path).map_err(|e| EvalError::new(e.to_string()))?;
+    writeln!(file, "{header}").map_err(|e| EvalError::new(e.to_string()))?;
+
+    for event in events {
+        write_event(&mut file, event)?;
+    }
+
+    Ok(())
+}
+
 /// Exports a sample pattern's evaluated events to a CSV file.
 ///
 /// The CSV file will contain columns for `start_num`, `start_den`, `start_float`,
@@ -125,46 +145,41 @@ pub fn export_sample_pattern_to_csv(
 
     let span = render_span(cycle_count)?;
     let events = pattern.try_query(&span)?;
-    let path = path.as_ref();
 
-    let mut file = std::fs::File::create(path).map_err(|e| EvalError::new(e.to_string()))?;
-    writeln!(
-        file,
-        "start_num,start_den,start_float,end_num,end_den,end_float,sample,gain,pan,rate,hpf_cutoff_hz,lpf_cutoff_hz"
+    export_pattern_events_to_csv(
+        &events,
+        path,
+        "start_num,start_den,start_float,end_num,end_den,end_float,sample,gain,pan,rate,hpf_cutoff_hz,lpf_cutoff_hz",
+        |file, event| {
+            let start_float = f64::from(event.part.start());
+            let end_float = f64::from(event.part.end());
+            let hpf = event
+                .value
+                .hpf_cutoff_hz()
+                .map_or_else(String::new, |v| format!("{v:.6}"));
+            let lpf = event
+                .value
+                .lpf_cutoff_hz()
+                .map_or_else(String::new, |v| format!("{v:.6}"));
+            writeln!(
+                file,
+                "{},{},{:.6},{},{},{:.6},{},{:.6},{:.6},{:.6},{},{}",
+                event.part.start().numerator(),
+                event.part.start().denominator(),
+                start_float,
+                event.part.end().numerator(),
+                event.part.end().denominator(),
+                end_float,
+                event.value.sample(),
+                event.value.gain(),
+                event.value.pan(),
+                event.value.rate(),
+                hpf,
+                lpf
+            )
+            .map_err(|e| EvalError::new(e.to_string()))
+        },
     )
-    .map_err(|e| EvalError::new(e.to_string()))?;
-
-    for event in events {
-        let start_float = f64::from(event.part.start());
-        let end_float = f64::from(event.part.end());
-        let hpf = event
-            .value
-            .hpf_cutoff_hz()
-            .map_or_else(String::new, |v| format!("{v:.6}"));
-        let lpf = event
-            .value
-            .lpf_cutoff_hz()
-            .map_or_else(String::new, |v| format!("{v:.6}"));
-        writeln!(
-            file,
-            "{},{},{:.6},{},{},{:.6},{},{:.6},{:.6},{:.6},{},{}",
-            event.part.start().numerator(),
-            event.part.start().denominator(),
-            start_float,
-            event.part.end().numerator(),
-            event.part.end().denominator(),
-            end_float,
-            event.value.sample(),
-            event.value.gain(),
-            event.value.pan(),
-            event.value.rate(),
-            hpf,
-            lpf
-        )
-        .map_err(|e| EvalError::new(e.to_string()))?;
-    }
-
-    Ok(())
 }
 
 /// Exports a sample pattern's evaluated events to a JSON file.
@@ -231,33 +246,28 @@ pub fn export_number_pattern_to_csv(
 
     let span = render_span(cycle_count)?;
     let events = pattern.try_query(&span)?;
-    let path = path.as_ref();
 
-    let mut file = std::fs::File::create(path).map_err(|e| EvalError::new(e.to_string()))?;
-    writeln!(
-        file,
-        "start_num,start_den,start_float,end_num,end_den,end_float,value"
+    export_pattern_events_to_csv(
+        &events,
+        path,
+        "start_num,start_den,start_float,end_num,end_den,end_float,value",
+        |file, event| {
+            let start_float = f64::from(event.part.start());
+            let end_float = f64::from(event.part.end());
+            writeln!(
+                file,
+                "{},{},{:.6},{},{},{:.6},{:.6}",
+                event.part.start().numerator(),
+                event.part.start().denominator(),
+                start_float,
+                event.part.end().numerator(),
+                event.part.end().denominator(),
+                end_float,
+                event.value
+            )
+            .map_err(|e| EvalError::new(e.to_string()))
+        },
     )
-    .map_err(|e| EvalError::new(e.to_string()))?;
-
-    for event in events {
-        let start_float = f64::from(event.part.start());
-        let end_float = f64::from(event.part.end());
-        writeln!(
-            file,
-            "{},{},{:.6},{},{},{:.6},{:.6}",
-            event.part.start().numerator(),
-            event.part.start().denominator(),
-            start_float,
-            event.part.end().numerator(),
-            event.part.end().denominator(),
-            end_float,
-            event.value
-        )
-        .map_err(|e| EvalError::new(e.to_string()))?;
-    }
-
-    Ok(())
 }
 
 /// Exports a number pattern's evaluated events to a JSON file.
