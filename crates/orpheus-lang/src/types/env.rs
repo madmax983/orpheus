@@ -52,6 +52,9 @@ impl TypeEnv {
         env.insert("within", within_transform_scheme(alpha));
         env.insert("mask", mask_scheme());
         env.insert("strum", unary_number_pattern_scheme());
+        env.insert("arp", arp_scheme());
+        env.insert("up", TypeScheme::monomorphic(Type::ArpDirection));
+        env.insert("down", TypeScheme::monomorphic(Type::ArpDirection));
         env.insert("invert", number_pattern_control_scheme());
         env.insert("drop", number_pattern_control_scheme());
         env.insert("chord", number_pattern_control_scheme());
@@ -239,6 +242,17 @@ fn mask_scheme() -> TypeScheme {
 fn euclid_scheme() -> TypeScheme {
     TypeScheme::monomorphic(Type::curried(
         vec![Type::pattern(Type::Number), Type::pattern(Type::Number)],
+        Type::pattern(Type::Number),
+    ))
+}
+
+fn arp_scheme() -> TypeScheme {
+    TypeScheme::monomorphic(Type::curried(
+        vec![
+            Type::pattern(Type::Number),
+            Type::ArpDirection,
+            Type::pattern(Type::Number),
+        ],
         Type::pattern(Type::Number),
     ))
 }

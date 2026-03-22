@@ -12,7 +12,7 @@ use orpheus_pattern::{Rational, TimeSpan};
 
 use crate::eval::{EvalError, apply_function_value, f64_to_rational};
 use crate::value::{
-    BuiltinFn, BuiltinKind, FunctionValue, GatePatternValue, NumberPatternValue,
+    ArpDirectionValue, BuiltinFn, BuiltinKind, FunctionValue, GatePatternValue, NumberPatternValue,
     PitchClassSetValue, SamplePatternValue, Value,
 };
 
@@ -41,6 +41,11 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "strum" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
             BuiltinKind::Strum,
         )))),
+        "arp" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Arp,
+        )))),
+        "up" => Some(Value::ArpDirection(ArpDirectionValue::Up)),
+        "down" => Some(Value::ArpDirection(ArpDirectionValue::Down)),
         "invert" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
             BuiltinKind::Invert,
         )))),
@@ -131,6 +136,7 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
             .map(|value| match value {
                 Value::SamplePattern(pattern) => pattern,
                 Value::NumberPattern(_)
+                | Value::ArpDirection(_)
                 | Value::PitchClassSet(_)
                 | Value::Function(_)
                 | Value::String(_) => unreachable!(),
@@ -148,6 +154,7 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
             .map(|value| match value {
                 Value::NumberPattern(pattern) => pattern,
                 Value::SamplePattern(_)
+                | Value::ArpDirection(_)
                 | Value::PitchClassSet(_)
                 | Value::Function(_)
                 | Value::String(_) => unreachable!(),
@@ -219,6 +226,7 @@ impl BuiltinKind {
             Self::Within => "within",
             Self::Mask => "mask",
             Self::Strum => "strum",
+            Self::Arp => "arp",
             Self::Invert => "invert",
             Self::Drop => "drop",
             Self::Chord => "chord",
@@ -246,7 +254,7 @@ impl BuiltinKind {
 
     const fn arity(self) -> usize {
         match self {
-            Self::Every | Self::Slice | Self::SliceIdx => 3,
+            Self::Every | Self::Arp | Self::Slice | Self::SliceIdx => 3,
             Self::When | Self::Within => 4,
             Self::PitchClassSet | Self::Rev | Self::Sample | Self::Strum => 1,
             Self::Sometimes
@@ -279,6 +287,7 @@ impl BuiltinKind {
             Self::Within => apply_within(args),
             Self::Mask => apply_mask(args),
             Self::Strum => apply_strum(args),
+            Self::Arp => apply_arp(args),
             Self::Invert => apply_invert(args),
             Self::Drop => apply_drop(args),
             Self::Chord => apply_chord(args),
@@ -328,7 +337,10 @@ fn apply_every(args: Vec<Value>) -> Result<Value, EvalError> {
             let transform = extract_unary_pattern_transform(transform, "every", "second")?;
             Ok(Value::NumberPattern(pattern.every(period, transform)))
         }
-        Value::PitchClassSet(_) | Value::Function(_) | Value::String(_) => Err(EvalError::new(
+        Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new(
             "`every` expected a pattern as its final argument",
         )),
     }
@@ -373,7 +385,10 @@ fn apply_when(args: Vec<Value>) -> Result<Value, EvalError> {
                 pattern.when(period, offset, transform),
             ))
         }
-        Value::PitchClassSet(_) | Value::Function(_) | Value::String(_) => Err(EvalError::new(
+        Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new(
             "`when` expected a pattern as its final argument",
         )),
     }
@@ -408,7 +423,10 @@ fn apply_jux(args: Vec<Value>) -> Result<Value, EvalError> {
             ])))
         }
         Value::NumberPattern(_) => Err(EvalError::new("`jux` only applies to sample patterns")),
-        Value::PitchClassSet(_) | Value::Function(_) | Value::String(_) => Err(EvalError::new(
+        Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new(
             "`jux` expected a sample pattern as its final argument",
         )),
     }
@@ -436,7 +454,10 @@ fn apply_sometimes(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError>
                 pattern.sometimes_with_site_salt(transform, site_salt),
             ))
         }
-        Value::PitchClassSet(_) | Value::Function(_) | Value::String(_) => Err(EvalError::new(
+        Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new(
             "`sometimes` expected a pattern as its final argument",
         )),
     }
@@ -474,7 +495,10 @@ fn apply_within(args: Vec<Value>) -> Result<Value, EvalError> {
             let transform = extract_unary_pattern_transform(transform, "within", "third")?;
             Ok(Value::NumberPattern(pattern.within(start, end, transform)))
         }
-        Value::PitchClassSet(_) | Value::Function(_) | Value::String(_) => Err(EvalError::new(
+        Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new(
             "`within` expected a pattern as its final argument",
         )),
     }
@@ -495,7 +519,10 @@ fn apply_mask(args: Vec<Value>) -> Result<Value, EvalError> {
     match pattern {
         Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.mask(gate))),
         Value::NumberPattern(pattern) => Ok(Value::NumberPattern(pattern.mask(gate))),
-        Value::PitchClassSet(_) | Value::Function(_) | Value::String(_) => Err(EvalError::new(
+        Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new(
             "`mask` expected a pattern as its final argument",
         )),
     }
@@ -551,6 +578,27 @@ fn apply_strum(args: Vec<Value>) -> Result<Value, EvalError> {
     )?;
 
     Ok(Value::NumberPattern(pattern.strum()))
+}
+
+fn apply_arp(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let steps = extract_whole_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`arp` requires a step-count argument"))?,
+        "arp",
+        true,
+    )?;
+    let direction_value = args
+        .next()
+        .ok_or_else(|| EvalError::new("`arp` requires a direction argument"))?;
+    let direction = extract_arp_direction(&direction_value)?;
+    let pattern = extract_number_pattern(
+        args.next()
+            .ok_or_else(|| EvalError::new("`arp` requires a number pattern argument"))?,
+        "arp",
+    )?;
+
+    Ok(Value::NumberPattern(pattern.arp(steps, direction)))
 }
 
 fn apply_invert(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -627,7 +675,10 @@ fn apply_fast(args: Vec<Value>) -> Result<Value, EvalError> {
     match pattern {
         Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.fast(factor))),
         Value::NumberPattern(pattern) => Ok(Value::NumberPattern(pattern.fast(factor))),
-        Value::PitchClassSet(_) | Value::Function(_) | Value::String(_) => Err(EvalError::new(
+        Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new(
             "`fast` expected a pattern as its final argument",
         )),
     }
@@ -647,7 +698,10 @@ fn apply_slow(args: Vec<Value>) -> Result<Value, EvalError> {
     match pattern {
         Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.slow(factor))),
         Value::NumberPattern(pattern) => Ok(Value::NumberPattern(pattern.slow(factor))),
-        Value::PitchClassSet(_) | Value::Function(_) | Value::String(_) => Err(EvalError::new(
+        Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new(
             "`slow` expected a pattern as its final argument",
         )),
     }
@@ -667,7 +721,10 @@ fn apply_shift(args: Vec<Value>) -> Result<Value, EvalError> {
     match pattern {
         Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.shift(offset))),
         Value::NumberPattern(pattern) => Ok(Value::NumberPattern(pattern.shift(offset))),
-        Value::PitchClassSet(_) | Value::Function(_) | Value::String(_) => Err(EvalError::new(
+        Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new(
             "`shift` expected a pattern as its final argument",
         )),
     }
@@ -682,9 +739,10 @@ fn apply_rev(args: Vec<Value>) -> Result<Value, EvalError> {
     match pattern {
         Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.rev())),
         Value::NumberPattern(pattern) => Ok(Value::NumberPattern(pattern.rev())),
-        Value::PitchClassSet(_) | Value::Function(_) | Value::String(_) => {
-            Err(EvalError::new("`rev` expected a pattern argument"))
-        }
+        Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new("`rev` expected a pattern argument")),
     }
 }
 
@@ -814,7 +872,10 @@ fn apply_slice(args: Vec<Value>) -> Result<Value, EvalError> {
             }
         })),
         Value::NumberPattern(_) => Err(EvalError::new("`slice` only applies to sample patterns")),
-        Value::PitchClassSet(_) | Value::Function(_) | Value::String(_) => Err(EvalError::new(
+        Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new(
             "`slice` expected a sample pattern as its final argument",
         )),
     }
@@ -852,7 +913,10 @@ fn apply_slice_idx(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::NumberPattern(_) => Err(EvalError::new(
             "`slice_idx` only applies to sample patterns",
         )),
-        Value::PitchClassSet(_) | Value::Function(_) | Value::String(_) => Err(EvalError::new(
+        Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new(
             "`slice_idx` expected a sample pattern as its final argument",
         )),
     }
@@ -884,9 +948,12 @@ fn apply_sample_numeric_control(
         } else {
             format!("`{builtin_name}` only applies to sample patterns")
         })),
-        Value::PitchClassSet(_) | Value::Function(_) | Value::String(_) => Err(EvalError::new(
-            format!("`{builtin_name}` expected a sample pattern as its final argument"),
-        )),
+        Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new(format!(
+            "`{builtin_name}` expected a sample pattern as its final argument"
+        ))),
     }
 }
 
@@ -948,6 +1015,7 @@ fn extract_unary_pattern_transform(
         }
         Value::SamplePattern(_)
         | Value::NumberPattern(_)
+        | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::String(_) => Err(EvalError::new(message)),
     }
@@ -963,9 +1031,10 @@ fn extract_pattern_gate(
     match gate {
         Value::SamplePattern(pattern) => Ok(GatePatternValue::Sample(pattern)),
         Value::NumberPattern(pattern) => Ok(GatePatternValue::Number(pattern)),
-        Value::PitchClassSet(_) | Value::Function(_) | Value::String(_) => {
-            Err(EvalError::new(message))
-        }
+        Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new(message)),
     }
 }
 
@@ -1521,6 +1590,7 @@ fn extract_number_pattern(
     match value {
         Value::NumberPattern(pattern) => Ok(pattern),
         Value::SamplePattern(_)
+        | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::String(_) => Err(EvalError::new(format!(
@@ -1537,6 +1607,7 @@ fn extract_constant_number(value: Value, builtin_name: &str) -> Result<f64, Eval
             ))
         }),
         Value::SamplePattern(_)
+        | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::String(_) => Err(EvalError::new(format!(
@@ -1550,10 +1621,24 @@ fn extract_string(value: Value, builtin_name: &str) -> Result<String, EvalError>
         Value::String(string) => Ok(string),
         Value::SamplePattern(_)
         | Value::NumberPattern(_)
+        | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_) => Err(EvalError::new(format!(
             "`{builtin_name}` requires a string argument"
         ))),
+    }
+}
+
+fn extract_arp_direction(value: &Value) -> Result<ArpDirectionValue, EvalError> {
+    match value {
+        Value::ArpDirection(direction) => Ok(*direction),
+        Value::SamplePattern(_)
+        | Value::NumberPattern(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new(
+            "`arp` requires a direction argument like `up` or `down`",
+        )),
     }
 }
 
@@ -1563,9 +1648,12 @@ fn extract_pitch_class_set(value: Value) -> Result<PitchClassSetValue, EvalError
         Value::String(name) => Err(EvalError::new(format!(
             "`degrees` now requires a pitch class set value, not a string; use `degrees({name}, ...)` for canonical builtins or `pitch_class_set(...)` for user-defined sets"
         ))),
-        Value::SamplePattern(_) | Value::NumberPattern(_) | Value::Function(_) => Err(
-            EvalError::new("`degrees` requires a pitch class set as its first argument"),
-        ),
+        Value::SamplePattern(_)
+        | Value::NumberPattern(_)
+        | Value::ArpDirection(_)
+        | Value::Function(_) => Err(EvalError::new(
+            "`degrees` requires a pitch class set as its first argument",
+        )),
     }
 }
 

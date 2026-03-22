@@ -665,6 +665,9 @@ impl Evaluator {
             Value::Function(_) => Err(EvalError::new(
                 "functions cannot be materialized into explicit-time event streams",
             )),
+            Value::ArpDirection(_) => Err(EvalError::new(
+                "arp directions cannot be materialized into explicit-time event streams",
+            )),
             Value::PitchClassSet(_) => Err(EvalError::new(
                 "pitch class sets cannot be materialized into explicit-time event streams",
             )),
@@ -692,6 +695,7 @@ impl Evaluator {
             Value::Function(function) => apply_function_value(function, args),
             Value::SamplePattern(_)
             | Value::NumberPattern(_)
+            | Value::ArpDirection(_)
             | Value::PitchClassSet(_)
             | Value::String(_) => Err(EvalError::new(format!(
                 "cannot call a {}",
@@ -999,6 +1003,7 @@ fn extract_constant_number_value(value: Value, context: &str) -> Result<f64, Eva
     match value {
         Value::NumberPattern(pattern) => pattern.constant_value(),
         Value::SamplePattern(_)
+        | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::String(_) => Err(EvalError::new(format!(
@@ -1012,6 +1017,7 @@ fn extract_string_value(value: Value, message: &str) -> Result<String, EvalError
         Value::String(string) => Ok(string),
         Value::SamplePattern(_)
         | Value::NumberPattern(_)
+        | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_) => Err(EvalError::new(message)),
     }

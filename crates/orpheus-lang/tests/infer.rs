@@ -527,3 +527,35 @@ fn strum_rejects_sample_patterns_at_typecheck() {
     assert!(message.contains("expected Number"));
     assert!(message.contains("Sample"));
 }
+
+#[test]
+fn arp_infers_number_patterns() {
+    let typed = infer_module("lead = arp(5, up, chord(c4, 0 4 7))", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("lead").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn arp_pipe_form_infers_number_patterns() {
+    let typed = infer_module("lead = chord(c4, 0 4 7) |> arp(5, up)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("lead").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn arp_rejects_sample_patterns_at_typecheck() {
+    let error = infer_module("bad = arp(5, up, bd)", ReplMode::Strict).unwrap_err();
+    let message = error.to_string();
+
+    assert!(message.contains("expected Number"));
+    assert!(message.contains("Sample"));
+}
+
+#[test]
+fn arp_rejects_non_direction_arguments_at_typecheck() {
+    let error = infer_module("bad = arp(5, c4, chord(c4, 0 4 7))", ReplMode::Strict).unwrap_err();
+    let message = error.to_string();
+
+    assert!(message.contains("ArpDirection"));
+    assert!(message.contains("Pattern<Number>") || message.contains("Number"));
+}

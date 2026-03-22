@@ -39,6 +39,7 @@ pub enum BuiltinKind {
     Within,
     Mask,
     Strum,
+    Arp,
     Invert,
     Drop,
     Chord,
@@ -97,6 +98,12 @@ pub enum FunctionValue {
 pub enum GatePatternValue {
     Sample(SamplePatternValue),
     Number(NumberPatternValue),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ArpDirectionValue {
+    Up,
+    Down,
 }
 
 const IONIAN_INTERVALS: [i32; 7] = [0, 2, 4, 5, 7, 9, 11];
@@ -217,6 +224,7 @@ impl PitchClassSetValue {
 pub enum Value {
     SamplePattern(SamplePatternValue),
     NumberPattern(NumberPatternValue),
+    ArpDirection(ArpDirectionValue),
     PitchClassSet(PitchClassSetValue),
     Function(FunctionValue),
     String(String),
@@ -238,6 +246,7 @@ impl Value {
         match self {
             Self::SamplePattern(pattern) => Some(pattern),
             Self::NumberPattern(_)
+            | Self::ArpDirection(_)
             | Self::PitchClassSet(_)
             | Self::Function(_)
             | Self::String(_) => None,
@@ -259,6 +268,7 @@ impl Value {
         match self {
             Self::NumberPattern(pattern) => Some(pattern),
             Self::SamplePattern(_)
+            | Self::ArpDirection(_)
             | Self::PitchClassSet(_)
             | Self::Function(_)
             | Self::String(_) => None,
@@ -271,6 +281,19 @@ impl Value {
             Self::PitchClassSet(pitch_class_set) => Some(pitch_class_set),
             Self::SamplePattern(_)
             | Self::NumberPattern(_)
+            | Self::ArpDirection(_)
+            | Self::Function(_)
+            | Self::String(_) => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn as_arp_direction(&self) -> Option<ArpDirectionValue> {
+        match self {
+            Self::ArpDirection(direction) => Some(*direction),
+            Self::SamplePattern(_)
+            | Self::NumberPattern(_)
+            | Self::PitchClassSet(_)
             | Self::Function(_)
             | Self::String(_) => None,
         }
@@ -293,6 +316,7 @@ impl Value {
         match self {
             Self::SamplePattern(_) => "sample pattern",
             Self::NumberPattern(_) => "number pattern",
+            Self::ArpDirection(_) => "arp direction",
             Self::PitchClassSet(_) => "pitch class set",
             Self::Function(_) => "function",
             Self::String(_) => "string",
@@ -430,6 +454,11 @@ trait PatternRuntimeValue: Clone + PatternValueTransform + Send + Sync + fmt::De
     fn try_from_runtime_value(value: Value) -> Result<PatternRuntime<Self>, EvalError>;
     fn try_from_rand(value: f64) -> Result<Self, EvalError>;
     fn strum_events(events: Vec<Event<Self>>) -> Result<Vec<Event<Self>>, EvalError>;
+    fn arp_events(
+        events: Vec<Event<Self>>,
+        steps: u32,
+        direction: ArpDirectionValue,
+    ) -> Result<Vec<Event<Self>>, EvalError>;
     fn invert_events(events: Vec<Event<Self>>, count: u32) -> Result<Vec<Event<Self>>, EvalError>;
     fn drop_events(events: Vec<Event<Self>>, count: u32) -> Result<Vec<Event<Self>>, EvalError>;
 }
@@ -578,6 +607,7 @@ impl PatternRuntimeValue for SampleEvent {
         match value {
             Value::SamplePattern(pattern) => Ok(pattern.pattern),
             Value::NumberPattern(_)
+            | Value::ArpDirection(_)
             | Value::PitchClassSet(_)
             | Value::Function(_)
             | Value::String(_) => Err(EvalError::new(
@@ -593,6 +623,16 @@ impl PatternRuntimeValue for SampleEvent {
     fn strum_events(_events: Vec<Event<Self>>) -> Result<Vec<Event<Self>>, EvalError> {
         Err(EvalError::new(
             "internal evaluator error: strum only applies to number patterns",
+        ))
+    }
+
+    fn arp_events(
+        _events: Vec<Event<Self>>,
+        _steps: u32,
+        _direction: ArpDirectionValue,
+    ) -> Result<Vec<Event<Self>>, EvalError> {
+        Err(EvalError::new(
+            "internal evaluator error: arp only applies to number patterns",
         ))
     }
 
@@ -621,6 +661,7 @@ impl PatternRuntimeValue for f64 {
         match value {
             Value::NumberPattern(pattern) => Ok(pattern.pattern),
             Value::SamplePattern(_)
+            | Value::ArpDirection(_)
             | Value::PitchClassSet(_)
             | Value::Function(_)
             | Value::String(_) => Err(EvalError::new(
@@ -655,6 +696,34 @@ impl PatternRuntimeValue for f64 {
 
         sort_events(&mut strummed);
         Ok(strummed)
+    }
+
+    fn arp_events(
+        mut events: Vec<Event<Self>>,
+        steps: u32,
+        direction: ArpDirectionValue,
+    ) -> Result<Vec<Event<Self>>, EvalError> {
+        sort_events(&mut events);
+        let mut arped = Vec::new();
+        let mut index = 0;
+
+        while index < events.len() {
+            let span = events[index].part.clone();
+            let mut cluster = Vec::new();
+            while index < events.len() && events[index].part == span {
+                let event = events[index].clone();
+                if !event.value.is_finite() {
+                    return Err(EvalError::new("`arp` requires finite numeric values"));
+                }
+                cluster.push(event);
+                index += 1;
+            }
+
+            arped.extend(arp_event_cluster(cluster, steps, direction)?);
+        }
+
+        sort_events(&mut arped);
+        Ok(arped)
     }
 
     fn invert_events(
@@ -1193,6 +1262,16 @@ impl NumberPatternValue {
         }
     }
 
+    pub(crate) fn arp(self, steps: u32, direction: ArpDirectionValue) -> Self {
+        Self {
+            pattern: PatternRuntime::Arp {
+                steps,
+                direction,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn drop_voice(self, count: u32) -> Self {
         Self {
             pattern: PatternRuntime::Drop {
@@ -1340,6 +1419,11 @@ enum PatternRuntime<T> {
         inner: Box<Self>,
     },
     Strum {
+        inner: Box<Self>,
+    },
+    Arp {
+        steps: u32,
+        direction: ArpDirectionValue,
         inner: Box<Self>,
     },
     Invert {
@@ -1512,6 +1596,11 @@ where
             } => query_within(inner, start, end, transform, span),
             Self::Mask { gate, inner } => query_mask(inner, gate, span),
             Self::Strum { inner } => T::strum_events(inner.try_query(span)?),
+            Self::Arp {
+                steps,
+                direction,
+                inner,
+            } => T::arp_events(inner.try_query(span)?, *steps, *direction),
             Self::Invert { count, inner } => T::invert_events(inner.try_query(span)?, *count),
             Self::Drop { count, inner } => T::drop_events(inner.try_query(span)?, *count),
             Self::Degrees { collection, inner } => {
@@ -1732,6 +1821,58 @@ fn strum_event_cluster(mut cluster: Vec<Event<f64>>) -> Result<Vec<Event<f64>>, 
     }
 
     Ok(cluster)
+}
+
+fn arp_event_cluster(
+    mut cluster: Vec<Event<f64>>,
+    steps: u32,
+    direction: ArpDirectionValue,
+) -> Result<Vec<Event<f64>>, EvalError> {
+    if cluster.is_empty() {
+        return Ok(cluster);
+    }
+
+    if steps == 0 {
+        return Err(EvalError::new(
+            "`arp` requires a positive whole number of steps",
+        ));
+    }
+
+    cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
+    let span = cluster[0].part.clone();
+    let width = window_width(&span)?;
+    if width == Rational::zero() {
+        return Ok(cluster);
+    }
+
+    let step_count = i128::from(steps);
+    let step = rational_mul(
+        &width,
+        &rational_reciprocal(&rational_from_parts(step_count, 1)?)?,
+    )?;
+    let len = cluster.len();
+    let mut arped = Vec::with_capacity(usize::try_from(steps).unwrap_or(cluster.len()));
+
+    for index in 0..steps {
+        let offset_index = i64::from(index);
+        let offset = rational_mul_parts(&step, offset_index, 1)?;
+        let start = rational_add(span.start(), &offset)?;
+        let end = rational_add(&start, &step)?;
+        let slot = usize::try_from(index)
+            .map_err(|_| EvalError::new("`arp` exceeded the supported evaluator range"))?
+            % len;
+        let selected = match direction {
+            ArpDirectionValue::Up => slot,
+            ArpDirectionValue::Down => len - 1 - slot,
+        };
+        arped.push(Event {
+            whole: None,
+            part: TimeSpan::new(start, end).map_err(EvalError::from)?,
+            value: cluster[selected].value,
+        });
+    }
+
+    Ok(arped)
 }
 
 fn drop_event_cluster(cluster: &mut [Event<f64>], count: u32) -> Result<(), EvalError> {
@@ -2414,6 +2555,7 @@ fn absolute_cycle_for_runtime<T>(
         | PatternRuntime::Within { inner, .. }
         | PatternRuntime::Mask { inner, .. }
         | PatternRuntime::Strum { inner }
+        | PatternRuntime::Arp { inner, .. }
         | PatternRuntime::Invert { inner, .. }
         | PatternRuntime::Drop { inner, .. }
         | PatternRuntime::Degrees { inner, .. }
@@ -2770,8 +2912,9 @@ const fn ceil_rational(value: &Rational) -> i128 {
 #[cfg(test)]
 mod tests {
     use super::{
-        BuiltinFn, BuiltinKind, FunctionValue, NumberPatternValue, SampleEvent, SamplePatternValue,
-        Value, cycle_span, sometimes_applies_on_cycle, strum_event_cluster,
+        ArpDirectionValue, BuiltinFn, BuiltinKind, FunctionValue, NumberPatternValue, SampleEvent,
+        SamplePatternValue, Value, arp_event_cluster, cycle_span, sometimes_applies_on_cycle,
+        strum_event_cluster,
     };
     use orpheus_pattern::{Event, PatternNode, Rational, TimeSpan};
 
@@ -2955,6 +3098,27 @@ mod tests {
         ];
 
         let events = strum_event_cluster(cluster.clone()).unwrap();
+        assert_eq!(events, cluster);
+    }
+
+    #[test]
+    fn arp_leaves_zero_width_number_clusters_unchanged() {
+        let zero = Rational::new(1, 2).unwrap();
+        let span = TimeSpan::new(zero.clone(), zero).unwrap();
+        let cluster = vec![
+            Event {
+                whole: None,
+                part: span.clone(),
+                value: 60.0,
+            },
+            Event {
+                whole: None,
+                part: span,
+                value: 67.0,
+            },
+        ];
+
+        let events = arp_event_cluster(cluster.clone(), 5, ArpDirectionValue::Up).unwrap();
         assert_eq!(events, cluster);
     }
 }

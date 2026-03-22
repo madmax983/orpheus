@@ -1505,6 +1505,177 @@ fn strum_rejects_non_numeric_patterns() {
 }
 
 #[test]
+fn arp_wraps_upward_across_equal_fifths() {
+    let module = eval_module("lead = arp(5, up, chord(c4, 0 4 7))", ReplMode::Loose).unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![60.0, 64.0, 67.0, 60.0, 64.0]
+    );
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 5).unwrap());
+    assert_eq!(events[4].part.start(), &Rational::new(4, 5).unwrap());
+    assert_eq!(events[4].part.end(), &Rational::one());
+}
+
+#[test]
+fn arp_wraps_downward_across_equal_fifths() {
+    let module = eval_module("lead = arp(5, down, chord(c4, 0 4 7))", ReplMode::Loose).unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![67.0, 64.0, 60.0, 67.0, 64.0]
+    );
+}
+
+#[test]
+fn arp_applies_per_exact_span_cluster() {
+    let module = eval_module("line = arp(4, up, chord(c4 e4, 0 7))", ReplMode::Loose).unwrap();
+    let events = module
+        .get("line")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![60.0, 67.0, 60.0, 67.0, 64.0, 71.0, 64.0, 71.0]
+    );
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 8).unwrap());
+    assert_eq!(events[3].part.start(), &Rational::new(3, 8).unwrap());
+    assert_eq!(events[3].part.end(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[4].part.start(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[4].part.end(), &Rational::new(5, 8).unwrap());
+    assert_eq!(events[7].part.start(), &Rational::new(7, 8).unwrap());
+    assert_eq!(events[7].part.end(), &Rational::one());
+}
+
+#[test]
+fn arp_repeats_single_note_clusters() {
+    let module = eval_module("melody = arp(4, up, c4 e4)", ReplMode::Loose).unwrap();
+    let events = module
+        .get("melody")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![60.0, 60.0, 60.0, 60.0, 64.0, 64.0, 64.0, 64.0]
+    );
+}
+
+#[test]
+fn arp_pipe_matches_direct_call() {
+    let direct = eval_module("lead = arp(5, up, chord(c4, 0 4 7))", ReplMode::Loose).unwrap();
+    let direct_events = direct
+        .get("lead")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    let piped = eval_module("lead = chord(c4, 0 4 7) |> arp(5, up)", ReplMode::Loose).unwrap();
+    let piped_events = piped
+        .get("lead")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(direct_events, piped_events);
+}
+
+#[test]
+fn arp_composes_with_drop() {
+    let module = eval_module(
+        "lead = chord(c4, 0 4 7 10) |> drop(2) |> arp(6, up)",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![55.0, 60.0, 64.0, 70.0, 55.0, 60.0]
+    );
+}
+
+#[test]
+fn arp_rejects_zero_steps() {
+    assert_eval_error_contains(
+        "bad = arp(0, up, chord(c4, 0 4 7))",
+        ReplMode::Loose,
+        &["arp", "positive"],
+    );
+}
+
+#[test]
+fn arp_rejects_negative_steps() {
+    assert_eval_error_contains(
+        "bad = arp(-1, up, chord(c4, 0 4 7))",
+        ReplMode::Loose,
+        &["arp", "positive"],
+    );
+}
+
+#[test]
+fn arp_rejects_fractional_steps() {
+    assert_eval_error_contains(
+        "bad = arp(1.5, up, chord(c4, 0 4 7))",
+        ReplMode::Loose,
+        &["arp", "whole number"],
+    );
+}
+
+#[test]
+fn arp_rejects_non_constant_steps() {
+    assert_eval_error_contains(
+        "bad = arp(1 2, up, chord(c4, 0 4 7))",
+        ReplMode::Loose,
+        &["arp", "constant"],
+    );
+}
+
+#[test]
+fn arp_rejects_non_direction_arguments() {
+    assert_eval_error_contains(
+        "bad = arp(5, c4, chord(c4, 0 4 7))",
+        ReplMode::Loose,
+        &["arp", "direction"],
+    );
+}
+
+#[test]
+fn arp_rejects_non_numeric_patterns() {
+    assert_eval_error_contains(
+        "bad = arp(5, up, bd)",
+        ReplMode::Loose,
+        &["arp", "number pattern"],
+    );
+}
+
+#[test]
 fn gain_updates_sample_event_amplitude() {
     let module = eval_module("drums = bd |> gain(0.8)", ReplMode::Loose).unwrap();
     let event = module
