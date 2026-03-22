@@ -1075,6 +1075,135 @@ fn chord_rejects_non_numeric_intervals() {
 }
 
 #[test]
+fn invert_first_inversion_raises_the_lowest_note() {
+    let module = eval_module("pad = invert(1, chord(c4, 0 4 7))", ReplMode::Loose).unwrap();
+    let events = module
+        .get("pad")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![64.0, 67.0, 72.0]
+    );
+    assert!(events.iter().all(|event| event.part == TimeSpan::unit()));
+}
+
+#[test]
+fn invert_second_inversion_repeats_the_process() {
+    let module = eval_module("pad = invert(2, chord(c4, 0 4 7))", ReplMode::Loose).unwrap();
+    let events = module
+        .get("pad")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![67.0, 72.0, 76.0]
+    );
+}
+
+#[test]
+fn invert_applies_per_exact_span_cluster() {
+    let module = eval_module("line = invert(1, chord(c4 e4, 0 7))", ReplMode::Loose).unwrap();
+    let events = module
+        .get("line")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![67.0, 72.0, 71.0, 76.0]
+    );
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[1].part.start(), &Rational::zero());
+    assert_eq!(events[1].part.end(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[2].part.start(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[2].part.end(), &Rational::one());
+    assert_eq!(events[3].part.start(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[3].part.end(), &Rational::one());
+}
+
+#[test]
+fn invert_leaves_single_note_clusters_unchanged() {
+    let module = eval_module("melody = invert(1, c4 e4)", ReplMode::Loose).unwrap();
+    let events = module
+        .get("melody")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![60.0, 64.0]
+    );
+}
+
+#[test]
+fn invert_accepts_degree_derived_harmony() {
+    let module = eval_module(
+        "harm = chord(degrees(aeolian, 0 2) |> transpose(60), 0 3 7) |> invert(1)",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("harm")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![63.0, 67.0, 72.0, 66.0, 70.0, 75.0]
+    );
+}
+
+#[test]
+fn invert_rejects_negative_counts() {
+    assert_eval_error_contains(
+        "bad = invert(-1, chord(c4, 0 4 7))",
+        ReplMode::Loose,
+        &["invert", "non-negative"],
+    );
+}
+
+#[test]
+fn invert_rejects_fractional_counts() {
+    assert_eval_error_contains(
+        "bad = invert(1.5, chord(c4, 0 4 7))",
+        ReplMode::Loose,
+        &["invert", "whole number"],
+    );
+}
+
+#[test]
+fn invert_rejects_non_constant_counts() {
+    assert_eval_error_contains(
+        "bad = invert(1 2, chord(c4, 0 4 7))",
+        ReplMode::Loose,
+        &["invert", "constant"],
+    );
+}
+
+#[test]
+fn invert_rejects_non_numeric_patterns() {
+    assert_eval_error_contains(
+        "bad = invert(1, bd)",
+        ReplMode::Loose,
+        &["invert", "number pattern"],
+    );
+}
+
+#[test]
 fn gain_updates_sample_event_amplitude() {
     let module = eval_module("drums = bd |> gain(0.8)", ReplMode::Loose).unwrap();
     let event = module

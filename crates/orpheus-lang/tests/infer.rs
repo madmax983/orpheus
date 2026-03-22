@@ -458,3 +458,26 @@ fn chord_accepts_degree_derived_roots() {
 
     assert_eq!(typed.type_of("harm").to_string(), "Pattern<Number>");
 }
+
+#[test]
+fn invert_infers_number_patterns() {
+    let typed = infer_module("pad = invert(1, chord(c4, 0 4 7))", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("pad").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn invert_pipe_form_infers_number_patterns() {
+    let typed = infer_module("pad = chord(c4, 0 4 7) |> invert(1)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("pad").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn invert_rejects_sample_patterns_at_typecheck() {
+    let error = infer_module("bad = invert(1, bd)", ReplMode::Strict).unwrap_err();
+    let message = error.to_string();
+
+    assert!(message.contains("expected Number"));
+    assert!(message.contains("Sample"));
+}
