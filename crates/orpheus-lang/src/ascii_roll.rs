@@ -32,8 +32,7 @@ pub fn render_ascii_roll(
     let events = pattern.try_query(&span)?;
 
     let mut lanes: BTreeMap<String, Vec<char>> = BTreeMap::new();
-    let total_steps = usize::try_from(cycle_count * u64::from(steps_per_cycle))
-        .map_err(|e| EvalError::new(e.to_string()))?;
+    let total_steps = usize::try_from(cycle_count * u64::from(steps_per_cycle))?;
 
     // Determine unique samples to initialize lanes
     for event in &events {
@@ -82,7 +81,7 @@ pub fn render_ascii_roll(
     let mut output = String::new();
 
     for (sample, grid) in lanes {
-        write!(output, "{sample:>max_label_len$} | ").map_err(|e| EvalError::new(e.to_string()))?;
+        write!(output, "{sample:>max_label_len$} | ")?;
 
         for (i, &c) in grid.iter().enumerate() {
             if i > 0 && i % (steps_per_cycle as usize) == 0 {
