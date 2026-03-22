@@ -12,3 +12,7 @@
 ## 2026-03-24 - [The "Black Box": Missing Module-Level Documentation in orpheus-pattern, orpheus-dsp, and orpheus-lang]
 **Confusion:** Several core components of the `orpheus-pattern`, `orpheus-dsp` and `orpheus-lang` crates lacked or had incomplete module-level (`//!`) documentation, leaving their high-level concepts and architecture unexplained. Specifically, modules in `orpheus-dsp` (e.g. `engine.rs`, `offline.rs`, `scheduler.rs`), `orpheus-lang` (e.g. `export.rs`, `loader.rs`, `tui.rs`), and `orpheus-pattern` (e.g. `cycle.rs`, `event.rs`, `rational.rs`) acted as "Black Boxes".
 **Clarification:** Added comprehensive `//!` documentation blocks at the top of these files, explaining *what* each module does and its role in the system. This clarifies the real-time audio rendering system, offline rendering, lock-free queues in DSP, visual rendering of patterns, and the exact rational number representations for continuous time.
+
+## 2026-03-24 - [Broken Intra-Doc Link in session.rs]
+**Confusion:** The `session.rs` module-level documentation linked to the private types `ReplSession` and `EngineHandle` via `[\`ReplSession\`]`, causing `cargo doc` to fail due to the dead intra-doc link.
+**Clarification:** I replaced the broken intra-doc links with simple backticks (e.g., `\`ReplSession\``) to render the names as code elements without creating dead links.
