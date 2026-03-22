@@ -661,4 +661,16 @@ mod tests {
 
         let _ = fs::remove_file(path);
     }
+
+    #[test]
+    fn strum_export_preserves_partitioned_progression_output() {
+        let module = eval_module("pads = strum(chord(c4 e4, 0 7))", ReplMode::Loose).unwrap();
+        let pads = module.get("pads").unwrap().as_number_pattern().unwrap();
+        let path = temp_json_path();
+
+        export_number_pattern_to_json(pads, &path, 1).unwrap();
+        assert_json_fixture_matches(&path, "strum_progression_export.json");
+
+        let _ = fs::remove_file(path);
+    }
 }

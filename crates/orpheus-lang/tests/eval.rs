@@ -1361,6 +1361,150 @@ fn drop_rejects_non_numeric_patterns() {
 }
 
 #[test]
+fn strum_partitions_triads_into_equal_thirds() {
+    let module = eval_module("pad = strum(chord(c4, 0 4 7))", ReplMode::Loose).unwrap();
+    let events = module
+        .get("pad")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![60.0, 64.0, 67.0]
+    );
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 3).unwrap());
+    assert_eq!(events[1].part.start(), &Rational::new(1, 3).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::new(2, 3).unwrap());
+    assert_eq!(events[2].part.start(), &Rational::new(2, 3).unwrap());
+    assert_eq!(events[2].part.end(), &Rational::one());
+}
+
+#[test]
+fn strum_applies_per_exact_span_cluster() {
+    let module = eval_module("line = strum(chord(c4 e4, 0 7))", ReplMode::Loose).unwrap();
+    let events = module
+        .get("line")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![60.0, 67.0, 64.0, 71.0]
+    );
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 4).unwrap());
+    assert_eq!(events[1].part.start(), &Rational::new(1, 4).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[2].part.start(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[2].part.end(), &Rational::new(3, 4).unwrap());
+    assert_eq!(events[3].part.start(), &Rational::new(3, 4).unwrap());
+    assert_eq!(events[3].part.end(), &Rational::one());
+}
+
+#[test]
+fn strum_leaves_single_note_clusters_unchanged() {
+    let module = eval_module("melody = strum(c4 e4)", ReplMode::Loose).unwrap();
+    let events = module
+        .get("melody")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![60.0, 64.0]
+    );
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[1].part.start(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::one());
+}
+
+#[test]
+fn strum_composes_with_drop() {
+    let module = eval_module(
+        "pad = chord(c4, 0 4 7 10) |> drop(2) |> strum",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("pad")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![55.0, 60.0, 64.0, 70.0]
+    );
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 4).unwrap());
+    assert_eq!(events[3].part.start(), &Rational::new(3, 4).unwrap());
+    assert_eq!(events[3].part.end(), &Rational::one());
+}
+
+#[test]
+fn strum_composes_with_invert() {
+    let module = eval_module(
+        "pad = chord(c4, 0 4 7) |> invert(1) |> strum",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("pad")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![64.0, 67.0, 72.0]
+    );
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 3).unwrap());
+    assert_eq!(events[2].part.start(), &Rational::new(2, 3).unwrap());
+    assert_eq!(events[2].part.end(), &Rational::one());
+}
+
+#[test]
+fn strum_pipe_matches_direct_call() {
+    let direct = eval_module("pad = strum(chord(c4 e4, 0 7))", ReplMode::Loose).unwrap();
+    let direct_events = direct
+        .get("pad")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    let piped = eval_module("pad = chord(c4 e4, 0 7) |> strum", ReplMode::Loose).unwrap();
+    let piped_events = piped
+        .get("pad")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(direct_events, piped_events);
+}
+
+#[test]
+fn strum_rejects_non_numeric_patterns() {
+    assert_eval_error_contains(
+        "bad = strum(bd)",
+        ReplMode::Loose,
+        &["strum", "number pattern"],
+    );
+}
+
+#[test]
 fn gain_updates_sample_event_amplitude() {
     let module = eval_module("drums = bd |> gain(0.8)", ReplMode::Loose).unwrap();
     let event = module

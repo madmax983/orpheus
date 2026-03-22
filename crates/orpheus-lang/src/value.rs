@@ -38,6 +38,7 @@ pub enum BuiltinKind {
     Sometimes,
     Within,
     Mask,
+    Strum,
     Invert,
     Drop,
     Chord,
@@ -428,6 +429,7 @@ trait PatternRuntimeValue: Clone + PatternValueTransform + Send + Sync + fmt::De
     fn into_runtime_value(pattern: PatternRuntime<Self>) -> Value;
     fn try_from_runtime_value(value: Value) -> Result<PatternRuntime<Self>, EvalError>;
     fn try_from_rand(value: f64) -> Result<Self, EvalError>;
+    fn strum_events(events: Vec<Event<Self>>) -> Result<Vec<Event<Self>>, EvalError>;
     fn invert_events(events: Vec<Event<Self>>, count: u32) -> Result<Vec<Event<Self>>, EvalError>;
     fn drop_events(events: Vec<Event<Self>>, count: u32) -> Result<Vec<Event<Self>>, EvalError>;
 }
@@ -588,6 +590,12 @@ impl PatternRuntimeValue for SampleEvent {
         Err(EvalError::new("rand only produces numbers"))
     }
 
+    fn strum_events(_events: Vec<Event<Self>>) -> Result<Vec<Event<Self>>, EvalError> {
+        Err(EvalError::new(
+            "internal evaluator error: strum only applies to number patterns",
+        ))
+    }
+
     fn invert_events(
         _events: Vec<Event<Self>>,
         _count: u32,
@@ -623,6 +631,30 @@ impl PatternRuntimeValue for f64 {
 
     fn try_from_rand(value: f64) -> Result<Self, EvalError> {
         Ok(value)
+    }
+
+    fn strum_events(mut events: Vec<Event<Self>>) -> Result<Vec<Event<Self>>, EvalError> {
+        sort_events(&mut events);
+        let mut strummed = Vec::with_capacity(events.len());
+        let mut index = 0;
+
+        while index < events.len() {
+            let span = events[index].part.clone();
+            let mut cluster = Vec::new();
+            while index < events.len() && events[index].part == span {
+                let event = events[index].clone();
+                if !event.value.is_finite() {
+                    return Err(EvalError::new("`strum` requires finite numeric values"));
+                }
+                cluster.push(event);
+                index += 1;
+            }
+
+            strummed.extend(strum_event_cluster(cluster)?);
+        }
+
+        sort_events(&mut strummed);
+        Ok(strummed)
     }
 
     fn invert_events(
@@ -1153,6 +1185,14 @@ impl NumberPatternValue {
         }
     }
 
+    pub(crate) fn strum(self) -> Self {
+        Self {
+            pattern: PatternRuntime::Strum {
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn drop_voice(self, count: u32) -> Self {
         Self {
             pattern: PatternRuntime::Drop {
@@ -1297,6 +1337,9 @@ enum PatternRuntime<T> {
     },
     Mask {
         gate: Box<GatePatternRuntime>,
+        inner: Box<Self>,
+    },
+    Strum {
         inner: Box<Self>,
     },
     Invert {
@@ -1468,6 +1511,7 @@ where
                 inner,
             } => query_within(inner, start, end, transform, span),
             Self::Mask { gate, inner } => query_mask(inner, gate, span),
+            Self::Strum { inner } => T::strum_events(inner.try_query(span)?),
             Self::Invert { count, inner } => T::invert_events(inner.try_query(span)?, *count),
             Self::Drop { count, inner } => T::drop_events(inner.try_query(span)?, *count),
             Self::Degrees { collection, inner } => {
@@ -1657,6 +1701,37 @@ fn invert_event_cluster(cluster: &mut Vec<Event<f64>>, count: u32) -> Result<(),
         cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
     }
     Ok(())
+}
+
+fn strum_event_cluster(mut cluster: Vec<Event<f64>>) -> Result<Vec<Event<f64>>, EvalError> {
+    if cluster.len() <= 1 {
+        return Ok(cluster);
+    }
+
+    cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
+    let span = cluster[0].part.clone();
+    let width = window_width(&span)?;
+    if width == Rational::zero() {
+        return Ok(cluster);
+    }
+    let count = i128::try_from(cluster.len())
+        .map_err(|_| EvalError::new("`strum` exceeded the supported evaluator range"))?;
+    let step = rational_mul(
+        &width,
+        &rational_reciprocal(&rational_from_parts(count, 1)?)?,
+    )?;
+
+    for (index, event) in cluster.iter_mut().enumerate() {
+        let index = i64::try_from(index)
+            .map_err(|_| EvalError::new("`strum` exceeded the supported evaluator range"))?;
+        let offset = rational_mul_parts(&step, index, 1)?;
+        let start = rational_add(span.start(), &offset)?;
+        let end = rational_add(&start, &step)?;
+        event.part = TimeSpan::new(start, end).map_err(EvalError::from)?;
+        event.whole = None;
+    }
+
+    Ok(cluster)
 }
 
 fn drop_event_cluster(cluster: &mut [Event<f64>], count: u32) -> Result<(), EvalError> {
@@ -2338,6 +2413,7 @@ fn absolute_cycle_for_runtime<T>(
         | PatternRuntime::Sometimes { inner, .. }
         | PatternRuntime::Within { inner, .. }
         | PatternRuntime::Mask { inner, .. }
+        | PatternRuntime::Strum { inner }
         | PatternRuntime::Invert { inner, .. }
         | PatternRuntime::Drop { inner, .. }
         | PatternRuntime::Degrees { inner, .. }
@@ -2695,7 +2771,7 @@ const fn ceil_rational(value: &Rational) -> i128 {
 mod tests {
     use super::{
         BuiltinFn, BuiltinKind, FunctionValue, NumberPatternValue, SampleEvent, SamplePatternValue,
-        Value, cycle_span, sometimes_applies_on_cycle,
+        Value, cycle_span, sometimes_applies_on_cycle, strum_event_cluster,
     };
     use orpheus_pattern::{Event, PatternNode, Rational, TimeSpan};
 
@@ -2859,5 +2935,26 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["sn", "bd", "sn", "bd", "bd", "sn", "sn", "bd"]
         );
+    }
+
+    #[test]
+    fn strum_leaves_zero_width_number_clusters_unchanged() {
+        let zero = Rational::new(1, 2).unwrap();
+        let span = TimeSpan::new(zero.clone(), zero).unwrap();
+        let cluster = vec![
+            Event {
+                whole: None,
+                part: span.clone(),
+                value: 60.0,
+            },
+            Event {
+                whole: None,
+                part: span,
+                value: 67.0,
+            },
+        ];
+
+        let events = strum_event_cluster(cluster.clone()).unwrap();
+        assert_eq!(events, cluster);
     }
 }

@@ -208,9 +208,7 @@ impl ReplSession {
 
     fn roll_binding(&self, args: &str) -> Result<String, String> {
         let mut parts = args.split_whitespace();
-        let binding_name = parts
-            .next()
-            .ok_or_else(|| roll_usage().to_owned())?;
+        let binding_name = parts.next().ok_or_else(|| roll_usage().to_owned())?;
 
         let cycles = parts
             .next()
@@ -227,8 +225,9 @@ impl ReplSession {
         if let Some(value) = self.bindings.get(binding_name) {
             match value {
                 crate::value::Value::SamplePattern(pattern) => {
-                    let roll = crate::ascii_roll::render_ascii_roll(pattern, cycles, steps_per_cycle)
-                        .map_err(|error| error.to_string())?;
+                    let roll =
+                        crate::ascii_roll::render_ascii_roll(pattern, cycles, steps_per_cycle)
+                            .map_err(|error| error.to_string())?;
                     Ok(format!("\n{}", roll.trim_end()))
                 }
                 _ => Err(format!(
