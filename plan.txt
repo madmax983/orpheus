@@ -1,60 +1,35 @@
-Let's look at `crates/orpheus-lang/src/tui.rs`:
-```rust
-    fn render(self, state: &str, transport: &TransportView) -> Line<'static> {
-        let mut spans = Vec::new();
-        if let Some(legend) = self.legend {
-...
-```
-`spans` could be `Vec::with_capacity(7)` or something.
+Let me refine the plan for Vantage:
+To create an issue, wait, I can just create the Markdown file in `docs/plans/osc_interoperability.md` or submit the markdown content in the `submit` description.
+Ah, the `Vantage` persona instructions from memory:
+"Write product specs (presented as a PR or Issue titled '🔭 Vantage: Spec for [Feature Name]') containing: a 'User Story' ('As a [User]...'), the 'So What?' (Business Problem), Metric Definition (Success criteria), Gap Analysis, Acceptance Criteria, and Out of Scope items."
 
-Let's look at `crates/orpheus-lang/src/parser.rs`:
-```rust
-    let mut statements = Vec::new();
-    for (start_line, chunk) in chunks {
-...
-```
+So the steps:
+1. Create `docs/plans/osc_interoperability.md` with the required sections.
+2. Complete pre-commit steps.
+3. Call `submit` with title "🔭 Vantage: Spec for OSC Interoperability", putting the spec in the `description` or just a brief description and pushing the file.
 
-```rust
-fn split_top_level_bindings(source: &str) -> Vec<(usize, String)> {
-    let mut bindings = Vec::new();
-```
+Wait, is there any feature request mentioned in the prompt that I missed?
+"Your mission is to ensure we are building *useful* software, not just *complex* software. You define the "What" and the "Why."
+There is no specific feature requested! The prompt just says "You are Vantage... Your mission... VANTAGE'S DAILY PROCESS: ANALYZE... DEFINE... PRIORITIZE... PRESENT."
+This means I have to look at the codebase, identify a vague idea, and define a spec for it.
 
-Let's look at `crates/orpheus-lang/src/eval.rs`:
-```rust
-fn eval_stack(
-        &self,
-        layers: &[Expr],
-        meter: Option<&MeterContext>,
-    ) -> Result<Value, EvalError> {
-        let mut values = Vec::with_capacity(layers.len());
-```
+Let's look at `docs/design/orpheus_design.md` again.
+"10. Open Questions
+1. MIDI output? (Already done via midi_output_support.md)
+2. Live coding performance model. (performance_mode_keybindings.md)
+3. Effect routing. (richer_effects_chain.md handles effects, but not routing)
+4. Persistence of REPL state. (repl_history_persistence.md)
+5. Collaboration / sharing. Beyond git (since songs are code), is there value in a package manager for sharing samples, synth definitions, or pattern libraries?
+6. Integration with existing tools. OSC support for talking to SuperCollider, Ableton Link for tempo sync with other apps/musicians?
+7. Visual feedback for patterns. (tracker_visualization.md)"
 
-```rust
-    fn eval_call_with_args(
-        &self,
-        call_expr: &Expr,
-        callee: &Expr,
-        args: &[Expr],
-        piped_args: Vec<Value>,
-        meter: Option<&MeterContext>,
-    ) -> Result<Value, EvalError> {
-...
-```
-Passing `Vec::new()` to `eval_call_with_args` does not cause multiple reallocations, it just allocates once.
+The vague ideas in Open Questions:
+- "Collaboration / sharing. Beyond git, is there value in a package manager for sharing samples, synth definitions, or pattern libraries?" -> Package Manager (e.g. `opm` Orpheus Package Manager).
+- "Effect routing. How are effects applied — per-pattern, per-layer, or via a global effects bus?" -> Global Effects Bus.
+- "Integration with existing tools. OSC support for talking to SuperCollider..." -> OSC Interoperability.
 
-Let's look at `crates/orpheus-pattern/src/stream.rs`:
-```rust
-    pub fn try_query(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, PatternError>
-    where
-        T: Clone,
-    {
-        if span.is_empty() {
-            return Ok(Vec::new());
-        }
+Let's choose **OSC Interoperability**. It aligns perfectly with the live coding focus.
 
-        let mut events = Vec::new();
-        for event in &self.events {
-```
-This is a really good target. `stream.rs` is a core runtime abstraction evaluated constantly in Orpheus. By changing `Vec::new()` to `Vec::with_capacity(self.events.len())`, we eliminate reallocation of the result vector when explicit event streams are queried.
+I will write the spec for "OSC Interoperability".
 
-I'll outline this as the performance improvement. It fulfills the criteria: measurable impact (fewer allocs on hot path), <50 lines, safe, idiomatic.
+Let's do `request_plan_review`.
