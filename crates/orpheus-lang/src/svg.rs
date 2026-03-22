@@ -46,12 +46,11 @@ pub fn export_sample_pattern_to_svg(
     #[allow(clippy::cast_precision_loss)]
     let height = (sample_list.len() as f64).mul_add(lane_height, 40.0);
 
-    let mut file = std::fs::File::create(path).map_err(|e| EvalError::new(e.to_string()))?;
+    let mut file = std::fs::File::create(path)?;
     writeln!(
         file,
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\" style=\"background-color: #1e1e1e; font-family: monospace;\">",
-    )
-    .map_err(|e| EvalError::new(e.to_string()))?;
+    )?;
 
     // Draw cycle lines
     for cycle in 0..=cycle_count {
@@ -60,13 +59,11 @@ pub fn export_sample_pattern_to_svg(
         writeln!(
             file,
             "<line x1=\"{x}\" y1=\"0\" x2=\"{x}\" y2=\"{height}\" stroke=\"#333333\" stroke-width=\"2\" />",
-        )
-        .map_err(|e| EvalError::new(e.to_string()))?;
+        )?;
         writeln!(
             file,
             "<text x=\"{x}\" y=\"20\" fill=\"#888888\" font-size=\"12\">Cycle {cycle}</text>",
-        )
-        .map_err(|e| EvalError::new(e.to_string()))?;
+        )?;
     }
 
     // Draw lanes
@@ -77,13 +74,11 @@ pub fn export_sample_pattern_to_svg(
             file,
             "<text x=\"10\" y=\"{}\" fill=\"#ffffff\" font-size=\"14\">{sample}</text>",
             y + 25.0
-        )
-        .map_err(|e| EvalError::new(e.to_string()))?;
+        )?;
         writeln!(
             file,
             "<line x1=\"100\" y1=\"{y}\" x2=\"{width}\" y2=\"{y}\" stroke=\"#333333\" stroke-width=\"1\" />",
-        )
-        .map_err(|e| EvalError::new(e.to_string()))?;
+        )?;
     }
 
     // Draw events
@@ -104,11 +99,10 @@ pub fn export_sample_pattern_to_svg(
             "<rect x=\"{x}\" y=\"{y}\" width=\"{w}\" height=\"{}\" fill=\"#4CAF50\" rx=\"4\" opacity=\"{}\" />",
             lane_height - 10.0,
             event.value.gain().max(0.1)
-        )
-        .map_err(|e| EvalError::new(e.to_string()))?;
+        )?;
     }
 
-    writeln!(file, "</svg>").map_err(|e| EvalError::new(e.to_string()))?;
+    writeln!(file, "</svg>")?;
 
     Ok(())
 }

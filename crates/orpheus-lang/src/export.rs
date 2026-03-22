@@ -108,8 +108,8 @@ where
     F: FnMut(&mut std::fs::File, &Event<T>) -> Result<(), EvalError>,
 {
     let path = path.as_ref();
-    let mut file = std::fs::File::create(path).map_err(|e| EvalError::new(e.to_string()))?;
-    writeln!(file, "{header}").map_err(|e| EvalError::new(e.to_string()))?;
+    let mut file = std::fs::File::create(path)?;
+    writeln!(file, "{header}")?;
 
     for event in events {
         write_event(&mut file, event)?;
@@ -181,8 +181,8 @@ pub fn export_sample_pattern_to_csv(
                 event.value.rate(),
                 hpf,
                 lpf
-            )
-            .map_err(|e| EvalError::new(e.to_string()))
+            )?;
+            Ok(())
         },
     )
 }
@@ -209,25 +209,21 @@ pub fn export_sample_pattern_to_json(
     let span = render_span(cycle_count)?;
     let events = pattern.try_query(&span)?;
 
-    let mut file =
-        std::fs::File::create(path.as_ref()).map_err(|e| EvalError::new(e.to_string()))?;
+    let mut file = std::fs::File::create(path.as_ref())?;
 
     writeln!(file, "{{")
         .and_then(|()| writeln!(file, "  \"kind\": \"sample\","))
         .and_then(|()| writeln!(file, "  \"cycle_count\": {cycle_count},"))
-        .and_then(|()| writeln!(file, "  \"events\": ["))
-        .map_err(|e| EvalError::new(e.to_string()))?;
+        .and_then(|()| writeln!(file, "  \"events\": ["))?;
 
     for (i, event) in events.iter().enumerate() {
         if i > 0 {
-            writeln!(file, ",").map_err(|e| EvalError::new(e.to_string()))?;
+            writeln!(file, ",")?;
         }
-        write!(file, "{}", sample_event_json(event)).map_err(|e| EvalError::new(e.to_string()))?;
+        write!(file, "{}", sample_event_json(event))?;
     }
 
-    writeln!(file, "\n  ]")
-        .and_then(|()| writeln!(file, "}}"))
-        .map_err(|e| EvalError::new(e.to_string()))?;
+    writeln!(file, "\n  ]").and_then(|()| writeln!(file, "}}"))?;
 
     Ok(())
 }
@@ -281,8 +277,8 @@ pub fn export_number_pattern_to_csv(
                 event.part.end().denominator(),
                 end_float,
                 event.value
-            )
-            .map_err(|e| EvalError::new(e.to_string()))
+            )?;
+            Ok(())
         },
     )
 }
@@ -309,25 +305,21 @@ pub fn export_number_pattern_to_json(
     let span = render_span(cycle_count)?;
     let events = pattern.try_query(&span)?;
 
-    let mut file =
-        std::fs::File::create(path.as_ref()).map_err(|e| EvalError::new(e.to_string()))?;
+    let mut file = std::fs::File::create(path.as_ref())?;
 
     writeln!(file, "{{")
         .and_then(|()| writeln!(file, "  \"kind\": \"number\","))
         .and_then(|()| writeln!(file, "  \"cycle_count\": {cycle_count},"))
-        .and_then(|()| writeln!(file, "  \"events\": ["))
-        .map_err(|e| EvalError::new(e.to_string()))?;
+        .and_then(|()| writeln!(file, "  \"events\": ["))?;
 
     for (i, event) in events.iter().enumerate() {
         if i > 0 {
-            writeln!(file, ",").map_err(|e| EvalError::new(e.to_string()))?;
+            writeln!(file, ",")?;
         }
-        write!(file, "{}", number_event_json(event)).map_err(|e| EvalError::new(e.to_string()))?;
+        write!(file, "{}", number_event_json(event))?;
     }
 
-    writeln!(file, "\n  ]")
-        .and_then(|()| writeln!(file, "}}"))
-        .map_err(|e| EvalError::new(e.to_string()))?;
+    writeln!(file, "\n  ]").and_then(|()| writeln!(file, "}}"))?;
 
     Ok(())
 }

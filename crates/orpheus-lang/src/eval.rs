@@ -98,6 +98,24 @@ impl From<ParseError> for EvalError {
     }
 }
 
+impl From<std::num::TryFromIntError> for EvalError {
+    fn from(error: std::num::TryFromIntError) -> Self {
+        Self::new(error.to_string())
+    }
+}
+
+impl From<std::io::Error> for EvalError {
+    fn from(error: std::io::Error) -> Self {
+        Self::new(error.to_string())
+    }
+}
+
+impl From<std::fmt::Error> for EvalError {
+    fn from(error: std::fmt::Error) -> Self {
+        Self::new(error.to_string())
+    }
+}
+
 impl From<PatternError> for EvalError {
     fn from(error: PatternError) -> Self {
         Self::new(error.to_string())
