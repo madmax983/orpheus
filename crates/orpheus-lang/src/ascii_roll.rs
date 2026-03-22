@@ -38,7 +38,9 @@ pub fn render_ascii_roll(
     // Determine unique samples to initialize lanes
     for event in &events {
         let sample = event.value.sample().to_string();
-        lanes.entry(sample).or_insert_with(|| vec!['.'; total_steps]);
+        lanes
+            .entry(sample)
+            .or_insert_with(|| vec!['.'; total_steps]);
     }
 
     // Populate the grid
@@ -72,12 +74,15 @@ pub fn render_ascii_roll(
         }
     }
 
-    let max_label_len = lanes.keys().map(std::string::String::len).max().unwrap_or(0);
+    let max_label_len = lanes
+        .keys()
+        .map(std::string::String::len)
+        .max()
+        .unwrap_or(0);
     let mut output = String::new();
 
     for (sample, grid) in lanes {
-        write!(output, "{sample:>max_label_len$} | ")
-            .map_err(|e| EvalError::new(e.to_string()))?;
+        write!(output, "{sample:>max_label_len$} | ").map_err(|e| EvalError::new(e.to_string()))?;
 
         for (i, &c) in grid.iter().enumerate() {
             if i > 0 && i % (steps_per_cycle as usize) == 0 {
