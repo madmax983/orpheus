@@ -484,4 +484,60 @@ mod tests {
 
         let _ = fs::remove_file(path);
     }
+
+    #[test]
+    fn export_sample_pattern_to_csv_rejects_zero_cycles() {
+        let module = eval_module("drums = bd sn", ReplMode::Loose).unwrap();
+        let drums = module.get("drums").unwrap().as_sample_pattern().unwrap();
+
+        let path = temp_json_path();
+        let result = super::export_sample_pattern_to_csv(drums, &path, 0);
+
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "exporting requires at least one cycle"
+        );
+    }
+
+    #[test]
+    fn export_number_pattern_to_csv_rejects_zero_cycles() {
+        let module = eval_module("notes = 1 2", ReplMode::Loose).unwrap();
+        let notes = module.get("notes").unwrap().as_number_pattern().unwrap();
+
+        let path = temp_json_path();
+        let result = super::export_number_pattern_to_csv(notes, &path, 0);
+
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "exporting requires at least one cycle"
+        );
+    }
+
+    #[test]
+    fn export_sample_pattern_to_json_rejects_zero_cycles() {
+        let module = eval_module("drums = bd sn", ReplMode::Loose).unwrap();
+        let drums = module.get("drums").unwrap().as_sample_pattern().unwrap();
+
+        let path = temp_json_path();
+        let result = export_sample_pattern_to_json(drums, &path, 0);
+
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "exporting requires at least one cycle"
+        );
+    }
+
+    #[test]
+    fn export_number_pattern_to_json_rejects_zero_cycles() {
+        let module = eval_module("notes = 1 2", ReplMode::Loose).unwrap();
+        let notes = module.get("notes").unwrap().as_number_pattern().unwrap();
+
+        let path = temp_json_path();
+        let result = export_number_pattern_to_json(notes, &path, 0);
+
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "exporting requires at least one cycle"
+        );
+    }
 }
