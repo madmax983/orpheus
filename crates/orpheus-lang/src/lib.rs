@@ -1,5 +1,6 @@
 //! Language and REPL surface for Orpheus.
 
+pub mod ascii_roll;
 mod ast;
 mod builtins;
 mod diagnostics;
@@ -15,6 +16,7 @@ pub mod tui;
 mod types;
 mod value;
 
+pub use ascii_roll::render_ascii_roll;
 pub use ast::{Expr, Module, Stmt};
 pub use diagnostics::{LoadError, ParseError, TypeError};
 pub use eval::{EvalError, eval_module, render_span};
