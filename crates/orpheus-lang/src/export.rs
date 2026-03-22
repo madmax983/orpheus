@@ -673,4 +673,16 @@ mod tests {
 
         let _ = fs::remove_file(path);
     }
+
+    #[test]
+    fn arp_export_preserves_wrapped_progression_output() {
+        let module = eval_module("lead = arp(5, up, chord(c4, 0 4 7))", ReplMode::Loose).unwrap();
+        let lead = module.get("lead").unwrap().as_number_pattern().unwrap();
+        let path = temp_json_path();
+
+        export_number_pattern_to_json(lead, &path, 1).unwrap();
+        assert_json_fixture_matches(&path, "arp_progression_export.json");
+
+        let _ = fs::remove_file(path);
+    }
 }
