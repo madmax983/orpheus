@@ -38,6 +38,9 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "mask" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
             BuiltinKind::Mask,
         )))),
+        "strum" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Strum,
+        )))),
         "invert" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
             BuiltinKind::Invert,
         )))),
@@ -215,6 +218,7 @@ impl BuiltinKind {
             Self::Sometimes => "sometimes",
             Self::Within => "within",
             Self::Mask => "mask",
+            Self::Strum => "strum",
             Self::Invert => "invert",
             Self::Drop => "drop",
             Self::Chord => "chord",
@@ -244,7 +248,7 @@ impl BuiltinKind {
         match self {
             Self::Every | Self::Slice | Self::SliceIdx => 3,
             Self::When | Self::Within => 4,
-            Self::PitchClassSet | Self::Rev | Self::Sample => 1,
+            Self::PitchClassSet | Self::Rev | Self::Sample | Self::Strum => 1,
             Self::Sometimes
             | Self::Mask
             | Self::Invert
@@ -274,6 +278,7 @@ impl BuiltinKind {
             Self::Sometimes => apply_sometimes(args, function.site_salt.unwrap_or_default()),
             Self::Within => apply_within(args),
             Self::Mask => apply_mask(args),
+            Self::Strum => apply_strum(args),
             Self::Invert => apply_invert(args),
             Self::Drop => apply_drop(args),
             Self::Chord => apply_chord(args),
@@ -535,6 +540,17 @@ fn apply_chord(args: Vec<Value>) -> Result<Value, EvalError> {
     )?;
 
     Ok(Value::NumberPattern(root.chord(intervals)))
+}
+
+fn apply_strum(args: Vec<Value>) -> Result<Value, EvalError> {
+    let pattern = extract_number_pattern(
+        args.into_iter()
+            .next()
+            .ok_or_else(|| EvalError::new("`strum` requires a number pattern argument"))?,
+        "strum",
+    )?;
+
+    Ok(Value::NumberPattern(pattern.strum()))
 }
 
 fn apply_invert(args: Vec<Value>) -> Result<Value, EvalError> {

@@ -51,6 +51,7 @@ impl TypeEnv {
         env.insert("sometimes", sometimes_transform_scheme(alpha));
         env.insert("within", within_transform_scheme(alpha));
         env.insert("mask", mask_scheme());
+        env.insert("strum", unary_number_pattern_scheme());
         env.insert("invert", number_pattern_control_scheme());
         env.insert("drop", number_pattern_control_scheme());
         env.insert("chord", number_pattern_control_scheme());
@@ -252,6 +253,13 @@ fn degrees_scheme() -> TypeScheme {
 fn number_pattern_control_scheme() -> TypeScheme {
     TypeScheme::monomorphic(Type::curried(
         vec![Type::pattern(Type::Number), Type::pattern(Type::Number)],
+        Type::pattern(Type::Number),
+    ))
+}
+
+fn unary_number_pattern_scheme() -> TypeScheme {
+    TypeScheme::monomorphic(Type::curried(
+        vec![Type::pattern(Type::Number)],
         Type::pattern(Type::Number),
     ))
 }
