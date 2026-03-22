@@ -39,6 +39,7 @@ pub enum BuiltinKind {
     Within,
     Mask,
     Invert,
+    Drop,
     Chord,
     Euclid,
     PitchClassSet,
@@ -428,6 +429,7 @@ trait PatternRuntimeValue: Clone + PatternValueTransform + Send + Sync + fmt::De
     fn try_from_runtime_value(value: Value) -> Result<PatternRuntime<Self>, EvalError>;
     fn try_from_rand(value: f64) -> Result<Self, EvalError>;
     fn invert_events(events: Vec<Event<Self>>, count: u32) -> Result<Vec<Event<Self>>, EvalError>;
+    fn drop_events(events: Vec<Event<Self>>, count: u32) -> Result<Vec<Event<Self>>, EvalError>;
 }
 
 impl PatternValueTransform for SampleEvent {
@@ -594,6 +596,12 @@ impl PatternRuntimeValue for SampleEvent {
             "internal evaluator error: inversion only applies to number patterns",
         ))
     }
+
+    fn drop_events(_events: Vec<Event<Self>>, _count: u32) -> Result<Vec<Event<Self>>, EvalError> {
+        Err(EvalError::new(
+            "internal evaluator error: drop voicings only apply to number patterns",
+        ))
+    }
 }
 
 impl PatternRuntimeValue for f64 {
@@ -642,6 +650,33 @@ impl PatternRuntimeValue for f64 {
         }
 
         Ok(inverted)
+    }
+
+    fn drop_events(
+        mut events: Vec<Event<Self>>,
+        count: u32,
+    ) -> Result<Vec<Event<Self>>, EvalError> {
+        sort_events(&mut events);
+        let mut dropped = Vec::with_capacity(events.len());
+        let mut index = 0;
+
+        while index < events.len() {
+            let span = events[index].part.clone();
+            let mut cluster = Vec::new();
+            while index < events.len() && events[index].part == span {
+                let event = events[index].clone();
+                if !event.value.is_finite() {
+                    return Err(EvalError::new("`drop` requires finite numeric values"));
+                }
+                cluster.push(event);
+                index += 1;
+            }
+
+            drop_event_cluster(&mut cluster, count)?;
+            dropped.extend(cluster);
+        }
+
+        Ok(dropped)
     }
 }
 
@@ -1118,6 +1153,15 @@ impl NumberPatternValue {
         }
     }
 
+    pub(crate) fn drop_voice(self, count: u32) -> Self {
+        Self {
+            pattern: PatternRuntime::Drop {
+                count,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn transpose(self, semitones: f64) -> Self {
         Self {
             pattern: PatternRuntime::Transpose {
@@ -1256,6 +1300,10 @@ enum PatternRuntime<T> {
         inner: Box<Self>,
     },
     Invert {
+        count: u32,
+        inner: Box<Self>,
+    },
+    Drop {
         count: u32,
         inner: Box<Self>,
     },
@@ -1421,6 +1469,7 @@ where
             } => query_within(inner, start, end, transform, span),
             Self::Mask { gate, inner } => query_mask(inner, gate, span),
             Self::Invert { count, inner } => T::invert_events(inner.try_query(span)?, *count),
+            Self::Drop { count, inner } => T::drop_events(inner.try_query(span)?, *count),
             Self::Degrees { collection, inner } => {
                 apply_value_transform(inner, span, |value| value.map_degrees(collection))
             }
@@ -1607,6 +1656,24 @@ fn invert_event_cluster(cluster: &mut Vec<Event<f64>>, count: u32) -> Result<(),
         cluster.push(lowest);
         cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
     }
+    Ok(())
+}
+
+fn drop_event_cluster(cluster: &mut [Event<f64>], count: u32) -> Result<(), EvalError> {
+    cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
+    let len = cluster.len();
+    let count = usize::try_from(count)
+        .map_err(|_| EvalError::new("`drop` exceeded the supported evaluator range"))?;
+    if len < count {
+        return Ok(());
+    }
+
+    let target_index = len - count;
+    cluster[target_index].value -= 12.0;
+    if !cluster[target_index].value.is_finite() {
+        return Err(EvalError::new("`drop` produced a non-finite numeric value"));
+    }
+    cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
     Ok(())
 }
 
@@ -2272,6 +2339,7 @@ fn absolute_cycle_for_runtime<T>(
         | PatternRuntime::Within { inner, .. }
         | PatternRuntime::Mask { inner, .. }
         | PatternRuntime::Invert { inner, .. }
+        | PatternRuntime::Drop { inner, .. }
         | PatternRuntime::Degrees { inner, .. }
         | PatternRuntime::Transpose { inner, .. }
         | PatternRuntime::TransposePattern { inner, .. }

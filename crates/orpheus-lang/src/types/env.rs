@@ -52,6 +52,7 @@ impl TypeEnv {
         env.insert("within", within_transform_scheme(alpha));
         env.insert("mask", mask_scheme());
         env.insert("invert", number_pattern_control_scheme());
+        env.insert("drop", number_pattern_control_scheme());
         env.insert("chord", number_pattern_control_scheme());
         env.insert("euclid", euclid_scheme());
         env.insert(

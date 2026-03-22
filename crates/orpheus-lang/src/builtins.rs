@@ -41,6 +41,9 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "invert" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
             BuiltinKind::Invert,
         )))),
+        "drop" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Drop,
+        )))),
         "chord" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
             BuiltinKind::Chord,
         )))),
@@ -213,6 +216,7 @@ impl BuiltinKind {
             Self::Within => "within",
             Self::Mask => "mask",
             Self::Invert => "invert",
+            Self::Drop => "drop",
             Self::Chord => "chord",
             Self::Euclid => "euclid",
             Self::PitchClassSet => "pitch_class_set",
@@ -244,6 +248,7 @@ impl BuiltinKind {
             Self::Sometimes
             | Self::Mask
             | Self::Invert
+            | Self::Drop
             | Self::Chord
             | Self::Euclid
             | Self::Degrees
@@ -270,6 +275,7 @@ impl BuiltinKind {
             Self::Within => apply_within(args),
             Self::Mask => apply_mask(args),
             Self::Invert => apply_invert(args),
+            Self::Drop => apply_drop(args),
             Self::Chord => apply_chord(args),
             Self::Euclid => apply_euclid(args),
             Self::PitchClassSet => apply_pitch_class_set(args),
@@ -544,6 +550,21 @@ fn apply_invert(args: Vec<Value>) -> Result<Value, EvalError> {
     )?;
 
     Ok(Value::NumberPattern(pattern.invert(count)))
+}
+
+fn apply_drop(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let count = extract_drop_count(
+        args.next()
+            .ok_or_else(|| EvalError::new("`drop` requires a drop-count argument"))?,
+    )?;
+    let pattern = extract_number_pattern(
+        args.next()
+            .ok_or_else(|| EvalError::new("`drop` requires a number pattern argument"))?,
+        "drop",
+    )?;
+
+    Ok(Value::NumberPattern(pattern.drop_voice(count)))
 }
 
 fn apply_pitch_class_set(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -1275,6 +1296,10 @@ fn extract_inversion_count(value: Value) -> Result<u32, EvalError> {
     format!("{number:.0}")
         .parse::<u32>()
         .map_err(|_| EvalError::new("`invert` exceeded the supported evaluator range"))
+}
+
+fn extract_drop_count(value: Value) -> Result<u32, EvalError> {
+    extract_whole_number(value, "drop", true)
 }
 
 fn whole_number_from_pitch_class_value(value: f64) -> Result<i32, EvalError> {

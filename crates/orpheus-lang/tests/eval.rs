@@ -1204,6 +1204,163 @@ fn invert_rejects_non_numeric_patterns() {
 }
 
 #[test]
+fn drop_second_highest_note_by_one_octave() {
+    let module = eval_module("pad = drop(2, chord(c4, 0 4 7 10))", ReplMode::Loose).unwrap();
+    let events = module
+        .get("pad")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![55.0, 60.0, 64.0, 70.0]
+    );
+}
+
+#[test]
+fn drop_third_highest_note_by_one_octave() {
+    let module = eval_module("pad = drop(3, chord(c4, 0 4 7 10))", ReplMode::Loose).unwrap();
+    let events = module
+        .get("pad")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![52.0, 60.0, 67.0, 70.0]
+    );
+}
+
+#[test]
+fn drop_applies_per_exact_span_cluster() {
+    let module = eval_module("line = drop(2, chord(c4 e4, 0 7 10))", ReplMode::Loose).unwrap();
+    let events = module
+        .get("line")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![55.0, 60.0, 70.0, 59.0, 64.0, 74.0]
+    );
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[2].part.start(), &Rational::zero());
+    assert_eq!(events[2].part.end(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[3].part.start(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[3].part.end(), &Rational::one());
+    assert_eq!(events[5].part.start(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[5].part.end(), &Rational::one());
+}
+
+#[test]
+fn drop_leaves_small_clusters_unchanged() {
+    let module = eval_module("dyad = drop(3, chord(c4, 0 7))", ReplMode::Loose).unwrap();
+    let events = module
+        .get("dyad")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![60.0, 67.0]
+    );
+}
+
+#[test]
+fn drop_accepts_degree_derived_harmony() {
+    let module = eval_module(
+        "harm = chord(degrees(aeolian, 0 2) |> transpose(60), 0 3 7 10) |> drop(2)",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("harm")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![55.0, 60.0, 63.0, 70.0, 58.0, 63.0, 66.0, 73.0]
+    );
+}
+
+#[test]
+fn drop_composes_with_invert() {
+    let module = eval_module(
+        "pad = chord(c4, 0 4 7 10) |> drop(2) |> invert(1)",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("pad")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![60.0, 64.0, 67.0, 70.0]
+    );
+}
+
+#[test]
+fn drop_rejects_zero_counts() {
+    assert_eval_error_contains(
+        "bad = drop(0, chord(c4, 0 4 7 10))",
+        ReplMode::Loose,
+        &["drop", "positive whole number"],
+    );
+}
+
+#[test]
+fn drop_rejects_negative_counts() {
+    assert_eval_error_contains(
+        "bad = drop(-1, chord(c4, 0 4 7 10))",
+        ReplMode::Loose,
+        &["drop", "positive whole number"],
+    );
+}
+
+#[test]
+fn drop_rejects_fractional_counts() {
+    assert_eval_error_contains(
+        "bad = drop(1.5, chord(c4, 0 4 7 10))",
+        ReplMode::Loose,
+        &["drop", "whole number"],
+    );
+}
+
+#[test]
+fn drop_rejects_non_constant_counts() {
+    assert_eval_error_contains(
+        "bad = drop(1 2, chord(c4, 0 4 7 10))",
+        ReplMode::Loose,
+        &["drop", "constant"],
+    );
+}
+
+#[test]
+fn drop_rejects_non_numeric_patterns() {
+    assert_eval_error_contains(
+        "bad = drop(2, bd)",
+        ReplMode::Loose,
+        &["drop", "number pattern"],
+    );
+}
+
+#[test]
 fn gain_updates_sample_event_amplitude() {
     let module = eval_module("drums = bd |> gain(0.8)", ReplMode::Loose).unwrap();
     let event = module

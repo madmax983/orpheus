@@ -481,3 +481,26 @@ fn invert_rejects_sample_patterns_at_typecheck() {
     assert!(message.contains("expected Number"));
     assert!(message.contains("Sample"));
 }
+
+#[test]
+fn drop_infers_number_patterns() {
+    let typed = infer_module("pad = drop(2, chord(c4, 0 4 7 10))", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("pad").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn drop_pipe_form_infers_number_patterns() {
+    let typed = infer_module("pad = chord(c4, 0 4 7 10) |> drop(2)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("pad").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn drop_rejects_sample_patterns_at_typecheck() {
+    let error = infer_module("bad = drop(2, bd)", ReplMode::Strict).unwrap_err();
+    let message = error.to_string();
+
+    assert!(message.contains("expected Number"));
+    assert!(message.contains("Sample"));
+}
