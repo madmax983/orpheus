@@ -38,6 +38,7 @@ pub enum BuiltinKind {
     Sometimes,
     Within,
     Mask,
+    Invert,
     Chord,
     Euclid,
     PitchClassSet,
@@ -426,6 +427,7 @@ trait PatternRuntimeValue: Clone + PatternValueTransform + Send + Sync + fmt::De
     fn into_runtime_value(pattern: PatternRuntime<Self>) -> Value;
     fn try_from_runtime_value(value: Value) -> Result<PatternRuntime<Self>, EvalError>;
     fn try_from_rand(value: f64) -> Result<Self, EvalError>;
+    fn invert_events(events: Vec<Event<Self>>, count: u32) -> Result<Vec<Event<Self>>, EvalError>;
 }
 
 impl PatternValueTransform for SampleEvent {
@@ -583,6 +585,15 @@ impl PatternRuntimeValue for SampleEvent {
     fn try_from_rand(_value: f64) -> Result<Self, EvalError> {
         Err(EvalError::new("rand only produces numbers"))
     }
+
+    fn invert_events(
+        _events: Vec<Event<Self>>,
+        _count: u32,
+    ) -> Result<Vec<Event<Self>>, EvalError> {
+        Err(EvalError::new(
+            "internal evaluator error: inversion only applies to number patterns",
+        ))
+    }
 }
 
 impl PatternRuntimeValue for f64 {
@@ -604,6 +615,33 @@ impl PatternRuntimeValue for f64 {
 
     fn try_from_rand(value: f64) -> Result<Self, EvalError> {
         Ok(value)
+    }
+
+    fn invert_events(
+        mut events: Vec<Event<Self>>,
+        count: u32,
+    ) -> Result<Vec<Event<Self>>, EvalError> {
+        sort_events(&mut events);
+        let mut inverted = Vec::with_capacity(events.len());
+        let mut index = 0;
+
+        while index < events.len() {
+            let span = events[index].part.clone();
+            let mut cluster = Vec::new();
+            while index < events.len() && events[index].part == span {
+                let event = events[index].clone();
+                if !event.value.is_finite() {
+                    return Err(EvalError::new("`invert` requires finite numeric values"));
+                }
+                cluster.push(event);
+                index += 1;
+            }
+
+            invert_event_cluster(&mut cluster, count)?;
+            inverted.extend(cluster);
+        }
+
+        Ok(inverted)
     }
 }
 
@@ -1071,6 +1109,15 @@ impl NumberPatternValue {
         Self::stack(layers)
     }
 
+    pub(crate) fn invert(self, count: u32) -> Self {
+        Self {
+            pattern: PatternRuntime::Invert {
+                count,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn transpose(self, semitones: f64) -> Self {
         Self {
             pattern: PatternRuntime::Transpose {
@@ -1206,6 +1253,10 @@ enum PatternRuntime<T> {
     },
     Mask {
         gate: Box<GatePatternRuntime>,
+        inner: Box<Self>,
+    },
+    Invert {
+        count: u32,
         inner: Box<Self>,
     },
     Degrees {
@@ -1369,6 +1420,7 @@ where
                 inner,
             } => query_within(inner, start, end, transform, span),
             Self::Mask { gate, inner } => query_mask(inner, gate, span),
+            Self::Invert { count, inner } => T::invert_events(inner.try_query(span)?, *count),
             Self::Degrees { collection, inner } => {
                 apply_value_transform(inner, span, |value| value.map_degrees(collection))
             }
@@ -1536,6 +1588,26 @@ where
 
     sort_events(&mut masked);
     Ok(masked)
+}
+
+fn invert_event_cluster(cluster: &mut Vec<Event<f64>>, count: u32) -> Result<(), EvalError> {
+    cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
+    for _ in 0..count {
+        if cluster.len() <= 1 {
+            break;
+        }
+
+        let mut lowest = cluster.remove(0);
+        lowest.value += 12.0;
+        if !lowest.value.is_finite() {
+            return Err(EvalError::new(
+                "`invert` produced a non-finite numeric value",
+            ));
+        }
+        cluster.push(lowest);
+        cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
+    }
+    Ok(())
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -2199,6 +2271,7 @@ fn absolute_cycle_for_runtime<T>(
         | PatternRuntime::Sometimes { inner, .. }
         | PatternRuntime::Within { inner, .. }
         | PatternRuntime::Mask { inner, .. }
+        | PatternRuntime::Invert { inner, .. }
         | PatternRuntime::Degrees { inner, .. }
         | PatternRuntime::Transpose { inner, .. }
         | PatternRuntime::TransposePattern { inner, .. }

@@ -38,6 +38,9 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "mask" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
             BuiltinKind::Mask,
         )))),
+        "invert" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
+            BuiltinKind::Invert,
+        )))),
         "chord" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
             BuiltinKind::Chord,
         )))),
@@ -209,6 +212,7 @@ impl BuiltinKind {
             Self::Sometimes => "sometimes",
             Self::Within => "within",
             Self::Mask => "mask",
+            Self::Invert => "invert",
             Self::Chord => "chord",
             Self::Euclid => "euclid",
             Self::PitchClassSet => "pitch_class_set",
@@ -239,6 +243,7 @@ impl BuiltinKind {
             Self::PitchClassSet | Self::Rev | Self::Sample => 1,
             Self::Sometimes
             | Self::Mask
+            | Self::Invert
             | Self::Chord
             | Self::Euclid
             | Self::Degrees
@@ -264,6 +269,7 @@ impl BuiltinKind {
             Self::Sometimes => apply_sometimes(args, function.site_salt.unwrap_or_default()),
             Self::Within => apply_within(args),
             Self::Mask => apply_mask(args),
+            Self::Invert => apply_invert(args),
             Self::Chord => apply_chord(args),
             Self::Euclid => apply_euclid(args),
             Self::PitchClassSet => apply_pitch_class_set(args),
@@ -523,6 +529,21 @@ fn apply_chord(args: Vec<Value>) -> Result<Value, EvalError> {
     )?;
 
     Ok(Value::NumberPattern(root.chord(intervals)))
+}
+
+fn apply_invert(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let count = extract_inversion_count(
+        args.next()
+            .ok_or_else(|| EvalError::new("`invert` requires an inversion-count argument"))?,
+    )?;
+    let pattern = extract_number_pattern(
+        args.next()
+            .ok_or_else(|| EvalError::new("`invert` requires a number pattern argument"))?,
+        "invert",
+    )?;
+
+    Ok(Value::NumberPattern(pattern.invert(count)))
 }
 
 fn apply_pitch_class_set(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -1233,6 +1254,27 @@ fn extract_interval_set(value: Value) -> Result<Vec<f64>, EvalError> {
         intervals.push(event.value);
     }
     Ok(intervals)
+}
+
+fn extract_inversion_count(value: Value) -> Result<u32, EvalError> {
+    let number = extract_constant_number(value, "invert")?;
+    if !number.is_finite() {
+        return Err(EvalError::new(
+            "`invert` requires a finite non-negative whole number",
+        ));
+    }
+    if number < 0.0 {
+        return Err(EvalError::new(
+            "`invert` requires a non-negative whole number",
+        ));
+    }
+    if number.fract().abs() > f64::EPSILON {
+        return Err(EvalError::new("`invert` requires a whole number"));
+    }
+
+    format!("{number:.0}")
+        .parse::<u32>()
+        .map_err(|_| EvalError::new("`invert` exceeded the supported evaluator range"))
 }
 
 fn whole_number_from_pitch_class_value(value: f64) -> Result<i32, EvalError> {
