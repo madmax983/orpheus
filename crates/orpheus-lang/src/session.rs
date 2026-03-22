@@ -121,6 +121,13 @@ impl ReplSession {
                     self.render_binding(args)
                 }
             }
+            "roll" => {
+                if args.is_empty() {
+                    Err(roll_usage().to_owned())
+                } else {
+                    self.roll_binding(args)
+                }
+            }
             "export" => {
                 if args.is_empty() {
                     Err(export_usage().to_owned())
@@ -197,6 +204,41 @@ impl ReplSession {
         Ok(format!(
             "rendered `{binding_name}` to `{path}` ({cycles} cycle(s))"
         ))
+    }
+
+    fn roll_binding(&self, args: &str) -> Result<String, String> {
+        let mut parts = args.split_whitespace();
+        let binding_name = parts
+            .next()
+            .ok_or_else(|| roll_usage().to_owned())?;
+
+        let cycles = parts
+            .next()
+            .unwrap_or("1")
+            .parse::<u64>()
+            .map_err(|_| "cycles must be a positive integer".to_owned())?;
+
+        let steps_per_cycle = parts
+            .next()
+            .unwrap_or("16")
+            .parse::<u32>()
+            .map_err(|_| "steps_per_cycle must be a positive integer".to_owned())?;
+
+        if let Some(value) = self.bindings.get(binding_name) {
+            match value {
+                crate::value::Value::SamplePattern(pattern) => {
+                    let roll = crate::ascii_roll::render_ascii_roll(pattern, cycles, steps_per_cycle)
+                        .map_err(|error| error.to_string())?;
+                    Ok(format!("\n{}", roll.trim_end()))
+                }
+                _ => Err(format!(
+                    "binding `{binding_name}` is a {} and cannot be rendered as a roll",
+                    value.kind_name()
+                )),
+            }
+        } else {
+            Err(format!("no binding named `{binding_name}`"))
+        }
     }
 
     fn export_binding(&self, args: &str) -> Result<String, String> {
@@ -502,6 +544,10 @@ const fn export_usage() -> &'static str {
     "usage: :export <binding> <path> [cycles]"
 }
 
+const fn roll_usage() -> &'static str {
+    "usage: :roll <binding> [cycles] [steps_per_cycle]"
+}
+
 const fn tempo_usage() -> &'static str {
     "usage: :tempo <bpm>"
 }
@@ -586,6 +632,36 @@ mod tests {
             .render_test_block(session.engine.frames_until_boundary_for_test() + 256);
 
         assert!(rendered.iter().any(|sample| sample.abs() > f32::EPSILON));
+    }
+
+    #[test]
+    fn roll_command_prints_ascii_roll() {
+        let mut session = ReplSession::new();
+        session.eval_line("pattern = bd sn").unwrap();
+
+        let message = session.eval_line(":roll pattern 1 8").unwrap();
+
+        assert!(message.contains("bd | x---...."));
+        assert!(message.contains("sn | ....x---"));
+    }
+
+    #[test]
+    fn roll_command_rejects_unknown_bindings() {
+        let mut session = ReplSession::new();
+
+        let error = session.eval_line(":roll nope").unwrap_err();
+
+        assert!(error.contains("no binding named `nope`"));
+    }
+
+    #[test]
+    fn roll_command_rejects_invalid_cycles() {
+        let mut session = ReplSession::new();
+        session.eval_line("pattern = bd sn").unwrap();
+
+        let error = session.eval_line(":roll pattern foo").unwrap_err();
+
+        assert!(error.contains("cycles must be a positive integer"));
     }
 
     #[test]
