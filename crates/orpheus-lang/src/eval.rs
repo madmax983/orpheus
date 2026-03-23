@@ -257,10 +257,9 @@ impl Evaluator {
         &mut self,
         statements: &[Stmt],
     ) -> Result<Option<(String, Value)>, EvalError> {
-        let mut last_binding = None;
-
-        for statement in statements {
-            match statement {
+        statements
+            .iter()
+            .try_fold(None, |_, statement| match statement {
                 Stmt::Binding {
                     name, params, expr, ..
                 } => {
@@ -281,12 +280,9 @@ impl Evaluator {
                         }))
                     };
                     self.bindings.insert(name.clone(), value.clone());
-                    last_binding = Some((name.clone(), value));
+                    Ok(Some((name.clone(), value)))
                 }
-            }
-        }
-
-        Ok(last_binding)
+            })
     }
 
     fn eval_expr(&self, expr: &Expr) -> Result<Value, EvalError> {
@@ -385,12 +381,11 @@ impl Evaluator {
         layers: &[Expr],
         meter: Option<&MeterContext>,
     ) -> Result<Value, EvalError> {
-        let mut values = Vec::with_capacity(layers.len());
-        for layer in layers {
-            values.push(self.eval_expr_in_meter(layer, meter)?);
-        }
-
-        stack_values(values)
+        let values: Result<Vec<_>, _> = layers
+            .iter()
+            .map(|layer| self.eval_expr_in_meter(layer, meter))
+            .collect();
+        stack_values(values?)
     }
 
     fn eval_stream(
@@ -440,10 +435,10 @@ impl Evaluator {
         meter: Option<&MeterContext>,
     ) -> Result<Value, EvalError> {
         let callee_value = self.eval_expr_in_meter(callee, meter)?;
-        let mut evaluated_args = Vec::with_capacity(args.len() + piped_args.len());
-        for arg in args {
-            evaluated_args.push(self.eval_expr_in_meter(arg, meter)?);
-        }
+        let mut evaluated_args: Vec<_> = args
+            .iter()
+            .map(|arg| self.eval_expr_in_meter(arg, meter))
+            .collect::<Result<_, _>>()?;
         evaluated_args.extend(piped_args);
         Self::apply_value(callee_value, evaluated_args, self.expr_site_salt(call_expr))
     }
@@ -511,12 +506,10 @@ impl Evaluator {
             return Err(EvalError::new("`stream` requires at least one item"));
         };
 
-        let mut combined = self.eval_explicit_expr(first, meter)?;
-        for item in rest {
-            combined = combined.merge(self.eval_explicit_expr(item, meter)?)?;
-        }
-
-        Ok(combined)
+        rest.iter()
+            .try_fold(self.eval_explicit_expr(first, meter)?, |acc, item| {
+                acc.merge(self.eval_explicit_expr(item, meter)?)
+            })
     }
 
     fn eval_at_events(
@@ -542,18 +535,27 @@ impl Evaluator {
             ));
         };
 
-        let mut cycle_offset = 0_i128;
-        let mut combined = self.eval_section_events(first, meter, cycle_offset)?;
-        cycle_offset = cycle_offset
-            .checked_add(self.eval_section_length(first, meter)?)
+        let initial_offset = 0_i128;
+        let initial_combined = self.eval_section_events(first, meter, initial_offset)?;
+        let initial_length = self.eval_section_length(first, meter)?;
+        let next_offset = initial_offset
+            .checked_add(initial_length)
             .ok_or_else(|| EvalError::new("section cycle offset overflowed"))?;
 
-        for section in rest {
-            combined = combined.merge(self.eval_section_events(section, meter, cycle_offset)?)?;
-            cycle_offset = cycle_offset
-                .checked_add(self.eval_section_length(section, meter)?)
-                .ok_or_else(|| EvalError::new("section cycle offset overflowed"))?;
-        }
+        let (combined, _) = rest.iter().try_fold(
+            (initial_combined, next_offset),
+            |(acc_combined, acc_offset), section| -> Result<(ExplicitValue, i128), EvalError> {
+                let section_events = self.eval_section_events(section, meter, acc_offset)?;
+                let section_length = self.eval_section_length(section, meter)?;
+
+                let next_combined = acc_combined.merge(section_events)?;
+                let next_offset = acc_offset
+                    .checked_add(section_length)
+                    .ok_or_else(|| EvalError::new("section cycle offset overflowed"))?;
+
+                Ok((next_combined, next_offset))
+            },
+        )?;
 
         Ok(combined)
     }
@@ -793,15 +795,10 @@ impl Evaluator {
         items: &[Expr],
         meter: Option<&MeterContext>,
     ) -> Result<Option<Vec<PatternNode<SampleEvent>>>, EvalError> {
-        let mut nodes = Vec::with_capacity(items.len());
-        for item in items {
-            let Some(node) = self.try_sample_node(item, meter)? else {
-                return Ok(None);
-            };
-            nodes.push(node);
-        }
-
-        Ok(Some(nodes))
+        items
+            .iter()
+            .map(|item| self.try_sample_node(item, meter))
+            .collect::<Result<Option<Vec<_>>, _>>()
     }
 
     fn try_sample_node(
@@ -839,15 +836,10 @@ impl Evaluator {
         &self,
         items: &[Expr],
     ) -> Result<Option<Vec<PatternNode<f64>>>, EvalError> {
-        let mut nodes = Vec::with_capacity(items.len());
-        for item in items {
-            let Some(node) = self.try_number_node(item)? else {
-                return Ok(None);
-            };
-            nodes.push(node);
-        }
-
-        Ok(Some(nodes))
+        items
+            .iter()
+            .map(|item| self.try_number_node(item))
+            .collect::<Result<Option<Vec<_>>, _>>()
     }
 
     fn try_number_node(&self, expr: &Expr) -> Result<Option<PatternNode<f64>>, EvalError> {
