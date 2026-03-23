@@ -1,6 +1,6 @@
 use orpheus_dsp::{
-    EngineCommand, EngineError, EngineHandle, PatternUpdate, SampleTrigger,
-    load_builtin_sample_for_test, load_sample_bank_from_directory,
+    EngineCommand, EngineError, EngineHandle, PatternUpdate, RoutingSnapshot, SampleTrigger,
+    TrackSource, load_builtin_sample_for_test, load_sample_bank_from_directory,
 };
 use orpheus_pattern::{Event, Rational, TimeSpan};
 use std::fs;
@@ -90,6 +90,160 @@ fn split_engine_allows_commands_to_cross_into_renderer() {
     let _ = renderer.render_test_block(renderer.frames_until_boundary_for_test());
 
     assert_eq!(renderer.active_pattern_name_for_test(), Some("verse"));
+}
+
+#[test]
+fn engine_preserves_main_track_compatibility_path() {
+    let mut engine = EngineHandle::stub();
+
+    engine
+        .enqueue(EngineCommand::LoadPattern(single_hit_pattern(
+            "drums", "bd",
+        )))
+        .unwrap();
+
+    let rendered = engine.render_test_block(256);
+
+    assert!(rendered.iter().any(|sample| sample.abs() > f32::EPSILON));
+}
+
+#[test]
+fn engine_mixes_two_tracks_routed_to_master() {
+    let mut single = EngineHandle::stub();
+    let mut doubled = EngineHandle::stub();
+    let directory = temp_directory("routing-two-tracks");
+    write_wav(directory.join("pulse.wav"), &[0.1, 0.0, 0.0, 0.0]);
+    single
+        .enqueue(EngineCommand::ReplaceSampleBank(
+            load_sample_bank_from_directory(&directory).unwrap(),
+        ))
+        .unwrap();
+    doubled
+        .enqueue(EngineCommand::ReplaceSampleBank(
+            load_sample_bank_from_directory(&directory).unwrap(),
+        ))
+        .unwrap();
+
+    let single_snapshot = RoutingSnapshot::builder()
+        .track_with_source("drums", single_hit_track_source("pulse"))
+        .route("drums", "master")
+        .build()
+        .unwrap();
+    let doubled_snapshot = RoutingSnapshot::builder()
+        .track_with_source("drums", single_hit_track_source("pulse"))
+        .track_with_source("bass", single_hit_track_source("pulse"))
+        .route("drums", "master")
+        .route("bass", "master")
+        .build()
+        .unwrap();
+
+    single
+        .enqueue(EngineCommand::SwapRoutingSnapshot(single_snapshot))
+        .unwrap();
+    doubled
+        .enqueue(EngineCommand::SwapRoutingSnapshot(doubled_snapshot))
+        .unwrap();
+
+    let _ = single.render_test_block(single.frames_until_boundary_for_test());
+    let _ = doubled.render_test_block(doubled.frames_until_boundary_for_test());
+
+    let single_rendered = single.render_test_block(4);
+    let doubled_rendered = doubled.render_test_block(4);
+    let expected = single_rendered
+        .iter()
+        .map(|sample| sample * 2.0)
+        .collect::<Vec<_>>();
+
+    assert_samples_approx(&doubled_rendered, &expected, 1.0e-6);
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn engine_applies_track_send_to_dry_bus() {
+    let mut direct = EngineHandle::stub();
+    let mut with_send = EngineHandle::stub();
+    let directory = temp_directory("routing-dry-send");
+    write_wav(directory.join("pulse.wav"), &[0.1, 0.0, 0.0, 0.0]);
+    direct
+        .enqueue(EngineCommand::ReplaceSampleBank(
+            load_sample_bank_from_directory(&directory).unwrap(),
+        ))
+        .unwrap();
+    with_send
+        .enqueue(EngineCommand::ReplaceSampleBank(
+            load_sample_bank_from_directory(&directory).unwrap(),
+        ))
+        .unwrap();
+
+    let direct_snapshot = RoutingSnapshot::builder()
+        .track_with_source("drums", single_hit_track_source("pulse"))
+        .route("drums", "master")
+        .build()
+        .unwrap();
+    let send_snapshot = RoutingSnapshot::builder()
+        .track_with_source("drums", single_hit_track_source("pulse"))
+        .bus("verb")
+        .route("drums", "master")
+        .send("drums", "verb", 1.0)
+        .build()
+        .unwrap();
+
+    direct
+        .enqueue(EngineCommand::SwapRoutingSnapshot(direct_snapshot))
+        .unwrap();
+    with_send
+        .enqueue(EngineCommand::SwapRoutingSnapshot(send_snapshot))
+        .unwrap();
+
+    let _ = direct.render_test_block(direct.frames_until_boundary_for_test());
+    let _ = with_send.render_test_block(with_send.frames_until_boundary_for_test());
+
+    let direct_rendered = direct.render_test_block(4);
+    let with_send_rendered = with_send.render_test_block(4);
+    let expected = direct_rendered
+        .iter()
+        .map(|sample| sample * 2.0)
+        .collect::<Vec<_>>();
+
+    assert_samples_approx(&with_send_rendered, &expected, 1.0e-6);
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn routing_snapshot_activates_only_at_cycle_boundary() {
+    let mut engine = EngineHandle::stub();
+
+    let first = RoutingSnapshot::builder()
+        .track_with_source("kick", single_hit_track_source("bd"))
+        .route("kick", "master")
+        .build()
+        .unwrap();
+    let second = RoutingSnapshot::builder()
+        .track_with_source("snare", single_hit_track_source("sn"))
+        .route("snare", "master")
+        .build()
+        .unwrap();
+
+    engine
+        .enqueue(EngineCommand::SwapRoutingSnapshot(first))
+        .unwrap();
+    let _ = engine.render_test_block(engine.frames_until_boundary_for_test());
+    assert_eq!(engine.active_track_names_for_test(), ["kick"]);
+
+    engine
+        .enqueue(EngineCommand::SwapRoutingSnapshot(second))
+        .unwrap();
+    let _ = engine.render_test_block(1);
+
+    let snapshot = engine.transport_snapshot();
+    assert!(snapshot.has_pending_routing());
+    assert_eq!(engine.active_track_names_for_test(), ["kick"]);
+
+    let _ = engine.render_test_block(engine.frames_until_boundary_for_test());
+
+    let snapshot = engine.transport_snapshot();
+    assert!(!snapshot.has_pending_routing());
+    assert_eq!(engine.active_track_names_for_test(), ["snare"]);
 }
 
 #[test]
@@ -713,6 +867,22 @@ fn temp_directory_uses_system_temp_directory() {
     assert!(directory.starts_with(std::env::temp_dir()));
 
     fs::remove_dir_all(directory).unwrap();
+}
+
+fn single_hit_pattern(name: &str, token: &str) -> PatternUpdate {
+    PatternUpdate::new(name, vec![single_hit_event(token)])
+}
+
+fn single_hit_track_source(token: &str) -> TrackSource {
+    TrackSource::SamplePattern(vec![single_hit_event(token)].into_boxed_slice())
+}
+
+fn single_hit_event(token: &str) -> Event<SampleTrigger> {
+    Event {
+        whole: None,
+        part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+        value: SampleTrigger::named(token),
+    }
 }
 
 fn temp_directory(name: &str) -> PathBuf {

@@ -7,6 +7,7 @@
 use core::f32::consts::TAU;
 
 use crate::SampleTrigger;
+use crate::routing::TrackId;
 use crate::sample_bank::PlaybackSample;
 
 const MAX_SAMPLE_EDGE_RAMP_FRAMES: u32 = 32;
@@ -50,6 +51,7 @@ impl VoiceKind {
 
 #[derive(Clone, Debug)]
 pub struct ActiveVoice {
+    track_id: TrackId,
     state: ActiveVoiceState,
     left_gain: f64,
     right_gain: f64,
@@ -79,7 +81,7 @@ enum ActiveVoiceState {
 }
 
 impl ActiveVoice {
-    pub fn new_with_pan(kind: VoiceKind, sample_rate: u32, pan: f64) -> Self {
+    pub fn new_with_pan(track_id: TrackId, kind: VoiceKind, sample_rate: u32, pan: f64) -> Self {
         let duration_frames = match kind {
             VoiceKind::KickLike => sample_rate / 3,
             VoiceKind::SnareLike => sample_rate / 5,
@@ -89,6 +91,7 @@ impl ActiveVoice {
         let (left_gain, right_gain) = stereo_gains_for_pan(pan);
 
         Self {
+            track_id,
             state: ActiveVoiceState::Synth {
                 kind,
                 frame_index: 0,
@@ -103,6 +106,7 @@ impl ActiveVoice {
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub fn from_sample(
+        track_id: TrackId,
         sample: &PlaybackSample,
         output_sample_rate: u32,
         trigger: &SampleTrigger,
@@ -130,6 +134,7 @@ impl ActiveVoice {
             (slice_start, slice_end)
         };
         Self {
+            track_id,
             state: ActiveVoiceState::Sample {
                 frames: sample.frames().clone(),
                 frame_position,
@@ -149,6 +154,11 @@ impl ActiveVoice {
             left_gain,
             right_gain,
         }
+    }
+
+    #[must_use]
+    pub const fn track_id(&self) -> TrackId {
+        self.track_id
     }
 
     #[allow(

@@ -17,6 +17,7 @@ use thiserror::Error;
 
 use crate::SampleTrigger;
 use crate::engine::{DEFAULT_SAMPLE_RATE, DEFAULT_TEMPO_BPM, EngineError, frames_per_cycle};
+use crate::routing::TrackId;
 use crate::sample_bank::SampleBank;
 use crate::scheduler::Scheduler;
 use crate::voice::{ActiveVoice, VoiceKind};
@@ -125,6 +126,7 @@ fn render_events_to_pcm(
     let total_samples = usize::try_from(total_samples).map_err(|_| EngineError::FrameOverflow)?;
     let mut scheduler = Scheduler::default();
     scheduler.schedule_cycle_events(
+        TrackId::new(0),
         0,
         frames_per_cycle,
         events.iter().map(|event| Event {
@@ -251,9 +253,9 @@ fn activate_voice(
     if let Some(slot) = active_voices.iter_mut().find(|slot| slot.is_none()) {
         *slot = Some(
             if let Some((sample, resolved_trigger)) = sample_bank.resolve_trigger(trigger) {
-                ActiveVoice::from_sample(sample, sample_rate, &resolved_trigger)
+                ActiveVoice::from_sample(TrackId::new(0), sample, sample_rate, &resolved_trigger)
             } else if let Some(voice) = fallback_voice {
-                ActiveVoice::new_with_pan(voice, sample_rate, trigger.pan())
+                ActiveVoice::new_with_pan(TrackId::new(0), voice, sample_rate, trigger.pan())
             } else {
                 return Err(OfflineRenderError::UnknownSampleToken(
                     trigger.token().into(),

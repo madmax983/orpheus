@@ -7,6 +7,7 @@ mod diagnostics;
 mod eval;
 pub mod export;
 mod loader;
+pub(crate) mod mixer;
 mod parser;
 mod pitch;
 pub mod repl;

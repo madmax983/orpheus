@@ -1,4 +1,4 @@
-use orpheus_dsp::{SampleTrigger, Scheduler};
+use orpheus_dsp::{SampleTrigger, Scheduler, TrackId};
 use orpheus_pattern::{Event, Rational, TimeSpan};
 
 #[test]
@@ -22,6 +22,7 @@ fn schedule_cycle_events_converts_rational_offsets_to_sample_frames() {
 
     scheduler
         .schedule_cycle_events(
+            TrackId::new(0),
             100,
             64,
             [Event {
@@ -52,7 +53,11 @@ fn schedule_cycle_events_is_atomic_on_error() {
         value: &bad_trigger,
     };
 
-    assert!(scheduler.schedule_cycle_events(0, 64, [good, bad]).is_err());
+    assert!(
+        scheduler
+            .schedule_cycle_events(TrackId::new(0), 0, 64, [good, bad])
+            .is_err()
+    );
     assert!(scheduler.drain_due_events(u64::MAX).is_empty());
 }
 
@@ -65,6 +70,7 @@ fn schedule_cycle_events_accepts_custom_sample_tokens() {
 
     scheduler
         .schedule_cycle_events(
+            TrackId::new(0),
             0,
             64,
             [Event {
