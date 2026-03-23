@@ -1316,4 +1316,55 @@ right = sometimes(fast(2), cp hh)";
         );
         assert!(std::error::Error::source(&err).is_some());
     }
+
+    #[test]
+    fn eval_error_from_parse_error() {
+        let parse_err =
+            crate::diagnostics::ParseError::new("parse error at line 0, col 0: test parse error");
+        let err: super::EvalError = parse_err.into();
+        assert_eq!(
+            err.to_string(),
+            "parse error at line 0, col 0: test parse error"
+        );
+    }
+
+    #[test]
+    fn eval_error_from_try_from_int_error() {
+        let num_err: Result<u8, _> = 256u16.try_into();
+        let err: super::EvalError = num_err.unwrap_err().into();
+        assert!(err.to_string().contains("out of range"));
+    }
+
+    #[test]
+    fn eval_error_from_io_error() {
+        let not_found = std::io::Error::new(std::io::ErrorKind::NotFound, "oops");
+        let err: super::EvalError = not_found.into();
+        assert_eq!(err.to_string(), "file not found");
+
+        let permission_denied = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "oops");
+        let err2: super::EvalError = permission_denied.into();
+        assert_eq!(err2.to_string(), "permission denied");
+
+        let other_err = std::io::Error::other("custom error message");
+        let err3: super::EvalError = other_err.into();
+        assert_eq!(err3.to_string(), "custom error message");
+    }
+
+    #[test]
+    fn eval_error_from_fmt_error() {
+        let fmt_err = std::fmt::Error;
+        let err: super::EvalError = fmt_err.into();
+        assert_eq!(
+            err.to_string(),
+            "an error occurred when formatting an argument"
+        );
+    }
+
+    #[test]
+    fn eval_error_from_pattern_error() {
+        use orpheus_pattern::PatternError;
+        let pattern_err = PatternError::InvalidDenominator { denominator: 0 };
+        let err: super::EvalError = pattern_err.into();
+        assert_eq!(err.to_string(), "rational denominator cannot be zero");
+    }
 }
