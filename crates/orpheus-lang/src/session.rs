@@ -297,7 +297,8 @@ impl ReplSession {
                     .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
                 {
-                    return Err("number patterns cannot be exported to SVG".to_string());
+                    crate::svg::export_number_pattern_to_svg(pattern, &path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
                 } else if export_path
                     .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
@@ -749,17 +750,22 @@ mod tests {
     }
 
     #[test]
-    fn export_command_refuses_to_export_number_pattern_to_svg() {
+    fn export_command_exports_number_pattern_to_svg() {
         let mut session = ReplSession::new();
         let path = temp_svg_path();
 
         session.eval_line("notes = 1 2 3").unwrap();
-        let err = session
+        let message = session
             .eval_line(&format!(":export notes {} 1", path.display()))
-            .unwrap_err();
+            .unwrap();
 
-        assert!(err.contains("number patterns cannot be exported to SVG"));
-        assert!(!path.exists());
+        assert!(message.contains("exported `notes`"));
+        assert!(path.exists());
+        let contents = fs::read_to_string(&path).unwrap();
+        assert!(contents.contains("<svg xmlns=\"http://www.w3.org/2000/svg\""));
+        assert!(contents.contains("<rect"));
+
+        let _ = fs::remove_file(path);
     }
 
     #[test]
