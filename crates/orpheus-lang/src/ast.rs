@@ -101,3 +101,128 @@ pub enum Stmt {
 pub fn binding_expr_self_references(name: &str, params: &[String], expr: &Expr) -> bool {
     !params.iter().any(|param| param == name) && expr.references_ident(name)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_references_ident_seq() {
+        let expr = Expr::Seq(vec![Expr::Ident("foo".to_string()), Expr::Number(42.0)]);
+        assert!(expr.references_ident("foo"));
+        assert!(!expr.references_ident("bar"));
+    }
+
+    #[test]
+    fn test_references_ident_stack() {
+        let expr = Expr::Stack(vec![
+            Expr::String("bar".to_string()),
+            Expr::Ident("foo".to_string()),
+        ]);
+        assert!(expr.references_ident("foo"));
+        assert!(!expr.references_ident("baz"));
+    }
+
+    #[test]
+    fn test_references_ident_stream() {
+        let expr = Expr::Stream(vec![Expr::Ident("foo".to_string())]);
+        assert!(expr.references_ident("foo"));
+        assert!(!expr.references_ident("bar"));
+    }
+
+    #[test]
+    fn test_references_ident_seq_sections() {
+        let expr = Expr::SeqSections(vec![Expr::Ident("foo".to_string())]);
+        assert!(expr.references_ident("foo"));
+        assert!(!expr.references_ident("bar"));
+    }
+
+    #[test]
+    fn test_references_ident_group() {
+        let expr = Expr::Group(vec![Expr::Ident("foo".to_string())]);
+        assert!(expr.references_ident("foo"));
+        assert!(!expr.references_ident("bar"));
+    }
+
+    #[test]
+    fn test_references_ident_at() {
+        let expr = Expr::At {
+            start: Box::new(Expr::Ident("foo".to_string())),
+            pattern: Box::new(Expr::Number(1.0)),
+        };
+        assert!(expr.references_ident("foo"));
+        assert!(!expr.references_ident("bar"));
+
+        let expr2 = Expr::At {
+            start: Box::new(Expr::Number(1.0)),
+            pattern: Box::new(Expr::Ident("foo".to_string())),
+        };
+        assert!(expr2.references_ident("foo"));
+        assert!(!expr2.references_ident("bar"));
+    }
+
+    #[test]
+    fn test_references_ident_meter() {
+        let expr = Expr::Meter {
+            beats: Box::new(Expr::Ident("foo".to_string())),
+            unit: Box::new(Expr::Number(4.0)),
+            pattern: Box::new(Expr::Number(1.0)),
+        };
+        assert!(expr.references_ident("foo"));
+        assert!(!expr.references_ident("bar"));
+
+        let expr2 = Expr::Meter {
+            beats: Box::new(Expr::Number(4.0)),
+            unit: Box::new(Expr::Ident("foo".to_string())),
+            pattern: Box::new(Expr::Number(1.0)),
+        };
+        assert!(expr2.references_ident("foo"));
+        assert!(!expr2.references_ident("bar"));
+
+        let expr3 = Expr::Meter {
+            beats: Box::new(Expr::Number(4.0)),
+            unit: Box::new(Expr::Number(4.0)),
+            pattern: Box::new(Expr::Ident("foo".to_string())),
+        };
+        assert!(expr3.references_ident("foo"));
+        assert!(!expr3.references_ident("bar"));
+    }
+
+    #[test]
+    fn test_references_ident_beat() {
+        let expr = Expr::Beat(Box::new(Expr::Ident("foo".to_string())));
+        assert!(expr.references_ident("foo"));
+        assert!(!expr.references_ident("bar"));
+    }
+
+    #[test]
+    fn test_references_ident_section() {
+        let expr = Expr::Section {
+            pattern: Box::new(Expr::Ident("foo".to_string())),
+            cycles: Box::new(Expr::Number(4.0)),
+        };
+        assert!(expr.references_ident("foo"));
+        assert!(!expr.references_ident("bar"));
+
+        let expr2 = Expr::Section {
+            pattern: Box::new(Expr::Number(4.0)),
+            cycles: Box::new(Expr::Ident("foo".to_string())),
+        };
+        assert!(expr2.references_ident("foo"));
+        assert!(!expr2.references_ident("bar"));
+    }
+
+    #[test]
+    fn test_binding_expr_self_references_when_not_shadowed() {
+        let params = vec![];
+        let expr = Expr::Ident("foo".to_string());
+        assert!(binding_expr_self_references("foo", &params, &expr));
+    }
+
+    #[test]
+    fn test_binding_expr_self_references_when_shadowed_by_parameter() {
+        let params = vec!["foo".to_string()];
+        let expr = Expr::Ident("foo".to_string());
+        assert!(!binding_expr_self_references("foo", &params, &expr));
+    }
+}
