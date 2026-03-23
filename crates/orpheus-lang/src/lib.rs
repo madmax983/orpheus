@@ -27,7 +27,7 @@ pub use export::{
 };
 pub use loader::load_file_strict;
 pub use parser::parse_module;
-pub use svg::export_sample_pattern_to_svg;
+pub use svg::{export_number_pattern_to_svg, export_sample_pattern_to_svg};
 pub use types::{Type, TypedModule, infer_module};
 pub use value::{NumberPatternValue, SampleEvent, SamplePatternValue, Value};
 
