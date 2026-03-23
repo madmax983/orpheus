@@ -559,3 +559,33 @@ fn arp_rejects_non_direction_arguments_at_typecheck() {
     assert!(message.contains("ArpDirection"));
     assert!(message.contains("Pattern<Number>") || message.contains("Number"));
 }
+
+#[test]
+fn roll_infers_sample_patterns() {
+    let typed = infer_module("buzz = roll(4, sn)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("buzz").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn roll_infers_number_patterns() {
+    let typed = infer_module("stabs = roll(4, chord(c4, 0 4 7))", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("stabs").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn roll_pipe_form_preserves_sample_patterns() {
+    let typed = infer_module("buzz = sn |> roll(4)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("buzz").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn roll_rejects_non_pattern_values_at_typecheck() {
+    let error = infer_module("bad = roll(4, aeolian)", ReplMode::Strict).unwrap_err();
+    let message = error.to_string();
+
+    assert!(message.contains("Pattern"));
+    assert!(message.contains("PitchClassSet"));
+}

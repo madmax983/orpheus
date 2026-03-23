@@ -1,0 +1,70 @@
+{
+  "cycle_count": 1,
+  "events": [
+    {
+      "end_den": 4,
+      "end_float": 0.25,
+      "end_num": 1,
+      "gain": 1.0,
+      "hpf_cutoff_hz": null,
+      "lpf_cutoff_hz": null,
+      "pan": 0.0,
+      "rate": 1.0,
+      "sample": "sn",
+      "slice_end": 1.0,
+      "slice_start": 0.0,
+      "start_den": 1,
+      "start_float": 0.0,
+      "start_num": 0
+    },
+    {
+      "end_den": 2,
+      "end_float": 0.5,
+      "end_num": 1,
+      "gain": 1.0,
+      "hpf_cutoff_hz": null,
+      "lpf_cutoff_hz": null,
+      "pan": 0.0,
+      "rate": 1.0,
+      "sample": "sn",
+      "slice_end": 1.0,
+      "slice_start": 0.0,
+      "start_den": 4,
+      "start_float": 0.25,
+      "start_num": 1
+    },
+    {
+      "end_den": 4,
+      "end_float": 0.75,
+      "end_num": 3,
+      "gain": 1.0,
+      "hpf_cutoff_hz": null,
+      "lpf_cutoff_hz": null,
+      "pan": 0.0,
+      "rate": 1.0,
+      "sample": "sn",
+      "slice_end": 1.0,
+      "slice_start": 0.0,
+      "start_den": 2,
+      "start_float": 0.5,
+      "start_num": 1
+    },
+    {
+      "end_den": 1,
+      "end_float": 1.0,
+      "end_num": 1,
+      "gain": 1.0,
+      "hpf_cutoff_hz": null,
+      "lpf_cutoff_hz": null,
+      "pan": 0.0,
+      "rate": 1.0,
+      "sample": "sn",
+      "slice_end": 1.0,
+      "slice_start": 0.0,
+      "start_den": 4,
+      "start_float": 0.75,
+      "start_num": 3
+    }
+  ],
+  "kind": "sample"
+}

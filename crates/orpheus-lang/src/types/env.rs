@@ -52,6 +52,7 @@ impl TypeEnv {
         env.insert("within", within_transform_scheme(alpha));
         env.insert("mask", mask_scheme());
         env.insert("strum", unary_number_pattern_scheme());
+        env.insert("roll", numeric_pattern_transform_scheme(alpha));
         env.insert("arp", arp_scheme());
         env.insert("up", TypeScheme::monomorphic(Type::ArpDirection));
         env.insert("down", TypeScheme::monomorphic(Type::ArpDirection));

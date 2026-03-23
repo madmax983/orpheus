@@ -1676,6 +1676,203 @@ fn arp_rejects_non_numeric_patterns() {
 }
 
 #[test]
+fn roll_retriggers_sample_hits_across_equal_quarters() {
+    let module = eval_module("buzz = roll(4, sn)", ReplMode::Loose).unwrap();
+    let events = module
+        .get("buzz")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(events.len(), 4);
+    assert!(events.iter().all(|event| event.value.sample() == "sn"));
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 4).unwrap());
+    assert_eq!(events[1].part.start(), &Rational::new(1, 4).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[3].part.start(), &Rational::new(3, 4).unwrap());
+    assert_eq!(events[3].part.end(), &Rational::one());
+}
+
+#[test]
+fn roll_retriggers_chord_clusters_across_equal_quarters() {
+    let module = eval_module("stabs = roll(4, chord(c4, 0 4 7))", ReplMode::Loose).unwrap();
+    let events = module
+        .get("stabs")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 12);
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![
+            60.0, 64.0, 67.0, 60.0, 64.0, 67.0, 60.0, 64.0, 67.0, 60.0, 64.0, 67.0
+        ]
+    );
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[2].part.end(), &Rational::new(1, 4).unwrap());
+    assert_eq!(events[3].part.start(), &Rational::new(1, 4).unwrap());
+    assert_eq!(events[11].part.end(), &Rational::one());
+}
+
+#[test]
+fn roll_applies_per_exact_span_cluster() {
+    let module = eval_module("line = roll(4, bd sn)", ReplMode::Loose).unwrap();
+    let events = module
+        .get("line")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(events.len(), 8);
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| (
+                event.value.sample().to_owned(),
+                event.part.start().clone(),
+                event.part.end().clone()
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                "bd".to_string(),
+                Rational::zero(),
+                Rational::new(1, 8).unwrap()
+            ),
+            (
+                "bd".to_string(),
+                Rational::new(1, 8).unwrap(),
+                Rational::new(1, 4).unwrap()
+            ),
+            (
+                "bd".to_string(),
+                Rational::new(1, 4).unwrap(),
+                Rational::new(3, 8).unwrap()
+            ),
+            (
+                "bd".to_string(),
+                Rational::new(3, 8).unwrap(),
+                Rational::new(1, 2).unwrap()
+            ),
+            (
+                "sn".to_string(),
+                Rational::new(1, 2).unwrap(),
+                Rational::new(5, 8).unwrap()
+            ),
+            (
+                "sn".to_string(),
+                Rational::new(5, 8).unwrap(),
+                Rational::new(3, 4).unwrap()
+            ),
+            (
+                "sn".to_string(),
+                Rational::new(3, 4).unwrap(),
+                Rational::new(7, 8).unwrap()
+            ),
+            (
+                "sn".to_string(),
+                Rational::new(7, 8).unwrap(),
+                Rational::one()
+            ),
+        ]
+    );
+}
+
+#[test]
+fn roll_pipe_matches_direct_call() {
+    let direct = eval_module("buzz = roll(4, sn)", ReplMode::Loose).unwrap();
+    let direct_events = direct
+        .get("buzz")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    let piped = eval_module("buzz = sn |> roll(4)", ReplMode::Loose).unwrap();
+    let piped_events = piped
+        .get("buzz")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(direct_events, piped_events);
+}
+
+#[test]
+fn roll_with_one_step_is_identity() {
+    let original = eval_module("buzz = bd sn", ReplMode::Loose).unwrap();
+    let original_events = original
+        .get("buzz")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    let rolled = eval_module("buzz = roll(1, bd sn)", ReplMode::Loose).unwrap();
+    let rolled_events = rolled
+        .get("buzz")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(rolled_events, original_events);
+}
+
+#[test]
+fn roll_rejects_zero_steps() {
+    assert_eval_error_contains("bad = roll(0, sn)", ReplMode::Strict, &["roll", "positive"]);
+}
+
+#[test]
+fn roll_rejects_negative_steps() {
+    assert_eval_error_contains(
+        "bad = roll(-1, sn)",
+        ReplMode::Strict,
+        &["roll", "positive"],
+    );
+}
+
+#[test]
+fn roll_rejects_fractional_steps() {
+    assert_eval_error_contains(
+        "bad = roll(1.5, sn)",
+        ReplMode::Strict,
+        &["roll", "whole number"],
+    );
+}
+
+#[test]
+fn roll_rejects_non_constant_steps() {
+    assert_eval_error_contains(
+        "bad = roll(1 2, sn)",
+        ReplMode::Strict,
+        &["roll", "constant"],
+    );
+}
+
+#[test]
+fn roll_rejects_non_pattern_values() {
+    assert_eval_error_contains(
+        "bad = roll(4, aeolian)",
+        ReplMode::Strict,
+        &["roll", "pattern"],
+    );
+}
+
+#[test]
 fn gain_updates_sample_event_amplitude() {
     let module = eval_module("drums = bd |> gain(0.8)", ReplMode::Loose).unwrap();
     let event = module
