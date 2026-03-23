@@ -7,6 +7,7 @@
 use orpheus_pattern::Event;
 use rtrb::{Consumer, Producer, RingBuffer};
 
+use crate::routing::RoutingSnapshot;
 use crate::sample_bank::SampleBank;
 
 /// Per-event playback parameters resolved before scheduling.
@@ -154,6 +155,8 @@ pub enum EngineCommand {
     SwapPattern(String),
     /// Swaps in a concrete unit-cycle pattern at the next cycle boundary.
     LoadPattern(PatternUpdate),
+    /// Swaps in a validated routing snapshot at the next cycle boundary.
+    SwapRoutingSnapshot(RoutingSnapshot),
     /// Replaces the sample bank at the next cycle boundary.
     ReplaceSampleBank(SampleBank),
     /// Updates the transport tempo in beats per minute.

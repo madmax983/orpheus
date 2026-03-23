@@ -3,6 +3,7 @@
 mod command;
 mod engine;
 mod offline;
+mod routing;
 mod sample;
 mod sample_bank;
 mod sample_manifest;
@@ -14,6 +15,10 @@ pub use engine::{EngineError, EngineHandle, RenderEngine, TransportSnapshot};
 pub use offline::{
     OfflineRenderError, render_events_to_file, render_events_to_file_with_bank,
     render_events_to_wav,
+};
+pub use routing::{
+    BusId, BusView, RoutingError, RoutingSnapshot, RoutingSnapshotBuilder, TrackId, TrackSource,
+    TrackView,
 };
 pub use sample::{DecodedSample, SampleError, load_wav_for_test};
 pub use sample_bank::{
