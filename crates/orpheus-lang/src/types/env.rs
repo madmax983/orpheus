@@ -114,6 +114,17 @@ impl TypeEnv {
             )),
         );
         env.insert(
+            "send",
+            TypeScheme::monomorphic(Type::curried(
+                vec![
+                    Type::String,
+                    Type::pattern(Type::Number),
+                    Type::pattern(Type::Sample),
+                ],
+                Type::pattern(Type::Sample),
+            )),
+        );
+        env.insert(
             "rand",
             TypeScheme::monomorphic(Type::function(vec![], Type::pattern(Type::Number))),
         );

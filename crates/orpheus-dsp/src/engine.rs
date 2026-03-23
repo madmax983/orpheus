@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use thiserror::Error;
 
 use crate::command::{EngineCommand, PatternUpdate, new_command_queue};
+use crate::effect_bus::EffectBus;
 use crate::sample_bank::SampleBank;
 use crate::scheduler::Scheduler;
 use crate::voice::ActiveVoice;
@@ -172,6 +173,8 @@ struct EngineCore {
     active_pattern: Option<PatternUpdate>,
     pending_pattern: Option<PatternUpdate>,
     pending_sample_bank: Option<SampleBank>,
+    effect_buses: Vec<EffectBus>,
+    pending_effect_buses: Option<Vec<EffectBus>>,
     prime_initial_pattern: bool,
     last_swap_frame: Option<u64>,
 }
@@ -198,6 +201,8 @@ impl EngineCore {
             active_pattern: None,
             pending_pattern: None,
             pending_sample_bank: None,
+            effect_buses: Vec::new(),
+            pending_effect_buses: None,
             prime_initial_pattern: false,
             last_swap_frame: None,
         })
@@ -218,6 +223,10 @@ impl EngineCore {
             }
             EngineCommand::ReplaceSampleBank(sample_bank) => {
                 self.pending_sample_bank = Some(sample_bank);
+                Ok(())
+            }
+            EngineCommand::SetEffectBuses(buses) => {
+                self.pending_effect_buses = Some(buses);
                 Ok(())
             }
             EngineCommand::SetTempo(tempo_bpm) => {
@@ -254,6 +263,10 @@ impl EngineCore {
             self.sample_bank = sample_bank;
         }
 
+        if let Some(buses) = self.pending_effect_buses.take() {
+            self.effect_buses = buses;
+        }
+
         if let Some(pattern) = self.pending_pattern.take() {
             self.active_pattern = Some(pattern);
             self.last_swap_frame = Some(self.current_frame);
@@ -279,7 +292,14 @@ impl EngineCore {
             return Err(EngineError::MisalignedOutputBuffer);
         }
 
-        for frame in output.chunks_exact_mut(self.channels) {
+        let total_frames = output.len() / self.channels;
+
+        // Clear bus send buffers for this render block.
+        for bus in &mut self.effect_buses {
+            bus.clear_send_buffer(total_frames);
+        }
+
+        for (frame_index, frame) in output.chunks_exact_mut(self.channels).enumerate() {
             if !self.is_playing {
                 frame.fill(0.0);
                 continue;
@@ -294,7 +314,8 @@ impl EngineCore {
                 self.activate_trigger(&trigger);
             }
 
-            let (left, right) = mix_voices(&mut self.active_voices);
+            let (left, right) =
+                mix_voices_with_sends(&mut self.active_voices, &mut self.effect_buses, frame_index);
             if let Some(first) = frame.first_mut() {
                 *first = left;
             }
@@ -309,6 +330,24 @@ impl EngineCore {
             self.current_frame = self.current_frame.saturating_add(1);
             if self.current_frame == self.next_cycle_boundary_frame {
                 self.begin_cycle()?;
+            }
+        }
+
+        // Process effect buses and mix wet returns into the output.
+        if !self.effect_buses.is_empty() {
+            for bus in &mut self.effect_buses {
+                bus.process(total_frames);
+            }
+            for (frame_index, frame) in output.chunks_exact_mut(self.channels).enumerate() {
+                for bus in &self.effect_buses {
+                    let (wet_left, wet_right) = bus.wet_frame(frame_index);
+                    if let Some(first) = frame.first_mut() {
+                        *first = (*first + wet_left).clamp(-1.0, 1.0);
+                    }
+                    if frame.len() >= 2 {
+                        frame[1] = (frame[1] + wet_right).clamp(-1.0, 1.0);
+                    }
+                }
             }
         }
 
@@ -357,6 +396,9 @@ impl EngineCore {
         self.scheduler.clear();
         for slot in &mut self.active_voices {
             *slot = None;
+        }
+        for bus in &mut self.effect_buses {
+            bus.reset();
         }
         self.current_frame = 0;
         self.current_cycle_start_frame = 0;
@@ -686,7 +728,11 @@ pub fn frames_per_cycle(sample_rate: u32, tempo_bpm: f32) -> Result<u64, EngineE
     Ok(frames)
 }
 
-fn mix_voices(active_voices: &mut [Option<ActiveVoice>]) -> (f32, f32) {
+fn mix_voices_with_sends(
+    active_voices: &mut [Option<ActiveVoice>],
+    effect_buses: &mut [EffectBus],
+    frame_index: usize,
+) -> (f32, f32) {
     let mut left = 0.0_f32;
     let mut right = 0.0_f32;
     for slot in active_voices {
@@ -694,6 +740,23 @@ fn mix_voices(active_voices: &mut [Option<ActiveVoice>]) -> (f32, f32) {
             if let Some((voice_left, voice_right)) = voice.next_stereo_frame() {
                 left += voice_left;
                 right += voice_right;
+
+                // Accumulate into send buses.
+                if !voice.sends().is_empty() {
+                    for bus in effect_buses.iter_mut() {
+                        for (bus_name, send_level) in voice.sends() {
+                            if bus.name() == bus_name.as_ref() {
+                                #[allow(clippy::cast_possible_truncation)]
+                                bus.accumulate(
+                                    frame_index,
+                                    voice_left,
+                                    voice_right,
+                                    *send_level as f32,
+                                );
+                            }
+                        }
+                    }
+                }
             } else {
                 *slot = None;
             }

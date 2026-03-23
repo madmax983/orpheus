@@ -589,3 +589,18 @@ fn roll_rejects_non_pattern_values_at_typecheck() {
     assert!(message.contains("Pattern"));
     assert!(message.contains("PitchClassSet"));
 }
+
+#[test]
+fn send_infers_as_sample_pattern() {
+    let typed = infer_module(r#"routed = send("reverb", 0.5, bd)"#, ReplMode::Strict).unwrap();
+    assert_eq!(typed.type_of("routed").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn send_rejects_number_pattern_at_typecheck() {
+    let result = infer_module(r#"bad = send("reverb", 0.5, seq(1, 2))"#, ReplMode::Strict);
+    assert!(
+        result.is_err(),
+        "send with number pattern should be rejected"
+    );
+}

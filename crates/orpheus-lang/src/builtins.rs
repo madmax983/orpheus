@@ -72,6 +72,7 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "slice" => Some(builtin_function_value(BuiltinKind::Slice)),
         "slice_idx" => Some(builtin_function_value(BuiltinKind::SliceIdx)),
         "rand" => Some(builtin_function_value(BuiltinKind::Rand)),
+        "send" => Some(builtin_function_value(BuiltinKind::Send)),
         "jux" => Some(builtin_function_value(BuiltinKind::Jux)),
         _ => None,
     }
@@ -203,6 +204,7 @@ impl BuiltinKind {
             Self::Rate => "rate",
             Self::Slice => "slice",
             Self::SliceIdx => "slice_idx",
+            Self::Send => "send",
             Self::Rand => "rand",
             Self::Jux => "jux",
         }
@@ -210,7 +212,7 @@ impl BuiltinKind {
 
     const fn arity(self) -> usize {
         match self {
-            Self::Every | Self::Arp | Self::Slice | Self::SliceIdx => 3,
+            Self::Every | Self::Arp | Self::Slice | Self::SliceIdx | Self::Send => 3,
             Self::When | Self::Within => 4,
             Self::PitchClassSet | Self::Rev | Self::Sample | Self::Strum => 1,
             Self::Sometimes
@@ -266,6 +268,7 @@ impl BuiltinKind {
             Self::Rate => apply_rate(args),
             Self::Slice => apply_slice(args),
             Self::SliceIdx => apply_slice_idx(args),
+            Self::Send => apply_send(args),
             Self::Rand => apply_rand(args, function.site_salt.unwrap_or_default()),
             Self::Jux => apply_jux(args),
         }
@@ -807,6 +810,36 @@ fn apply_sample(args: Vec<Value>) -> Result<Value, EvalError> {
         "sample",
     )?;
     Ok(Value::SamplePattern(SamplePatternValue::atom(&token)))
+}
+
+fn apply_send(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let bus_name = extract_string(
+        args.next()
+            .ok_or_else(|| EvalError::new("`send` requires a bus name argument"))?,
+        "send",
+    )?;
+    let level = extract_constant_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`send` requires a send level argument"))?,
+        "send",
+    )?;
+    if !level.is_finite() || !(0.0..=1.0).contains(&level) {
+        return Err(EvalError::new(
+            "`send` level must be a finite number between 0.0 and 1.0",
+        ));
+    }
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`send` requires a pattern argument"))?;
+    match pattern {
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.send(&bus_name, level))),
+        Value::NumberPattern(_)
+        | Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new("`send` only applies to sample patterns")),
+    }
 }
 
 fn apply_rate(args: Vec<Value>) -> Result<Value, EvalError> {

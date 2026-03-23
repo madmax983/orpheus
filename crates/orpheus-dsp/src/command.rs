@@ -7,6 +7,7 @@
 use orpheus_pattern::Event;
 use rtrb::{Consumer, Producer, RingBuffer};
 
+use crate::effect_bus::EffectBus;
 use crate::sample_bank::SampleBank;
 
 /// Per-event playback parameters resolved before scheduling.
@@ -20,6 +21,7 @@ pub struct SampleTrigger {
     slice_start: f64,
     slice_end: f64,
     pan: f64,
+    sends: Vec<(Box<str>, f64)>,
 }
 
 impl SampleTrigger {
@@ -34,6 +36,7 @@ impl SampleTrigger {
             slice_start: 0.0,
             slice_end: 1.0,
             pan: 0.0,
+            sends: Vec::new(),
         }
     }
 
@@ -113,6 +116,18 @@ impl SampleTrigger {
     pub const fn pan(&self) -> f64 {
         self.pan
     }
+
+    #[must_use]
+    pub fn with_send(mut self, bus_name: impl Into<Box<str>>, level: f64) -> Self {
+        self.sends.push((bus_name.into(), level));
+        self
+    }
+
+    /// Returns the send routing list as `(bus_name, send_level)` pairs.
+    #[must_use]
+    pub fn sends(&self) -> &[(Box<str>, f64)] {
+        &self.sends
+    }
 }
 
 /// A fully resolved unit-cycle pattern ready for audio-thread scheduling.
@@ -148,7 +163,7 @@ impl PatternUpdate {
 }
 
 /// Commands sent from the UI thread to the audio engine.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug)]
 pub enum EngineCommand {
     /// Swaps the active pattern after the current cycle completes.
     SwapPattern(String),
@@ -158,6 +173,8 @@ pub enum EngineCommand {
     ReplaceSampleBank(SampleBank),
     /// Updates the transport tempo in beats per minute.
     SetTempo(f32),
+    /// Replaces the set of active effect buses at the next cycle boundary.
+    SetEffectBuses(Vec<EffectBus>),
     /// Starts transport playback from the current rewound position.
     PlayTransport,
     /// Stops transport playback, silencing output and rewinding to the start.

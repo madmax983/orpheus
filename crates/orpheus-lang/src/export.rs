@@ -5,7 +5,7 @@
 //! formats enable interoperability with external tools, data visualization, and DAWs.
 
 use std::error::Error;
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Display, Formatter, Write as _};
 use std::io::Write;
 use std::path::Path;
 
@@ -65,6 +65,9 @@ fn sample_trigger_from_event(event: &crate::value::SampleEvent) -> SampleTrigger
     }
     if let Some(cutoff) = event.lpf_cutoff_hz() {
         trigger = trigger.with_lpf_cutoff_hz(cutoff);
+    }
+    for (bus_name, send_level) in event.sends() {
+        trigger = trigger.with_send(bus_name.as_ref(), *send_level);
     }
     trigger
 }
@@ -385,8 +388,6 @@ pub fn render_sample_pattern_to_wav(
     render_sample_pattern_to_file(pattern, path, cycle_count)
 }
 
-use std::fmt::Write as _;
-
 pub(crate) fn escape_json_string(s: &str) -> String {
     let mut escaped = String::with_capacity(s.len() * 2);
     for c in s.chars() {
@@ -454,9 +455,27 @@ fn sample_event_json(event: &Event<crate::value::SampleEvent>) -> String {
     }
 
     if let Some(lpf) = event.value.lpf_cutoff_hz() {
-        let _ = writeln!(s, "      \"lpf_cutoff_hz\": {lpf:.6}");
+        let _ = writeln!(s, "      \"lpf_cutoff_hz\": {lpf:.6},");
     } else {
-        s.push_str("      \"lpf_cutoff_hz\": null\n");
+        s.push_str("      \"lpf_cutoff_hz\": null,\n");
+    }
+
+    let sends = event.value.sends();
+    if sends.is_empty() {
+        s.push_str("      \"sends\": []\n");
+    } else {
+        s.push_str("      \"sends\": [");
+        for (i, (bus_name, level)) in sends.iter().enumerate() {
+            if i > 0 {
+                s.push_str(", ");
+            }
+            let _ = write!(
+                s,
+                "{{\"bus\": \"{}\", \"level\": {level:.6}}}",
+                escape_json_string(bus_name)
+            );
+        }
+        s.push_str("]\n");
     }
 
     s.push_str("    }");

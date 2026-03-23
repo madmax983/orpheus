@@ -454,6 +454,9 @@ impl ReplSession {
                             if let Some(cutoff_hz) = event.value.lpf_cutoff_hz() {
                                 trigger = trigger.with_lpf_cutoff_hz(cutoff_hz);
                             }
+                            for (bus_name, send_level) in event.value.sends() {
+                                trigger = trigger.with_send(bus_name.as_ref(), *send_level);
+                            }
                             trigger
                         },
                     })

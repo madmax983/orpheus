@@ -1,6 +1,8 @@
 //! Audio engine for Orpheus.
 
 mod command;
+mod effect;
+mod effect_bus;
 mod engine;
 mod offline;
 mod sample;
@@ -10,6 +12,8 @@ mod scheduler;
 mod voice;
 
 pub use command::{EngineCommand, PatternUpdate, SampleTrigger};
+pub use effect::{Effect, StereoDelay};
+pub use effect_bus::EffectBus;
 pub use engine::{EngineError, EngineHandle, RenderEngine, TransportSnapshot};
 pub use offline::{
     OfflineRenderError, render_events_to_file, render_events_to_file_with_bank,

@@ -2520,3 +2520,79 @@ fn rand_builtin_generates_deterministic_random_numbers() {
     assert!((0.0..=1.0).contains(&v2));
     assert!((v1 - v2).abs() > f64::EPSILON);
 }
+
+#[test]
+fn send_adds_bus_routing_to_sample_events() {
+    let module = eval_module(r#"drums = bd |> send("reverb", 0.5)"#, ReplMode::Loose).unwrap();
+    let events = module
+        .get("drums")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+    assert_eq!(events.len(), 1);
+    let sends = events[0].value.sends();
+    assert_eq!(sends.len(), 1);
+    assert_eq!(sends[0].0.as_ref(), "reverb");
+    assert!((sends[0].1 - 0.5).abs() < f64::EPSILON);
+}
+
+#[test]
+fn send_preserves_other_sample_event_fields() {
+    let module = eval_module(
+        r#"drums = bd |> gain(0.8) |> send("delay", 0.3)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("drums")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+    assert_eq!(events.len(), 1);
+    assert!((events[0].value.gain() - 0.8).abs() < f64::EPSILON);
+    let sends = events[0].value.sends();
+    assert_eq!(sends.len(), 1);
+    assert_eq!(sends[0].0.as_ref(), "delay");
+}
+
+#[test]
+fn send_multiple_buses_accumulates() {
+    let module = eval_module(
+        r#"drums = bd |> send("reverb", 0.5) |> send("delay", 0.3)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("drums")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+    assert_eq!(events.len(), 1);
+    let sends = events[0].value.sends();
+    assert_eq!(sends.len(), 2);
+    assert_eq!(sends[0].0.as_ref(), "reverb");
+    assert_eq!(sends[1].0.as_ref(), "delay");
+}
+
+#[test]
+fn send_rejects_out_of_range_level() {
+    assert!(eval_module(r#"drums = bd |> send("reverb", 1.5)"#, ReplMode::Loose).is_err());
+    assert!(eval_module(r#"drums = bd |> send("reverb", -0.1)"#, ReplMode::Loose).is_err());
+}
+
+#[test]
+fn send_rejects_number_pattern() {
+    assert!(
+        eval_module(
+            r#"drums = seq(1, 2) |> send("reverb", 0.5)"#,
+            ReplMode::Loose
+        )
+        .is_err()
+    );
+}

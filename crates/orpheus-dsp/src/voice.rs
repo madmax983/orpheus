@@ -53,6 +53,7 @@ pub struct ActiveVoice {
     state: ActiveVoiceState,
     left_gain: f64,
     right_gain: f64,
+    sends: Vec<(Box<str>, f64)>,
 }
 
 #[derive(Clone, Debug)]
@@ -98,6 +99,7 @@ impl ActiveVoice {
             },
             left_gain,
             right_gain,
+            sends: Vec::new(),
         }
     }
 
@@ -148,6 +150,7 @@ impl ActiveVoice {
             },
             left_gain,
             right_gain,
+            sends: trigger.sends().to_vec(),
         }
     }
 
@@ -244,6 +247,12 @@ impl ActiveVoice {
             (f64::from(sample) * self.left_gain) as f32,
             (f64::from(sample) * self.right_gain) as f32,
         ))
+    }
+
+    /// Returns the send routing list for this voice.
+    #[must_use]
+    pub fn sends(&self) -> &[(Box<str>, f64)] {
+        &self.sends
     }
 }
 

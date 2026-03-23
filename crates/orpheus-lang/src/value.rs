@@ -61,6 +61,7 @@ pub enum BuiltinKind {
     Rate,
     Slice,
     SliceIdx,
+    Send,
     Rand,
     Jux,
 }
@@ -374,6 +375,7 @@ pub struct SampleEvent {
     rate: f64,
     slice_start: f64,
     slice_end: f64,
+    sends: Vec<(Box<str>, f64)>,
 }
 
 impl SampleEvent {
@@ -387,6 +389,7 @@ impl SampleEvent {
             rate: 1.0,
             slice_start: 0.0,
             slice_end: 1.0,
+            sends: Vec::new(),
         }
     }
 
@@ -437,6 +440,12 @@ impl SampleEvent {
     pub const fn slice_end(&self) -> f64 {
         self.slice_end
     }
+
+    /// The send routing list as `(bus_name, send_level)` pairs.
+    #[must_use]
+    pub fn sends(&self) -> &[(Box<str>, f64)] {
+        &self.sends
+    }
 }
 
 trait PatternValueTransform: Sized {
@@ -446,6 +455,7 @@ trait PatternValueTransform: Sized {
     fn adjust_pan(&self, amount: f64) -> Self;
     fn adjust_rate(&self, factor: f64) -> Self;
     fn adjust_slice(&self, start: f64, end: f64) -> Self;
+    fn add_send(&self, bus_name: &str, level: f64) -> Self;
     fn map_degrees(&self, collection: &PitchClassSetValue) -> Result<Self, EvalError>;
     fn transpose_semitones(&self, semitones: f64) -> Result<Self, EvalError>;
 }
@@ -476,6 +486,7 @@ impl PatternValueTransform for SampleEvent {
             rate: self.rate,
             slice_start: self.slice_start,
             slice_end: self.slice_end,
+            sends: self.sends.clone(),
         }
     }
 
@@ -489,6 +500,7 @@ impl PatternValueTransform for SampleEvent {
             rate: self.rate,
             slice_start: self.slice_start,
             slice_end: self.slice_end,
+            sends: self.sends.clone(),
         }
     }
 
@@ -502,6 +514,7 @@ impl PatternValueTransform for SampleEvent {
             rate: self.rate,
             slice_start: self.slice_start,
             slice_end: self.slice_end,
+            sends: self.sends.clone(),
         }
     }
 
@@ -515,6 +528,7 @@ impl PatternValueTransform for SampleEvent {
             rate: self.rate,
             slice_start: self.slice_start,
             slice_end: self.slice_end,
+            sends: self.sends.clone(),
         }
     }
 
@@ -528,6 +542,7 @@ impl PatternValueTransform for SampleEvent {
             rate: self.rate * factor,
             slice_start: self.slice_start,
             slice_end: self.slice_end,
+            sends: self.sends.clone(),
         }
     }
 
@@ -542,6 +557,23 @@ impl PatternValueTransform for SampleEvent {
             rate: self.rate,
             slice_start: current_range.mul_add(start, self.slice_start),
             slice_end: current_range.mul_add(end, self.slice_start),
+            sends: self.sends.clone(),
+        }
+    }
+
+    fn add_send(&self, bus_name: &str, level: f64) -> Self {
+        let mut sends = self.sends.clone();
+        sends.push((bus_name.into(), level));
+        Self {
+            sample: self.sample.clone(),
+            gain: self.gain,
+            hpf_cutoff_hz: self.hpf_cutoff_hz,
+            lpf_cutoff_hz: self.lpf_cutoff_hz,
+            pan: self.pan,
+            rate: self.rate,
+            slice_start: self.slice_start,
+            slice_end: self.slice_end,
+            sends,
         }
     }
 
@@ -580,6 +612,10 @@ impl PatternValueTransform for f64 {
     }
 
     fn adjust_slice(&self, _start: f64, _end: f64) -> Self {
+        *self
+    }
+
+    fn add_send(&self, _bus_name: &str, _level: f64) -> Self {
         *self
     }
 
@@ -1068,6 +1104,16 @@ impl SamplePatternValue {
         Self {
             pattern: PatternRuntime::Pan {
                 amount,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn send(self, bus_name: &str, level: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::Send {
+                bus_name: bus_name.into(),
+                level,
                 inner: Box::new(self.pattern),
             },
         }
@@ -1598,6 +1644,11 @@ enum PatternRuntime<T> {
         segments: u32,
         inner: Box<Self>,
     },
+    Send {
+        bus_name: Box<str>,
+        level: f64,
+        inner: Box<Self>,
+    },
     Rand {
         site_salt: u64,
     },
@@ -1746,6 +1797,17 @@ where
                 segments,
                 inner,
             } => apply_slice_idx_pattern(inner, control, *segments, span),
+            Self::Send {
+                bus_name,
+                level,
+                inner,
+            } => {
+                let bus_name = bus_name.clone();
+                let level = *level;
+                apply_value_mutation(inner, span, |value| {
+                    *value = value.add_send(&bus_name, level);
+                })
+            }
             Self::Rand { site_salt } => query_rand(*site_salt, span),
             Self::Cycle(_)
             | Self::Stream(_)
@@ -2720,7 +2782,8 @@ fn absolute_cycle_for_runtime<T>(
         | PatternRuntime::RatePattern { inner, .. }
         | PatternRuntime::Slice { inner, .. }
         | PatternRuntime::SlicePattern { inner, .. }
-        | PatternRuntime::SliceIdxPattern { inner, .. } => absolute_cycle_for_runtime(inner, cycle),
+        | PatternRuntime::SliceIdxPattern { inner, .. }
+        | PatternRuntime::Send { inner, .. } => absolute_cycle_for_runtime(inner, cycle),
         PatternRuntime::Stack(layers) => layers
             .first()
             .map_or(Ok(cycle), |layer| absolute_cycle_for_runtime(layer, cycle)),
