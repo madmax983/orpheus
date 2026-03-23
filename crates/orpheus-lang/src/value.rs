@@ -627,16 +627,17 @@ impl PatternRuntimeValue for SampleEvent {
         let mut events = events;
         sort_events(&mut events);
         let mut index = 0;
+        let mut cluster = Vec::new();
 
         while index < events.len() {
             let span = events[index].part.clone();
-            let mut cluster = Vec::new();
+            cluster.clear();
             while index < events.len() && events[index].part == span {
                 cluster.push(events[index].clone());
                 index += 1;
             }
 
-            rolled.extend(roll_event_cluster(cluster, steps)?);
+            rolled.extend(roll_event_cluster(&cluster, steps)?);
         }
 
         sort_events(&mut rolled);
@@ -704,10 +705,11 @@ impl PatternRuntimeValue for f64 {
         sort_events(&mut events);
         let mut rolled = Vec::new();
         let mut index = 0;
+        let mut cluster = Vec::new();
 
         while index < events.len() {
             let span = events[index].part.clone();
-            let mut cluster = Vec::new();
+            cluster.clear();
             while index < events.len() && events[index].part == span {
                 let event = events[index].clone();
                 if !event.value.is_finite() {
@@ -717,7 +719,7 @@ impl PatternRuntimeValue for f64 {
                 index += 1;
             }
 
-            rolled.extend(roll_event_cluster(cluster, steps)?);
+            rolled.extend(roll_event_cluster(&cluster, steps)?);
         }
 
         sort_events(&mut rolled);
@@ -728,10 +730,11 @@ impl PatternRuntimeValue for f64 {
         sort_events(&mut events);
         let mut strummed = Vec::with_capacity(events.len());
         let mut index = 0;
+        let mut cluster = Vec::new();
 
         while index < events.len() {
             let span = events[index].part.clone();
-            let mut cluster = Vec::new();
+            cluster.clear();
             while index < events.len() && events[index].part == span {
                 let event = events[index].clone();
                 if !event.value.is_finite() {
@@ -741,7 +744,8 @@ impl PatternRuntimeValue for f64 {
                 index += 1;
             }
 
-            strummed.extend(strum_event_cluster(cluster)?);
+            strum_event_cluster(&mut cluster)?;
+            strummed.extend_from_slice(&cluster);
         }
 
         sort_events(&mut strummed);
@@ -756,10 +760,11 @@ impl PatternRuntimeValue for f64 {
         sort_events(&mut events);
         let mut arped = Vec::new();
         let mut index = 0;
+        let mut cluster = Vec::new();
 
         while index < events.len() {
             let span = events[index].part.clone();
-            let mut cluster = Vec::new();
+            cluster.clear();
             while index < events.len() && events[index].part == span {
                 let event = events[index].clone();
                 if !event.value.is_finite() {
@@ -769,7 +774,7 @@ impl PatternRuntimeValue for f64 {
                 index += 1;
             }
 
-            arped.extend(arp_event_cluster(cluster, steps, direction)?);
+            arped.extend(arp_event_cluster(&mut cluster, steps, direction)?);
         }
 
         sort_events(&mut arped);
@@ -1883,11 +1888,11 @@ fn invert_event_cluster(cluster: &mut Vec<Event<f64>>, count: u32) -> Result<(),
 }
 
 fn roll_event_cluster<T: Clone>(
-    cluster: Vec<Event<T>>,
+    cluster: &[Event<T>],
     steps: u32,
 ) -> Result<Vec<Event<T>>, EvalError> {
     if cluster.is_empty() || cluster.len() == 1 && steps == 1 {
-        return Ok(cluster);
+        return Ok(cluster.to_vec());
     }
     if steps == 0 {
         return Err(EvalError::new(
@@ -1898,7 +1903,7 @@ fn roll_event_cluster<T: Clone>(
     let span = cluster[0].part.clone();
     let width = window_width(&span)?;
     if width == Rational::zero() || steps == 1 {
-        return Ok(cluster);
+        return Ok(cluster.to_vec());
     }
 
     let step_count = i128::from(steps);
@@ -1920,7 +1925,7 @@ fn roll_event_cluster<T: Clone>(
         let start = rational_add(span.start(), &offset)?;
         let end = rational_add(&start, &step)?;
         let part = TimeSpan::new(start, end).map_err(EvalError::from)?;
-        for event in &cluster {
+        for event in cluster {
             rolled.push(Event {
                 whole: None,
                 part: part.clone(),
@@ -1932,16 +1937,16 @@ fn roll_event_cluster<T: Clone>(
     Ok(rolled)
 }
 
-fn strum_event_cluster(mut cluster: Vec<Event<f64>>) -> Result<Vec<Event<f64>>, EvalError> {
+fn strum_event_cluster(cluster: &mut [Event<f64>]) -> Result<(), EvalError> {
     if cluster.len() <= 1 {
-        return Ok(cluster);
+        return Ok(());
     }
 
     cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
     let span = cluster[0].part.clone();
     let width = window_width(&span)?;
     if width == Rational::zero() {
-        return Ok(cluster);
+        return Ok(());
     }
     let count = i128::try_from(cluster.len())
         .map_err(|_| EvalError::new("`strum` exceeded the supported evaluator range"))?;
@@ -1960,16 +1965,16 @@ fn strum_event_cluster(mut cluster: Vec<Event<f64>>) -> Result<Vec<Event<f64>>, 
         event.whole = None;
     }
 
-    Ok(cluster)
+    Ok(())
 }
 
 fn arp_event_cluster(
-    mut cluster: Vec<Event<f64>>,
+    cluster: &mut [Event<f64>],
     steps: u32,
     direction: ArpDirectionValue,
 ) -> Result<Vec<Event<f64>>, EvalError> {
     if cluster.is_empty() {
-        return Ok(cluster);
+        return Ok(cluster.to_vec());
     }
 
     if steps == 0 {
@@ -1982,7 +1987,7 @@ fn arp_event_cluster(
     let span = cluster[0].part.clone();
     let width = window_width(&span)?;
     if width == Rational::zero() {
-        return Ok(cluster);
+        return Ok(cluster.to_vec());
     }
 
     let step_count = i128::from(steps);
@@ -3241,7 +3246,8 @@ mod tests {
             },
         ];
 
-        let events = strum_event_cluster(cluster.clone()).unwrap();
+        let mut events = cluster.clone();
+        strum_event_cluster(&mut events).unwrap();
         assert_eq!(events, cluster);
     }
 
@@ -3262,7 +3268,8 @@ mod tests {
             },
         ];
 
-        let events = arp_event_cluster(cluster.clone(), 5, ArpDirectionValue::Up).unwrap();
+        let mut events = cluster.clone();
+        let events = arp_event_cluster(&mut events, 5, ArpDirectionValue::Up).unwrap();
         assert_eq!(events, cluster);
     }
 
@@ -3283,7 +3290,7 @@ mod tests {
             },
         ];
 
-        let events = roll_event_cluster(cluster.clone(), 5).unwrap();
+        let events = roll_event_cluster(&cluster, 5).unwrap();
         assert_eq!(events, cluster);
     }
 }
