@@ -46,6 +46,7 @@ workspace = true
 [dependencies]
 anyhow.workspace = true
 cpal.workspace = true
+crossterm.workspace = true
 orpheus-dsp.workspace = true
 orpheus-lang.workspace = true
 
