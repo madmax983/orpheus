@@ -703,23 +703,20 @@ impl PatternRuntimeValue for f64 {
         steps: u32,
     ) -> Result<Vec<Event<Self>>, EvalError> {
         sort_events(&mut events);
-        let mut rolled = Vec::new();
+        let mut rolled = Vec::with_capacity(events.len());
         let mut index = 0;
-        let mut cluster = Vec::new();
 
         while index < events.len() {
             let span = events[index].part.clone();
-            cluster.clear();
+            let start_index = index;
             while index < events.len() && events[index].part == span {
-                let event = events[index].clone();
-                if !event.value.is_finite() {
+                if !events[index].value.is_finite() {
                     return Err(EvalError::new("`roll` requires finite numeric values"));
                 }
-                cluster.push(event);
                 index += 1;
             }
 
-            rolled.extend(roll_event_cluster(&cluster, steps)?);
+            rolled.extend(roll_event_cluster(&events[start_index..index], steps)?);
         }
 
         sort_events(&mut rolled);
@@ -730,22 +727,20 @@ impl PatternRuntimeValue for f64 {
         sort_events(&mut events);
         let mut strummed = Vec::with_capacity(events.len());
         let mut index = 0;
-        let mut cluster = Vec::new();
 
         while index < events.len() {
             let span = events[index].part.clone();
-            cluster.clear();
+            let start_index = index;
             while index < events.len() && events[index].part == span {
-                let event = events[index].clone();
-                if !event.value.is_finite() {
+                if !events[index].value.is_finite() {
                     return Err(EvalError::new("`strum` requires finite numeric values"));
                 }
-                cluster.push(event);
                 index += 1;
             }
 
-            strum_event_cluster(&mut cluster)?;
-            strummed.extend_from_slice(&cluster);
+            let cluster = &mut events[start_index..index];
+            strum_event_cluster(cluster)?;
+            strummed.extend_from_slice(cluster);
         }
 
         sort_events(&mut strummed);
@@ -758,23 +753,21 @@ impl PatternRuntimeValue for f64 {
         direction: ArpDirectionValue,
     ) -> Result<Vec<Event<Self>>, EvalError> {
         sort_events(&mut events);
-        let mut arped = Vec::new();
+        let mut arped = Vec::with_capacity(events.len() * steps as usize);
         let mut index = 0;
-        let mut cluster = Vec::new();
 
         while index < events.len() {
             let span = events[index].part.clone();
-            cluster.clear();
+            let start_index = index;
             while index < events.len() && events[index].part == span {
-                let event = events[index].clone();
-                if !event.value.is_finite() {
+                if !events[index].value.is_finite() {
                     return Err(EvalError::new("`arp` requires finite numeric values"));
                 }
-                cluster.push(event);
                 index += 1;
             }
 
-            arped.extend(arp_event_cluster(&mut cluster, steps, direction)?);
+            let cluster = &mut events[start_index..index];
+            arped.extend(arp_event_cluster(cluster, steps, direction)?);
         }
 
         sort_events(&mut arped);
@@ -788,22 +781,20 @@ impl PatternRuntimeValue for f64 {
         sort_events(&mut events);
         let mut inverted = Vec::with_capacity(events.len());
         let mut index = 0;
-        let mut cluster = Vec::new();
 
         while index < events.len() {
             let span = events[index].part.clone();
-            cluster.clear();
+            let start_index = index;
             while index < events.len() && events[index].part == span {
-                let event = events[index].clone();
-                if !event.value.is_finite() {
+                if !events[index].value.is_finite() {
                     return Err(EvalError::new("`invert` requires finite numeric values"));
                 }
-                cluster.push(event);
                 index += 1;
             }
 
-            invert_event_cluster(&mut cluster, count)?;
-            inverted.append(&mut cluster);
+            let cluster = &mut events[start_index..index];
+            invert_event_cluster(cluster, count)?;
+            inverted.extend_from_slice(cluster);
         }
 
         Ok(inverted)
@@ -816,22 +807,20 @@ impl PatternRuntimeValue for f64 {
         sort_events(&mut events);
         let mut dropped = Vec::with_capacity(events.len());
         let mut index = 0;
-        let mut cluster = Vec::new();
 
         while index < events.len() {
             let span = events[index].part.clone();
-            cluster.clear();
+            let start_index = index;
             while index < events.len() && events[index].part == span {
-                let event = events[index].clone();
-                if !event.value.is_finite() {
+                if !events[index].value.is_finite() {
                     return Err(EvalError::new("`drop` requires finite numeric values"));
                 }
-                cluster.push(event);
                 index += 1;
             }
 
-            drop_event_cluster(&mut cluster, count)?;
-            dropped.append(&mut cluster);
+            let cluster = &mut events[start_index..index];
+            drop_event_cluster(cluster, count)?;
+            dropped.extend_from_slice(cluster);
         }
 
         Ok(dropped)
@@ -1867,21 +1856,19 @@ where
     Ok(masked)
 }
 
-fn invert_event_cluster(cluster: &mut Vec<Event<f64>>, count: u32) -> Result<(), EvalError> {
+fn invert_event_cluster(cluster: &mut [Event<f64>], count: u32) -> Result<(), EvalError> {
     cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
     for _ in 0..count {
         if cluster.len() <= 1 {
             break;
         }
 
-        let mut lowest = cluster.remove(0);
-        lowest.value += 12.0;
-        if !lowest.value.is_finite() {
+        cluster[0].value += 12.0;
+        if !cluster[0].value.is_finite() {
             return Err(EvalError::new(
                 "`invert` produced a non-finite numeric value",
             ));
         }
-        cluster.push(lowest);
         cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
     }
     Ok(())
