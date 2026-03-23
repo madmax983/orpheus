@@ -1,3 +1,7 @@
+//! The `ascii_roll` module renders patterns as ASCII-art piano rolls.
+//!
+//! This module is used by the REPL and TUI to visualize the scheduled
+//! events of a pattern in the terminal, showing time on the x-axis.
 use std::collections::BTreeMap;
 use std::fmt::Write;
 

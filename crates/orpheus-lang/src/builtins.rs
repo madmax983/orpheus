@@ -16,6 +16,25 @@ use crate::value::{
     PitchClassSetValue, SamplePatternValue, Value,
 };
 
+/// Checks if an identifier string corresponds to a known built-in audio sample.
+///
+/// This is used during evaluation to differentiate between function calls,
+/// bound variables, and raw sample triggers without needing explicit quotes
+/// around sample names in the language syntax.
+///
+/// # Parameters
+/// - `name`: The bare identifier string to check (e.g., `"bd"`).
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::is_sample_identifier;
+///
+/// assert!(is_sample_identifier("bd"));
+/// assert!(is_sample_identifier("sn"));
+/// assert!(!is_sample_identifier("fast")); // This is a function
+/// assert!(!is_sample_identifier("foo"));  // Unknown/user variable
+/// ```
 pub fn is_sample_identifier(name: &str) -> bool {
     matches!(name, "bd" | "sn" | "cp" | "hh")
 }
@@ -28,6 +47,26 @@ const fn builtin_pitch_class_set_value(value: PitchClassSetValue) -> Value {
     Value::PitchClassSet(value)
 }
 
+/// Resolves a string identifier to its built-in [`Value`].
+///
+/// This provides the base environment of Orpheus, populating the execution
+/// context with all standard library functions (like `fast`, `rev`, `stack`)
+/// and global constants (like musical scales or raw sample patterns).
+///
+/// # Parameters
+/// - `name`: The variable or function name to look up.
+///
+/// Returns `Some(Value)` if the name corresponds to a built-in, otherwise `None`.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::builtin_value;
+///
+/// assert!(builtin_value("fast").is_some());
+/// assert!(builtin_value("bd").is_some());
+/// assert!(builtin_value("unknown_user_func").is_none());
+/// ```
 pub fn builtin_value(name: &str) -> Option<Value> {
     match name {
         "bd" | "sn" | "cp" | "hh" => Some(Value::SamplePattern(SamplePatternValue::atom(name))),
@@ -77,6 +116,33 @@ pub fn builtin_value(name: &str) -> Option<Value> {
     }
 }
 
+/// Evaluates a list of values into a stacked sequence pattern.
+///
+/// The `stack` operation takes multiple patterns and plays them simultaneously,
+/// layering them on top of each other while sharing the exact same timeframe.
+///
+/// # Parameters
+/// - `values`: A `Vec` of evaluated [`Value`]s. All values must be of the same
+///   pattern type (e.g., all `SamplePatternValue`s or all `NumberPatternValue`s).
+///
+/// # Errors
+///
+/// Returns [`EvalError`] if the input vector is empty, or if the values contain
+/// mismatched or incompatible types (e.g., trying to stack a number with an audio sample).
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{Value, BuiltinKind};
+/// use orpheus_lang::builtins::stack_values;
+///
+/// // Evaluates `stack(bd, sn)` conceptually:
+/// let bd = orpheus_lang::builtins::builtin_value("bd").unwrap();
+/// let sn = orpheus_lang::builtins::builtin_value("sn").unwrap();
+/// let stacked = stack_values(vec![bd, sn]).unwrap();
+///
+/// assert!(matches!(stacked, Value::SamplePattern(_)));
+/// ```
 pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
     if values.is_empty() {
         return Err(EvalError::new("`stack` requires at least one layer"));
@@ -145,6 +211,44 @@ impl BuiltinFn {
     }
 }
 
+/// Applies arguments to a built-in primitive function.
+///
+/// This handles the dispatch logic for all standard library functions
+/// (like `fast(2, bd)`). It unifies previously bound arguments with
+/// newly provided arguments. If the arguments satisfy the function's
+/// required arity, it executes the operation and returns the resulting
+/// `Value` (usually a transformed `SamplePatternValue`).
+///
+/// If there are too few arguments, it automatically returns a new
+/// curried `BuiltinFn` waiting for the remainder.
+///
+/// # Parameters
+/// - `function`: The built-in function to invoke.
+/// - `args`: The list of newly applied values.
+///
+/// # Errors
+///
+/// Returns an [`EvalError`] if there is a type mismatch (e.g., passing
+/// an audio pattern where a number is expected) or if too many arguments
+/// are provided.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{Value, NumberPatternValue};
+/// use orpheus_lang::builtins::{apply_builtin_function, builtin_value};
+/// use orpheus_pattern::PatternNode;
+///
+/// let fast_func = builtin_value("fast").unwrap();
+/// let bd = builtin_value("bd").unwrap();
+///
+/// if let Value::Function(orpheus_lang::FunctionValue::Builtin(func)) = fast_func {
+///     // `fast` takes 2 arguments: a rate and a pattern.
+///     // Applying only 1 argument (the rate) returns a new curried function.
+///     let curried = apply_builtin_function(&func, vec![bd]).unwrap();
+///     assert!(matches!(curried, Value::Function(_)));
+/// }
+/// ```
 pub fn apply_builtin_function(function: &BuiltinFn, args: Vec<Value>) -> Result<Value, EvalError> {
     let kind = function.kind;
     // PRE-ALLOCATE: avoids extra heap allocations when combining bound arguments and explicit arguments.

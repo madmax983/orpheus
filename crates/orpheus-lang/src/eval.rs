@@ -870,6 +870,40 @@ impl Evaluator {
     }
 }
 
+/// Applies a list of arguments to a runtime function value.
+///
+/// This handles both built-in primitive transformations (like `fast`) and
+/// custom user-defined closures. If the number of arguments provided is
+/// less than the function's arity, it returns a new, curried `FunctionValue`
+/// with the provided arguments bound.
+///
+/// # Parameters
+/// - `function`: The [`FunctionValue`] (built-in or user-defined) to invoke.
+/// - `args`: The list of evaluated [`Value`]s to pass as arguments.
+///
+/// # Errors
+///
+/// Returns an [`EvalError`] if the function application results in a runtime
+/// error (e.g., mismatched types during builtin execution) or if the arity
+/// of user-defined functions is violated during execution.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::Value;
+/// use orpheus_lang::eval::apply_function_value;
+/// use orpheus_lang::builtins::builtin_value;
+///
+/// let fast_func = builtin_value("fast").unwrap();
+/// let bd = builtin_value("bd").unwrap();
+///
+/// if let Value::Function(func) = fast_func {
+///     // `fast` takes 2 arguments: a rate and a pattern.
+///     // Here we simulate applying a single argument to a curried function
+///     let curried = apply_function_value(func, vec![bd]).unwrap();
+///     assert!(matches!(curried, Value::Function(_)));
+/// }
+/// ```
 pub fn apply_function_value(function: FunctionValue, args: Vec<Value>) -> Result<Value, EvalError> {
     match function {
         FunctionValue::Builtin(function) => function.apply(args),
