@@ -223,11 +223,17 @@ impl PitchClassSetValue {
 /// ```
 #[derive(Clone, Debug)]
 pub enum Value {
+    /// A sequenced pattern of audio sample identifiers or parameters.
     SamplePattern(SamplePatternValue),
+    /// A sequenced pattern of numerical values (e.g., gains, tempos).
     NumberPattern(NumberPatternValue),
+    /// A constant value indicating the direction of an arpeggiator.
     ArpDirection(ArpDirectionValue),
+    /// A constant collection of musical pitches (a scale or chord).
     PitchClassSet(PitchClassSetValue),
+    /// An executable function closure, either built-in or user-defined.
     Function(FunctionValue),
+    /// A primitive string value.
     String(String),
 }
 

@@ -1,3 +1,7 @@
+//! The `pitch` module parses musical pitch notation.
+//!
+//! This module translates human-readable musical note strings (like `"c4"`,
+//! `"fs4"`, `"bf3"`) into integer MIDI note numbers or offsets.
 use std::fmt::{self, Display, Formatter};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -19,6 +23,32 @@ impl Display for PitchLiteralError {
     }
 }
 
+/// Parses a named musical pitch literal into an integer MIDI offset.
+///
+/// Converts a string like `"c4"`, `"cs4"`, `"df3"` into its corresponding
+/// numerical representation where C4 is traditionally 0 or MIDI 60
+/// (depending on the base tuning system of the synthesizer).
+///
+/// # Parameters
+/// - `token`: The lowercase note name to parse (e.g., `"c4"`).
+///
+/// # Returns
+/// `Ok(Some(i32))` with the pitch integer if successful.
+/// `Ok(None)` if the string is completely empty or obviously not a pitch.
+///
+/// # Errors
+/// Returns a [`PitchLiteralError`] if the format is invalid (like `"c#4"` instead
+/// of `"cs4"`) or if an uppercase spelling is attempted.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::parse_named_pitch_literal;
+///
+/// assert_eq!(parse_named_pitch_literal("c4").unwrap(), Some(0));
+/// assert_eq!(parse_named_pitch_literal("cs4").unwrap(), Some(1));
+/// assert_eq!(parse_named_pitch_literal("c5").unwrap(), Some(12));
+/// ```
 pub fn parse_named_pitch_literal(token: &str) -> Result<Option<i32>, PitchLiteralError> {
     let mut chars = token.chars();
     let Some(first) = chars.next() else {

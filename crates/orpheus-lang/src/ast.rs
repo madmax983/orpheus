@@ -98,6 +98,20 @@ pub enum Stmt {
     },
 }
 
+/// Checks if a binding expression references its own binding name,
+/// indicating a recursive definition.
+///
+/// This is used during type inference and evaluation to detect cyclic
+/// dependencies or infinite loops, unless it's a valid local shadowing.
+///
+/// # Parameters
+/// - `name`: The name of the binding being defined.
+/// - `params`: The list of parameters bound by the function (to check for shadowing).
+/// - `expr`: The body expression of the binding.
+///
+/// # Returns
+/// `true` if the identifier is referenced in the expression body and is not shadowed
+/// by a parameter. `false` otherwise.
 pub fn binding_expr_self_references(name: &str, params: &[String], expr: &Expr) -> bool {
     !params.iter().any(|param| param == name) && expr.references_ident(name)
 }

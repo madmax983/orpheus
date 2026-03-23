@@ -660,6 +660,28 @@ const fn default_stream_config() -> StreamConfig {
     }
 }
 
+/// Calculates the number of audio frames required to render exactly one pattern cycle.
+///
+/// This is used by both the real-time audio thread and the offline renderer to map
+/// musical time (cycles) to discrete DSP time (frames).
+///
+/// # Parameters
+/// - `sample_rate`: The number of frames per second (e.g., 44100).
+/// - `tempo_bpm`: The current tempo in Beats Per Minute.
+///
+/// # Errors
+///
+/// Returns [`EngineError::InvalidTempo`] if `tempo_bpm` is zero, negative, or not finite.
+/// Returns [`EngineError::FrameOverflow`] if the calculated frames exceed `u64::MAX`.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::{EngineError, frames_per_cycle};
+///
+/// let frames = frames_per_cycle(44100, 120.0).unwrap();
+/// assert_eq!(frames, 88200); // 120 BPM = 2 beats/sec = 4 beats/cycle = 2 seconds/cycle
+/// ```
 pub fn frames_per_cycle(sample_rate: u32, tempo_bpm: f32) -> Result<u64, EngineError> {
     use std::time::Duration;
 
