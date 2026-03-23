@@ -106,7 +106,12 @@ impl From<std::num::TryFromIntError> for EvalError {
 
 impl From<std::io::Error> for EvalError {
     fn from(error: std::io::Error) -> Self {
-        Self::new(error.to_string())
+        let message = match error.kind() {
+            std::io::ErrorKind::NotFound => "file not found".to_owned(),
+            std::io::ErrorKind::PermissionDenied => "permission denied".to_owned(),
+            _ => error.to_string(),
+        };
+        Self::new(message)
     }
 }
 
