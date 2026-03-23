@@ -539,6 +539,24 @@ mod tests {
     }
 
     #[test]
+    fn render_error_from_eval_error() {
+        let eval_err = super::EvalError::new("an evaluation error");
+        let err: super::RenderError = eval_err.into();
+        assert_eq!(err.to_string(), "an evaluation error");
+    }
+
+    #[test]
+    fn render_error_from_offline_render_error() {
+        use orpheus_dsp::OfflineRenderError;
+        let dsp_err = OfflineRenderError::InvalidCycleCount;
+        let err: super::RenderError = dsp_err.into();
+        assert_eq!(
+            err.to_string(),
+            "offline rendering requires at least one cycle"
+        );
+    }
+
+    #[test]
     fn sample_json_export_preserves_parameterized_binding_output() {
         let module = eval_module(
             "swing amt pat = pat |> shift(amt)\n\
