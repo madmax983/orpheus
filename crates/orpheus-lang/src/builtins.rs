@@ -20,104 +20,59 @@ pub fn is_sample_identifier(name: &str) -> bool {
     matches!(name, "bd" | "sn" | "cp" | "hh")
 }
 
+const fn builtin_function_value(kind: BuiltinKind) -> Value {
+    Value::Function(FunctionValue::Builtin(BuiltinFn::new(kind)))
+}
+
+const fn builtin_pitch_class_set_value(value: PitchClassSetValue) -> Value {
+    Value::PitchClassSet(value)
+}
+
 pub fn builtin_value(name: &str) -> Option<Value> {
     match name {
         "bd" | "sn" | "cp" | "hh" => Some(Value::SamplePattern(SamplePatternValue::atom(name))),
-        "every" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Every,
-        )))),
-        "when" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::When,
-        )))),
-        "sometimes" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Sometimes,
-        )))),
-        "within" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Within,
-        )))),
-        "mask" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Mask,
-        )))),
-        "strum" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Strum,
-        )))),
-        "arp" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Arp,
-        )))),
+        "every" => Some(builtin_function_value(BuiltinKind::Every)),
+        "when" => Some(builtin_function_value(BuiltinKind::When)),
+        "sometimes" => Some(builtin_function_value(BuiltinKind::Sometimes)),
+        "within" => Some(builtin_function_value(BuiltinKind::Within)),
+        "mask" => Some(builtin_function_value(BuiltinKind::Mask)),
+        "strum" => Some(builtin_function_value(BuiltinKind::Strum)),
+        "roll" => Some(builtin_function_value(BuiltinKind::Roll)),
+        "arp" => Some(builtin_function_value(BuiltinKind::Arp)),
         "up" => Some(Value::ArpDirection(ArpDirectionValue::Up)),
         "down" => Some(Value::ArpDirection(ArpDirectionValue::Down)),
-        "invert" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Invert,
-        )))),
-        "drop" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Drop,
-        )))),
-        "chord" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Chord,
-        )))),
-        "euclid" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Euclid,
-        )))),
-        "pitch_class_set" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::PitchClassSet,
-        )))),
-        "degrees" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Degrees,
-        )))),
-        "ionian" => Some(Value::PitchClassSet(PitchClassSetValue::ionian())),
-        "dorian" => Some(Value::PitchClassSet(PitchClassSetValue::dorian())),
-        "phrygian" => Some(Value::PitchClassSet(PitchClassSetValue::phrygian())),
-        "mixolydian" => Some(Value::PitchClassSet(PitchClassSetValue::mixolydian())),
-        "aeolian" => Some(Value::PitchClassSet(PitchClassSetValue::aeolian())),
-        "minor_pentatonic" => Some(Value::PitchClassSet(PitchClassSetValue::minor_pentatonic())),
-        "fast" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Fast,
-        )))),
-        "slow" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Slow,
-        )))),
-        "shift" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Shift,
-        )))),
-        "rev" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Rev,
-        )))),
-        "gain" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Gain,
-        )))),
-        "hpf" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Hpf,
-        )))),
-        "lpf" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Lpf,
-        )))),
-        "pan" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Pan,
-        )))),
-        "pitch" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Pitch,
-        )))),
-        "transpose" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Transpose,
-        )))),
-        "sample" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Sample,
-        )))),
-        "rate" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Rate,
-        )))),
-        "slice" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Slice,
-        )))),
-        "slice_idx" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::SliceIdx,
-        )))),
-        "rand" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Rand,
-        )))),
-        "jux" => Some(Value::Function(FunctionValue::Builtin(BuiltinFn::new(
-            BuiltinKind::Jux,
-        )))),
+        "invert" => Some(builtin_function_value(BuiltinKind::Invert)),
+        "drop" => Some(builtin_function_value(BuiltinKind::Drop)),
+        "chord" => Some(builtin_function_value(BuiltinKind::Chord)),
+        "euclid" => Some(builtin_function_value(BuiltinKind::Euclid)),
+        "pitch_class_set" => Some(builtin_function_value(BuiltinKind::PitchClassSet)),
+        "degrees" => Some(builtin_function_value(BuiltinKind::Degrees)),
+        "ionian" => Some(builtin_pitch_class_set_value(PitchClassSetValue::ionian())),
+        "dorian" => Some(builtin_pitch_class_set_value(PitchClassSetValue::dorian())),
+        "phrygian" => Some(builtin_pitch_class_set_value(PitchClassSetValue::phrygian())),
+        "mixolydian" => Some(builtin_pitch_class_set_value(
+            PitchClassSetValue::mixolydian(),
+        )),
+        "aeolian" => Some(builtin_pitch_class_set_value(PitchClassSetValue::aeolian())),
+        "minor_pentatonic" => Some(builtin_pitch_class_set_value(
+            PitchClassSetValue::minor_pentatonic(),
+        )),
+        "fast" => Some(builtin_function_value(BuiltinKind::Fast)),
+        "slow" => Some(builtin_function_value(BuiltinKind::Slow)),
+        "shift" => Some(builtin_function_value(BuiltinKind::Shift)),
+        "rev" => Some(builtin_function_value(BuiltinKind::Rev)),
+        "gain" => Some(builtin_function_value(BuiltinKind::Gain)),
+        "hpf" => Some(builtin_function_value(BuiltinKind::Hpf)),
+        "lpf" => Some(builtin_function_value(BuiltinKind::Lpf)),
+        "pan" => Some(builtin_function_value(BuiltinKind::Pan)),
+        "pitch" => Some(builtin_function_value(BuiltinKind::Pitch)),
+        "transpose" => Some(builtin_function_value(BuiltinKind::Transpose)),
+        "sample" => Some(builtin_function_value(BuiltinKind::Sample)),
+        "rate" => Some(builtin_function_value(BuiltinKind::Rate)),
+        "slice" => Some(builtin_function_value(BuiltinKind::Slice)),
+        "slice_idx" => Some(builtin_function_value(BuiltinKind::SliceIdx)),
+        "rand" => Some(builtin_function_value(BuiltinKind::Rand)),
+        "jux" => Some(builtin_function_value(BuiltinKind::Jux)),
         _ => None,
     }
 }
@@ -226,6 +181,7 @@ impl BuiltinKind {
             Self::Within => "within",
             Self::Mask => "mask",
             Self::Strum => "strum",
+            Self::Roll => "roll",
             Self::Arp => "arp",
             Self::Invert => "invert",
             Self::Drop => "drop",
@@ -259,6 +215,7 @@ impl BuiltinKind {
             Self::PitchClassSet | Self::Rev | Self::Sample | Self::Strum => 1,
             Self::Sometimes
             | Self::Mask
+            | Self::Roll
             | Self::Invert
             | Self::Drop
             | Self::Chord
@@ -287,6 +244,7 @@ impl BuiltinKind {
             Self::Within => apply_within(args),
             Self::Mask => apply_mask(args),
             Self::Strum => apply_strum(args),
+            Self::Roll => apply_roll(args),
             Self::Arp => apply_arp(args),
             Self::Invert => apply_invert(args),
             Self::Drop => apply_drop(args),
@@ -578,6 +536,28 @@ fn apply_strum(args: Vec<Value>) -> Result<Value, EvalError> {
     )?;
 
     Ok(Value::NumberPattern(pattern.strum()))
+}
+
+fn apply_roll(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let steps = extract_whole_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`roll` requires a step-count argument"))?,
+        "roll",
+        true,
+    )?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`roll` requires a pattern argument"))?;
+
+    match pattern {
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.roll(steps))),
+        Value::NumberPattern(pattern) => Ok(Value::NumberPattern(pattern.roll(steps))),
+        Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new("`roll` requires a pattern argument")),
+    }
 }
 
 fn apply_arp(args: Vec<Value>) -> Result<Value, EvalError> {

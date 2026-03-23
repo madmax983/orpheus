@@ -677,4 +677,16 @@ mod tests {
 
         let _ = fs::remove_file(path);
     }
+
+    #[test]
+    fn roll_export_preserves_retriggered_sample_output() {
+        let module = eval_module("buzz = roll(4, sn)", ReplMode::Loose).unwrap();
+        let buzz = module.get("buzz").unwrap().as_sample_pattern().unwrap();
+        let path = temp_json_path();
+
+        export_sample_pattern_to_json(buzz, &path, 1).unwrap();
+        assert_json_fixture_matches(&path, "roll_progression_export.json");
+
+        let _ = fs::remove_file(path);
+    }
 }

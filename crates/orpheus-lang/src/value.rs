@@ -39,6 +39,7 @@ pub enum BuiltinKind {
     Within,
     Mask,
     Strum,
+    Roll,
     Arp,
     Invert,
     Drop,
@@ -453,6 +454,7 @@ trait PatternRuntimeValue: Clone + PatternValueTransform + Send + Sync + fmt::De
     fn into_runtime_value(pattern: PatternRuntime<Self>) -> Value;
     fn try_from_runtime_value(value: Value) -> Result<PatternRuntime<Self>, EvalError>;
     fn try_from_rand(value: f64) -> Result<Self, EvalError>;
+    fn roll_events(events: Vec<Event<Self>>, steps: u32) -> Result<Vec<Event<Self>>, EvalError>;
     fn strum_events(events: Vec<Event<Self>>) -> Result<Vec<Event<Self>>, EvalError>;
     fn arp_events(
         events: Vec<Event<Self>>,
@@ -620,6 +622,27 @@ impl PatternRuntimeValue for SampleEvent {
         Err(EvalError::new("rand only produces numbers"))
     }
 
+    fn roll_events(events: Vec<Event<Self>>, steps: u32) -> Result<Vec<Event<Self>>, EvalError> {
+        let mut rolled = Vec::new();
+        let mut events = events;
+        sort_events(&mut events);
+        let mut index = 0;
+
+        while index < events.len() {
+            let span = events[index].part.clone();
+            let mut cluster = Vec::new();
+            while index < events.len() && events[index].part == span {
+                cluster.push(events[index].clone());
+                index += 1;
+            }
+
+            rolled.extend(roll_event_cluster(cluster, steps)?);
+        }
+
+        sort_events(&mut rolled);
+        Ok(rolled)
+    }
+
     fn strum_events(_events: Vec<Event<Self>>) -> Result<Vec<Event<Self>>, EvalError> {
         Err(EvalError::new(
             "internal evaluator error: strum only applies to number patterns",
@@ -672,6 +695,33 @@ impl PatternRuntimeValue for f64 {
 
     fn try_from_rand(value: f64) -> Result<Self, EvalError> {
         Ok(value)
+    }
+
+    fn roll_events(
+        mut events: Vec<Event<Self>>,
+        steps: u32,
+    ) -> Result<Vec<Event<Self>>, EvalError> {
+        sort_events(&mut events);
+        let mut rolled = Vec::new();
+        let mut index = 0;
+
+        while index < events.len() {
+            let span = events[index].part.clone();
+            let mut cluster = Vec::new();
+            while index < events.len() && events[index].part == span {
+                let event = events[index].clone();
+                if !event.value.is_finite() {
+                    return Err(EvalError::new("`roll` requires finite numeric values"));
+                }
+                cluster.push(event);
+                index += 1;
+            }
+
+            rolled.extend(roll_event_cluster(cluster, steps)?);
+        }
+
+        sort_events(&mut rolled);
+        Ok(rolled)
     }
 
     fn strum_events(mut events: Vec<Event<Self>>) -> Result<Vec<Event<Self>>, EvalError> {
@@ -946,6 +996,15 @@ impl SamplePatternValue {
     pub(crate) fn rev(self) -> Self {
         Self {
             pattern: PatternRuntime::Rev {
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn roll(self, steps: u32) -> Self {
+        Self {
+            pattern: PatternRuntime::Roll {
+                steps,
                 inner: Box::new(self.pattern),
             },
         }
@@ -1264,6 +1323,15 @@ impl NumberPatternValue {
         }
     }
 
+    pub(crate) fn roll(self, steps: u32) -> Self {
+        Self {
+            pattern: PatternRuntime::Roll {
+                steps,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn arp(self, steps: u32, direction: ArpDirectionValue) -> Self {
         Self {
             pattern: PatternRuntime::Arp {
@@ -1421,6 +1489,10 @@ enum PatternRuntime<T> {
         inner: Box<Self>,
     },
     Strum {
+        inner: Box<Self>,
+    },
+    Roll {
+        steps: u32,
         inner: Box<Self>,
     },
     Arp {
@@ -1597,6 +1669,13 @@ where
                 inner,
             } => query_within(inner, start, end, transform, span),
             Self::Mask { gate, inner } => query_mask(inner, gate, span),
+            _ => self.try_query_transform(span),
+        }
+    }
+
+    fn try_query_transform(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
+        match self {
+            Self::Roll { steps, inner } => T::roll_events(inner.try_query(span)?, *steps),
             Self::Strum { inner } => T::strum_events(inner.try_query(span)?),
             Self::Arp {
                 steps,
@@ -1668,6 +1747,15 @@ where
                 inner,
             } => apply_slice_idx_pattern(inner, control, *segments, span),
             Self::Rand { site_salt } => query_rand(*site_salt, span),
+            Self::Cycle(_)
+            | Self::Stream(_)
+            | Self::ExplicitCycle { .. }
+            | Self::Stack(_)
+            | Self::Every { .. }
+            | Self::When { .. }
+            | Self::Sometimes { .. }
+            | Self::Within { .. }
+            | Self::Mask { .. } => unreachable!("base query variants handled in try_query"),
         }
     }
 }
@@ -1792,6 +1880,56 @@ fn invert_event_cluster(cluster: &mut Vec<Event<f64>>, count: u32) -> Result<(),
         cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
     }
     Ok(())
+}
+
+fn roll_event_cluster<T: Clone>(
+    cluster: Vec<Event<T>>,
+    steps: u32,
+) -> Result<Vec<Event<T>>, EvalError> {
+    if cluster.is_empty() || cluster.len() == 1 && steps == 1 {
+        return Ok(cluster);
+    }
+    if steps == 0 {
+        return Err(EvalError::new(
+            "`roll` requires a positive whole number of steps",
+        ));
+    }
+
+    let span = cluster[0].part.clone();
+    let width = window_width(&span)?;
+    if width == Rational::zero() || steps == 1 {
+        return Ok(cluster);
+    }
+
+    let step_count = i128::from(steps);
+    let step = rational_mul(
+        &width,
+        &rational_reciprocal(&rational_from_parts(step_count, 1)?)?,
+    )?;
+
+    let cluster_len = cluster.len();
+    let steps_usize = usize::try_from(steps)
+        .map_err(|_| EvalError::new("`roll` exceeded the supported evaluator range"))?;
+    let capacity = cluster_len
+        .checked_mul(steps_usize)
+        .ok_or_else(|| EvalError::new("`roll` exceeded the supported evaluator range"))?;
+    let mut rolled = Vec::with_capacity(capacity);
+
+    for index in 0..steps {
+        let offset = rational_mul_parts(&step, i64::from(index), 1)?;
+        let start = rational_add(span.start(), &offset)?;
+        let end = rational_add(&start, &step)?;
+        let part = TimeSpan::new(start, end).map_err(EvalError::from)?;
+        for event in &cluster {
+            rolled.push(Event {
+                whole: None,
+                part: part.clone(),
+                value: event.value.clone(),
+            });
+        }
+    }
+
+    Ok(rolled)
 }
 
 fn strum_event_cluster(mut cluster: Vec<Event<f64>>) -> Result<Vec<Event<f64>>, EvalError> {
@@ -2556,6 +2694,7 @@ fn absolute_cycle_for_runtime<T>(
         | PatternRuntime::Sometimes { inner, .. }
         | PatternRuntime::Within { inner, .. }
         | PatternRuntime::Mask { inner, .. }
+        | PatternRuntime::Roll { inner, .. }
         | PatternRuntime::Strum { inner }
         | PatternRuntime::Arp { inner, .. }
         | PatternRuntime::Invert { inner, .. }
@@ -2918,8 +3057,8 @@ const fn ceil_rational(value: &Rational) -> i128 {
 mod tests {
     use super::{
         ArpDirectionValue, BuiltinFn, BuiltinKind, FunctionValue, NumberPatternValue, SampleEvent,
-        SamplePatternValue, Value, arp_event_cluster, cycle_span, sometimes_applies_on_cycle,
-        strum_event_cluster,
+        SamplePatternValue, Value, arp_event_cluster, cycle_span, roll_event_cluster,
+        sometimes_applies_on_cycle, strum_event_cluster,
     };
     use orpheus_pattern::{Event, PatternNode, Rational, TimeSpan};
 
@@ -3124,6 +3263,27 @@ mod tests {
         ];
 
         let events = arp_event_cluster(cluster.clone(), 5, ArpDirectionValue::Up).unwrap();
+        assert_eq!(events, cluster);
+    }
+
+    #[test]
+    fn roll_leaves_zero_width_clusters_unchanged() {
+        let zero = Rational::new(1, 2).unwrap();
+        let span = TimeSpan::new(zero.clone(), zero).unwrap();
+        let cluster = vec![
+            Event {
+                whole: None,
+                part: span.clone(),
+                value: SampleEvent::named("sn"),
+            },
+            Event {
+                whole: None,
+                part: span,
+                value: SampleEvent::named("hh"),
+            },
+        ];
+
+        let events = roll_event_cluster(cluster.clone(), 5).unwrap();
         assert_eq!(events, cluster);
     }
 }
