@@ -27,8 +27,8 @@ pub use export::{
     export_sample_pattern_to_csv, export_sample_pattern_to_json, render_sample_pattern_to_file,
     render_sample_pattern_to_file_with_bank, render_sample_pattern_to_wav,
 };
-pub use loader::load_file_strict;
 pub use html::{export_number_pattern_to_html, export_sample_pattern_to_html};
+pub use loader::load_file_strict;
 pub use parser::parse_module;
 pub use svg::{export_number_pattern_to_svg, export_sample_pattern_to_svg};
 pub use types::{Type, TypedModule, infer_module};
