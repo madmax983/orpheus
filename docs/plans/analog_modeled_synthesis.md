@@ -1,5 +1,12 @@
 # 🔭 Vantage: Spec for Analog-Modeled Synthesis
 
+> Note (2026-03-24): The detailed next-step framing for this area now lives in
+> `docs/plans/2026-03-24-analog-dsp-primitives-design.md`.
+>
+> The immediate recommendation is to build reusable DSP primitives in
+> `orpheus-dsp` first, then layer thin voice wrappers on top, and only later
+> revisit broader graph or surface-syntax questions.
+
 ## 👤 User Story
 "As a Live Coder, I want built-in, high-quality analog-modeled oscillators (PolyBLEP) and a resonant ladder filter, so that I can synthesize rich, classic electronic sounds (like deep basslines and cutting leads) directly in Orpheus without relying on external samples or DAWs."
 
