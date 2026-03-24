@@ -1,6 +1,7 @@
 //! Audio engine for Orpheus.
 
 mod command;
+mod effects;
 mod engine;
 mod offline;
 mod routing;
@@ -14,11 +15,11 @@ pub use command::{EngineCommand, PatternUpdate, SampleTrigger};
 pub use engine::{EngineError, EngineHandle, RenderEngine, TransportSnapshot};
 pub use offline::{
     OfflineRenderError, render_events_to_file, render_events_to_file_with_bank,
-    render_events_to_wav,
+    render_events_to_wav, render_routing_snapshot_to_stereo_for_test,
 };
 pub use routing::{
-    BusId, BusView, RoutingError, RoutingSnapshot, RoutingSnapshotBuilder, TrackId, TrackSource,
-    TrackView,
+    BusEffectSpec, BusId, BusView, DelaySpec, ReverbSpec, RoutingError, RoutingSnapshot,
+    RoutingSnapshotBuilder, TrackId, TrackSource, TrackView,
 };
 pub use sample::{DecodedSample, SampleError, load_wav_for_test};
 pub use sample_bank::{

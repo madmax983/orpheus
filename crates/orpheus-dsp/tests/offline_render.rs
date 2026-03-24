@@ -4,7 +4,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use orpheus_dsp::{
-    SampleTrigger, load_sample_bank_from_directory, render_events_to_file_with_bank,
+    EngineCommand, EngineHandle, RoutingSnapshot, SampleTrigger, TrackSource,
+    load_sample_bank_from_directory, render_events_to_file_with_bank,
+    render_routing_snapshot_to_stereo_for_test,
 };
 use orpheus_pattern::{Event, Rational, TimeSpan};
 
@@ -268,6 +270,88 @@ fn offline_render_supports_negative_rate_reverse_playback() {
     assert_eq!(samples, expected);
 
     let _ = fs::remove_file(path);
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn offline_render_matches_live_shared_delay_bus() {
+    let directory = temp_directory("shared-delay-offline-parity");
+    write_wav(directory.join("pulse.wav"), &[1.0, 0.0, 0.0, 0.0]);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+    let snapshot = RoutingSnapshot::builder()
+        .track_with_source(
+            "drums",
+            TrackSource::SamplePattern(
+                vec![Event {
+                    whole: None,
+                    part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+                    value: SampleTrigger::named("pulse"),
+                }]
+                .into_boxed_slice(),
+            ),
+        )
+        .bus("dub")
+        .bus_effect_delay("dub", Rational::new(1, 8).unwrap(), 0.5, 1.0)
+        .send("drums", "dub", 1.0)
+        .build()
+        .unwrap();
+
+    let offline =
+        render_routing_snapshot_to_stereo_for_test(&snapshot, 1, 48_000.0, &bank).unwrap();
+
+    let mut live = EngineHandle::stub();
+    live.enqueue(EngineCommand::ReplaceSampleBank(bank))
+        .unwrap();
+    live.enqueue(EngineCommand::SetTempo(48_000.0)).unwrap();
+    let _ = live.render_test_block(1);
+    live.enqueue(EngineCommand::SwapRoutingSnapshot(snapshot))
+        .unwrap();
+    let _ = live.render_test_block(live.frames_until_boundary_for_test());
+    let live_block = live.render_test_block(64);
+
+    assert_eq!(&offline[..live_block.len()], live_block.as_slice());
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn offline_render_matches_live_shared_reverb_bus() {
+    let directory = temp_directory("shared-reverb-offline-parity");
+    write_wav(directory.join("pulse.wav"), &[1.0, 0.0, 0.0, 0.0]);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+    let snapshot = RoutingSnapshot::builder()
+        .track_with_source(
+            "pad",
+            TrackSource::SamplePattern(
+                vec![Event {
+                    whole: None,
+                    part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+                    value: SampleTrigger::named("pulse"),
+                }]
+                .into_boxed_slice(),
+            ),
+        )
+        .bus("verb")
+        .bus_effect_reverb("verb", 0.75, 0.35, 1.0)
+        .send("pad", "verb", 1.0)
+        .build()
+        .unwrap();
+
+    let offline =
+        render_routing_snapshot_to_stereo_for_test(&snapshot, 4, 48_000.0, &bank).unwrap();
+
+    let mut live = EngineHandle::stub();
+    live.enqueue(EngineCommand::ReplaceSampleBank(bank))
+        .unwrap();
+    live.enqueue(EngineCommand::SetTempo(48_000.0)).unwrap();
+    let _ = live.render_test_block(1);
+    live.enqueue(EngineCommand::SwapRoutingSnapshot(snapshot))
+        .unwrap();
+    let _ = live.render_test_block(live.frames_until_boundary_for_test());
+    let live_block = live.render_test_block(960);
+
+    assert_eq!(&offline[..live_block.len()], live_block.as_slice());
+
     fs::remove_dir_all(directory).unwrap();
 }
 

@@ -4,12 +4,14 @@
 //! - explicit tracks and buses
 //! - sample-pattern track sources only
 //! - dry buses that route to master by default
+//! - optional hosted bus-local effect specs
 //! - no insert chains
 //! - no bus-to-bus edges
 
 use std::fmt;
 
 use orpheus_pattern::Event;
+use orpheus_pattern::Rational;
 use thiserror::Error;
 
 use crate::SampleTrigger;
@@ -96,6 +98,87 @@ impl SendRoute {
     #[allow(dead_code)]
     pub(crate) const fn level(&self) -> f32 {
         self.level
+    }
+}
+
+/// Validated shared bus effect configuration carried by a routing snapshot.
+#[derive(Clone, Debug, PartialEq)]
+pub enum BusEffectSpec {
+    Delay(DelaySpec),
+    Reverb(ReverbSpec),
+}
+
+impl BusEffectSpec {
+    #[must_use]
+    pub const fn kind_name(&self) -> &'static str {
+        match self {
+            Self::Delay(_) => "delay",
+            Self::Reverb(_) => "reverb",
+        }
+    }
+}
+
+/// Tempo-locked shared delay configuration for a bus host.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DelaySpec {
+    time: Rational,
+    feedback: f32,
+    wet: f32,
+}
+
+impl DelaySpec {
+    #[must_use]
+    pub const fn new(time: Rational, feedback: f32, wet: f32) -> Self {
+        Self {
+            time,
+            feedback,
+            wet,
+        }
+    }
+
+    #[must_use]
+    pub const fn time(&self) -> &Rational {
+        &self.time
+    }
+
+    #[must_use]
+    pub const fn feedback(&self) -> f32 {
+        self.feedback
+    }
+
+    #[must_use]
+    pub const fn wet(&self) -> f32 {
+        self.wet
+    }
+}
+
+/// Shared diffuse reverb configuration for a bus host.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReverbSpec {
+    size: f32,
+    damp: f32,
+    wet: f32,
+}
+
+impl ReverbSpec {
+    #[must_use]
+    pub const fn new(size: f32, damp: f32, wet: f32) -> Self {
+        Self { size, damp, wet }
+    }
+
+    #[must_use]
+    pub const fn size(&self) -> f32 {
+        self.size
+    }
+
+    #[must_use]
+    pub const fn damp(&self) -> f32 {
+        self.damp
+    }
+
+    #[must_use]
+    pub const fn wet(&self) -> f32 {
+        self.wet
     }
 }
 
@@ -189,11 +272,12 @@ impl TrackState {
 }
 
 /// A bus node in the routing snapshot.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BusState {
     id: BusId,
     name: Box<str>,
     routes_to_master: bool,
+    effect: Option<BusEffectSpec>,
 }
 
 impl BusState {
@@ -203,6 +287,7 @@ impl BusState {
             id,
             name,
             routes_to_master: true,
+            effect: None,
         }
     }
 
@@ -219,6 +304,11 @@ impl BusState {
     #[must_use]
     pub const fn routes_to_master(&self) -> bool {
         self.routes_to_master
+    }
+
+    #[must_use]
+    pub const fn effect(&self) -> Option<&BusEffectSpec> {
+        self.effect.as_ref()
     }
 }
 
@@ -296,6 +386,11 @@ impl<'a> BusView<'a> {
     pub const fn routes_to_master(self) -> bool {
         self.state.routes_to_master()
     }
+
+    #[must_use]
+    pub const fn effect(self) -> Option<&'a BusEffectSpec> {
+        self.state.effect()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -311,6 +406,12 @@ struct PendingTrack {
 #[derive(Clone, Debug)]
 struct PendingBus {
     name: Box<str>,
+}
+
+#[derive(Clone, Debug)]
+struct PendingBusEffect {
+    bus_name: Box<str>,
+    effect: BusEffectSpec,
 }
 
 #[derive(Clone, Debug)]
@@ -346,6 +447,20 @@ pub enum RoutingError {
     InvalidTrackLevel { level: f32 },
     #[error("invalid track pan {pan}; expected a finite value in [-1, 1]")]
     InvalidPan { pan: f32 },
+    #[error("invalid delay feedback {feedback}; expected a finite value in [0, 1]")]
+    InvalidDelayFeedback { feedback: f32 },
+    #[error("invalid delay wet {wet}; expected a finite value in [0, 1]")]
+    InvalidDelayWet { wet: f32 },
+    #[error("invalid delay time; expected a positive musical subdivision")]
+    InvalidDelayTime,
+    #[error("invalid reverb size {size}; expected a finite value in [0, 1]")]
+    InvalidReverbSize { size: f32 },
+    #[error("invalid reverb damp {damp}; expected a finite value in [0, 1]")]
+    InvalidReverbDamp { damp: f32 },
+    #[error("invalid reverb wet {wet}; expected a finite value in [0, 1]")]
+    InvalidReverbWet { wet: f32 },
+    #[error("bus '{bus}' already hosts an effect")]
+    DuplicateBusEffect { bus: Box<str> },
     #[error("track-to-bus routes must use send(...): '{from}' -> '{to}'")]
     TrackToBusRouteRequiresSend { from: Box<str>, to: Box<str> },
     #[error("bus-to-bus routes are forbidden: '{from}' -> '{to}'")]
@@ -427,6 +542,7 @@ impl RoutingSnapshot {
 pub struct RoutingSnapshotBuilder {
     tracks: Vec<PendingTrack>,
     buses: Vec<PendingBus>,
+    bus_effects: Vec<PendingBusEffect>,
     sends: Vec<PendingSend>,
     routes: Vec<PendingRoute>,
 }
@@ -480,6 +596,36 @@ impl RoutingSnapshotBuilder {
     }
 
     #[must_use]
+    pub fn bus_effect_delay(
+        mut self,
+        bus_name: impl Into<Box<str>>,
+        time: Rational,
+        feedback: f32,
+        wet: f32,
+    ) -> Self {
+        self.bus_effects.push(PendingBusEffect {
+            bus_name: bus_name.into(),
+            effect: BusEffectSpec::Delay(DelaySpec::new(time, feedback, wet)),
+        });
+        self
+    }
+
+    #[must_use]
+    pub fn bus_effect_reverb(
+        mut self,
+        bus_name: impl Into<Box<str>>,
+        size: f32,
+        damp: f32,
+        wet: f32,
+    ) -> Self {
+        self.bus_effects.push(PendingBusEffect {
+            bus_name: bus_name.into(),
+            effect: BusEffectSpec::Reverb(ReverbSpec::new(size, damp, wet)),
+        });
+        self
+    }
+
+    #[must_use]
     pub fn send(
         mut self,
         track_name: impl Into<Box<str>>,
@@ -513,12 +659,14 @@ impl RoutingSnapshotBuilder {
         let Self {
             tracks: pending_tracks,
             buses: pending_buses,
+            bus_effects: pending_bus_effects,
             sends: pending_sends,
             routes: pending_routes,
         } = self;
 
         let mut tracks = Self::materialize_tracks(pending_tracks)?;
-        let buses = Self::materialize_buses(pending_buses, &tracks)?;
+        let mut buses = Self::materialize_buses(pending_buses, &tracks)?;
+        Self::apply_bus_effects(pending_bus_effects, &mut buses)?;
         let track_sends = Self::materialize_sends(pending_sends, &tracks, &buses)?;
         Self::apply_routes(pending_routes, &mut tracks, &buses)?;
 
@@ -624,6 +772,30 @@ impl RoutingSnapshotBuilder {
         Ok(track_sends)
     }
 
+    fn apply_bus_effects(
+        pending_bus_effects: Vec<PendingBusEffect>,
+        buses: &mut [BusState],
+    ) -> Result<(), RoutingError> {
+        for pending_bus_effect in pending_bus_effects {
+            let bus_index = bus_index(buses, &pending_bus_effect.bus_name).ok_or_else(|| {
+                RoutingError::UnknownBus {
+                    name: pending_bus_effect.bus_name.clone(),
+                }
+            })?;
+
+            if buses[bus_index].effect.is_some() {
+                return Err(RoutingError::DuplicateBusEffect {
+                    bus: pending_bus_effect.bus_name,
+                });
+            }
+
+            validate_bus_effect(&pending_bus_effect.effect)?;
+            buses[bus_index].effect = Some(pending_bus_effect.effect);
+        }
+
+        Ok(())
+    }
+
     fn apply_routes(
         pending_routes: Vec<PendingRoute>,
         tracks: &mut [TrackState],
@@ -701,6 +873,54 @@ fn validate_pan(pan: f32) -> Result<(), RoutingError> {
         Ok(())
     } else {
         Err(RoutingError::InvalidPan { pan })
+    }
+}
+
+fn validate_bus_effect(effect: &BusEffectSpec) -> Result<(), RoutingError> {
+    match effect {
+        BusEffectSpec::Delay(spec) => validate_delay_spec(spec),
+        BusEffectSpec::Reverb(spec) => validate_reverb_spec(spec),
+    }
+}
+
+fn validate_delay_spec(spec: &DelaySpec) -> Result<(), RoutingError> {
+    validate_wet_scalar(
+        spec.feedback(),
+        RoutingError::InvalidDelayFeedback {
+            feedback: spec.feedback(),
+        },
+    )?;
+    validate_wet_scalar(
+        spec.wet(),
+        RoutingError::InvalidDelayWet { wet: spec.wet() },
+    )?;
+    if spec.time() <= &Rational::zero() {
+        return Err(RoutingError::InvalidDelayTime);
+    }
+    Ok(())
+}
+
+fn validate_reverb_spec(spec: &ReverbSpec) -> Result<(), RoutingError> {
+    validate_wet_scalar(
+        spec.size(),
+        RoutingError::InvalidReverbSize { size: spec.size() },
+    )?;
+    validate_wet_scalar(
+        spec.damp(),
+        RoutingError::InvalidReverbDamp { damp: spec.damp() },
+    )?;
+    validate_wet_scalar(
+        spec.wet(),
+        RoutingError::InvalidReverbWet { wet: spec.wet() },
+    )?;
+    Ok(())
+}
+
+fn validate_wet_scalar(value: f32, error: RoutingError) -> Result<(), RoutingError> {
+    if value.is_finite() && (0.0..=1.0).contains(&value) {
+        Ok(())
+    } else {
+        Err(error)
     }
 }
 

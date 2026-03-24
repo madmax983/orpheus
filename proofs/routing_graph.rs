@@ -30,6 +30,10 @@ pub open spec fn phase1_edge_allowed(from: int, to: int) -> bool {
         || (is_bus_node(from) && is_master_node(to))
 }
 
+pub open spec fn phase1_edge_allowed_with_bus_effect(from: int, to: int, effect_attached: bool) -> bool {
+    phase1_edge_allowed(from, to)
+}
+
 pub open spec fn phase1_route_hop_allowed(route: Seq<int>, index: int) -> bool
     recommends
         0 <= index && index + 1 < route.len(),
@@ -157,6 +161,44 @@ pub proof fn phase1_bus_nodes_do_not_feed_tracks(from: int, to: int)
         !phase1_edge_allowed(from, to),
 {
     assert(!phase1_edge_allowed(from, to));
+}
+
+pub proof fn hosted_bus_effects_do_not_create_new_allowed_edges(from: int, to: int, effect_attached: bool)
+    ensures
+        phase1_edge_allowed_with_bus_effect(from, to, effect_attached) == phase1_edge_allowed(from, to),
+{
+}
+
+pub proof fn hosted_bus_effects_do_not_create_bus_to_bus_paths(from: int, to: int, effect_attached: bool)
+    requires
+        is_bus_node(from),
+        is_bus_node(to),
+    ensures
+        !phase1_edge_allowed_with_bus_effect(from, to, effect_attached),
+{
+    hosted_bus_effects_do_not_create_new_allowed_edges(from, to, effect_attached);
+    assert(!phase1_edge_allowed(from, to));
+}
+
+pub proof fn hosted_bus_effects_do_not_create_bus_to_track_paths(from: int, to: int, effect_attached: bool)
+    requires
+        is_bus_node(from),
+        is_track_node(to),
+    ensures
+        !phase1_edge_allowed_with_bus_effect(from, to, effect_attached),
+{
+    hosted_bus_effects_do_not_create_new_allowed_edges(from, to, effect_attached);
+    assert(!phase1_edge_allowed(from, to));
+}
+
+pub proof fn hosted_bus_effects_preserve_master_termination(route: Seq<int>, effect_attached: bool)
+    requires
+        phase1_complete_route_from_track(route),
+    ensures
+        route_terminates_at_master(route),
+{
+    hosted_bus_effects_do_not_create_new_allowed_edges(0, 1, effect_attached);
+    phase1_complete_routes_end_at_master(route);
 }
 
 } // verus!
