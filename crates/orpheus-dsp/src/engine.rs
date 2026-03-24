@@ -12,6 +12,8 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use thiserror::Error;
 
 use crate::command::{EngineCommand, PatternUpdate, new_command_queue};
+use crate::effects::BusEffectState;
+use crate::routing::{BusEffectSpec, RoutingSnapshot, TrackSource};
 use crate::sample_bank::SampleBank;
 use crate::scheduler::Scheduler;
 use crate::voice::ActiveVoice;
@@ -32,6 +34,7 @@ pub struct TransportSnapshot {
     tempo_bpm_bits: u32,
     is_playing: bool,
     has_pending_pattern: bool,
+    has_pending_routing: bool,
 }
 
 impl TransportSnapshot {
@@ -69,6 +72,11 @@ impl TransportSnapshot {
     pub const fn has_pending_pattern(&self) -> bool {
         self.has_pending_pattern
     }
+
+    #[must_use]
+    pub const fn has_pending_routing(&self) -> bool {
+        self.has_pending_routing
+    }
 }
 
 #[derive(Debug, Default)]
@@ -80,6 +88,7 @@ struct SharedTransport {
     tempo_bpm_bits: AtomicU32,
     is_playing: AtomicBool,
     has_pending_pattern: AtomicBool,
+    has_pending_routing: AtomicBool,
 }
 
 impl SharedTransport {
@@ -99,7 +108,9 @@ impl SharedTransport {
             .store(core.tempo_bpm.to_bits(), Ordering::Relaxed);
         self.is_playing.store(core.is_playing, Ordering::Relaxed);
         self.has_pending_pattern
-            .store(core.pending_pattern.is_some(), Ordering::Relaxed);
+            .store(core.pending_pattern_name.is_some(), Ordering::Relaxed);
+        self.has_pending_routing
+            .store(core.pending_routing.is_some(), Ordering::Relaxed);
 
         // Commit the write transaction.
         std::sync::atomic::fence(Ordering::Release);
@@ -125,6 +136,7 @@ impl SharedTransport {
                 tempo_bpm_bits: self.tempo_bpm_bits.load(Ordering::Relaxed),
                 is_playing: self.is_playing.load(Ordering::Relaxed),
                 has_pending_pattern: self.has_pending_pattern.load(Ordering::Relaxed),
+                has_pending_routing: self.has_pending_routing.load(Ordering::Relaxed),
             };
 
             std::sync::atomic::fence(Ordering::Acquire);
@@ -161,6 +173,9 @@ struct EngineCore {
     scheduler: Scheduler,
     active_voices: Vec<Option<ActiveVoice>>,
     sample_bank: SampleBank,
+    active_routing: RoutingSnapshot,
+    pending_routing: Option<RoutingSnapshot>,
+    bus_effect_states: Vec<Option<BusEffectState>>,
     sample_rate: u32,
     channels: usize,
     current_frame: u64,
@@ -169,11 +184,13 @@ struct EngineCore {
     frames_per_cycle: u64,
     current_cycle_start_frame: u64,
     next_cycle_boundary_frame: u64,
-    active_pattern: Option<PatternUpdate>,
-    pending_pattern: Option<PatternUpdate>,
+    active_pattern_name: Option<Box<str>>,
+    pending_pattern_name: Option<Box<str>>,
     pending_sample_bank: Option<SampleBank>,
-    prime_initial_pattern: bool,
+    prime_initial_routing: bool,
     last_swap_frame: Option<u64>,
+    track_mix_buffer: Vec<(f32, f32)>,
+    bus_mix_buffer: Vec<(f32, f32)>,
 }
 
 impl EngineCore {
@@ -183,10 +200,16 @@ impl EngineCore {
         }
 
         let frames_per_cycle = frames_per_cycle(config.sample_rate.0, DEFAULT_TEMPO_BPM)?;
+        let active_routing = default_main_routing_snapshot();
+        let track_mix_buffer = vec![(0.0, 0.0); active_routing.tracks().len()];
+        let bus_mix_buffer = vec![(0.0, 0.0); active_routing.buses().len()];
         Ok(Self {
             scheduler: Scheduler::default(),
             active_voices: vec![None; MAX_ACTIVE_VOICES],
             sample_bank: SampleBank::load_builtin(),
+            active_routing,
+            pending_routing: None,
+            bus_effect_states: Vec::new(),
             sample_rate: config.sample_rate.0,
             channels: usize::from(config.channels),
             current_frame: 0,
@@ -195,25 +218,37 @@ impl EngineCore {
             frames_per_cycle,
             current_cycle_start_frame: 0,
             next_cycle_boundary_frame: frames_per_cycle,
-            active_pattern: None,
-            pending_pattern: None,
+            active_pattern_name: None,
+            pending_pattern_name: None,
             pending_sample_bank: None,
-            prime_initial_pattern: false,
+            prime_initial_routing: false,
             last_swap_frame: None,
+            track_mix_buffer,
+            bus_mix_buffer,
         })
     }
 
     fn apply_command(&mut self, command: EngineCommand) -> Result<(), EngineError> {
         match command {
             EngineCommand::SwapPattern(pattern_name) => {
-                self.pending_pattern = Some(PatternUpdate::silent(pattern_name));
-                self.prime_initial_pattern = false;
+                self.pending_routing = Some(compatibility_routing_snapshot(
+                    &PatternUpdate::silent(pattern_name.clone()),
+                ));
+                self.pending_pattern_name = Some(pattern_name.into_boxed_str());
+                self.prime_initial_routing = false;
                 Ok(())
             }
             EngineCommand::LoadPattern(pattern) => {
-                self.pending_pattern = Some(pattern);
-                self.prime_initial_pattern =
-                    self.active_pattern.is_none() && self.current_frame == 0;
+                self.pending_routing = Some(compatibility_routing_snapshot(&pattern));
+                self.pending_pattern_name = Some(pattern.name().into());
+                self.prime_initial_routing =
+                    self.active_pattern_name.is_none() && self.current_frame == 0;
+                Ok(())
+            }
+            EngineCommand::SwapRoutingSnapshot(snapshot) => {
+                self.pending_routing = Some(snapshot);
+                self.pending_pattern_name = None;
+                self.prime_initial_routing = false;
                 Ok(())
             }
             EngineCommand::ReplaceSampleBank(sample_bank) => {
@@ -254,21 +289,27 @@ impl EngineCore {
             self.sample_bank = sample_bank;
         }
 
-        if let Some(pattern) = self.pending_pattern.take() {
-            self.active_pattern = Some(pattern);
+        if let Some(routing) = self.pending_routing.take() {
+            self.adopt_routing_snapshot(routing)?;
+            self.active_pattern_name = self.pending_pattern_name.take();
             self.last_swap_frame = Some(self.current_frame);
         }
 
-        if let Some(pattern) = self.active_pattern.as_ref() {
-            self.scheduler.schedule_cycle_events(
-                self.current_cycle_start_frame,
-                self.frames_per_cycle,
-                pattern.events().iter().map(|event| Event {
-                    whole: event.whole.clone(),
-                    part: event.part.clone(),
-                    value: &event.value,
-                }),
-            )?;
+        self.sync_bus_effect_timing()?;
+
+        for track in self.active_routing.tracks() {
+            if let TrackSource::SamplePattern(events) = track.source() {
+                self.scheduler.schedule_cycle_events(
+                    track.id(),
+                    self.current_cycle_start_frame,
+                    self.frames_per_cycle,
+                    events.iter().map(|event| Event {
+                        whole: event.whole.clone(),
+                        part: event.part.clone(),
+                        value: &event.value,
+                    }),
+                )?;
+            }
         }
 
         Ok(())
@@ -285,8 +326,8 @@ impl EngineCore {
                 continue;
             }
 
-            if self.prime_initial_pattern {
-                self.prime_initial_pattern = false;
+            if self.prime_initial_routing {
+                self.prime_initial_routing = false;
                 self.begin_cycle()?;
             }
 
@@ -294,7 +335,7 @@ impl EngineCore {
                 self.activate_trigger(&trigger);
             }
 
-            let (left, right) = mix_voices(&mut self.active_voices);
+            let (left, right) = self.mix_routed_voices();
             if let Some(first) = frame.first_mut() {
                 *first = left;
             }
@@ -326,11 +367,21 @@ impl EngineCore {
                 .sample_bank
                 .resolve_trigger(&trigger.trigger)
                 .map(|(sample, resolved_trigger)| {
-                    ActiveVoice::from_sample(sample, self.sample_rate, &resolved_trigger)
+                    ActiveVoice::from_sample(
+                        trigger.track_id,
+                        sample,
+                        self.sample_rate,
+                        &resolved_trigger,
+                    )
                 })
                 .or_else(|| {
                     trigger.fallback_voice.map(|voice| {
-                        ActiveVoice::new_with_pan(voice, self.sample_rate, trigger.trigger.pan())
+                        ActiveVoice::new_with_pan(
+                            trigger.track_id,
+                            voice,
+                            self.sample_rate,
+                            trigger.trigger.pan(),
+                        )
                     })
                 });
         }
@@ -341,17 +392,25 @@ impl EngineCore {
             return;
         }
 
-        if let Some(pattern) = self.pending_pattern.take() {
-            self.active_pattern = Some(pattern);
+        if let Some(routing) = self.pending_routing.take() {
+            self.adopt_routing_snapshot(routing)
+                .unwrap_or_else(|error| {
+                    panic!("pending routing should adopt while playing: {error}")
+                });
+            self.active_pattern_name = self.pending_pattern_name.take();
         }
         self.next_cycle_boundary_frame = self.frames_per_cycle;
-        self.prime_initial_pattern = self.active_pattern.is_some();
+        self.prime_initial_routing = routing_snapshot_has_audio(&self.active_routing);
         self.is_playing = true;
     }
 
     fn stop_transport(&mut self) {
-        if let Some(pattern) = self.pending_pattern.take() {
-            self.active_pattern = Some(pattern);
+        if let Some(routing) = self.pending_routing.take() {
+            self.adopt_routing_snapshot(routing)
+                .unwrap_or_else(|error| {
+                    panic!("pending routing should adopt while stopping: {error}")
+                });
+            self.active_pattern_name = self.pending_pattern_name.take();
         }
 
         self.scheduler.clear();
@@ -361,9 +420,138 @@ impl EngineCore {
         self.current_frame = 0;
         self.current_cycle_start_frame = 0;
         self.next_cycle_boundary_frame = self.frames_per_cycle;
-        self.prime_initial_pattern = self.active_pattern.is_some();
+        self.prime_initial_routing = routing_snapshot_has_audio(&self.active_routing);
         self.last_swap_frame = None;
+        self.reset_bus_effect_states();
         self.is_playing = false;
+    }
+
+    fn resize_mix_buffers(&mut self) {
+        self.track_mix_buffer
+            .resize(self.active_routing.tracks().len(), (0.0, 0.0));
+        self.bus_mix_buffer
+            .resize(self.active_routing.buses().len(), (0.0, 0.0));
+    }
+
+    fn adopt_routing_snapshot(&mut self, routing: RoutingSnapshot) -> Result<(), EngineError> {
+        let old_routing = std::mem::replace(&mut self.active_routing, routing);
+        let mut old_bus_effect_states = std::mem::take(&mut self.bus_effect_states);
+        let mut bus_effect_states = Vec::with_capacity(self.active_routing.buses().len());
+
+        for bus in self.active_routing.buses() {
+            let state = match bus.effect() {
+                Some(spec) => {
+                    let preserved = old_routing
+                        .buses()
+                        .iter()
+                        .position(|old_bus| {
+                            old_bus.name() == bus.name()
+                                && bus_effect_specs_match(old_bus.effect(), Some(spec))
+                        })
+                        .and_then(|index| old_bus_effect_states[index].take());
+                    match preserved {
+                        Some(mut state) => {
+                            state.sync_timing(spec, self.frames_per_cycle)?;
+                            Some(state)
+                        }
+                        None => Some(BusEffectState::from_spec(spec, self.frames_per_cycle)?),
+                    }
+                }
+                None => None,
+            };
+            bus_effect_states.push(state);
+        }
+
+        self.bus_effect_states = bus_effect_states;
+        self.resize_mix_buffers();
+        Ok(())
+    }
+
+    fn sync_bus_effect_timing(&mut self) -> Result<(), EngineError> {
+        for (bus, state) in self
+            .active_routing
+            .buses()
+            .iter()
+            .zip(self.bus_effect_states.iter_mut())
+        {
+            if let (Some(spec), Some(state)) = (bus.effect(), state.as_mut()) {
+                state.sync_timing(spec, self.frames_per_cycle)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn reset_bus_effect_states(&mut self) {
+        for state in self.bus_effect_states.iter_mut().flatten() {
+            state.reset();
+        }
+    }
+
+    fn mix_routed_voices(&mut self) -> (f32, f32) {
+        self.track_mix_buffer.fill((0.0, 0.0));
+        self.bus_mix_buffer.fill((0.0, 0.0));
+
+        for slot in &mut self.active_voices {
+            if let Some(voice) = slot.as_mut() {
+                if let Some((voice_left, voice_right)) = voice.next_stereo_frame() {
+                    let track_index = usize::try_from(voice.track_id().get())
+                        .unwrap_or_else(|_| panic!("track id did not fit in usize"));
+                    let (left, right) = &mut self.track_mix_buffer[track_index];
+                    *left += voice_left;
+                    *right += voice_right;
+                } else {
+                    *slot = None;
+                }
+            }
+        }
+
+        let mut master_left = 0.0_f32;
+        let mut master_right = 0.0_f32;
+
+        for track in self.active_routing.tracks() {
+            let track_index = usize::try_from(track.id().get())
+                .unwrap_or_else(|_| panic!("track id did not fit in usize"));
+            let (track_left, track_right) = self.track_mix_buffer[track_index];
+            let track_left = track_left * track.level();
+            let track_right = track_right * track.level();
+
+            if track.muted() {
+                continue;
+            }
+
+            if track.routes_to_master() {
+                master_left += track_left;
+                master_right += track_right;
+            }
+
+            for send in track.sends() {
+                let bus_index = usize::try_from(send.bus_id().get())
+                    .unwrap_or_else(|_| panic!("bus id did not fit in usize"));
+                let (bus_left, bus_right) = &mut self.bus_mix_buffer[bus_index];
+                *bus_left += track_left * send.level();
+                *bus_right += track_right * send.level();
+            }
+        }
+
+        for bus in self.active_routing.buses() {
+            if !bus.routes_to_master() {
+                continue;
+            }
+
+            let bus_index = usize::try_from(bus.id().get())
+                .unwrap_or_else(|_| panic!("bus id did not fit in usize"));
+            let (bus_left, bus_right) = self.bus_mix_buffer[bus_index];
+            if let Some(effect) = self.bus_effect_states[bus_index].as_mut() {
+                let (wet_left, wet_right) = effect.process_frame(bus_left, bus_right);
+                master_left += wet_left;
+                master_right += wet_right;
+            } else {
+                master_left += bus_left;
+                master_right += bus_right;
+            }
+        }
+
+        (master_left.clamp(-1.0, 1.0), master_right.clamp(-1.0, 1.0))
     }
 }
 
@@ -443,7 +631,18 @@ impl RenderEngine {
     /// Returns the active pattern name after the most recently completed cycle.
     #[must_use]
     pub fn active_pattern_name_for_test(&self) -> Option<&str> {
-        self.core.active_pattern.as_ref().map(PatternUpdate::name)
+        self.core.active_pattern_name.as_deref()
+    }
+
+    /// Returns the active routed track names in snapshot order.
+    #[must_use]
+    pub fn active_track_names_for_test(&self) -> Vec<&str> {
+        self.core
+            .active_routing
+            .tracks()
+            .iter()
+            .map(crate::routing::TrackState::name)
+            .collect()
     }
 
     /// Returns how many frames remain before the next cycle boundary.
@@ -488,9 +687,11 @@ impl PartialEq for EngineHandle {
                     && left.core.frames_per_cycle == right.core.frames_per_cycle
                     && left.core.current_cycle_start_frame == right.core.current_cycle_start_frame
                     && left.core.next_cycle_boundary_frame == right.core.next_cycle_boundary_frame
-                    && left.core.active_pattern == right.core.active_pattern
-                    && left.core.pending_pattern == right.core.pending_pattern
-                    && left.core.prime_initial_pattern == right.core.prime_initial_pattern
+                    && left.core.active_routing == right.core.active_routing
+                    && left.core.pending_routing == right.core.pending_routing
+                    && left.core.active_pattern_name == right.core.active_pattern_name
+                    && left.core.pending_pattern_name == right.core.pending_pattern_name
+                    && left.core.prime_initial_routing == right.core.prime_initial_routing
                     && left.core.last_swap_frame == right.core.last_swap_frame
             }
             (None, None) => std::ptr::eq(self, other),
@@ -612,6 +813,16 @@ impl EngineHandle {
         self.test_renderer_ref().active_pattern_name_for_test()
     }
 
+    /// Returns the active routed track names for the embedded test renderer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the handle does not own an embedded test renderer.
+    #[must_use]
+    pub fn active_track_names_for_test(&self) -> Vec<&str> {
+        self.test_renderer_ref().active_track_names_for_test()
+    }
+
     /// Returns how many frames remain before the next boundary in the embedded
     /// test renderer.
     ///
@@ -708,18 +919,31 @@ pub fn frames_per_cycle(sample_rate: u32, tempo_bpm: f32) -> Result<u64, EngineE
     Ok(frames)
 }
 
-fn mix_voices(active_voices: &mut [Option<ActiveVoice>]) -> (f32, f32) {
-    let mut left = 0.0_f32;
-    let mut right = 0.0_f32;
-    for slot in active_voices {
-        if let Some(voice) = slot.as_mut() {
-            if let Some((voice_left, voice_right)) = voice.next_stereo_frame() {
-                left += voice_left;
-                right += voice_right;
-            } else {
-                *slot = None;
-            }
-        }
-    }
-    (left.clamp(-1.0, 1.0), right.clamp(-1.0, 1.0))
+fn default_main_routing_snapshot() -> RoutingSnapshot {
+    RoutingSnapshot::builder()
+        .main_track()
+        .build()
+        .unwrap_or_else(|error| panic!("default routing snapshot must be valid: {error}"))
+}
+
+fn compatibility_routing_snapshot(pattern: &PatternUpdate) -> RoutingSnapshot {
+    RoutingSnapshot::builder()
+        .track_with_source(
+            "main",
+            TrackSource::SamplePattern(pattern.events().to_vec().into_boxed_slice()),
+        )
+        .route("main", "master")
+        .build()
+        .unwrap_or_else(|error| panic!("compatibility routing snapshot must be valid: {error}"))
+}
+
+fn routing_snapshot_has_audio(snapshot: &RoutingSnapshot) -> bool {
+    snapshot
+        .tracks()
+        .iter()
+        .any(|track| matches!(track.source(), TrackSource::SamplePattern(_)))
+}
+
+fn bus_effect_specs_match(left: Option<&BusEffectSpec>, right: Option<&BusEffectSpec>) -> bool {
+    left == right
 }

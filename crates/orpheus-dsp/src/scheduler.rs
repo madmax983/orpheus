@@ -10,11 +10,13 @@ use orpheus_pattern::{Event, Rational};
 
 use crate::SampleTrigger;
 use crate::engine::EngineError;
+use crate::routing::TrackId;
 use crate::voice::VoiceKind;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScheduledTrigger {
     pub frame: u64,
+    pub track_id: TrackId,
     pub trigger: SampleTrigger,
     pub fallback_voice: Option<VoiceKind>,
 }
@@ -38,7 +40,7 @@ impl Scheduler {
     ///
     /// Panics if `token` does not resolve to one of the built-in drum voices.
     pub fn push_test_event(&mut self, frame: u64, token: &str) {
-        self.schedule_trigger(frame, token)
+        self.schedule_trigger(frame, TrackId::new(0), token)
             .unwrap_or_else(|error| panic!("invalid test trigger: {error}"));
     }
 
@@ -53,6 +55,7 @@ impl Scheduler {
     /// clock.
     pub fn schedule_cycle_events<'a, I>(
         &mut self,
+        track_id: TrackId,
         cycle_start_frame: u64,
         frames_per_cycle: u64,
         events: I,
@@ -68,6 +71,7 @@ impl Scheduler {
                 .ok_or(EngineError::FrameOverflow)?;
             pending.push(ScheduledTrigger {
                 frame,
+                track_id,
                 trigger: event.value.clone(),
                 fallback_voice: VoiceKind::from_token(event.value.token()),
             });
@@ -114,11 +118,17 @@ impl Scheduler {
     /// # Errors
     ///
     /// Returns an error if `token` does not map to a built-in playback mapping.
-    pub fn schedule_trigger(&mut self, frame: u64, token: &str) -> Result<(), EngineError> {
+    pub fn schedule_trigger(
+        &mut self,
+        frame: u64,
+        track_id: TrackId,
+        token: &str,
+    ) -> Result<(), EngineError> {
         let voice =
             VoiceKind::from_token(token).ok_or_else(|| EngineError::UnknownVoice(token.into()))?;
         self.insert_trigger(ScheduledTrigger {
             frame,
+            track_id,
             trigger: SampleTrigger::named(token),
             fallback_voice: Some(voice),
         });

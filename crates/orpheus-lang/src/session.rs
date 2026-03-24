@@ -16,10 +16,12 @@ use orpheus_dsp::{
     EngineCommand, EngineHandle, PatternUpdate, SampleBank, SampleTrigger, TransportSnapshot,
     load_sample_bank_from_directory,
 };
+use orpheus_pattern::Rational;
 
 use crate::eval::eval_into_bindings;
 use crate::export::render_sample_pattern_to_file_with_bank;
 use crate::loader::load_file_runtime_strict;
+use crate::mixer::MixerState;
 use crate::types::infer_into_bindings;
 use crate::{ReplMode, Type, Value};
 
@@ -30,6 +32,7 @@ pub(crate) struct ReplSession {
     sample_directory: Option<PathBuf>,
     bindings: BTreeMap<String, Value>,
     type_bindings: BTreeMap<String, Type>,
+    mixer: MixerState,
     pattern_display: RefCell<PatternDisplayState>,
 }
 
@@ -46,6 +49,13 @@ pub(crate) struct TransportView {
     snapshot: TransportSnapshot,
     active_pattern_name: Option<String>,
     pending_pattern_name: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct MixerView {
+    tracks: Vec<String>,
+    buses: Vec<String>,
+    has_pending_routing: bool,
 }
 
 impl TransportView {
@@ -65,6 +75,23 @@ impl TransportView {
     }
 }
 
+impl MixerView {
+    #[must_use]
+    pub fn tracks(&self) -> &[String] {
+        &self.tracks
+    }
+
+    #[must_use]
+    pub fn buses(&self) -> &[String] {
+        &self.buses
+    }
+
+    #[must_use]
+    pub const fn has_pending_routing(&self) -> bool {
+        self.has_pending_routing
+    }
+}
+
 impl ReplSession {
     #[cfg(test)]
     fn new() -> Self {
@@ -79,6 +106,7 @@ impl ReplSession {
             sample_directory: None,
             bindings: BTreeMap::new(),
             type_bindings: BTreeMap::new(),
+            mixer: MixerState::default(),
             pattern_display: RefCell::new(PatternDisplayState::default()),
         }
     }
@@ -156,6 +184,28 @@ impl ReplSession {
                     self.open_file(args)
                 }
             }
+            "track" => {
+                if args.is_empty() {
+                    Err(track_usage().to_owned())
+                } else {
+                    self.eval_track_command(args)
+                }
+            }
+            "bus" => {
+                if args.is_empty() {
+                    Err(bus_usage().to_owned())
+                } else {
+                    self.eval_bus_command(args)
+                }
+            }
+            "send" => {
+                if args.is_empty() {
+                    Err(send_usage().to_owned())
+                } else {
+                    self.eval_send_command(args)
+                }
+            }
+            "mixer" => self.mixer_command(args),
             "reload-samples" => self.reload_sample_directory(args),
             "play" => self.play_transport(args),
             "stop" => self.stop_transport(args),
@@ -282,6 +332,12 @@ impl ReplSession {
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 } else if export_path
                     .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
+                {
+                    crate::html::export_sample_pattern_to_html(pattern, &path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path
+                    .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
                 {
                     crate::export::export_sample_pattern_to_json(pattern, &path, cycles)
@@ -298,6 +354,12 @@ impl ReplSession {
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
                 {
                     crate::svg::export_number_pattern_to_svg(pattern, &path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
+                {
+                    crate::html::export_number_pattern_to_html(pattern, &path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 } else if export_path
                     .extension()
@@ -375,6 +437,7 @@ impl ReplSession {
 
         self.bindings = loaded.value_bindings;
         self.type_bindings = loaded.type_bindings;
+        self.mixer = MixerState::default();
         *self.pattern_display.borrow_mut() = PatternDisplayState::default();
 
         if let Some(name) = last_binding_name {
@@ -430,8 +493,134 @@ impl ReplSession {
         Ok("transport stopped".to_owned())
     }
 
+    fn eval_track_command(&mut self, args: &str) -> Result<String, String> {
+        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        let Some(subcommand) = tokens.first().copied() else {
+            return Err(track_usage().to_owned());
+        };
+
+        match subcommand {
+            "new" if tokens.len() == 2 => {
+                let track_name = tokens[1];
+                self.mixer.new_track(track_name)?;
+                self.enqueue_mixer_snapshot()?;
+                Ok(format!("created track `{track_name}`"))
+            }
+            "bind" if tokens.len() == 3 => {
+                let track_name = tokens[1];
+                let binding_name = tokens[2];
+                self.mixer
+                    .bind_track(track_name, binding_name, &self.bindings)?;
+                self.enqueue_mixer_snapshot()?;
+                Ok(format!("bound track `{track_name}` to `{binding_name}`"))
+            }
+            "level" if tokens.len() == 3 => {
+                let track_name = tokens[1];
+                let level = tokens[2]
+                    .parse::<f32>()
+                    .map_err(|_| "track level must be a finite value >= 0".to_owned())?;
+                self.mixer.set_track_level(track_name, level)?;
+                self.enqueue_mixer_snapshot()?;
+                Ok(format!("set track `{track_name}` level to {level}"))
+            }
+            "mute" if tokens.len() == 3 => {
+                let track_name = tokens[1];
+                let muted = match tokens[2] {
+                    "on" => true,
+                    "off" => false,
+                    _ => return Err("track mute expects `on` or `off`".to_owned()),
+                };
+                self.mixer.set_track_mute(track_name, muted)?;
+                self.enqueue_mixer_snapshot()?;
+                Ok(format!(
+                    "track `{track_name}` mute {}",
+                    if muted { "on" } else { "off" }
+                ))
+            }
+            _ => Err(track_usage().to_owned()),
+        }
+    }
+
+    fn eval_bus_command(&mut self, args: &str) -> Result<String, String> {
+        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        match tokens.as_slice() {
+            ["new", bus_name] => {
+                self.mixer.new_bus(bus_name)?;
+                self.enqueue_mixer_snapshot()?;
+                Ok(format!("created bus `{bus_name}`"))
+            }
+            ["fx", bus_name, "none"] => {
+                self.mixer.clear_bus_effect(bus_name)?;
+                self.enqueue_mixer_snapshot()?;
+                Ok(format!("cleared hosted effect on bus `{bus_name}`"))
+            }
+            ["fx", bus_name, "delay", params @ ..] => {
+                let (time, feedback, wet) = parse_bus_delay_params(params)?;
+                self.mixer.set_bus_delay(bus_name, time, feedback, wet)?;
+                self.enqueue_mixer_snapshot()?;
+                Ok(format!("attached delay to bus `{bus_name}`"))
+            }
+            ["fx", bus_name, "reverb", params @ ..] => {
+                let (size, damp, wet) = parse_bus_reverb_params(params)?;
+                self.mixer.set_bus_reverb(bus_name, size, damp, wet)?;
+                self.enqueue_mixer_snapshot()?;
+                Ok(format!("attached reverb to bus `{bus_name}`"))
+            }
+            _ => Err(bus_usage().to_owned()),
+        }
+    }
+
+    fn eval_send_command(&mut self, args: &str) -> Result<String, String> {
+        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        match tokens.as_slice() {
+            [track_name, bus_name, level] => {
+                let level = level
+                    .parse::<f32>()
+                    .map_err(|_| "send level must be a finite value in [0, 1]".to_owned())?;
+                self.mixer.set_send(track_name, bus_name, level)?;
+                self.enqueue_mixer_snapshot()?;
+                Ok(format!("sent `{track_name}` to `{bus_name}` at {level}"))
+            }
+            _ => Err(send_usage().to_owned()),
+        }
+    }
+
+    fn mixer_command(&self, args: &str) -> Result<String, String> {
+        if !args.is_empty() {
+            return Err(mixer_usage().to_owned());
+        }
+        let summary = self.mixer.render_summary();
+        if summary.is_empty() {
+            Ok("mixer is empty".to_owned())
+        } else {
+            Ok(summary)
+        }
+    }
+
+    fn enqueue_mixer_snapshot(&mut self) -> Result<(), String> {
+        let snapshot = self.mixer.compile_snapshot(&self.bindings)?;
+        self.engine
+            .enqueue(EngineCommand::SwapRoutingSnapshot(snapshot))
+            .map_err(|error| format!("failed to enqueue routing snapshot swap: {error}"))?;
+
+        if self.mixer.has_explicit_bound_tracks() {
+            let mut display = self.pattern_display.borrow_mut();
+            display.active_pattern_name = None;
+            display.pending_pattern_name = None;
+            display.pending_enqueued_after_publish = None;
+        }
+
+        Ok(())
+    }
+
     fn push_pattern_update(&mut self, name: &str, value: &Value) -> Result<(), String> {
         if let Value::SamplePattern(pattern) = value {
+            self.mixer.note_sample_binding(name);
+            if self.mixer.has_routing_state() {
+                self.pattern_display.borrow_mut().last_loaded_pattern_name = Some(name.to_owned());
+                return self.enqueue_mixer_snapshot();
+            }
+
             let enqueue_publish = self.engine.transport_snapshot().publish_epoch();
             let events = pattern.query_unit().map_err(|error| {
                 format!("failed to query unit span for publishing pattern `{name}`: {error}")
@@ -524,6 +713,15 @@ impl ReplSession {
         }
     }
 
+    pub(crate) fn mixer_view(&self) -> MixerView {
+        let snapshot = self.engine.transport_snapshot();
+        MixerView {
+            tracks: self.mixer.track_summary_lines(),
+            buses: self.mixer.bus_summary_lines(),
+            has_pending_routing: snapshot.has_pending_routing(),
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn render_test_block_for_tui(&mut self, frames: u64) -> Vec<f32> {
         self.engine.render_test_block(frames)
@@ -559,6 +757,22 @@ const fn samples_usage() -> &'static str {
     "usage: :samples <directory>"
 }
 
+const fn track_usage() -> &'static str {
+    "usage: :track <new|bind|level|mute> ..."
+}
+
+const fn bus_usage() -> &'static str {
+    "usage: :bus new <name> | :bus fx <bus> delay time=<num>/<den> feedback=<f> wet=<f> | :bus fx <bus> reverb size=<f> damp=<f> wet=<f> | :bus fx <bus> none"
+}
+
+const fn send_usage() -> &'static str {
+    "usage: :send <track> <bus> <level>"
+}
+
+const fn mixer_usage() -> &'static str {
+    "usage: :mixer"
+}
+
 const fn open_usage() -> &'static str {
     "usage: :open <path>"
 }
@@ -573,6 +787,101 @@ const fn play_usage() -> &'static str {
 
 const fn stop_usage() -> &'static str {
     "usage: :stop"
+}
+
+fn parse_bus_delay_params(tokens: &[&str]) -> Result<(Rational, f32, f32), String> {
+    let mut time = None;
+    let mut feedback = None;
+    let mut wet = None;
+
+    for token in tokens {
+        let (key, value) = token
+            .split_once('=')
+            .ok_or_else(|| format!("bus fx delay expects key=value arguments, got `{token}`"))?;
+        match key {
+            "time" => {
+                time = Some(parse_rational_time(value)?);
+            }
+            "feedback" => {
+                feedback =
+                    Some(value.parse::<f32>().map_err(|_| {
+                        "delay feedback must be a finite value in [0, 1]".to_owned()
+                    })?);
+            }
+            "wet" => {
+                wet = Some(
+                    value
+                        .parse::<f32>()
+                        .map_err(|_| "delay wet must be a finite value in [0, 1]".to_owned())?,
+                );
+            }
+            other => {
+                return Err(format!("unknown bus fx delay key `{other}`"));
+            }
+        }
+    }
+
+    let time = time.ok_or_else(|| "bus fx delay requires time=<num>/<den>".to_owned())?;
+    let feedback = feedback.ok_or_else(|| "bus fx delay requires feedback=<f>".to_owned())?;
+    let wet = wet.ok_or_else(|| "bus fx delay requires wet=<f>".to_owned())?;
+    Ok((time, feedback, wet))
+}
+
+fn parse_bus_reverb_params(tokens: &[&str]) -> Result<(f32, f32, f32), String> {
+    let mut size = None;
+    let mut damp = None;
+    let mut wet = None;
+
+    for token in tokens {
+        let (key, value) = token
+            .split_once('=')
+            .ok_or_else(|| format!("bus fx reverb expects key=value arguments, got `{token}`"))?;
+        match key {
+            "size" => {
+                size = Some(
+                    value
+                        .parse::<f32>()
+                        .map_err(|_| "reverb size must be a finite value in [0, 1]".to_owned())?,
+                );
+            }
+            "damp" => {
+                damp = Some(
+                    value
+                        .parse::<f32>()
+                        .map_err(|_| "reverb damp must be a finite value in [0, 1]".to_owned())?,
+                );
+            }
+            "wet" => {
+                wet = Some(
+                    value
+                        .parse::<f32>()
+                        .map_err(|_| "reverb wet must be a finite value in [0, 1]".to_owned())?,
+                );
+            }
+            other => {
+                return Err(format!("unknown bus fx reverb key `{other}`"));
+            }
+        }
+    }
+
+    let size = size.ok_or_else(|| "bus fx reverb requires size=<f>".to_owned())?;
+    let damp = damp.ok_or_else(|| "bus fx reverb requires damp=<f>".to_owned())?;
+    let wet = wet.ok_or_else(|| "bus fx reverb requires wet=<f>".to_owned())?;
+    Ok((size, damp, wet))
+}
+
+fn parse_rational_time(value: &str) -> Result<Rational, String> {
+    let (numerator, denominator) = value
+        .split_once('/')
+        .ok_or_else(|| "delay time must be a rational like 1/8".to_owned())?;
+    let numerator = numerator
+        .parse::<i64>()
+        .map_err(|_| "delay time must be a rational like 1/8".to_owned())?;
+    let denominator = denominator
+        .parse::<i64>()
+        .map_err(|_| "delay time must be a rational like 1/8".to_owned())?;
+    Rational::new(numerator, denominator)
+        .map_err(|_| "delay time must be a rational like 1/8".to_owned())
 }
 
 #[cfg(test)]
@@ -635,6 +944,300 @@ mod tests {
             .render_test_block(session.engine.frames_until_boundary_for_test() + 256);
 
         assert!(rendered.iter().any(|sample| sample.abs() > f32::EPSILON));
+    }
+
+    #[test]
+    fn track_eval_line_keeps_using_main_track_by_default() {
+        let mut session = ReplSession::new();
+
+        session.eval_line("drums = bd sn").unwrap();
+        let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
+
+        assert_eq!(session.engine.active_track_names_for_test(), ["main"]);
+    }
+
+    #[test]
+    fn track_and_bus_commands_compile_a_routing_snapshot() {
+        let mut session = ReplSession::new();
+
+        session.eval_line("groove = bd sn").unwrap();
+        assert_eq!(
+            session.eval_line(":track new drums"),
+            Ok("created track `drums`".to_owned())
+        );
+        assert_eq!(
+            session.eval_line(":track bind drums groove"),
+            Ok("bound track `drums` to `groove`".to_owned())
+        );
+        assert_eq!(
+            session.eval_line(":bus new verb"),
+            Ok("created bus `verb`".to_owned())
+        );
+        assert_eq!(
+            session.eval_line(":send drums verb 0.35"),
+            Ok("sent `drums` to `verb` at 0.35".to_owned())
+        );
+
+        let _ = session.render_test_block_for_tui(1);
+        let snapshot = session.transport_snapshot();
+        assert!(snapshot.has_pending_routing());
+
+        let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
+        assert_eq!(session.engine.active_track_names_for_test(), ["drums"]);
+    }
+
+    #[test]
+    fn track_mixer_command_reports_track_assignments_and_sends() {
+        let mut session = ReplSession::new();
+
+        session.eval_line("groove = bd sn").unwrap();
+        session.eval_line(":track new drums").unwrap();
+        session.eval_line(":track bind drums groove").unwrap();
+        session.eval_line(":bus new verb").unwrap();
+        session.eval_line(":send drums verb 0.35").unwrap();
+
+        let mixer = session.eval_line(":mixer").unwrap();
+
+        assert!(mixer.contains("drums -> groove"));
+        assert!(mixer.contains("send verb@0.35"));
+    }
+
+    #[test]
+    fn bus_fx_command_attaches_shared_delay_to_bus() {
+        let mut session = ReplSession::new();
+
+        session.eval_line(":bus new dub").unwrap();
+        assert_eq!(
+            session.eval_line(":bus fx dub delay time=3/16 feedback=0.45 wet=1.0"),
+            Ok("attached delay to bus `dub`".to_owned())
+        );
+
+        let mixer = session.eval_line(":mixer").unwrap();
+        assert!(mixer.contains("bus dub -> master"));
+        assert!(mixer.contains("delay(3/16"));
+        let _ = session.render_test_block_for_tui(1);
+        assert!(session.transport_snapshot().has_pending_routing());
+    }
+
+    #[test]
+    fn bus_fx_command_attaches_shared_reverb_to_bus() {
+        let mut session = ReplSession::new();
+
+        session.eval_line(":bus new verb").unwrap();
+        assert_eq!(
+            session.eval_line(":bus fx verb reverb size=0.75 damp=0.35 wet=1.0"),
+            Ok("attached reverb to bus `verb`".to_owned())
+        );
+
+        let mixer = session.eval_line(":mixer").unwrap();
+        assert!(mixer.contains("bus verb -> master"));
+        assert!(mixer.contains("reverb(size=0.75 damp=0.35 wet=1.00)"));
+        let _ = session.render_test_block_for_tui(1);
+        assert!(session.transport_snapshot().has_pending_routing());
+    }
+
+    #[test]
+    fn bus_fx_command_clears_hosted_effect_with_none() {
+        let mut session = ReplSession::new();
+
+        session.eval_line(":bus new dub").unwrap();
+        session
+            .eval_line(":bus fx dub delay time=3/16 feedback=0.45 wet=1.0")
+            .unwrap();
+        assert_eq!(
+            session.eval_line(":bus fx dub none"),
+            Ok("cleared hosted effect on bus `dub`".to_owned())
+        );
+
+        let mixer = session.eval_line(":mixer").unwrap();
+        assert!(mixer.contains("bus dub -> master"));
+        assert!(!mixer.contains("delay("));
+    }
+
+    #[test]
+    fn bus_fx_command_rejects_unknown_bus() {
+        let mut session = ReplSession::new();
+
+        assert_eq!(
+            session.eval_line(":bus fx dub delay time=3/16 feedback=0.45 wet=1.0"),
+            Err("no bus named `dub`".to_owned())
+        );
+    }
+
+    #[test]
+    fn bus_fx_command_rejects_bad_rational_time() {
+        let mut session = ReplSession::new();
+        session.eval_line(":bus new dub").unwrap();
+
+        let error = session
+            .eval_line(":bus fx dub delay time=bad feedback=0.45 wet=1.0")
+            .unwrap_err();
+
+        assert!(error.contains("delay time"));
+    }
+
+    #[test]
+    fn bus_fx_command_rejects_invalid_feedback() {
+        let mut session = ReplSession::new();
+        session.eval_line(":bus new dub").unwrap();
+
+        let error = session
+            .eval_line(":bus fx dub delay time=3/16 feedback=1.5 wet=1.0")
+            .unwrap_err();
+
+        assert!(error.contains("feedback"));
+    }
+
+    #[test]
+    fn bus_fx_command_rejects_invalid_wet() {
+        let mut session = ReplSession::new();
+        session.eval_line(":bus new dub").unwrap();
+
+        let error = session
+            .eval_line(":bus fx dub delay time=3/16 feedback=0.45 wet=1.5")
+            .unwrap_err();
+
+        assert!(error.contains("wet"));
+    }
+
+    #[test]
+    fn bus_fx_command_rejects_invalid_reverb_size() {
+        let mut session = ReplSession::new();
+        session.eval_line(":bus new verb").unwrap();
+
+        let error = session
+            .eval_line(":bus fx verb reverb size=1.5 damp=0.35 wet=1.0")
+            .unwrap_err();
+
+        assert!(error.contains("size"));
+    }
+
+    #[test]
+    fn bus_fx_command_rejects_invalid_reverb_damp() {
+        let mut session = ReplSession::new();
+        session.eval_line(":bus new verb").unwrap();
+
+        let error = session
+            .eval_line(":bus fx verb reverb size=0.75 damp=-0.1 wet=1.0")
+            .unwrap_err();
+
+        assert!(error.contains("damp"));
+    }
+
+    #[test]
+    fn bus_fx_command_rejects_invalid_reverb_wet() {
+        let mut session = ReplSession::new();
+        session.eval_line(":bus new verb").unwrap();
+
+        let error = session
+            .eval_line(":bus fx verb reverb size=0.75 damp=0.35 wet=1.5")
+            .unwrap_err();
+
+        assert!(error.contains("wet"));
+    }
+
+    #[test]
+    fn track_bind_command_rejects_unknown_bindings() {
+        let mut session = ReplSession::new();
+
+        session.eval_line(":track new drums").unwrap();
+
+        assert_eq!(
+            session.eval_line(":track bind drums nope"),
+            Err("no binding named `nope`".to_owned())
+        );
+    }
+
+    #[test]
+    fn track_send_command_rejects_unknown_buses() {
+        let mut session = ReplSession::new();
+
+        session.eval_line("groove = bd sn").unwrap();
+        session.eval_line(":track new drums").unwrap();
+        session.eval_line(":track bind drums groove").unwrap();
+
+        assert_eq!(
+            session.eval_line(":send drums verb 0.35"),
+            Err("no bus named `verb`".to_owned())
+        );
+    }
+
+    #[test]
+    fn track_new_command_rejects_duplicate_track_names() {
+        let mut session = ReplSession::new();
+
+        session.eval_line(":track new drums").unwrap();
+
+        assert_eq!(
+            session.eval_line(":track new drums"),
+            Err("track `drums` already exists".to_owned())
+        );
+    }
+
+    #[test]
+    fn bus_new_command_rejects_duplicate_bus_names() {
+        let mut session = ReplSession::new();
+
+        session.eval_line(":bus new verb").unwrap();
+
+        assert_eq!(
+            session.eval_line(":bus new verb"),
+            Err("bus `verb` already exists".to_owned())
+        );
+    }
+
+    #[test]
+    fn track_level_and_mute_commands_shape_live_output() {
+        let mut session = ReplSession::new();
+        let directory = temp_directory("repl-track-level-mute");
+        write_wav(directory.join("bd.wav"), &[0.8, 0.0, 0.0, 0.0]);
+
+        session
+            .eval_line(&format!(":samples {}", directory.display()))
+            .unwrap();
+        session.eval_line("groove = bd").unwrap();
+        session.eval_line(":track new drums").unwrap();
+        session.eval_line(":track bind drums groove").unwrap();
+        session.eval_line(":track level drums 0.5").unwrap();
+        let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
+        let leveled = session.render_test_block_for_tui(4);
+        let leveled_expected = 0.4 * edge_envelope(0, 4);
+        assert!((leveled[0] - leveled_expected).abs() < f32::EPSILON);
+
+        session.eval_line(":track mute drums on").unwrap();
+        let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
+        let muted = session.render_test_block_for_tui(4);
+        assert!(muted.iter().all(|sample| sample.abs() < f32::EPSILON));
+
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn track_rebinding_replaces_prior_assignment_without_haunted_output() {
+        let mut session = ReplSession::new();
+        let directory = temp_directory("repl-track-rebind");
+        write_wav(directory.join("bd.wav"), &[0.1, 0.0, 0.0, 0.0]);
+        write_wav(directory.join("sn.wav"), &[0.9, 0.0, 0.0, 0.0]);
+
+        session
+            .eval_line(&format!(":samples {}", directory.display()))
+            .unwrap();
+        session.eval_line("groove = bd").unwrap();
+        session.eval_line("backbeat = sn").unwrap();
+        session.eval_line(":track new drums").unwrap();
+        session.eval_line(":track bind drums groove").unwrap();
+        let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
+        let first = session.render_test_block_for_tui(4);
+        let first_expected = 0.1 * edge_envelope(0, 4);
+        assert!((first[0] - first_expected).abs() < f32::EPSILON);
+
+        session.eval_line(":track bind drums backbeat").unwrap();
+        let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
+        let second = session.render_test_block_for_tui(4);
+        let second_expected = 0.9 * edge_envelope(0, 4);
+        assert!((second[0] - second_expected).abs() < f32::EPSILON);
+
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

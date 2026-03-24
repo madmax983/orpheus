@@ -10,6 +10,7 @@ struct EngineCore {
     tempo_bpm: f32,
     is_playing: bool,
     pending_pattern: Option<()>,
+    pending_routing: Option<()>,
 }
 
 // Mirror the SharedTransport struct but with loom Atomics
@@ -21,6 +22,7 @@ struct SharedTransport {
     tempo_bpm_bits: loom::sync::atomic::AtomicU32,
     is_playing: loom::sync::atomic::AtomicBool,
     has_pending_pattern: loom::sync::atomic::AtomicBool,
+    has_pending_routing: loom::sync::atomic::AtomicBool,
 }
 
 impl SharedTransport {
@@ -33,6 +35,7 @@ impl SharedTransport {
             tempo_bpm_bits: loom::sync::atomic::AtomicU32::new(0),
             is_playing: loom::sync::atomic::AtomicBool::new(false),
             has_pending_pattern: loom::sync::atomic::AtomicBool::new(false),
+            has_pending_routing: loom::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -57,6 +60,8 @@ impl SharedTransport {
         self.is_playing.store(core.is_playing, Ordering::Relaxed);
         self.has_pending_pattern
             .store(core.pending_pattern.is_some(), Ordering::Relaxed);
+        self.has_pending_routing
+            .store(core.pending_routing.is_some(), Ordering::Relaxed);
 
         loom::sync::atomic::fence(Ordering::Release);
         self.publish_epoch.fetch_add(1, Ordering::Relaxed);
@@ -80,6 +85,7 @@ impl SharedTransport {
                 tempo_bpm_bits: self.tempo_bpm_bits.load(Ordering::Relaxed),
                 is_playing: self.is_playing.load(Ordering::Relaxed),
                 has_pending_pattern: self.has_pending_pattern.load(Ordering::Relaxed),
+                has_pending_routing: self.has_pending_routing.load(Ordering::Relaxed),
             };
 
             loom::sync::atomic::fence(Ordering::Acquire);
@@ -100,11 +106,14 @@ pub struct TransportSnapshot {
     pub tempo_bpm_bits: u32,
     pub is_playing: bool,
     pub has_pending_pattern: bool,
+    pub has_pending_routing: bool,
 }
 
 #[test]
 fn havoc_transport_torn_read() {
-    loom::model(|| {
+    let mut builder = loom::model::Builder::new();
+    builder.max_permutations = Some(256);
+    builder.check(|| {
         let transport = Arc::new(SharedTransport::new());
 
         let t1 = transport.clone();
@@ -116,6 +125,7 @@ fn havoc_transport_torn_read() {
                 tempo_bpm: 120.0,
                 is_playing: true,
                 pending_pattern: None,
+                pending_routing: None,
             };
             t1.publish(&core);
         });

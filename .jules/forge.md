@@ -21,3 +21,6 @@
 **[Sequential section evaluation and error mapping]**
 **Learning:** Found redundant logic evaluating `Expr::Section` structures for both their length and events during `seq_sections` parsing in `crates/orpheus-lang/src/eval.rs`. Also found duplicated error mapping arms for non-materializable types.
 **Action:** Refactored `eval_section_events` to compute and return length as a tuple `(ExplicitValue, i128)` alongside events, eliminating the need for `eval_section_length` and removing duplicate AST traversal. Replaced a manual loop with `try_fold`. Combined non-materializable type error arms into a single `|` block leveraging `.kind_name()`.
+**[Boilerplate Reduction in JSON Exporting]**
+**Learning:** Identified duplicate code logic for JSON file initialization, metadata writing, and event looping in `export.rs` across sample and number pattern exports.
+**Action:** Extract JSON boilerplate into a generic `export_pattern_events_to_json` helper, removing duplication and keeping file I/O operations central.

@@ -6,9 +6,17 @@ use std::path::PathBuf;
 use anyhow::{Context, anyhow};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream};
+use crossterm::style::Stylize;
 use orpheus_dsp::EngineHandle;
 
-fn main() -> anyhow::Result<()> {
+fn main() {
+    if let Err(error) = run() {
+        eprintln!("{} {:?}", "✗ error:".red().bold(), error);
+        std::process::exit(1);
+    }
+}
+
+fn run() -> anyhow::Result<()> {
     let startup_path = startup_path_from_args(env::args_os().skip(1))?;
     let (engine, _stream, warning) = match start_live_audio() {
         Ok((engine, stream)) => (engine, Some(stream), None),

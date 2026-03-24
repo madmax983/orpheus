@@ -187,6 +187,35 @@ pub fn export_sample_pattern_to_csv(
     )
 }
 
+fn export_pattern_events_to_json<T, F>(
+    events: &[Event<T>],
+    path: impl AsRef<Path>,
+    kind: &str,
+    cycle_count: u64,
+    mut event_to_json: F,
+) -> Result<(), EvalError>
+where
+    F: FnMut(&Event<T>) -> String,
+{
+    let mut file = std::fs::File::create(path.as_ref())?;
+
+    writeln!(file, "{{")
+        .and_then(|()| writeln!(file, "  \"kind\": \"{kind}\","))
+        .and_then(|()| writeln!(file, "  \"cycle_count\": {cycle_count},"))
+        .and_then(|()| writeln!(file, "  \"events\": ["))?;
+
+    for (i, event) in events.iter().enumerate() {
+        if i > 0 {
+            writeln!(file, ",")?;
+        }
+        write!(file, "{}", event_to_json(event))?;
+    }
+
+    writeln!(file, "\n  ]").and_then(|()| writeln!(file, "}}"))?;
+
+    Ok(())
+}
+
 /// Exports a sample pattern's evaluated events to a JSON file.
 ///
 /// The JSON document contains a top-level `kind`, `cycle_count`, and `events`
@@ -209,23 +238,7 @@ pub fn export_sample_pattern_to_json(
     let span = render_span(cycle_count)?;
     let events = pattern.try_query(&span)?;
 
-    let mut file = std::fs::File::create(path.as_ref())?;
-
-    writeln!(file, "{{")
-        .and_then(|()| writeln!(file, "  \"kind\": \"sample\","))
-        .and_then(|()| writeln!(file, "  \"cycle_count\": {cycle_count},"))
-        .and_then(|()| writeln!(file, "  \"events\": ["))?;
-
-    for (i, event) in events.iter().enumerate() {
-        if i > 0 {
-            writeln!(file, ",")?;
-        }
-        write!(file, "{}", sample_event_json(event))?;
-    }
-
-    writeln!(file, "\n  ]").and_then(|()| writeln!(file, "}}"))?;
-
-    Ok(())
+    export_pattern_events_to_json(&events, path, "sample", cycle_count, sample_event_json)
 }
 
 /// Exports a number pattern's evaluated events to a CSV file.
@@ -305,23 +318,7 @@ pub fn export_number_pattern_to_json(
     let span = render_span(cycle_count)?;
     let events = pattern.try_query(&span)?;
 
-    let mut file = std::fs::File::create(path.as_ref())?;
-
-    writeln!(file, "{{")
-        .and_then(|()| writeln!(file, "  \"kind\": \"number\","))
-        .and_then(|()| writeln!(file, "  \"cycle_count\": {cycle_count},"))
-        .and_then(|()| writeln!(file, "  \"events\": ["))?;
-
-    for (i, event) in events.iter().enumerate() {
-        if i > 0 {
-            writeln!(file, ",")?;
-        }
-        write!(file, "{}", number_event_json(event))?;
-    }
-
-    writeln!(file, "\n  ]").and_then(|()| writeln!(file, "}}"))?;
-
-    Ok(())
+    export_pattern_events_to_json(&events, path, "number", cycle_count, number_event_json)
 }
 
 /// Renders a sample pattern to a deterministic stereo audio file using the
