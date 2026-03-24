@@ -31,10 +31,12 @@ pub fn infer_into_bindings(
     bindings: &mut BTreeMap<String, Type>,
 ) -> Result<Option<(String, Type)>, TypeError> {
     let parsed = parse_module(source).map_err(TypeError::from)?;
-    let mut inferencer = Inferencer::with_bindings(mode, bindings.clone());
-    let last_binding = inferencer.infer_statements(&parsed.statements)?;
+    // ⚡ Bolt: Use `std::mem::take` instead of `bindings.clone()` to move the BTreeMap into the inferencer.
+    // This avoids a full heap allocation and deep copy of the environment on every inference pass.
+    let mut inferencer = Inferencer::with_bindings(mode, std::mem::take(bindings));
+    let result = inferencer.infer_statements(&parsed.statements);
     *bindings = inferencer.user_bindings;
-    Ok(last_binding)
+    result
 }
 
 impl From<ParseError> for TypeError {
