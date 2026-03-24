@@ -1,4 +1,14 @@
 //! Audio engine for Orpheus.
+//!
+//! This crate provides the digital signal processing backend for rendering musical
+//! patterns into audio streams. It supports real-time playback via CPAL and offline
+//! rendering to WAV files.
+//!
+//! Key components:
+//! - [`RenderEngine`]: The central real-time audio synthesizer and sequencer.
+//! - [`EngineHandle`]: A thread-safe handle to send [`EngineCommand`]s to the `RenderEngine`.
+//! - [`SampleBank`]: A collection of loaded WAV files ready for playback.
+//! - [`render_events_to_wav`]: An offline rendering utility for generating static audio files.
 
 mod command;
 mod engine;
