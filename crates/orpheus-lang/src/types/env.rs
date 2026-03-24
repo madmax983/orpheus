@@ -10,13 +10,44 @@ use std::collections::BTreeMap;
 
 use crate::types::{Type, TypeVarId};
 
+/// Represents a polymorphic type signature with universally quantified variables.
+///
+/// A type scheme wraps a concrete base type (`ty`) alongside any type variables
+/// it binds (`vars`). This enables Hindley-Milner type inference to safely
+/// instantiate distinct copies of a generic function at different call sites
+/// by replacing the variables with fresh constraints.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::types::{Type, TypeScheme};
+///
+/// // A basic concrete type has no bound variables.
+/// let num = TypeScheme::monomorphic(Type::Number);
+/// assert!(num.vars.is_empty());
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
+    /// The universal type variables bound within this scheme.
     pub vars: Vec<TypeVarId>,
+    /// The underlying type definition.
     pub ty: Type,
 }
 
 impl TypeScheme {
+    /// Constructs a type scheme representing a concrete, non-polymorphic type.
+    ///
+    /// Monomorphic types contain zero universally quantified variables,
+    /// indicating that their structural type is completely defined and fixed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::types::{Type, TypeScheme};
+    ///
+    /// let val = TypeScheme::monomorphic(Type::Duration);
+    /// assert_eq!(val.ty, Type::Duration);
+    /// ```
     #[must_use]
     pub const fn monomorphic(ty: Type) -> Self {
         Self {
@@ -26,12 +57,40 @@ impl TypeScheme {
     }
 }
 
+/// A Hindley-Milner type environment mapping variable names to their type schemes.
+///
+/// The `TypeEnv` acts as the persistent type context during AST traversal and inference.
+/// It tracks both the standard library functions (like `fast` or `bd`) as well as
+/// user-defined bindings (like `x = 1`).
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::types::TypeEnv;
+///
+/// let env = TypeEnv::with_builtins();
+/// assert!(env.get("fast").is_some());
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeEnv {
     entries: BTreeMap<String, TypeScheme>,
 }
 
 impl TypeEnv {
+    /// Creates a new type environment populated with the standard library type schemes.
+    ///
+    /// This includes all primitive values (`bd`, `sn`), sample controls (`gain`, `pan`),
+    /// pattern transformations (`fast`, `every`), and generic utilities (`rev`, `rand`).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::types::TypeEnv;
+    ///
+    /// let env = TypeEnv::with_builtins();
+    /// let scheme = env.get("bd").unwrap();
+    /// assert!(scheme.vars.is_empty()); // Concrete pattern
+    /// ```
     #[must_use]
     pub fn with_builtins() -> Self {
         let mut env = Self {
@@ -121,10 +180,38 @@ impl TypeEnv {
         env
     }
 
+    /// Inserts or updates a type scheme bound to a variable name in the environment.
+    ///
+    /// If the name already exists, its previous type scheme is overwritten.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::types::{Type, TypeEnv, TypeScheme};
+    ///
+    /// let mut env = TypeEnv::with_builtins();
+    /// env.insert("custom_var", TypeScheme::monomorphic(Type::Duration));
+    ///
+    /// assert_eq!(env.get("custom_var").unwrap().ty, Type::Duration);
+    /// ```
     pub fn insert(&mut self, name: impl Into<String>, scheme: TypeScheme) {
         self.entries.insert(name.into(), scheme);
     }
 
+    /// Retrieves the type scheme associated with the given variable name.
+    ///
+    /// Returns `None` if the variable does not exist in the environment.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::types::TypeEnv;
+    ///
+    /// let env = TypeEnv::with_builtins();
+    ///
+    /// assert!(env.get("bd").is_some());
+    /// assert!(env.get("unknown_var").is_none());
+    /// ```
     #[must_use]
     pub fn get(&self, name: &str) -> Option<&TypeScheme> {
         self.entries.get(name)

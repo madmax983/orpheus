@@ -1,3 +1,10 @@
+//! The `mixer` module manages the audio routing state and bus effects.
+//!
+//! This module orchestrates the connections between source patterns, mixer
+//! tracks, and effects buses. It compiles the dynamic language state into
+//! immutable `RoutingSnapshot`s that are sent to the `orpheus_dsp` engine
+//! for glitch-free audio processing.
+
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
@@ -7,6 +14,37 @@ use orpheus_pattern::Rational;
 
 use crate::Value;
 
+/// Holds the dynamic state of the Orpheus mixer.
+///
+/// This includes declared tracks, their bindings, volume levels, mute states,
+/// and configured effect buses with their corresponding send levels.
+///
+/// `MixerState` acts as the builder context for translating high-level REPL commands
+/// (`:track`, `:bus`, `:send`) into low-level DSP routing structures.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::mixer::MixerState;
+/// use orpheus_pattern::Rational;
+///
+/// let mut mixer = MixerState::default();
+///
+/// // Create a track and bus
+/// mixer.new_track("drums").unwrap();
+/// mixer.new_bus("verb").unwrap();
+///
+/// // Configure the bus with an effect
+/// mixer.set_bus_reverb("verb", 0.75, 0.35, 1.0).unwrap();
+///
+/// // Send audio from the track to the bus
+/// mixer.set_send("drums", "verb", 0.5).unwrap();
+///
+/// // Verify track creation and configuration via the summary
+/// let summary = mixer.render_summary();
+/// assert!(summary.contains("drums"));
+/// assert!(summary.contains("verb"));
+/// ```
 #[derive(Clone, Debug, Default)]
 pub struct MixerState {
     compatibility_main_binding: Option<String>,
