@@ -16,3 +16,7 @@
 ## 2026-03-24 - [Broken Intra-Doc Link in session.rs]
 **Confusion:** The `session.rs` module-level documentation linked to the private types `ReplSession` and `EngineHandle` via `[\`ReplSession\`]`, causing `cargo doc` to fail due to the dead intra-doc link.
 **Clarification:** I replaced the broken intra-doc links with simple backticks (e.g., `\`ReplSession\``) to render the names as code elements without creating dead links.
+
+## 2026-03-24 - [The "Black Box": Missing Documentation in Type System and Engine]
+**Confusion:** The Hindley-Milner type system module (`crates/orpheus-lang/src/types/mod.rs`) and the digital signal processing backend (`crates/orpheus-dsp/src/lib.rs`) were acting as black boxes due to missing or sparse module-level (`//!`) documentation. It was unclear how type inference tied together or how the audio engine components interacted. Furthermore, the core `Type` enum lacked inline descriptions for its variants.
+**Clarification:** Added detailed module-level documentation for both modules explaining their purpose and key components. Added inline `///` documentation to all variants of the `Type` enum explaining what semantic meaning they hold.

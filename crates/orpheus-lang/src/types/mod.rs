@@ -1,3 +1,12 @@
+//! The Hindley-Milner type system for the Orpheus language.
+//!
+//! This module defines the core type abstractions, environments, and inference engines
+//! used to statically verify Orpheus programs before execution. The type system supports
+//! polymorphism, type inference, and structural pattern matching.
+//!
+//! The entry points for type inference are `infer_module` and `infer_into_bindings`,
+//! which evaluate AST sequences against a `TypeEnv` to produce a `TypedModule`.
+
 mod env;
 mod infer;
 
@@ -16,18 +25,34 @@ impl TypeVarId {
     }
 }
 
+/// Represents the fundamental semantic types within the Orpheus type system.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Type {
+    /// A repeating sequence of events in time. Patterns can contain any inner type,
+    /// enabling structures like `Pattern<Sample>` or `Pattern<Number>`.
     Pattern(Box<Self>),
+    /// A named audio file from a loaded sample bank (e.g., `"kick"`).
     Sample,
+    /// A discrete musical pitch or frequency representation.
     Note,
+    /// A generic numeric value, primarily used for DSP parameters like gain or filter cutoff.
     Number,
+    /// A musical time interval (e.g., used to offset patterns or sequences).
     Duration,
+    /// The direction an arpeggiator traverses a chord (e.g., "up", "down").
     ArpDirection,
+    /// A collection of pitch classes that define a musical chord or scale.
     PitchClassSet,
+    /// Textual data.
     String,
+    /// A callable operation mapping arguments to a return value.
+    /// Supports polymorphic behavior.
     Function(Vec<Self>, Box<Self>),
+    /// A generic placeholder during type inference, representing an unknown
+    /// or unbound type that will later unify with a concrete type.
     Var(TypeVarId),
+    /// A type signifying no meaningful data. Usually represents side-effects
+    /// or empty states.
     Unit,
 }
 
