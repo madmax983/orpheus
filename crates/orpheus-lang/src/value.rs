@@ -628,22 +628,23 @@ impl PatternRuntimeValue for SampleEvent {
         Err(EvalError::new("rand only produces numbers"))
     }
 
-    fn roll_events(events: Vec<Event<Self>>, steps: u32) -> Result<Vec<Event<Self>>, EvalError> {
-        let mut rolled = Vec::new();
-        let mut events = events;
+    /// ⚡ Bolt: Uses slice bounds (`&events[start_index..index]`) instead of allocating a temporary `cluster` Vec for every group of events with the same span, eliminating redundant heap allocations in the hot evaluation loop.
+    fn roll_events(
+        mut events: Vec<Event<Self>>,
+        steps: u32,
+    ) -> Result<Vec<Event<Self>>, EvalError> {
         sort_events(&mut events);
+        let mut rolled = Vec::with_capacity(events.len());
         let mut index = 0;
-        let mut cluster = Vec::new();
 
         while index < events.len() {
             let span = events[index].part.clone();
-            cluster.clear();
+            let start_index = index;
             while index < events.len() && events[index].part == span {
-                cluster.push(events[index].clone());
                 index += 1;
             }
 
-            rolled.extend(roll_event_cluster(&cluster, steps)?);
+            rolled.extend(roll_event_cluster(&events[start_index..index], steps)?);
         }
 
         sort_events(&mut rolled);
@@ -704,6 +705,7 @@ impl PatternRuntimeValue for f64 {
         Ok(value)
     }
 
+    /// ⚡ Bolt: Uses slice bounds (`&events[start_index..index]`) instead of allocating a temporary `cluster` Vec for every group of events with the same span, eliminating redundant heap allocations in the hot evaluation loop.
     fn roll_events(
         mut events: Vec<Event<Self>>,
         steps: u32,
