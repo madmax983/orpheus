@@ -1367,4 +1367,160 @@ right = sometimes(fast(2), cp hh)";
         let err: super::EvalError = pattern_err.into();
         assert_eq!(err.to_string(), "rational denominator cannot be zero");
     }
+
+    #[test]
+    fn eval_structural_pattern_mixed_types() {
+        let result = eval_module("x = (bd 1)", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "group items must all resolve to the same structural pattern kind"
+        );
+    }
+
+    #[test]
+    fn eval_structural_pattern_mixed_types_sequence() {
+        let result = eval_module("x = bd 1", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "sequence items must all resolve to the same structural pattern kind"
+        );
+    }
+
+    #[test]
+    fn explicit_stream_mixed_types() {
+        let result = eval_module("x = stream(at(0, bd), at(1, 1))", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "explicit-time items must all resolve to the same pattern kind"
+        );
+    }
+
+    #[test]
+    fn eval_apply_value_to_non_function() {
+        let result = eval_module("x = 1 |> 2", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "cannot call a number pattern"
+        );
+    }
+
+    #[test]
+    fn eval_explicit_to_implicit_error() {
+        let result = eval_module("x = bd stream(at(0, sn))", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "explicit-time forms cannot appear inside a pattern sequence; use `stream(...)` or lift the form outside the sequence"
+        );
+    }
+
+    #[test]
+    fn eval_explicit_to_implicit_group_error() {
+        let result = eval_module("x = (bd stream(at(0, sn)))", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "explicit-time forms cannot appear inside a pattern group; use `stream(...)` or lift the form outside the group"
+        );
+    }
+
+    #[test]
+    fn eval_rest_marker_error() {
+        let result = eval_module("x = ~", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "rest markers can only appear inside pattern sequences"
+        );
+    }
+
+    #[test]
+    fn eval_explicit_to_implicit_error_unsupported_pattern_item_error_sample() {
+        let result = eval_module("x = bd sample(\"bd\", sn)", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "function call `sample` cannot appear inside a pattern sequence in Task 5; apply transforms with the pipe operator `|>` or call `sample(..., pattern)` directly"
+        );
+    }
+
+    #[test]
+    fn eval_explicit_to_implicit_error_unsupported_pattern_item_error_function() {
+        let result = eval_module("x = fast bd", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "function `fast` cannot appear inside a pattern sequence in Task 5; apply transforms with the pipe operator `|>` or call `fast(..., pattern)` directly"
+        );
+    }
+
+    #[test]
+    fn eval_explicit_expr_errors() {
+        let result = eval_module("x = stream(section(1, 1))", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "`section(...)` can only appear inside `seq_sections(...)`"
+        );
+    }
+
+    #[test]
+    fn eval_seq_sections_invalid_item() {
+        let result = eval_module("x = seq_sections(1)", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "`seq_sections` only accepts `section(pattern, cycles)` items"
+        );
+    }
+
+    #[test]
+    fn eval_meter_without_beat() {
+        let result = eval_module("x = beat(0)", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "`beat(...)` can only appear inside `at(...)` within an enclosing `meter(...)`"
+        );
+    }
+
+    #[test]
+    fn eval_section_standalone() {
+        let result = eval_module("x = section(1, 1)", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "`section(...)` can only appear inside `seq_sections(...)`"
+        );
+    }
+
+    #[test]
+    fn explicit_stream_value_conversion() {
+        let result = eval_module("x = stream(bd)", ReplMode::Strict);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn eval_meter_nested_beat_missing_meter() {
+        let result = eval_module("x = at(beat(0), bd)", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "`beat(...)` requires an enclosing `meter(...)`"
+        );
+    }
+
+    #[test]
+    fn eval_explicit_to_implicit_error_unsupported_pattern_item_error_group_nested() {
+        let result = eval_module("x = (bd (stream(at(0, sn))))", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "explicit-time forms cannot appear inside a pattern group; use `stream(...)` or lift the form outside the group"
+        );
+    }
 }
