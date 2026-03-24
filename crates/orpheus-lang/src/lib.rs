@@ -6,6 +6,7 @@ mod builtins;
 mod diagnostics;
 mod eval;
 pub mod export;
+pub mod html;
 mod loader;
 mod parser;
 mod pitch;
@@ -26,6 +27,7 @@ pub use export::{
     render_sample_pattern_to_file_with_bank, render_sample_pattern_to_wav,
 };
 pub use loader::load_file_strict;
+pub use html::{export_number_pattern_to_html, export_sample_pattern_to_html};
 pub use parser::parse_module;
 pub use svg::{export_number_pattern_to_svg, export_sample_pattern_to_svg};
 pub use types::{Type, TypedModule, infer_module};
