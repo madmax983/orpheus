@@ -1,3 +1,3 @@
-## 2024-03-24 - [Coverage Gap in `eval.rs` Pattern Evaluation]
-**Learning:** The evaluator logic for checking pattern types (e.g. `eval_structural_pattern`, `unsupported_pattern_item_error`) and verifying explicit-time restrictions (like `stream(...)` vs implicit `seq(...)`) contained many robust error messages that were completely untested.
-**Action:** Use `cargo llvm-cov` to identify missing error-handling branch coverage. Write targeted unit tests utilizing `eval_module` that intentionally violate structural grammar and explicit-time restrictions to assert that the exact intended `EvalError` messages are produced.
+## 2025-01-08 - [main.rs CLI Parsing Refactor]
+**Learning:** Functions that call `std::process::exit(0)` directly (e.g. for `--help` or `--version` flags) are practically impossible to unit test without aborting the test runner process.
+**Action:** Extract the side-effects by returning a `CliAction` enum (`Help`, `Version`, `Run(data)`). Let the caller (`run()` or `main()`) handle the `exit(0)` or early return. This allows the argument parsing logic itself to be tested cleanly and safely, significantly increasing test coverage of `src/main.rs`.

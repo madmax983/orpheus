@@ -16,8 +16,27 @@ fn main() {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum CliAction {
+    Run(Option<PathBuf>),
+    Help,
+    Version,
+}
+
 fn run() -> anyhow::Result<()> {
-    let startup_path = startup_path_from_args(env::args_os().skip(1))?;
+    let action = startup_path_from_args(env::args_os().skip(1))?;
+    let startup_path = match action {
+        CliAction::Help => {
+            print_help();
+            return Ok(());
+        }
+        CliAction::Version => {
+            println!("orpheus {}", env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
+        CliAction::Run(path) => path,
+    };
+
     let (engine, _stream, warning) = match start_live_audio() {
         Ok((engine, stream)) => (engine, Some(stream), None),
         Err(error) => (
@@ -39,28 +58,24 @@ fn run() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn startup_path_from_args(
-    args: impl IntoIterator<Item = OsString>,
-) -> anyhow::Result<Option<PathBuf>> {
+fn startup_path_from_args(args: impl IntoIterator<Item = OsString>) -> anyhow::Result<CliAction> {
     let args = args.into_iter().collect::<Vec<_>>();
     match args.as_slice() {
-        [] => Ok(None),
+        [] => Ok(CliAction::Run(None)),
         [path] => {
             let path_str = path.to_string_lossy();
             if path_str == "--help" || path_str == "-h" {
-                print_help();
-                std::process::exit(0);
+                return Ok(CliAction::Help);
             }
             if path_str == "--version" || path_str == "-V" {
-                println!("orpheus {}", env!("CARGO_PKG_VERSION"));
-                std::process::exit(0);
+                return Ok(CliAction::Version);
             }
             if path_str.starts_with('-') {
                 return Err(anyhow!(
                     "unexpected argument '{path_str}' found\n\nUsage: orpheus [PATH]\n\nFor more information, try '--help'."
                 ));
             }
-            Ok(Some(PathBuf::from(path)))
+            Ok(CliAction::Run(Some(PathBuf::from(path))))
         }
         _ => Err(anyhow!("usage: orpheus [path/to/song.ode]")),
     }
@@ -116,4 +131,68 @@ fn start_live_audio() -> anyhow::Result<(EngineHandle, Stream)> {
         .context("failed to start the audio output stream")?;
 
     Ok((engine, stream))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_return_run_none_when_args_empty() {
+        let args: Vec<OsString> = vec![];
+        let action = startup_path_from_args(args).unwrap();
+        assert_eq!(action, CliAction::Run(None));
+    }
+
+    #[test]
+    fn should_return_run_path_when_single_arg_provided() {
+        let args: Vec<OsString> = vec![OsString::from("song.ode")];
+        let action = startup_path_from_args(args).unwrap();
+        assert_eq!(action, CliAction::Run(Some(PathBuf::from("song.ode"))));
+    }
+
+    #[test]
+    fn should_return_help_when_dash_h_provided() {
+        let args: Vec<OsString> = vec![OsString::from("-h")];
+        let action = startup_path_from_args(args).unwrap();
+        assert_eq!(action, CliAction::Help);
+    }
+
+    #[test]
+    fn should_return_help_when_dash_dash_help_provided() {
+        let args: Vec<OsString> = vec![OsString::from("--help")];
+        let action = startup_path_from_args(args).unwrap();
+        assert_eq!(action, CliAction::Help);
+    }
+
+    #[test]
+    fn should_return_version_when_dash_v_provided() {
+        let args: Vec<OsString> = vec![OsString::from("-V")];
+        let action = startup_path_from_args(args).unwrap();
+        assert_eq!(action, CliAction::Version);
+    }
+
+    #[test]
+    fn should_return_version_when_dash_dash_version_provided() {
+        let args: Vec<OsString> = vec![OsString::from("--version")];
+        let action = startup_path_from_args(args).unwrap();
+        assert_eq!(action, CliAction::Version);
+    }
+
+    #[test]
+    fn should_return_error_when_invalid_flag_provided() {
+        let args: Vec<OsString> = vec![OsString::from("--invalid")];
+        let err = startup_path_from_args(args).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("unexpected argument '--invalid' found")
+        );
+    }
+
+    #[test]
+    fn should_return_error_when_multiple_args_provided() {
+        let args: Vec<OsString> = vec![OsString::from("file1.ode"), OsString::from("file2.ode")];
+        let err = startup_path_from_args(args).unwrap_err();
+        assert_eq!(err.to_string(), "usage: orpheus [path/to/song.ode]");
+    }
 }

@@ -15,6 +15,10 @@ use crate::value::{NumberPatternValue, SamplePatternValue};
 /// # Errors
 ///
 /// Returns [`EvalError`] if pattern querying fails or if the file cannot be written.
+///
+/// # Panics
+///
+/// Panics if an evaluated event's sample is unexpectedly missing from the local deduplicated list.
 pub fn export_sample_pattern_to_html(
     pattern: &SamplePatternValue,
     path: impl AsRef<Path>,
