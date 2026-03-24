@@ -10,6 +10,7 @@ mod math;
 mod mix;
 mod nonlinear;
 mod osc;
+mod voice;
 
 pub use filter::LadderFilter;
 pub use gain::Gain;
@@ -17,3 +18,4 @@ pub use math::PhaseAccumulator;
 pub use mix::Mix;
 pub use nonlinear::SoftSat;
 pub use osc::{Noise, PulseOsc, SawOsc, TriOsc};
+pub use voice::{AnalogVoice, AnalogVoiceParams, OscShape};

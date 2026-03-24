@@ -38,6 +38,7 @@ pub use sample_bank::{
 };
 pub use scheduler::Scheduler;
 pub use synth::{
-    Gain, LadderFilter, Mix, Noise, PhaseAccumulator, PulseOsc, SawOsc, SoftSat, TriOsc,
+    AnalogVoice, AnalogVoiceParams, Gain, LadderFilter, Mix, Noise, OscShape, PhaseAccumulator,
+    PulseOsc, SawOsc, SoftSat, TriOsc,
 };
 pub use voice::VoiceKind;
