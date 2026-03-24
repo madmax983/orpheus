@@ -541,8 +541,8 @@ impl Evaluator {
         };
 
         let initial_offset = 0_i128;
-        let initial_combined = self.eval_section_events(first, meter, initial_offset)?;
-        let initial_length = self.eval_section_length(first, meter)?;
+        let (initial_combined, initial_length) =
+            self.eval_section_events(first, meter, initial_offset)?;
         let next_offset = initial_offset
             .checked_add(initial_length)
             .ok_or_else(|| EvalError::new("section cycle offset overflowed"))?;
@@ -550,8 +550,8 @@ impl Evaluator {
         let (combined, _) = rest.iter().try_fold(
             (initial_combined, next_offset),
             |(acc_combined, acc_offset), section| -> Result<(ExplicitValue, i128), EvalError> {
-                let section_events = self.eval_section_events(section, meter, acc_offset)?;
-                let section_length = self.eval_section_length(section, meter)?;
+                let (section_events, section_length) =
+                    self.eval_section_events(section, meter, acc_offset)?;
 
                 let next_combined = acc_combined.merge(section_events)?;
                 let next_offset = acc_offset
@@ -570,7 +570,7 @@ impl Evaluator {
         section: &Expr,
         meter: Option<&MeterContext>,
         cycle_offset: i128,
-    ) -> Result<ExplicitValue, EvalError> {
+    ) -> Result<(ExplicitValue, i128), EvalError> {
         let Expr::Section { pattern, cycles } = section else {
             return Err(EvalError::new(
                 "`seq_sections` only accepts `section(pattern, cycles)` items",
@@ -585,9 +585,8 @@ impl Evaluator {
         }
 
         let base = Self::value_to_explicit(self.eval_expr_in_meter(pattern, meter)?)?;
-        let mut combined: Option<ExplicitValue> = None;
 
-        for repeat in 0..repeat_count {
+        let combined = (0..repeat_count).try_fold(None, |acc: Option<ExplicitValue>, repeat| {
             let offset = rational_from_parts(
                 cycle_offset
                     .checked_add(repeat)
@@ -596,34 +595,18 @@ impl Evaluator {
             )?;
             let mut repeated = base.clone();
             repeated.shift(&offset)?;
-            combined = Some(match combined {
+
+            let next_acc = match acc {
                 Some(existing) => existing.merge(repeated)?,
                 None => repeated,
-            });
-        }
+            };
 
-        combined.ok_or_else(|| EvalError::new("section cycle count must be positive"))
-    }
+            Ok::<Option<ExplicitValue>, EvalError>(Some(next_acc))
+        })?;
 
-    fn eval_section_length(
-        &self,
-        section: &Expr,
-        meter: Option<&MeterContext>,
-    ) -> Result<i128, EvalError> {
-        let Expr::Section { cycles, .. } = section else {
-            return Err(EvalError::new(
-                "`seq_sections` only accepts `section(pattern, cycles)` items",
-            ));
-        };
-
-        let count = self.eval_positive_integer(cycles, meter, "section cycle count")?;
-        if count > 1024 {
-            return Err(EvalError::new(
-                "section cycle count exceeded the maximum allowed bound of 1024",
-            ));
-        }
-
-        Ok(count)
+        let events =
+            combined.ok_or_else(|| EvalError::new("section cycle count must be positive"))?;
+        Ok((events, repeat_count))
     }
 
     fn eval_meter_context(
@@ -687,18 +670,13 @@ impl Evaluator {
             Value::NumberPattern(pattern) => {
                 Ok(ExplicitValue::Number(pattern.try_query(&TimeSpan::unit())?))
             }
-            Value::Function(_) => Err(EvalError::new(
-                "functions cannot be materialized into explicit-time event streams",
-            )),
-            Value::ArpDirection(_) => Err(EvalError::new(
-                "arp directions cannot be materialized into explicit-time event streams",
-            )),
-            Value::PitchClassSet(_) => Err(EvalError::new(
-                "pitch class sets cannot be materialized into explicit-time event streams",
-            )),
-            Value::String(_) => Err(EvalError::new(
-                "strings cannot be materialized into explicit-time event streams",
-            )),
+            Value::Function(_)
+            | Value::ArpDirection(_)
+            | Value::PitchClassSet(_)
+            | Value::String(_) => Err(EvalError::new(format!(
+                "{}s cannot be materialized into explicit-time event streams",
+                value.kind_name()
+            ))),
         }
     }
 

@@ -17,3 +17,7 @@
 **[Iterator Chains over Loops]**
 **Learning:** Found several places in `crates/orpheus-lang/src/eval.rs` where manual loops `for item in items` were pushing into a mutable vector, creating boilerplate and unnecessary state mutation.
 **Action:** Replaced these loops with functional iterator chains like `.iter().map().collect()` and `.try_fold()`, which simplifies the code and is more idiomatic Rust.
+
+**[Sequential section evaluation and error mapping]**
+**Learning:** Found redundant logic evaluating `Expr::Section` structures for both their length and events during `seq_sections` parsing in `crates/orpheus-lang/src/eval.rs`. Also found duplicated error mapping arms for non-materializable types.
+**Action:** Refactored `eval_section_events` to compute and return length as a tuple `(ExplicitValue, i128)` alongside events, eliminating the need for `eval_section_length` and removing duplicate AST traversal. Replaced a manual loop with `try_fold`. Combined non-materializable type error arms into a single `|` block leveraging `.kind_name()`.
