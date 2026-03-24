@@ -12,6 +12,10 @@ use crate::value::{NumberPatternValue, SamplePatternValue};
 
 /// Exports a sample pattern's evaluated events to an HTML file.
 ///
+/// # Panics
+///
+/// Panics if a sample token in an event is not found in the pre-computed sample list.
+///
 /// # Errors
 ///
 /// Returns [`EvalError`] if pattern querying fails or if the file cannot be written.
