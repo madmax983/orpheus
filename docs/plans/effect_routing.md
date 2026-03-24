@@ -1,4 +1,18 @@
-# 🔭 Vantage: Spec for Effect Routing
+# Effect Routing
+
+> Note (2026-03-23): The architectural framing in this older note has been
+> superseded by the routing snapshot mixer design in
+> `docs/plans/2026-03-23-routing-and-mixer-architecture-design.md` and
+> `docs/adr/0003-routing-snapshot-mixer-architecture.md`.
+>
+> Shared effects now sit on top of the explicit track/bus routing spine rather
+> than arriving as a standalone bus feature. The first concrete follow-on slice
+> is specified in `docs/plans/2026-03-23-shared-delay-bus-design.md`, and the
+> next shared-space operator is specified in
+> `docs/plans/2026-03-23-shared-reverb-bus-design.md`.
+>
+> In particular, the mixer control plane now uses explicit `:send` and `:bus fx`
+> commands. Pattern-language `send(...)` routing remains deferred.
 
 ## 👤 User Story
 "As a Live Coder, I want the ability to route audio through global send effects (like a shared reverb or delay bus) in addition to per-pattern insert effects, so that I can create cohesive, glued-together mixes without consuming excessive CPU power by instantiating duplicate effects on every single pattern layer."

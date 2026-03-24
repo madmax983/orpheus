@@ -1,8 +1,9 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fmt::Write;
 
 use orpheus_dsp::{RoutingSnapshot, SampleTrigger, TrackSource};
 use orpheus_pattern::Event;
+use orpheus_pattern::Rational;
 
 use crate::Value;
 
@@ -10,7 +11,7 @@ use crate::Value;
 pub struct MixerState {
     compatibility_main_binding: Option<String>,
     tracks: BTreeMap<String, MixerTrack>,
-    buses: BTreeSet<String>,
+    buses: BTreeMap<String, MixerBus>,
 }
 
 #[derive(Clone, Debug)]
@@ -19,6 +20,25 @@ struct MixerTrack {
     level: f32,
     muted: bool,
     sends: BTreeMap<String, f32>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct MixerBus {
+    effect: Option<MixerBusEffect>,
+}
+
+#[derive(Clone, Debug)]
+enum MixerBusEffect {
+    Delay {
+        time: Rational,
+        feedback: f32,
+        wet: f32,
+    },
+    Reverb {
+        size: f32,
+        damp: f32,
+        wet: f32,
+    },
 }
 
 impl Default for MixerTrack {
@@ -57,7 +77,7 @@ impl MixerState {
         if self.tracks.contains_key(name) {
             return Err(format!("track `{name}` already exists"));
         }
-        if self.buses.contains(name) {
+        if self.buses.contains_key(name) {
             return Err(format!("routing name `{name}` is already used by a bus"));
         }
         self.tracks.insert(name.to_owned(), MixerTrack::default());
@@ -107,13 +127,76 @@ impl MixerState {
         if name == "main" {
             return Err("bus `main` conflicts with the reserved compatibility track".to_owned());
         }
-        if self.buses.contains(name) {
+        if self.buses.contains_key(name) {
             return Err(format!("bus `{name}` already exists"));
         }
         if self.tracks.contains_key(name) {
             return Err(format!("routing name `{name}` is already used by a track"));
         }
-        self.buses.insert(name.to_owned());
+        self.buses.insert(name.to_owned(), MixerBus::default());
+        Ok(())
+    }
+
+    pub(crate) fn set_bus_delay(
+        &mut self,
+        bus_name: &str,
+        time: Rational,
+        feedback: f32,
+        wet: f32,
+    ) -> Result<(), String> {
+        if time <= Rational::zero() {
+            return Err("delay time must be a positive rational like 1/8".to_owned());
+        }
+        if !feedback.is_finite() || !(0.0..=1.0).contains(&feedback) {
+            return Err("delay feedback must be a finite value in [0, 1]".to_owned());
+        }
+        if !wet.is_finite() || !(0.0..=1.0).contains(&wet) {
+            return Err("delay wet must be a finite value in [0, 1]".to_owned());
+        }
+
+        let bus = self
+            .buses
+            .get_mut(bus_name)
+            .ok_or_else(|| format!("no bus named `{bus_name}`"))?;
+        bus.effect = Some(MixerBusEffect::Delay {
+            time,
+            feedback,
+            wet,
+        });
+        Ok(())
+    }
+
+    pub(crate) fn set_bus_reverb(
+        &mut self,
+        bus_name: &str,
+        size: f32,
+        damp: f32,
+        wet: f32,
+    ) -> Result<(), String> {
+        if !size.is_finite() || !(0.0..=1.0).contains(&size) {
+            return Err("reverb size must be a finite value in [0, 1]".to_owned());
+        }
+        if !damp.is_finite() || !(0.0..=1.0).contains(&damp) {
+            return Err("reverb damp must be a finite value in [0, 1]".to_owned());
+        }
+        if !wet.is_finite() || !(0.0..=1.0).contains(&wet) {
+            return Err("reverb wet must be a finite value in [0, 1]".to_owned());
+        }
+
+        let bus = self
+            .buses
+            .get_mut(bus_name)
+            .ok_or_else(|| format!("no bus named `{bus_name}`"))?;
+        bus.effect = Some(MixerBusEffect::Reverb { size, damp, wet });
+        Ok(())
+    }
+
+    pub(crate) fn clear_bus_effect(&mut self, bus_name: &str) -> Result<(), String> {
+        let bus = self
+            .buses
+            .get_mut(bus_name)
+            .ok_or_else(|| format!("no bus named `{bus_name}`"))?;
+        bus.effect = None;
         Ok(())
     }
 
@@ -126,7 +209,7 @@ impl MixerState {
         if !level.is_finite() || !(0.0..=1.0).contains(&level) {
             return Err("send level must be a finite value in [0, 1]".to_owned());
         }
-        if !self.buses.contains(bus_name) {
+        if !self.buses.contains_key(bus_name) {
             return Err(format!("no bus named `{bus_name}`"));
         }
         let track = self
@@ -160,7 +243,7 @@ impl MixerState {
             };
         }
 
-        for bus_name in &self.buses {
+        for bus_name in self.buses.keys() {
             builder = builder.bus(bus_name.as_str());
         }
 
@@ -183,6 +266,28 @@ impl MixerState {
         for (track_name, track) in &self.tracks {
             for (bus_name, level) in &track.sends {
                 builder = builder.send(track_name.as_str(), bus_name.as_str(), *level);
+            }
+        }
+
+        for (bus_name, bus) in &self.buses {
+            if let Some(effect) = &bus.effect {
+                match effect {
+                    MixerBusEffect::Delay {
+                        time,
+                        feedback,
+                        wet,
+                    } => {
+                        builder = builder.bus_effect_delay(
+                            bus_name.as_str(),
+                            time.clone(),
+                            *feedback,
+                            *wet,
+                        );
+                    }
+                    MixerBusEffect::Reverb { size, damp, wet } => {
+                        builder = builder.bus_effect_reverb(bus_name.as_str(), *size, *damp, *wet);
+                    }
+                }
             }
         }
 
@@ -223,8 +328,33 @@ impl MixerState {
     pub(crate) fn bus_summary_lines(&self) -> Vec<String> {
         self.buses
             .iter()
-            .map(|bus_name| format!("bus {bus_name} -> master"))
+            .map(|(bus_name, bus)| {
+                let mut line = format!("bus {bus_name} -> master");
+                if let Some(effect) = &bus.effect {
+                    write!(&mut line, " {}", effect.summary())
+                        .expect("writing to String should not fail");
+                }
+                line
+            })
             .collect()
+    }
+}
+
+impl MixerBusEffect {
+    fn summary(&self) -> String {
+        match self {
+            Self::Delay {
+                time,
+                feedback,
+                wet,
+            } => format!(
+                "delay({} fb{feedback:.2} wet{wet:.2})",
+                format_rational(time)
+            ),
+            Self::Reverb { size, damp, wet } => {
+                format!("reverb(size={size:.2} damp={damp:.2} wet={wet:.2})")
+            }
+        }
     }
 }
 
@@ -285,4 +415,8 @@ fn sample_event_to_trigger_event(event: Event<crate::SampleEvent>) -> Event<Samp
             trigger
         },
     }
+}
+
+fn format_rational(value: &Rational) -> String {
+    format!("{}/{}", value.numerator(), value.denominator())
 }

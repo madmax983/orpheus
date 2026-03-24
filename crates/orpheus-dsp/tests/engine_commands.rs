@@ -210,6 +210,276 @@ fn engine_applies_track_send_to_dry_bus() {
 }
 
 #[test]
+fn engine_renders_shared_delay_bus_repeats() {
+    let mut engine = EngineHandle::stub();
+    let directory = temp_directory("routing-shared-delay");
+    write_wav(directory.join("pulse.wav"), &[1.0, 0.0, 0.0, 0.0]);
+    engine
+        .enqueue(EngineCommand::ReplaceSampleBank(
+            load_sample_bank_from_directory(&directory).unwrap(),
+        ))
+        .unwrap();
+    engine.enqueue(EngineCommand::SetTempo(48_000.0)).unwrap();
+    let _ = engine.render_test_block(1);
+
+    let snapshot = RoutingSnapshot::builder()
+        .track_with_source("drums", single_hit_track_source("pulse"))
+        .bus("dub")
+        .bus_effect_delay("dub", Rational::new(1, 8).unwrap(), 0.5, 1.0)
+        .send("drums", "dub", 1.0)
+        .build()
+        .unwrap();
+    engine
+        .enqueue(EngineCommand::SwapRoutingSnapshot(snapshot))
+        .unwrap();
+    let _ = engine.render_test_block(engine.frames_until_boundary_for_test());
+
+    let rendered = engine.render_test_block(64);
+
+    assert!(
+        rendered[..60]
+            .iter()
+            .all(|sample| sample.abs() <= f32::EPSILON)
+    );
+    assert!((rendered[60] - 0.25).abs() <= 1.0e-6);
+    assert!((rendered[61] - 0.25).abs() <= 1.0e-6);
+    assert!((rendered[120] - 0.125).abs() <= 1.0e-6);
+    assert!((rendered[121] - 0.125).abs() <= 1.0e-6);
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn engine_renders_shared_reverb_bus_tail() {
+    let mut engine = EngineHandle::stub();
+    let directory = temp_directory("routing-shared-reverb");
+    write_wav(directory.join("pulse.wav"), &[1.0, 0.0, 0.0, 0.0]);
+    engine
+        .enqueue(EngineCommand::ReplaceSampleBank(
+            load_sample_bank_from_directory(&directory).unwrap(),
+        ))
+        .unwrap();
+    engine.enqueue(EngineCommand::SetTempo(48_000.0)).unwrap();
+    let _ = engine.render_test_block(1);
+
+    let snapshot = RoutingSnapshot::builder()
+        .track_with_source("pad", single_hit_track_source("pulse"))
+        .bus("verb")
+        .bus_effect_reverb("verb", 0.75, 0.35, 1.0)
+        .send("pad", "verb", 1.0)
+        .build()
+        .unwrap();
+    engine
+        .enqueue(EngineCommand::SwapRoutingSnapshot(snapshot))
+        .unwrap();
+    let _ = engine.render_test_block(engine.frames_until_boundary_for_test());
+
+    let rendered = engine.render_test_block(512);
+
+    assert!(
+        rendered[..128]
+            .iter()
+            .all(|sample| sample.abs() <= f32::EPSILON)
+    );
+    assert!(rendered[320..].iter().any(|sample| sample.abs() > 1.0e-6));
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn bus_effect_changes_adopt_only_at_cycle_boundary() {
+    let mut engine = EngineHandle::stub();
+    let directory = temp_directory("routing-delay-boundary");
+    write_wav(directory.join("pulse.wav"), &[1.0, 0.0, 0.0, 0.0]);
+    engine
+        .enqueue(EngineCommand::ReplaceSampleBank(
+            load_sample_bank_from_directory(&directory).unwrap(),
+        ))
+        .unwrap();
+    engine.enqueue(EngineCommand::SetTempo(48_000.0)).unwrap();
+    let _ = engine.render_test_block(1);
+
+    let first = RoutingSnapshot::builder()
+        .track_with_source("drums", single_hit_track_source("pulse"))
+        .bus("dub")
+        .bus_effect_delay("dub", Rational::new(1, 8).unwrap(), 0.0, 1.0)
+        .send("drums", "dub", 1.0)
+        .build()
+        .unwrap();
+    let second = RoutingSnapshot::builder()
+        .track_with_source("drums", single_hit_track_source("pulse"))
+        .bus("dub")
+        .bus_effect_delay("dub", Rational::new(1, 16).unwrap(), 0.0, 1.0)
+        .send("drums", "dub", 1.0)
+        .build()
+        .unwrap();
+
+    engine
+        .enqueue(EngineCommand::SwapRoutingSnapshot(first))
+        .unwrap();
+    let _ = engine.render_test_block(engine.frames_until_boundary_for_test());
+    engine
+        .enqueue(EngineCommand::SwapRoutingSnapshot(second))
+        .unwrap();
+
+    let before_old_delay = engine.render_test_block(20);
+    assert!(
+        before_old_delay
+            .iter()
+            .all(|sample| sample.abs() <= f32::EPSILON)
+    );
+
+    let old_delay = engine.render_test_block(11);
+    assert!((old_delay[20] - 0.25).abs() <= 1.0e-6);
+    assert!((old_delay[21] - 0.25).abs() <= 1.0e-6);
+
+    let _ = engine.render_test_block(engine.frames_until_boundary_for_test());
+    let next_cycle = engine.render_test_block(20);
+    assert!(
+        next_cycle[..30]
+            .iter()
+            .all(|sample| sample.abs() <= f32::EPSILON)
+    );
+    assert!((next_cycle[30] - 0.25).abs() <= 1.0e-6);
+    assert!((next_cycle[31] - 0.25).abs() <= 1.0e-6);
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn reverb_effect_changes_adopt_only_at_cycle_boundary() {
+    let mut engine = EngineHandle::stub();
+    let directory = temp_directory("routing-reverb-boundary");
+    write_wav(directory.join("pulse.wav"), &[1.0, 0.0, 0.0, 0.0]);
+    engine
+        .enqueue(EngineCommand::ReplaceSampleBank(
+            load_sample_bank_from_directory(&directory).unwrap(),
+        ))
+        .unwrap();
+    engine.enqueue(EngineCommand::SetTempo(48_000.0)).unwrap();
+    let _ = engine.render_test_block(1);
+
+    let first = RoutingSnapshot::builder()
+        .track_with_source("pad", single_hit_track_source("pulse"))
+        .bus("verb")
+        .bus_effect_reverb("verb", 0.75, 0.35, 1.0)
+        .send("pad", "verb", 1.0)
+        .build()
+        .unwrap();
+    let second = RoutingSnapshot::builder()
+        .track_with_source("pad", single_hit_track_source("pulse"))
+        .bus("verb")
+        .bus_effect_reverb("verb", 0.75, 0.35, 0.0)
+        .send("pad", "verb", 1.0)
+        .build()
+        .unwrap();
+
+    engine
+        .enqueue(EngineCommand::SwapRoutingSnapshot(first))
+        .unwrap();
+    let _ = engine.render_test_block(engine.frames_until_boundary_for_test());
+    engine
+        .enqueue(EngineCommand::SwapRoutingSnapshot(second))
+        .unwrap();
+
+    let old_reverb = engine.render_test_block(engine.frames_until_boundary_for_test());
+    assert!(old_reverb.iter().any(|sample| sample.abs() > 1.0e-6));
+
+    let next_cycle = engine.render_test_block(engine.frames_until_boundary_for_test());
+    assert!(next_cycle.iter().all(|sample| sample.abs() <= f32::EPSILON));
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn unchanged_bus_effect_state_survives_unrelated_send_update() {
+    let mut engine = EngineHandle::stub();
+    let directory = temp_directory("routing-delay-tail-preserve");
+    write_wav(directory.join("pulse.wav"), &[1.0, 0.0, 0.0, 0.0]);
+    engine
+        .enqueue(EngineCommand::ReplaceSampleBank(
+            load_sample_bank_from_directory(&directory).unwrap(),
+        ))
+        .unwrap();
+    engine.enqueue(EngineCommand::SetTempo(48_000.0)).unwrap();
+    let _ = engine.render_test_block(1);
+
+    let initial = RoutingSnapshot::builder()
+        .track_with_source("drums", single_hit_track_source("pulse"))
+        .bus("dub")
+        .bus_effect_delay("dub", Rational::new(1, 8).unwrap(), 0.5, 1.0)
+        .send("drums", "dub", 1.0)
+        .build()
+        .unwrap();
+    let updated_send = RoutingSnapshot::builder()
+        .track_with_source("drums", single_hit_track_source("pulse"))
+        .bus("dub")
+        .bus_effect_delay("dub", Rational::new(1, 8).unwrap(), 0.5, 1.0)
+        .send("drums", "dub", 0.5)
+        .build()
+        .unwrap();
+
+    engine
+        .enqueue(EngineCommand::SwapRoutingSnapshot(initial))
+        .unwrap();
+    let _ = engine.render_test_block(engine.frames_until_boundary_for_test());
+    engine
+        .enqueue(EngineCommand::SwapRoutingSnapshot(updated_send))
+        .unwrap();
+    let _ = engine.render_test_block(engine.frames_until_boundary_for_test());
+
+    let first_frame_next_cycle = engine.render_test_block(1);
+    assert!((first_frame_next_cycle[0] - 0.001_953_125).abs() <= 1.0e-6);
+    assert!((first_frame_next_cycle[1] - 0.001_953_125).abs() <= 1.0e-6);
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn unchanged_reverb_state_survives_unrelated_send_update() {
+    let mut engine = EngineHandle::stub();
+    let directory = temp_directory("routing-reverb-tail-preserve");
+    write_wav(directory.join("pulse.wav"), &[1.0, 0.0, 0.0, 0.0]);
+    engine
+        .enqueue(EngineCommand::ReplaceSampleBank(
+            load_sample_bank_from_directory(&directory).unwrap(),
+        ))
+        .unwrap();
+    engine.enqueue(EngineCommand::SetTempo(48_000.0)).unwrap();
+    let _ = engine.render_test_block(1);
+
+    let initial = RoutingSnapshot::builder()
+        .track_with_source("pad", single_hit_track_source("pulse"))
+        .bus("verb")
+        .bus_effect_reverb("verb", 0.75, 0.35, 1.0)
+        .send("pad", "verb", 1.0)
+        .build()
+        .unwrap();
+    let updated_send = RoutingSnapshot::builder()
+        .track_with_source("pad", single_hit_track_source("pulse"))
+        .bus("verb")
+        .bus_effect_reverb("verb", 0.75, 0.35, 1.0)
+        .send("pad", "verb", 0.5)
+        .build()
+        .unwrap();
+
+    engine
+        .enqueue(EngineCommand::SwapRoutingSnapshot(initial))
+        .unwrap();
+    let _ = engine.render_test_block(engine.frames_until_boundary_for_test());
+    let _ = engine.render_test_block(200);
+    engine
+        .enqueue(EngineCommand::SwapRoutingSnapshot(updated_send))
+        .unwrap();
+    let _ = engine.render_test_block(engine.frames_until_boundary_for_test());
+
+    let next_cycle = engine.render_test_block(64);
+    assert!(next_cycle.iter().any(|sample| sample.abs() > 1.0e-6));
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn routing_snapshot_activates_only_at_cycle_boundary() {
     let mut engine = EngineHandle::stub();
 

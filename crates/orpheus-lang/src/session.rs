@@ -16,6 +16,7 @@ use orpheus_dsp::{
     EngineCommand, EngineHandle, PatternUpdate, SampleBank, SampleTrigger, TransportSnapshot,
     load_sample_bank_from_directory,
 };
+use orpheus_pattern::Rational;
 
 use crate::eval::eval_into_bindings;
 use crate::export::render_sample_pattern_to_file_with_bank;
@@ -536,6 +537,23 @@ impl ReplSession {
                 self.enqueue_mixer_snapshot()?;
                 Ok(format!("created bus `{bus_name}`"))
             }
+            ["fx", bus_name, "none"] => {
+                self.mixer.clear_bus_effect(bus_name)?;
+                self.enqueue_mixer_snapshot()?;
+                Ok(format!("cleared hosted effect on bus `{bus_name}`"))
+            }
+            ["fx", bus_name, "delay", params @ ..] => {
+                let (time, feedback, wet) = parse_bus_delay_params(params)?;
+                self.mixer.set_bus_delay(bus_name, time, feedback, wet)?;
+                self.enqueue_mixer_snapshot()?;
+                Ok(format!("attached delay to bus `{bus_name}`"))
+            }
+            ["fx", bus_name, "reverb", params @ ..] => {
+                let (size, damp, wet) = parse_bus_reverb_params(params)?;
+                self.mixer.set_bus_reverb(bus_name, size, damp, wet)?;
+                self.enqueue_mixer_snapshot()?;
+                Ok(format!("attached reverb to bus `{bus_name}`"))
+            }
             _ => Err(bus_usage().to_owned()),
         }
     }
@@ -732,7 +750,7 @@ const fn track_usage() -> &'static str {
 }
 
 const fn bus_usage() -> &'static str {
-    "usage: :bus new <name>"
+    "usage: :bus new <name> | :bus fx <bus> delay time=<num>/<den> feedback=<f> wet=<f> | :bus fx <bus> reverb size=<f> damp=<f> wet=<f> | :bus fx <bus> none"
 }
 
 const fn send_usage() -> &'static str {
@@ -757,6 +775,101 @@ const fn play_usage() -> &'static str {
 
 const fn stop_usage() -> &'static str {
     "usage: :stop"
+}
+
+fn parse_bus_delay_params(tokens: &[&str]) -> Result<(Rational, f32, f32), String> {
+    let mut time = None;
+    let mut feedback = None;
+    let mut wet = None;
+
+    for token in tokens {
+        let (key, value) = token
+            .split_once('=')
+            .ok_or_else(|| format!("bus fx delay expects key=value arguments, got `{token}`"))?;
+        match key {
+            "time" => {
+                time = Some(parse_rational_time(value)?);
+            }
+            "feedback" => {
+                feedback =
+                    Some(value.parse::<f32>().map_err(|_| {
+                        "delay feedback must be a finite value in [0, 1]".to_owned()
+                    })?);
+            }
+            "wet" => {
+                wet = Some(
+                    value
+                        .parse::<f32>()
+                        .map_err(|_| "delay wet must be a finite value in [0, 1]".to_owned())?,
+                );
+            }
+            other => {
+                return Err(format!("unknown bus fx delay key `{other}`"));
+            }
+        }
+    }
+
+    let time = time.ok_or_else(|| "bus fx delay requires time=<num>/<den>".to_owned())?;
+    let feedback = feedback.ok_or_else(|| "bus fx delay requires feedback=<f>".to_owned())?;
+    let wet = wet.ok_or_else(|| "bus fx delay requires wet=<f>".to_owned())?;
+    Ok((time, feedback, wet))
+}
+
+fn parse_bus_reverb_params(tokens: &[&str]) -> Result<(f32, f32, f32), String> {
+    let mut size = None;
+    let mut damp = None;
+    let mut wet = None;
+
+    for token in tokens {
+        let (key, value) = token
+            .split_once('=')
+            .ok_or_else(|| format!("bus fx reverb expects key=value arguments, got `{token}`"))?;
+        match key {
+            "size" => {
+                size = Some(
+                    value
+                        .parse::<f32>()
+                        .map_err(|_| "reverb size must be a finite value in [0, 1]".to_owned())?,
+                );
+            }
+            "damp" => {
+                damp = Some(
+                    value
+                        .parse::<f32>()
+                        .map_err(|_| "reverb damp must be a finite value in [0, 1]".to_owned())?,
+                );
+            }
+            "wet" => {
+                wet = Some(
+                    value
+                        .parse::<f32>()
+                        .map_err(|_| "reverb wet must be a finite value in [0, 1]".to_owned())?,
+                );
+            }
+            other => {
+                return Err(format!("unknown bus fx reverb key `{other}`"));
+            }
+        }
+    }
+
+    let size = size.ok_or_else(|| "bus fx reverb requires size=<f>".to_owned())?;
+    let damp = damp.ok_or_else(|| "bus fx reverb requires damp=<f>".to_owned())?;
+    let wet = wet.ok_or_else(|| "bus fx reverb requires wet=<f>".to_owned())?;
+    Ok((size, damp, wet))
+}
+
+fn parse_rational_time(value: &str) -> Result<Rational, String> {
+    let (numerator, denominator) = value
+        .split_once('/')
+        .ok_or_else(|| "delay time must be a rational like 1/8".to_owned())?;
+    let numerator = numerator
+        .parse::<i64>()
+        .map_err(|_| "delay time must be a rational like 1/8".to_owned())?;
+    let denominator = denominator
+        .parse::<i64>()
+        .map_err(|_| "delay time must be a rational like 1/8".to_owned())?;
+    Rational::new(numerator, denominator)
+        .map_err(|_| "delay time must be a rational like 1/8".to_owned())
 }
 
 #[cfg(test)]
@@ -875,6 +988,140 @@ mod tests {
 
         assert!(mixer.contains("drums -> groove"));
         assert!(mixer.contains("send verb@0.35"));
+    }
+
+    #[test]
+    fn bus_fx_command_attaches_shared_delay_to_bus() {
+        let mut session = ReplSession::new();
+
+        session.eval_line(":bus new dub").unwrap();
+        assert_eq!(
+            session.eval_line(":bus fx dub delay time=3/16 feedback=0.45 wet=1.0"),
+            Ok("attached delay to bus `dub`".to_owned())
+        );
+
+        let mixer = session.eval_line(":mixer").unwrap();
+        assert!(mixer.contains("bus dub -> master"));
+        assert!(mixer.contains("delay(3/16"));
+        let _ = session.render_test_block_for_tui(1);
+        assert!(session.transport_snapshot().has_pending_routing());
+    }
+
+    #[test]
+    fn bus_fx_command_attaches_shared_reverb_to_bus() {
+        let mut session = ReplSession::new();
+
+        session.eval_line(":bus new verb").unwrap();
+        assert_eq!(
+            session.eval_line(":bus fx verb reverb size=0.75 damp=0.35 wet=1.0"),
+            Ok("attached reverb to bus `verb`".to_owned())
+        );
+
+        let mixer = session.eval_line(":mixer").unwrap();
+        assert!(mixer.contains("bus verb -> master"));
+        assert!(mixer.contains("reverb(size=0.75 damp=0.35 wet=1.00)"));
+        let _ = session.render_test_block_for_tui(1);
+        assert!(session.transport_snapshot().has_pending_routing());
+    }
+
+    #[test]
+    fn bus_fx_command_clears_hosted_effect_with_none() {
+        let mut session = ReplSession::new();
+
+        session.eval_line(":bus new dub").unwrap();
+        session
+            .eval_line(":bus fx dub delay time=3/16 feedback=0.45 wet=1.0")
+            .unwrap();
+        assert_eq!(
+            session.eval_line(":bus fx dub none"),
+            Ok("cleared hosted effect on bus `dub`".to_owned())
+        );
+
+        let mixer = session.eval_line(":mixer").unwrap();
+        assert!(mixer.contains("bus dub -> master"));
+        assert!(!mixer.contains("delay("));
+    }
+
+    #[test]
+    fn bus_fx_command_rejects_unknown_bus() {
+        let mut session = ReplSession::new();
+
+        assert_eq!(
+            session.eval_line(":bus fx dub delay time=3/16 feedback=0.45 wet=1.0"),
+            Err("no bus named `dub`".to_owned())
+        );
+    }
+
+    #[test]
+    fn bus_fx_command_rejects_bad_rational_time() {
+        let mut session = ReplSession::new();
+        session.eval_line(":bus new dub").unwrap();
+
+        let error = session
+            .eval_line(":bus fx dub delay time=bad feedback=0.45 wet=1.0")
+            .unwrap_err();
+
+        assert!(error.contains("delay time"));
+    }
+
+    #[test]
+    fn bus_fx_command_rejects_invalid_feedback() {
+        let mut session = ReplSession::new();
+        session.eval_line(":bus new dub").unwrap();
+
+        let error = session
+            .eval_line(":bus fx dub delay time=3/16 feedback=1.5 wet=1.0")
+            .unwrap_err();
+
+        assert!(error.contains("feedback"));
+    }
+
+    #[test]
+    fn bus_fx_command_rejects_invalid_wet() {
+        let mut session = ReplSession::new();
+        session.eval_line(":bus new dub").unwrap();
+
+        let error = session
+            .eval_line(":bus fx dub delay time=3/16 feedback=0.45 wet=1.5")
+            .unwrap_err();
+
+        assert!(error.contains("wet"));
+    }
+
+    #[test]
+    fn bus_fx_command_rejects_invalid_reverb_size() {
+        let mut session = ReplSession::new();
+        session.eval_line(":bus new verb").unwrap();
+
+        let error = session
+            .eval_line(":bus fx verb reverb size=1.5 damp=0.35 wet=1.0")
+            .unwrap_err();
+
+        assert!(error.contains("size"));
+    }
+
+    #[test]
+    fn bus_fx_command_rejects_invalid_reverb_damp() {
+        let mut session = ReplSession::new();
+        session.eval_line(":bus new verb").unwrap();
+
+        let error = session
+            .eval_line(":bus fx verb reverb size=0.75 damp=-0.1 wet=1.0")
+            .unwrap_err();
+
+        assert!(error.contains("damp"));
+    }
+
+    #[test]
+    fn bus_fx_command_rejects_invalid_reverb_wet() {
+        let mut session = ReplSession::new();
+        session.eval_line(":bus new verb").unwrap();
+
+        let error = session
+            .eval_line(":bus fx verb reverb size=0.75 damp=0.35 wet=1.5")
+            .unwrap_err();
+
+        assert!(error.contains("wet"));
     }
 
     #[test]

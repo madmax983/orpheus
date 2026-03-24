@@ -37,7 +37,7 @@ const MEDIUM_HELP_FOOTER: &str = "Esc close   ?   Ctrl-C";
 const COMPACT_HELP_FOOTER: &str = "Esc ? Ctrl-C";
 const MIN_HELP_FOOTER: &str = "Esc ?";
 const COMMAND_HINTS: [(&str, &str); 12] = [
-    (":bus", ":bus new <name>"),
+    (":bus", ":bus <new|fx> ..."),
     (":export", ":export <binding> <path> [cycles]"),
     (":mixer", ":mixer"),
     (":open", ":open <path>"),
@@ -450,7 +450,7 @@ impl SessionTui {
             Line::raw("empty input only"),
             Line::raw("Open: :open <path>"),
             Line::raw("Transport: :play / :stop"),
-            Line::raw("Mixer: :track / :bus / :send / :mixer"),
+            Line::raw("Mixer: :track / :bus new|fx / :send / :mixer"),
             Line::raw("Set: :tempo <bpm>"),
             Line::raw("Render: :render <binding> <path> [cycles]"),
             Line::raw("Export: :export <binding> <path> [cycles]"),
@@ -480,7 +480,7 @@ impl SessionTui {
     }
 
     const fn help_overlay_body() -> &'static str {
-        "Toggle: ?\nClose: Esc\nTransport: Space toggle, :play, :stop, :tempo <bpm>\nMixer: :track, :bus, :send, :mixer\nRender: :render <binding> <path> [cycles]\nExport: :export <binding> <path> [cycles]\nAnalyze: :roll <binding> [cycles] [steps_per_cycle]\nSession: :open <path>, :quit\nBindings: PgUp/PgDn\nInput: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
+        "Toggle: ?\nClose: Esc\nTransport: Space toggle, :play, :stop, :tempo <bpm>\nMixer: :track, :bus new|fx, :send, :mixer\nRender: :render <binding> <path> [cycles]\nExport: :export <binding> <path> [cycles]\nAnalyze: :roll <binding> [cycles] [steps_per_cycle]\nSession: :open <path>, :quit\nBindings: PgUp/PgDn\nInput: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
     }
 
     const fn help_overlay_footer() -> &'static str {
@@ -1429,6 +1429,48 @@ mod tests {
     }
 
     #[test]
+    fn transport_pane_shows_hosted_bus_effect_summary() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = ":bus new dub".to_owned();
+        app.submit_line();
+        app.input = ":bus fx dub delay time=3/16 feedback=0.45 wet=1.0".to_owned();
+        app.submit_line();
+
+        let frame = render_frame_for_test(&app, 100, 24);
+        assert!(frame.contains("bus dub -> master"));
+        assert!(frame.contains("delay(3/16"));
+    }
+
+    #[test]
+    fn transport_pane_shows_hosted_reverb_bus_effect_summary() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = ":bus new verb".to_owned();
+        app.submit_line();
+        app.input = ":bus fx verb reverb size=0.75 damp=0.35 wet=1.0".to_owned();
+        app.submit_line();
+
+        let frame = render_frame_for_test(&app, 160, 24);
+        assert!(frame.contains("bus verb -> master"));
+        assert!(frame.contains("reverb(size=0.75"));
+        assert!(frame.contains("damp=0.35"));
+        assert!(frame.contains("wet=1.00)"));
+    }
+
+    #[test]
+    fn transport_pane_shows_pending_routing_after_bus_fx_change() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = ":bus new dub".to_owned();
+        app.submit_line();
+        let _ = app.session.render_test_block_for_tui(1);
+        app.input = ":bus fx dub delay time=3/16 feedback=0.45 wet=1.0".to_owned();
+        app.submit_line();
+        let _ = app.session.render_test_block_for_tui(1);
+
+        let frame = render_frame_for_test(&app, 80, 24);
+        assert!(frame.contains("Routing: pending"));
+    }
+
+    #[test]
     fn bindings_pane_marks_live_and_next_patterns() {
         let mut app = SessionTui::new(EngineHandle::stub());
         app.input = "drums = bd sn".to_owned();
@@ -1614,6 +1656,15 @@ mod tests {
             app.repl_body()
                 .contains("Hint: Tab -> :render <binding> <path> [cycles]")
         );
+    }
+
+    #[test]
+    fn repl_body_shows_updated_bus_completion_hint() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = ":bu".to_owned();
+        app.cursor_index = app.input.len();
+
+        assert!(app.repl_body().contains("Hint: Tab -> :bus <new|fx> ..."));
     }
 
     #[test]
