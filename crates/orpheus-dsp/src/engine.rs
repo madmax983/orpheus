@@ -8,7 +8,11 @@ use cpal::{BufferSize, SampleRate, StreamConfig};
 use orpheus_pattern::Event;
 use rtrb::{Consumer, Producer};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+#[cfg(not(loom))]
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering, fence};
+
+#[cfg(loom)]
+use loom::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering, fence};
 use thiserror::Error;
 
 use crate::command::{EngineCommand, PatternUpdate, new_command_queue};
@@ -87,7 +91,7 @@ impl SharedTransport {
         // Start the write transaction. Relaxed is sufficient because the
         // atomic fence handles the required release semantics.
         self.publish_epoch.fetch_add(1, Ordering::Relaxed);
-        std::sync::atomic::fence(Ordering::Release);
+        fence(Ordering::Release);
 
         self.current_frame
             .store(core.current_frame, Ordering::Relaxed);
@@ -102,18 +106,22 @@ impl SharedTransport {
             .store(core.pending_pattern.is_some(), Ordering::Relaxed);
 
         // Commit the write transaction.
-        std::sync::atomic::fence(Ordering::Release);
+        fence(Ordering::Release);
         self.publish_epoch.fetch_add(1, Ordering::Relaxed);
     }
 
     fn snapshot(&self) -> TransportSnapshot {
         loop {
             let start_epoch = self.publish_epoch.load(Ordering::Relaxed);
-            std::sync::atomic::fence(Ordering::Acquire);
+            fence(Ordering::Acquire);
 
             // If odd, a write is in progress. Wait for it to finish.
             if start_epoch % 2 != 0 {
+                #[cfg(not(loom))]
                 std::hint::spin_loop();
+
+                #[cfg(loom)]
+                loom::hint::spin_loop();
                 continue;
             }
 
@@ -127,7 +135,7 @@ impl SharedTransport {
                 has_pending_pattern: self.has_pending_pattern.load(Ordering::Relaxed),
             };
 
-            std::sync::atomic::fence(Ordering::Acquire);
+            fence(Ordering::Acquire);
             let end_epoch = self.publish_epoch.load(Ordering::Relaxed);
             // If the epoch is unchanged, we observed a consistent state.
             if start_epoch == end_epoch {
@@ -722,4 +730,52 @@ fn mix_voices(active_voices: &mut [Option<ActiveVoice>]) -> (f32, f32) {
         }
     }
     (left.clamp(-1.0, 1.0), right.clamp(-1.0, 1.0))
+}
+
+#[cfg(all(test, loom))]
+mod havoc_tests {
+    use super::*;
+    use loom::thread;
+    use std::sync::Arc;
+
+    #[test]
+    fn havoc_transport_torn_read() {
+        loom::model(|| {
+            let transport = Arc::new(SharedTransport {
+                publish_epoch: AtomicU64::new(0),
+                current_frame: AtomicU64::new(0),
+                current_cycle_start_frame: AtomicU64::new(0),
+                frames_per_cycle: AtomicU64::new(0),
+                tempo_bpm_bits: AtomicU32::new(0),
+                is_playing: AtomicBool::new(false),
+                has_pending_pattern: AtomicBool::new(false),
+            });
+
+            let t1 = transport.clone();
+            let writer = thread::spawn(move || {
+                let mut core = EngineCore::new(&StreamConfig {
+                    channels: 2,
+                    sample_rate: cpal::SampleRate(48000),
+                    buffer_size: cpal::BufferSize::Default,
+                }).unwrap();
+                core.current_frame = 1000;
+                core.current_cycle_start_frame = 500;
+                core.frames_per_cycle = 100;
+                core.tempo_bpm = 120.0;
+                core.is_playing = true;
+                core.pending_pattern = None;
+                t1.publish(&core);
+            });
+
+            let reader = thread::spawn(move || {
+                let snap = transport.snapshot();
+                if snap.is_playing {
+                    assert_eq!(snap.current_frame, 1000, "TORN READ OBSERVED!");
+                }
+            });
+
+            writer.join().unwrap();
+            reader.join().unwrap();
+        });
+    }
 }

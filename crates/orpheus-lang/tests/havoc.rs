@@ -25,3 +25,30 @@ proptest! {
         let _ = eval_module(&source, ReplMode::Loose);
     }
 }
+
+proptest! {
+    #[test]
+    fn shift_does_not_panic(offset in f64::MIN..f64::MAX) {
+        let source = format!("a = shift({offset}, bd)");
+        let _ = eval_module(&source, ReplMode::Loose);
+    }
+}
+
+proptest! {
+    #[test]
+    fn rand_does_not_panic(seed in 0u64..u64::MAX) {
+        let source = format!("a = rand() |> fast({seed})");
+        let _ = eval_module(&source, ReplMode::Loose);
+    }
+}
+
+proptest! {
+    #[test]
+    fn hpf_lpf_do_not_panic(cutoff in f64::MIN..f64::MAX) {
+        let source_hpf = format!("a = hpf({cutoff}, bd)");
+        let _ = eval_module(&source_hpf, ReplMode::Loose);
+
+        let source_lpf = format!("a = lpf({cutoff}, bd)");
+        let _ = eval_module(&source_lpf, ReplMode::Loose);
+    }
+}
