@@ -98,6 +98,12 @@ impl From<ParseError> for EvalError {
     }
 }
 
+impl From<crate::pitch::PitchLiteralError> for EvalError {
+    fn from(error: crate::pitch::PitchLiteralError) -> Self {
+        Self::new(error.to_string())
+    }
+}
+
 impl From<std::num::TryFromIntError> for EvalError {
     fn from(error: std::num::TryFromIntError) -> Self {
         Self::new(error.to_string())
@@ -650,9 +656,7 @@ impl Evaluator {
                 })?;
                 let beat_index = self.eval_time_expr(value, meter.into())?;
                 let beat_length = rational_from_parts(1, meter.beats_per_cycle)?;
-                beat_index
-                    .checked_mul(&beat_length)
-                    .map_err(|error| EvalError::new(error.to_string()))
+                Ok(beat_index.checked_mul(&beat_length)?)
             }
             _ => extract_constant_number_rational(
                 self.eval_expr_in_meter(expr, meter)?,
@@ -742,14 +746,10 @@ impl Evaluator {
             return Ok(value);
         }
 
-        match parse_named_pitch_literal(name) {
-            Ok(Some(semitones)) => {
-                return Ok(Value::NumberPattern(NumberPatternValue::constant(
-                    f64::from(semitones),
-                )));
-            }
-            Err(error) => return Err(EvalError::new(error.to_string())),
-            Ok(None) => {}
+        if let Some(semitones) = parse_named_pitch_literal(name)? {
+            return Ok(Value::NumberPattern(NumberPatternValue::constant(
+                f64::from(semitones),
+            )));
         }
 
         match self.mode {
@@ -850,11 +850,8 @@ impl Evaluator {
     fn try_number_node(&self, expr: &Expr) -> Result<Option<PatternNode<f64>>, EvalError> {
         match expr {
             Expr::Number(value) => Ok(Some(PatternNode::atom(*value))),
-            Expr::Ident(name) => match parse_named_pitch_literal(name) {
-                Ok(Some(semitones)) => Ok(Some(PatternNode::atom(f64::from(semitones)))),
-                Err(error) => Err(EvalError::new(error.to_string())),
-                Ok(None) => Ok(None),
-            },
+            Expr::Ident(name) => Ok(parse_named_pitch_literal(name)?
+                .map(|semitones| PatternNode::atom(f64::from(semitones)))),
             Expr::Rest => Ok(Some(PatternNode::rest())),
             Expr::Group(items) => {
                 let Some(nodes) = self.collect_number_nodes(items)? else {
@@ -1192,17 +1189,15 @@ pub fn render_span(cycle_count: u64) -> Result<TimeSpan, EvalError> {
 }
 
 fn build_span(start: Rational, end: Rational) -> Result<TimeSpan, EvalError> {
-    TimeSpan::new(start, end).map_err(|error| EvalError::new(error.to_string()))
+    Ok(TimeSpan::new(start, end)?)
 }
 
 fn rational_add(left: &Rational, right: &Rational) -> Result<Rational, EvalError> {
-    left.checked_add(right)
-        .map_err(|error| EvalError::new(error.to_string()))
+    Ok(left.checked_add(right)?)
 }
 
 fn rational_from_parts(numerator: i128, denominator: i128) -> Result<Rational, EvalError> {
-    Rational::checked_from_parts(numerator, denominator)
-        .map_err(|error| EvalError::new(error.to_string()))
+    Ok(Rational::checked_from_parts(numerator, denominator)?)
 }
 
 #[cfg(test)]
