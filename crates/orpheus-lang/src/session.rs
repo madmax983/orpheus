@@ -25,7 +25,7 @@ use crate::mixer::MixerState;
 use crate::types::infer_into_bindings;
 use crate::{ReplMode, Type, Value};
 
-pub(crate) struct ReplSession {
+pub struct ReplSession {
     mode: ReplMode,
     engine: EngineHandle,
     sample_bank: SampleBank,
@@ -45,14 +45,14 @@ struct PatternDisplayState {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct TransportView {
+pub struct TransportView {
     snapshot: TransportSnapshot,
     active_pattern_name: Option<String>,
     pending_pattern_name: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct MixerView {
+pub struct MixerView {
     tracks: Vec<String>,
     buses: Vec<String>,
     has_pending_routing: bool,
@@ -98,7 +98,7 @@ impl ReplSession {
         Self::with_engine(EngineHandle::stub())
     }
 
-    pub(crate) fn with_engine(engine: EngineHandle) -> Self {
+    pub fn with_engine(engine: EngineHandle) -> Self {
         Self {
             mode: ReplMode::Loose,
             engine,
@@ -111,7 +111,7 @@ impl ReplSession {
         }
     }
 
-    pub(crate) fn eval_line(&mut self, source: &str) -> Result<String, String> {
+    pub fn eval_line(&mut self, source: &str) -> Result<String, String> {
         if source.starts_with(':') {
             return self.eval_command(source);
         }
@@ -469,7 +469,7 @@ impl ReplSession {
         ))
     }
 
-    pub(crate) fn open_file(&mut self, path: impl AsRef<Path>) -> Result<String, String> {
+    pub fn open_file(&mut self, path: impl AsRef<Path>) -> Result<String, String> {
         let path = path.as_ref();
         let loaded = load_file_runtime_strict(path).map_err(|error| error.to_string())?;
         let binding_names = loaded
@@ -716,7 +716,7 @@ impl ReplSession {
         Ok(())
     }
 
-    pub(crate) fn binding_summaries(&self) -> Vec<String> {
+    pub fn binding_summaries(&self) -> Vec<String> {
         self.type_bindings
             .iter()
             .map(|(name, ty)| format!("{name}: {ty}"))
@@ -724,18 +724,18 @@ impl ReplSession {
     }
 
     #[cfg(test)]
-    pub(crate) fn last_loaded_pattern_name(&self) -> Option<String> {
+    pub fn last_loaded_pattern_name(&self) -> Option<String> {
         self.pattern_display
             .borrow()
             .last_loaded_pattern_name
             .clone()
     }
 
-    pub(crate) fn transport_snapshot(&self) -> TransportSnapshot {
+    pub fn transport_snapshot(&self) -> TransportSnapshot {
         self.transport_view().snapshot
     }
 
-    pub(crate) fn transport_view(&self) -> TransportView {
+    pub fn transport_view(&self) -> TransportView {
         let snapshot = self.engine.transport_snapshot();
         let mut display = self.pattern_display.borrow_mut();
         if let Some(pending_name) = display.pending_pattern_name.clone() {
@@ -761,7 +761,7 @@ impl ReplSession {
         }
     }
 
-    pub(crate) fn mixer_view(&self) -> MixerView {
+    pub fn mixer_view(&self) -> MixerView {
         let snapshot = self.engine.transport_snapshot();
         MixerView {
             tracks: self.mixer.track_summary_lines(),
@@ -771,12 +771,12 @@ impl ReplSession {
     }
 
     #[cfg(test)]
-    pub(crate) fn render_test_block_for_tui(&mut self, frames: u64) -> Vec<f32> {
+    pub fn render_test_block_for_tui(&mut self, frames: u64) -> Vec<f32> {
         self.engine.render_test_block(frames)
     }
 
     #[cfg(test)]
-    pub(crate) fn frames_until_boundary_for_tui(&self) -> u64 {
+    pub fn frames_until_boundary_for_tui(&self) -> u64 {
         self.engine.frames_until_boundary_for_test()
     }
 }

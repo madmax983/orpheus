@@ -1,19 +1,19 @@
 //! Language and REPL surface for Orpheus.
 
-pub mod ascii_roll;
+pub(crate) mod ascii_roll;
 mod ast;
 mod builtins;
 mod diagnostics;
 mod eval;
-pub mod export;
-pub mod html;
+pub(crate) mod export;
+pub(crate) mod html;
 mod loader;
 pub(crate) mod mixer;
 mod parser;
 mod pitch;
 pub mod repl;
-pub mod session;
-pub mod stats;
+pub(crate) mod session;
+pub(crate) mod stats;
 mod svg;
 pub mod tui;
 mod types;
