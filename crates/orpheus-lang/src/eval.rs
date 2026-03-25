@@ -1518,4 +1518,24 @@ right = sometimes(fast(2), cp hh)";
             "explicit-time forms cannot appear inside a pattern group; use `stream(...)` or lift the form outside the group"
         );
     }
+
+    #[test]
+    fn eval_explicit_to_implicit_error_unsupported_pattern_item_error_sample_group() {
+        let result = eval_module("x = (bd sample(\"bd\", sn))", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "function call `sample` cannot appear inside a pattern group in Task 5; apply transforms with the pipe operator `|>` or call `sample(..., pattern)` directly"
+        );
+    }
+
+    #[test]
+    fn eval_explicit_to_implicit_error_unsupported_pattern_item_error_function_group() {
+        let result = eval_module("x = (fast bd)", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "function `fast` cannot appear inside a pattern group in Task 5; apply transforms with the pipe operator `|>` or call `fast(..., pattern)` directly"
+        );
+    }
 }
