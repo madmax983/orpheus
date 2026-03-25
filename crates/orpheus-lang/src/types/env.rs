@@ -10,6 +10,11 @@ use std::collections::BTreeMap;
 
 use crate::types::{Type, TypeVarId};
 
+/// A polymorphic type scheme containing universally quantified type variables.
+///
+/// This allows functions like `fast` to operate on `Pattern<t>` regardless of
+/// whether `t` is a `Sample` or a `Number`. During type inference, the scheme
+/// is instantiated to produce a concrete type for each specific usage.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
     pub vars: Vec<TypeVarId>,
@@ -26,6 +31,10 @@ impl TypeScheme {
     }
 }
 
+/// A mapping from variable names to their corresponding `TypeScheme`s.
+///
+/// Stores both the predefined built-in primitives and any user-defined
+/// variables created during a session.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeEnv {
     entries: BTreeMap<String, TypeScheme>,

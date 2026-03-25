@@ -19,6 +19,11 @@ struct ImportSpec {
     names: Vec<String>,
 }
 
+/// The result of parsing, typechecking, and evaluating an Orpheus module.
+///
+/// Contains the fully inferred type bindings and fully evaluated runtime values
+/// for all top-level statements. Also tracks the name of the final binding
+/// so the REPL knows what pattern to make active automatically.
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
     pub type_bindings: BTreeMap<String, Type>,

@@ -4,6 +4,11 @@
 //! `"fs4"`, `"bf3"`) into integer MIDI note numbers or offsets.
 use std::fmt::{self, Display, Formatter};
 
+/// An error that occurs when a string fails to parse as a pitch literal.
+///
+/// Thrown when the literal has invalid characters (like `"c#4"` instead of `"cs4"`),
+/// is an uppercase spelling (like `"C4"` instead of `"c4"`), or contains an
+/// unparseable octave suffix.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PitchLiteralError {
     message: Box<str>,

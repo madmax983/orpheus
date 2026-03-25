@@ -105,6 +105,7 @@ pub enum GatePatternValue {
     Number(NumberPatternValue),
 }
 
+/// Indicates the order in which an arpeggiator traverses the notes of a chord.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ArpDirectionValue {
     Up,
@@ -118,6 +119,21 @@ const MIXOLYDIAN_INTERVALS: [i32; 7] = [0, 2, 4, 5, 7, 9, 10];
 const AEOLIAN_INTERVALS: [i32; 7] = [0, 2, 3, 5, 7, 8, 10];
 const MINOR_PENTATONIC_INTERVALS: [i32; 5] = [0, 3, 5, 7, 10];
 
+/// A constant collection of musical pitches (a scale or chord) used as a musical palette.
+///
+/// This represents relative scale intervals from a root of `0`. For example,
+/// a major scale is `[0, 2, 4, 5, 7, 9, 11]`.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::eval_module;
+/// use orpheus_lang::ReplMode;
+///
+/// let env = eval_module("scale = ionian", ReplMode::Strict).unwrap();
+/// let val = env.get("scale").unwrap();
+/// assert!(val.as_pitch_class_set().is_some());
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PitchClassSetValue {
     pitch_classes: Vec<i32>,

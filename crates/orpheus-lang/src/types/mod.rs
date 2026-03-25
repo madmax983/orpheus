@@ -16,6 +16,7 @@ use std::fmt::{self, Display, Formatter};
 pub use infer::infer_into_bindings;
 pub use infer::infer_module;
 
+/// A unique identifier representing a universally quantified type variable inside a `TypeScheme`.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct TypeVarId(u32);
 
@@ -102,6 +103,10 @@ impl Display for Type {
     }
 }
 
+/// A module resulting from successful type inference.
+///
+/// Contains the resolved monomorphic types for all top-level bindings defined
+/// in the module.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypedModule {
     bindings: BTreeMap<String, Type>,
