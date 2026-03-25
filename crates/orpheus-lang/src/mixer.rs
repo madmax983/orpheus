@@ -405,6 +405,9 @@ fn sample_event_to_trigger_event(event: Event<crate::SampleEvent>) -> Event<Samp
                 .with_gain(event.value.gain())
                 .with_pan(event.value.pan())
                 .with_rate(event.value.rate())
+                .with_resonance(event.value.resonance())
+                .with_drive(event.value.drive())
+                .with_pulse_width(event.value.pulse_width())
                 .with_slice(event.value.slice_start(), event.value.slice_end());
             if let Some(cutoff_hz) = event.value.hpf_cutoff_hz() {
                 trigger = trigger.with_hpf_cutoff_hz(cutoff_hz);

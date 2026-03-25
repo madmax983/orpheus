@@ -14,11 +14,16 @@ use crate::value::{NumberPatternValue, SamplePatternValue};
 ///
 /// # Panics
 ///
-/// Panics if a sample token in an event is not found in the pre-computed sample list.
+/// Panics if a sample's name cannot be found in the previously collected set of sample names.
 ///
 /// # Errors
 ///
 /// Returns [`EvalError`] if pattern querying fails or if the file cannot be written.
+///
+/// # Panics
+///
+/// Panics if the internal sample lane index lookup becomes inconsistent while
+/// rendering the queried event list.
 pub fn export_sample_pattern_to_html(
     pattern: &SamplePatternValue,
     path: impl AsRef<Path>,
@@ -77,7 +82,10 @@ pub fn export_sample_pattern_to_html(
     // Draw events
     for event in events {
         let sample = event.value.sample().to_string();
-        let lane_idx = sample_list.iter().position(|s| *s == sample).unwrap();
+        let lane_idx = sample_list
+            .iter()
+            .position(|s| *s == sample)
+            .ok_or_else(|| EvalError::new(format!("sample '{sample}' not found in lane list")))?;
         #[allow(clippy::cast_precision_loss)]
         let y = (lane_idx as f64).mul_add(lane_height, 40.0) + 5.0;
 

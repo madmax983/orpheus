@@ -19,6 +19,7 @@ mod sample;
 mod sample_bank;
 mod sample_manifest;
 mod scheduler;
+mod synth;
 mod voice;
 
 pub use command::{EngineCommand, PatternUpdate, SampleTrigger};
@@ -36,4 +37,8 @@ pub use sample_bank::{
     SampleBank, SampleBankError, load_builtin_sample_for_test, load_sample_bank_from_directory,
 };
 pub use scheduler::Scheduler;
+pub use synth::{
+    AnalogVoice, AnalogVoiceParams, Gain, LadderFilter, Mix, Noise, OscShape, PhaseAccumulator,
+    PulseOsc, SawOsc, SoftSat, TriOsc,
+};
 pub use voice::VoiceKind;

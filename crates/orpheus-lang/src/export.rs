@@ -59,6 +59,9 @@ fn sample_trigger_from_event(event: &crate::value::SampleEvent) -> SampleTrigger
         .with_gain(event.gain())
         .with_pan(event.pan())
         .with_rate(event.rate())
+        .with_resonance(event.resonance())
+        .with_drive(event.drive())
+        .with_pulse_width(event.pulse_width())
         .with_slice(event.slice_start(), event.slice_end());
     if let Some(cutoff) = event.hpf_cutoff_hz() {
         trigger = trigger.with_hpf_cutoff_hz(cutoff);
@@ -437,6 +440,13 @@ fn sample_event_json(event: &Event<crate::value::SampleEvent>) -> String {
     let _ = writeln!(s, "      \"gain\": {:.6},", event.value.gain());
     let _ = writeln!(s, "      \"pan\": {:.6},", event.value.pan());
     let _ = writeln!(s, "      \"rate\": {:.6},", event.value.rate());
+    let _ = writeln!(s, "      \"resonance\": {:.6},", event.value.resonance());
+    let _ = writeln!(s, "      \"drive\": {:.6},", event.value.drive());
+    let _ = writeln!(
+        s,
+        "      \"pulse_width\": {:.6},",
+        event.value.pulse_width()
+    );
     let _ = writeln!(
         s,
         "      \"slice_start\": {:.6},",

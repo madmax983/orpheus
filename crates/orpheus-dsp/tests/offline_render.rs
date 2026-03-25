@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use orpheus_dsp::{
-    EngineCommand, EngineHandle, RoutingSnapshot, SampleTrigger, TrackSource,
+    EngineCommand, EngineHandle, RoutingSnapshot, SampleBank, SampleTrigger, TrackSource,
     load_sample_bank_from_directory, render_events_to_file_with_bank,
     render_routing_snapshot_to_stereo_for_test,
 };
@@ -312,6 +312,29 @@ fn offline_render_matches_live_shared_delay_bus() {
     assert_eq!(&offline[..live_block.len()], live_block.as_slice());
 
     fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn analog_offline_render_renders_non_silent_audio() {
+    let events = vec![Event {
+        whole: None,
+        part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+        value: SampleTrigger::named("saw"),
+    }];
+    let path = temp_wav_path();
+
+    render_events_to_file_with_bank(&path, &events, 1, &SampleBank::load_builtin()).unwrap();
+
+    let mut reader = hound::WavReader::open(&path).unwrap();
+    let samples = reader
+        .samples::<i16>()
+        .take(64)
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+
+    assert!(samples.iter().any(|sample| *sample != 0));
+
+    let _ = fs::remove_file(path);
 }
 
 #[test]

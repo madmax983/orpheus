@@ -1,5 +1,22 @@
 # 🔭 Vantage: Spec for Analog-Modeled Synthesis
 
+> Note (2026-03-24): The detailed next-step framing for this area now lives in
+> `docs/plans/2026-03-24-analog-dsp-primitives-design.md`.
+>
+> The immediate recommendation is to build reusable DSP primitives in
+> `orpheus-dsp` first, then layer thin voice wrappers on top, and only later
+> revisit broader graph or surface-syntax questions.
+>
+> Follow-on note (2026-03-24): The next concrete execution slice after the
+> primitive kernel is now captured in
+> `docs/plans/2026-03-24-analog-voice-wrapper-design.md` and
+> `docs/plans/2026-03-24-analog-voice-wrapper-implementation-plan.md`.
+>
+> Engine follow-on note (2026-03-24): The next live integration slice after the
+> wrapper is now captured in
+> `docs/plans/2026-03-24-analog-engine-integration-and-demo-design.md` and
+> `docs/plans/2026-03-24-analog-engine-integration-and-demo-implementation-plan.md`.
+
 ## 👤 User Story
 "As a Live Coder, I want built-in, high-quality analog-modeled oscillators (PolyBLEP) and a resonant ladder filter, so that I can synthesize rich, classic electronic sounds (like deep basslines and cutting leads) directly in Orpheus without relying on external samples or DAWs."
 

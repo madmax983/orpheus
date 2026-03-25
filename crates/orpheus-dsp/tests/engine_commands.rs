@@ -46,6 +46,84 @@ fn built_in_voice_trigger_renders_non_silent_audio() {
 }
 
 #[test]
+fn analog_saw_token_renders_non_silent_audio() {
+    let mut engine = EngineHandle::stub();
+    engine.enqueue(EngineCommand::SetTempo(48_000.0)).unwrap();
+    let _ = engine.render_test_block(1);
+
+    let pattern = PatternUpdate::new(
+        "lead",
+        vec![Event {
+            whole: None,
+            part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+            value: SampleTrigger::named("saw"),
+        }],
+    );
+    engine.enqueue(EngineCommand::LoadPattern(pattern)).unwrap();
+    let _ = engine.render_test_block(engine.frames_until_boundary_for_test());
+
+    let rendered = engine.render_test_block(64);
+
+    assert!(rendered.iter().all(|sample| sample.is_finite()));
+    assert!(rendered.iter().any(|sample| sample.abs() > f32::EPSILON));
+}
+
+#[test]
+fn analog_saw_token_sustains_across_its_event_span() {
+    let mut engine = EngineHandle::stub();
+    engine.enqueue(EngineCommand::SetTempo(48_000.0)).unwrap();
+    let _ = engine.render_test_block(1);
+
+    let pattern = PatternUpdate::new(
+        "lead",
+        vec![Event {
+            whole: None,
+            part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+            value: SampleTrigger::named("saw"),
+        }],
+    );
+    engine.enqueue(EngineCommand::LoadPattern(pattern)).unwrap();
+    let _ = engine.render_test_block(engine.frames_until_boundary_for_test());
+
+    let rendered = engine.render_test_block(64);
+
+    assert!(
+        rendered[..16]
+            .iter()
+            .any(|sample| sample.abs() > f32::EPSILON)
+    );
+    assert!(
+        rendered[80..96]
+            .iter()
+            .any(|sample| sample.abs() > f32::EPSILON)
+    );
+}
+
+#[test]
+fn analog_saw_track_feeds_shared_delay_bus() {
+    let mut engine = EngineHandle::stub();
+    engine.enqueue(EngineCommand::SetTempo(48_000.0)).unwrap();
+    let _ = engine.render_test_block(1);
+
+    let snapshot = RoutingSnapshot::builder()
+        .track_with_source("lead", single_hit_track_source("saw"))
+        .bus("dub")
+        .bus_effect_delay("dub", Rational::new(1, 8).unwrap(), 0.5, 1.0)
+        .send("lead", "dub", 1.0)
+        .build()
+        .unwrap();
+    engine
+        .enqueue(EngineCommand::SwapRoutingSnapshot(snapshot))
+        .unwrap();
+
+    let _ = engine.render_test_block(engine.frames_until_boundary_for_test());
+    let rendered = engine.render_test_block(128);
+
+    assert!(rendered.iter().all(|sample| sample.is_finite()));
+    assert!(rendered[120..].iter().any(|sample| sample.abs() > 1.0e-6));
+}
+
+#[test]
 fn built_in_bd_trigger_prefers_embedded_wav_frames() {
     let mut engine = EngineHandle::stub();
     let sample = load_builtin_sample_for_test("bd").unwrap();
