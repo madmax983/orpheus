@@ -156,6 +156,13 @@ impl ReplSession {
                     self.roll_binding(args)
                 }
             }
+            "stats" => {
+                if args.is_empty() {
+                    Err(stats_usage().to_owned())
+                } else {
+                    self.stats_binding(args)
+                }
+            }
             "export" => {
                 if args.is_empty() {
                     Err(export_usage().to_owned())
@@ -282,6 +289,44 @@ impl ReplSession {
                 }
                 _ => Err(format!(
                     "binding `{binding_name}` is a {} and cannot be rendered as a roll",
+                    value.kind_name()
+                )),
+            }
+        } else {
+            Err(format!("no binding named `{binding_name}`"))
+        }
+    }
+
+    fn stats_binding(&self, args: &str) -> Result<String, String> {
+        let mut parts = args.split_whitespace();
+        let binding_name = parts.next().ok_or_else(|| stats_usage().to_owned())?;
+
+        let cycles = parts
+            .next()
+            .unwrap_or("1")
+            .parse::<u64>()
+            .map_err(|_| "cycles must be a positive integer".to_owned())?;
+
+        if let Some(value) = self.bindings.get(binding_name) {
+            match value {
+                crate::value::Value::SamplePattern(pattern) => {
+                    let stats = crate::stats::sample_pattern_stats(pattern, cycles)
+                        .map_err(|error| error.to_string())?;
+                    Ok(format!(
+                        "Pattern: {binding_name}\nCycles: {cycles}\n{}",
+                        stats.trim_end()
+                    ))
+                }
+                crate::value::Value::NumberPattern(pattern) => {
+                    let stats = crate::stats::number_pattern_stats(pattern, cycles)
+                        .map_err(|error| error.to_string())?;
+                    Ok(format!(
+                        "Pattern: {binding_name}\nCycles: {cycles}\n{}",
+                        stats.trim_end()
+                    ))
+                }
+                _ => Err(format!(
+                    "binding `{binding_name}` is a {} and cannot be analyzed",
                     value.kind_name()
                 )),
             }
@@ -750,6 +795,10 @@ const fn export_usage() -> &'static str {
 
 const fn roll_usage() -> &'static str {
     "usage: :roll <binding> [cycles] [steps_per_cycle]"
+}
+
+const fn stats_usage() -> &'static str {
+    "usage: :stats <binding> [cycles]"
 }
 
 const fn tempo_usage() -> &'static str {
@@ -1269,6 +1318,39 @@ mod tests {
         session.eval_line("pattern = bd sn").unwrap();
 
         let error = session.eval_line(":roll pattern foo").unwrap_err();
+
+        assert!(error.contains("cycles must be a positive integer"));
+    }
+
+    #[test]
+    fn stats_command_returns_sample_pattern_stats() {
+        let mut session = ReplSession::new();
+        session.eval_line("pattern = fast(2, bd sn)").unwrap();
+
+        let message = session.eval_line(":stats pattern 2").unwrap();
+
+        assert!(message.contains("Pattern: pattern"));
+        assert!(message.contains("Cycles: 2"));
+        assert!(message.contains("Total Events: 8"));
+        assert!(message.contains("Unique Samples: 2 (bd, sn)"));
+        assert!(message.contains("Event Density: 4.00 events/cycle"));
+    }
+
+    #[test]
+    fn stats_command_rejects_unknown_bindings() {
+        let mut session = ReplSession::new();
+
+        let error = session.eval_line(":stats nope").unwrap_err();
+
+        assert!(error.contains("no binding named `nope`"));
+    }
+
+    #[test]
+    fn stats_command_rejects_invalid_cycles() {
+        let mut session = ReplSession::new();
+        session.eval_line("pattern = bd sn").unwrap();
+
+        let error = session.eval_line(":stats pattern foo").unwrap_err();
 
         assert!(error.contains("cycles must be a positive integer"));
     }
