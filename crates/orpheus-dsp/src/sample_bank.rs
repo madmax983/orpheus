@@ -99,6 +99,9 @@ impl SampleEntry {
         let mut composed = SampleTrigger::named(trigger.token())
             .with_gain(trigger.gain())
             .with_pan(trigger.pan())
+            .with_resonance(trigger.resonance())
+            .with_drive(trigger.drive())
+            .with_pulse_width(trigger.pulse_width())
             .with_rate(self.rate * trigger.rate())
             .with_slice(
                 current_range.mul_add(trigger.slice_start(), self.slice_start),

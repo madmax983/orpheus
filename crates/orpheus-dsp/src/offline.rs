@@ -210,6 +210,7 @@ fn activate_due_snapshot_voices(
             sample_bank,
             &trigger.trigger,
             trigger.fallback_voice,
+            trigger.duration_frames,
             DEFAULT_SAMPLE_RATE,
         )?;
     }
@@ -335,6 +336,7 @@ fn render_events_to_pcm(
                 sample_bank,
                 &trigger.trigger,
                 trigger.fallback_voice,
+                trigger.duration_frames,
                 DEFAULT_SAMPLE_RATE,
             )?;
         }
@@ -437,6 +439,7 @@ fn activate_voice(
     sample_bank: &SampleBank,
     trigger: &SampleTrigger,
     fallback_voice: Option<VoiceKind>,
+    duration_frames: u32,
     sample_rate: u32,
 ) -> Result<(), OfflineRenderError> {
     if let Some(slot) = active_voices.iter_mut().find(|slot| slot.is_none()) {
@@ -444,7 +447,13 @@ fn activate_voice(
             if let Some((sample, resolved_trigger)) = sample_bank.resolve_trigger(trigger) {
                 ActiveVoice::from_sample(TrackId::new(0), sample, sample_rate, &resolved_trigger)
             } else if let Some(voice) = fallback_voice {
-                ActiveVoice::new_with_pan(TrackId::new(0), voice, sample_rate, trigger.pan())
+                ActiveVoice::from_trigger(
+                    TrackId::new(0),
+                    voice,
+                    sample_rate,
+                    trigger,
+                    duration_frames,
+                )
             } else {
                 return Err(OfflineRenderError::UnknownSampleToken(
                     trigger.token().into(),

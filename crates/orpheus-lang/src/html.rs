@@ -15,6 +15,11 @@ use crate::value::{NumberPatternValue, SamplePatternValue};
 /// # Errors
 ///
 /// Returns [`EvalError`] if pattern querying fails or if the file cannot be written.
+///
+/// # Panics
+///
+/// Panics if the internal sample lane index lookup becomes inconsistent while
+/// rendering the queried event list.
 pub fn export_sample_pattern_to_html(
     pattern: &SamplePatternValue,
     path: impl AsRef<Path>,

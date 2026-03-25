@@ -637,6 +637,9 @@ impl ReplSession {
                                 .with_gain(event.value.gain())
                                 .with_pan(event.value.pan())
                                 .with_rate(event.value.rate())
+                                .with_resonance(event.value.resonance())
+                                .with_drive(event.value.drive())
+                                .with_pulse_width(event.value.pulse_width())
                                 .with_slice(event.value.slice_start(), event.value.slice_end());
                             if let Some(cutoff_hz) = event.value.hpf_cutoff_hz() {
                                 trigger = trigger.with_hpf_cutoff_hz(cutoff_hz);
@@ -1498,6 +1501,26 @@ mod tests {
         assert!(rendered[3].abs() < f32::EPSILON);
 
         fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn synth_pulse_width_controls_flow_into_live_engine() {
+        let mut narrow = ReplSession::new();
+        narrow.eval_line("lead = pulse |> pw(0.25)").unwrap();
+        let narrow_rendered = narrow.render_test_block_for_tui(64);
+
+        let mut wide = ReplSession::new();
+        wide.eval_line("lead = pulse |> pw(0.75)").unwrap();
+        let wide_rendered = wide.render_test_block_for_tui(64);
+
+        assert!(narrow_rendered.iter().all(|sample| sample.is_finite()));
+        assert!(wide_rendered.iter().all(|sample| sample.is_finite()));
+        assert!(
+            narrow_rendered
+                .iter()
+                .zip(&wide_rendered)
+                .any(|(left, right)| (left - right).abs() > f32::EPSILON)
+        );
     }
 
     #[test]

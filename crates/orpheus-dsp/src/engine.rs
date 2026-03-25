@@ -376,11 +376,12 @@ impl EngineCore {
                 })
                 .or_else(|| {
                     trigger.fallback_voice.map(|voice| {
-                        ActiveVoice::new_with_pan(
+                        ActiveVoice::from_trigger(
                             trigger.track_id,
                             voice,
                             self.sample_rate,
-                            trigger.trigger.pan(),
+                            &trigger.trigger,
+                            trigger.duration_frames,
                         )
                     })
                 });

@@ -17,6 +17,9 @@ pub struct SampleTrigger {
     gain: f64,
     hpf_cutoff_hz: Option<f64>,
     lpf_cutoff_hz: Option<f64>,
+    resonance: f64,
+    drive: f64,
+    pulse_width: f64,
     rate: f64,
     slice_start: f64,
     slice_end: f64,
@@ -31,6 +34,9 @@ impl SampleTrigger {
             gain: 1.0,
             hpf_cutoff_hz: None,
             lpf_cutoff_hz: None,
+            resonance: 0.2,
+            drive: 1.0,
+            pulse_width: 0.5,
             rate: 1.0,
             slice_start: 0.0,
             slice_end: 1.0,
@@ -53,6 +59,24 @@ impl SampleTrigger {
     #[must_use]
     pub const fn with_lpf_cutoff_hz(mut self, cutoff_hz: f64) -> Self {
         self.lpf_cutoff_hz = Some(cutoff_hz);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_resonance(mut self, resonance: f64) -> Self {
+        self.resonance = resonance;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_drive(mut self, drive: f64) -> Self {
+        self.drive = drive;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_pulse_width(mut self, pulse_width: f64) -> Self {
+        self.pulse_width = pulse_width;
         self
     }
 
@@ -93,6 +117,21 @@ impl SampleTrigger {
     #[must_use]
     pub const fn lpf_cutoff_hz(&self) -> Option<f64> {
         self.lpf_cutoff_hz
+    }
+
+    #[must_use]
+    pub const fn resonance(&self) -> f64 {
+        self.resonance
+    }
+
+    #[must_use]
+    pub const fn drive(&self) -> f64 {
+        self.drive
+    }
+
+    #[must_use]
+    pub const fn pulse_width(&self) -> f64 {
+        self.pulse_width
     }
 
     #[must_use]
@@ -198,6 +237,9 @@ mod tests {
         assert!((trigger.gain() - 1.0).abs() < f64::EPSILON);
         assert_eq!(trigger.hpf_cutoff_hz(), None);
         assert_eq!(trigger.lpf_cutoff_hz(), None);
+        assert!((trigger.resonance() - 0.2).abs() < f64::EPSILON);
+        assert!((trigger.drive() - 1.0).abs() < f64::EPSILON);
+        assert!((trigger.pulse_width() - 0.5).abs() < f64::EPSILON);
         assert!((trigger.rate() - 1.0).abs() < f64::EPSILON);
         assert!((trigger.slice_start() - 0.0).abs() < f64::EPSILON);
         assert!((trigger.slice_end() - 1.0).abs() < f64::EPSILON);
@@ -211,6 +253,9 @@ mod tests {
             .with_gain(0.8)
             .with_hpf_cutoff_hz(500.0)
             .with_lpf_cutoff_hz(12000.0)
+            .with_resonance(0.35)
+            .with_drive(1.25)
+            .with_pulse_width(0.42)
             .with_rate(1.5)
             .with_slice(0.2, 0.8)
             .with_pan(0.3);
@@ -219,6 +264,9 @@ mod tests {
         assert!((trigger.gain() - 0.8).abs() < f64::EPSILON);
         assert_eq!(trigger.hpf_cutoff_hz(), Some(500.0));
         assert_eq!(trigger.lpf_cutoff_hz(), Some(12000.0));
+        assert!((trigger.resonance() - 0.35).abs() < f64::EPSILON);
+        assert!((trigger.drive() - 1.25).abs() < f64::EPSILON);
+        assert!((trigger.pulse_width() - 0.42).abs() < f64::EPSILON);
         assert!((trigger.rate() - 1.5).abs() < f64::EPSILON);
         assert!((trigger.slice_start() - 0.2).abs() < f64::EPSILON);
         assert!((trigger.slice_end() - 0.8).abs() < f64::EPSILON);
