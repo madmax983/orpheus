@@ -9,8 +9,11 @@ use core::f32::consts::TAU;
 use crate::SampleTrigger;
 use crate::routing::TrackId;
 use crate::sample_bank::PlaybackSample;
+use crate::synth::{AnalogVoice, AnalogVoiceParams, OscShape};
 
 const MAX_SAMPLE_EDGE_RAMP_FRAMES: u32 = 32;
+const ANALOG_BASE_FREQUENCY_HZ: f32 = 220.0;
+const ANALOG_OUTPUT_TRIM: f32 = 0.35;
 
 /// Built-in synthesized drum voices used by the current live playback path.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -23,6 +26,14 @@ pub enum VoiceKind {
     ClapLike,
     /// Synthesized hi-hat placeholder for `hh`.
     HiHatLike,
+    /// Analog saw voice placeholder for `saw`.
+    AnalogSaw,
+    /// Analog pulse voice placeholder for `pulse`.
+    AnalogPulse,
+    /// Analog triangle voice placeholder for `tri`.
+    AnalogTri,
+    /// Analog noise voice placeholder for `noise`.
+    AnalogNoise,
 }
 
 impl VoiceKind {
@@ -33,6 +44,10 @@ impl VoiceKind {
             Self::SnareLike => "sn",
             Self::ClapLike => "cp",
             Self::HiHatLike => "hh",
+            Self::AnalogSaw => "saw",
+            Self::AnalogPulse => "pulse",
+            Self::AnalogTri => "tri",
+            Self::AnalogNoise => "noise",
         }
     }
 
@@ -44,8 +59,19 @@ impl VoiceKind {
             "sn" => Some(Self::SnareLike),
             "cp" => Some(Self::ClapLike),
             "hh" => Some(Self::HiHatLike),
+            "saw" => Some(Self::AnalogSaw),
+            "pulse" => Some(Self::AnalogPulse),
+            "tri" => Some(Self::AnalogTri),
+            "noise" => Some(Self::AnalogNoise),
             _ => None,
         }
+    }
+
+    const fn is_drum_voice(self) -> bool {
+        matches!(
+            self,
+            Self::KickLike | Self::SnareLike | Self::ClapLike | Self::HiHatLike
+        )
     }
 }
 
@@ -59,12 +85,18 @@ pub struct ActiveVoice {
 
 #[derive(Clone, Debug)]
 enum ActiveVoiceState {
-    Synth {
+    DrumSynth {
         kind: VoiceKind,
         frame_index: u32,
         duration_frames: u32,
         sample_rate_hz: f64,
         noise_state: u32,
+    },
+    AnalogSynth {
+        voice: AnalogVoice,
+        params: AnalogVoiceParams,
+        frame_index: u32,
+        duration_frames: u32,
     },
     Sample {
         frames: std::sync::Arc<[f32]>,
@@ -81,23 +113,38 @@ enum ActiveVoiceState {
 }
 
 impl ActiveVoice {
-    pub fn new_with_pan(track_id: TrackId, kind: VoiceKind, sample_rate: u32, pan: f64) -> Self {
-        let duration_frames = match kind {
-            VoiceKind::KickLike => sample_rate / 3,
-            VoiceKind::SnareLike => sample_rate / 5,
-            VoiceKind::ClapLike => sample_rate / 6,
-            VoiceKind::HiHatLike => sample_rate / 8,
-        };
-        let (left_gain, right_gain) = stereo_gains_for_pan(pan);
+    #[allow(clippy::cast_precision_loss)]
+    pub fn from_trigger(
+        track_id: TrackId,
+        kind: VoiceKind,
+        sample_rate: u32,
+        trigger: &SampleTrigger,
+        duration_frames: u32,
+    ) -> Self {
+        let (left_gain, right_gain) = stereo_gains_for_pan(trigger.pan());
+
+        if kind.is_drum_voice() {
+            return Self {
+                track_id,
+                state: ActiveVoiceState::DrumSynth {
+                    kind,
+                    frame_index: 0,
+                    duration_frames: drum_duration_frames(kind, sample_rate),
+                    sample_rate_hz: f64::from(sample_rate),
+                    noise_state: 0x00C0_FFEE_u32,
+                },
+                left_gain,
+                right_gain,
+            };
+        }
 
         Self {
             track_id,
-            state: ActiveVoiceState::Synth {
-                kind,
+            state: ActiveVoiceState::AnalogSynth {
+                voice: AnalogVoice::new(sample_rate as f32),
+                params: analog_voice_params(kind, trigger),
                 frame_index: 0,
                 duration_frames: duration_frames.max(1),
-                sample_rate_hz: f64::from(sample_rate),
-                noise_state: 0x00C0_FFEE_u32,
             },
             left_gain,
             right_gain,
@@ -168,7 +215,7 @@ impl ActiveVoice {
     )]
     fn next_mono_sample(&mut self) -> Option<f32> {
         match &mut self.state {
-            ActiveVoiceState::Synth {
+            ActiveVoiceState::DrumSynth {
                 kind,
                 frame_index,
                 duration_frames,
@@ -199,10 +246,35 @@ impl ActiveVoice {
                     VoiceKind::HiHatLike => {
                         next_noise(noise_state).signum() * envelope.powi(2) * 0.35
                     }
+                    VoiceKind::AnalogSaw
+                    | VoiceKind::AnalogPulse
+                    | VoiceKind::AnalogTri
+                    | VoiceKind::AnalogNoise => {
+                        unreachable!("analog voices should not enter the drum synth path")
+                    }
                 };
 
                 *frame_index = frame_index.saturating_add(1);
                 Some(sample as f32)
+            }
+            ActiveVoiceState::AnalogSynth {
+                voice,
+                params,
+                frame_index,
+                duration_frames,
+            } => {
+                if *frame_index >= *duration_frames {
+                    return None;
+                }
+
+                let envelope = sample_edge_envelope(
+                    *frame_index,
+                    *duration_frames,
+                    synth_edge_ramp_frames(*duration_frames),
+                ) as f32;
+                let sample = voice.next_sample(params) * envelope;
+                *frame_index = frame_index.saturating_add(1);
+                Some(sample)
             }
             ActiveVoiceState::Sample {
                 frames,
@@ -272,6 +344,80 @@ fn stereo_gains_for_pan(pan: f64) -> (f64, f64) {
     (left, right)
 }
 
+const fn drum_duration_frames(kind: VoiceKind, sample_rate: u32) -> u32 {
+    match kind {
+        VoiceKind::KickLike => sample_rate / 3,
+        VoiceKind::SnareLike => sample_rate / 5,
+        VoiceKind::ClapLike => sample_rate / 6,
+        VoiceKind::HiHatLike => sample_rate / 8,
+        VoiceKind::AnalogSaw
+        | VoiceKind::AnalogPulse
+        | VoiceKind::AnalogTri
+        | VoiceKind::AnalogNoise => 1,
+    }
+}
+
+#[allow(clippy::cast_possible_truncation)]
+fn analog_voice_params(kind: VoiceKind, trigger: &SampleTrigger) -> AnalogVoiceParams {
+    AnalogVoiceParams {
+        osc_shape: match kind {
+            VoiceKind::AnalogSaw => OscShape::Saw,
+            VoiceKind::AnalogPulse => OscShape::Pulse,
+            VoiceKind::AnalogTri => OscShape::Tri,
+            VoiceKind::AnalogNoise => OscShape::Noise,
+            VoiceKind::KickLike
+            | VoiceKind::SnareLike
+            | VoiceKind::ClapLike
+            | VoiceKind::HiHatLike => {
+                unreachable!("drum voices do not produce analog voice parameters")
+            }
+        },
+        freq_hz: analog_frequency_hz(trigger),
+        pulse_width: sanitize_pulse_width(trigger.pulse_width()),
+        cutoff_hz: trigger.lpf_cutoff_hz().unwrap_or(1_200.0) as f32,
+        resonance: sanitize_unit_f32(trigger.resonance(), 0.2),
+        drive: sanitize_non_negative_f32(trigger.drive(), 1.0),
+        gain: sanitize_non_negative_f32(trigger.gain(), 1.0) * ANALOG_OUTPUT_TRIM,
+    }
+}
+
+#[allow(clippy::cast_possible_truncation)]
+fn analog_frequency_hz(trigger: &SampleTrigger) -> f32 {
+    let rate = if trigger.rate().is_finite() {
+        trigger.rate().abs() as f32
+    } else {
+        1.0
+    };
+    (ANALOG_BASE_FREQUENCY_HZ * rate).max(0.0)
+}
+
+#[allow(clippy::cast_possible_truncation, clippy::missing_const_for_fn)]
+fn sanitize_unit_f32(value: f64, default: f32) -> f32 {
+    if value.is_finite() {
+        (value as f32).clamp(0.0, 1.0)
+    } else {
+        default
+    }
+}
+
+#[allow(clippy::cast_possible_truncation, clippy::missing_const_for_fn)]
+fn sanitize_non_negative_f32(value: f64, default: f32) -> f32 {
+    if value.is_finite() {
+        (value as f32).max(0.0)
+    } else {
+        default
+    }
+}
+
+#[allow(clippy::cast_possible_truncation, clippy::missing_const_for_fn)]
+fn sanitize_pulse_width(value: f64) -> f32 {
+    if value.is_finite() {
+        (value as f32).clamp(0.01, 0.99)
+    } else {
+        0.5
+    }
+}
+
 fn sample_edge_envelope(frame_index: u32, total_frames: u32, ramp_frames: u32) -> f64 {
     let attack = normalized_edge_gain(frame_index, ramp_frames);
     let release = normalized_edge_gain(
@@ -283,6 +429,17 @@ fn sample_edge_envelope(frame_index: u32, total_frames: u32, ramp_frames: u32) -
 
 fn normalized_edge_gain(distance_from_edge: u32, ramp_frames: u32) -> f64 {
     ((f64::from(distance_from_edge) + 0.5) / f64::from(ramp_frames)).min(1.0)
+}
+
+const fn synth_edge_ramp_frames(total_frames: u32) -> u32 {
+    let half_frames = total_frames.div_ceil(2);
+    if half_frames == 0 {
+        1
+    } else if half_frames > MAX_SAMPLE_EDGE_RAMP_FRAMES {
+        MAX_SAMPLE_EDGE_RAMP_FRAMES
+    } else {
+        half_frames
+    }
 }
 
 #[derive(Clone, Copy, Debug)]

@@ -41,6 +41,16 @@ impl TypeEnv {
         env.insert("sn", TypeScheme::monomorphic(Type::pattern(Type::Sample)));
         env.insert("cp", TypeScheme::monomorphic(Type::pattern(Type::Sample)));
         env.insert("hh", TypeScheme::monomorphic(Type::pattern(Type::Sample)));
+        env.insert("saw", TypeScheme::monomorphic(Type::pattern(Type::Sample)));
+        env.insert(
+            "pulse",
+            TypeScheme::monomorphic(Type::pattern(Type::Sample)),
+        );
+        env.insert("tri", TypeScheme::monomorphic(Type::pattern(Type::Sample)));
+        env.insert(
+            "noise",
+            TypeScheme::monomorphic(Type::pattern(Type::Sample)),
+        );
 
         let alpha = TypeVarId::new(0);
         for name in ["fast", "slow", "shift"] {
@@ -81,7 +91,9 @@ impl TypeEnv {
         }
         env.insert("jux", jux_transform_scheme());
         env.insert("rev", unary_pattern_transform_scheme(alpha));
-        for name in ["gain", "hpf", "lpf", "pan", "pitch", "rate"] {
+        for name in [
+            "gain", "hpf", "lpf", "cutoff", "res", "drive", "pw", "pan", "pitch", "rate",
+        ] {
             env.insert(name, sample_control_scheme());
         }
         env.insert(

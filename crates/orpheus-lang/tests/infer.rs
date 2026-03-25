@@ -207,6 +207,17 @@ fn filter_builtins_preserve_sample_pattern_types() {
 }
 
 #[test]
+fn synth_atoms_and_controls_preserve_sample_pattern_types() {
+    let typed = infer_module(
+        r"lead = pulse |> cutoff(1200) |> res(0.25 0.5) |> drive(1.2) |> pw(0.35)",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(typed.type_of("lead").to_string(), "Pattern<Sample>");
+}
+
+#[test]
 fn slice_idx_preserves_sample_pattern_types() {
     let typed = infer_module(
         r#"lead = sample("amen") |> slice_idx(3, 8)"#,

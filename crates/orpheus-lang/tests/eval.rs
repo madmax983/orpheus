@@ -1993,6 +1993,57 @@ fn filter_builtins_update_sample_event_filter_params() {
 }
 
 #[test]
+fn synth_atoms_and_controls_update_sample_event_params() {
+    let module = eval_module(
+        r"lead = pulse |> cutoff(1200) |> res(0.25) |> drive(1.2) |> pw(0.35)",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].value.sample(), "pulse");
+    assert_eq!(events[0].value.lpf_cutoff_hz(), Some(1200.0));
+    assert!((events[0].value.resonance() - 0.25).abs() < f64::EPSILON);
+    assert!((events[0].value.drive() - 1.2).abs() < f64::EPSILON);
+    assert!((events[0].value.pulse_width() - 0.35).abs() < f64::EPSILON);
+}
+
+#[test]
+fn pattern_valued_synth_controls_split_sample_events() {
+    let module = eval_module(
+        r"lead = pulse |> res(0.2 0.6) |> drive(1.0 1.5) |> pw(0.25 0.75)",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 2).unwrap());
+    assert!((events[0].value.resonance() - 0.2).abs() < f64::EPSILON);
+    assert!((events[0].value.drive() - 1.0).abs() < f64::EPSILON);
+    assert!((events[0].value.pulse_width() - 0.25).abs() < f64::EPSILON);
+    assert_eq!(events[1].part.start(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::one());
+    assert!((events[1].value.resonance() - 0.6).abs() < f64::EPSILON);
+    assert!((events[1].value.drive() - 1.5).abs() < f64::EPSILON);
+    assert!((events[1].value.pulse_width() - 0.75).abs() < f64::EPSILON);
+}
+
+#[test]
 fn pattern_valued_filter_controls_split_sample_events() {
     let module = eval_module(
         r#"lead = sample("vox_ah") |> lpf(400 800) |> hpf(100 200)"#,

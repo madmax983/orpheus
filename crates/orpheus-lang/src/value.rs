@@ -54,6 +54,10 @@ pub enum BuiltinKind {
     Gain,
     Hpf,
     Lpf,
+    Cutoff,
+    Res,
+    Drive,
+    Pw,
     Pan,
     Pitch,
     Transpose,
@@ -376,6 +380,9 @@ pub struct SampleEvent {
     gain: f64,
     hpf_cutoff_hz: Option<f64>,
     lpf_cutoff_hz: Option<f64>,
+    resonance: f64,
+    drive: f64,
+    pulse_width: f64,
     pan: f64,
     rate: f64,
     slice_start: f64,
@@ -389,6 +396,9 @@ impl SampleEvent {
             gain: 1.0,
             hpf_cutoff_hz: None,
             lpf_cutoff_hz: None,
+            resonance: 0.2,
+            drive: 1.0,
+            pulse_width: 0.5,
             pan: 0.0,
             rate: 1.0,
             slice_start: 0.0,
@@ -420,6 +430,24 @@ impl SampleEvent {
         self.lpf_cutoff_hz
     }
 
+    /// The ladder filter resonance amount for synth-style events.
+    #[must_use]
+    pub const fn resonance(&self) -> f64 {
+        self.resonance
+    }
+
+    /// The synth drive amount.
+    #[must_use]
+    pub const fn drive(&self) -> f64 {
+        self.drive
+    }
+
+    /// The pulse oscillator width, in the open interval `(0, 1)`.
+    #[must_use]
+    pub const fn pulse_width(&self) -> f64 {
+        self.pulse_width
+    }
+
     /// The stereo panning position, clamped between -1.0 (Left) and 1.0 (Right).
     #[must_use]
     pub const fn pan(&self) -> f64 {
@@ -449,6 +477,9 @@ trait PatternValueTransform: Sized {
     fn adjust_gain(&self, factor: f64) -> Self;
     fn adjust_hpf(&self, cutoff_hz: f64) -> Self;
     fn adjust_lpf(&self, cutoff_hz: f64) -> Self;
+    fn adjust_resonance(&self, resonance: f64) -> Self;
+    fn adjust_drive(&self, drive: f64) -> Self;
+    fn adjust_pulse_width(&self, pulse_width: f64) -> Self;
     fn adjust_pan(&self, amount: f64) -> Self;
     fn adjust_rate(&self, factor: f64) -> Self;
     fn adjust_slice(&self, start: f64, end: f64) -> Self;
@@ -478,6 +509,9 @@ impl PatternValueTransform for SampleEvent {
             gain: self.gain * factor,
             hpf_cutoff_hz: self.hpf_cutoff_hz,
             lpf_cutoff_hz: self.lpf_cutoff_hz,
+            resonance: self.resonance,
+            drive: self.drive,
+            pulse_width: self.pulse_width,
             pan: self.pan,
             rate: self.rate,
             slice_start: self.slice_start,
@@ -491,6 +525,9 @@ impl PatternValueTransform for SampleEvent {
             gain: self.gain,
             hpf_cutoff_hz: Some(cutoff_hz),
             lpf_cutoff_hz: self.lpf_cutoff_hz,
+            resonance: self.resonance,
+            drive: self.drive,
+            pulse_width: self.pulse_width,
             pan: self.pan,
             rate: self.rate,
             slice_start: self.slice_start,
@@ -504,6 +541,57 @@ impl PatternValueTransform for SampleEvent {
             gain: self.gain,
             hpf_cutoff_hz: self.hpf_cutoff_hz,
             lpf_cutoff_hz: Some(cutoff_hz),
+            resonance: self.resonance,
+            drive: self.drive,
+            pulse_width: self.pulse_width,
+            pan: self.pan,
+            rate: self.rate,
+            slice_start: self.slice_start,
+            slice_end: self.slice_end,
+        }
+    }
+
+    fn adjust_resonance(&self, resonance: f64) -> Self {
+        Self {
+            sample: self.sample.clone(),
+            gain: self.gain,
+            hpf_cutoff_hz: self.hpf_cutoff_hz,
+            lpf_cutoff_hz: self.lpf_cutoff_hz,
+            resonance,
+            drive: self.drive,
+            pulse_width: self.pulse_width,
+            pan: self.pan,
+            rate: self.rate,
+            slice_start: self.slice_start,
+            slice_end: self.slice_end,
+        }
+    }
+
+    fn adjust_drive(&self, drive: f64) -> Self {
+        Self {
+            sample: self.sample.clone(),
+            gain: self.gain,
+            hpf_cutoff_hz: self.hpf_cutoff_hz,
+            lpf_cutoff_hz: self.lpf_cutoff_hz,
+            resonance: self.resonance,
+            drive,
+            pulse_width: self.pulse_width,
+            pan: self.pan,
+            rate: self.rate,
+            slice_start: self.slice_start,
+            slice_end: self.slice_end,
+        }
+    }
+
+    fn adjust_pulse_width(&self, pulse_width: f64) -> Self {
+        Self {
+            sample: self.sample.clone(),
+            gain: self.gain,
+            hpf_cutoff_hz: self.hpf_cutoff_hz,
+            lpf_cutoff_hz: self.lpf_cutoff_hz,
+            resonance: self.resonance,
+            drive: self.drive,
+            pulse_width,
             pan: self.pan,
             rate: self.rate,
             slice_start: self.slice_start,
@@ -517,6 +605,9 @@ impl PatternValueTransform for SampleEvent {
             gain: self.gain,
             hpf_cutoff_hz: self.hpf_cutoff_hz,
             lpf_cutoff_hz: self.lpf_cutoff_hz,
+            resonance: self.resonance,
+            drive: self.drive,
+            pulse_width: self.pulse_width,
             pan: (self.pan + amount).clamp(-1.0, 1.0),
             rate: self.rate,
             slice_start: self.slice_start,
@@ -530,6 +621,9 @@ impl PatternValueTransform for SampleEvent {
             gain: self.gain,
             hpf_cutoff_hz: self.hpf_cutoff_hz,
             lpf_cutoff_hz: self.lpf_cutoff_hz,
+            resonance: self.resonance,
+            drive: self.drive,
+            pulse_width: self.pulse_width,
             pan: self.pan,
             rate: self.rate * factor,
             slice_start: self.slice_start,
@@ -544,6 +638,9 @@ impl PatternValueTransform for SampleEvent {
             gain: self.gain,
             hpf_cutoff_hz: self.hpf_cutoff_hz,
             lpf_cutoff_hz: self.lpf_cutoff_hz,
+            resonance: self.resonance,
+            drive: self.drive,
+            pulse_width: self.pulse_width,
             pan: self.pan,
             rate: self.rate,
             slice_start: current_range.mul_add(start, self.slice_start),
@@ -574,6 +671,18 @@ impl PatternValueTransform for f64 {
     }
 
     fn adjust_lpf(&self, _cutoff_hz: f64) -> Self {
+        *self
+    }
+
+    fn adjust_resonance(&self, _resonance: f64) -> Self {
+        *self
+    }
+
+    fn adjust_drive(&self, _drive: f64) -> Self {
+        *self
+    }
+
+    fn adjust_pulse_width(&self, _pulse_width: f64) -> Self {
         *self
     }
 
@@ -1060,6 +1169,68 @@ impl SamplePatternValue {
     pub(crate) fn lpf_pattern(self, control: NumberPatternValue) -> Self {
         Self {
             pattern: PatternRuntime::LpfPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn cutoff(self, cutoff_hz: f64) -> Self {
+        self.lpf(cutoff_hz)
+    }
+
+    pub(crate) fn cutoff_pattern(self, control: NumberPatternValue) -> Self {
+        self.lpf_pattern(control)
+    }
+
+    pub(crate) fn res(self, resonance: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::Res {
+                resonance,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn res_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::ResPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn drive(self, drive: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::Drive {
+                drive,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn drive_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::DrivePattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn pulse_width(self, pulse_width: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::PulseWidth {
+                pulse_width,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn pulse_width_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::PulseWidthPattern {
                 control: Box::new(control.pattern),
                 inner: Box::new(self.pattern),
             },
@@ -1561,6 +1732,30 @@ enum PatternRuntime<T> {
         control: Box<PatternRuntime<f64>>,
         inner: Box<Self>,
     },
+    Res {
+        resonance: f64,
+        inner: Box<Self>,
+    },
+    ResPattern {
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
+    Drive {
+        drive: f64,
+        inner: Box<Self>,
+    },
+    DrivePattern {
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
+    PulseWidth {
+        pulse_width: f64,
+        inner: Box<Self>,
+    },
+    PulseWidthPattern {
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
     Pan {
         amount: f64,
         inner: Box<Self>,
@@ -1675,6 +1870,7 @@ where
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn try_query_transform(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
         match self {
             Self::Roll { steps, inner } => T::roll_events(inner.try_query(span)?, *steps),
@@ -1716,6 +1912,24 @@ where
             }),
             Self::LpfPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Lpf)
+            }
+            Self::Res { resonance, inner } => apply_value_mutation(inner, span, |value| {
+                *value = value.adjust_resonance(*resonance);
+            }),
+            Self::ResPattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::Res)
+            }
+            Self::Drive { drive, inner } => apply_value_mutation(inner, span, |value| {
+                *value = value.adjust_drive(*drive);
+            }),
+            Self::DrivePattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::Drive)
+            }
+            Self::PulseWidth { pulse_width, inner } => apply_value_mutation(inner, span, |value| {
+                *value = value.adjust_pulse_width(*pulse_width);
+            }),
+            Self::PulseWidthPattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::PulseWidth)
             }
             Self::Pan { amount, inner } => {
                 apply_value_mutation(inner, span, |value| *value = value.adjust_pan(*amount))
@@ -2038,6 +2252,9 @@ enum ControlPatternKind {
     Gain,
     Hpf,
     Lpf,
+    Res,
+    Drive,
+    PulseWidth,
     Pan,
     Pitch,
     Rate,
@@ -2108,6 +2325,11 @@ where
                     ControlPatternKind::Gain => Ok(new_value.adjust_gain(control_event.value)),
                     ControlPatternKind::Hpf => Ok(new_value.adjust_hpf(control_event.value)),
                     ControlPatternKind::Lpf => Ok(new_value.adjust_lpf(control_event.value)),
+                    ControlPatternKind::Res => Ok(new_value.adjust_resonance(control_event.value)),
+                    ControlPatternKind::Drive => Ok(new_value.adjust_drive(control_event.value)),
+                    ControlPatternKind::PulseWidth => {
+                        Ok(new_value.adjust_pulse_width(control_event.value))
+                    }
                     ControlPatternKind::Pan => Ok(new_value.adjust_pan(control_event.value)),
                     ControlPatternKind::Pitch => Ok(
                         new_value.adjust_rate(semitones_to_rate_multiplier(control_event.value))
@@ -2147,6 +2369,27 @@ fn validate_control_events(
                 if !event.value.is_finite() || event.value <= f64::EPSILON {
                     return Err(EvalError::new(
                         "`lpf` requires positive finite control values",
+                    ));
+                }
+            }
+            ControlPatternKind::Res => {
+                if !event.value.is_finite() || !(0.0..=1.0).contains(&event.value) {
+                    return Err(EvalError::new(
+                        "`res` requires finite control values within [0, 1]",
+                    ));
+                }
+            }
+            ControlPatternKind::Drive => {
+                if !event.value.is_finite() || event.value < 0.0 {
+                    return Err(EvalError::new(
+                        "`drive` requires finite non-negative control values",
+                    ));
+                }
+            }
+            ControlPatternKind::PulseWidth => {
+                if !event.value.is_finite() || !(0.0..1.0).contains(&event.value) {
+                    return Err(EvalError::new(
+                        "`pw` requires finite control values in the open interval (0, 1)",
                     ));
                 }
             }
@@ -2712,6 +2955,12 @@ fn absolute_cycle_for_runtime<T>(
         | PatternRuntime::HpfPattern { inner, .. }
         | PatternRuntime::Lpf { inner, .. }
         | PatternRuntime::LpfPattern { inner, .. }
+        | PatternRuntime::Res { inner, .. }
+        | PatternRuntime::ResPattern { inner, .. }
+        | PatternRuntime::Drive { inner, .. }
+        | PatternRuntime::DrivePattern { inner, .. }
+        | PatternRuntime::PulseWidth { inner, .. }
+        | PatternRuntime::PulseWidthPattern { inner, .. }
         | PatternRuntime::Pan { inner, .. }
         | PatternRuntime::PanPattern { inner, .. }
         | PatternRuntime::Pitch { inner, .. }

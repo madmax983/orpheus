@@ -42,3 +42,14 @@ fn loader_accepts_multi_binding_phase5_example() {
     assert!(module.contains_key("bridge"));
     assert!(module.contains_key("song"));
 }
+
+#[test]
+fn loader_accepts_analog_showcase_example() {
+    let module = load_file_strict(docs_example("analog_showcase.ode")).unwrap();
+
+    assert!(module.contains_key("drums"));
+    assert!(module.contains_key("bass"));
+    assert!(module.contains_key("pad"));
+    assert!(module.contains_key("lead"));
+    assert!(module.contains_key("song"));
+}

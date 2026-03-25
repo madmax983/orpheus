@@ -36,7 +36,10 @@ use crate::value::{
 /// assert!(!is_sample_identifier("foo"));  // Unknown/user variable
 /// ```
 pub fn is_sample_identifier(name: &str) -> bool {
-    matches!(name, "bd" | "sn" | "cp" | "hh")
+    matches!(
+        name,
+        "bd" | "sn" | "cp" | "hh" | "saw" | "pulse" | "tri" | "noise"
+    )
 }
 
 const fn builtin_function_value(kind: BuiltinKind) -> Value {
@@ -69,7 +72,9 @@ const fn builtin_pitch_class_set_value(value: PitchClassSetValue) -> Value {
 /// ```
 pub fn builtin_value(name: &str) -> Option<Value> {
     match name {
-        "bd" | "sn" | "cp" | "hh" => Some(Value::SamplePattern(SamplePatternValue::atom(name))),
+        "bd" | "sn" | "cp" | "hh" | "saw" | "pulse" | "tri" | "noise" => {
+            Some(Value::SamplePattern(SamplePatternValue::atom(name)))
+        }
         "every" => Some(builtin_function_value(BuiltinKind::Every)),
         "when" => Some(builtin_function_value(BuiltinKind::When)),
         "sometimes" => Some(builtin_function_value(BuiltinKind::Sometimes)),
@@ -103,6 +108,10 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "gain" => Some(builtin_function_value(BuiltinKind::Gain)),
         "hpf" => Some(builtin_function_value(BuiltinKind::Hpf)),
         "lpf" => Some(builtin_function_value(BuiltinKind::Lpf)),
+        "cutoff" => Some(builtin_function_value(BuiltinKind::Cutoff)),
+        "res" => Some(builtin_function_value(BuiltinKind::Res)),
+        "drive" => Some(builtin_function_value(BuiltinKind::Drive)),
+        "pw" => Some(builtin_function_value(BuiltinKind::Pw)),
         "pan" => Some(builtin_function_value(BuiltinKind::Pan)),
         "pitch" => Some(builtin_function_value(BuiltinKind::Pitch)),
         "transpose" => Some(builtin_function_value(BuiltinKind::Transpose)),
@@ -300,6 +309,10 @@ impl BuiltinKind {
             Self::Gain => "gain",
             Self::Hpf => "hpf",
             Self::Lpf => "lpf",
+            Self::Cutoff => "cutoff",
+            Self::Res => "res",
+            Self::Drive => "drive",
+            Self::Pw => "pw",
             Self::Pan => "pan",
             Self::Pitch => "pitch",
             Self::Transpose => "transpose",
@@ -331,6 +344,10 @@ impl BuiltinKind {
             | Self::Gain
             | Self::Hpf
             | Self::Lpf
+            | Self::Cutoff
+            | Self::Res
+            | Self::Drive
+            | Self::Pw
             | Self::Pan
             | Self::Pitch
             | Self::Transpose
@@ -363,6 +380,10 @@ impl BuiltinKind {
             Self::Gain => apply_gain(args),
             Self::Hpf => apply_hpf(args),
             Self::Lpf => apply_lpf(args),
+            Self::Cutoff => apply_cutoff(args),
+            Self::Res => apply_res(args),
+            Self::Drive => apply_drive(args),
+            Self::Pw => apply_pw(args),
             Self::Pan => apply_pan(args),
             Self::Pitch => apply_pitch(args),
             Self::Transpose => apply_transpose(args),
@@ -863,6 +884,50 @@ fn apply_lpf(args: Vec<Value>) -> Result<Value, EvalError> {
     )
 }
 
+fn apply_cutoff(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "cutoff",
+        "cutoff",
+        |val| extract_filter_cutoff_control(val, "cutoff"),
+        SamplePatternValue::cutoff,
+        SamplePatternValue::cutoff_pattern,
+    )
+}
+
+fn apply_res(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "res",
+        "resonance",
+        extract_resonance_control,
+        SamplePatternValue::res,
+        SamplePatternValue::res_pattern,
+    )
+}
+
+fn apply_drive(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "drive",
+        "drive",
+        extract_drive_control,
+        SamplePatternValue::drive,
+        SamplePatternValue::drive_pattern,
+    )
+}
+
+fn apply_pw(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "pw",
+        "pulse width",
+        extract_pulse_width_control,
+        SamplePatternValue::pulse_width,
+        SamplePatternValue::pulse_width_pattern,
+    )
+}
+
 fn apply_pan(args: Vec<Value>) -> Result<Value, EvalError> {
     apply_sample_numeric_control(
         args,
@@ -1347,6 +1412,78 @@ fn extract_rate_control(value: Value) -> Result<NumericControl, EvalError> {
         } else {
             Err(EvalError::new(
                 "`rate` requires finite non-zero control values",
+            ))
+        }
+    })?;
+
+    Ok(NumericControl::Pattern(pattern))
+}
+
+fn extract_resonance_control(value: Value) -> Result<NumericControl, EvalError> {
+    let pattern = extract_number_pattern(value, "res")?;
+    if let Ok(resonance) = pattern.constant_value() {
+        if !resonance.is_finite() || !(0.0..=1.0).contains(&resonance) {
+            return Err(EvalError::new(
+                "`res` requires a finite number within [0, 1]",
+            ));
+        }
+        return Ok(NumericControl::Constant(resonance));
+    }
+
+    validate_numeric_control_pattern(&pattern, "res", |value| {
+        if value.is_finite() && (0.0..=1.0).contains(&value) {
+            Ok(())
+        } else {
+            Err(EvalError::new(
+                "`res` requires finite control values within [0, 1]",
+            ))
+        }
+    })?;
+
+    Ok(NumericControl::Pattern(pattern))
+}
+
+fn extract_drive_control(value: Value) -> Result<NumericControl, EvalError> {
+    let pattern = extract_number_pattern(value, "drive")?;
+    if let Ok(drive) = pattern.constant_value() {
+        if !drive.is_finite() || drive < 0.0 {
+            return Err(EvalError::new(
+                "`drive` requires a finite non-negative numeric value",
+            ));
+        }
+        return Ok(NumericControl::Constant(drive));
+    }
+
+    validate_numeric_control_pattern(&pattern, "drive", |value| {
+        if value.is_finite() && value >= 0.0 {
+            Ok(())
+        } else {
+            Err(EvalError::new(
+                "`drive` requires finite non-negative control values",
+            ))
+        }
+    })?;
+
+    Ok(NumericControl::Pattern(pattern))
+}
+
+fn extract_pulse_width_control(value: Value) -> Result<NumericControl, EvalError> {
+    let pattern = extract_number_pattern(value, "pw")?;
+    if let Ok(pulse_width) = pattern.constant_value() {
+        if !pulse_width.is_finite() || !(0.0..1.0).contains(&pulse_width) {
+            return Err(EvalError::new(
+                "`pw` requires a finite number in the open interval (0, 1)",
+            ));
+        }
+        return Ok(NumericControl::Constant(pulse_width));
+    }
+
+    validate_numeric_control_pattern(&pattern, "pw", |value| {
+        if value.is_finite() && (0.0..1.0).contains(&value) {
+            Ok(())
+        } else {
+            Err(EvalError::new(
+                "`pw` requires finite control values in the open interval (0, 1)",
             ))
         }
     })?;
