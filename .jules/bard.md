@@ -20,3 +20,7 @@
 ## 2026-03-24 - [The "Black Box": Missing Documentation in Type System and Engine]
 **Confusion:** The Hindley-Milner type system module (`crates/orpheus-lang/src/types/mod.rs`) and the digital signal processing backend (`crates/orpheus-dsp/src/lib.rs`) were acting as black boxes due to missing or sparse module-level (`//!`) documentation. It was unclear how type inference tied together or how the audio engine components interacted. Furthermore, the core `Type` enum lacked inline descriptions for its variants.
 **Clarification:** Added detailed module-level documentation for both modules explaining their purpose and key components. Added inline `///` documentation to all variants of the `Type` enum explaining what semantic meaning they hold.
+
+## 2026-03-24 - [The "Black Box": Missing Documentation in Mixer State]
+**Confusion:** The mixer routing logic in `crates/orpheus-lang/src/mixer.rs` was acting as a black box due to missing module-level (`//!`) documentation and missing `///` struct documentation for `MixerState`. It was unclear how tracks, buses, and sends mapped from the evaluated language environment into DSP routing snapshots.
+**Clarification:** Added detailed module-level documentation explaining the concepts of Tracks, Buses, and Sends. Added struct-level `///` documentation for `MixerState` along with an executable doctest demonstrating how to construct tracks, buses, and sends programmatically.
