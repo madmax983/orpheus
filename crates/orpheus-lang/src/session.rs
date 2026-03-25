@@ -310,20 +310,14 @@ impl ReplSession {
         if let Some(value) = self.bindings.get(binding_name) {
             match value {
                 crate::value::Value::SamplePattern(pattern) => {
-                    let stats = crate::stats::sample_pattern_stats(pattern, cycles)
+                    let stats = crate::stats::sample_pattern_stats(binding_name, pattern, cycles)
                         .map_err(|error| error.to_string())?;
-                    Ok(format!(
-                        "Pattern: {binding_name}\nCycles: {cycles}\n{}",
-                        stats.trim_end()
-                    ))
+                    Ok(format!("\n{}", stats.trim_end()))
                 }
                 crate::value::Value::NumberPattern(pattern) => {
-                    let stats = crate::stats::number_pattern_stats(pattern, cycles)
+                    let stats = crate::stats::number_pattern_stats(binding_name, pattern, cycles)
                         .map_err(|error| error.to_string())?;
-                    Ok(format!(
-                        "Pattern: {binding_name}\nCycles: {cycles}\n{}",
-                        stats.trim_end()
-                    ))
+                    Ok(format!("\n{}", stats.trim_end()))
                 }
                 _ => Err(format!(
                     "binding `{binding_name}` is a {} and cannot be analyzed",
@@ -1329,11 +1323,10 @@ mod tests {
 
         let message = session.eval_line(":stats pattern 2").unwrap();
 
-        assert!(message.contains("Pattern: pattern"));
-        assert!(message.contains("Cycles: 2"));
-        assert!(message.contains("Total Events: 8"));
-        assert!(message.contains("Unique Samples: 2 (bd, sn)"));
-        assert!(message.contains("Event Density: 4.00 events/cycle"));
+        assert!(message.contains("Pattern Stats: pattern (2 cycles)"));
+        assert!(message.contains("│ Total Events   │ 8                 │"));
+        assert!(message.contains("│ Unique Samples │ 2 (bd, sn)        │"));
+        assert!(message.contains("│ Event Density  │ 4.00 events/cycle │"));
     }
 
     #[test]
