@@ -376,7 +376,10 @@ impl Value {
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct SampleEvent {
-    sample: Box<str>,
+    /// ⚡ Bolt: `Arc<str>` is used instead of `Box<str>` because pattern transformations
+    /// frequently clone `SampleEvent`. Using `Arc` replaces deep string allocations with
+    /// a fast, atomic reference count increment while remaining `Send + Sync`.
+    sample: std::sync::Arc<str>,
     gain: f64,
     hpf_cutoff_hz: Option<f64>,
     lpf_cutoff_hz: Option<f64>,
