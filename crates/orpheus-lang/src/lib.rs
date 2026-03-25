@@ -13,6 +13,7 @@ mod parser;
 mod pitch;
 pub mod repl;
 pub mod session;
+pub mod stats;
 mod svg;
 pub mod tui;
 mod types;
@@ -30,6 +31,7 @@ pub use export::{
 pub use html::{export_number_pattern_to_html, export_sample_pattern_to_html};
 pub use loader::load_file_strict;
 pub use parser::parse_module;
+pub use stats::{number_pattern_stats, sample_pattern_stats};
 pub use svg::{export_number_pattern_to_svg, export_sample_pattern_to_svg};
 pub use types::{Type, TypedModule, infer_module};
 pub use value::{NumberPatternValue, SampleEvent, SamplePatternValue, Value};

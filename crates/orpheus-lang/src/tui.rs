@@ -36,7 +36,7 @@ const FULL_HELP_FOOTER: &str = "Esc close   ? toggle   Ctrl-C quit";
 const MEDIUM_HELP_FOOTER: &str = "Esc close   ?   Ctrl-C";
 const COMPACT_HELP_FOOTER: &str = "Esc ? Ctrl-C";
 const MIN_HELP_FOOTER: &str = "Esc ?";
-const COMMAND_HINTS: [(&str, &str); 12] = [
+const COMMAND_HINTS: [(&str, &str); 13] = [
     (":bus", ":bus <new|fx> ..."),
     (":export", ":export <binding> <path> [cycles]"),
     (":mixer", ":mixer"),
@@ -46,6 +46,7 @@ const COMMAND_HINTS: [(&str, &str); 12] = [
     (":render", ":render <binding> <path> [cycles]"),
     (":roll", ":roll <binding> [cycles] [steps_per_cycle]"),
     (":send", ":send <track> <bus> <level>"),
+    (":stats", ":stats <binding> [cycles]"),
     (":stop", ":stop"),
     (":tempo", ":tempo <bpm>"),
     (":track", ":track <new|bind|level|mute> ..."),
@@ -454,6 +455,7 @@ impl SessionTui {
             Line::raw("Set: :tempo <bpm>"),
             Line::raw("Render: :render <binding> <path> [cycles]"),
             Line::raw("Export: :export <binding> <path> [cycles]"),
+            Line::raw("Analyze: :roll <binding>, :stats <binding>"),
             Line::raw("Help: ?"),
         ]);
         if let Some(message) = &self.status_message {
@@ -480,7 +482,7 @@ impl SessionTui {
     }
 
     const fn help_overlay_body() -> &'static str {
-        "Toggle: ?\nClose: Esc\nTransport: Space toggle, :play, :stop, :tempo <bpm>\nMixer: :track, :bus new|fx, :send, :mixer\nRender: :render <binding> <path> [cycles]\nExport: :export <binding> <path> [cycles]\nAnalyze: :roll <binding> [cycles] [steps_per_cycle]\nSession: :open <path>, :quit\nBindings: PgUp/PgDn\nInput: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
+        "Toggle: ?\nClose: Esc\nTransport: Space toggle, :play, :stop, :tempo <bpm>\nMixer: :track, :bus new|fx, :send, :mixer\nRender: :render <binding> <path> [cycles]\nExport: :export <binding> <path> [cycles]\nAnalyze: :roll <binding> [cycles] [steps_per_cycle], :stats <binding> [cycles]\nSession: :open <path>, :quit\nBindings: PgUp/PgDn\nInput: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
     }
 
     const fn help_overlay_footer() -> &'static str {
@@ -1958,7 +1960,7 @@ mod tests {
 
         handle_key_event(&mut app, press(KeyCode::Char('?')));
         assert_eq!(app.status_message.as_deref(), Some("help overlay shown"));
-        let overlay_frame = render_frame_for_test(&app, 80, 26);
+        let overlay_frame = render_frame_for_test(&app, 80, 30);
         assert!(overlay_frame.contains("Help"));
         assert!(overlay_frame.contains("Space"));
         assert!(overlay_frame.contains(":play"));
@@ -1977,7 +1979,7 @@ mod tests {
 
         assert!(!app.should_quit);
         assert_eq!(app.status_message.as_deref(), Some("help overlay hidden"));
-        let normal_frame = render_frame_for_test(&app, 80, 24);
+        let normal_frame = render_frame_for_test(&app, 80, 28);
         assert!(!normal_frame.contains("Toggle: ?"));
         assert!(!normal_frame.contains("Words: Alt-B/F"));
         assert!(normal_frame.contains("Help: ?"));
