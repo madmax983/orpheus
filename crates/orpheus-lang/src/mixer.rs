@@ -1,3 +1,16 @@
+//! The `mixer` module manages the audio routing and effects state.
+//!
+//! This module acts as the bridge between the high-level pattern language
+//! and the DSP audio engine's routing graph. It manages tracks, buses,
+//! effects (like delay and reverb), and sends.
+//!
+//! # Concepts
+//!
+//! - **Tracks:** Endpoints that consume evaluated pattern events (like `"bd"`)
+//!   and produce audio. By default, patterns play on the `main` compatibility track.
+//! - **Buses:** Auxiliary channels that process audio via effects (like Delay or Reverb).
+//! - **Sends:** Connections that route a portion of a track's audio to a bus.
+
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
@@ -7,6 +20,32 @@ use orpheus_pattern::Rational;
 
 use crate::Value;
 
+/// The configuration state of the audio mixer.
+///
+/// A `MixerState` instance records user-defined tracks, buses, effects, and sends.
+/// It acts as a builder to generate a [`RoutingSnapshot`], which the DSP backend
+/// applies transactionally to avoid audio dropouts.
+///
+/// # Examples
+///
+/// Creating a new mixer with a custom bus effect and track send:
+///
+/// ```
+/// use orpheus_lang::mixer::MixerState;
+/// use orpheus_pattern::Rational;
+///
+/// let mut mixer = MixerState::default();
+///
+/// // Create a delay bus
+/// mixer.new_bus("fx1").unwrap();
+/// mixer.set_bus_delay("fx1", Rational::new(1, 4), 0.5, 0.8).unwrap();
+///
+/// // Route a track to the bus
+/// mixer.new_track("lead").unwrap();
+/// mixer.set_send("lead", "fx1", 0.6).unwrap();
+///
+/// assert!(mixer.has_routing_state());
+/// ```
 #[derive(Clone, Debug, Default)]
 pub struct MixerState {
     compatibility_main_binding: Option<String>,
