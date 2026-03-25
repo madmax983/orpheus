@@ -9,3 +9,7 @@
 **Remove deep clone of bindings in type inference**
 **Learning:** Found an unnecessary `BTreeMap::clone()` in `infer_into_bindings` that caused a full heap allocation and deep copy of the REPL environment on every inference pass. `inferencer.infer_statements(...)` returns a `Result`, so `?` cannot be used safely if we want to restore bindings upon error.
 **Action:** Use `std::mem::take(bindings)` to move the `BTreeMap` into the `Inferencer` without allocating. Store the result of `infer_statements` in a local variable, unconditionally restore `*bindings = inferencer.user_bindings;`, and then return the result. This optimizes the hot REPL path without losing state on syntax/type errors.
+
+**Use `Arc<str>` instead of `Box<str>` for deep immutability on hot paths**
+**Learning:** In `orpheus-lang/src/value.rs`, the `SampleEvent` struct contained a `sample: Box<str>` field. Because pattern evaluation transforms (like `adjust_gain`, `adjust_pan`) clone the `SampleEvent` repeatedly on the hot path, `Box<str>` forces a deep memory allocation and string copy every time. By replacing `Box<str>` with `std::sync::Arc<str>`, the clone becomes a simple atomic increment. This significantly reduces heap allocations while maintaining thread safety (`Send + Sync`).
+**Action:** When a struct containing strings is cloned repeatedly but the strings are never mutated, use `std::sync::Arc<str>` (or similar interning primitives) instead of `Box<str>` or `String` to avoid costly memory allocations.
