@@ -714,4 +714,78 @@ mod tests {
 
         let _ = fs::remove_file(path);
     }
+
+    #[test]
+    fn export_cycle_count_zero_returns_error() {
+        let module = eval_module("pat = bd sn", ReplMode::Loose).unwrap();
+        let pat = module.get("pat").unwrap().as_sample_pattern().unwrap();
+
+        assert_eq!(
+            super::export_sample_pattern_to_csv(pat, "test.csv", 0)
+                .unwrap_err()
+                .to_string(),
+            "exporting requires at least one cycle"
+        );
+        assert_eq!(
+            export_sample_pattern_to_json(pat, "test.json", 0)
+                .unwrap_err()
+                .to_string(),
+            "exporting requires at least one cycle"
+        );
+        assert_eq!(
+            super::render_sample_pattern_to_file_with_bank(
+                pat,
+                "test.wav",
+                0,
+                &orpheus_dsp::SampleBank::default()
+            )
+            .unwrap_err()
+            .to_string(),
+            "rendering requires at least one cycle"
+        );
+
+        let module = eval_module("pat = 1 2", ReplMode::Loose).unwrap();
+        let pat = module.get("pat").unwrap().as_number_pattern().unwrap();
+
+        assert_eq!(
+            super::export_number_pattern_to_csv(pat, "test.csv", 0)
+                .unwrap_err()
+                .to_string(),
+            "exporting requires at least one cycle"
+        );
+        assert_eq!(
+            super::export_number_pattern_to_json(pat, "test.json", 0)
+                .unwrap_err()
+                .to_string(),
+            "exporting requires at least one cycle"
+        );
+    }
+
+    #[test]
+    fn escape_json_string_handles_special_characters() {
+        assert_eq!(super::escape_json_string("normal"), "normal");
+        assert_eq!(super::escape_json_string("a\"b"), "a\\\"b");
+        assert_eq!(super::escape_json_string("a\\b"), "a\\\\b");
+        assert_eq!(super::escape_json_string("a\x08b"), "a\\bb");
+        assert_eq!(super::escape_json_string("a\x0cb"), "a\\fb");
+        assert_eq!(super::escape_json_string("a\nb"), "a\\nb");
+        assert_eq!(super::escape_json_string("a\rb"), "a\\rb");
+        assert_eq!(super::escape_json_string("a\tb"), "a\\tb");
+        assert_eq!(super::escape_json_string("a\x01b"), "a\\u0001b");
+    }
+
+    #[test]
+    fn json_export_handles_hpf_lpf_cutoff() {
+        let module = eval_module("pat = bd |> lpf(400) |> hpf(100)", ReplMode::Loose).unwrap();
+        let pat = module.get("pat").unwrap().as_sample_pattern().unwrap();
+        let path = temp_json_path();
+
+        export_sample_pattern_to_json(pat, &path, 1).unwrap();
+
+        let actual_contents = fs::read_to_string(&path).unwrap();
+        assert!(actual_contents.contains("\"lpf_cutoff_hz\": 400.000000"));
+        assert!(actual_contents.contains("\"hpf_cutoff_hz\": 100.000000"));
+
+        let _ = fs::remove_file(path);
+    }
 }
