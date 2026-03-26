@@ -1426,8 +1426,8 @@ mod tests {
 
         let frame = render_frame_for_test(&app, 100, 24);
         assert!(frame.contains("drums -> groove"));
-        assert!(frame.contains("verb@0.35"));
-        assert!(frame.contains("bus verb -> master"));
+        assert!(frame.contains("verb @ 0.35"));
+        assert!(frame.contains("└── verb -> master"));
     }
 
     #[test]
@@ -1439,7 +1439,7 @@ mod tests {
         app.submit_line();
 
         let frame = render_frame_for_test(&app, 100, 24);
-        assert!(frame.contains("bus dub -> master"));
+        assert!(frame.contains("└── dub -> master"));
         assert!(frame.contains("delay(3/16"));
     }
 
@@ -1452,7 +1452,7 @@ mod tests {
         app.submit_line();
 
         let frame = render_frame_for_test(&app, 160, 24);
-        assert!(frame.contains("bus verb -> master"));
+        assert!(frame.contains("└── verb -> master"));
         assert!(frame.contains("reverb(size=0.75"));
         assert!(frame.contains("damp=0.35"));
         assert!(frame.contains("wet=1.00)"));
