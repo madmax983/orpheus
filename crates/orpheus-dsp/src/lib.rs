@@ -13,6 +13,7 @@
 mod command;
 mod effects;
 mod engine;
+pub mod graph;
 mod offline;
 mod routing;
 mod sample;
