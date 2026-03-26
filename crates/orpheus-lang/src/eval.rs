@@ -169,7 +169,8 @@ pub fn eval_module(source: &str, mode: ReplMode) -> Result<BTreeMap<String, Valu
 ///
 /// ```
 /// use std::collections::BTreeMap;
-/// use orpheus_lang::{ReplMode, eval_into_bindings};
+/// use orpheus_lang::ReplMode;
+/// use orpheus_lang::eval::eval_into_bindings;
 ///
 /// let mut env = BTreeMap::new();
 /// eval_into_bindings("a = 1", ReplMode::Loose, &mut env).unwrap();
@@ -1081,7 +1082,7 @@ fn extract_constant_number_rational(value: Value, context: &str) -> Result<Ratio
 /// # Examples
 ///
 /// ```
-/// use orpheus_lang::f64_to_rational;
+/// use orpheus_lang::eval::f64_to_rational;
 ///
 /// let r = f64_to_rational(1.5, "test").unwrap();
 /// assert_eq!(r.numerator(), 3);

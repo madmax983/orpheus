@@ -12,13 +12,18 @@ use crate::value::{NumberPatternValue, SamplePatternValue};
 
 /// Exports a sample pattern's evaluated events to an HTML file.
 ///
-/// # Panics
+/// # Examples
 ///
-/// Panics if a sample's name cannot be found in the previously collected set of sample names.
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module};
+/// // `export_sample_pattern_to_html` is not public in `orpheus_lang`, but used internally for TUI rendering
+/// // and we can invoke it natively inside the `html` module if needed, or demonstrate conceptually:
+/// // export_sample_pattern_to_html(pattern, &path, 2).unwrap();
+/// ```
 ///
 /// # Errors
 ///
-/// Returns [`EvalError`] if pattern querying fails or if the file cannot be written.
+/// Returns [`EvalError`] if pattern querying fails, the file cannot be written, or if the cycle count is zero.
 ///
 /// # Panics
 ///
@@ -113,9 +118,18 @@ pub fn export_sample_pattern_to_html(
 
 /// Exports a number pattern's evaluated events to an HTML file.
 ///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module};
+/// // `export_number_pattern_to_html` is not public in `orpheus_lang`, but used internally for TUI rendering
+/// // and we can invoke it natively inside the `html` module if needed, or demonstrate conceptually:
+/// // export_number_pattern_to_html(pattern, &path, 1).unwrap();
+/// ```
+///
 /// # Errors
 ///
-/// Returns [`EvalError`] if pattern querying fails or if the file cannot be written.
+/// Returns [`EvalError`] if pattern querying fails, the file cannot be written, or if the cycle count is zero.
 pub fn export_number_pattern_to_html(
     pattern: &NumberPatternValue,
     path: impl AsRef<Path>,

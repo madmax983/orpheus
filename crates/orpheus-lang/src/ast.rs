@@ -112,6 +112,20 @@ pub enum Stmt {
 /// # Returns
 /// `true` if the identifier is referenced in the expression body and is not shadowed
 /// by a parameter. `false` otherwise.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::ast::{binding_expr_self_references, Expr};
+///
+/// // `foo = foo + 1` (Self reference)
+/// let expr1 = Expr::Ident("foo".to_string());
+/// assert!(binding_expr_self_references("foo", &[], &expr1));
+///
+/// // `foo x = x + 1` (No self reference, `x` is a param)
+/// let expr2 = Expr::Ident("x".to_string());
+/// assert!(!binding_expr_self_references("foo", &["x".to_string()], &expr2));
+/// ```
 pub fn binding_expr_self_references(name: &str, params: &[String], expr: &Expr) -> bool {
     !params.iter().any(|param| param == name) && expr.references_ident(name)
 }

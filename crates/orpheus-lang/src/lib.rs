@@ -1,14 +1,14 @@
 //! Language and REPL surface for Orpheus.
 
 pub mod ascii_roll;
-mod ast;
-mod builtins;
+pub mod ast;
+pub mod builtins;
 mod diagnostics;
-mod eval;
+pub mod eval;
 pub mod export;
 pub mod html;
-mod loader;
-pub(crate) mod mixer;
+pub mod loader;
+pub mod mixer;
 mod parser;
 mod pitch;
 pub mod repl;
