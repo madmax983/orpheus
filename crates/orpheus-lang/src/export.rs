@@ -121,6 +121,97 @@ where
     Ok(())
 }
 
+fn export_pattern_events_to_md<T, F>(
+    events: &[Event<T>],
+    path: impl AsRef<Path>,
+    header: &str,
+    mut write_event: F,
+) -> Result<(), EvalError>
+where
+    F: FnMut(&mut std::fs::File, &Event<T>) -> Result<(), EvalError>,
+{
+    let path = path.as_ref();
+    let mut file = std::fs::File::create(path)?;
+    writeln!(file, "{header}")?;
+    // Add Markdown table separator
+    let separators = header
+        .split('|')
+        .map(|s| if s.is_empty() { "" } else { "---" })
+        .collect::<Vec<_>>()
+        .join("|");
+    writeln!(file, "{separators}")?;
+
+    for event in events {
+        write_event(&mut file, event)?;
+    }
+
+    Ok(())
+}
+
+/// Exports a sample pattern's evaluated events to a Markdown file.
+///
+/// The Markdown file will contain a table with columns for `start`,
+/// `end`, `sample`, `gain`, `pan`, `rate`, `hpf`, and `lpf`.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, export_sample_pattern_to_md};
+///
+/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+///
+/// let path = std::env::temp_dir().join("export.md");
+/// export_sample_pattern_to_md(pattern, &path, 2).unwrap();
+/// ```
+///
+/// # Errors
+///
+/// Returns [`EvalError`] if the cycle count is 0, if pattern querying fails, or if the file cannot be written.
+pub fn export_sample_pattern_to_md(
+    pattern: &SamplePatternValue,
+    path: impl AsRef<Path>,
+    cycle_count: u64,
+) -> Result<(), EvalError> {
+    if cycle_count == 0 {
+        return Err(EvalError::new("exporting requires at least one cycle"));
+    }
+
+    let span = render_span(cycle_count)?;
+    let events = pattern.try_query(&span)?;
+
+    export_pattern_events_to_md(
+        &events,
+        path,
+        "| start | end | sample | gain | pan | rate | hpf | lpf |",
+        |file, event| {
+            let start_float = f64::from(event.part.start());
+            let end_float = f64::from(event.part.end());
+            let hpf = event
+                .value
+                .hpf_cutoff_hz()
+                .map_or_else(|| "-".to_owned(), |v| format!("{v:.2}"));
+            let lpf = event
+                .value
+                .lpf_cutoff_hz()
+                .map_or_else(|| "-".to_owned(), |v| format!("{v:.2}"));
+            writeln!(
+                file,
+                "| {:.3} | {:.3} | {} | {:.2} | {:.2} | {:.2} | {} | {} |",
+                start_float,
+                end_float,
+                event.value.sample(),
+                event.value.gain(),
+                event.value.pan(),
+                event.value.rate(),
+                hpf,
+                lpf
+            )?;
+            Ok(())
+        },
+    )
+}
+
 /// Exports a sample pattern's evaluated events to a CSV file.
 ///
 /// The CSV file will contain columns for `start_num`, `start_den`, `start_float`,
@@ -242,6 +333,50 @@ pub fn export_sample_pattern_to_json(
     let events = pattern.try_query(&span)?;
 
     export_pattern_events_to_json(&events, path, "sample", cycle_count, sample_event_json)
+}
+
+/// Exports a number pattern's evaluated events to a Markdown file.
+///
+/// The Markdown file will contain a table with columns for `start`,
+/// `end`, and `value`.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, export_number_pattern_to_md};
+///
+/// let env = eval_module("x = 1 2 3", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
+///
+/// let path = std::env::temp_dir().join("export_number_pattern.md");
+/// export_number_pattern_to_md(pattern, &path, 2).unwrap();
+/// ```
+///
+/// # Errors
+///
+/// Returns [`EvalError`] if the cycle count is 0, if pattern querying fails, or if the file cannot be written.
+pub fn export_number_pattern_to_md(
+    pattern: &NumberPatternValue,
+    path: impl AsRef<Path>,
+    cycle_count: u64,
+) -> Result<(), EvalError> {
+    if cycle_count == 0 {
+        return Err(EvalError::new("exporting requires at least one cycle"));
+    }
+
+    let span = render_span(cycle_count)?;
+    let events = pattern.try_query(&span)?;
+
+    export_pattern_events_to_md(&events, path, "| start | end | value |", |file, event| {
+        let start_float = f64::from(event.part.start());
+        let end_float = f64::from(event.part.end());
+        writeln!(
+            file,
+            "| {:.3} | {:.3} | {:.3} |",
+            start_float, end_float, event.value
+        )?;
+        Ok(())
+    })
 }
 
 /// Exports a number pattern's evaluated events to a CSV file.
@@ -509,13 +644,20 @@ mod tests {
 
     use serde_json::Value as JsonValue;
 
-    use super::{export_number_pattern_to_json, export_sample_pattern_to_json};
+    use super::{
+        export_number_pattern_to_json, export_number_pattern_to_md, export_sample_pattern_to_json,
+        export_sample_pattern_to_md,
+    };
     use crate::{ReplMode, eval_module};
 
     static UNIQUE_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 
     fn temp_json_path() -> PathBuf {
         std::env::temp_dir().join(format!("orpheus-export-json-{}.json", unique_temp_suffix()))
+    }
+
+    fn temp_md_path() -> PathBuf {
+        std::env::temp_dir().join(format!("orpheus-export-md-{}.md", unique_temp_suffix()))
     }
 
     fn fixture(name: &str) -> PathBuf {
@@ -785,6 +927,44 @@ mod tests {
         let actual_contents = fs::read_to_string(&path).unwrap();
         assert!(actual_contents.contains("\"lpf_cutoff_hz\": 400.000000"));
         assert!(actual_contents.contains("\"hpf_cutoff_hz\": 100.000000"));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn md_export_formats_sample_pattern() {
+        let module = eval_module("pat = bd |> lpf(400) |> hpf(100)", ReplMode::Loose).unwrap();
+        let pat = module.get("pat").unwrap().as_sample_pattern().unwrap();
+        let path = temp_md_path();
+
+        export_sample_pattern_to_md(pat, &path, 1).unwrap();
+
+        let actual_contents = fs::read_to_string(&path).unwrap();
+        assert!(
+            actual_contents.contains("| start | end | sample | gain | pan | rate | hpf | lpf |")
+        );
+        assert!(actual_contents.contains("|---|---|---|---|---|---|---|---|"));
+        assert!(
+            actual_contents
+                .contains("| 0.000 | 1.000 | bd | 1.00 | 0.00 | 1.00 | 100.00 | 400.00 |")
+        );
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn md_export_formats_number_pattern() {
+        let module = eval_module("pat = 1 2", ReplMode::Loose).unwrap();
+        let pat = module.get("pat").unwrap().as_number_pattern().unwrap();
+        let path = temp_md_path();
+
+        export_number_pattern_to_md(pat, &path, 1).unwrap();
+
+        let actual_contents = fs::read_to_string(&path).unwrap();
+        assert!(actual_contents.contains("| start | end | value |"));
+        assert!(actual_contents.contains("|---|---|---|"));
+        assert!(actual_contents.contains("| 0.000 | 0.500 | 1.000 |"));
+        assert!(actual_contents.contains("| 0.500 | 1.000 | 2.000 |"));
 
         let _ = fs::remove_file(path);
     }
