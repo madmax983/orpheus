@@ -914,17 +914,10 @@ fn apply_user_function(mut function: UserFn, args: Vec<Value>) -> Result<Value, 
         )));
     }
 
-    for (param, arg) in function
-        .remaining_params
-        .iter()
-        .take(applied)
-        .cloned()
-        .zip(args)
-    {
+    // ⚡ Bolt: Drain parameters directly to avoid cloning strings when binding arguments
+    for (param, arg) in function.remaining_params.drain(..applied).zip(args) {
         function.captured_bindings.insert(param, arg);
     }
-
-    function.remaining_params.drain(..applied);
 
     if !function.remaining_params.is_empty() {
         return Ok(Value::Function(FunctionValue::User(function)));
