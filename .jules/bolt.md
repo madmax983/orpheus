@@ -13,3 +13,7 @@
 **Use `Arc<str>` instead of `Box<str>` for deep immutability on hot paths**
 **Learning:** In `orpheus-lang/src/value.rs`, the `SampleEvent` struct contained a `sample: Box<str>` field. Because pattern evaluation transforms (like `adjust_gain`, `adjust_pan`) clone the `SampleEvent` repeatedly on the hot path, `Box<str>` forces a deep memory allocation and string copy every time. By replacing `Box<str>` with `std::sync::Arc<str>`, the clone becomes a simple atomic increment. This significantly reduces heap allocations while maintaining thread safety (`Send + Sync`).
 **Action:** When a struct containing strings is cloned repeatedly but the strings are never mutated, use `std::sync::Arc<str>` (or similar interning primitives) instead of `Box<str>` or `String` to avoid costly memory allocations.
+
+**[Drain Iterator to Avoid Clones]**
+**Learning:** Calling `.cloned()` on an iterator over strings creates heap allocations. If the strings are no longer needed in the source container (like `remaining_params`), draining the items directly (`drain(..applied)`) allows you to move ownership without deep copies.
+**Action:** Replace `iter().take(n).cloned()` with `drain(..n)` when transferring elements from a mutable vector.
