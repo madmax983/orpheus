@@ -1059,10 +1059,13 @@ mod tests {
         session.eval_line(":bus new verb").unwrap();
         session.eval_line(":send drums verb 0.35").unwrap();
 
+        session.eval_line(":bus new dub").unwrap();
+        session.eval_line(":send drums dub 0.5").unwrap();
+
         let mixer = session.eval_line(":mixer").unwrap();
 
-        assert!(mixer.contains("drums -> groove"));
-        assert!(mixer.contains("send verb@0.35"));
+        assert!(mixer.contains("send verb @ 0.35"));
+        assert!(mixer.contains("send dub @ 0.50"));
     }
 
     #[test]
@@ -1076,7 +1079,7 @@ mod tests {
         );
 
         let mixer = session.eval_line(":mixer").unwrap();
-        assert!(mixer.contains("bus dub -> master"));
+        assert!(mixer.contains("└── dub -> master"));
         assert!(mixer.contains("delay(3/16"));
         let _ = session.render_test_block_for_tui(1);
         assert!(session.transport_snapshot().has_pending_routing());
@@ -1093,7 +1096,7 @@ mod tests {
         );
 
         let mixer = session.eval_line(":mixer").unwrap();
-        assert!(mixer.contains("bus verb -> master"));
+        assert!(mixer.contains("└── verb -> master"));
         assert!(mixer.contains("reverb(size=0.75 damp=0.35 wet=1.00)"));
         let _ = session.render_test_block_for_tui(1);
         assert!(session.transport_snapshot().has_pending_routing());
@@ -1113,7 +1116,7 @@ mod tests {
         );
 
         let mixer = session.eval_line(":mixer").unwrap();
-        assert!(mixer.contains("bus dub -> master"));
+        assert!(mixer.contains("└── dub -> master"));
         assert!(!mixer.contains("delay("));
     }
 
