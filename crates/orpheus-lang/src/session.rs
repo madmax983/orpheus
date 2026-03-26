@@ -360,54 +360,74 @@ impl ReplSession {
             .get(binding_name)
             .ok_or_else(|| format!("no binding named `{binding_name}`"))?;
 
+        Self::export_pattern_value(value, &path, cycles, binding_name)?;
+
+        Ok(format!(
+            "exported `{binding_name}` to `{path}` ({cycles} cycle(s))"
+        ))
+    }
+
+    fn export_pattern_value(value: &Value, path: &str, cycles: u64, binding_name: &str) -> Result<(), String> {
         match value {
             Value::SamplePattern(pattern) => {
-                let export_path = std::path::Path::new(&path);
+                let export_path = std::path::Path::new(path);
                 if export_path
                     .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
                 {
-                    crate::svg::export_sample_pattern_to_svg(pattern, &path, cycles)
+                    crate::svg::export_sample_pattern_to_svg(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 } else if export_path
                     .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
                 {
-                    crate::html::export_sample_pattern_to_html(pattern, &path, cycles)
+                    crate::html::export_sample_pattern_to_html(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 } else if export_path
                     .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
                 {
-                    crate::export::export_sample_pattern_to_json(pattern, &path, cycles)
+                    crate::export::export_sample_pattern_to_json(pattern, path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+                {
+                    crate::export::export_sample_pattern_to_md(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 } else {
-                    crate::export::export_sample_pattern_to_csv(pattern, &path, cycles)
+                    crate::export::export_sample_pattern_to_csv(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 }
             }
             Value::NumberPattern(pattern) => {
-                let export_path = std::path::Path::new(&path);
+                let export_path = std::path::Path::new(path);
                 if export_path
                     .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
                 {
-                    crate::svg::export_number_pattern_to_svg(pattern, &path, cycles)
+                    crate::svg::export_number_pattern_to_svg(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 } else if export_path
                     .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
                 {
-                    crate::html::export_number_pattern_to_html(pattern, &path, cycles)
+                    crate::html::export_number_pattern_to_html(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 } else if export_path
                     .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
                 {
-                    crate::export::export_number_pattern_to_json(pattern, &path, cycles)
+                    crate::export::export_number_pattern_to_json(pattern, path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+                {
+                    crate::export::export_number_pattern_to_md(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 } else {
-                    crate::export::export_number_pattern_to_csv(pattern, &path, cycles)
+                    crate::export::export_number_pattern_to_csv(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 }
             }
@@ -421,10 +441,7 @@ impl ReplSession {
                 ));
             }
         }
-
-        Ok(format!(
-            "exported `{binding_name}` to `{path}` ({cycles} cycle(s))"
-        ))
+        Ok(())
     }
 
     fn set_tempo(&mut self, args: &str) -> Result<String, String> {
