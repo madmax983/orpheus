@@ -1331,9 +1331,10 @@ mod tests {
 
         assert!(message.contains("Pattern: pattern"));
         assert!(message.contains("Cycles: 2"));
-        assert!(message.contains("Total Events: 8"));
-        assert!(message.contains("Unique Samples: 2 (bd, sn)"));
-        assert!(message.contains("Event Density: 4.00 events/cycle"));
+        assert!(message.contains("│ Total Events   │ 8                 │"));
+        assert!(message.contains("│ Unique Samples │ 2 (bd, sn)        │"));
+        assert!(message.contains("│ Event Density  │ 4.00 events/cycle │"));
+        assert!(message.contains("╭────────────────┬───────────────────╮"));
     }
 
     #[test]

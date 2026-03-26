@@ -40,12 +40,13 @@ pub fn sample_pattern_stats(
     #[allow(clippy::cast_precision_loss)]
     let density = (total_events as f64) / (cycle_count as f64);
 
-    let mut output = String::new();
-    writeln!(output, "Total Events: {total_events}")?;
-    writeln!(output, "Unique Samples: {unique_count} ({sample_list})")?;
-    write!(output, "Event Density: {density:.2} events/cycle")?;
+    let rows = vec![
+        ("Total Events", total_events.to_string()),
+        ("Unique Samples", format!("{unique_count} ({sample_list})")),
+        ("Event Density", format!("{density:.2} events/cycle")),
+    ];
 
-    Ok(output)
+    Ok(render_stats_table(&rows))
 }
 
 /// Analyzes a number pattern's evaluated events and returns a formatted report.
@@ -101,14 +102,57 @@ pub fn number_pattern_stats(
     #[allow(clippy::cast_precision_loss)]
     let density = (total_events as f64) / (cycle_count as f64);
 
-    let mut output = String::new();
-    writeln!(output, "Total Events: {total_events}")?;
-    writeln!(output, "Min Value: {min_val:.3}")?;
-    writeln!(output, "Max Value: {max_val:.3}")?;
-    writeln!(output, "Average Value: {avg:.3}")?;
-    write!(output, "Event Density: {density:.2} events/cycle")?;
+    let rows = vec![
+        ("Total Events", total_events.to_string()),
+        ("Min Value", format!("{min_val:.3}")),
+        ("Max Value", format!("{max_val:.3}")),
+        ("Average Value", format!("{avg:.3}")),
+        ("Event Density", format!("{density:.2} events/cycle")),
+    ];
 
-    Ok(output)
+    Ok(render_stats_table(&rows))
+}
+
+fn render_stats_table(rows: &[(&str, String)]) -> String {
+    let mut max_key_len = "Metric".chars().count();
+    let mut max_val_len = "Value".chars().count();
+
+    for (key, val) in rows {
+        max_key_len = max_key_len.max(key.chars().count());
+        max_val_len = max_val_len.max(val.chars().count());
+    }
+
+    let mut output = String::new();
+    let _ = writeln!(
+        output,
+        "╭─{0:─<1$}─┬─{0:─<2$}─╮",
+        "", max_key_len, max_val_len
+    );
+    let _ = writeln!(
+        output,
+        "│ {0:<1$} │ {2:<3$} │",
+        "Metric", max_key_len, "Value", max_val_len
+    );
+    let _ = writeln!(
+        output,
+        "├─{0:─<1$}─┼─{0:─<2$}─┤",
+        "", max_key_len, max_val_len
+    );
+
+    for (key, val) in rows {
+        let _ = writeln!(
+            output,
+            "│ {key:<max_key_len$} │ {val:<max_val_len$} │",
+        );
+    }
+
+    let _ = write!(
+        output,
+        "╰─{0:─<1$}─┴─{0:─<2$}─╯",
+        "", max_key_len, max_val_len
+    );
+
+    output
 }
 
 #[cfg(test)]
@@ -123,10 +167,12 @@ mod tests {
         let pattern = module.get("pattern").unwrap().as_sample_pattern().unwrap();
 
         let stats = sample_pattern_stats(pattern, 2).unwrap();
-        assert!(stats.contains("Total Events: 8"));
-        assert!(stats.contains("Unique Samples: 2"));
-        assert!(stats.contains("bd, sn"));
-        assert!(stats.contains("Event Density: 4.00 events/cycle"));
+        assert!(stats.contains("│ Total Events   │ 8                 │"));
+        assert!(stats.contains("│ Unique Samples │ 2 (bd, sn)        │"));
+        assert!(stats.contains("│ Event Density  │ 4.00 events/cycle │"));
+        assert!(stats.contains("╭────────────────┬───────────────────╮"));
+        assert!(stats.contains("├────────────────┼───────────────────┤"));
+        assert!(stats.contains("╰────────────────┴───────────────────╯"));
     }
 
     #[test]
@@ -136,11 +182,14 @@ mod tests {
         let pattern = module.get("pattern").unwrap().as_number_pattern().unwrap();
 
         let stats = number_pattern_stats(pattern, 1).unwrap();
-        assert!(stats.contains("Total Events: 3"));
-        assert!(stats.contains("Min Value: 1.000"));
-        assert!(stats.contains("Max Value: 3.000"));
-        assert!(stats.contains("Average Value: 2.000"));
-        assert!(stats.contains("Event Density: 3.00 events/cycle"));
+        assert!(stats.contains("│ Total Events  │ 3                 │"));
+        assert!(stats.contains("│ Min Value     │ 1.000             │"));
+        assert!(stats.contains("│ Max Value     │ 3.000             │"));
+        assert!(stats.contains("│ Average Value │ 2.000             │"));
+        assert!(stats.contains("│ Event Density │ 3.00 events/cycle │"));
+        assert!(stats.contains("╭───────────────┬───────────────────╮"));
+        assert!(stats.contains("├───────────────┼───────────────────┤"));
+        assert!(stats.contains("╰───────────────┴───────────────────╯"));
     }
 
     #[test]
