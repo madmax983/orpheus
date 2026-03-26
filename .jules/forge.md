@@ -20,3 +20,7 @@
 **[Boilerplate Reduction in JSON Exporting]**
 **Learning:** Identified duplicate code logic for JSON file initialization, metadata writing, and event looping in `export.rs` across sample and number pattern exports.
 **Action:** Extract JSON boilerplate into a generic `export_pattern_events_to_json` helper, removing duplication and keeping file I/O operations central.
+
+**[Unnecessary Allocations from Iterator Cloning]**
+**Learning:** Found an anti-pattern in `apply_user_function` using `.iter().take(n).cloned()` to iterate over a subset of items for a `Vec`, which unnecessarily copies items, followed by a separate `.drain(..n)` to remove them.
+**Action:** Utilize `.drain(..n)` directly in the iterator chain to transfer ownership seamlessly, avoiding the extra `.cloned()` and extra loop pass.
