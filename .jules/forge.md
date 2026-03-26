@@ -20,3 +20,7 @@
 **[Boilerplate Reduction in JSON Exporting]**
 **Learning:** Identified duplicate code logic for JSON file initialization, metadata writing, and event looping in `export.rs` across sample and number pattern exports.
 **Action:** Extract JSON boilerplate into a generic `export_pattern_events_to_json` helper, removing duplication and keeping file I/O operations central.
+
+**[Boilerplate Argument Checking and Export Routing Reduction]**
+**Learning:** Identified duplicate code logic for CLI argument checking in `eval_command` and extension checking in `export_binding` leading to God Functions.
+**Action:** Extract argument checking into `require_args` helper and export routing into `export_sample_pattern` and `export_number_pattern` helpers, removing duplication and flattening nesting.

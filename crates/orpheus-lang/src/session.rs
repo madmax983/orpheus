@@ -133,6 +133,14 @@ impl ReplSession {
     }
 
     fn eval_command(&mut self, source: &str) -> Result<String, String> {
+        fn require_args<'a>(args: &'a str, usage: &str) -> Result<&'a str, String> {
+            if args.is_empty() {
+                Err(usage.to_owned())
+            } else {
+                Ok(args)
+            }
+        }
+
         let command = source.trim_start_matches(':').trim();
         if command.is_empty() {
             return Err("empty REPL command".to_owned());
@@ -142,76 +150,16 @@ impl ReplSession {
             .map_or((command, ""), |(name, args)| (name, args.trim()));
 
         match name {
-            "render" => {
-                if args.is_empty() {
-                    Err(render_usage().to_owned())
-                } else {
-                    self.render_binding(args)
-                }
-            }
-            "roll" => {
-                if args.is_empty() {
-                    Err(roll_usage().to_owned())
-                } else {
-                    self.roll_binding(args)
-                }
-            }
-            "stats" => {
-                if args.is_empty() {
-                    Err(stats_usage().to_owned())
-                } else {
-                    self.stats_binding(args)
-                }
-            }
-            "export" => {
-                if args.is_empty() {
-                    Err(export_usage().to_owned())
-                } else {
-                    self.export_binding(args)
-                }
-            }
-            "tempo" => {
-                if args.is_empty() {
-                    Err(tempo_usage().to_owned())
-                } else {
-                    self.set_tempo(args)
-                }
-            }
-            "samples" => {
-                if args.is_empty() {
-                    Err(samples_usage().to_owned())
-                } else {
-                    self.load_sample_directory(args)
-                }
-            }
-            "open" => {
-                if args.is_empty() {
-                    Err(open_usage().to_owned())
-                } else {
-                    self.open_file(args)
-                }
-            }
-            "track" => {
-                if args.is_empty() {
-                    Err(track_usage().to_owned())
-                } else {
-                    self.eval_track_command(args)
-                }
-            }
-            "bus" => {
-                if args.is_empty() {
-                    Err(bus_usage().to_owned())
-                } else {
-                    self.eval_bus_command(args)
-                }
-            }
-            "send" => {
-                if args.is_empty() {
-                    Err(send_usage().to_owned())
-                } else {
-                    self.eval_send_command(args)
-                }
-            }
+            "render" => self.render_binding(require_args(args, render_usage())?),
+            "roll" => self.roll_binding(require_args(args, roll_usage())?),
+            "stats" => self.stats_binding(require_args(args, stats_usage())?),
+            "export" => self.export_binding(require_args(args, export_usage())?),
+            "tempo" => self.set_tempo(require_args(args, tempo_usage())?),
+            "samples" => self.load_sample_directory(require_args(args, samples_usage())?),
+            "open" => self.open_file(require_args(args, open_usage())?),
+            "track" => self.eval_track_command(require_args(args, track_usage())?),
+            "bus" => self.eval_bus_command(require_args(args, bus_usage())?),
+            "send" => self.eval_send_command(require_args(args, send_usage())?),
             "mixer" => self.mixer_command(args),
             "reload-samples" => self.reload_sample_directory(args),
             "play" => self.play_transport(args),
@@ -367,56 +315,8 @@ impl ReplSession {
             .ok_or_else(|| format!("no binding named `{binding_name}`"))?;
 
         match value {
-            Value::SamplePattern(pattern) => {
-                let export_path = std::path::Path::new(&path);
-                if export_path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
-                {
-                    crate::svg::export_sample_pattern_to_svg(pattern, &path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                } else if export_path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
-                {
-                    crate::html::export_sample_pattern_to_html(pattern, &path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                } else if export_path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
-                {
-                    crate::export::export_sample_pattern_to_json(pattern, &path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                } else {
-                    crate::export::export_sample_pattern_to_csv(pattern, &path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                }
-            }
-            Value::NumberPattern(pattern) => {
-                let export_path = std::path::Path::new(&path);
-                if export_path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
-                {
-                    crate::svg::export_number_pattern_to_svg(pattern, &path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                } else if export_path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
-                {
-                    crate::html::export_number_pattern_to_html(pattern, &path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                } else if export_path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
-                {
-                    crate::export::export_number_pattern_to_json(pattern, &path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                } else {
-                    crate::export::export_number_pattern_to_csv(pattern, &path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                }
-            }
+            Value::SamplePattern(pattern) => Self::export_sample_pattern(pattern, &path, cycles)?,
+            Value::NumberPattern(pattern) => Self::export_number_pattern(pattern, &path, cycles)?,
             Value::ArpDirection(_)
             | Value::PitchClassSet(_)
             | Value::Function(_)
@@ -431,6 +331,68 @@ impl ReplSession {
         Ok(format!(
             "exported `{binding_name}` to `{path}` ({cycles} cycle(s))"
         ))
+    }
+
+    fn export_sample_pattern(
+        pattern: &crate::value::SamplePatternValue,
+        path: &str,
+        cycles: u64,
+    ) -> Result<(), String> {
+        let export_path = std::path::Path::new(path);
+        if export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
+        {
+            crate::svg::export_sample_pattern_to_svg(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        } else if export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
+        {
+            crate::html::export_sample_pattern_to_html(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        } else if export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+        {
+            crate::export::export_sample_pattern_to_json(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        } else {
+            crate::export::export_sample_pattern_to_csv(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        }
+        Ok(())
+    }
+
+    fn export_number_pattern(
+        pattern: &crate::value::NumberPatternValue,
+        path: &str,
+        cycles: u64,
+    ) -> Result<(), String> {
+        let export_path = std::path::Path::new(path);
+        if export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
+        {
+            crate::svg::export_number_pattern_to_svg(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        } else if export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
+        {
+            crate::html::export_number_pattern_to_html(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        } else if export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+        {
+            crate::export::export_number_pattern_to_json(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        } else {
+            crate::export::export_number_pattern_to_csv(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        }
+        Ok(())
     }
 
     fn set_tempo(&mut self, args: &str) -> Result<String, String> {
