@@ -53,3 +53,40 @@ fn loader_accepts_analog_showcase_example() {
     assert!(module.contains_key("lead"));
     assert!(module.contains_key("song"));
 }
+
+#[test]
+fn loader_reports_malformed_import_lines_as_errors() {
+    let cases = vec![
+        (
+            "use file.ode\" (names)",
+            "import path must start with a quoted filename",
+        ),
+        (
+            "use \"file.ode (names)",
+            "import path is missing a closing quote",
+        ),
+        (
+            "use \"file.ode\" names",
+            "import list must use parentheses",
+        ),
+        (
+            "use \"file.ode\" ()",
+            "import list must name at least one binding",
+        ),
+    ];
+
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("test.ode");
+
+    for (input, expected_error) in cases {
+        std::fs::write(&file_path, input).unwrap();
+        let error = load_file_strict(&file_path).unwrap_err();
+        assert!(
+            error.to_string().contains(expected_error),
+            "Expected error for input '{}' to contain '{}', but got '{}'",
+            input,
+            expected_error,
+            error
+        );
+    }
+}
