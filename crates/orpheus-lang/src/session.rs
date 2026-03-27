@@ -395,6 +395,12 @@ impl ReplSession {
                 {
                     crate::export::export_sample_pattern_to_md(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("txt"))
+                {
+                    crate::txt::export_sample_pattern_to_txt(pattern, path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
                 } else {
                     crate::export::export_sample_pattern_to_csv(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
@@ -425,6 +431,12 @@ impl ReplSession {
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
                 {
                     crate::export::export_number_pattern_to_md(pattern, path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("txt"))
+                {
+                    crate::txt::export_number_pattern_to_txt(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 } else {
                     crate::export::export_number_pattern_to_csv(pattern, path, cycles)
