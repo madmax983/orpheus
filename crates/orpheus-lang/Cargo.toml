@@ -20,3 +20,4 @@ ratatui.workspace = true
 hound.workspace = true
 proptest = { workspace = true }
 serde_json = "1"
+tempfile = "3.27.0"
