@@ -8,6 +8,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+comfy-table.workspace = true
 crossterm.workspace = true
 orpheus-dsp.workspace = true
 orpheus-pattern.workspace = true
