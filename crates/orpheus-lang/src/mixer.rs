@@ -336,21 +336,23 @@ impl MixerState {
     pub(crate) fn track_summary_lines(&self) -> Vec<String> {
         let mut lines = Vec::new();
 
-        if !self.has_explicit_bound_tracks() {
-            if let Some(binding_name) = &self.compatibility_main_binding {
-                lines.push(format!("main -> {binding_name} (auto)"));
-            } else {
-                lines.push("main -> <unbound> (auto)".to_owned());
-            }
-        } else {
+        if self.has_explicit_bound_tracks() {
             lines.push("Tracks:".to_owned());
+        } else if let Some(binding_name) = &self.compatibility_main_binding {
+            lines.push(format!("main -> {binding_name} (auto)"));
+        } else {
+            lines.push("main -> <unbound> (auto)".to_owned());
         }
 
         let track_count = self.tracks.len();
         for (i, (track_name, track)) in self.tracks.iter().enumerate() {
             let is_last_track = i == track_count - 1;
             let binding_name = track.binding_name.as_deref().unwrap_or("<unbound>");
-            let track_prefix = if is_last_track { "└──" } else { "├──" };
+            let track_prefix = if is_last_track {
+                "└──"
+            } else {
+                "├──"
+            };
             let mut line = format!("{track_prefix} {track_name} -> {binding_name}");
             if track.muted {
                 line.push_str(" [muted]");
@@ -365,8 +367,14 @@ impl MixerState {
             for (j, (bus_name, level)) in track.sends.iter().enumerate() {
                 let is_last_send = j == send_count - 1;
                 let track_indent = if is_last_track { "   " } else { "│  " };
-                let send_prefix = if is_last_send { "└──" } else { "├──" };
-                lines.push(format!("{track_indent} {send_prefix} send {bus_name} @ {level:.2}"));
+                let send_prefix = if is_last_send {
+                    "└──"
+                } else {
+                    "├──"
+                };
+                lines.push(format!(
+                    "{track_indent} {send_prefix} send {bus_name} @ {level:.2}"
+                ));
             }
         }
 
@@ -382,7 +390,11 @@ impl MixerState {
         let bus_count = self.buses.len();
         for (i, (bus_name, bus)) in self.buses.iter().enumerate() {
             let is_last_bus = i == bus_count - 1;
-            let bus_prefix = if is_last_bus { "└──" } else { "├──" };
+            let bus_prefix = if is_last_bus {
+                "└──"
+            } else {
+                "├──"
+            };
             let mut line = format!("{bus_prefix} {bus_name} -> master");
             if let Some(effect) = &bus.effect {
                 write!(&mut line, " {}", effect.summary())
