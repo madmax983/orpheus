@@ -649,7 +649,7 @@ fn apply_chord(args: Vec<Value>) -> Result<Value, EvalError> {
             .ok_or_else(|| EvalError::new("`chord` requires an interval-set argument"))?,
     )?;
 
-    Ok(Value::NumberPattern(root.chord(intervals)))
+    Ok(Value::NumberPattern(root.chord(&intervals)))
 }
 
 fn apply_strum(args: Vec<Value>) -> Result<Value, EvalError> {
