@@ -20,3 +20,6 @@
 **[Boilerplate Reduction in JSON Exporting]**
 **Learning:** Identified duplicate code logic for JSON file initialization, metadata writing, and event looping in `export.rs` across sample and number pattern exports.
 **Action:** Extract JSON boilerplate into a generic `export_pattern_events_to_json` helper, removing duplication and keeping file I/O operations central.
+**[Avoid double negations in else branches]**
+**Learning:** Found an `if !condition { ... } else { ... }` in `crates/orpheus-lang/src/mixer.rs` that triggers the `clippy::if_not_else` lint, increasing cognitive load when parsing the branches.
+**Action:** Flip the condition to be positive (`if condition`) and swap the `if` and `else` blocks.
