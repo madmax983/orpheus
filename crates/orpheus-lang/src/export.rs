@@ -16,9 +16,39 @@ use crate::eval::{EvalError, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue};
 
 /// Errors that can occur during audio rendering or exporting operations.
+///
+/// This error is returned when exporting patterns to audio files (like WAV).
+/// It can either stem from runtime evaluation failures (e.g., trying to render a
+/// pattern with out-of-bounds parameters) or from the audio engine failing to
+/// process and write the PCM data to disk.
+///
+/// # Causes
+///
+/// - [`RenderError::Eval`]: The pattern could not be successfully queried across
+///   the requested time span due to an [`EvalError`] (e.g., invalid arithmetic
+///   on the rational time domain).
+/// - [`RenderError::Audio`]: The offline digital signal processing engine failed
+///   to write the resulting audio file (e.g., I/O permissions or a corrupted
+///   sample bank).
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::RenderError;
+/// use orpheus_lang::EvalError;
+///
+/// let error = RenderError::Eval(EvalError::new("out of bounds parameter"));
+///
+/// match error {
+///     RenderError::Eval(e) => assert_eq!(e.to_string(), "out of bounds parameter"),
+///     RenderError::Audio(_) => unreachable!(),
+/// }
+/// ```
 #[derive(Debug)]
 pub enum RenderError {
+    /// An error occurred while evaluating the pattern events.
     Eval(EvalError),
+    /// An error occurred during the offline digital signal processing or file writing phase.
     Audio(OfflineRenderError),
 }
 
