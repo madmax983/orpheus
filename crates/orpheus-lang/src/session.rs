@@ -367,7 +367,12 @@ impl ReplSession {
         ))
     }
 
-    fn export_pattern_value(value: &Value, path: &str, cycles: u64, binding_name: &str) -> Result<(), String> {
+    fn export_pattern_value(
+        value: &Value,
+        path: &str,
+        cycles: u64,
+        binding_name: &str,
+    ) -> Result<(), String> {
         match value {
             Value::SamplePattern(pattern) => {
                 let export_path = std::path::Path::new(path);
