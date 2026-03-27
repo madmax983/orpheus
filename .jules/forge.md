@@ -20,3 +20,7 @@
 **[Boilerplate Reduction in JSON Exporting]**
 **Learning:** Identified duplicate code logic for JSON file initialization, metadata writing, and event looping in `export.rs` across sample and number pattern exports.
 **Action:** Extract JSON boilerplate into a generic `export_pattern_events_to_json` helper, removing duplication and keeping file I/O operations central.
+
+**Refactoring Negative Conditionals (`clippy::if_not_else`)**
+**Learning:** Checking a negative condition (`if !condition`) and providing an `else` branch requires more cognitive load to parse than a positive check.
+**Action:** When a negative check has an `else` branch, flip the condition and swap the block contents, or replace it with `else if` chains when possible. This is particularly prevalent in nested rendering or formatting logic.
