@@ -1490,10 +1490,13 @@ impl NumberPatternValue {
         }
     }
 
-    pub(crate) fn chord(self, intervals: Vec<f64>) -> Self {
+    pub(crate) fn chord(self, intervals: &[f64]) -> Self {
         let mut layers = Vec::with_capacity(intervals.len());
-        for interval in intervals {
-            layers.push(self.clone().transpose(interval));
+        if let Some((last, rest)) = intervals.split_last() {
+            for interval in rest {
+                layers.push(self.clone().transpose(*interval));
+            }
+            layers.push(self.transpose(*last));
         }
         Self::stack(layers)
     }
