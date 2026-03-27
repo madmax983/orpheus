@@ -552,6 +552,22 @@ pub fn render_sample_pattern_to_wav(
 
 use std::fmt::Write as _;
 
+/// Escapes a string for safe inclusion within a JSON payload.
+///
+/// Converts double quotes, backslashes, and control characters into their corresponding
+/// JSON escape sequences (e.g., `\"`, `\\`, `\n`). This ensures that dynamically generated
+/// text (like sample names) won't break the JSON structure during export operations.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_lang::export::escape_json_string;
+///
+/// let raw = "hello \"world\"\nfrom \\rust\\";
+/// let escaped = escape_json_string(raw);
+///
+/// assert_eq!(escaped, "hello \\\"world\\\"\\nfrom \\\\rust\\\\");
+/// ```
 pub fn escape_json_string(s: &str) -> String {
     let mut escaped = String::with_capacity(s.len() * 2);
     for c in s.chars() {
