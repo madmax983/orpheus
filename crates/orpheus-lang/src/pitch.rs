@@ -9,6 +9,30 @@ use std::fmt::{self, Display, Formatter};
 /// Thrown when the literal has invalid characters (like `"c#4"` instead of `"cs4"`),
 /// is an uppercase spelling (like `"C4"` instead of `"c4"`), or contains an
 /// unparseable octave suffix.
+///
+/// # Causes
+///
+/// Pitch literals must exactly match Orpheus's required lowercase format:
+/// `[note][accidental][octave]`.
+/// - The note must be `a` through `g`.
+/// - The accidental must be `s` (sharp) or `f` (flat). Traditional `#` or `b`
+///   are not valid.
+/// - The octave must be a parseable integer.
+/// - Using uppercase letters or invalid accidentals returns this error.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::parse_named_pitch_literal;
+///
+/// // Invalid accidental (`#` instead of `s` for sharp)
+/// let error = parse_named_pitch_literal("c#4").unwrap_err();
+/// assert!(error.to_string().contains("invalid format"));
+///
+/// // Uppercase notes are not supported.
+/// let error = parse_named_pitch_literal("C4").unwrap_err();
+/// assert!(error.to_string().contains("invalid format"));
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PitchLiteralError {
     message: Box<str>,
