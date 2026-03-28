@@ -6,8 +6,41 @@
 use std::io::Write;
 use std::path::Path;
 
+use orpheus_pattern::Event;
+
 use crate::eval::{EvalError, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue};
+
+/// Helper function to encapsulate boilerplate for exporting a pattern to a text file.
+fn export_pattern_events_to_txt<T, F>(
+    events: Vec<Event<T>>,
+    path: impl AsRef<Path>,
+    cycle_count: u64,
+    title: &str,
+    mut format_event: F,
+) -> Result<(), EvalError>
+where
+    F: FnMut(&Event<T>, &mut std::fs::File) -> std::io::Result<()>,
+{
+    if cycle_count == 0 {
+        return Err(EvalError::new("exporting requires at least one cycle"));
+    }
+
+    let path = path.as_ref();
+
+    let mut file = std::fs::File::create(path)?;
+
+    writeln!(file, "{title}")?;
+    writeln!(file, "{}", "=".repeat(title.len()))?;
+    writeln!(file, "Cycles: {cycle_count}")?;
+    writeln!(file)?;
+
+    for event in events {
+        format_event(&event, &mut file)?;
+    }
+
+    Ok(())
+}
 
 /// Exports a sample pattern's evaluated events to a plain text file.
 ///
@@ -25,42 +58,39 @@ pub fn export_sample_pattern_to_txt(
     if cycle_count == 0 {
         return Err(EvalError::new("exporting requires at least one cycle"));
     }
-
     let span = render_span(cycle_count)?;
     let events = pattern.try_query(&span)?;
-    let path = path.as_ref();
+    export_pattern_events_to_txt(
+        events,
+        path,
+        cycle_count,
+        "Orpheus Sample Pattern Export",
+        |event, file| {
+            let start = f64::from(event.part.start());
+            let end = f64::from(event.part.end());
 
-    let mut file = std::fs::File::create(path)?;
+            let mut params = Vec::new();
+            params.push(format!("gain: {:.2}", event.value.gain()));
+            params.push(format!("pan: {:.2}", event.value.pan()));
+            params.push(format!("rate: {:.2}", event.value.rate()));
 
-    writeln!(file, "Orpheus Sample Pattern Export")?;
-    writeln!(file, "=============================")?;
-    writeln!(file, "Cycles: {}", cycle_count)?;
-    writeln!(file)?;
+            if let Some(hpf) = event.value.hpf_cutoff_hz() {
+                params.push(format!("hpf: {hpf:.2}"));
+            }
+            if let Some(lpf) = event.value.lpf_cutoff_hz() {
+                params.push(format!("lpf: {lpf:.2}"));
+            }
 
-    for event in events {
-        let start = f64::from(event.part.start());
-        let end = f64::from(event.part.end());
-
-        let mut params = Vec::new();
-        params.push(format!("gain: {:.2}", event.value.gain()));
-        params.push(format!("pan: {:.2}", event.value.pan()));
-        params.push(format!("rate: {:.2}", event.value.rate()));
-
-        if let Some(hpf) = event.value.hpf_cutoff_hz() {
-            params.push(format!("hpf: {:.2}", hpf));
-        }
-        if let Some(lpf) = event.value.lpf_cutoff_hz() {
-            params.push(format!("lpf: {:.2}", lpf));
-        }
-
-        writeln!(
-            file,
-            "[{:.3} -> {:.3}] {} ({})",
-            start, end, event.value.sample(), params.join(", ")
-        )?;
-    }
-
-    Ok(())
+            writeln!(
+                file,
+                "[{:.3} -> {:.3}] {} ({})",
+                start,
+                end,
+                event.value.sample(),
+                params.join(", ")
+            )
+        },
+    )
 }
 
 /// Exports a number pattern's evaluated events to a plain text file.
@@ -79,30 +109,24 @@ pub fn export_number_pattern_to_txt(
     if cycle_count == 0 {
         return Err(EvalError::new("exporting requires at least one cycle"));
     }
-
     let span = render_span(cycle_count)?;
     let events = pattern.try_query(&span)?;
-    let path = path.as_ref();
+    export_pattern_events_to_txt(
+        events,
+        path,
+        cycle_count,
+        "Orpheus Number Pattern Export",
+        |event, file| {
+            let start = f64::from(event.part.start());
+            let end = f64::from(event.part.end());
 
-    let mut file = std::fs::File::create(path)?;
-
-    writeln!(file, "Orpheus Number Pattern Export")?;
-    writeln!(file, "=============================")?;
-    writeln!(file, "Cycles: {}", cycle_count)?;
-    writeln!(file)?;
-
-    for event in events {
-        let start = f64::from(event.part.start());
-        let end = f64::from(event.part.end());
-
-        writeln!(
-            file,
-            "[{:.3} -> {:.3}] value: {:.3}",
-            start, end, event.value
-        )?;
-    }
-
-    Ok(())
+            writeln!(
+                file,
+                "[{:.3} -> {:.3}] value: {:.3}",
+                start, end, event.value
+            )
+        },
+    )
 }
 
 #[cfg(test)]
