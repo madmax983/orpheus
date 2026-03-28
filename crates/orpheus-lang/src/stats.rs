@@ -50,7 +50,10 @@ pub fn sample_pattern_stats(
             String::new(),
         ])
         .add_row(vec!["Total Events", &total_events.to_string()])
-        .add_row(vec!["Unique Samples", &format!("{unique_count} ({sample_list})")])
+        .add_row(vec![
+            "Unique Samples",
+            &format!("{unique_count} ({sample_list})"),
+        ])
         .add_row(vec!["Event Density", &format!("{density:.2} events/cycle")]);
 
     Ok(table.to_string())
