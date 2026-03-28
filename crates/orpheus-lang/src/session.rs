@@ -462,7 +462,7 @@ impl ReplSession {
             match value {
                 crate::value::Value::SamplePattern(pattern) => {
                     let roll =
-                        crate::ascii_roll::render_ascii_roll(pattern, cycles, steps_per_cycle)
+                        crate::ascii_roll::render_ascii_roll(binding_name, pattern, cycles, steps_per_cycle)
                             .map_err(|error| error.to_string())?;
                     Ok(format!("\n{}", roll.trim_end()))
                 }
@@ -1571,8 +1571,12 @@ mod tests {
 
         let message = session.eval_line(":roll pattern 1 8").unwrap();
 
-        assert!(message.contains("bd | x---...."));
-        assert!(message.contains("sn | ....x---"));
+        assert!(message.contains("╭────────────────────────────────────╮"));
+        assert!(message.contains("│ Pattern Roll: pattern (1 cycles)   │"));
+        assert!(message.contains("╞════════════════════════════════════╡"));
+        assert!(message.contains("│ bd │ x---....                      │"));
+        assert!(message.contains("│ sn │ ....x---                      │"));
+        assert!(message.contains("╰────────────────────────────────────╯"));
     }
 
     #[test]
