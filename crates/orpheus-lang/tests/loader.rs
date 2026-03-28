@@ -65,10 +65,7 @@ fn loader_reports_malformed_import_lines_as_errors() {
             "use \"file.ode (names)",
             "import path is missing a closing quote",
         ),
-        (
-            "use \"file.ode\" names",
-            "import list must use parentheses",
-        ),
+        ("use \"file.ode\" names", "import list must use parentheses"),
         (
             "use \"file.ode\" ()",
             "import list must name at least one binding",
