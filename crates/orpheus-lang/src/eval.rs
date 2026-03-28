@@ -591,7 +591,21 @@ impl Evaluator {
         }
 
         let base = Self::value_to_explicit(self.eval_expr_in_meter(pattern, meter)?)?;
-        let mut combined: Option<ExplicitValue> = None;
+        if repeat_count == 0 {
+            return Err(EvalError::new("section cycle count must be positive"));
+        }
+
+        let repeat_count_usize = usize::try_from(repeat_count)
+            .map_err(|_| EvalError::new("section cycle count exceeded evaluator limits"))?;
+
+        let mut combined = match base {
+            ExplicitValue::Sample(ref events) => ExplicitValue::Sample(Vec::with_capacity(
+                events.len().checked_mul(repeat_count_usize).unwrap_or(0),
+            )),
+            ExplicitValue::Number(ref events) => ExplicitValue::Number(Vec::with_capacity(
+                events.len().checked_mul(repeat_count_usize).unwrap_or(0),
+            )),
+        };
 
         for repeat in 0..repeat_count {
             let offset = rational_from_parts(
@@ -602,13 +616,33 @@ impl Evaluator {
             )?;
             let mut repeated = base.clone();
             repeated.shift(&offset)?;
-            combined = Some(match combined {
-                Some(existing) => existing.merge(repeated)?,
-                None => repeated,
-            });
+            // Inline merge without the sort at every step
+            match (&mut combined, repeated) {
+                (ExplicitValue::Sample(combined_events), ExplicitValue::Sample(mut new_events)) => {
+                    combined_events.append(&mut new_events);
+                }
+                (ExplicitValue::Number(combined_events), ExplicitValue::Number(mut new_events)) => {
+                    combined_events.append(&mut new_events);
+                }
+                _ => {
+                    return Err(EvalError::new(
+                        "explicit-time items must all resolve to the same pattern kind",
+                    ));
+                }
+            }
         }
 
-        combined.ok_or_else(|| EvalError::new("section cycle count must be positive"))
+        // Final sort exactly once
+        match combined {
+            ExplicitValue::Sample(mut events) => {
+                sort_events(&mut events);
+                Ok(ExplicitValue::Sample(events))
+            }
+            ExplicitValue::Number(mut events) => {
+                sort_events(&mut events);
+                Ok(ExplicitValue::Number(events))
+            }
+        }
     }
 
     fn eval_section_length(
