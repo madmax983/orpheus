@@ -26,6 +26,25 @@ use crate::mixer::MixerState;
 use crate::types::infer_into_bindings;
 use crate::{ReplMode, Type, Value};
 
+/// Represents the interactive state of an Orpheus environment.
+///
+/// A `ReplSession` manages user bindings, loaded sample banks, and real-time DSP
+/// commands. It acts as the bridge between textual inputs and the underlying audio engine.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_lang::session::ReplSession;
+/// use orpheus_dsp::EngineHandle;
+///
+/// // Create a new session linked to a stubbed audio engine (for testing).
+/// let engine = EngineHandle::stub();
+/// let mut session = ReplSession::with_engine(engine);
+///
+/// // Evaluate a simple pattern binding.
+/// let result = session.eval_line("drums = bd sn");
+/// assert!(result.is_ok());
+/// ```
 pub struct ReplSession {
     mode: ReplMode,
     engine: EngineHandle,
@@ -45,6 +64,23 @@ struct PatternDisplayState {
     last_loaded_pattern_name: Option<String>,
 }
 
+/// A snapshot of the transport state formatted for visual presentation.
+///
+/// `TransportView` encapsulates the underlying engine's `TransportSnapshot` and adds
+/// presentation-level details, such as the names of the currently active and pending patterns.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_lang::session::ReplSession;
+/// use orpheus_dsp::EngineHandle;
+///
+/// let session = ReplSession::with_engine(EngineHandle::stub());
+/// let view = session.transport_view();
+///
+/// assert!(view.active_pattern_name().is_none());
+/// assert!(view.pending_pattern_name().is_none());
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TransportView {
     snapshot: TransportSnapshot,
@@ -52,6 +88,26 @@ pub struct TransportView {
     pending_pattern_name: Option<String>,
 }
 
+/// A snapshot of the mixer routing state formatted for visual presentation.
+///
+/// `MixerView` encapsulates a summary of the currently active tracks and buses,
+/// along with a flag indicating whether routing updates are pending execution
+/// at the next cycle boundary.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_lang::session::ReplSession;
+/// use orpheus_dsp::EngineHandle;
+///
+/// let mut session = ReplSession::with_engine(EngineHandle::stub());
+/// session.eval_line(":track new drums").unwrap();
+///
+/// let view = session.mixer_view();
+/// assert_eq!(view.tracks().len(), 1);
+/// assert!(view.buses().is_empty());
+/// assert!(view.has_pending_routing());
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MixerView {
     tracks: Vec<String>,
@@ -60,16 +116,58 @@ pub struct MixerView {
 }
 
 impl TransportView {
+    /// Returns a reference to the underlying DSP transport snapshot.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let session = ReplSession::with_engine(EngineHandle::stub());
+    /// let snapshot = session.transport_view().snapshot();
+    /// assert_eq!(snapshot.tempo_bpm(), 120.0);
+    /// ```
     #[must_use]
     pub const fn snapshot(&self) -> &TransportSnapshot {
         &self.snapshot
     }
 
+    /// Returns the name of the currently active (playing) pattern, if any.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.eval_line("drums = bd sn").unwrap();
+    /// // Fast-forward transport to activate pattern
+    /// session.render_test_block_for_tui(256);
+    ///
+    /// let view = session.transport_view();
+    /// assert_eq!(view.active_pattern_name(), Some("drums"));
+    /// ```
     #[must_use]
     pub fn active_pattern_name(&self) -> Option<&str> {
         self.active_pattern_name.as_deref()
     }
 
+    /// Returns the name of the pattern pending execution at the next cycle boundary, if any.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.eval_line("drums = bd sn").unwrap();
+    ///
+    /// let view = session.transport_view();
+    /// assert_eq!(view.pending_pattern_name(), Some("drums"));
+    /// ```
     #[must_use]
     pub fn pending_pattern_name(&self) -> Option<&str> {
         self.pending_pattern_name.as_deref()
@@ -77,16 +175,59 @@ impl TransportView {
 }
 
 impl MixerView {
+    /// Returns a slice of strings summarizing the state of all active tracks.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.eval_line(":track new drums").unwrap();
+    ///
+    /// let tracks = session.mixer_view().tracks().to_vec();
+    /// assert_eq!(tracks.len(), 1);
+    /// assert!(tracks[0].contains("drums"));
+    /// ```
     #[must_use]
     pub fn tracks(&self) -> &[String] {
         &self.tracks
     }
 
+    /// Returns a slice of strings summarizing the state of all active buses.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.eval_line(":bus new verb").unwrap();
+    ///
+    /// let buses = session.mixer_view().buses().to_vec();
+    /// assert_eq!(buses.len(), 1);
+    /// assert!(buses[0].contains("verb"));
+    /// ```
     #[must_use]
     pub fn buses(&self) -> &[String] {
         &self.buses
     }
 
+    /// Returns `true` if there are pending routing changes queued for the next cycle boundary.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.eval_line(":track new drums").unwrap();
+    ///
+    /// assert!(session.mixer_view().has_pending_routing());
+    /// ```
     #[must_use]
     pub const fn has_pending_routing(&self) -> bool {
         self.has_pending_routing
@@ -99,6 +240,17 @@ impl ReplSession {
         Self::with_engine(EngineHandle::stub())
     }
 
+    /// Creates a new `ReplSession` associated with the provided engine handle.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let engine = EngineHandle::stub();
+    /// let session = ReplSession::with_engine(engine);
+    /// ```
     pub fn with_engine(engine: EngineHandle) -> Self {
         Self {
             mode: ReplMode::Loose,
@@ -112,6 +264,32 @@ impl ReplSession {
         }
     }
 
+    /// Evaluates a line of input, updating the session's bindings or executing commands.
+    ///
+    /// The input can be a variable binding (e.g., `drums = bd sn`) or a REPL
+    /// command starting with a colon (e.g., `:tempo 120`).
+    ///
+    /// ## Errors
+    ///
+    /// Returns an `Err` containing a descriptive message if the input fails to parse,
+    /// type-check, evaluate, or if a REPL command is invalid.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    ///
+    /// // Bind a pattern.
+    /// let response = session.eval_line("notes = 1 2 3").unwrap();
+    /// assert_eq!(response, "bound notes: Pattern<Number>");
+    ///
+    /// // Execute a command.
+    /// let response = session.eval_line(":tempo 120").unwrap();
+    /// assert_eq!(response, "tempo set to 120 BPM");
+    /// ```
     pub fn eval_line(&mut self, source: &str) -> Result<String, String> {
         if source.starts_with(':') {
             return self.eval_command(source);
@@ -498,6 +676,25 @@ impl ReplSession {
         ))
     }
 
+    /// Loads an Orpheus source file, replacing the current session's bindings.
+    ///
+    /// The entire file is evaluated strictly. Any bindings produced by the file
+    /// will replace the existing bindings in the session, and the mixer state
+    /// will be reset.
+    ///
+    /// ## Errors
+    ///
+    /// Returns an `Err` if the file cannot be read, parsed, type-checked, or evaluated.
+    ///
+    /// ## Examples
+    ///
+    /// ```no_run
+    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.open_file("song.ode").unwrap();
+    /// ```
     pub fn open_file(&mut self, path: impl AsRef<Path>) -> Result<String, String> {
         let path = path.as_ref();
         let loaded = load_file_runtime_strict(path).map_err(|error| error.to_string())?;
@@ -729,6 +926,21 @@ impl ReplSession {
         Ok(())
     }
 
+    /// Returns a summary of all active bindings and their inferred types.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.eval_line("notes = 1 2").unwrap();
+    /// session.eval_line("drums = bd sn").unwrap();
+    ///
+    /// let summaries = session.binding_summaries();
+    /// assert_eq!(summaries, vec!["drums: Pattern<Sample>", "notes: Pattern<Number>"]);
+    /// ```
     pub fn binding_summaries(&self) -> Vec<String> {
         self.type_bindings
             .iter()
@@ -744,10 +956,37 @@ impl ReplSession {
             .clone()
     }
 
+    /// Captures a point-in-time snapshot of the underlying audio engine's transport state.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let session = ReplSession::with_engine(EngineHandle::stub());
+    /// let snapshot = session.transport_snapshot();
+    /// assert_eq!(snapshot.tempo_bpm(), 120.0);
+    /// ```
     pub fn transport_snapshot(&self) -> TransportSnapshot {
         self.transport_view().snapshot
     }
 
+    /// Generates a structured view of the transport state, including visual details
+    /// such as the currently active and pending pattern names.
+    ///
+    /// This is typically used by the TUI to render the transport overlay.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let session = ReplSession::with_engine(EngineHandle::stub());
+    /// let view = session.transport_view();
+    /// assert!(view.active_pattern_name().is_none());
+    /// ```
     pub fn transport_view(&self) -> TransportView {
         let snapshot = self.engine.transport_snapshot();
         let mut display = self.pattern_display.borrow_mut();
@@ -774,6 +1013,23 @@ impl ReplSession {
         }
     }
 
+    /// Generates a structured view of the current mixer state, detailing active
+    /// tracks, buses, and pending routing changes.
+    ///
+    /// This is typically used by the TUI to render the mixer panel.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.eval_line(":track new drums").unwrap();
+    ///
+    /// let view = session.mixer_view();
+    /// assert_eq!(view.tracks().len(), 1);
+    /// ```
     pub fn mixer_view(&self) -> MixerView {
         let snapshot = self.engine.transport_snapshot();
         MixerView {
