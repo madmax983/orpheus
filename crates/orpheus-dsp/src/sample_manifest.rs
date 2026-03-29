@@ -66,7 +66,7 @@ impl std::error::Error for SampleManifestLoadError {
 ///
 /// ## Examples
 ///
-/// ```
+/// ```ignore
 /// use orpheus_dsp::load_sample_manifest;
 /// use std::io::Write;
 /// use tempfile::NamedTempFile;

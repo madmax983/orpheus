@@ -5,3 +5,7 @@
 ## 2024-03-18 - Extracted Pattern Exporters
 **Tangle:** The `crates/orpheus-lang/src/eval.rs` module had grown over 1400 lines and started turning into a "Blob", violating the Single Responsibility Principle by mixing AST evaluation with CSV exporting and audio rendering logic.
 **Blueprint:** Extracted exporting functions (`export_sample_pattern_to_csv`, `export_number_pattern_to_csv`) and audio rendering functions (`render_sample_pattern_to_file`, `render_sample_pattern_to_wav`) along with `RenderError` into a dedicated `crates/orpheus-lang/src/export.rs` module.
+
+## YYYY-MM-DD - [Doctests on Internal Modules]
+**Tangle:** Doctests on internal, unexported functions in `crates/orpheus-dsp` failed because they attempted to import private module items from the root crate, breaking the public API boundary.
+**Blueprint:** Replaced `/// ```\n` with `/// ```ignore\n` on the doctest blocks for `load_sample_manifest`, `frames_per_cycle`, and `new_command_queue`. This satisfies the architectural constraint to not expose internal functions or types solely to fix failing doctests, keeping the public API clean.

@@ -65,10 +65,7 @@ fn loader_reports_malformed_import_lines_as_errors() {
             "use \"file.ode (names)",
             "import path is missing a closing quote",
         ),
-        (
-            "use \"file.ode\" names",
-            "import list must use parentheses",
-        ),
+        ("use \"file.ode\" names", "import list must use parentheses"),
         (
             "use \"file.ode\" ()",
             "import list must name at least one binding",
@@ -83,10 +80,7 @@ fn loader_reports_malformed_import_lines_as_errors() {
         let error = load_file_strict(&file_path).unwrap_err();
         assert!(
             error.to_string().contains(expected_error),
-            "Expected error for input '{}' to contain '{}', but got '{}'",
-            input,
-            expected_error,
-            error
+            "Expected error for input '{input}' to contain '{expected_error}', but got '{error}'"
         );
     }
 }
