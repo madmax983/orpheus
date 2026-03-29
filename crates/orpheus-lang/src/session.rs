@@ -1578,12 +1578,12 @@ mod tests {
 
         let message = session.eval_line(":roll pattern 1 8").unwrap();
 
-        assert!(message.contains("╭────────────────────────────────────╮"));
+        assert!(message.contains("┌────────────────────────────────────┐"));
         assert!(message.contains("│ Pattern Roll: pattern (1 cycles)   │"));
         assert!(message.contains("╞════════════════════════════════════╡"));
         assert!(message.contains("│ bd │ x---....                      │"));
         assert!(message.contains("│ sn │ ....x---                      │"));
-        assert!(message.contains("╰────────────────────────────────────╯"));
+        assert!(message.contains("└────────────────────────────────────┘"));
     }
 
     #[test]
