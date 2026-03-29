@@ -21,6 +21,7 @@ mod sample_bank;
 mod sample_manifest;
 mod scheduler;
 mod synth;
+mod transient;
 mod voice;
 
 pub use command::{EngineCommand, PatternUpdate, SampleTrigger, new_command_queue};

@@ -274,6 +274,44 @@ fn offline_render_supports_negative_rate_reverse_playback() {
 }
 
 #[test]
+fn offline_render_uses_detected_transient_slices() {
+    let directory = temp_directory("sample-onset-offline");
+    write_wav(directory.join("loop.wav"), &transient_loop_frames());
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+    let path = temp_wav_path();
+
+    let events = vec![Event {
+        whole: None,
+        part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+        value: SampleTrigger::named("loop").with_onset(1),
+    }];
+
+    render_events_to_file_with_bank(&path, &events, 1, &bank).unwrap();
+
+    let mut reader = hound::WavReader::open(&path).unwrap();
+    let samples = reader
+        .samples::<i16>()
+        .take(8)
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let expected = vec![
+        pcm16(0.6 * edge_envelope(0, 100)),
+        pcm16(0.6 * edge_envelope(0, 100)),
+        pcm16(0.6 * edge_envelope(1, 100)),
+        pcm16(0.6 * edge_envelope(1, 100)),
+        pcm16(0.6 * edge_envelope(2, 100)),
+        pcm16(0.6 * edge_envelope(2, 100)),
+        pcm16(0.6 * edge_envelope(3, 100)),
+        pcm16(0.6 * edge_envelope(3, 100)),
+    ];
+
+    assert_eq!(samples, expected);
+
+    let _ = fs::remove_file(path);
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn offline_render_matches_live_shared_delay_bus() {
     let directory = temp_directory("shared-delay-offline-parity");
     write_wav(directory.join("pulse.wav"), &[1.0, 0.0, 0.0, 0.0]);
@@ -588,6 +626,20 @@ fn write_wav(path: impl AsRef<Path>, frames: &[f32]) {
         writer.write_sample(*sample).unwrap();
     }
     writer.finalize().unwrap();
+}
+
+fn transient_loop_frames() -> Vec<f32> {
+    let mut frames = vec![0.0_f32; 300];
+    for index in 10..14 {
+        frames[index] = 1.0;
+    }
+    for index in 110..114 {
+        frames[index] = 0.6;
+    }
+    for index in 210..214 {
+        frames[index] = 0.3;
+    }
+    frames
 }
 
 #[allow(clippy::cast_possible_truncation)]

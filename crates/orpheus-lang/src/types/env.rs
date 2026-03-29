@@ -112,6 +112,7 @@ impl TypeEnv {
                 Type::pattern(Type::Sample),
             )),
         );
+        env.insert("onset", sample_control_scheme());
         env.insert(
             "slice",
             TypeScheme::monomorphic(Type::curried(

@@ -129,6 +129,7 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "pitch" => Some(builtin_function_value(BuiltinKind::Pitch)),
         "transpose" => Some(builtin_function_value(BuiltinKind::Transpose)),
         "sample" => Some(builtin_function_value(BuiltinKind::Sample)),
+        "onset" => Some(builtin_function_value(BuiltinKind::Onset)),
         "rate" => Some(builtin_function_value(BuiltinKind::Rate)),
         "slice" => Some(builtin_function_value(BuiltinKind::Slice)),
         "slice_idx" => Some(builtin_function_value(BuiltinKind::SliceIdx)),
@@ -342,6 +343,7 @@ impl BuiltinKind {
             Self::Pitch => "pitch",
             Self::Transpose => "transpose",
             Self::Sample => "sample",
+            Self::Onset => "onset",
             Self::Rate => "rate",
             Self::Slice => "slice",
             Self::SliceIdx => "slice_idx",
@@ -388,6 +390,7 @@ impl BuiltinKind {
             | Self::Pan
             | Self::Pitch
             | Self::Transpose
+            | Self::Onset
             | Self::Rate
             | Self::Jux => 2,
             Self::Rand => 0,
@@ -437,6 +440,7 @@ impl BuiltinKind {
             Self::Pitch => apply_pitch(args),
             Self::Transpose => apply_transpose(args),
             Self::Sample => apply_sample(args),
+            Self::Onset => apply_onset(args),
             Self::Rate => apply_rate(args),
             Self::Slice => apply_slice(args),
             Self::SliceIdx => apply_slice_idx(args),
@@ -1159,6 +1163,31 @@ fn apply_sample(args: Vec<Value>) -> Result<Value, EvalError> {
     Ok(Value::SamplePattern(SamplePatternValue::atom(&token)))
 }
 
+fn apply_onset(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let index = extract_onset_index_control(
+        args.next()
+            .ok_or_else(|| EvalError::new("`onset` requires an index argument"))?,
+    )?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`onset` requires a pattern argument"))?;
+
+    match pattern {
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match index {
+            OnsetIndexControl::Constant(index) => pattern.onset(index),
+            OnsetIndexControl::Pattern(control) => pattern.onset_pattern(control),
+        })),
+        Value::NumberPattern(_) => Err(EvalError::new("`onset` only applies to sample patterns")),
+        Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new(
+            "`onset` expected a sample pattern as its final argument",
+        )),
+    }
+}
+
 fn apply_rate(args: Vec<Value>) -> Result<Value, EvalError> {
     apply_sample_numeric_control(
         args,
@@ -1495,6 +1524,11 @@ fn extract_whole_number(
 
 enum NumericControl {
     Constant(f64),
+    Pattern(NumberPatternValue),
+}
+
+enum OnsetIndexControl {
+    Constant(u32),
     Pattern(NumberPatternValue),
 }
 
@@ -1915,6 +1949,19 @@ fn whole_number_from_pitch_class_value(value: f64) -> Result<i32, EvalError> {
         .map_err(|_| EvalError::new("`pitch_class_set` exceeded the supported evaluator range"))
 }
 
+fn extract_onset_index_control(value: Value) -> Result<OnsetIndexControl, EvalError> {
+    let pattern = extract_number_pattern(value, "onset")?;
+    if let Ok(index) = pattern.constant_value() {
+        return Ok(OnsetIndexControl::Constant(validate_onset_index_constant(
+            index,
+        )?));
+    }
+
+    validate_numeric_control_pattern(&pattern, "onset", validate_onset_index_control_value)?;
+
+    Ok(OnsetIndexControl::Pattern(pattern))
+}
+
 fn extract_slice_idx_control(value: Value, segments: u32) -> Result<SliceIndexControl, EvalError> {
     let pattern = extract_number_pattern(value, "slice_idx")?;
     if let Ok(index) = pattern.constant_value() {
@@ -1976,6 +2023,26 @@ fn validate_slice_idx_control_value(value: f64, segments: u32) -> Result<(), Eva
     if value >= f64::from(segments) {
         return Err(EvalError::new(
             "`slice_idx` requires control values with index < segments",
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_onset_index_constant(value: f64) -> Result<u32, EvalError> {
+    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
+        return Err(EvalError::new("`onset index` requires a whole number"));
+    }
+
+    format!("{value:.0}")
+        .parse::<u32>()
+        .map_err(|_| EvalError::new("`onset index` exceeded the supported evaluator range"))
+}
+
+fn validate_onset_index_control_value(value: f64) -> Result<(), EvalError> {
+    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
+        return Err(EvalError::new(
+            "`onset` requires whole-number control values",
         ));
     }
 

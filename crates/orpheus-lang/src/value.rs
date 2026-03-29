@@ -74,6 +74,7 @@ pub enum BuiltinKind {
     Pitch,
     Transpose,
     Sample,
+    Onset,
     Rate,
     Slice,
     SliceIdx,
@@ -429,6 +430,7 @@ pub struct SampleEvent {
     compressor_mix: f64,
     compressor_threshold: f64,
     compressor_ratio: f64,
+    onset_index: Option<u32>,
     slice_start: f64,
     slice_end: f64,
 }
@@ -457,6 +459,7 @@ impl SampleEvent {
             compressor_mix: 0.0,
             compressor_threshold: 0.5,
             compressor_ratio: 4.0,
+            onset_index: None,
             slice_start: 0.0,
             slice_end: 1.0,
         }
@@ -588,6 +591,12 @@ impl SampleEvent {
         self.compressor_ratio
     }
 
+    /// The transient slice index selected for later sample-bank resolution.
+    #[must_use]
+    pub const fn onset_index(&self) -> Option<u32> {
+        self.onset_index
+    }
+
     /// The normalized starting position `[0, 1]` within the raw audio sample.
     #[must_use]
     pub const fn slice_start(&self) -> f64 {
@@ -628,6 +637,7 @@ trait PatternValueTransform: Sized {
     fn adjust_pulse_width(&self, pulse_width: f64) -> Self;
     fn adjust_pan(&self, amount: f64) -> Self;
     fn adjust_rate(&self, factor: f64) -> Self;
+    fn adjust_onset(&self, onset_index: u32) -> Self;
     fn adjust_slice(&self, start: f64, end: f64) -> Self;
     fn map_degrees(&self, collection: &PitchClassSetValue) -> Result<Self, EvalError>;
     fn transpose_semitones(&self, semitones: f64) -> Result<Self, EvalError>;
@@ -727,6 +737,10 @@ impl PatternValueTransform for SampleEvent {
 
     fn adjust_rate(&self, factor: f64) -> Self {
         self.clone_with(|event| event.rate *= factor)
+    }
+
+    fn adjust_onset(&self, onset_index: u32) -> Self {
+        self.clone_with(|event| event.onset_index = Some(onset_index))
     }
 
     fn adjust_slice(&self, start: f64, end: f64) -> Self {
@@ -829,6 +843,10 @@ impl PatternValueTransform for f64 {
     }
 
     fn adjust_rate(&self, _factor: f64) -> Self {
+        *self
+    }
+
+    fn adjust_onset(&self, _onset_index: u32) -> Self {
         *self
     }
 
@@ -1645,6 +1663,24 @@ impl SamplePatternValue {
         }
     }
 
+    pub(crate) fn onset(self, onset_index: u32) -> Self {
+        Self {
+            pattern: PatternRuntime::Onset {
+                onset_index,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn onset_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::OnsetPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn slice(self, start: f64, end: f64) -> Self {
         Self {
             pattern: PatternRuntime::Slice {
@@ -2233,6 +2269,14 @@ enum PatternRuntime<T> {
         control: Box<PatternRuntime<f64>>,
         inner: Box<Self>,
     },
+    Onset {
+        onset_index: u32,
+        inner: Box<Self>,
+    },
+    OnsetPattern {
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
     Slice {
         start: f64,
         end: f64,
@@ -2479,6 +2523,10 @@ where
             Self::RatePattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Rate)
             }
+            Self::Onset { onset_index, inner } => apply_value_mutation(inner, span, |value| {
+                *value = value.adjust_onset(*onset_index)
+            }),
+            Self::OnsetPattern { control, inner } => apply_onset_pattern(inner, control, span),
             Self::Slice { start, end, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_slice(*start, *end);
             }),
@@ -3214,6 +3262,33 @@ where
     })
 }
 
+fn apply_onset_pattern<T>(
+    inner: &PatternRuntime<T>,
+    control: &PatternRuntime<f64>,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    let source_events = inner.try_query(span)?;
+    let control_events = control.try_query(span)?;
+    validate_onset_control_events(&control_events)?;
+    if control_events.is_empty() {
+        return Ok(source_events);
+    }
+
+    apply_event_fragments(source_events, &[&control_events[..]], |part, value| {
+        let mut new_value = value.clone();
+        for control_event in &control_events {
+            if spans_overlap(&control_event.part, part) {
+                new_value =
+                    new_value.adjust_onset(whole_number_from_onset_value(control_event.value)?);
+            }
+        }
+        Ok(Some(new_value))
+    })
+}
+
 fn validate_slice_endpoint_events(
     control_events: &[Event<f64>],
     context: &str,
@@ -3245,6 +3320,14 @@ fn validate_slice_idx_control_events(
     Ok(())
 }
 
+fn validate_onset_control_events(control_events: &[Event<f64>]) -> Result<(), EvalError> {
+    for event in control_events {
+        whole_number_from_onset_value(event.value)?;
+    }
+
+    Ok(())
+}
+
 fn whole_number_from_slice_idx_value(value: f64) -> Result<u32, EvalError> {
     if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
         return Err(EvalError::new(
@@ -3255,6 +3338,18 @@ fn whole_number_from_slice_idx_value(value: f64) -> Result<u32, EvalError> {
     format!("{value:.0}").parse::<u32>().map_err(|_| {
         EvalError::new("`slice_idx` control value exceeded the supported evaluator range")
     })
+}
+
+fn whole_number_from_onset_value(value: f64) -> Result<u32, EvalError> {
+    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
+        return Err(EvalError::new(
+            "`onset` requires whole-number control values",
+        ));
+    }
+
+    format!("{value:.0}")
+        .parse::<u32>()
+        .map_err(|_| EvalError::new("`onset` control value exceeded the supported evaluator range"))
 }
 
 fn query_rand<T>(site_salt: u64, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError>
@@ -3668,6 +3763,8 @@ fn absolute_cycle_for_runtime<T>(
         | PatternRuntime::PitchPattern { inner, .. }
         | PatternRuntime::Rate { inner, .. }
         | PatternRuntime::RatePattern { inner, .. }
+        | PatternRuntime::Onset { inner, .. }
+        | PatternRuntime::OnsetPattern { inner, .. }
         | PatternRuntime::Slice { inner, .. }
         | PatternRuntime::SlicePattern { inner, .. }
         | PatternRuntime::SliceIdxPattern { inner, .. } => absolute_cycle_for_runtime(inner, cycle),
