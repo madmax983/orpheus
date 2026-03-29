@@ -85,6 +85,7 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "arp" => Some(builtin_function_value(BuiltinKind::Arp)),
         "up" => Some(Value::ArpDirection(ArpDirectionValue::Up)),
         "down" => Some(Value::ArpDirection(ArpDirectionValue::Down)),
+        "pingpong" | "updown" => Some(Value::ArpDirection(ArpDirectionValue::PingPong)),
         "invert" => Some(builtin_function_value(BuiltinKind::Invert)),
         "drop" => Some(builtin_function_value(BuiltinKind::Drop)),
         "chord" => Some(builtin_function_value(BuiltinKind::Chord)),
@@ -2146,7 +2147,7 @@ fn extract_arp_direction(value: &Value) -> Result<ArpDirectionValue, EvalError> 
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::String(_) => Err(EvalError::new(
-            "`arp` requires a direction argument like `up` or `down`",
+            "`arp` requires a direction argument like `up`, `down`, `pingpong`, or `updown`",
         )),
     }
 }

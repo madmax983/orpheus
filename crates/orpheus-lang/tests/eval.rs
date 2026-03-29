@@ -1541,6 +1541,42 @@ fn arp_wraps_downward_across_equal_fifths() {
 }
 
 #[test]
+fn arp_bounces_pingpong_across_equal_fifths() {
+    let module = eval_module("lead = arp(5, pingpong, chord(c4, 0 4 7))", ReplMode::Loose).unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![60.0, 64.0, 67.0, 64.0, 60.0]
+    );
+}
+
+#[test]
+fn arp_bounces_pingpong_across_seven_notes() {
+    let module = eval_module(
+        "lead = arp(7, updown, chord(c4, 0 4 7 11))",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![60.0, 64.0, 67.0, 71.0, 67.0, 64.0, 60.0]
+    );
+}
+
+#[test]
 fn arp_applies_per_exact_span_cluster() {
     let module = eval_module("line = arp(4, up, chord(c4 e4, 0 7))", ReplMode::Loose).unwrap();
     let events = module
