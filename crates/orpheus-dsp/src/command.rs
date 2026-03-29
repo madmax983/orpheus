@@ -33,6 +33,7 @@ pub struct SampleTrigger {
     compressor_mix: f64,
     compressor_threshold: f64,
     compressor_ratio: f64,
+    onset_index: Option<u32>,
     slice_start: f64,
     slice_end: f64,
     pan: f64,
@@ -62,6 +63,7 @@ impl SampleTrigger {
             compressor_mix: 0.0,
             compressor_threshold: 0.5,
             compressor_ratio: 4.0,
+            onset_index: None,
             slice_start: 0.0,
             slice_end: 1.0,
             pan: 0.0,
@@ -183,6 +185,12 @@ impl SampleTrigger {
     }
 
     #[must_use]
+    pub const fn with_onset(mut self, onset_index: u32) -> Self {
+        self.onset_index = Some(onset_index);
+        self
+    }
+
+    #[must_use]
     pub const fn with_slice(mut self, start: f64, end: f64) -> Self {
         self.slice_start = start;
         self.slice_end = end;
@@ -293,6 +301,11 @@ impl SampleTrigger {
     #[must_use]
     pub const fn compressor_ratio(&self) -> f64 {
         self.compressor_ratio
+    }
+
+    #[must_use]
+    pub const fn onset_index(&self) -> Option<u32> {
+        self.onset_index
     }
 
     #[must_use]
@@ -409,6 +422,7 @@ mod tests {
         assert!((trigger.compressor_mix() - 0.0).abs() < f64::EPSILON);
         assert!((trigger.compressor_threshold() - 0.5).abs() < f64::EPSILON);
         assert!((trigger.compressor_ratio() - 4.0).abs() < f64::EPSILON);
+        assert_eq!(trigger.onset_index(), None);
         assert!((trigger.slice_start() - 0.0).abs() < f64::EPSILON);
         assert!((trigger.slice_end() - 1.0).abs() < f64::EPSILON);
         assert!((trigger.pan() - 0.0).abs() < f64::EPSILON);
@@ -437,6 +451,7 @@ mod tests {
             .with_compressor_mix(0.75)
             .with_compressor_threshold(0.3)
             .with_compressor_ratio(6.0)
+            .with_onset(3)
             .with_slice(0.2, 0.8)
             .with_pan(0.3);
 
@@ -460,6 +475,7 @@ mod tests {
         assert!((trigger.compressor_mix() - 0.75).abs() < f64::EPSILON);
         assert!((trigger.compressor_threshold() - 0.3).abs() < f64::EPSILON);
         assert!((trigger.compressor_ratio() - 6.0).abs() < f64::EPSILON);
+        assert_eq!(trigger.onset_index(), Some(3));
         assert!((trigger.slice_start() - 0.2).abs() < f64::EPSILON);
         assert!((trigger.slice_end() - 0.8).abs() < f64::EPSILON);
         assert!((trigger.pan() - 0.3).abs() < f64::EPSILON);

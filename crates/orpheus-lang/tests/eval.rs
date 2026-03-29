@@ -2555,6 +2555,47 @@ fn pattern_valued_slice_idx_repeats_under_fast() {
 }
 
 #[test]
+fn onset_builtin_marks_sample_events_for_transient_lookup() {
+    let module = eval_module(r#"lead = sample("amen") |> onset(2)"#, ReplMode::Loose).unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].value.sample(), "amen");
+    assert_eq!(events[0].value.onset_index(), Some(2));
+    assert!((events[0].value.slice_start() - 0.0).abs() < f64::EPSILON);
+    assert!((events[0].value.slice_end() - 1.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn onset_accepts_pattern_valued_indices_and_splits_sample_events() {
+    let module = eval_module(r#"lead = sample("amen") |> onset(0 2 1)"#, ReplMode::Loose).unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(events.len(), 3);
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 3).unwrap());
+    assert_eq!(events[0].value.onset_index(), Some(0));
+    assert_eq!(events[1].part.start(), &Rational::new(1, 3).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::new(2, 3).unwrap());
+    assert_eq!(events[1].value.onset_index(), Some(2));
+    assert_eq!(events[2].part.start(), &Rational::new(2, 3).unwrap());
+    assert_eq!(events[2].part.end(), &Rational::one());
+    assert_eq!(events[2].value.onset_index(), Some(1));
+}
+
+#[test]
 fn evaluating_multiple_top_level_bindings_reuses_prior_definitions() {
     let module = eval_module("verse = bd sn\nsong = fast(2, verse)", ReplMode::Loose).unwrap();
 
@@ -2638,6 +2679,20 @@ fn slice_idx_rejects_non_integer_arguments() {
         r#"lead = sample("amen") |> slice_idx(0 1.5, 8)"#,
         ReplMode::Loose,
         &["`slice_idx` requires whole-number control values"],
+    );
+}
+
+#[test]
+fn onset_rejects_non_integer_arguments() {
+    assert_eval_error_contains(
+        r#"lead = sample("amen") |> onset(1.5)"#,
+        ReplMode::Loose,
+        &["`onset index` requires a whole number"],
+    );
+    assert_eval_error_contains(
+        r#"lead = sample("amen") |> onset(0 1.5)"#,
+        ReplMode::Loose,
+        &["`onset` requires whole-number control values"],
     );
 }
 

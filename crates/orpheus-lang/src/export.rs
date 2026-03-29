@@ -105,6 +105,9 @@ pub(crate) fn sample_trigger_from_event(event: &crate::value::SampleEvent) -> Sa
         .with_drive(event.drive())
         .with_pulse_width(event.pulse_width())
         .with_slice(event.slice_start(), event.slice_end());
+    if let Some(onset_index) = event.onset_index() {
+        trigger = trigger.with_onset(onset_index);
+    }
     if let Some(cutoff) = event.hpf_cutoff_hz() {
         trigger = trigger.with_hpf_cutoff_hz(cutoff);
     }

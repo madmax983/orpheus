@@ -177,8 +177,8 @@ impl ActiveVoice {
         let frame_count_u32 = u32::try_from(sample.frames().len())
             .unwrap_or_else(|_| panic!("sample frame count exceeded supported playback range"));
         let frame_count = f64::from(frame_count_u32);
-        let slice_start = trigger.slice_start() * frame_count;
-        let slice_end = trigger.slice_end() * frame_count;
+        let slice_start = snap_slice_boundary(trigger.slice_start() * frame_count);
+        let slice_end = snap_slice_boundary(trigger.slice_end() * frame_count);
         let frame_step =
             (f64::from(sample.sample_rate_hz()) / f64::from(output_sample_rate)) * trigger.rate();
         let output_frame_count = if frame_step.abs() <= f64::EPSILON {
@@ -842,4 +842,13 @@ impl OnePoleHighPass {
 fn normalized_cutoff_hz(cutoff_hz: f64, sample_rate_hz: u32) -> f64 {
     let nyquist = (f64::from(sample_rate_hz) / 2.0) - 1.0;
     cutoff_hz.clamp(1.0, nyquist.max(1.0))
+}
+
+fn snap_slice_boundary(boundary: f64) -> f64 {
+    let rounded = boundary.round();
+    if (boundary - rounded).abs() <= 1.0e-9 {
+        rounded
+    } else {
+        boundary
+    }
 }
