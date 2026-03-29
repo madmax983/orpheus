@@ -576,7 +576,7 @@ use std::fmt::Write as _;
 /// ## Examples
 ///
 /// ```
-/// use orpheus_lang::export::escape_json_string;
+/// use orpheus_lang::escape_json_string;
 ///
 /// let raw = "hello \"world\"\nfrom \\rust\\";
 /// let escaped = escape_json_string(raw);

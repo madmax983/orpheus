@@ -34,7 +34,7 @@ use crate::{ReplMode, Type, Value};
 /// ## Examples
 ///
 /// ```
-/// use orpheus_lang::session::ReplSession;
+/// use orpheus_lang::ReplSession;
 /// use orpheus_dsp::EngineHandle;
 ///
 /// // Create a new session linked to a stubbed audio engine (for testing).
@@ -72,7 +72,7 @@ struct PatternDisplayState {
 /// ## Examples
 ///
 /// ```
-/// use orpheus_lang::session::ReplSession;
+/// use orpheus_lang::ReplSession;
 /// use orpheus_dsp::EngineHandle;
 ///
 /// let session = ReplSession::with_engine(EngineHandle::stub());
@@ -97,14 +97,15 @@ pub struct TransportView {
 /// ## Examples
 ///
 /// ```
-/// use orpheus_lang::session::ReplSession;
+/// use orpheus_lang::ReplSession;
 /// use orpheus_dsp::EngineHandle;
 ///
 /// let mut session = ReplSession::with_engine(EngineHandle::stub());
 /// session.eval_line(":track new drums").unwrap();
+/// session.render_test_block_for_tui(1);
 ///
 /// let view = session.mixer_view();
-/// assert_eq!(view.tracks().len(), 1);
+/// assert!(view.tracks().iter().any(|line| line.contains("drums -> <unbound>")));
 /// assert!(view.buses().is_empty());
 /// assert!(view.has_pending_routing());
 /// ```
@@ -121,11 +122,12 @@ impl TransportView {
     /// ## Examples
     ///
     /// ```
-    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_lang::ReplSession;
     /// use orpheus_dsp::EngineHandle;
     ///
     /// let session = ReplSession::with_engine(EngineHandle::stub());
-    /// let snapshot = session.transport_view().snapshot();
+    /// let view = session.transport_view();
+    /// let snapshot = view.snapshot();
     /// assert_eq!(snapshot.tempo_bpm(), 120.0);
     /// ```
     #[must_use]
@@ -138,7 +140,7 @@ impl TransportView {
     /// ## Examples
     ///
     /// ```
-    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_lang::ReplSession;
     /// use orpheus_dsp::EngineHandle;
     ///
     /// let mut session = ReplSession::with_engine(EngineHandle::stub());
@@ -159,7 +161,7 @@ impl TransportView {
     /// ## Examples
     ///
     /// ```
-    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_lang::ReplSession;
     /// use orpheus_dsp::EngineHandle;
     ///
     /// let mut session = ReplSession::with_engine(EngineHandle::stub());
@@ -180,15 +182,15 @@ impl MixerView {
     /// ## Examples
     ///
     /// ```
-    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_lang::ReplSession;
     /// use orpheus_dsp::EngineHandle;
     ///
     /// let mut session = ReplSession::with_engine(EngineHandle::stub());
     /// session.eval_line(":track new drums").unwrap();
     ///
-    /// let tracks = session.mixer_view().tracks().to_vec();
-    /// assert_eq!(tracks.len(), 1);
-    /// assert!(tracks[0].contains("drums"));
+    /// let view = session.mixer_view();
+    /// let tracks = view.tracks();
+    /// assert!(tracks.iter().any(|line| line.contains("drums -> <unbound>")));
     /// ```
     #[must_use]
     pub fn tracks(&self) -> &[String] {
@@ -200,15 +202,15 @@ impl MixerView {
     /// ## Examples
     ///
     /// ```
-    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_lang::ReplSession;
     /// use orpheus_dsp::EngineHandle;
     ///
     /// let mut session = ReplSession::with_engine(EngineHandle::stub());
     /// session.eval_line(":bus new verb").unwrap();
     ///
-    /// let buses = session.mixer_view().buses().to_vec();
-    /// assert_eq!(buses.len(), 1);
-    /// assert!(buses[0].contains("verb"));
+    /// let view = session.mixer_view();
+    /// let buses = view.buses();
+    /// assert!(buses.iter().any(|line| line.contains("verb -> master")));
     /// ```
     #[must_use]
     pub fn buses(&self) -> &[String] {
@@ -220,11 +222,12 @@ impl MixerView {
     /// ## Examples
     ///
     /// ```
-    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_lang::ReplSession;
     /// use orpheus_dsp::EngineHandle;
     ///
     /// let mut session = ReplSession::with_engine(EngineHandle::stub());
     /// session.eval_line(":track new drums").unwrap();
+    /// session.render_test_block_for_tui(1);
     ///
     /// assert!(session.mixer_view().has_pending_routing());
     /// ```
@@ -245,7 +248,7 @@ impl ReplSession {
     /// ## Examples
     ///
     /// ```
-    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_lang::ReplSession;
     /// use orpheus_dsp::EngineHandle;
     ///
     /// let engine = EngineHandle::stub();
@@ -277,7 +280,7 @@ impl ReplSession {
     /// ## Examples
     ///
     /// ```
-    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_lang::ReplSession;
     /// use orpheus_dsp::EngineHandle;
     ///
     /// let mut session = ReplSession::with_engine(EngineHandle::stub());
@@ -693,7 +696,7 @@ impl ReplSession {
     /// ## Examples
     ///
     /// ```no_run
-    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_lang::ReplSession;
     /// use orpheus_dsp::EngineHandle;
     ///
     /// let mut session = ReplSession::with_engine(EngineHandle::stub());
@@ -935,7 +938,7 @@ impl ReplSession {
     /// ## Examples
     ///
     /// ```
-    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_lang::ReplSession;
     /// use orpheus_dsp::EngineHandle;
     ///
     /// let mut session = ReplSession::with_engine(EngineHandle::stub());
@@ -965,7 +968,7 @@ impl ReplSession {
     /// ## Examples
     ///
     /// ```
-    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_lang::ReplSession;
     /// use orpheus_dsp::EngineHandle;
     ///
     /// let session = ReplSession::with_engine(EngineHandle::stub());
@@ -984,7 +987,7 @@ impl ReplSession {
     /// ## Examples
     ///
     /// ```
-    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_lang::ReplSession;
     /// use orpheus_dsp::EngineHandle;
     ///
     /// let session = ReplSession::with_engine(EngineHandle::stub());
@@ -1025,14 +1028,14 @@ impl ReplSession {
     /// ## Examples
     ///
     /// ```
-    /// use orpheus_lang::session::ReplSession;
+    /// use orpheus_lang::ReplSession;
     /// use orpheus_dsp::EngineHandle;
     ///
     /// let mut session = ReplSession::with_engine(EngineHandle::stub());
     /// session.eval_line(":track new drums").unwrap();
     ///
     /// let view = session.mixer_view();
-    /// assert_eq!(view.tracks().len(), 1);
+    /// assert!(view.tracks().iter().any(|line| line.contains("drums -> <unbound>")));
     /// ```
     pub fn mixer_view(&self) -> MixerView {
         let snapshot = self.engine.transport_snapshot();
@@ -1043,12 +1046,12 @@ impl ReplSession {
         }
     }
 
-    #[cfg(test)]
+    #[doc(hidden)]
     pub fn render_test_block_for_tui(&mut self, frames: u64) -> Vec<f32> {
         self.engine.render_test_block(frames)
     }
 
-    #[cfg(test)]
+    #[doc(hidden)]
     pub fn frames_until_boundary_for_tui(&self) -> u64 {
         self.engine.frames_until_boundary_for_test()
     }

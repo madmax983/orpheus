@@ -919,8 +919,7 @@ impl Evaluator {
 ///
 /// ```
 /// use orpheus_lang::Value;
-/// use orpheus_lang::eval::apply_function_value;
-/// use orpheus_lang::builtins::builtin_value;
+/// use orpheus_lang::{apply_function_value, builtin_value};
 ///
 /// let fast_func = builtin_value("fast").unwrap();
 /// let bd = builtin_value("bd").unwrap();
