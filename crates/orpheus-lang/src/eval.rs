@@ -590,8 +590,29 @@ impl Evaluator {
             ));
         }
 
+        if repeat_count == 0 {
+            return Err(EvalError::new("section cycle count must be positive"));
+        }
+
         let base = Self::value_to_explicit(self.eval_expr_in_meter(pattern, meter)?)?;
-        let mut combined: Option<ExplicitValue> = None;
+
+        let required_capacity = match &base {
+            ExplicitValue::Sample(events) => {
+                events.len() * usize::try_from(repeat_count).unwrap_or(0)
+            }
+            ExplicitValue::Number(events) => {
+                events.len() * usize::try_from(repeat_count).unwrap_or(0)
+            }
+        };
+
+        let mut events = match base.clone() {
+            ExplicitValue::Sample(_) => {
+                ExplicitValue::Sample(Vec::with_capacity(required_capacity))
+            }
+            ExplicitValue::Number(_) => {
+                ExplicitValue::Number(Vec::with_capacity(required_capacity))
+            }
+        };
 
         for repeat in 0..repeat_count {
             let offset = rational_from_parts(
@@ -602,13 +623,24 @@ impl Evaluator {
             )?;
             let mut repeated = base.clone();
             repeated.shift(&offset)?;
-            combined = Some(match combined {
-                Some(existing) => existing.merge(repeated)?,
-                None => repeated,
-            });
+
+            match (&mut events, repeated) {
+                (ExplicitValue::Sample(acc), ExplicitValue::Sample(mut new_events)) => {
+                    acc.append(&mut new_events);
+                }
+                (ExplicitValue::Number(acc), ExplicitValue::Number(mut new_events)) => {
+                    acc.append(&mut new_events);
+                }
+                _ => unreachable!(),
+            }
         }
 
-        combined.ok_or_else(|| EvalError::new("section cycle count must be positive"))
+        match &mut events {
+            ExplicitValue::Sample(e) => sort_events(e),
+            ExplicitValue::Number(e) => sort_events(e),
+        }
+
+        Ok(events)
     }
 
     fn eval_section_length(

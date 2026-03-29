@@ -56,7 +56,10 @@ pub fn export_sample_pattern_to_txt(
         writeln!(
             file,
             "[{:.3} -> {:.3}] {} ({})",
-            start, end, event.value.sample(), params.join(", ")
+            start,
+            end,
+            event.value.sample(),
+            params.join(", ")
         )?;
     }
 
