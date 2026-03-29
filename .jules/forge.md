@@ -24,3 +24,7 @@
 **Refactoring Negative Conditionals (`clippy::if_not_else`)**
 **Learning:** Checking a negative condition (`if !condition`) and providing an `else` branch requires more cognitive load to parse than a positive check.
 **Action:** When a negative check has an `else` branch, flip the condition and swap the block contents, or replace it with `else if` chains when possible. This is particularly prevalent in nested rendering or formatting logic.
+
+**[Boilerplate Reduction in TXT Exporting]**
+**Learning:** Identified duplicate code logic for plain text file initialization, title formatting, and event looping in `txt.rs` across sample and number pattern exports.
+**Action:** Extract text export boilerplate into a generic `export_pattern_events_to_txt` helper, removing duplication and keeping file I/O operations central.
