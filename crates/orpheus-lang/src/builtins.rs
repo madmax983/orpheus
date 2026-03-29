@@ -156,12 +156,11 @@ pub fn builtin_value(name: &str) -> Option<Value> {
 /// # Examples
 ///
 /// ```
-/// use orpheus_lang::{Value, BuiltinKind};
-/// use orpheus_lang::builtins::stack_values;
+/// use orpheus_lang::{Value, builtin_value, stack_values};
 ///
 /// // Evaluates `stack(bd, sn)` conceptually:
-/// let bd = orpheus_lang::builtins::builtin_value("bd").unwrap();
-/// let sn = orpheus_lang::builtins::builtin_value("sn").unwrap();
+/// let bd = builtin_value("bd").unwrap();
+/// let sn = builtin_value("sn").unwrap();
 /// let stacked = stack_values(vec![bd, sn]).unwrap();
 ///
 /// assert!(matches!(stacked, Value::SamplePattern(_)));
@@ -258,14 +257,12 @@ impl BuiltinFn {
 /// # Examples
 ///
 /// ```
-/// use orpheus_lang::{Value, NumberPatternValue};
-/// use orpheus_lang::builtins::{apply_builtin_function, builtin_value};
-/// use orpheus_pattern::PatternNode;
+/// use orpheus_lang::{FunctionValue, Value, apply_builtin_function, builtin_value};
 ///
 /// let fast_func = builtin_value("fast").unwrap();
 /// let bd = builtin_value("bd").unwrap();
 ///
-/// if let Value::Function(orpheus_lang::FunctionValue::Builtin(func)) = fast_func {
+/// if let Value::Function(FunctionValue::Builtin(func)) = fast_func {
 ///     // `fast` takes 2 arguments: a rate and a pattern.
 ///     // Applying only 1 argument (the rate) returns a new curried function.
 ///     let curried = apply_builtin_function(&func, vec![bd]).unwrap();

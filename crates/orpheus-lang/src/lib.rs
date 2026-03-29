@@ -39,6 +39,22 @@ pub use txt::{export_number_pattern_to_txt, export_sample_pattern_to_txt};
 pub use types::{Type, TypedModule, infer_module};
 pub use value::{NumberPatternValue, SampleEvent, SamplePatternValue, Value};
 
+// Hidden re-exports keep rustdoc examples for internal helpers compiling.
+#[doc(hidden)]
+pub use builtins::{apply_builtin_function, builtin_value, is_sample_identifier, stack_values};
+#[doc(hidden)]
+pub use eval::{apply_function_value, eval_into_bindings, f64_to_rational};
+#[doc(hidden)]
+pub use export::escape_json_string;
+#[doc(hidden)]
+pub use loader::load_file_runtime_strict;
+#[doc(hidden)]
+pub use pitch::parse_named_pitch_literal;
+#[doc(hidden)]
+pub use session::{MixerView, ReplSession, TransportView};
+#[doc(hidden)]
+pub use value::FunctionValue;
+
 /// REPL type-checking mode for the bootstrap workspace.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReplMode {
