@@ -16,6 +16,18 @@ use crate::value::{NumberPatternValue, SamplePatternValue};
 /// The report contains the total number of events, unique samples triggered,
 /// and the event density (events per cycle).
 ///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, sample_pattern_stats};
+///
+/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+///
+/// let stats = sample_pattern_stats("x", pattern, 2).unwrap();
+/// println!("{stats}");
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`EvalError`] if pattern querying fails or if `cycle_count` is 0.
@@ -63,6 +75,18 @@ pub fn sample_pattern_stats(
 ///
 /// The report contains the total number of events, minimum value, maximum value,
 /// average value, and the event density (events per cycle).
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, number_pattern_stats};
+///
+/// let env = eval_module("x = 1 2 3", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
+///
+/// let stats = number_pattern_stats("x", pattern, 2).unwrap();
+/// println!("{stats}");
+/// ```
 ///
 /// # Errors
 ///
