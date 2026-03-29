@@ -84,11 +84,23 @@ impl From<OfflineRenderError> for RenderError {
 
 /// Helper function to convert a `SampleEvent` from the evaluation phase into a
 /// `SampleTrigger` for the DSP rendering phase.
-fn sample_trigger_from_event(event: &crate::value::SampleEvent) -> SampleTrigger {
+pub(crate) fn sample_trigger_from_event(event: &crate::value::SampleEvent) -> SampleTrigger {
     let mut trigger = SampleTrigger::named(event.sample())
         .with_gain(event.gain())
         .with_pan(event.pan())
         .with_rate(event.rate())
+        .with_delay_mix(event.delay_mix())
+        .with_delay_time(event.delay_time())
+        .with_delay_feedback(event.delay_feedback())
+        .with_reverb_mix(event.reverb_mix())
+        .with_reverb_room(event.reverb_room())
+        .with_reverb_damp(event.reverb_damp())
+        .with_chorus_mix(event.chorus_mix())
+        .with_chorus_depth(event.chorus_depth())
+        .with_chorus_rate(event.chorus_rate())
+        .with_compressor_mix(event.compressor_mix())
+        .with_compressor_threshold(event.compressor_threshold())
+        .with_compressor_ratio(event.compressor_ratio())
         .with_resonance(event.resonance())
         .with_drive(event.drive())
         .with_pulse_width(event.pulse_width())
@@ -621,6 +633,50 @@ fn sample_event_json(event: &Event<crate::value::SampleEvent>) -> String {
     let _ = writeln!(s, "      \"gain\": {:.6},", event.value.gain());
     let _ = writeln!(s, "      \"pan\": {:.6},", event.value.pan());
     let _ = writeln!(s, "      \"rate\": {:.6},", event.value.rate());
+    let _ = writeln!(s, "      \"delay_mix\": {:.6},", event.value.delay_mix());
+    let _ = writeln!(s, "      \"delay_time\": {:.6},", event.value.delay_time());
+    let _ = writeln!(
+        s,
+        "      \"delay_feedback\": {:.6},",
+        event.value.delay_feedback()
+    );
+    let _ = writeln!(s, "      \"reverb_mix\": {:.6},", event.value.reverb_mix());
+    let _ = writeln!(
+        s,
+        "      \"reverb_room\": {:.6},",
+        event.value.reverb_room()
+    );
+    let _ = writeln!(
+        s,
+        "      \"reverb_damp\": {:.6},",
+        event.value.reverb_damp()
+    );
+    let _ = writeln!(s, "      \"chorus_mix\": {:.6},", event.value.chorus_mix());
+    let _ = writeln!(
+        s,
+        "      \"chorus_depth\": {:.6},",
+        event.value.chorus_depth()
+    );
+    let _ = writeln!(
+        s,
+        "      \"chorus_rate\": {:.6},",
+        event.value.chorus_rate()
+    );
+    let _ = writeln!(
+        s,
+        "      \"compressor_mix\": {:.6},",
+        event.value.compressor_mix()
+    );
+    let _ = writeln!(
+        s,
+        "      \"compressor_threshold\": {:.6},",
+        event.value.compressor_threshold()
+    );
+    let _ = writeln!(
+        s,
+        "      \"compressor_ratio\": {:.6},",
+        event.value.compressor_ratio()
+    );
     let _ = writeln!(s, "      \"resonance\": {:.6},", event.value.resonance());
     let _ = writeln!(s, "      \"drive\": {:.6},", event.value.drive());
     let _ = writeln!(

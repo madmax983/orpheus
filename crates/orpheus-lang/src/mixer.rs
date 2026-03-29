@@ -19,6 +19,7 @@ use orpheus_pattern::Event;
 use orpheus_pattern::Rational;
 
 use crate::Value;
+use crate::export::sample_trigger_from_event;
 
 /// The configuration state of the audio mixer.
 ///
@@ -467,23 +468,7 @@ fn sample_event_to_trigger_event(event: Event<crate::SampleEvent>) -> Event<Samp
     Event {
         whole: event.whole,
         part: event.part,
-        value: {
-            let mut trigger = SampleTrigger::named(event.value.sample())
-                .with_gain(event.value.gain())
-                .with_pan(event.value.pan())
-                .with_rate(event.value.rate())
-                .with_resonance(event.value.resonance())
-                .with_drive(event.value.drive())
-                .with_pulse_width(event.value.pulse_width())
-                .with_slice(event.value.slice_start(), event.value.slice_end());
-            if let Some(cutoff_hz) = event.value.hpf_cutoff_hz() {
-                trigger = trigger.with_hpf_cutoff_hz(cutoff_hz);
-            }
-            if let Some(cutoff_hz) = event.value.lpf_cutoff_hz() {
-                trigger = trigger.with_lpf_cutoff_hz(cutoff_hz);
-            }
-            trigger
-        },
+        value: sample_trigger_from_event(&event.value),
     }
 }
 

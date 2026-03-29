@@ -7,6 +7,8 @@
 use core::f32::consts::TAU;
 
 use crate::SampleTrigger;
+use crate::effects::ReverbState;
+use crate::routing::ReverbSpec;
 use crate::routing::TrackId;
 use crate::sample_bank::PlaybackSample;
 use crate::synth::{AnalogVoice, AnalogVoiceParams, OscShape};
@@ -14,6 +16,9 @@ use crate::synth::{AnalogVoice, AnalogVoiceParams, OscShape};
 const MAX_SAMPLE_EDGE_RAMP_FRAMES: u32 = 32;
 const ANALOG_BASE_FREQUENCY_HZ: f32 = 220.0;
 const ANALOG_OUTPUT_TRIM: f32 = 0.35;
+const INSERT_CHORUS_BUFFER_FRAMES: usize = 64;
+const INSERT_REVERB_MAX_COMB_LENGTH: u32 = 307;
+const INSERT_DECAY_REPEAT_CAP: u32 = 32;
 
 /// Built-in synthesized drum voices used by the current live playback path.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -75,15 +80,17 @@ impl VoiceKind {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct ActiveVoice {
     track_id: TrackId,
     state: ActiveVoiceState,
+    insert_effects: InsertEffectsState,
+    tail_frames_remaining: u32,
     left_gain: f64,
     right_gain: f64,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 enum ActiveVoiceState {
     DrumSynth {
         kind: VoiceKind,
@@ -118,10 +125,14 @@ impl ActiveVoice {
         track_id: TrackId,
         kind: VoiceKind,
         sample_rate: u32,
+        frames_per_cycle: u64,
         trigger: &SampleTrigger,
         duration_frames: u32,
     ) -> Self {
         let (left_gain, right_gain) = stereo_gains_for_pan(trigger.pan());
+        let insert_effects =
+            InsertEffectsState::from_trigger(trigger, sample_rate, frames_per_cycle);
+        let tail_frames_remaining = insert_effects.tail_frames();
 
         if kind.is_drum_voice() {
             return Self {
@@ -133,6 +144,8 @@ impl ActiveVoice {
                     sample_rate_hz: f64::from(sample_rate),
                     noise_state: 0x00C0_FFEE_u32,
                 },
+                insert_effects,
+                tail_frames_remaining,
                 left_gain,
                 right_gain,
             };
@@ -146,6 +159,8 @@ impl ActiveVoice {
                 frame_index: 0,
                 duration_frames: duration_frames.max(1),
             },
+            insert_effects,
+            tail_frames_remaining,
             left_gain,
             right_gain,
         }
@@ -156,6 +171,7 @@ impl ActiveVoice {
         track_id: TrackId,
         sample: &PlaybackSample,
         output_sample_rate: u32,
+        frames_per_cycle: u64,
         trigger: &SampleTrigger,
     ) -> Self {
         let frame_count_u32 = u32::try_from(sample.frames().len())
@@ -175,6 +191,9 @@ impl ActiveVoice {
             .div_ceil(2)
             .clamp(1, MAX_SAMPLE_EDGE_RAMP_FRAMES);
         let (left_gain, right_gain) = stereo_gains_for_pan(trigger.pan());
+        let insert_effects =
+            InsertEffectsState::from_trigger(trigger, output_sample_rate, frames_per_cycle);
+        let tail_frames_remaining = insert_effects.tail_frames();
         let (frame_position, frame_limit) = if frame_step.is_sign_negative() {
             (slice_end, slice_start)
         } else {
@@ -198,6 +217,8 @@ impl ActiveVoice {
                 total_output_frames: output_frame_count,
                 edge_ramp_frames,
             },
+            insert_effects,
+            tail_frames_remaining,
             left_gain,
             right_gain,
         }
@@ -321,11 +342,297 @@ impl ActiveVoice {
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
     pub fn next_stereo_frame(&mut self) -> Option<(f32, f32)> {
-        let sample = self.next_mono_sample()?;
-        Some((
-            (f64::from(sample) * self.left_gain) as f32,
-            (f64::from(sample) * self.right_gain) as f32,
-        ))
+        let dry_sample = self.next_mono_sample();
+        if dry_sample.is_none() && self.tail_frames_remaining == 0 {
+            return None;
+        }
+
+        let (dry_left, dry_right) = match dry_sample {
+            Some(sample) => (
+                (f64::from(sample) * self.left_gain) as f32,
+                (f64::from(sample) * self.right_gain) as f32,
+            ),
+            None => {
+                self.tail_frames_remaining = self.tail_frames_remaining.saturating_sub(1);
+                (0.0, 0.0)
+            }
+        };
+
+        Some(self.insert_effects.process_frame(dry_left, dry_right))
+    }
+}
+
+#[derive(Debug, Default)]
+struct InsertEffectsState {
+    chorus: Option<InsertChorusState>,
+    delay: Option<InsertDelayState>,
+    reverb: Option<InsertReverbState>,
+    compressor: Option<InsertCompressorState>,
+}
+
+impl InsertEffectsState {
+    #[allow(clippy::cast_precision_loss)]
+    fn from_trigger(trigger: &SampleTrigger, sample_rate: u32, frames_per_cycle: u64) -> Self {
+        Self {
+            chorus: InsertChorusState::new(trigger, sample_rate),
+            delay: InsertDelayState::new(trigger, frames_per_cycle),
+            reverb: InsertReverbState::new(trigger),
+            compressor: InsertCompressorState::new(trigger),
+        }
+    }
+
+    fn tail_frames(&self) -> u32 {
+        [
+            self.chorus
+                .as_ref()
+                .map_or(0, InsertChorusState::tail_frames),
+            self.delay.as_ref().map_or(0, InsertDelayState::tail_frames),
+            self.reverb
+                .as_ref()
+                .map_or(0, InsertReverbState::tail_frames),
+        ]
+        .into_iter()
+        .max()
+        .unwrap_or(0)
+    }
+
+    fn process_frame(&mut self, input_left: f32, input_right: f32) -> (f32, f32) {
+        let mut frame = (input_left, input_right);
+        if let Some(chorus) = self.chorus.as_mut() {
+            frame = chorus.process_frame(frame.0, frame.1);
+        }
+        if let Some(delay) = self.delay.as_mut() {
+            frame = delay.process_frame(frame.0, frame.1);
+        }
+        if let Some(reverb) = self.reverb.as_mut() {
+            frame = reverb.process_frame(frame.0, frame.1);
+        }
+        if let Some(compressor) = self.compressor.as_mut() {
+            frame = compressor.process_frame(frame.0, frame.1);
+        }
+        frame
+    }
+}
+
+#[derive(Debug)]
+struct InsertDelayState {
+    buffer: Vec<(f32, f32)>,
+    write_index: usize,
+    feedback: f32,
+    mix: f32,
+    tail_frames: u32,
+}
+
+impl InsertDelayState {
+    fn new(trigger: &SampleTrigger, frames_per_cycle: u64) -> Option<Self> {
+        let mix = sanitize_unit_f32(trigger.delay_mix(), 0.0);
+        if mix <= f32::EPSILON {
+            return None;
+        }
+
+        let delay_frames = cycle_fraction_to_frames(trigger.delay_time(), frames_per_cycle)?;
+        let feedback = sanitize_unit_f32(trigger.delay_feedback(), 0.35);
+        let repeat_count = decay_repeat_count(feedback);
+        let buffer_len = usize::try_from(delay_frames).ok()?;
+
+        Some(Self {
+            buffer: vec![(0.0, 0.0); buffer_len],
+            write_index: 0,
+            feedback,
+            mix,
+            tail_frames: delay_frames.saturating_mul(repeat_count),
+        })
+    }
+
+    const fn tail_frames(&self) -> u32 {
+        self.tail_frames
+    }
+
+    fn process_frame(&mut self, input_left: f32, input_right: f32) -> (f32, f32) {
+        let (delayed_left, delayed_right) = self.buffer[self.write_index];
+        self.buffer[self.write_index] = (
+            delayed_left.mul_add(self.feedback, input_left),
+            delayed_right.mul_add(self.feedback, input_right),
+        );
+        self.write_index += 1;
+        if self.write_index == self.buffer.len() {
+            self.write_index = 0;
+        }
+
+        (
+            blend_dry_wet(input_left, delayed_left, self.mix),
+            blend_dry_wet(input_right, delayed_right, self.mix),
+        )
+    }
+}
+
+#[derive(Debug)]
+struct InsertReverbState {
+    state: ReverbState,
+    mix: f32,
+    tail_frames: u32,
+}
+
+impl InsertReverbState {
+    fn new(trigger: &SampleTrigger) -> Option<Self> {
+        let mix = sanitize_unit_f32(trigger.reverb_mix(), 0.0);
+        if mix <= f32::EPSILON {
+            return None;
+        }
+
+        let room = sanitize_unit_f32(trigger.reverb_room(), 0.75);
+        let damp = sanitize_unit_f32(trigger.reverb_damp(), 0.35);
+        let feedback = room.mul_add(0.55, 0.35);
+
+        Some(Self {
+            state: ReverbState::new(&ReverbSpec::new(room, damp, 1.0)),
+            mix,
+            tail_frames: INSERT_REVERB_MAX_COMB_LENGTH.saturating_mul(decay_repeat_count(feedback)),
+        })
+    }
+
+    const fn tail_frames(&self) -> u32 {
+        self.tail_frames
+    }
+
+    fn process_frame(&mut self, input_left: f32, input_right: f32) -> (f32, f32) {
+        let (wet_left, wet_right) = self.state.process_frame(input_left, input_right);
+        (
+            blend_dry_wet(input_left, wet_left, self.mix),
+            blend_dry_wet(input_right, wet_right, self.mix),
+        )
+    }
+}
+
+#[derive(Debug)]
+struct InsertChorusState {
+    buffer: Vec<(f32, f32)>,
+    write_index: usize,
+    phase: f32,
+    phase_step: f32,
+    base_delay: f32,
+    modulation_depth: f32,
+    mix: f32,
+    tail_frames: u32,
+}
+
+impl InsertChorusState {
+    #[allow(clippy::cast_precision_loss)]
+    fn new(trigger: &SampleTrigger, sample_rate: u32) -> Option<Self> {
+        let mix = sanitize_unit_f32(trigger.chorus_mix(), 0.0);
+        if mix <= f32::EPSILON {
+            return None;
+        }
+
+        let depth = sanitize_unit_f32(trigger.chorus_depth(), 0.4);
+        let rate = sanitize_non_negative_f32(trigger.chorus_rate(), 0.5);
+        let base_delay = depth.mul_add(8.0, 4.0);
+        let modulation_depth = depth.mul_add(6.0, 1.5);
+        let rate_hz = rate.mul_add(5.75, 0.25);
+        let phase_step = (TAU * rate_hz) / (sample_rate as f32);
+        let tail_frames = (base_delay + modulation_depth).ceil() as u32;
+
+        Some(Self {
+            buffer: vec![(0.0, 0.0); INSERT_CHORUS_BUFFER_FRAMES],
+            write_index: 0,
+            phase: 0.0,
+            phase_step,
+            base_delay,
+            modulation_depth,
+            mix,
+            tail_frames,
+        })
+    }
+
+    const fn tail_frames(&self) -> u32 {
+        self.tail_frames
+    }
+
+    fn process_frame(&mut self, input_left: f32, input_right: f32) -> (f32, f32) {
+        self.buffer[self.write_index] = (input_left, input_right);
+
+        let left_delay =
+            self.base_delay + self.modulation_depth * (self.phase.sin().mul_add(0.5, 0.5));
+        let right_delay = self.base_delay
+            + self.modulation_depth * ((self.phase + (TAU * 0.25)).sin().mul_add(0.5, 0.5));
+        let wet_left = self.read_interpolated(left_delay, true);
+        let wet_right = self.read_interpolated(right_delay, false);
+
+        self.write_index += 1;
+        if self.write_index == self.buffer.len() {
+            self.write_index = 0;
+        }
+
+        self.phase += self.phase_step;
+        if self.phase >= TAU {
+            self.phase -= TAU;
+        }
+
+        (
+            blend_dry_wet(input_left, wet_left, self.mix),
+            blend_dry_wet(input_right, wet_right, self.mix),
+        )
+    }
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+    fn read_interpolated(&self, delay_frames: f32, left_channel: bool) -> f32 {
+        let buffer_len = self.buffer.len() as f32;
+        let read_position = ((self.write_index as f32) - delay_frames).rem_euclid(buffer_len);
+        let base_index = read_position.floor() as usize;
+        let next_index = (base_index + 1) % self.buffer.len();
+        let fraction = read_position - (base_index as f32);
+
+        let (base_left, base_right) = self.buffer[base_index];
+        let (next_left, next_right) = self.buffer[next_index];
+        let base = if left_channel { base_left } else { base_right };
+        let next = if left_channel { next_left } else { next_right };
+        base.mul_add(1.0 - fraction, next * fraction)
+    }
+}
+
+#[derive(Debug)]
+struct InsertCompressorState {
+    mix: f32,
+    threshold: f32,
+    ratio: f32,
+    envelope: f32,
+}
+
+impl InsertCompressorState {
+    fn new(trigger: &SampleTrigger) -> Option<Self> {
+        let mix = sanitize_unit_f32(trigger.compressor_mix(), 0.0);
+        if mix <= f32::EPSILON {
+            return None;
+        }
+
+        Some(Self {
+            mix,
+            threshold: sanitize_unit_f32(trigger.compressor_threshold(), 0.5).max(1.0e-4),
+            ratio: sanitize_ratio_f32(trigger.compressor_ratio(), 4.0),
+            envelope: 0.0,
+        })
+    }
+
+    fn process_frame(&mut self, input_left: f32, input_right: f32) -> (f32, f32) {
+        let peak = input_left.abs().max(input_right.abs());
+        let smoothing = if peak > self.envelope { 0.35 } else { 0.08 };
+        self.envelope += (peak - self.envelope) * smoothing;
+
+        let gain = if self.envelope > self.threshold {
+            let compressed = self
+                .threshold
+                .mul_add(1.0, (self.envelope - self.threshold) / self.ratio);
+            compressed / self.envelope.max(f32::EPSILON)
+        } else {
+            1.0
+        };
+        let wet_left = input_left * gain;
+        let wet_right = input_right * gain;
+
+        (
+            blend_dry_wet(input_left, wet_left, self.mix),
+            blend_dry_wet(input_right, wet_right, self.mix),
+        )
     }
 }
 
@@ -342,6 +649,10 @@ fn stereo_gains_for_pan(pan: f64) -> (f64, f64) {
     let left = if pan > 0.0 { 1.0 - pan } else { 1.0 };
     let right = if pan < 0.0 { 1.0 + pan } else { 1.0 };
     (left, right)
+}
+
+fn blend_dry_wet(dry: f32, wet: f32, mix: f32) -> f32 {
+    dry.mul_add(1.0 - mix, wet * mix)
 }
 
 const fn drum_duration_frames(kind: VoiceKind, sample_rate: u32) -> u32 {
@@ -410,6 +721,15 @@ fn sanitize_non_negative_f32(value: f64, default: f32) -> f32 {
 }
 
 #[allow(clippy::cast_possible_truncation, clippy::missing_const_for_fn)]
+fn sanitize_ratio_f32(value: f64, default: f32) -> f32 {
+    if value.is_finite() {
+        (value as f32).max(1.0)
+    } else {
+        default
+    }
+}
+
+#[allow(clippy::cast_possible_truncation, clippy::missing_const_for_fn)]
 fn sanitize_pulse_width(value: f64) -> f32 {
     if value.is_finite() {
         (value as f32).clamp(0.01, 0.99)
@@ -429,6 +749,35 @@ fn sample_edge_envelope(frame_index: u32, total_frames: u32, ramp_frames: u32) -
 
 fn normalized_edge_gain(distance_from_edge: u32, ramp_frames: u32) -> f64 {
     ((f64::from(distance_from_edge) + 0.5) / f64::from(ramp_frames)).min(1.0)
+}
+
+#[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+fn cycle_fraction_to_frames(fraction: f64, frames_per_cycle: u64) -> Option<u32> {
+    if !fraction.is_finite() || fraction <= 0.0 {
+        return None;
+    }
+
+    let frames = (fraction * (frames_per_cycle as f64))
+        .round()
+        .clamp(1.0, f64::from(u32::MAX));
+    Some(frames as u32)
+}
+
+#[allow(clippy::cast_possible_truncation)]
+fn decay_repeat_count(feedback: f32) -> u32 {
+    if feedback <= f32::EPSILON {
+        return 1;
+    }
+    if feedback >= 0.999 {
+        return INSERT_DECAY_REPEAT_CAP;
+    }
+
+    let repeats = (1.0e-3_f32.ln() / feedback.ln()).ceil();
+    if repeats.is_finite() {
+        (repeats as u32).clamp(1, INSERT_DECAY_REPEAT_CAP)
+    } else {
+        INSERT_DECAY_REPEAT_CAP
+    }
 }
 
 const fn synth_edge_ramp_frames(total_frames: u32) -> u32 {

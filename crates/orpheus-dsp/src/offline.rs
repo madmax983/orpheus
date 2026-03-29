@@ -138,7 +138,9 @@ pub fn render_routing_snapshot_to_stereo_for_test(
     let mut scheduler = Scheduler::default();
     schedule_snapshot_cycles(snapshot, cycle_count, frames_per_cycle, &mut scheduler)?;
 
-    let mut active_voices = vec![None; MAX_ACTIVE_VOICES];
+    let mut active_voices = std::iter::repeat_with(|| None)
+        .take(MAX_ACTIVE_VOICES)
+        .collect::<Vec<_>>();
     let mut track_mix_buffer = vec![(0.0_f32, 0.0_f32); snapshot.tracks().len()];
     let mut bus_mix_buffer = vec![(0.0_f32, 0.0_f32); snapshot.buses().len()];
     let mut bus_effect_states = snapshot
@@ -153,7 +155,13 @@ pub fn render_routing_snapshot_to_stereo_for_test(
     let mut rendered = Vec::with_capacity(total_frames_usize * usize::from(OFFLINE_CHANNELS));
 
     for frame in 0..total_frames {
-        activate_due_snapshot_voices(frame, &mut scheduler, &mut active_voices, sample_bank)?;
+        activate_due_snapshot_voices(
+            frame,
+            frames_per_cycle,
+            &mut scheduler,
+            &mut active_voices,
+            sample_bank,
+        )?;
         let (master_left, master_right) = mix_snapshot_frame(
             snapshot,
             &mut active_voices,
@@ -200,6 +208,7 @@ fn schedule_snapshot_cycles(
 
 fn activate_due_snapshot_voices(
     frame: u64,
+    frames_per_cycle: u64,
     scheduler: &mut Scheduler,
     active_voices: &mut [Option<ActiveVoice>],
     sample_bank: &SampleBank,
@@ -212,6 +221,7 @@ fn activate_due_snapshot_voices(
             trigger.fallback_voice,
             trigger.duration_frames,
             DEFAULT_SAMPLE_RATE,
+            frames_per_cycle,
         )?;
     }
 
@@ -326,7 +336,9 @@ fn render_events_to_pcm(
         }),
     )?;
 
-    let mut active_voices = vec![None; MAX_ACTIVE_VOICES];
+    let mut active_voices = std::iter::repeat_with(|| None)
+        .take(MAX_ACTIVE_VOICES)
+        .collect::<Vec<_>>();
     let mut rendered = Vec::with_capacity(total_samples);
 
     for frame in 0..total_frames {
@@ -338,6 +350,7 @@ fn render_events_to_pcm(
                 trigger.fallback_voice,
                 trigger.duration_frames,
                 DEFAULT_SAMPLE_RATE,
+                frames_per_cycle,
             )?;
         }
 
@@ -441,16 +454,24 @@ fn activate_voice(
     fallback_voice: Option<VoiceKind>,
     duration_frames: u32,
     sample_rate: u32,
+    frames_per_cycle: u64,
 ) -> Result<(), OfflineRenderError> {
     if let Some(slot) = active_voices.iter_mut().find(|slot| slot.is_none()) {
         *slot = Some(
             if let Some((sample, resolved_trigger)) = sample_bank.resolve_trigger(trigger) {
-                ActiveVoice::from_sample(TrackId::new(0), sample, sample_rate, &resolved_trigger)
+                ActiveVoice::from_sample(
+                    TrackId::new(0),
+                    sample,
+                    sample_rate,
+                    frames_per_cycle,
+                    &resolved_trigger,
+                )
             } else if let Some(voice) = fallback_voice {
                 ActiveVoice::from_trigger(
                     TrackId::new(0),
                     voice,
                     sample_rate,
+                    frames_per_cycle,
                     trigger,
                     duration_frames,
                 )
