@@ -94,7 +94,7 @@ pub fn render_ascii_roll(
     let mut output = String::new();
 
     // Top border
-    writeln!(output, "╭{:─<1$}╮", "", inner_width + 2)?;
+    writeln!(output, "┌{:─<1$}┐", "", inner_width + 2)?;
 
     // Header
     writeln!(output, "│ {:<1$} │", header_text, inner_width)?;
@@ -121,7 +121,7 @@ pub fn render_ascii_roll(
     }
 
     // Bottom border
-    writeln!(output, "╰{:─<1$}╯", "", inner_width + 2)?;
+    writeln!(output, "└{:─<1$}┘", "", inner_width + 2)?;
 
     Ok(output)
 }
@@ -139,12 +139,12 @@ mod tests {
 
         let roll = render_ascii_roll("pattern", pattern, 1, 8).unwrap();
 
-        assert!(roll.contains("╭────────────────────────────────────╮"));
+        assert!(roll.contains("┌────────────────────────────────────┐"));
         assert!(roll.contains("│ Pattern Roll: pattern (1 cycles)   │"));
         assert!(roll.contains("╞════════════════════════════════════╡"));
         assert!(roll.contains("│ bd │ x---....                      │"));
         assert!(roll.contains("│ sn │ ....x---                      │"));
-        assert!(roll.contains("╰────────────────────────────────────╯"));
+        assert!(roll.contains("└────────────────────────────────────┘"));
     }
 
     #[test]
@@ -155,11 +155,11 @@ mod tests {
 
         let roll = render_ascii_roll("pattern", pattern, 1, 8).unwrap();
 
-        assert!(roll.contains("╭────────────────────────────────────╮"));
+        assert!(roll.contains("┌────────────────────────────────────┐"));
         assert!(roll.contains("│ Pattern Roll: pattern (1 cycles)   │"));
         assert!(roll.contains("╞════════════════════════════════════╡"));
         assert!(roll.contains("│ bd │ x-..x-..                      │"));
         assert!(roll.contains("│ sn │ ..x-..x-                      │"));
-        assert!(roll.contains("╰────────────────────────────────────╯"));
+        assert!(roll.contains("└────────────────────────────────────┘"));
     }
 }
