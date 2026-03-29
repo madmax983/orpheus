@@ -1592,11 +1592,6 @@ impl NumberPatternValue {
 
     /// Queries the pattern over the default unit cycle `[0, 1)`.
     ///
-    /// # Panics
-    ///
-    /// Panics if an internal runtime transform produces an invalid span or
-    /// overflows the evaluator's bounded rational arithmetic. For a fallible
-    /// variant, use [`NumberPatternValue::try_query_unit`].
     #[must_use]
     pub fn query_unit(&self) -> Vec<Event<f64>> {
         self.try_query_unit().unwrap_or_else(|_err| {
@@ -3361,6 +3356,31 @@ mod tests {
             .filter(|event| event.part.start() >= &cycle_start && event.part.end() <= &cycle_end)
             .map(|event| event.value.sample().to_owned())
             .collect()
+    }
+
+    #[test]
+    fn number_pattern_query_unit_degrades_gracefully_on_overflow() {
+        // Create an invalid Rational state that guarantees an arithmetic overflow during querying.
+        // `query_unit()` checks bounded spans over `[0, 1)`. If we shift a pattern by an offset
+        // whose parts cause `Rational::checked_add` to fail when it evaluates, we get an EvalError.
+        // The maximum possible rational before bounds failure involves i128::MAX.
+        let base = NumberPatternValue::constant(1.0);
+        let max_rational = Rational::checked_from_parts(i128::MAX, 1).unwrap();
+
+        // We nest shifts so that they compound inside `try_query_unit`
+        let pattern = base.shift(max_rational.clone()).shift(max_rational);
+
+        assert!(
+            pattern.try_query_unit().is_err(),
+            "Expected try_query_unit to fail with bounded arithmetic overflow"
+        );
+
+        let query_events = pattern.query_unit();
+        assert!(
+            query_events.is_empty(),
+            "query_unit should degrade to an empty vector on error"
+        );
+
     }
 
     #[test]
