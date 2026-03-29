@@ -24,3 +24,7 @@
 ## 2026-03-24 - [The "Black Box": Missing Documentation in Mixer State]
 **Confusion:** The mixer routing logic in `crates/orpheus-lang/src/mixer.rs` was acting as a black box due to missing module-level (`//!`) documentation and missing `///` struct documentation for `MixerState`. It was unclear how tracks, buses, and sends mapped from the evaluated language environment into DSP routing snapshots.
 **Clarification:** Added detailed module-level documentation explaining the concepts of Tracks, Buses, and Sends. Added struct-level `///` documentation for `MixerState` along with an executable doctest demonstrating how to construct tracks, buses, and sends programmatically.
+
+## 2026-03-24 - [The "Missing Link": Missing Examples in Export and Stats Functions]
+**Confusion:** Export formatting functions (e.g., `export_sample_pattern_to_svg`, `export_sample_pattern_to_html`, `export_number_pattern_to_txt`) and analysis tools (`sample_pattern_stats`) in `orpheus-lang` had no `/// ## Examples` executable blocks. This made it difficult for developers to understand how to correctly extract a pattern from an evaluation environment and interact with these APIs.
+**Clarification:** Added executable doctests to all functions in `crates/orpheus-lang/src/svg.rs`, `html.rs`, `txt.rs`, and `stats.rs` that utilize `eval_module` to parse a string, extract the pattern with `.get("...").unwrap().as_sample_pattern().unwrap()`, and pass it to the export functions, demonstrating correct instantiation and usage.
