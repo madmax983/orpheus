@@ -80,10 +80,7 @@ fn loader_reports_malformed_import_lines_as_errors() {
         let error = load_file_strict(&file_path).unwrap_err();
         assert!(
             error.to_string().contains(expected_error),
-            "Expected error for input '{}' to contain '{}', but got '{}'",
-            input,
-            expected_error,
-            error
+            "Expected error for input '{input}' to contain '{expected_error}', but got '{error}'"
         );
     }
 }

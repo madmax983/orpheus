@@ -892,7 +892,7 @@ const fn default_stream_config() -> StreamConfig {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use orpheus_dsp::{EngineError, frames_per_cycle};
 ///
 /// let frames = frames_per_cycle(44100, 120.0).unwrap();

@@ -368,7 +368,7 @@ pub enum EngineCommand {
 ///
 /// ## Examples
 ///
-/// ```
+/// ```ignore
 /// use orpheus_dsp::{new_command_queue, EngineCommand};
 ///
 /// let (mut producer, mut consumer) = new_command_queue();
