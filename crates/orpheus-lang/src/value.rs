@@ -110,6 +110,7 @@ pub enum GatePatternValue {
 pub enum ArpDirectionValue {
     Up,
     Down,
+    PingPong,
 }
 
 const IONIAN_INTERVALS: [i32; 7] = [0, 2, 4, 5, 7, 9, 11];
@@ -2240,6 +2241,21 @@ fn arp_event_cluster(
         let selected = match direction {
             ArpDirectionValue::Up => slot,
             ArpDirectionValue::Down => len - 1 - slot,
+            ArpDirectionValue::PingPong => {
+                if len <= 1 {
+                    0
+                } else {
+                    let cycle_len = len * 2 - 2;
+                    let cycle_slot = usize::try_from(index).map_err(|_| {
+                        EvalError::new("`arp` exceeded the supported evaluator range")
+                    })? % cycle_len;
+                    if cycle_slot < len {
+                        cycle_slot
+                    } else {
+                        cycle_len - cycle_slot
+                    }
+                }
+            }
         };
         arped.push(Event {
             whole: None,
