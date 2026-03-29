@@ -15,3 +15,6 @@ orpheus-pattern.workspace = true
 rtrb.workspace = true
 thiserror.workspace = true
 loom.workspace = true
+
+[dev-dependencies]
+tempfile = "3.10.0"

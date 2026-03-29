@@ -63,20 +63,6 @@ impl std::error::Error for SampleManifestLoadError {
 ///
 /// Returns [`SampleManifestLoadError`] if the file cannot be read or if its
 /// contents fail to parse correctly.
-///
-/// ## Examples
-///
-/// ```
-/// use orpheus_dsp::load_sample_manifest;
-/// use std::io::Write;
-/// use tempfile::NamedTempFile;
-///
-/// let mut file = NamedTempFile::new().unwrap();
-/// writeln!(file, "kick: /path/to/kick.wav").unwrap();
-///
-/// let manifest = load_sample_manifest(file.path()).unwrap();
-/// assert_eq!(manifest.get("kick"), Some("/path/to/kick.wav"));
-/// ```
 pub fn load_sample_manifest(
     path: impl AsRef<Path>,
 ) -> Result<SampleManifest, SampleManifestLoadError> {
@@ -466,6 +452,21 @@ impl<'a> ManifestParser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_load_sample_manifest() {
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "( tokens: {{ \"kick\": \"/path/to/kick.wav\" }} )").unwrap();
+
+        let manifest = load_sample_manifest(file.path()).unwrap();
+        assert_eq!(
+            manifest.tokens.get("kick").map(String::as_str),
+            Some("/path/to/kick.wav")
+        );
+    }
 
     #[test]
     fn sample_manifest_load_error_display() {

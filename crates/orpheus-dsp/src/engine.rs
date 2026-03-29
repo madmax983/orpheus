@@ -885,15 +885,6 @@ const fn default_stream_config() -> StreamConfig {
 ///
 /// Returns [`EngineError::InvalidTempo`] if `tempo_bpm` is zero, negative, or not finite.
 /// Returns [`EngineError::FrameOverflow`] if the calculated frames exceed `u64::MAX`.
-///
-/// # Examples
-///
-/// ```
-/// use orpheus_dsp::{EngineError, frames_per_cycle};
-///
-/// let frames = frames_per_cycle(44100, 120.0).unwrap();
-/// assert_eq!(frames, 88200); // 120 BPM = 2 beats/sec = 4 beats/cycle = 2 seconds/cycle
-/// ```
 pub fn frames_per_cycle(sample_rate: u32, tempo_bpm: f32) -> Result<u64, EngineError> {
     use std::time::Duration;
 
@@ -947,4 +938,15 @@ fn routing_snapshot_has_audio(snapshot: &RoutingSnapshot) -> bool {
 
 fn bus_effect_specs_match(left: Option<&BusEffectSpec>, right: Option<&BusEffectSpec>) -> bool {
     left == right
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_frames_per_cycle() {
+        let frames = frames_per_cycle(44100, 120.0).unwrap();
+        assert_eq!(frames, 88200); // 120 BPM = 2 beats/sec = 4 beats/cycle = 2 seconds/cycle
+    }
 }
