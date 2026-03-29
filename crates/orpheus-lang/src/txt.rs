@@ -6,8 +6,35 @@
 use std::io::Write;
 use std::path::Path;
 
+use orpheus_pattern::Event;
+
 use crate::eval::{EvalError, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue};
+
+fn export_pattern_events_to_txt<T, F>(
+    events: &[Event<T>],
+    path: impl AsRef<Path>,
+    header: &str,
+    cycle_count: u64,
+    mut write_event: F,
+) -> Result<(), EvalError>
+where
+    F: FnMut(&mut std::fs::File, &Event<T>) -> Result<(), EvalError>,
+{
+    let path = path.as_ref();
+    let mut file = std::fs::File::create(path)?;
+
+    writeln!(file, "{header}")?;
+    writeln!(file, "=============================")?;
+    writeln!(file, "Cycles: {cycle_count}")?;
+    writeln!(file)?;
+
+    for event in events {
+        write_event(&mut file, event)?;
+    }
+
+    Ok(())
+}
 
 /// Exports a sample pattern's evaluated events to a plain text file.
 ///
@@ -28,39 +55,37 @@ pub fn export_sample_pattern_to_txt(
 
     let span = render_span(cycle_count)?;
     let events = pattern.try_query(&span)?;
-    let path = path.as_ref();
 
-    let mut file = std::fs::File::create(path)?;
+    export_pattern_events_to_txt(
+        &events,
+        path,
+        "Orpheus Sample Pattern Export",
+        cycle_count,
+        |file, event| {
+            let start = f64::from(event.part.start());
+            let end = f64::from(event.part.end());
 
-    writeln!(file, "Orpheus Sample Pattern Export")?;
-    writeln!(file, "=============================")?;
-    writeln!(file, "Cycles: {}", cycle_count)?;
-    writeln!(file)?;
+            let mut params = Vec::new();
+            params.push(format!("gain: {:.2}", event.value.gain()));
+            params.push(format!("pan: {:.2}", event.value.pan()));
+            params.push(format!("rate: {:.2}", event.value.rate()));
 
-    for event in events {
-        let start = f64::from(event.part.start());
-        let end = f64::from(event.part.end());
+            if let Some(hpf) = event.value.hpf_cutoff_hz() {
+                params.push(format!("hpf: {hpf:.2}"));
+            }
+            if let Some(lpf) = event.value.lpf_cutoff_hz() {
+                params.push(format!("lpf: {lpf:.2}"));
+            }
 
-        let mut params = Vec::new();
-        params.push(format!("gain: {:.2}", event.value.gain()));
-        params.push(format!("pan: {:.2}", event.value.pan()));
-        params.push(format!("rate: {:.2}", event.value.rate()));
-
-        if let Some(hpf) = event.value.hpf_cutoff_hz() {
-            params.push(format!("hpf: {:.2}", hpf));
-        }
-        if let Some(lpf) = event.value.lpf_cutoff_hz() {
-            params.push(format!("lpf: {:.2}", lpf));
-        }
-
-        writeln!(
-            file,
-            "[{:.3} -> {:.3}] {} ({})",
-            start, end, event.value.sample(), params.join(", ")
-        )?;
-    }
-
-    Ok(())
+            writeln!(
+                file,
+                "[{start:.3} -> {end:.3}] {} ({})",
+                event.value.sample(),
+                params.join(", ")
+            )?;
+            Ok(())
+        },
+    )
 }
 
 /// Exports a number pattern's evaluated events to a plain text file.
@@ -82,27 +107,20 @@ pub fn export_number_pattern_to_txt(
 
     let span = render_span(cycle_count)?;
     let events = pattern.try_query(&span)?;
-    let path = path.as_ref();
 
-    let mut file = std::fs::File::create(path)?;
+    export_pattern_events_to_txt(
+        &events,
+        path,
+        "Orpheus Number Pattern Export",
+        cycle_count,
+        |file, event| {
+            let start = f64::from(event.part.start());
+            let end = f64::from(event.part.end());
 
-    writeln!(file, "Orpheus Number Pattern Export")?;
-    writeln!(file, "=============================")?;
-    writeln!(file, "Cycles: {}", cycle_count)?;
-    writeln!(file)?;
-
-    for event in events {
-        let start = f64::from(event.part.start());
-        let end = f64::from(event.part.end());
-
-        writeln!(
-            file,
-            "[{:.3} -> {:.3}] value: {:.3}",
-            start, end, event.value
-        )?;
-    }
-
-    Ok(())
+            writeln!(file, "[{start:.3} -> {end:.3}] value: {:.3}", event.value)?;
+            Ok(())
+        },
+    )
 }
 
 #[cfg(test)]
