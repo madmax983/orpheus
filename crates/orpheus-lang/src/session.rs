@@ -13,13 +13,14 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use orpheus_dsp::{
-    EngineCommand, EngineHandle, PatternUpdate, SampleBank, SampleTrigger, TransportSnapshot,
+    EngineCommand, EngineHandle, PatternUpdate, SampleBank, TransportSnapshot,
     load_sample_bank_from_directory,
 };
 use orpheus_pattern::Rational;
 
 use crate::eval::eval_into_bindings;
 use crate::export::render_sample_pattern_to_file_with_bank;
+use crate::export::sample_trigger_from_event;
 use crate::loader::load_file_runtime_strict;
 use crate::mixer::MixerState;
 use crate::types::infer_into_bindings;
@@ -705,23 +706,7 @@ impl ReplSession {
                     .map(|event| orpheus_pattern::Event {
                         whole: event.whole,
                         part: event.part,
-                        value: {
-                            let mut trigger = SampleTrigger::named(event.value.sample())
-                                .with_gain(event.value.gain())
-                                .with_pan(event.value.pan())
-                                .with_rate(event.value.rate())
-                                .with_resonance(event.value.resonance())
-                                .with_drive(event.value.drive())
-                                .with_pulse_width(event.value.pulse_width())
-                                .with_slice(event.value.slice_start(), event.value.slice_end());
-                            if let Some(cutoff_hz) = event.value.hpf_cutoff_hz() {
-                                trigger = trigger.with_hpf_cutoff_hz(cutoff_hz);
-                            }
-                            if let Some(cutoff_hz) = event.value.lpf_cutoff_hz() {
-                                trigger = trigger.with_lpf_cutoff_hz(cutoff_hz);
-                            }
-                            trigger
-                        },
+                        value: sample_trigger_from_event(&event.value),
                     })
                     .collect(),
             );

@@ -106,9 +106,21 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "shift" => Some(builtin_function_value(BuiltinKind::Shift)),
         "rev" => Some(builtin_function_value(BuiltinKind::Rev)),
         "gain" => Some(builtin_function_value(BuiltinKind::Gain)),
+        "delay" => Some(builtin_function_value(BuiltinKind::Delay)),
+        "delay_time" => Some(builtin_function_value(BuiltinKind::DelayTime)),
+        "delay_feedback" => Some(builtin_function_value(BuiltinKind::DelayFeedback)),
         "hpf" => Some(builtin_function_value(BuiltinKind::Hpf)),
         "lpf" => Some(builtin_function_value(BuiltinKind::Lpf)),
+        "reverb" => Some(builtin_function_value(BuiltinKind::Reverb)),
+        "reverb_room" => Some(builtin_function_value(BuiltinKind::ReverbRoom)),
+        "reverb_damp" => Some(builtin_function_value(BuiltinKind::ReverbDamp)),
         "cutoff" => Some(builtin_function_value(BuiltinKind::Cutoff)),
+        "chorus" => Some(builtin_function_value(BuiltinKind::Chorus)),
+        "chorus_depth" => Some(builtin_function_value(BuiltinKind::ChorusDepth)),
+        "chorus_rate" => Some(builtin_function_value(BuiltinKind::ChorusRate)),
+        "compressor" => Some(builtin_function_value(BuiltinKind::Compressor)),
+        "compressor_threshold" => Some(builtin_function_value(BuiltinKind::CompressorThreshold)),
+        "compressor_ratio" => Some(builtin_function_value(BuiltinKind::CompressorRatio)),
         "res" => Some(builtin_function_value(BuiltinKind::Res)),
         "drive" => Some(builtin_function_value(BuiltinKind::Drive)),
         "pw" => Some(builtin_function_value(BuiltinKind::Pw)),
@@ -307,9 +319,21 @@ impl BuiltinKind {
             Self::Shift => "shift",
             Self::Rev => "rev",
             Self::Gain => "gain",
+            Self::Delay => "delay",
+            Self::DelayTime => "delay_time",
+            Self::DelayFeedback => "delay_feedback",
             Self::Hpf => "hpf",
             Self::Lpf => "lpf",
+            Self::Reverb => "reverb",
+            Self::ReverbRoom => "reverb_room",
+            Self::ReverbDamp => "reverb_damp",
             Self::Cutoff => "cutoff",
+            Self::Chorus => "chorus",
+            Self::ChorusDepth => "chorus_depth",
+            Self::ChorusRate => "chorus_rate",
+            Self::Compressor => "compressor",
+            Self::CompressorThreshold => "compressor_threshold",
+            Self::CompressorRatio => "compressor_ratio",
             Self::Res => "res",
             Self::Drive => "drive",
             Self::Pw => "pw",
@@ -342,9 +366,21 @@ impl BuiltinKind {
             | Self::Slow
             | Self::Shift
             | Self::Gain
+            | Self::Delay
+            | Self::DelayTime
+            | Self::DelayFeedback
             | Self::Hpf
             | Self::Lpf
+            | Self::Reverb
+            | Self::ReverbRoom
+            | Self::ReverbDamp
             | Self::Cutoff
+            | Self::Chorus
+            | Self::ChorusDepth
+            | Self::ChorusRate
+            | Self::Compressor
+            | Self::CompressorThreshold
+            | Self::CompressorRatio
             | Self::Res
             | Self::Drive
             | Self::Pw
@@ -378,9 +414,21 @@ impl BuiltinKind {
             Self::Shift => apply_shift(args),
             Self::Rev => apply_rev(args),
             Self::Gain => apply_gain(args),
+            Self::Delay => apply_delay(args),
+            Self::DelayTime => apply_delay_time(args),
+            Self::DelayFeedback => apply_delay_feedback(args),
             Self::Hpf => apply_hpf(args),
             Self::Lpf => apply_lpf(args),
+            Self::Reverb => apply_reverb(args),
+            Self::ReverbRoom => apply_reverb_room(args),
+            Self::ReverbDamp => apply_reverb_damp(args),
             Self::Cutoff => apply_cutoff(args),
+            Self::Chorus => apply_chorus(args),
+            Self::ChorusDepth => apply_chorus_depth(args),
+            Self::ChorusRate => apply_chorus_rate(args),
+            Self::Compressor => apply_compressor(args),
+            Self::CompressorThreshold => apply_compressor_threshold(args),
+            Self::CompressorRatio => apply_compressor_ratio(args),
             Self::Res => apply_res(args),
             Self::Drive => apply_drive(args),
             Self::Pw => apply_pw(args),
@@ -862,6 +910,39 @@ fn apply_gain(args: Vec<Value>) -> Result<Value, EvalError> {
     )
 }
 
+fn apply_delay(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "delay",
+        "mix",
+        |value| extract_unit_interval_control(value, "delay"),
+        SamplePatternValue::delay,
+        SamplePatternValue::delay_pattern,
+    )
+}
+
+fn apply_delay_time(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "delay_time",
+        "time",
+        |value| extract_delay_time_control(value, "delay_time"),
+        SamplePatternValue::delay_time,
+        SamplePatternValue::delay_time_pattern,
+    )
+}
+
+fn apply_delay_feedback(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "delay_feedback",
+        "feedback",
+        |value| extract_unit_interval_control(value, "delay_feedback"),
+        SamplePatternValue::delay_feedback,
+        SamplePatternValue::delay_feedback_pattern,
+    )
+}
+
 fn apply_hpf(args: Vec<Value>) -> Result<Value, EvalError> {
     apply_sample_numeric_control(
         args,
@@ -881,6 +962,39 @@ fn apply_lpf(args: Vec<Value>) -> Result<Value, EvalError> {
         |val| extract_filter_cutoff_control(val, "lpf"),
         SamplePatternValue::lpf,
         SamplePatternValue::lpf_pattern,
+    )
+}
+
+fn apply_reverb(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "reverb",
+        "mix",
+        |value| extract_unit_interval_control(value, "reverb"),
+        SamplePatternValue::reverb,
+        SamplePatternValue::reverb_pattern,
+    )
+}
+
+fn apply_reverb_room(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "reverb_room",
+        "room",
+        |value| extract_unit_interval_control(value, "reverb_room"),
+        SamplePatternValue::reverb_room,
+        SamplePatternValue::reverb_room_pattern,
+    )
+}
+
+fn apply_reverb_damp(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "reverb_damp",
+        "damp",
+        |value| extract_unit_interval_control(value, "reverb_damp"),
+        SamplePatternValue::reverb_damp,
+        SamplePatternValue::reverb_damp_pattern,
     )
 }
 
@@ -917,6 +1031,39 @@ fn apply_drive(args: Vec<Value>) -> Result<Value, EvalError> {
     )
 }
 
+fn apply_chorus(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "chorus",
+        "mix",
+        |value| extract_unit_interval_control(value, "chorus"),
+        SamplePatternValue::chorus,
+        SamplePatternValue::chorus_pattern,
+    )
+}
+
+fn apply_chorus_depth(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "chorus_depth",
+        "depth",
+        |value| extract_unit_interval_control(value, "chorus_depth"),
+        SamplePatternValue::chorus_depth,
+        SamplePatternValue::chorus_depth_pattern,
+    )
+}
+
+fn apply_chorus_rate(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "chorus_rate",
+        "rate",
+        |value| extract_positive_finite_control(value, "chorus_rate"),
+        SamplePatternValue::chorus_rate,
+        SamplePatternValue::chorus_rate_pattern,
+    )
+}
+
 fn apply_pw(args: Vec<Value>) -> Result<Value, EvalError> {
     apply_sample_numeric_control(
         args,
@@ -936,6 +1083,39 @@ fn apply_pan(args: Vec<Value>) -> Result<Value, EvalError> {
         extract_pan_control,
         SamplePatternValue::pan,
         SamplePatternValue::pan_pattern,
+    )
+}
+
+fn apply_compressor(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "compressor",
+        "mix",
+        |value| extract_unit_interval_control(value, "compressor"),
+        SamplePatternValue::compressor,
+        SamplePatternValue::compressor_pattern,
+    )
+}
+
+fn apply_compressor_threshold(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "compressor_threshold",
+        "threshold",
+        |value| extract_unit_interval_control(value, "compressor_threshold"),
+        SamplePatternValue::compressor_threshold,
+        SamplePatternValue::compressor_threshold_pattern,
+    )
+}
+
+fn apply_compressor_ratio(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "compressor_ratio",
+        "ratio",
+        |value| extract_compressor_ratio_control(value, "compressor_ratio"),
+        SamplePatternValue::compressor_ratio,
+        SamplePatternValue::compressor_ratio_pattern,
     )
 }
 
@@ -1338,6 +1518,114 @@ fn extract_gain_control(value: Value) -> Result<NumericControl, EvalError> {
             Err(EvalError::new(
                 "`gain` requires finite numeric control values",
             ))
+        }
+    })?;
+
+    Ok(NumericControl::Pattern(pattern))
+}
+
+fn extract_unit_interval_control(
+    value: Value,
+    builtin_name: &str,
+) -> Result<NumericControl, EvalError> {
+    let pattern = extract_number_pattern(value, builtin_name)?;
+    if let Ok(number) = pattern.constant_value() {
+        if !number.is_finite() || !(0.0..=1.0).contains(&number) {
+            return Err(EvalError::new(format!(
+                "`{builtin_name}` requires a finite number within [0, 1]"
+            )));
+        }
+        return Ok(NumericControl::Constant(number));
+    }
+
+    validate_numeric_control_pattern(&pattern, builtin_name, |value| {
+        if value.is_finite() && (0.0..=1.0).contains(&value) {
+            Ok(())
+        } else {
+            Err(EvalError::new(format!(
+                "`{builtin_name}` requires finite control values within [0, 1]"
+            )))
+        }
+    })?;
+
+    Ok(NumericControl::Pattern(pattern))
+}
+
+fn extract_positive_finite_control(
+    value: Value,
+    builtin_name: &str,
+) -> Result<NumericControl, EvalError> {
+    let pattern = extract_number_pattern(value, builtin_name)?;
+    if let Ok(number) = pattern.constant_value() {
+        if !number.is_finite() || number <= f64::EPSILON {
+            return Err(EvalError::new(format!(
+                "`{builtin_name}` requires a positive finite numeric value"
+            )));
+        }
+        return Ok(NumericControl::Constant(number));
+    }
+
+    validate_numeric_control_pattern(&pattern, builtin_name, |value| {
+        if value.is_finite() && value > f64::EPSILON {
+            Ok(())
+        } else {
+            Err(EvalError::new(format!(
+                "`{builtin_name}` requires positive finite control values"
+            )))
+        }
+    })?;
+
+    Ok(NumericControl::Pattern(pattern))
+}
+
+fn extract_delay_time_control(
+    value: Value,
+    builtin_name: &str,
+) -> Result<NumericControl, EvalError> {
+    let pattern = extract_number_pattern(value, builtin_name)?;
+    if let Ok(number) = pattern.constant_value() {
+        if !number.is_finite() || number <= f64::EPSILON || number > 1.0 {
+            return Err(EvalError::new(format!(
+                "`{builtin_name}` requires a positive finite numeric value within (0, 1]"
+            )));
+        }
+        return Ok(NumericControl::Constant(number));
+    }
+
+    validate_numeric_control_pattern(&pattern, builtin_name, |value| {
+        if value.is_finite() && value > f64::EPSILON && value <= 1.0 {
+            Ok(())
+        } else {
+            Err(EvalError::new(format!(
+                "`{builtin_name}` requires positive finite control values within (0, 1]"
+            )))
+        }
+    })?;
+
+    Ok(NumericControl::Pattern(pattern))
+}
+
+fn extract_compressor_ratio_control(
+    value: Value,
+    builtin_name: &str,
+) -> Result<NumericControl, EvalError> {
+    let pattern = extract_number_pattern(value, builtin_name)?;
+    if let Ok(number) = pattern.constant_value() {
+        if !number.is_finite() || number < 1.0 {
+            return Err(EvalError::new(format!(
+                "`{builtin_name}` requires a finite numeric value >= 1"
+            )));
+        }
+        return Ok(NumericControl::Constant(number));
+    }
+
+    validate_numeric_control_pattern(&pattern, builtin_name, |value| {
+        if value.is_finite() && value >= 1.0 {
+            Ok(())
+        } else {
+            Err(EvalError::new(format!(
+                "`{builtin_name}` requires finite control values >= 1"
+            )))
         }
     })?;
 
