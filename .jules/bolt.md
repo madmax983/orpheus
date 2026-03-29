@@ -17,3 +17,7 @@
 **[Drain Iterator to Avoid Clones]**
 **Learning:** Calling `.cloned()` on an iterator over strings creates heap allocations. If the strings are no longer needed in the source container (like `remaining_params`), draining the items directly (`drain(..applied)`) allows you to move ownership without deep copies.
 **Action:** Replace `iter().take(n).cloned()` with `drain(..n)` when transferring elements from a mutable vector.
+
+**[Optimize Pattern Sequence Evaluation]
+**Learning:** Repeatedly cloning, shifting, and merging into a growing accumulator inside the loop in `eval_section` leads to O(N^2) sorting and reallocation overhead when repeating/merging patterns.
+**Action:** Calculate the final required capacity (`base.len() * repeat_count`), collect all shifted events into a single pre-allocated vector, and perform exactly one sort at the end.

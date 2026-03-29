@@ -591,24 +591,61 @@ impl Evaluator {
         }
 
         let base = Self::value_to_explicit(self.eval_expr_in_meter(pattern, meter)?)?;
-        let mut combined: Option<ExplicitValue> = None;
-
-        for repeat in 0..repeat_count {
-            let offset = rational_from_parts(
-                cycle_offset
-                    .checked_add(repeat)
-                    .ok_or_else(|| EvalError::new("section cycle offset overflowed"))?,
-                1,
-            )?;
-            let mut repeated = base.clone();
-            repeated.shift(&offset)?;
-            combined = Some(match combined {
-                Some(existing) => existing.merge(repeated)?,
-                None => repeated,
-            });
+        if repeat_count == 0 {
+            return Err(EvalError::new("section cycle count must be positive"));
         }
 
-        combined.ok_or_else(|| EvalError::new("section cycle count must be positive"))
+        // ⚡ Bolt: Calculate exact capacity for combined events to avoid O(N^2) repeated reallocations
+        // and deep copies during `merge`. We allocate once and sort once at the very end.
+        let capacity = match &base {
+            ExplicitValue::Sample(events) => events.len() * (repeat_count as usize),
+            ExplicitValue::Number(events) => events.len() * (repeat_count as usize),
+        };
+
+        match base {
+            ExplicitValue::Sample(base_events) => {
+                let mut combined_events = Vec::with_capacity(capacity);
+                for repeat in 0..repeat_count {
+                    let offset = rational_from_parts(
+                        cycle_offset
+                            .checked_add(repeat)
+                            .ok_or_else(|| EvalError::new("section cycle offset overflowed"))?,
+                        1,
+                    )?;
+                    for event in &base_events {
+                        let mut shifted = event.clone();
+                        shifted.part = shift_span(&shifted.part, &offset)?;
+                        if let Some(whole) = shifted.whole.take() {
+                            shifted.whole = Some(shift_span(&whole, &offset)?);
+                        }
+                        combined_events.push(shifted);
+                    }
+                }
+                sort_events(&mut combined_events);
+                Ok(ExplicitValue::Sample(combined_events))
+            }
+            ExplicitValue::Number(base_events) => {
+                let mut combined_events = Vec::with_capacity(capacity);
+                for repeat in 0..repeat_count {
+                    let offset = rational_from_parts(
+                        cycle_offset
+                            .checked_add(repeat)
+                            .ok_or_else(|| EvalError::new("section cycle offset overflowed"))?,
+                        1,
+                    )?;
+                    for event in &base_events {
+                        let mut shifted = event.clone();
+                        shifted.part = shift_span(&shifted.part, &offset)?;
+                        if let Some(whole) = shifted.whole.take() {
+                            shifted.whole = Some(shift_span(&whole, &offset)?);
+                        }
+                        combined_events.push(shifted);
+                    }
+                }
+                sort_events(&mut combined_events);
+                Ok(ExplicitValue::Number(combined_events))
+            }
+        }
     }
 
     fn eval_section_length(
@@ -1530,5 +1567,35 @@ right = sometimes(fast(2), cp hh)";
             result.unwrap_err().to_string(),
             "function `fast` cannot appear inside a pattern group in Task 5; apply transforms with the pipe operator `|>` or call `fast(..., pattern)` directly"
         );
+    }
+
+    #[test]
+    fn eval_section_events_allocates_correct_capacity() {
+        let source = "x = seq_sections(section(bd, 5))";
+        let module = eval_module(source, ReplMode::Strict).unwrap();
+        let val = module.get("x").unwrap();
+
+        let ExplicitValue::Sample(events) = super::Evaluator::value_to_explicit(val.clone()).unwrap() else {
+            panic!("Expected sample events");
+        };
+
+        // Section repeats 5 times, `bd` is 1 event -> 5 total events
+        assert_eq!(events.len(), 5);
+        assert!(events.capacity() >= 5);
+    }
+
+    #[test]
+    fn eval_section_events_number_allocates_correct_capacity() {
+        let source = "x = seq_sections(section(1, 3))";
+        let module = eval_module(source, ReplMode::Strict).unwrap();
+        let val = module.get("x").unwrap();
+
+        let ExplicitValue::Number(events) = super::Evaluator::value_to_explicit(val.clone()).unwrap() else {
+            panic!("Expected number events");
+        };
+
+        // Section repeats 3 times, `1` is 1 event -> 3 total events
+        assert_eq!(events.len(), 3);
+        assert!(events.capacity() >= 3);
     }
 }
