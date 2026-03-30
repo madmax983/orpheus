@@ -590,7 +590,7 @@ impl Evaluator {
             ));
         }
 
-        let base = Self::value_to_explicit(self.eval_expr_in_meter(pattern, meter)?)?;
+        let mut base = Self::value_to_explicit(self.eval_expr_in_meter(pattern, meter)?)?;
         let mut combined: Option<ExplicitValue> = None;
 
         for repeat in 0..repeat_count {
@@ -600,7 +600,11 @@ impl Evaluator {
                     .ok_or_else(|| EvalError::new("section cycle offset overflowed"))?,
                 1,
             )?;
-            let mut repeated = base.clone();
+            let mut repeated = if repeat == repeat_count - 1 {
+                std::mem::replace(&mut base, ExplicitValue::Number(Vec::new()))
+            } else {
+                base.clone()
+            };
             repeated.shift(&offset)?;
             combined = Some(match combined {
                 Some(existing) => existing.merge(repeated)?,
