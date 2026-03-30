@@ -2290,7 +2290,7 @@ mod tests {
         let mut session = ReplSession::new();
         crate::midi_input::set_cc_value_for_test(1, 64);
         session.eval_line("control = cc(1)").unwrap();
-        let Value::NumberPattern(pattern) = session.bindings.get("control").unwrap() else {
+        let crate::Value::NumberPattern(pattern) = session.bindings.get("control").unwrap() else {
             panic!("expected number pattern");
         };
         let value = pattern.constant_value().unwrap();

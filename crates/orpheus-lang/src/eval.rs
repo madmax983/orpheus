@@ -220,21 +220,32 @@ impl ExplicitValue {
         }
     }
 
-    fn merge(self, other: Self) -> Result<Self, EvalError> {
+    fn merge(mut self, other: Self) -> Result<Self, EvalError> {
+        self.append_unsorted(other)?;
+        self.sort();
+        Ok(self)
+    }
+
+    fn append_unsorted(&mut self, other: Self) -> Result<(), EvalError> {
         match (self, other) {
-            (Self::Sample(mut left), Self::Sample(mut right)) => {
+            (Self::Sample(left), Self::Sample(mut right)) => {
                 left.append(&mut right);
-                sort_events(&mut left);
-                Ok(Self::Sample(left))
+                Ok(())
             }
-            (Self::Number(mut left), Self::Number(mut right)) => {
+            (Self::Number(left), Self::Number(mut right)) => {
                 left.append(&mut right);
-                sort_events(&mut left);
-                Ok(Self::Number(left))
+                Ok(())
             }
             (Self::Sample(_), Self::Number(_)) | (Self::Number(_), Self::Sample(_)) => Err(
                 EvalError::new("explicit-time items must all resolve to the same pattern kind"),
             ),
+        }
+    }
+
+    fn sort(&mut self) {
+        match self {
+            Self::Sample(events) => sort_events(events),
+            Self::Number(events) => sort_events(events),
         }
     }
 
@@ -616,33 +627,11 @@ impl Evaluator {
             )?;
             let mut repeated = base.clone();
             repeated.shift(&offset)?;
-            // Inline merge without the sort at every step
-            match (&mut combined, repeated) {
-                (ExplicitValue::Sample(combined_events), ExplicitValue::Sample(mut new_events)) => {
-                    combined_events.append(&mut new_events);
-                }
-                (ExplicitValue::Number(combined_events), ExplicitValue::Number(mut new_events)) => {
-                    combined_events.append(&mut new_events);
-                }
-                _ => {
-                    return Err(EvalError::new(
-                        "explicit-time items must all resolve to the same pattern kind",
-                    ));
-                }
-            }
+            combined.append_unsorted(repeated)?;
         }
 
-        // Final sort exactly once
-        match combined {
-            ExplicitValue::Sample(mut events) => {
-                sort_events(&mut events);
-                Ok(ExplicitValue::Sample(events))
-            }
-            ExplicitValue::Number(mut events) => {
-                sort_events(&mut events);
-                Ok(ExplicitValue::Number(events))
-            }
-        }
+        combined.sort();
+        Ok(combined)
     }
 
     fn eval_section_length(
