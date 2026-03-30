@@ -55,6 +55,11 @@ impl From<DecodedSample> for PlaybackSample {
     }
 }
 
+/// A repository of fully loaded, decoded, and normalized audio samples ready
+/// for playback.
+///
+/// The sample bank is responsible for mapping string tokens (like `"bd"`, `"sn"`)
+/// to their actual PCM audio data and default playback parameters.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SampleBank {
     samples: BTreeMap<Box<str>, SampleEntry>,
@@ -109,6 +114,17 @@ impl SampleEntry {
 }
 
 impl SampleBank {
+    /// Loads a sample bank containing only the default Orpheus built-in
+    /// drum kit samples (`bd`, `sn`, `cp`, `hh`).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::SampleBank;
+    ///
+    /// let bank = SampleBank::load_builtin();
+    /// assert!(bank.get_by_token("bd").is_some());
+    /// ```
     #[must_use]
     pub fn load_builtin() -> Self {
         let mut bank = Self::default();
@@ -121,16 +137,19 @@ impl SampleBank {
         bank
     }
 
+    /// Looks up a loaded sample by its corresponding [`VoiceKind`].
     #[must_use]
     pub fn get(&self, voice: VoiceKind) -> Option<&PlaybackSample> {
         self.get_by_token(voice.token())
     }
 
+    /// Looks up a loaded sample by its string token name.
     #[must_use]
     pub fn get_by_token(&self, token: &str) -> Option<&PlaybackSample> {
         self.samples.get(token).map(|entry| &entry.sample)
     }
 
+    /// Returns a list of all sample token names currently loaded in the bank.
     #[must_use]
     pub fn available_tokens(&self) -> Vec<String> {
         self.samples.keys().map(ToString::to_string).collect()
@@ -156,47 +175,78 @@ impl SampleBank {
 /// Errors raised while scanning a sample directory for override assets.
 #[derive(Debug, Error)]
 pub enum SampleBankError {
+    /// An I/O error occurred while reading the contents of the sample directory.
     #[error("failed to read sample directory `{path}`: {source}")]
     DirectoryIo {
+        /// The path to the directory that failed to read.
         path: Box<str>,
+        /// The underlying I/O error.
         #[source]
         source: std::io::Error,
     },
+    /// An I/O error occurred while reading the `samples.ron` manifest file.
     #[error("failed to read sample manifest `{path}`: {source}")]
     ManifestIo {
+        /// The path to the manifest file.
         path: Box<str>,
+        /// The underlying I/O error.
         #[source]
         source: std::io::Error,
     },
+    /// A syntax or semantic error occurred while parsing the `samples.ron` manifest.
     #[error("failed to parse sample manifest `{path}`: {message}")]
-    ManifestParse { path: Box<str>, message: Box<str> },
+    ManifestParse {
+        /// The path to the manifest file.
+        path: Box<str>,
+        /// A description of the parse failure.
+        message: Box<str>,
+    },
+    /// The manifest defined an alias pointing to a token that does not exist.
     #[error("sample manifest `{path}` aliases `{alias}` to unknown token `{target}`")]
     ManifestAliasTarget {
+        /// The path to the manifest file.
         path: Box<str>,
+        /// The name of the alias being defined.
         alias: Box<str>,
+        /// The target token that could not be found.
         target: Box<str>,
     },
+    /// The manifest defined aliases that form a circular dependency.
     #[error("sample manifest `{path}` contains an alias cycle at `{alias}` via `{target}`")]
     ManifestAliasCycle {
+        /// The path to the manifest file.
         path: Box<str>,
+        /// The alias involved in the cycle.
         alias: Box<str>,
+        /// The target token that caused the cycle to repeat.
         target: Box<str>,
     },
+    /// The manifest defined a sample region pointing to a token that does not exist.
     #[error("sample manifest `{path}` region `{region}` targets unknown token `{target}`")]
     ManifestRegionTarget {
+        /// The path to the manifest file.
         path: Box<str>,
+        /// The name of the region being defined.
         region: Box<str>,
+        /// The target token that could not be found.
         target: Box<str>,
     },
+    /// The manifest defined sample regions that form a circular dependency.
     #[error("sample manifest `{path}` contains a region cycle at `{region}` via `{target}`")]
     ManifestRegionCycle {
+        /// The path to the manifest file.
         path: Box<str>,
+        /// The region involved in the cycle.
         region: Box<str>,
+        /// The target token that caused the cycle to repeat.
         target: Box<str>,
     },
+    /// An error occurred while decoding a sample file (e.g., unsupported format).
     #[error("failed to decode sample override `{path}`: {source}")]
     Decode {
+        /// The path to the sample file that failed to decode.
         path: Box<str>,
+        /// The underlying decoding error.
         #[source]
         source: SampleError,
     },

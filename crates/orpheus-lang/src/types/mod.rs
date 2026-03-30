@@ -16,30 +16,43 @@ impl TypeVarId {
     }
 }
 
+/// Represents the resolved type of an Orpheus expression or binding.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Type {
+    /// A pattern over time producing the given inner type.
     Pattern(Box<Self>),
+    /// A discrete sample event.
     Sample,
+    /// A melodic note event.
     Note,
+    /// A generic numeric value.
     Number,
+    /// A span of rational time.
     Duration,
+    /// A string literal.
     String,
+    /// A callable function with argument types and a return type.
     Function(Vec<Self>, Box<Self>),
+    /// An unresolved type variable used during inference.
     Var(TypeVarId),
+    /// The unit type (void).
     Unit,
 }
 
 impl Type {
+    /// Helper to wrap an inner type in a `Pattern`.
     #[must_use]
     pub fn pattern(inner: Self) -> Self {
         Self::Pattern(Box::new(inner))
     }
 
+    /// Helper to construct a `Function` type with the given arguments and return type.
     #[must_use]
     pub fn function(args: Vec<Self>, ret: Self) -> Self {
         Self::Function(args, Box::new(ret))
     }
 
+    /// Helper to construct a curried `Function` type from arguments and return type.
     #[must_use]
     pub fn curried(args: Vec<Self>, ret: Self) -> Self {
         args.into_iter()
@@ -73,6 +86,8 @@ impl Display for Type {
     }
 }
 
+/// A successfully type-checked Orpheus module containing the inferred types for
+/// all its bindings.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypedModule {
     bindings: BTreeMap<String, Type>,
@@ -83,6 +98,7 @@ impl TypedModule {
         Self { bindings }
     }
 
+    /// Returns `true` if the module contains an inferred binding with the given name.
     #[must_use]
     pub fn contains_key(&self, name: &str) -> bool {
         self.bindings.contains_key(name)

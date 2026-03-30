@@ -1,3 +1,9 @@
+//! The main entry point for the Orpheus live-coding environment.
+//!
+//! This binary initializes the audio stream and launches either the standard
+//! REPL or the fullscreen ratatui TUI depending on the detected terminal
+//! capabilities.
+
 use std::env;
 use std::ffi::OsString;
 use std::io::IsTerminal;

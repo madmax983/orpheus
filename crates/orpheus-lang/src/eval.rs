@@ -102,7 +102,9 @@ impl From<ParseError> for EvalError {
 /// Error raised while rendering an Orpheus sample pattern to an audio file.
 #[derive(Debug)]
 pub enum RenderError {
+    /// An error occurred while evaluating the pattern's events.
     Eval(EvalError),
+    /// An error occurred during the offline audio rendering process.
     Audio(OfflineRenderError),
 }
 

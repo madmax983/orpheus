@@ -7,26 +7,36 @@ use thiserror::Error;
 /// Decoded PCM sample data normalized to interleaved `f32` frames.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DecodedSample {
+    /// The number of audio channels (e.g., 1 for mono, 2 for stereo).
     pub channels: u16,
+    /// The playback sample rate in Hertz.
     pub sample_rate_hz: u32,
+    /// Interleaved PCM audio frames, normalized to `[-1.0, 1.0]`.
     pub frames: Vec<f32>,
 }
 
 /// Errors raised while decoding WAV sample assets.
 #[derive(Debug, Error)]
 pub enum SampleError {
+    /// An error occurred while reading the WAV file via `hound`.
     #[error("failed to read wav file `{path}`: {source}")]
     Io {
+        /// The path to the WAV file that failed to read.
         path: Box<str>,
+        /// The underlying `hound` error.
         #[source]
         source: hound::Error,
     },
+    /// The WAV file contains an unsupported number of channels.
     #[error("wav file `{0}` must contain either mono or stereo audio")]
     UnsupportedChannelCount(String),
+    /// The WAV file uses an unsupported floating-point encoding format.
     #[error("wav file `{0}` uses an unsupported float encoding")]
     UnsupportedFloatEncoding(String),
+    /// The WAV file uses an unsupported integer bit depth.
     #[error("wav file `{0}` uses an unsupported integer bit depth")]
     UnsupportedIntEncoding(String),
+    /// The requested built-in sample could not be found.
     #[error("unknown built-in sample `{0}`")]
     UnknownBuiltinSample(String),
 }

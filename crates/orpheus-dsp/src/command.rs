@@ -17,6 +17,7 @@ pub struct SampleTrigger {
 }
 
 impl SampleTrigger {
+    /// Creates a new `SampleTrigger` with the specified token and default parameters.
     #[must_use]
     pub fn named(token: impl Into<Box<str>>) -> Self {
         Self {
@@ -31,30 +32,35 @@ impl SampleTrigger {
         }
     }
 
+    /// Builder method to override the trigger's gain.
     #[must_use]
     pub const fn with_gain(mut self, gain: f64) -> Self {
         self.gain = gain;
         self
     }
 
+    /// Builder method to override the trigger's high-pass filter cutoff in Hertz.
     #[must_use]
     pub const fn with_hpf_cutoff_hz(mut self, cutoff_hz: f64) -> Self {
         self.hpf_cutoff_hz = Some(cutoff_hz);
         self
     }
 
+    /// Builder method to override the trigger's low-pass filter cutoff in Hertz.
     #[must_use]
     pub const fn with_lpf_cutoff_hz(mut self, cutoff_hz: f64) -> Self {
         self.lpf_cutoff_hz = Some(cutoff_hz);
         self
     }
 
+    /// Builder method to override the trigger's playback rate.
     #[must_use]
     pub const fn with_rate(mut self, rate: f64) -> Self {
         self.rate = rate;
         self
     }
 
+    /// Builder method to override the trigger's playback slice boundaries.
     #[must_use]
     pub const fn with_slice(mut self, start: f64, end: f64) -> Self {
         self.slice_start = start;
@@ -62,54 +68,68 @@ impl SampleTrigger {
         self
     }
 
+    /// Builder method to override the trigger's stereo panning position.
     #[must_use]
     pub const fn with_pan(mut self, pan: f64) -> Self {
         self.pan = pan;
         self
     }
 
+    /// The string identifier linking this event back to a loaded file in the `SampleBank`.
     #[must_use]
     pub fn token(&self) -> &str {
         self.token.as_ref()
     }
 
+    /// The linear amplitude multiplier scaling the raw sample frames.
     #[must_use]
     pub const fn gain(&self) -> f64 {
         self.gain
     }
 
+    /// The cutoff frequency where the high-pass filter begins rolling off bass frequencies.
     #[must_use]
     pub const fn hpf_cutoff_hz(&self) -> Option<f64> {
         self.hpf_cutoff_hz
     }
 
+    /// The cutoff frequency where the low-pass filter begins rolling off treble frequencies.
     #[must_use]
     pub const fn lpf_cutoff_hz(&self) -> Option<f64> {
         self.lpf_cutoff_hz
     }
 
+    /// The playback speed modifier. For instance, `2.0` plays the sample twice as fast,
+    /// pitching it up an octave.
     #[must_use]
     pub const fn rate(&self) -> f64 {
         self.rate
     }
 
+    /// The normalized `[0, 1]` fraction indicating where playback should begin within the sample.
     #[must_use]
     pub const fn slice_start(&self) -> f64 {
         self.slice_start
     }
 
+    /// The normalized `[0, 1]` fraction indicating where playback should cease within the sample.
     #[must_use]
     pub const fn slice_end(&self) -> f64 {
         self.slice_end
     }
 
+    /// The stereophonic pan applied to the sample mix, ranging from `-1.0` (hard left) to `1.0` (hard right).
     #[must_use]
     pub const fn pan(&self) -> f64 {
         self.pan
     }
 }
 
-/// A fully resolved unit-cycle pattern ready for audio-thread scheduling.
+/// Represents an atomic pattern replacement sent from the REPL to the audio thread.
+///
+/// To maintain rhythmic integrity, Orpheus defers actual sequence swaps until the playhead
+/// crosses a cycle boundary (e.g., the "one" of a measure). A `PatternUpdate` packages the fully
+/// evaluated, explicit `SampleTrigger` events for one complete unit cycle.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PatternUpdate {
     name: Box<str>,
@@ -117,6 +137,7 @@ pub struct PatternUpdate {
 }
 
 impl PatternUpdate {
+    /// Prepares a new pattern payload bound for the DSP ring buffer.
     #[must_use]
     pub fn new(name: impl Into<Box<str>>, events: Vec<Event<SampleTrigger>>) -> Self {
         Self {
@@ -125,16 +146,19 @@ impl PatternUpdate {
         }
     }
 
+    /// Creates a dummy pattern containing no events, causing the DSP engine to effectively stop output.
     #[must_use]
     pub fn silent(name: impl Into<Box<str>>) -> Self {
         Self::new(name, Vec::new())
     }
 
+    /// The name assigned to the evaluated module, used extensively by the TUI rendering systems.
     #[must_use]
     pub fn name(&self) -> &str {
         self.name.as_ref()
     }
 
+    /// The immutable slice of scheduled playback commands queued for rendering over the next cycle.
     #[must_use]
     pub fn events(&self) -> &[Event<SampleTrigger>] {
         &self.events

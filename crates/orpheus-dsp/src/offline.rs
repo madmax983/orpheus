@@ -23,28 +23,40 @@ const FLAC_BLOCK_SIZE: usize = 1024;
 /// Errors raised while rendering an offline export.
 #[derive(Debug, Error)]
 pub enum OfflineRenderError {
+    /// Rendering was requested for zero cycles.
     #[error("offline rendering requires at least one cycle")]
     InvalidCycleCount,
+    /// An error occurred in the underlying DSP engine.
     #[error(transparent)]
     Engine(#[from] EngineError),
+    /// The requested output file format is not supported.
     #[error("unsupported render format `{0}`")]
     UnsupportedFormat(Box<str>),
+    /// A generic I/O error occurred while writing the file.
     #[error("failed to write audio file `{path}`: {source}")]
     Io {
+        /// The path of the file that failed to write.
         path: Box<str>,
+        /// The underlying I/O error.
         #[source]
         source: std::io::Error,
     },
+    /// An error occurred while writing a WAV file using `hound`.
     #[error("failed to write wav file `{path}`: {source}")]
     WavIo {
+        /// The path of the WAV file that failed to write.
         path: Box<str>,
+        /// The underlying `hound` error.
         #[source]
         source: hound::Error,
     },
+    /// The FLAC encoder configuration was invalid.
     #[error("failed to verify FLAC encoder config: {0}")]
     FlacConfig(Box<str>),
+    /// An error occurred during FLAC encoding.
     #[error("failed to encode FLAC output: {0}")]
     FlacEncode(Box<str>),
+    /// A sample token requested in the pattern could not be resolved.
     #[error("unknown sample token `{0}`")]
     UnknownSampleToken(Box<str>),
 }

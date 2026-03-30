@@ -29,36 +29,50 @@ pub struct TransportSnapshot {
 }
 
 impl TransportSnapshot {
+    /// Identifies the lock-free synchronization epoch that generated this snapshot.
+    /// Used internally by the UI to detect dropped or interleaved frames when polling.
     #[must_use]
     pub const fn publish_epoch(&self) -> u64 {
         self.publish_epoch
     }
 
+    /// The absolute count of PCM frames elapsed since the engine booted.
+    /// This never resets, preventing phase-cancellation glitches on seamless pattern swaps.
     #[must_use]
     pub const fn current_frame(&self) -> u64 {
         self.current_frame
     }
 
+    /// The exact absolute frame where the currently active `[0, 1)` musical unit cycle began.
+    /// Used by the TUI to render the sweeping playhead animation in sync with the audio thread.
     #[must_use]
     pub const fn current_cycle_start_frame(&self) -> u64 {
         self.current_cycle_start_frame
     }
 
+    /// The total width of the current musical cycle measured in discrete audio frames.
+    /// This dynamically scales whenever the user sends a `SetTempo` command.
     #[must_use]
     pub const fn frames_per_cycle(&self) -> u64 {
         self.frames_per_cycle
     }
 
+    /// The active speed of the sequence, measured in Beats Per Minute.
     #[must_use]
     pub const fn tempo_bpm(&self) -> f32 {
         f32::from_bits(self.tempo_bpm_bits)
     }
 
+    /// Indicates whether the scheduler is actively consuming frames and generating audio,
+    /// or if it is paused (silenced and rewound to cycle zero).
     #[must_use]
     pub const fn is_playing(&self) -> bool {
         self.is_playing
     }
 
+    /// Indicates if a user recently submitted a `SwapPattern` command that the engine
+    /// is holding in a buffer. The engine defers the swap until the `next_cycle_boundary_frame`
+    /// to maintain musical timing.
     #[must_use]
     pub const fn has_pending_pattern(&self) -> bool {
         self.has_pending_pattern
@@ -126,18 +140,25 @@ impl SharedTransport {
 /// Errors raised by the minimal Orpheus audio engine.
 #[derive(Debug, Error)]
 pub enum EngineError {
+    /// The requested audio configuration has no output channels.
     #[error("audio output must have at least one channel")]
     InvalidChannelCount,
+    /// The thread-safe command queue between the UI and engine has filled up.
     #[error("engine command queue is full")]
     CommandQueueFull,
+    /// The specified tempo is either zero, negative, or not a finite number.
     #[error("tempo must be a finite positive value")]
     InvalidTempo,
+    /// Evaluating a pattern produced an event with a negative absolute cycle index.
     #[error("pattern time produced a negative cycle offset")]
     NegativeCycleOffset,
+    /// An arithmetic overflow occurred when translating between time domains.
     #[error("sample-clock conversion overflowed the supported range")]
     FrameOverflow,
+    /// The engine was asked to play a fallback voice token it does not recognize.
     #[error("unknown built-in voice token `{0}`")]
     UnknownVoice(String),
+    /// The output buffer size is not a multiple of the configured channel count.
     #[error("output buffer length must be a whole number of frames")]
     MisalignedOutputBuffer,
 }
@@ -426,19 +447,22 @@ impl RenderEngine {
         output
     }
 
-    /// Returns the active pattern name after the most recently completed cycle.
+    /// Safely extracts the name of the currently rendering pattern.
+    /// This is explicitly used by the test suite to verify delayed pattern swaps.
     #[must_use]
     pub fn active_pattern_name_for_test(&self) -> Option<&str> {
         self.core.active_pattern.as_ref().map(PatternUpdate::name)
     }
 
-    /// Returns how many frames remain before the next cycle boundary.
+    /// Computes the exact distance to the next musical `1.0` boundary.
+    /// Useful for test assertions ensuring deterministic audio alignment.
     #[must_use]
     pub const fn frames_until_boundary_for_test(&self) -> u64 {
         self.core.frames_until_boundary()
     }
 
-    /// Returns the current cycle length in frames for test assertions.
+    /// Exposes the engine's internal dynamic scaling factor (frames per cycle).
+    /// Required for orchestrating test environments matching specific tempos.
     #[must_use]
     pub const fn frames_per_cycle_for_test(&self) -> u64 {
         self.core.frames_per_cycle
@@ -588,7 +612,8 @@ impl EngineHandle {
         self.test_renderer_mut().render_test_block(frames)
     }
 
-    /// Returns the active pattern name for the embedded test renderer.
+    /// Queries the internal state of the embedded deterministic renderer to observe
+    /// the active playing pattern.
     ///
     /// # Panics
     ///
@@ -598,8 +623,8 @@ impl EngineHandle {
         self.test_renderer_ref().active_pattern_name_for_test()
     }
 
-    /// Returns how many frames remain before the next boundary in the embedded
-    /// test renderer.
+    /// Queries the exact distance remaining in the current musical cycle on the
+    /// deterministic engine simulator.
     ///
     /// # Panics
     ///
@@ -609,7 +634,7 @@ impl EngineHandle {
         self.test_renderer_ref().frames_until_boundary_for_test()
     }
 
-    /// Returns the current cycle length in frames for the embedded test renderer.
+    /// Exposes the deterministic engine's current tempo-adjusted cycle scaling.
     ///
     /// # Panics
     ///
@@ -619,7 +644,20 @@ impl EngineHandle {
         self.test_renderer_ref().frames_per_cycle_for_test()
     }
 
-    /// Returns a UI-readable transport snapshot for the current engine state.
+    /// Generates a lock-free snapshot of the transport clock that the UI can read.
+    ///
+    /// Because the engine is lock-free, `snapshot` loops using a spin-wait and seqlock logic
+    /// to avoid reading intermediate corrupted values while the audio thread is writing to it.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::{EngineHandle, TransportSnapshot};
+    ///
+    /// let handle = EngineHandle::stub();
+    /// let snap = handle.transport_snapshot();
+    /// assert_eq!(snap.is_playing(), true);
+    /// ```
     #[must_use]
     pub fn transport_snapshot(&self) -> TransportSnapshot {
         self.transport.snapshot()

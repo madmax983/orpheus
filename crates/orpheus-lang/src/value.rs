@@ -78,9 +78,13 @@ pub struct BuiltinFn {
 /// ```
 #[derive(Clone, Debug)]
 pub enum Value {
+    /// A pattern that produces discrete audio sample events.
     SamplePattern(SamplePatternValue),
+    /// A pattern that produces raw numbers.
     NumberPattern(NumberPatternValue),
+    /// A partially or fully applied built-in function.
     Function(BuiltinFn),
+    /// A plain string, often used as an identifier or argument.
     String(String),
 }
 

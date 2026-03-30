@@ -31,11 +31,22 @@ use core::fmt;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PatternError {
     /// A rational value was constructed with a zero denominator.
-    InvalidDenominator { denominator: i64 },
+    InvalidDenominator {
+        /// The invalid denominator that was passed.
+        denominator: i64,
+    },
     /// A checked rational operation exceeded the supported integer range.
-    ArithmeticOverflow { operation: &'static str },
+    ArithmeticOverflow {
+        /// The name of the arithmetic operation that overflowed.
+        operation: &'static str,
+    },
     /// A span was constructed with its start after its end.
-    InvalidSpan { start: Rational, end: Rational },
+    InvalidSpan {
+        /// The invalid start time.
+        start: Rational,
+        /// The invalid end time.
+        end: Rational,
+    },
 }
 
 impl fmt::Display for PatternError {

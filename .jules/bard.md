@@ -1,3 +1,6 @@
 ## 2026-03-13 - [Missing Core README]
 **Confusion:** The repository root was missing a `README.md`, making it hard for users to understand what Orpheus is, what the crates do, and how to get started (building/running).
 **Clarification:** Created a new `README.md` at the root that introduces the Orpheus philosophy, explains the architecture/crates (`orpheus-pattern`, `orpheus-dsp`, `orpheus-lang`), and gives clear getting started instructions including pre-requisites (`libasound2-dev`).
+## 2026-03-18 - [The "Ghost" Types and "Missing" Enums]
+**Confusion:** The core runtime types and evaluation failures (`Value`, `Type`, `RenderError`, `EngineError`, `OfflineRenderError`, `SampleBankError`, `PatternError`) lacked documentation, making it difficult for users to understand what the language operated on and why it failed. Additionally, numerous getters had zero documentation or used useless "Returns the X" noise.
+**Clarification:** Added detailed, narrative-driven `///` documentation for the AST, runtime variants, and error enums across `orpheus-pattern`, `orpheus-lang`, and `orpheus-dsp` explaining *why* they exist and what triggers them. Refactored "getter" noise to describe the business purpose of the returned fields. Added `## Examples` blocks.

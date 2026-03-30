@@ -6,9 +6,15 @@ mod diagnostics;
 mod eval;
 mod loader;
 mod parser;
+
+/// The standard terminal read-eval-print loop environment.
 pub mod repl;
+
 mod svg;
+
+/// The fullscreen ratatui terminal user interface.
 pub mod tui;
+
 mod types;
 mod value;
 
