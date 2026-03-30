@@ -45,11 +45,7 @@ fn load_file_strict_inner(
         LoadError::new(format!(
             "{}: {}",
             path.display(),
-            match error.kind() {
-                std::io::ErrorKind::NotFound => "file not found".to_string(),
-                std::io::ErrorKind::PermissionDenied => "permission denied".to_string(),
-                _ => error.to_string(),
-            }
+            crate::diagnostics::format_io_error(&error)
         ))
     })?;
     if !visiting.insert(canonical.clone()) {
@@ -63,11 +59,7 @@ fn load_file_strict_inner(
         LoadError::new(format!(
             "{}: {}",
             canonical.display(),
-            match error.kind() {
-                std::io::ErrorKind::NotFound => "file not found".to_string(),
-                std::io::ErrorKind::PermissionDenied => "permission denied".to_string(),
-                _ => error.to_string(),
-            }
+            crate::diagnostics::format_io_error(&error)
         ))
     })?;
     let parent = canonical.parent().ok_or_else(|| {
