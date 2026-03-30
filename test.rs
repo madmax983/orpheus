@@ -1,3 +1,6 @@
+use std::sync::atomic::{fence, Ordering, AtomicUsize};
+use std::thread;
+
 fn main() {
-    println!("Testing");
+    println!("Hello World!");
 }

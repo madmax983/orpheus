@@ -16,9 +16,39 @@ use crate::eval::{EvalError, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue};
 
 /// Errors that can occur during audio rendering or exporting operations.
+///
+/// This error is returned when exporting patterns to audio files (like WAV).
+/// It can either stem from runtime evaluation failures (e.g., trying to render a
+/// pattern with out-of-bounds parameters) or from the audio engine failing to
+/// process and write the PCM data to disk.
+///
+/// # Causes
+///
+/// - [`RenderError::Eval`]: The pattern could not be successfully queried across
+///   the requested time span due to an [`EvalError`] (e.g., invalid arithmetic
+///   on the rational time domain).
+/// - [`RenderError::Audio`]: The offline digital signal processing engine failed
+///   to write the resulting audio file (e.g., I/O permissions or a corrupted
+///   sample bank).
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::RenderError;
+/// use orpheus_lang::EvalError;
+///
+/// let error = RenderError::Eval(EvalError::new("out of bounds parameter"));
+///
+/// match error {
+///     RenderError::Eval(e) => assert_eq!(e.to_string(), "out of bounds parameter"),
+///     RenderError::Audio(_) => unreachable!(),
+/// }
+/// ```
 #[derive(Debug)]
 pub enum RenderError {
+    /// An error occurred while evaluating the pattern events.
     Eval(EvalError),
+    /// An error occurred during the offline digital signal processing or file writing phase.
     Audio(OfflineRenderError),
 }
 
@@ -54,15 +84,30 @@ impl From<OfflineRenderError> for RenderError {
 
 /// Helper function to convert a `SampleEvent` from the evaluation phase into a
 /// `SampleTrigger` for the DSP rendering phase.
-fn sample_trigger_from_event(event: &crate::value::SampleEvent) -> SampleTrigger {
+pub(crate) fn sample_trigger_from_event(event: &crate::value::SampleEvent) -> SampleTrigger {
     let mut trigger = SampleTrigger::named(event.sample())
         .with_gain(event.gain())
         .with_pan(event.pan())
         .with_rate(event.rate())
+        .with_delay_mix(event.delay_mix())
+        .with_delay_time(event.delay_time())
+        .with_delay_feedback(event.delay_feedback())
+        .with_reverb_mix(event.reverb_mix())
+        .with_reverb_room(event.reverb_room())
+        .with_reverb_damp(event.reverb_damp())
+        .with_chorus_mix(event.chorus_mix())
+        .with_chorus_depth(event.chorus_depth())
+        .with_chorus_rate(event.chorus_rate())
+        .with_compressor_mix(event.compressor_mix())
+        .with_compressor_threshold(event.compressor_threshold())
+        .with_compressor_ratio(event.compressor_ratio())
         .with_resonance(event.resonance())
         .with_drive(event.drive())
         .with_pulse_width(event.pulse_width())
         .with_slice(event.slice_start(), event.slice_end());
+    if let Some(onset_index) = event.onset_index() {
+        trigger = trigger.with_onset(onset_index);
+    }
     if let Some(cutoff) = event.hpf_cutoff_hz() {
         trigger = trigger.with_hpf_cutoff_hz(cutoff);
     }
@@ -119,6 +164,97 @@ where
     }
 
     Ok(())
+}
+
+fn export_pattern_events_to_md<T, F>(
+    events: &[Event<T>],
+    path: impl AsRef<Path>,
+    header: &str,
+    mut write_event: F,
+) -> Result<(), EvalError>
+where
+    F: FnMut(&mut std::fs::File, &Event<T>) -> Result<(), EvalError>,
+{
+    let path = path.as_ref();
+    let mut file = std::fs::File::create(path)?;
+    writeln!(file, "{header}")?;
+    // Add Markdown table separator
+    let separators = header
+        .split('|')
+        .map(|s| if s.is_empty() { "" } else { "---" })
+        .collect::<Vec<_>>()
+        .join("|");
+    writeln!(file, "{separators}")?;
+
+    for event in events {
+        write_event(&mut file, event)?;
+    }
+
+    Ok(())
+}
+
+/// Exports a sample pattern's evaluated events to a Markdown file.
+///
+/// The Markdown file will contain a table with columns for `start`,
+/// `end`, `sample`, `gain`, `pan`, `rate`, `hpf`, and `lpf`.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, export_sample_pattern_to_md};
+///
+/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+///
+/// let path = std::env::temp_dir().join("export.md");
+/// export_sample_pattern_to_md(pattern, &path, 2).unwrap();
+/// ```
+///
+/// # Errors
+///
+/// Returns [`EvalError`] if the cycle count is 0, if pattern querying fails, or if the file cannot be written.
+pub fn export_sample_pattern_to_md(
+    pattern: &SamplePatternValue,
+    path: impl AsRef<Path>,
+    cycle_count: u64,
+) -> Result<(), EvalError> {
+    if cycle_count == 0 {
+        return Err(EvalError::new("exporting requires at least one cycle"));
+    }
+
+    let span = render_span(cycle_count)?;
+    let events = pattern.try_query(&span)?;
+
+    export_pattern_events_to_md(
+        &events,
+        path,
+        "| start | end | sample | gain | pan | rate | hpf | lpf |",
+        |file, event| {
+            let start_float = f64::from(event.part.start());
+            let end_float = f64::from(event.part.end());
+            let hpf = event
+                .value
+                .hpf_cutoff_hz()
+                .map_or_else(|| "-".to_owned(), |v| format!("{v:.2}"));
+            let lpf = event
+                .value
+                .lpf_cutoff_hz()
+                .map_or_else(|| "-".to_owned(), |v| format!("{v:.2}"));
+            writeln!(
+                file,
+                "| {:.3} | {:.3} | {} | {:.2} | {:.2} | {:.2} | {} | {} |",
+                start_float,
+                end_float,
+                event.value.sample(),
+                event.value.gain(),
+                event.value.pan(),
+                event.value.rate(),
+                hpf,
+                lpf
+            )?;
+            Ok(())
+        },
+    )
 }
 
 /// Exports a sample pattern's evaluated events to a CSV file.
@@ -242,6 +378,50 @@ pub fn export_sample_pattern_to_json(
     let events = pattern.try_query(&span)?;
 
     export_pattern_events_to_json(&events, path, "sample", cycle_count, sample_event_json)
+}
+
+/// Exports a number pattern's evaluated events to a Markdown file.
+///
+/// The Markdown file will contain a table with columns for `start`,
+/// `end`, and `value`.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, export_number_pattern_to_md};
+///
+/// let env = eval_module("x = 1 2 3", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
+///
+/// let path = std::env::temp_dir().join("export_number_pattern.md");
+/// export_number_pattern_to_md(pattern, &path, 2).unwrap();
+/// ```
+///
+/// # Errors
+///
+/// Returns [`EvalError`] if the cycle count is 0, if pattern querying fails, or if the file cannot be written.
+pub fn export_number_pattern_to_md(
+    pattern: &NumberPatternValue,
+    path: impl AsRef<Path>,
+    cycle_count: u64,
+) -> Result<(), EvalError> {
+    if cycle_count == 0 {
+        return Err(EvalError::new("exporting requires at least one cycle"));
+    }
+
+    let span = render_span(cycle_count)?;
+    let events = pattern.try_query(&span)?;
+
+    export_pattern_events_to_md(&events, path, "| start | end | value |", |file, event| {
+        let start_float = f64::from(event.part.start());
+        let end_float = f64::from(event.part.end());
+        writeln!(
+            file,
+            "| {:.3} | {:.3} | {:.3} |",
+            start_float, end_float, event.value
+        )?;
+        Ok(())
+    })
 }
 
 /// Exports a number pattern's evaluated events to a CSV file.
@@ -387,7 +567,23 @@ pub fn render_sample_pattern_to_wav(
 
 use std::fmt::Write as _;
 
-pub(crate) fn escape_json_string(s: &str) -> String {
+/// Escapes a string for safe inclusion within a JSON payload.
+///
+/// Converts double quotes, backslashes, and control characters into their corresponding
+/// JSON escape sequences (e.g., `\"`, `\\`, `\n`). This ensures that dynamically generated
+/// text (like sample names) won't break the JSON structure during export operations.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_lang::escape_json_string;
+///
+/// let raw = "hello \"world\"\nfrom \\rust\\";
+/// let escaped = escape_json_string(raw);
+///
+/// assert_eq!(escaped, "hello \\\"world\\\"\\nfrom \\\\rust\\\\");
+/// ```
+pub fn escape_json_string(s: &str) -> String {
     let mut escaped = String::with_capacity(s.len() * 2);
     for c in s.chars() {
         match c {
@@ -440,6 +636,50 @@ fn sample_event_json(event: &Event<crate::value::SampleEvent>) -> String {
     let _ = writeln!(s, "      \"gain\": {:.6},", event.value.gain());
     let _ = writeln!(s, "      \"pan\": {:.6},", event.value.pan());
     let _ = writeln!(s, "      \"rate\": {:.6},", event.value.rate());
+    let _ = writeln!(s, "      \"delay_mix\": {:.6},", event.value.delay_mix());
+    let _ = writeln!(s, "      \"delay_time\": {:.6},", event.value.delay_time());
+    let _ = writeln!(
+        s,
+        "      \"delay_feedback\": {:.6},",
+        event.value.delay_feedback()
+    );
+    let _ = writeln!(s, "      \"reverb_mix\": {:.6},", event.value.reverb_mix());
+    let _ = writeln!(
+        s,
+        "      \"reverb_room\": {:.6},",
+        event.value.reverb_room()
+    );
+    let _ = writeln!(
+        s,
+        "      \"reverb_damp\": {:.6},",
+        event.value.reverb_damp()
+    );
+    let _ = writeln!(s, "      \"chorus_mix\": {:.6},", event.value.chorus_mix());
+    let _ = writeln!(
+        s,
+        "      \"chorus_depth\": {:.6},",
+        event.value.chorus_depth()
+    );
+    let _ = writeln!(
+        s,
+        "      \"chorus_rate\": {:.6},",
+        event.value.chorus_rate()
+    );
+    let _ = writeln!(
+        s,
+        "      \"compressor_mix\": {:.6},",
+        event.value.compressor_mix()
+    );
+    let _ = writeln!(
+        s,
+        "      \"compressor_threshold\": {:.6},",
+        event.value.compressor_threshold()
+    );
+    let _ = writeln!(
+        s,
+        "      \"compressor_ratio\": {:.6},",
+        event.value.compressor_ratio()
+    );
     let _ = writeln!(s, "      \"resonance\": {:.6},", event.value.resonance());
     let _ = writeln!(s, "      \"drive\": {:.6},", event.value.drive());
     let _ = writeln!(
@@ -509,13 +749,20 @@ mod tests {
 
     use serde_json::Value as JsonValue;
 
-    use super::{export_number_pattern_to_json, export_sample_pattern_to_json};
+    use super::{
+        export_number_pattern_to_json, export_number_pattern_to_md, export_sample_pattern_to_json,
+        export_sample_pattern_to_md,
+    };
     use crate::{ReplMode, eval_module};
 
     static UNIQUE_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 
     fn temp_json_path() -> PathBuf {
         std::env::temp_dir().join(format!("orpheus-export-json-{}.json", unique_temp_suffix()))
+    }
+
+    fn temp_md_path() -> PathBuf {
+        std::env::temp_dir().join(format!("orpheus-export-md-{}.md", unique_temp_suffix()))
     }
 
     fn fixture(name: &str) -> PathBuf {
@@ -785,6 +1032,44 @@ mod tests {
         let actual_contents = fs::read_to_string(&path).unwrap();
         assert!(actual_contents.contains("\"lpf_cutoff_hz\": 400.000000"));
         assert!(actual_contents.contains("\"hpf_cutoff_hz\": 100.000000"));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn md_export_formats_sample_pattern() {
+        let module = eval_module("pat = bd |> lpf(400) |> hpf(100)", ReplMode::Loose).unwrap();
+        let pat = module.get("pat").unwrap().as_sample_pattern().unwrap();
+        let path = temp_md_path();
+
+        export_sample_pattern_to_md(pat, &path, 1).unwrap();
+
+        let actual_contents = fs::read_to_string(&path).unwrap();
+        assert!(
+            actual_contents.contains("| start | end | sample | gain | pan | rate | hpf | lpf |")
+        );
+        assert!(actual_contents.contains("|---|---|---|---|---|---|---|---|"));
+        assert!(
+            actual_contents
+                .contains("| 0.000 | 1.000 | bd | 1.00 | 0.00 | 1.00 | 100.00 | 400.00 |")
+        );
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn md_export_formats_number_pattern() {
+        let module = eval_module("pat = 1 2", ReplMode::Loose).unwrap();
+        let pat = module.get("pat").unwrap().as_number_pattern().unwrap();
+        let path = temp_md_path();
+
+        export_number_pattern_to_md(pat, &path, 1).unwrap();
+
+        let actual_contents = fs::read_to_string(&path).unwrap();
+        assert!(actual_contents.contains("| start | end | value |"));
+        assert!(actual_contents.contains("|---|---|---|"));
+        assert!(actual_contents.contains("| 0.000 | 0.500 | 1.000 |"));
+        assert!(actual_contents.contains("| 0.500 | 1.000 | 2.000 |"));
 
         let _ = fs::remove_file(path);
     }

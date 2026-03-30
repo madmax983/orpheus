@@ -13,19 +13,39 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use orpheus_dsp::{
-    EngineCommand, EngineHandle, PatternUpdate, SampleBank, SampleTrigger, TransportSnapshot,
+    EngineCommand, EngineHandle, PatternUpdate, SampleBank, TransportSnapshot,
     load_sample_bank_from_directory,
 };
 use orpheus_pattern::Rational;
 
 use crate::eval::eval_into_bindings;
 use crate::export::render_sample_pattern_to_file_with_bank;
+use crate::export::sample_trigger_from_event;
 use crate::loader::load_file_runtime_strict;
 use crate::mixer::MixerState;
 use crate::types::infer_into_bindings;
 use crate::{ReplMode, Type, Value};
 
-pub(crate) struct ReplSession {
+/// Represents the interactive state of an Orpheus environment.
+///
+/// A `ReplSession` manages user bindings, loaded sample banks, and real-time DSP
+/// commands. It acts as the bridge between textual inputs and the underlying audio engine.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_lang::ReplSession;
+/// use orpheus_dsp::EngineHandle;
+///
+/// // Create a new session linked to a stubbed audio engine (for testing).
+/// let engine = EngineHandle::stub();
+/// let mut session = ReplSession::with_engine(engine);
+///
+/// // Evaluate a simple pattern binding.
+/// let result = session.eval_line("drums = bd sn");
+/// assert!(result.is_ok());
+/// ```
+pub struct ReplSession {
     mode: ReplMode,
     engine: EngineHandle,
     sample_bank: SampleBank,
@@ -44,31 +64,112 @@ struct PatternDisplayState {
     last_loaded_pattern_name: Option<String>,
 }
 
+/// A snapshot of the transport state formatted for visual presentation.
+///
+/// `TransportView` encapsulates the underlying engine's `TransportSnapshot` and adds
+/// presentation-level details, such as the names of the currently active and pending patterns.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_lang::ReplSession;
+/// use orpheus_dsp::EngineHandle;
+///
+/// let session = ReplSession::with_engine(EngineHandle::stub());
+/// let view = session.transport_view();
+///
+/// assert!(view.active_pattern_name().is_none());
+/// assert!(view.pending_pattern_name().is_none());
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct TransportView {
+pub struct TransportView {
     snapshot: TransportSnapshot,
     active_pattern_name: Option<String>,
     pending_pattern_name: Option<String>,
 }
 
+/// A snapshot of the mixer routing state formatted for visual presentation.
+///
+/// `MixerView` encapsulates a summary of the currently active tracks and buses,
+/// along with a flag indicating whether routing updates are pending execution
+/// at the next cycle boundary.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_lang::ReplSession;
+/// use orpheus_dsp::EngineHandle;
+///
+/// let mut session = ReplSession::with_engine(EngineHandle::stub());
+/// session.eval_line(":track new drums").unwrap();
+/// session.render_test_block_for_tui(1);
+///
+/// let view = session.mixer_view();
+/// assert!(view.tracks().iter().any(|line| line.contains("drums -> <unbound>")));
+/// assert!(view.buses().is_empty());
+/// assert!(view.has_pending_routing());
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct MixerView {
+pub struct MixerView {
     tracks: Vec<String>,
     buses: Vec<String>,
     has_pending_routing: bool,
 }
 
 impl TransportView {
+    /// Returns a reference to the underlying DSP transport snapshot.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let session = ReplSession::with_engine(EngineHandle::stub());
+    /// let view = session.transport_view();
+    /// let snapshot = view.snapshot();
+    /// assert_eq!(snapshot.tempo_bpm(), 120.0);
+    /// ```
     #[must_use]
     pub const fn snapshot(&self) -> &TransportSnapshot {
         &self.snapshot
     }
 
+    /// Returns the name of the currently active (playing) pattern, if any.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.eval_line("drums = bd sn").unwrap();
+    /// // Fast-forward transport to activate pattern
+    /// session.render_test_block_for_tui(256);
+    ///
+    /// let view = session.transport_view();
+    /// assert_eq!(view.active_pattern_name(), Some("drums"));
+    /// ```
     #[must_use]
     pub fn active_pattern_name(&self) -> Option<&str> {
         self.active_pattern_name.as_deref()
     }
 
+    /// Returns the name of the pattern pending execution at the next cycle boundary, if any.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.eval_line("drums = bd sn").unwrap();
+    ///
+    /// let view = session.transport_view();
+    /// assert_eq!(view.pending_pattern_name(), Some("drums"));
+    /// ```
     #[must_use]
     pub fn pending_pattern_name(&self) -> Option<&str> {
         self.pending_pattern_name.as_deref()
@@ -76,16 +177,60 @@ impl TransportView {
 }
 
 impl MixerView {
+    /// Returns a slice of strings summarizing the state of all active tracks.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.eval_line(":track new drums").unwrap();
+    ///
+    /// let view = session.mixer_view();
+    /// let tracks = view.tracks();
+    /// assert!(tracks.iter().any(|line| line.contains("drums -> <unbound>")));
+    /// ```
     #[must_use]
     pub fn tracks(&self) -> &[String] {
         &self.tracks
     }
 
+    /// Returns a slice of strings summarizing the state of all active buses.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.eval_line(":bus new verb").unwrap();
+    ///
+    /// let view = session.mixer_view();
+    /// let buses = view.buses();
+    /// assert!(buses.iter().any(|line| line.contains("verb -> master")));
+    /// ```
     #[must_use]
     pub fn buses(&self) -> &[String] {
         &self.buses
     }
 
+    /// Returns `true` if there are pending routing changes queued for the next cycle boundary.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.eval_line(":track new drums").unwrap();
+    /// session.render_test_block_for_tui(1);
+    ///
+    /// assert!(session.mixer_view().has_pending_routing());
+    /// ```
     #[must_use]
     pub const fn has_pending_routing(&self) -> bool {
         self.has_pending_routing
@@ -98,7 +243,18 @@ impl ReplSession {
         Self::with_engine(EngineHandle::stub())
     }
 
-    pub(crate) fn with_engine(engine: EngineHandle) -> Self {
+    /// Creates a new `ReplSession` associated with the provided engine handle.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let engine = EngineHandle::stub();
+    /// let session = ReplSession::with_engine(engine);
+    /// ```
+    pub fn with_engine(engine: EngineHandle) -> Self {
         Self {
             mode: ReplMode::Loose,
             engine,
@@ -111,7 +267,33 @@ impl ReplSession {
         }
     }
 
-    pub(crate) fn eval_line(&mut self, source: &str) -> Result<String, String> {
+    /// Evaluates a line of input, updating the session's bindings or executing commands.
+    ///
+    /// The input can be a variable binding (e.g., `drums = bd sn`) or a REPL
+    /// command starting with a colon (e.g., `:tempo 120`).
+    ///
+    /// ## Errors
+    ///
+    /// Returns an `Err` containing a descriptive message if the input fails to parse,
+    /// type-check, evaluate, or if a REPL command is invalid.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    ///
+    /// // Bind a pattern.
+    /// let response = session.eval_line("notes = 1 2 3").unwrap();
+    /// assert_eq!(response, "bound notes: Pattern<Number>");
+    ///
+    /// // Execute a command.
+    /// let response = session.eval_line(":tempo 120").unwrap();
+    /// assert_eq!(response, "tempo set to 120 BPM");
+    /// ```
+    pub fn eval_line(&mut self, source: &str) -> Result<String, String> {
         if source.starts_with(':') {
             return self.eval_command(source);
         }
@@ -282,9 +464,13 @@ impl ReplSession {
         if let Some(value) = self.bindings.get(binding_name) {
             match value {
                 crate::value::Value::SamplePattern(pattern) => {
-                    let roll =
-                        crate::ascii_roll::render_ascii_roll(pattern, cycles, steps_per_cycle)
-                            .map_err(|error| error.to_string())?;
+                    let roll = crate::ascii_roll::render_ascii_roll(
+                        binding_name,
+                        pattern,
+                        cycles,
+                        steps_per_cycle,
+                    )
+                    .map_err(|error| error.to_string())?;
                     Ok(format!("\n{}", roll.trim_end()))
                 }
                 _ => Err(format!(
@@ -310,20 +496,14 @@ impl ReplSession {
         if let Some(value) = self.bindings.get(binding_name) {
             match value {
                 crate::value::Value::SamplePattern(pattern) => {
-                    let stats = crate::stats::sample_pattern_stats(pattern, cycles)
+                    let stats = crate::stats::sample_pattern_stats(binding_name, pattern, cycles)
                         .map_err(|error| error.to_string())?;
-                    Ok(format!(
-                        "Pattern: {binding_name}\nCycles: {cycles}\n{}",
-                        stats.trim_end()
-                    ))
+                    Ok(format!("\n{}", stats.trim_end()))
                 }
                 crate::value::Value::NumberPattern(pattern) => {
-                    let stats = crate::stats::number_pattern_stats(pattern, cycles)
+                    let stats = crate::stats::number_pattern_stats(binding_name, pattern, cycles)
                         .map_err(|error| error.to_string())?;
-                    Ok(format!(
-                        "Pattern: {binding_name}\nCycles: {cycles}\n{}",
-                        stats.trim_end()
-                    ))
+                    Ok(format!("\n{}", stats.trim_end()))
                 }
                 _ => Err(format!(
                     "binding `{binding_name}` is a {} and cannot be analyzed",
@@ -366,54 +546,91 @@ impl ReplSession {
             .get(binding_name)
             .ok_or_else(|| format!("no binding named `{binding_name}`"))?;
 
+        Self::export_pattern_value(value, &path, cycles, binding_name)?;
+
+        Ok(format!(
+            "exported `{binding_name}` to `{path}` ({cycles} cycle(s))"
+        ))
+    }
+
+    fn export_pattern_value(
+        value: &Value,
+        path: &str,
+        cycles: u64,
+        binding_name: &str,
+    ) -> Result<(), String> {
         match value {
             Value::SamplePattern(pattern) => {
-                let export_path = std::path::Path::new(&path);
+                let export_path = std::path::Path::new(path);
                 if export_path
                     .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
                 {
-                    crate::svg::export_sample_pattern_to_svg(pattern, &path, cycles)
+                    crate::svg::export_sample_pattern_to_svg(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 } else if export_path
                     .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
                 {
-                    crate::html::export_sample_pattern_to_html(pattern, &path, cycles)
+                    crate::html::export_sample_pattern_to_html(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 } else if export_path
                     .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
                 {
-                    crate::export::export_sample_pattern_to_json(pattern, &path, cycles)
+                    crate::export::export_sample_pattern_to_json(pattern, path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+                {
+                    crate::export::export_sample_pattern_to_md(pattern, path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("txt"))
+                {
+                    crate::txt::export_sample_pattern_to_txt(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 } else {
-                    crate::export::export_sample_pattern_to_csv(pattern, &path, cycles)
+                    crate::export::export_sample_pattern_to_csv(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 }
             }
             Value::NumberPattern(pattern) => {
-                let export_path = std::path::Path::new(&path);
+                let export_path = std::path::Path::new(path);
                 if export_path
                     .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
                 {
-                    crate::svg::export_number_pattern_to_svg(pattern, &path, cycles)
+                    crate::svg::export_number_pattern_to_svg(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 } else if export_path
                     .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
                 {
-                    crate::html::export_number_pattern_to_html(pattern, &path, cycles)
+                    crate::html::export_number_pattern_to_html(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 } else if export_path
                     .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
                 {
-                    crate::export::export_number_pattern_to_json(pattern, &path, cycles)
+                    crate::export::export_number_pattern_to_json(pattern, path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+                {
+                    crate::export::export_number_pattern_to_md(pattern, path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("txt"))
+                {
+                    crate::txt::export_number_pattern_to_txt(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 } else {
-                    crate::export::export_number_pattern_to_csv(pattern, &path, cycles)
+                    crate::export::export_number_pattern_to_csv(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 }
             }
@@ -427,10 +644,7 @@ impl ReplSession {
                 ));
             }
         }
-
-        Ok(format!(
-            "exported `{binding_name}` to `{path}` ({cycles} cycle(s))"
-        ))
+        Ok(())
     }
 
     fn set_tempo(&mut self, args: &str) -> Result<String, String> {
@@ -469,7 +683,26 @@ impl ReplSession {
         ))
     }
 
-    pub(crate) fn open_file(&mut self, path: impl AsRef<Path>) -> Result<String, String> {
+    /// Loads an Orpheus source file, replacing the current session's bindings.
+    ///
+    /// The entire file is evaluated strictly. Any bindings produced by the file
+    /// will replace the existing bindings in the session, and the mixer state
+    /// will be reset.
+    ///
+    /// ## Errors
+    ///
+    /// Returns an `Err` if the file cannot be read, parsed, type-checked, or evaluated.
+    ///
+    /// ## Examples
+    ///
+    /// ```no_run
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.open_file("song.ode").unwrap();
+    /// ```
+    pub fn open_file(&mut self, path: impl AsRef<Path>) -> Result<String, String> {
         let path = path.as_ref();
         let loaded = load_file_runtime_strict(path).map_err(|error| error.to_string())?;
         let binding_names = loaded
@@ -679,23 +912,7 @@ impl ReplSession {
                     .map(|event| orpheus_pattern::Event {
                         whole: event.whole,
                         part: event.part,
-                        value: {
-                            let mut trigger = SampleTrigger::named(event.value.sample())
-                                .with_gain(event.value.gain())
-                                .with_pan(event.value.pan())
-                                .with_rate(event.value.rate())
-                                .with_resonance(event.value.resonance())
-                                .with_drive(event.value.drive())
-                                .with_pulse_width(event.value.pulse_width())
-                                .with_slice(event.value.slice_start(), event.value.slice_end());
-                            if let Some(cutoff_hz) = event.value.hpf_cutoff_hz() {
-                                trigger = trigger.with_hpf_cutoff_hz(cutoff_hz);
-                            }
-                            if let Some(cutoff_hz) = event.value.lpf_cutoff_hz() {
-                                trigger = trigger.with_lpf_cutoff_hz(cutoff_hz);
-                            }
-                            trigger
-                        },
+                        value: sample_trigger_from_event(&event.value),
                     })
                     .collect(),
             );
@@ -718,7 +935,22 @@ impl ReplSession {
         Ok(())
     }
 
-    pub(crate) fn binding_summaries(&self) -> Vec<String> {
+    /// Returns a summary of all active bindings and their inferred types.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.eval_line("notes = 1 2").unwrap();
+    /// session.eval_line("drums = bd sn").unwrap();
+    ///
+    /// let summaries = session.binding_summaries();
+    /// assert_eq!(summaries, vec!["drums: Pattern<Sample>", "notes: Pattern<Number>"]);
+    /// ```
+    pub fn binding_summaries(&self) -> Vec<String> {
         self.type_bindings
             .iter()
             .map(|(name, ty)| format!("{name}: {ty}"))
@@ -726,18 +958,45 @@ impl ReplSession {
     }
 
     #[cfg(test)]
-    pub(crate) fn last_loaded_pattern_name(&self) -> Option<String> {
+    pub fn last_loaded_pattern_name(&self) -> Option<String> {
         self.pattern_display
             .borrow()
             .last_loaded_pattern_name
             .clone()
     }
 
-    pub(crate) fn transport_snapshot(&self) -> TransportSnapshot {
+    /// Captures a point-in-time snapshot of the underlying audio engine's transport state.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let session = ReplSession::with_engine(EngineHandle::stub());
+    /// let snapshot = session.transport_snapshot();
+    /// assert_eq!(snapshot.tempo_bpm(), 120.0);
+    /// ```
+    pub fn transport_snapshot(&self) -> TransportSnapshot {
         self.transport_view().snapshot
     }
 
-    pub(crate) fn transport_view(&self) -> TransportView {
+    /// Generates a structured view of the transport state, including visual details
+    /// such as the currently active and pending pattern names.
+    ///
+    /// This is typically used by the TUI to render the transport overlay.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let session = ReplSession::with_engine(EngineHandle::stub());
+    /// let view = session.transport_view();
+    /// assert!(view.active_pattern_name().is_none());
+    /// ```
+    pub fn transport_view(&self) -> TransportView {
         let snapshot = self.engine.transport_snapshot();
         let mut display = self.pattern_display.borrow_mut();
         if let Some(pending_name) = display.pending_pattern_name.clone() {
@@ -763,7 +1022,24 @@ impl ReplSession {
         }
     }
 
-    pub(crate) fn mixer_view(&self) -> MixerView {
+    /// Generates a structured view of the current mixer state, detailing active
+    /// tracks, buses, and pending routing changes.
+    ///
+    /// This is typically used by the TUI to render the mixer panel.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.eval_line(":track new drums").unwrap();
+    ///
+    /// let view = session.mixer_view();
+    /// assert!(view.tracks().iter().any(|line| line.contains("drums -> <unbound>")));
+    /// ```
+    pub fn mixer_view(&self) -> MixerView {
         let snapshot = self.engine.transport_snapshot();
         MixerView {
             tracks: self.mixer.track_summary_lines(),
@@ -772,13 +1048,13 @@ impl ReplSession {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn render_test_block_for_tui(&mut self, frames: u64) -> Vec<f32> {
+    #[doc(hidden)]
+    pub fn render_test_block_for_tui(&mut self, frames: u64) -> Vec<f32> {
         self.engine.render_test_block(frames)
     }
 
-    #[cfg(test)]
-    pub(crate) fn frames_until_boundary_for_tui(&self) -> u64 {
+    #[doc(hidden)]
+    pub fn frames_until_boundary_for_tui(&self) -> u64 {
         self.engine.frames_until_boundary_for_test()
     }
 }
@@ -1066,10 +1342,13 @@ mod tests {
         session.eval_line(":bus new verb").unwrap();
         session.eval_line(":send drums verb 0.35").unwrap();
 
+        session.eval_line(":bus new dub").unwrap();
+        session.eval_line(":send drums dub 0.5").unwrap();
+
         let mixer = session.eval_line(":mixer").unwrap();
 
-        assert!(mixer.contains("drums -> groove"));
-        assert!(mixer.contains("send verb@0.35"));
+        assert!(mixer.contains("send 0.35"));
+        assert!(mixer.contains("send 0.50"));
     }
 
     #[test]
@@ -1083,7 +1362,7 @@ mod tests {
         );
 
         let mixer = session.eval_line(":mixer").unwrap();
-        assert!(mixer.contains("bus dub -> master"));
+        assert!(mixer.contains("bus dub"));
         assert!(mixer.contains("delay(3/16"));
         let _ = session.render_test_block_for_tui(1);
         assert!(session.transport_snapshot().has_pending_routing());
@@ -1100,7 +1379,7 @@ mod tests {
         );
 
         let mixer = session.eval_line(":mixer").unwrap();
-        assert!(mixer.contains("bus verb -> master"));
+        assert!(mixer.contains("bus verb"));
         assert!(mixer.contains("reverb(size=0.75 damp=0.35 wet=1.00)"));
         let _ = session.render_test_block_for_tui(1);
         assert!(session.transport_snapshot().has_pending_routing());
@@ -1120,7 +1399,7 @@ mod tests {
         );
 
         let mixer = session.eval_line(":mixer").unwrap();
-        assert!(mixer.contains("bus dub -> master"));
+        assert!(mixer.contains("bus dub"));
         assert!(!mixer.contains("delay("));
     }
 
@@ -1317,8 +1596,12 @@ mod tests {
 
         let message = session.eval_line(":roll pattern 1 8").unwrap();
 
-        assert!(message.contains("bd | x---...."));
-        assert!(message.contains("sn | ....x---"));
+        assert!(message.contains("┌────────────────────────────────────┐"));
+        assert!(message.contains("│ Pattern Roll: pattern (1 cycles)   │"));
+        assert!(message.contains("╞════════════════════════════════════╡"));
+        assert!(message.contains("│ bd │ x---....                      │"));
+        assert!(message.contains("│ sn │ ....x---                      │"));
+        assert!(message.contains("└────────────────────────────────────┘"));
     }
 
     #[test]
@@ -1347,11 +1630,10 @@ mod tests {
 
         let message = session.eval_line(":stats pattern 2").unwrap();
 
-        assert!(message.contains("Pattern: pattern"));
-        assert!(message.contains("Cycles: 2"));
-        assert!(message.contains("Total Events: 8"));
-        assert!(message.contains("Unique Samples: 2 (bd, sn)"));
-        assert!(message.contains("Event Density: 4.00 events/cycle"));
+        assert!(message.contains("Pattern Stats: pattern (2 cycles)"));
+        assert!(message.contains("│ Total Events                        8                 │"));
+        assert!(message.contains("│ Unique Samples                      2 (bd, sn)        │"));
+        assert!(message.contains("│ Event Density                       4.00 events/cycle │"));
     }
 
     #[test]

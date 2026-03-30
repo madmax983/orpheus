@@ -19,6 +19,11 @@ struct ImportSpec {
     names: Vec<String>,
 }
 
+/// The result of parsing, typechecking, and evaluating an Orpheus module.
+///
+/// Contains the fully inferred type bindings and fully evaluated runtime values
+/// for all top-level statements. Also tracks the name of the final binding
+/// so the REPL knows what pattern to make active automatically.
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
     pub type_bindings: BTreeMap<String, Type>,
@@ -55,7 +60,7 @@ pub fn load_file_strict(path: impl AsRef<Path>) -> Result<TypedModule, LoadError
 /// # Examples
 ///
 /// ```no_run
-/// use orpheus_lang::loader::load_file_runtime_strict;
+/// use orpheus_lang::load_file_runtime_strict;
 ///
 /// // This will typecheck and load `main.ode` and all its dependencies.
 /// let module = load_file_runtime_strict("main.ode").unwrap();

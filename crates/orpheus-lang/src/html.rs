@@ -12,6 +12,18 @@ use crate::value::{NumberPatternValue, SamplePatternValue};
 
 /// Exports a sample pattern's evaluated events to an HTML file.
 ///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, export_sample_pattern_to_html};
+///
+/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+///
+/// let path = std::env::temp_dir().join("piano_roll.html");
+/// export_sample_pattern_to_html(pattern, &path, 2).unwrap();
+/// ```
+///
 /// # Panics
 ///
 /// Panics if a sample's name cannot be found in the previously collected set of sample names.
@@ -112,6 +124,18 @@ pub fn export_sample_pattern_to_html(
 }
 
 /// Exports a number pattern's evaluated events to an HTML file.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, export_number_pattern_to_html};
+///
+/// let env = eval_module("x = 1 2 3", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
+///
+/// let path = std::env::temp_dir().join("automation.html");
+/// export_number_pattern_to_html(pattern, &path, 2).unwrap();
+/// ```
 ///
 /// # Errors
 ///

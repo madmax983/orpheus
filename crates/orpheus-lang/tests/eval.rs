@@ -1541,6 +1541,42 @@ fn arp_wraps_downward_across_equal_fifths() {
 }
 
 #[test]
+fn arp_bounces_pingpong_across_equal_fifths() {
+    let module = eval_module("lead = arp(5, pingpong, chord(c4, 0 4 7))", ReplMode::Loose).unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![60.0, 64.0, 67.0, 64.0, 60.0]
+    );
+}
+
+#[test]
+fn arp_bounces_pingpong_across_seven_notes() {
+    let module = eval_module(
+        "lead = arp(7, updown, chord(c4, 0 4 7 11))",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![60.0, 64.0, 67.0, 71.0, 67.0, 64.0, 60.0]
+    );
+}
+
+#[test]
 fn arp_applies_per_exact_span_cluster() {
     let module = eval_module("line = arp(4, up, chord(c4 e4, 0 7))", ReplMode::Loose).unwrap();
     let events = module
@@ -2311,6 +2347,94 @@ fn pattern_valued_gain_controls_repeat_under_fast() {
 }
 
 #[test]
+fn insert_effect_builtins_update_sample_event_params_and_export() {
+    let module = eval_module(
+        r#"lead = sample("vox_ah")
+            |> delay(0.40)
+            |> delay_time(0.125)
+            |> delay_feedback(0.60)
+            |> reverb(0.30)
+            |> reverb_room(0.85)
+            |> reverb_damp(0.25)
+            |> chorus(0.20)
+            |> chorus_depth(0.45)
+            |> chorus_rate(0.35)
+            |> compressor(0.70)
+            |> compressor_threshold(0.30)
+            |> compressor_ratio(4)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = exported_sample_events(module.get("lead").unwrap(), 1);
+
+    assert_eq!(events.len(), 1);
+    let event = &events[0];
+    assert_eq!(event["sample"].as_str().unwrap(), "vox_ah");
+    assert!((event["delay_mix"].as_f64().unwrap() - 0.40).abs() < f64::EPSILON);
+    assert!((event["delay_time"].as_f64().unwrap() - 0.125).abs() < f64::EPSILON);
+    assert!((event["delay_feedback"].as_f64().unwrap() - 0.60).abs() < f64::EPSILON);
+    assert!((event["reverb_mix"].as_f64().unwrap() - 0.30).abs() < f64::EPSILON);
+    assert!((event["reverb_room"].as_f64().unwrap() - 0.85).abs() < f64::EPSILON);
+    assert!((event["reverb_damp"].as_f64().unwrap() - 0.25).abs() < f64::EPSILON);
+    assert!((event["chorus_mix"].as_f64().unwrap() - 0.20).abs() < f64::EPSILON);
+    assert!((event["chorus_depth"].as_f64().unwrap() - 0.45).abs() < f64::EPSILON);
+    assert!((event["chorus_rate"].as_f64().unwrap() - 0.35).abs() < f64::EPSILON);
+    assert!((event["compressor_mix"].as_f64().unwrap() - 0.70).abs() < f64::EPSILON);
+    assert!((event["compressor_threshold"].as_f64().unwrap() - 0.30).abs() < f64::EPSILON);
+    assert!((event["compressor_ratio"].as_f64().unwrap() - 4.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn pattern_valued_insert_effect_controls_split_sample_events() {
+    let module = eval_module(
+        r#"lead = sample("vox_ah")
+            |> delay(0.20 0.80)
+            |> reverb_room(0.30 0.90)
+            |> compressor_ratio(2 6)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 2).unwrap());
+    assert!((events[0].value.delay_mix() - 0.20).abs() < f64::EPSILON);
+    assert!((events[0].value.reverb_room() - 0.30).abs() < f64::EPSILON);
+    assert!((events[0].value.compressor_ratio() - 2.0).abs() < f64::EPSILON);
+    assert_eq!(events[1].part.start(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::one());
+    assert!((events[1].value.delay_mix() - 0.80).abs() < f64::EPSILON);
+    assert!((events[1].value.reverb_room() - 0.90).abs() < f64::EPSILON);
+    assert!((events[1].value.compressor_ratio() - 6.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn insert_effect_builtins_reject_invalid_values() {
+    assert_eval_error_contains(
+        r#"lead = sample("vox_ah") |> delay_feedback(1.5)"#,
+        ReplMode::Loose,
+        &["`delay_feedback`", "[0, 1]"],
+    );
+    assert_eval_error_contains(
+        r#"lead = sample("vox_ah") |> delay_time(0)"#,
+        ReplMode::Loose,
+        &["`delay_time`", "positive finite"],
+    );
+    assert_eval_error_contains(
+        r#"lead = sample("vox_ah") |> compressor_ratio(0.5)"#,
+        ReplMode::Loose,
+        &["`compressor_ratio`", ">= 1"],
+    );
+}
+
+#[test]
 fn pan_accepts_pattern_valued_controls_and_composes_with_existing_pan() {
     let module = eval_module(
         r#"lead = sample("vox_ah") |> pan(-0.25) |> pan(0.5 -0.5)"#,
@@ -2431,6 +2555,47 @@ fn pattern_valued_slice_idx_repeats_under_fast() {
 }
 
 #[test]
+fn onset_builtin_marks_sample_events_for_transient_lookup() {
+    let module = eval_module(r#"lead = sample("amen") |> onset(2)"#, ReplMode::Loose).unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].value.sample(), "amen");
+    assert_eq!(events[0].value.onset_index(), Some(2));
+    assert!((events[0].value.slice_start() - 0.0).abs() < f64::EPSILON);
+    assert!((events[0].value.slice_end() - 1.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn onset_accepts_pattern_valued_indices_and_splits_sample_events() {
+    let module = eval_module(r#"lead = sample("amen") |> onset(0 2 1)"#, ReplMode::Loose).unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(events.len(), 3);
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 3).unwrap());
+    assert_eq!(events[0].value.onset_index(), Some(0));
+    assert_eq!(events[1].part.start(), &Rational::new(1, 3).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::new(2, 3).unwrap());
+    assert_eq!(events[1].value.onset_index(), Some(2));
+    assert_eq!(events[2].part.start(), &Rational::new(2, 3).unwrap());
+    assert_eq!(events[2].part.end(), &Rational::one());
+    assert_eq!(events[2].value.onset_index(), Some(1));
+}
+
+#[test]
 fn evaluating_multiple_top_level_bindings_reuses_prior_definitions() {
     let module = eval_module("verse = bd sn\nsong = fast(2, verse)", ReplMode::Loose).unwrap();
 
@@ -2514,6 +2679,20 @@ fn slice_idx_rejects_non_integer_arguments() {
         r#"lead = sample("amen") |> slice_idx(0 1.5, 8)"#,
         ReplMode::Loose,
         &["`slice_idx` requires whole-number control values"],
+    );
+}
+
+#[test]
+fn onset_rejects_non_integer_arguments() {
+    assert_eval_error_contains(
+        r#"lead = sample("amen") |> onset(1.5)"#,
+        ReplMode::Loose,
+        &["`onset index` requires a whole number"],
+    );
+    assert_eval_error_contains(
+        r#"lead = sample("amen") |> onset(0 1.5)"#,
+        ReplMode::Loose,
+        &["`onset` requires whole-number control values"],
     );
 }
 

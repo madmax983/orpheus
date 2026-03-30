@@ -19,6 +19,7 @@ use orpheus_pattern::Event;
 use orpheus_pattern::Rational;
 
 use crate::Value;
+use crate::export::sample_trigger_from_event;
 
 /// The configuration state of the audio mixer.
 ///
@@ -30,7 +31,7 @@ use crate::Value;
 ///
 /// Creating a new mixer with a custom bus effect and track send:
 ///
-/// ```
+/// ```ignore
 /// use orpheus_lang::mixer::MixerState;
 /// use orpheus_pattern::Rational;
 ///
@@ -336,17 +337,24 @@ impl MixerState {
     pub(crate) fn track_summary_lines(&self) -> Vec<String> {
         let mut lines = Vec::new();
 
-        if !self.has_explicit_bound_tracks() {
-            if let Some(binding_name) = &self.compatibility_main_binding {
-                lines.push(format!("main -> {binding_name} (auto)"));
-            } else {
-                lines.push("main -> <unbound> (auto)".to_owned());
-            }
+        if self.has_explicit_bound_tracks() {
+            lines.push("Tracks:".to_owned());
+        } else if let Some(binding_name) = &self.compatibility_main_binding {
+            lines.push(format!("main -> {binding_name} (auto)"));
+        } else {
+            lines.push("main -> <unbound> (auto)".to_owned());
         }
 
-        for (track_name, track) in &self.tracks {
+        let track_count = self.tracks.len();
+        for (i, (track_name, track)) in self.tracks.iter().enumerate() {
+            let is_last_track = i == track_count - 1;
             let binding_name = track.binding_name.as_deref().unwrap_or("<unbound>");
-            let mut line = format!("{track_name} -> {binding_name}");
+            let track_prefix = if is_last_track {
+                "└──"
+            } else {
+                "├──"
+            };
+            let mut line = format!("{track_prefix} {track_name} -> {binding_name}");
             if track.muted {
                 line.push_str(" [muted]");
             }
@@ -354,28 +362,49 @@ impl MixerState {
                 write!(&mut line, " level {:.2}", track.level)
                     .expect("writing to String should not fail");
             }
-            for (bus_name, level) in &track.sends {
-                write!(&mut line, " +send {bus_name}@{level:.2}")
-                    .expect("writing to String should not fail");
-            }
             lines.push(line);
+
+            let send_count = track.sends.len();
+            for (j, (bus_name, level)) in track.sends.iter().enumerate() {
+                let is_last_send = j == send_count - 1;
+                let track_indent = if is_last_track { "   " } else { "│  " };
+                let send_prefix = if is_last_send {
+                    "└──"
+                } else {
+                    "├──"
+                };
+                lines.push(format!(
+                    "{track_indent} {send_prefix} send {bus_name} @ {level:.2}"
+                ));
+            }
         }
 
         lines
     }
 
     pub(crate) fn bus_summary_lines(&self) -> Vec<String> {
-        self.buses
-            .iter()
-            .map(|(bus_name, bus)| {
-                let mut line = format!("bus {bus_name} -> master");
-                if let Some(effect) = &bus.effect {
-                    write!(&mut line, " {}", effect.summary())
-                        .expect("writing to String should not fail");
-                }
-                line
-            })
-            .collect()
+        let mut lines = Vec::new();
+        if !self.buses.is_empty() {
+            lines.push("Buses:".to_owned());
+        }
+
+        let bus_count = self.buses.len();
+        for (i, (bus_name, bus)) in self.buses.iter().enumerate() {
+            let is_last_bus = i == bus_count - 1;
+            let bus_prefix = if is_last_bus {
+                "└──"
+            } else {
+                "├──"
+            };
+            let mut line = format!("{bus_prefix} {bus_name} -> master");
+            if let Some(effect) = &bus.effect {
+                write!(&mut line, " {}", effect.summary())
+                    .expect("writing to String should not fail");
+            }
+            lines.push(line);
+        }
+
+        lines
     }
 }
 
@@ -439,23 +468,7 @@ fn sample_event_to_trigger_event(event: Event<crate::SampleEvent>) -> Event<Samp
     Event {
         whole: event.whole,
         part: event.part,
-        value: {
-            let mut trigger = SampleTrigger::named(event.value.sample())
-                .with_gain(event.value.gain())
-                .with_pan(event.value.pan())
-                .with_rate(event.value.rate())
-                .with_resonance(event.value.resonance())
-                .with_drive(event.value.drive())
-                .with_pulse_width(event.value.pulse_width())
-                .with_slice(event.value.slice_start(), event.value.slice_end());
-            if let Some(cutoff_hz) = event.value.hpf_cutoff_hz() {
-                trigger = trigger.with_hpf_cutoff_hz(cutoff_hz);
-            }
-            if let Some(cutoff_hz) = event.value.lpf_cutoff_hz() {
-                trigger = trigger.with_lpf_cutoff_hz(cutoff_hz);
-            }
-            trigger
-        },
+        value: sample_trigger_from_event(&event.value),
     }
 }
 

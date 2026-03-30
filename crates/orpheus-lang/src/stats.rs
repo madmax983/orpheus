@@ -5,7 +5,8 @@
 //! from a concrete pattern over a specified number of cycles.
 
 use std::collections::BTreeSet;
-use std::fmt::Write;
+
+use comfy_table::{Table, presets::UTF8_BORDERS_ONLY};
 
 use crate::eval::{EvalError, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue};
@@ -15,10 +16,23 @@ use crate::value::{NumberPatternValue, SamplePatternValue};
 /// The report contains the total number of events, unique samples triggered,
 /// and the event density (events per cycle).
 ///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, sample_pattern_stats};
+///
+/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+///
+/// let stats = sample_pattern_stats("x", pattern, 2).unwrap();
+/// println!("{stats}");
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`EvalError`] if pattern querying fails or if `cycle_count` is 0.
 pub fn sample_pattern_stats(
+    binding_name: &str,
     pattern: &SamplePatternValue,
     cycle_count: u64,
 ) -> Result<String, EvalError> {
@@ -40,12 +54,21 @@ pub fn sample_pattern_stats(
     #[allow(clippy::cast_precision_loss)]
     let density = (total_events as f64) / (cycle_count as f64);
 
-    let mut output = String::new();
-    writeln!(output, "Total Events: {total_events}")?;
-    writeln!(output, "Unique Samples: {unique_count} ({sample_list})")?;
-    write!(output, "Event Density: {density:.2} events/cycle")?;
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_BORDERS_ONLY)
+        .set_header(vec![
+            format!("Pattern Stats: {binding_name} ({cycle_count} cycles)"),
+            String::new(),
+        ])
+        .add_row(vec!["Total Events", &total_events.to_string()])
+        .add_row(vec![
+            "Unique Samples",
+            &format!("{unique_count} ({sample_list})"),
+        ])
+        .add_row(vec!["Event Density", &format!("{density:.2} events/cycle")]);
 
-    Ok(output)
+    Ok(table.to_string())
 }
 
 /// Analyzes a number pattern's evaluated events and returns a formatted report.
@@ -53,10 +76,23 @@ pub fn sample_pattern_stats(
 /// The report contains the total number of events, minimum value, maximum value,
 /// average value, and the event density (events per cycle).
 ///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, number_pattern_stats};
+///
+/// let env = eval_module("x = 1 2 3", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
+///
+/// let stats = number_pattern_stats("x", pattern, 2).unwrap();
+/// println!("{stats}");
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`EvalError`] if pattern querying fails or if `cycle_count` is 0.
 pub fn number_pattern_stats(
+    binding_name: &str,
     pattern: &NumberPatternValue,
     cycle_count: u64,
 ) -> Result<String, EvalError> {
@@ -101,14 +137,20 @@ pub fn number_pattern_stats(
     #[allow(clippy::cast_precision_loss)]
     let density = (total_events as f64) / (cycle_count as f64);
 
-    let mut output = String::new();
-    writeln!(output, "Total Events: {total_events}")?;
-    writeln!(output, "Min Value: {min_val:.3}")?;
-    writeln!(output, "Max Value: {max_val:.3}")?;
-    writeln!(output, "Average Value: {avg:.3}")?;
-    write!(output, "Event Density: {density:.2} events/cycle")?;
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_BORDERS_ONLY)
+        .set_header(vec![
+            format!("Pattern Stats: {binding_name} ({cycle_count} cycles)"),
+            String::new(),
+        ])
+        .add_row(vec!["Total Events", &total_events.to_string()])
+        .add_row(vec!["Min Value", &format!("{min_val:.3}")])
+        .add_row(vec!["Max Value", &format!("{max_val:.3}")])
+        .add_row(vec!["Average Value", &format!("{avg:.3}")])
+        .add_row(vec!["Event Density", &format!("{density:.2} events/cycle")]);
 
-    Ok(output)
+    Ok(table.to_string())
 }
 
 #[cfg(test)]
@@ -122,11 +164,11 @@ mod tests {
         let module = eval_module(source, ReplMode::Loose).unwrap();
         let pattern = module.get("pattern").unwrap().as_sample_pattern().unwrap();
 
-        let stats = sample_pattern_stats(pattern, 2).unwrap();
-        assert!(stats.contains("Total Events: 8"));
-        assert!(stats.contains("Unique Samples: 2"));
-        assert!(stats.contains("bd, sn"));
-        assert!(stats.contains("Event Density: 4.00 events/cycle"));
+        let stats = sample_pattern_stats("pattern", pattern, 2).unwrap();
+        assert!(stats.contains("Pattern Stats: pattern (2 cycles)"));
+        assert!(stats.contains("Total Events                        8"));
+        assert!(stats.contains("Unique Samples                      2 (bd, sn)"));
+        assert!(stats.contains("Event Density                       4.00 events/cycle"));
     }
 
     #[test]
@@ -135,12 +177,13 @@ mod tests {
         let module = eval_module(source, ReplMode::Loose).unwrap();
         let pattern = module.get("pattern").unwrap().as_number_pattern().unwrap();
 
-        let stats = number_pattern_stats(pattern, 1).unwrap();
-        assert!(stats.contains("Total Events: 3"));
-        assert!(stats.contains("Min Value: 1.000"));
-        assert!(stats.contains("Max Value: 3.000"));
-        assert!(stats.contains("Average Value: 2.000"));
-        assert!(stats.contains("Event Density: 3.00 events/cycle"));
+        let stats = number_pattern_stats("pattern", pattern, 1).unwrap();
+        assert!(stats.contains("Pattern Stats: pattern (1 cycles)"));
+        assert!(stats.contains("Total Events                        3"));
+        assert!(stats.contains("Min Value                           1.000"));
+        assert!(stats.contains("Max Value                           3.000"));
+        assert!(stats.contains("Average Value                       2.000"));
+        assert!(stats.contains("Event Density                       3.00 events/cycle"));
     }
 
     #[test]
@@ -149,7 +192,7 @@ mod tests {
         let module = eval_module(source, ReplMode::Loose).unwrap();
         let pattern = module.get("pattern").unwrap().as_sample_pattern().unwrap();
 
-        let error = sample_pattern_stats(pattern, 0).unwrap_err();
+        let error = sample_pattern_stats("pattern", pattern, 0).unwrap_err();
         assert_eq!(error.to_string(), "stats requires at least one cycle");
     }
 
@@ -159,7 +202,7 @@ mod tests {
         let module = eval_module(source, ReplMode::Loose).unwrap();
         let pattern = module.get("pattern").unwrap().as_number_pattern().unwrap();
 
-        let error = number_pattern_stats(pattern, 0).unwrap_err();
+        let error = number_pattern_stats("pattern", pattern, 0).unwrap_err();
         assert_eq!(error.to_string(), "stats requires at least one cycle");
     }
 }

@@ -139,8 +139,7 @@ impl SharedTransport {
                 has_pending_routing: self.has_pending_routing.load(Ordering::Relaxed),
             };
 
-            std::sync::atomic::fence(Ordering::Acquire);
-            let end_epoch = self.publish_epoch.load(Ordering::Relaxed);
+            let end_epoch = self.publish_epoch.load(Ordering::Acquire);
             // If the epoch is unchanged, we observed a consistent state.
             if start_epoch == end_epoch {
                 return snap;
@@ -205,7 +204,9 @@ impl EngineCore {
         let bus_mix_buffer = vec![(0.0, 0.0); active_routing.buses().len()];
         Ok(Self {
             scheduler: Scheduler::default(),
-            active_voices: vec![None; MAX_ACTIVE_VOICES],
+            active_voices: std::iter::repeat_with(|| None)
+                .take(MAX_ACTIVE_VOICES)
+                .collect(),
             sample_bank: SampleBank::load_builtin(),
             active_routing,
             pending_routing: None,
@@ -371,6 +372,7 @@ impl EngineCore {
                         trigger.track_id,
                         sample,
                         self.sample_rate,
+                        self.frames_per_cycle,
                         &resolved_trigger,
                     )
                 })
@@ -380,6 +382,7 @@ impl EngineCore {
                             trigger.track_id,
                             voice,
                             self.sample_rate,
+                            self.frames_per_cycle,
                             &trigger.trigger,
                             trigger.duration_frames,
                         )
@@ -888,7 +891,7 @@ const fn default_stream_config() -> StreamConfig {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use orpheus_dsp::{EngineError, frames_per_cycle};
 ///
 /// let frames = frames_per_cycle(44100, 120.0).unwrap();

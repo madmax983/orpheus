@@ -591,7 +591,21 @@ impl Evaluator {
         }
 
         let base = Self::value_to_explicit(self.eval_expr_in_meter(pattern, meter)?)?;
-        let mut combined: Option<ExplicitValue> = None;
+        if repeat_count == 0 {
+            return Err(EvalError::new("section cycle count must be positive"));
+        }
+
+        let repeat_count_usize = usize::try_from(repeat_count)
+            .map_err(|_| EvalError::new("section cycle count exceeded evaluator limits"))?;
+
+        let mut combined = match base {
+            ExplicitValue::Sample(ref events) => ExplicitValue::Sample(Vec::with_capacity(
+                events.len().checked_mul(repeat_count_usize).unwrap_or(0),
+            )),
+            ExplicitValue::Number(ref events) => ExplicitValue::Number(Vec::with_capacity(
+                events.len().checked_mul(repeat_count_usize).unwrap_or(0),
+            )),
+        };
 
         for repeat in 0..repeat_count {
             let offset = rational_from_parts(
@@ -602,13 +616,33 @@ impl Evaluator {
             )?;
             let mut repeated = base.clone();
             repeated.shift(&offset)?;
-            combined = Some(match combined {
-                Some(existing) => existing.merge(repeated)?,
-                None => repeated,
-            });
+            // Inline merge without the sort at every step
+            match (&mut combined, repeated) {
+                (ExplicitValue::Sample(combined_events), ExplicitValue::Sample(mut new_events)) => {
+                    combined_events.append(&mut new_events);
+                }
+                (ExplicitValue::Number(combined_events), ExplicitValue::Number(mut new_events)) => {
+                    combined_events.append(&mut new_events);
+                }
+                _ => {
+                    return Err(EvalError::new(
+                        "explicit-time items must all resolve to the same pattern kind",
+                    ));
+                }
+            }
         }
 
-        combined.ok_or_else(|| EvalError::new("section cycle count must be positive"))
+        // Final sort exactly once
+        match combined {
+            ExplicitValue::Sample(mut events) => {
+                sort_events(&mut events);
+                Ok(ExplicitValue::Sample(events))
+            }
+            ExplicitValue::Number(mut events) => {
+                sort_events(&mut events);
+                Ok(ExplicitValue::Number(events))
+            }
+        }
     }
 
     fn eval_section_length(
@@ -885,8 +919,7 @@ impl Evaluator {
 ///
 /// ```
 /// use orpheus_lang::Value;
-/// use orpheus_lang::eval::apply_function_value;
-/// use orpheus_lang::builtins::builtin_value;
+/// use orpheus_lang::{apply_function_value, builtin_value};
 ///
 /// let fast_func = builtin_value("fast").unwrap();
 /// let bd = builtin_value("bd").unwrap();
@@ -914,17 +947,10 @@ fn apply_user_function(mut function: UserFn, args: Vec<Value>) -> Result<Value, 
         )));
     }
 
-    for (param, arg) in function
-        .remaining_params
-        .iter()
-        .take(applied)
-        .cloned()
-        .zip(args)
-    {
+    // ⚡ Bolt: Drain parameters directly to avoid cloning strings when binding arguments
+    for (param, arg) in function.remaining_params.drain(..applied).zip(args) {
         function.captured_bindings.insert(param, arg);
     }
-
-    function.remaining_params.drain(..applied);
 
     if !function.remaining_params.is_empty() {
         return Ok(Value::Function(FunctionValue::User(function)));
@@ -1516,6 +1542,26 @@ right = sometimes(fast(2), cp hh)";
         assert_eq!(
             result.unwrap_err().to_string(),
             "explicit-time forms cannot appear inside a pattern group; use `stream(...)` or lift the form outside the group"
+        );
+    }
+
+    #[test]
+    fn eval_explicit_to_implicit_error_unsupported_pattern_item_error_sample_group() {
+        let result = eval_module("x = (bd sample(\"bd\", sn))", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "function call `sample` cannot appear inside a pattern group in Task 5; apply transforms with the pipe operator `|>` or call `sample(..., pattern)` directly"
+        );
+    }
+
+    #[test]
+    fn eval_explicit_to_implicit_error_unsupported_pattern_item_error_function_group() {
+        let result = eval_module("x = (fast bd)", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "function `fast` cannot appear inside a pattern group in Task 5; apply transforms with the pipe operator `|>` or call `fast(..., pattern)` directly"
         );
     }
 }

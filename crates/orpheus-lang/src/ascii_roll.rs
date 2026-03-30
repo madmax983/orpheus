@@ -21,6 +21,7 @@ use crate::value::SamplePatternValue;
 ///
 /// Returns [`EvalError`] if pattern querying fails or if `cycle_count` is 0.
 pub fn render_ascii_roll(
+    binding_name: &str,
     pattern: &SamplePatternValue,
     cycle_count: u64,
     steps_per_cycle: u32,
@@ -82,19 +83,45 @@ pub fn render_ascii_roll(
         .map(std::string::String::len)
         .max()
         .unwrap_or(0);
+
+    let header_text = format!("Pattern Roll: {binding_name} ({cycle_count} cycles)");
+    #[allow(clippy::cast_possible_truncation)]
+    let grid_width = total_steps + (cycle_count as usize).saturating_sub(1);
+    let header_width = header_text.chars().count();
+    let row_width = max_label_len + 3 + grid_width; // label + " │ " + grid
+    let inner_width = row_width.max(header_width + 2); // ensures enough space for " header "
+
     let mut output = String::new();
 
+    // Top border
+    writeln!(output, "┌{:─<1$}┐", "", inner_width + 2)?;
+
+    // Header
+    writeln!(output, "│ {:<1$} │", header_text, inner_width)?;
+
+    // Separator
+    writeln!(output, "╞{:═<1$}╡", "", inner_width + 2)?;
+
     for (sample, grid) in lanes {
-        write!(output, "{sample:>max_label_len$} | ")?;
+        write!(output, "│ {sample:>max_label_len$} │ ")?;
 
         for (i, &c) in grid.iter().enumerate() {
             if i > 0 && i % (steps_per_cycle as usize) == 0 {
-                output.push('|');
+                output.push('│');
             }
             output.push(c);
         }
-        output.push('\n');
+
+        // Pad right side if header is wider than the grid row
+        let padding = inner_width.saturating_sub(row_width);
+        if padding > 0 {
+            write!(output, "{: <1$}", "", padding)?;
+        }
+        output.push_str(" │\n");
     }
+
+    // Bottom border
+    writeln!(output, "└{:─<1$}┘", "", inner_width + 2)?;
 
     Ok(output)
 }
@@ -110,10 +137,14 @@ mod tests {
         let module = eval_module(source, ReplMode::Loose).unwrap();
         let pattern = module.get("pattern").unwrap().as_sample_pattern().unwrap();
 
-        let roll = render_ascii_roll(pattern, 1, 8).unwrap();
+        let roll = render_ascii_roll("pattern", pattern, 1, 8).unwrap();
 
-        assert!(roll.contains("bd | x---...."));
-        assert!(roll.contains("sn | ....x---"));
+        assert!(roll.contains("┌────────────────────────────────────┐"));
+        assert!(roll.contains("│ Pattern Roll: pattern (1 cycles)   │"));
+        assert!(roll.contains("╞════════════════════════════════════╡"));
+        assert!(roll.contains("│ bd │ x---....                      │"));
+        assert!(roll.contains("│ sn │ ....x---                      │"));
+        assert!(roll.contains("└────────────────────────────────────┘"));
     }
 
     #[test]
@@ -122,9 +153,13 @@ mod tests {
         let module = eval_module(source, ReplMode::Loose).unwrap();
         let pattern = module.get("pattern").unwrap().as_sample_pattern().unwrap();
 
-        let roll = render_ascii_roll(pattern, 1, 8).unwrap();
+        let roll = render_ascii_roll("pattern", pattern, 1, 8).unwrap();
 
-        assert!(roll.contains("bd | x-..x-.."));
-        assert!(roll.contains("sn | ..x-..x-"));
+        assert!(roll.contains("┌────────────────────────────────────┐"));
+        assert!(roll.contains("│ Pattern Roll: pattern (1 cycles)   │"));
+        assert!(roll.contains("╞════════════════════════════════════╡"));
+        assert!(roll.contains("│ bd │ x-..x-..                      │"));
+        assert!(roll.contains("│ sn │ ..x-..x-                      │"));
+        assert!(roll.contains("└────────────────────────────────────┘"));
     }
 }
