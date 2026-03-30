@@ -238,6 +238,29 @@ impl ExplicitValue {
         }
     }
 
+    fn merge_unsorted(self, other: Self) -> Result<Self, EvalError> {
+        match (self, other) {
+            (Self::Sample(mut left), Self::Sample(mut right)) => {
+                left.append(&mut right);
+                Ok(Self::Sample(left))
+            }
+            (Self::Number(mut left), Self::Number(mut right)) => {
+                left.append(&mut right);
+                Ok(Self::Number(left))
+            }
+            (Self::Sample(_), Self::Number(_)) | (Self::Number(_), Self::Sample(_)) => Err(
+                EvalError::new("explicit-time items must all resolve to the same pattern kind"),
+            ),
+        }
+    }
+
+    fn sort(&mut self) {
+        match self {
+            Self::Sample(events) => sort_events(events),
+            Self::Number(events) => sort_events(events),
+        }
+    }
+
     fn shift(&mut self, offset: &Rational) -> Result<(), EvalError> {
         match self {
             Self::Sample(events) => shift_events(events, offset),
@@ -591,7 +614,32 @@ impl Evaluator {
         }
 
         let base = Self::value_to_explicit(self.eval_expr_in_meter(pattern, meter)?)?;
-        let mut combined: Option<ExplicitValue> = None;
+
+        if repeat_count == 0 {
+            return Err(EvalError::new("section cycle count must be positive"));
+        }
+
+        let repeat_count_usize = usize::try_from(repeat_count).unwrap_or(0);
+        let mut combined = match &base {
+            ExplicitValue::Sample(events) => {
+                let capacity = events.len().saturating_mul(repeat_count_usize);
+                if capacity > 100_000 {
+                    return Err(EvalError::new(
+                        "section allocation exceeded the maximum allowed event capacity limit",
+                    ));
+                }
+                ExplicitValue::Sample(Vec::with_capacity(capacity))
+            }
+            ExplicitValue::Number(events) => {
+                let capacity = events.len().saturating_mul(repeat_count_usize);
+                if capacity > 100_000 {
+                    return Err(EvalError::new(
+                        "section allocation exceeded the maximum allowed event capacity limit",
+                    ));
+                }
+                ExplicitValue::Number(Vec::with_capacity(capacity))
+            }
+        };
 
         for repeat in 0..repeat_count {
             let offset = rational_from_parts(
@@ -602,13 +650,11 @@ impl Evaluator {
             )?;
             let mut repeated = base.clone();
             repeated.shift(&offset)?;
-            combined = Some(match combined {
-                Some(existing) => existing.merge(repeated)?,
-                None => repeated,
-            });
+            combined = combined.merge_unsorted(repeated)?;
         }
+        combined.sort();
 
-        combined.ok_or_else(|| EvalError::new("section cycle count must be positive"))
+        Ok(combined)
     }
 
     fn eval_section_length(
