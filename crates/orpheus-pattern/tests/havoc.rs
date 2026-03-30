@@ -1,4 +1,4 @@
-use orpheus_pattern::{CyclePattern, EventStream, PatternNode, Pattern, TimeSpan, Rational};
+use orpheus_pattern::{CyclePattern, EventStream, Pattern, PatternNode, Rational, TimeSpan};
 
 #[test]
 fn havoc_query_no_panics_on_cycle_pattern() {
@@ -6,10 +6,7 @@ fn havoc_query_no_panics_on_cycle_pattern() {
     let end = Rational::checked_from_parts(i128::MAX - 1, 1).unwrap();
     let span = TimeSpan::new(start, end).unwrap();
 
-    let pattern = CyclePattern::from_nodes(vec![
-        PatternNode::atom("a"),
-        PatternNode::atom("b")
-    ]);
+    let pattern = CyclePattern::from_nodes(vec![PatternNode::atom("a"), PatternNode::atom("b")]);
 
     let result = std::panic::catch_unwind(|| pattern.query(span));
     assert!(result.is_ok(), "query panicked");

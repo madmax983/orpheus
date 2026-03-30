@@ -24,3 +24,7 @@
 **Refactoring Negative Conditionals (`clippy::if_not_else`)**
 **Learning:** Checking a negative condition (`if !condition`) and providing an `else` branch requires more cognitive load to parse than a positive check.
 **Action:** When a negative check has an `else` branch, flip the condition and swap the block contents, or replace it with `else if` chains when possible. This is particularly prevalent in nested rendering or formatting logic.
+
+**[Encapsulating Type-Specific Operations]**
+**Learning:** Found repetitive `match` statements across `ExplicitValue::merge` and `eval_section_events` in `crates/orpheus-lang/src/eval.rs` operating manually on enum variants.
+**Action:** Encapsulate operations into helper methods (`append_unsorted`, `sort`) on the type itself. This reduces "Pyramid of Doom" nesting and adheres to the philosophy: "Types are documentation. Use them."
