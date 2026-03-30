@@ -27,6 +27,7 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "slice_idx" => Some(Value::Function(BuiltinFn::new(BuiltinKind::SliceIdx))),
         "rand" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Rand))),
         "jux" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Jux))),
+        "shuffle" => Some(Value::Function(BuiltinFn::new(BuiltinKind::Shuffle))),
         _ => None,
     }
 }
@@ -138,6 +139,7 @@ impl BuiltinKind {
             Self::SliceIdx => "slice_idx",
             Self::Rand => "rand",
             Self::Jux => "jux",
+            Self::Shuffle => "shuffle",
         }
     }
 
@@ -155,7 +157,7 @@ impl BuiltinKind {
             | Self::Pitch
             | Self::Rate
             | Self::Jux => 2,
-            Self::Rev | Self::Sample => 1,
+            Self::Rev | Self::Sample | Self::Shuffle => 1,
             Self::Rand => 0,
         }
     }
@@ -179,6 +181,26 @@ impl BuiltinKind {
             Self::SliceIdx => apply_slice_idx(args),
             Self::Rand => apply_rand(args, function.site_salt.unwrap_or_default()),
             Self::Jux => apply_jux(args),
+            Self::Shuffle => apply_shuffle(args, function.site_salt.unwrap_or_default()),
+        }
+    }
+}
+
+fn apply_shuffle(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
+    let pattern = args
+        .into_iter()
+        .next()
+        .ok_or_else(|| EvalError::new("`shuffle` requires a pattern argument"))?;
+
+    match pattern {
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(
+            pattern.shuffle_with_site_salt(site_salt),
+        )),
+        Value::NumberPattern(pattern) => Ok(Value::NumberPattern(
+            pattern.shuffle_with_site_salt(site_salt),
+        )),
+        Value::Function(_) | Value::String(_) => {
+            Err(EvalError::new("`shuffle` expected a pattern argument"))
         }
     }
 }

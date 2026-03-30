@@ -47,6 +47,7 @@ pub enum BuiltinKind {
     SliceIdx,
     Rand,
     Jux,
+    Shuffle,
 }
 
 /// A partially or fully applied built-in function at runtime.
@@ -467,6 +468,15 @@ impl SamplePatternValue {
         }
     }
 
+    pub(crate) fn shuffle_with_site_salt(self, site_salt: u64) -> Self {
+        Self {
+            pattern: PatternRuntime::Shuffle {
+                site_salt,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn every(self, period: i64, transform: BuiltinFn) -> Self {
         Self {
             pattern: PatternRuntime::Every {
@@ -787,6 +797,15 @@ impl NumberPatternValue {
         }
     }
 
+    pub(crate) fn shuffle_with_site_salt(self, site_salt: u64) -> Self {
+        Self {
+            pattern: PatternRuntime::Shuffle {
+                site_salt,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     /// Queries the pattern over the default unit cycle `[0, 1)`.
     ///
     /// # Panics
@@ -945,6 +964,10 @@ enum PatternRuntime<T> {
     Rand {
         site_salt: u64,
     },
+    Shuffle {
+        site_salt: u64,
+        inner: Box<Self>,
+    },
 }
 
 impl<T> PatternRuntime<T>
@@ -1025,6 +1048,7 @@ where
                 inner,
             } => apply_slice_idx_pattern(inner, control, *segments, span),
             Self::Rand { site_salt } => query_rand(*site_salt, span),
+            Self::Shuffle { site_salt, inner } => query_shuffle(inner, *site_salt, span),
         }
     }
 }
@@ -1328,6 +1352,71 @@ fn whole_number_from_slice_idx_value(value: f64) -> Result<u32, EvalError> {
     })
 }
 
+fn query_shuffle<T>(
+    inner: &PatternRuntime<T>,
+    site_salt: u64,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut events = Vec::with_capacity(8);
+    let start_cycle = floor_rational(span.start());
+    let end_cycle = ceil_rational(span.end());
+
+    for cycle in start_cycle..end_cycle {
+        let cycle_span = cycle_span(cycle)?;
+        let Some(query_slice) = clip_span(&cycle_span, span)? else {
+            continue;
+        };
+
+        let mut cycle_events = inner.try_query(&query_slice)?;
+        if cycle_events.is_empty() {
+            continue;
+        }
+
+        let [b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15] =
+            cycle.to_le_bytes();
+        let lower = u64::from_le_bytes([b0, b1, b2, b3, b4, b5, b6, b7]);
+        let upper = u64::from_le_bytes([b8, b9, b10, b11, b12, b13, b14, b15]);
+        let mut state = lower ^ upper.rotate_left(32) ^ site_salt.rotate_left(17);
+        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+
+        let mut next_u64 = || {
+            state = (state ^ (state >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            state = (state ^ (state >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            state ^= state >> 31;
+            state
+        };
+
+        let original_parts: Vec<_> = cycle_events
+            .iter()
+            .map(|event| (event.part.clone(), event.whole.clone()))
+            .collect();
+        let mut parts = original_parts.clone();
+
+        for i in (1..parts.len()).rev() {
+            #[allow(clippy::cast_possible_truncation)]
+            let j = (next_u64() as usize) % (i + 1);
+            parts.swap(i, j);
+        }
+
+        for (event, (part, whole)) in cycle_events.iter_mut().zip(parts) {
+            event.part = part;
+            event.whole = whole;
+        }
+
+        events.extend(cycle_events);
+    }
+
+    sort_events(&mut events);
+    Ok(events)
+}
+
 fn query_rand<T>(site_salt: u64, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError>
 where
     T: PatternRuntimeValue,
@@ -1604,7 +1693,8 @@ fn absolute_cycle_for_runtime<T>(
         | PatternRuntime::RatePattern { inner, .. }
         | PatternRuntime::Slice { inner, .. }
         | PatternRuntime::SlicePattern { inner, .. }
-        | PatternRuntime::SliceIdxPattern { inner, .. } => absolute_cycle_for_runtime(inner, cycle),
+        | PatternRuntime::SliceIdxPattern { inner, .. }
+        | PatternRuntime::Shuffle { inner, .. } => absolute_cycle_for_runtime(inner, cycle),
         PatternRuntime::Stack(layers) => layers
             .first()
             .map_or(Ok(cycle), |layer| absolute_cycle_for_runtime(layer, cycle)),
@@ -1998,5 +2088,32 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["sn", "bd", "sn", "bd", "bd", "sn", "sn", "bd"]
         );
+    }
+
+    #[test]
+    fn shuffle_randomizes_events_within_a_cycle() {
+        let base = SamplePatternValue::from_nodes(vec![
+            PatternNode::atom(SampleEvent::named("a")),
+            PatternNode::atom(SampleEvent::named("b")),
+            PatternNode::atom(SampleEvent::named("c")),
+            PatternNode::atom(SampleEvent::named("d")),
+        ]);
+        let pattern = base.shuffle_with_site_salt(42);
+        let span = TimeSpan::new(Rational::zero(), Rational::new(2, 1).unwrap()).unwrap();
+
+        let events = pattern.try_query(&span).unwrap();
+
+        let cycle_0 = sample_names_in_cycle(&events, 0);
+        let cycle_1 = sample_names_in_cycle(&events, 1);
+
+        let mut sorted_c0 = cycle_0.clone();
+        sorted_c0.sort();
+        assert_eq!(sorted_c0, vec!["a", "b", "c", "d"]);
+
+        let mut sorted_c1 = cycle_1.clone();
+        sorted_c1.sort();
+        assert_eq!(sorted_c1, vec!["a", "b", "c", "d"]);
+
+        assert_ne!(cycle_0, cycle_1);
     }
 }
