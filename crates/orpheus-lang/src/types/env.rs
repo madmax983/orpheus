@@ -139,6 +139,15 @@ impl TypeEnv {
             "rand",
             TypeScheme::monomorphic(Type::function(vec![], Type::pattern(Type::Number))),
         );
+        for name in ["cc", "midi_cc"] {
+            env.insert(
+                name,
+                TypeScheme::monomorphic(Type::curried(
+                    vec![Type::pattern(Type::Number)],
+                    Type::pattern(Type::Number),
+                )),
+            );
+        }
 
         env
     }

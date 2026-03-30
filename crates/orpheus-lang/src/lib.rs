@@ -8,6 +8,7 @@ mod eval;
 pub(crate) mod export;
 pub(crate) mod html;
 mod loader;
+mod midi_input;
 pub(crate) mod mixer;
 mod parser;
 mod pitch;
