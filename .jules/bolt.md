@@ -13,3 +13,7 @@
 **Use `Arc<str>` instead of `Box<str>` for deep immutability on hot paths**
 **Learning:** In `orpheus-lang/src/value.rs`, the `SampleEvent` struct contained a `sample: Box<str>` field. Because pattern evaluation transforms (like `adjust_gain`, `adjust_pan`) clone the `SampleEvent` repeatedly on the hot path, `Box<str>` forces a deep memory allocation and string copy every time. By replacing `Box<str>` with `std::sync::Arc<str>`, the clone becomes a simple atomic increment. This significantly reduces heap allocations while maintaining thread safety (`Send + Sync`).
 **Action:** When a struct containing strings is cloned repeatedly but the strings are never mutated, use `std::sync::Arc<str>` (or similar interning primitives) instead of `Box<str>` or `String` to avoid costly memory allocations.
+
+## YYYY-MM-DD - [Remove intermediate heap allocations]
+**Learning:** `try_fold` works perfectly for removing intermediate allocations but requires a bit of turbofish boilerplate (`Ok::<_, Error>(acc)`). A simple `for` loop with a pre-allocated vector achieves the exact same performance win with more readable syntax.
+**Action:** Use simple `for` loops with pre-allocated vectors (`Vec::with_capacity()`) over `.try_fold()` when aggregating items that can fail to improve readability while maintaining the same performance.

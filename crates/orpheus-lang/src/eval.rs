@@ -392,11 +392,11 @@ impl Evaluator {
         layers: &[Expr],
         meter: Option<&MeterContext>,
     ) -> Result<Value, EvalError> {
-        let values: Result<Vec<_>, _> = layers
-            .iter()
-            .map(|layer| self.eval_expr_in_meter(layer, meter))
-            .collect();
-        stack_values(values?)
+        let mut values = Vec::with_capacity(layers.len());
+        for layer in layers {
+            values.push(self.eval_expr_in_meter(layer, meter)?);
+        }
+        stack_values(values)
     }
 
     fn eval_stream(
@@ -437,6 +437,9 @@ impl Evaluator {
         self.eval_call_with_args(call_expr, callee, args, Vec::new(), meter)
     }
 
+    // ⚡ Bolt: Eliminate heap reallocations by pre-allocating the vector for evaluated arguments
+    // using `Vec::with_capacity` based on the combined size of direct and piped arguments.
+    // This avoids reallocation when `evaluated_args.extend(piped_args)` is called.
     fn eval_call_with_args(
         &self,
         call_expr: &Expr,
@@ -446,10 +449,10 @@ impl Evaluator {
         meter: Option<&MeterContext>,
     ) -> Result<Value, EvalError> {
         let callee_value = self.eval_expr_in_meter(callee, meter)?;
-        let mut evaluated_args: Vec<_> = args
-            .iter()
-            .map(|arg| self.eval_expr_in_meter(arg, meter))
-            .collect::<Result<_, _>>()?;
+        let mut evaluated_args = Vec::with_capacity(args.len() + piped_args.len());
+        for arg in args {
+            evaluated_args.push(self.eval_expr_in_meter(arg, meter)?);
+        }
         evaluated_args.extend(piped_args);
         Self::apply_value(callee_value, evaluated_args, self.expr_site_salt(call_expr))
     }
@@ -800,10 +803,15 @@ impl Evaluator {
         items: &[Expr],
         meter: Option<&MeterContext>,
     ) -> Result<Option<Vec<PatternNode<SampleEvent>>>, EvalError> {
-        items
-            .iter()
-            .map(|item| self.try_sample_node(item, meter))
-            .collect::<Result<Option<Vec<_>>, _>>()
+        let mut nodes = Vec::with_capacity(items.len());
+        for item in items {
+            if let Some(node) = self.try_sample_node(item, meter)? {
+                nodes.push(node);
+            } else {
+                return Ok(None);
+            }
+        }
+        Ok(Some(nodes))
     }
 
     fn try_sample_node(
@@ -841,10 +849,15 @@ impl Evaluator {
         &self,
         items: &[Expr],
     ) -> Result<Option<Vec<PatternNode<f64>>>, EvalError> {
-        items
-            .iter()
-            .map(|item| self.try_number_node(item))
-            .collect::<Result<Option<Vec<_>>, _>>()
+        let mut nodes = Vec::with_capacity(items.len());
+        for item in items {
+            if let Some(node) = self.try_number_node(item)? {
+                nodes.push(node);
+            } else {
+                return Ok(None);
+            }
+        }
+        Ok(Some(nodes))
     }
 
     fn try_number_node(&self, expr: &Expr) -> Result<Option<PatternNode<f64>>, EvalError> {
