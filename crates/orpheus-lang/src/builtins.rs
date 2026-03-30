@@ -997,7 +997,7 @@ mod tests {
         let module = eval_module(source, ReplMode::Loose).unwrap();
         let pattern = module.get("a").unwrap().as_sample_pattern().unwrap();
 
-        let events = pattern.query_unit().unwrap();
+        let events = pattern.query_unit();
 
         // original (bd sn) panned left
         // rev(bd sn) -> (sn bd) panned right

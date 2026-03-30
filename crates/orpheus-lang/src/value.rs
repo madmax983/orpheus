@@ -158,10 +158,10 @@ impl Value {
 /// useful for testing).
 ///
 /// ```
-/// # use orpheus_lang::{eval_module, ReplMode};
-/// # let env = eval_module("event = bd", ReplMode::Strict).unwrap();
-/// # let val = env.get("event").unwrap().as_sample_pattern().unwrap();
-/// # let event = &val.query_unit().unwrap()[0].value;
+/// use orpheus_lang::{eval_module, ReplMode};
+/// let env = eval_module("event = bd", ReplMode::Strict).unwrap();
+/// let val = env.get("event").unwrap().as_sample_pattern().unwrap();
+/// let event = &val.try_query_unit().unwrap()[0].value;
 /// assert_eq!(event.sample(), "bd");
 /// assert_eq!(event.gain(), 1.0); // Defaults to full volume.
 /// ```
@@ -418,7 +418,7 @@ impl PatternRuntimeValue for f64 {
 /// // Simulate the Orpheus expression `bd sn`
 /// let env = eval_module("pattern = bd", ReplMode::Strict).unwrap();
 /// let pattern = env.get("pattern").unwrap().as_sample_pattern().unwrap();
-/// let events = pattern.query_unit().unwrap();
+/// let events = pattern.try_query_unit().unwrap();
 ///
 /// assert_eq!(events.len(), 1);
 /// assert_eq!(events[0].value.sample(), "bd");
@@ -663,12 +663,26 @@ impl SamplePatternValue {
 
     /// Queries the pattern over the default unit cycle `[0, 1)`.
     ///
+    /// If an internal runtime transform produces an invalid span or overflows
+    /// the evaluator's bounded rational arithmetic, this will gracefully return an empty sequence. For a fallible
+    /// variant, use [`SamplePatternValue::try_query_unit`].
+    #[must_use]
+    pub fn query_unit(&self) -> Vec<Event<SampleEvent>> {
+        self.try_query_unit().unwrap_or_else(|_err| {
+            // In a live-coding environment, gracefully degrade instead of crashing the UI
+            Vec::new()
+        })
+    }
+
+    /// Fallible variant of [`SamplePatternValue::query_unit`].
+    ///
+    /// Queries the pattern over the default unit cycle `[0, 1)`.
+    ///
     /// # Errors
     ///
     /// Returns an error if an internal runtime transform produces an invalid
     /// span or overflows the evaluator's bounded rational arithmetic.
-    #[must_use = "query_unit() returns a Result; ignoring it may drop query errors"]
-    pub fn query_unit(&self) -> Result<Vec<Event<SampleEvent>>, EvalError> {
+    pub fn try_query_unit(&self) -> Result<Vec<Event<SampleEvent>>, EvalError> {
         self.try_query(&TimeSpan::unit())
     }
 

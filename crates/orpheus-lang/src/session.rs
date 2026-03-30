@@ -362,7 +362,7 @@ impl ReplSession {
     fn push_pattern_update(&mut self, name: &str, value: &Value) -> Result<(), String> {
         if let Value::SamplePattern(pattern) = value {
             let enqueue_publish = self.engine.transport_snapshot().publish_epoch();
-            let events = pattern.query_unit().map_err(|error| {
+            let events = pattern.try_query_unit().map_err(|error| {
                 format!("failed to query unit span for publishing pattern `{name}`: {error}")
             })?;
             let update = PatternUpdate::new(

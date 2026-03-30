@@ -74,10 +74,10 @@ impl std::error::Error for SampleManifestLoadError {
 /// use tempfile::NamedTempFile;
 ///
 /// let mut file = NamedTempFile::new().unwrap();
-/// writeln!(file, "kick: /path/to/kick.wav").unwrap();
+/// writeln!(file, "(tokens: {{ \"kick\": \"/path/to/kick.wav\" }})").unwrap();
 ///
 /// let manifest = load_sample_manifest(file.path()).unwrap();
-/// assert_eq!(manifest.get("kick"), Some("/path/to/kick.wav"));
+/// assert_eq!(manifest.tokens.get("kick").map(String::as_str), Some("/path/to/kick.wav"));
 /// ```
 pub fn load_sample_manifest(
     path: impl AsRef<Path>,
