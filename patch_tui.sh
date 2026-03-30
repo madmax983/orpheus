@@ -1,3 +1,4 @@
+cat << 'DIFF' > replace.patch
 --- crates/orpheus-lang/src/tui.rs
 +++ crates/orpheus-lang/src/tui.rs
 @@ -1259,9 +1259,7 @@
@@ -33,3 +34,5 @@
          let repl_cell = &repl_buffer[(repl_x, repl_y)];
          assert_eq!(repl_cell.fg, Color::Cyan);
          assert!(repl_cell.modifier.contains(Modifier::BOLD));
+DIFF
+patch -p0 < replace.patch
