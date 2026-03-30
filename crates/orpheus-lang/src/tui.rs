@@ -396,27 +396,22 @@ impl SessionTui {
         let mut lines = self
             .transcript
             .iter()
-            .cloned()
-            .map(|line| {
-                if line.starts_with("> ") {
-                    Line::styled(line, Style::default().fg(Color::DarkGray))
+            .flat_map(|line| {
+                let style = if line.starts_with("> ") {
+                    Style::default().fg(Color::DarkGray)
                 } else if line.starts_with("✗ ") {
-                    Line::styled(
-                        line,
-                        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-                    )
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
                 } else if line.starts_with("⚠️ ") {
-                    Line::styled(
-                        line,
-                        Style::default()
-                            .fg(Color::Yellow)
-                            .add_modifier(Modifier::BOLD),
-                    )
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
                 } else if line.starts_with("✓ ") {
-                    Line::styled(line, Style::default().fg(Color::Green))
+                    Style::default().fg(Color::Green)
                 } else {
-                    Line::raw(line)
-                }
+                    Style::default()
+                };
+
+                line.lines()
+                    .map(move |subline| Line::styled(subline.to_owned(), style))
+                    .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();
         let transport = self.session.transport_view();
