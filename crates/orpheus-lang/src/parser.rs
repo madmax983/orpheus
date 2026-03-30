@@ -25,6 +25,9 @@ struct SyntaxParser;
 /// Returns [`ParseError`] when the source does not match the Phase 1 grammar
 /// or when the parser encounters an internal AST construction failure.
 pub fn parse_module(source: &str) -> Result<Module, ParseError> {
+    if check_max_depth(source) > 64 {
+        return Err(ParseError::new("nesting depth exceeded maximum of 64"));
+    }
     let chunks = split_top_level_bindings(source);
     if chunks.is_empty() {
         return parse_single_binding_module(source, 1);
@@ -39,7 +42,45 @@ pub fn parse_module(source: &str) -> Result<Module, ParseError> {
     Ok(Module { statements })
 }
 
+fn check_max_depth(source: &str) -> i32 {
+    let mut current = 0;
+    let mut max = 0;
+    let mut in_string = false;
+    let mut escaping = false;
+
+    for character in source.chars() {
+        if in_string {
+            if escaping {
+                escaping = false;
+                continue;
+            }
+            match character {
+                '\\' => escaping = true,
+                '"' => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+
+        match character {
+            '"' => in_string = true,
+            '(' | '[' | '{' => {
+                current += 1;
+                if current > max {
+                    max = current;
+                }
+            }
+            ')' | ']' | '}' => current -= 1,
+            _ => {}
+        }
+    }
+    max
+}
+
 fn parse_single_binding_module(source: &str, start_line: usize) -> Result<Module, ParseError> {
+    if check_max_depth(source) > 64 {
+        return Err(ParseError::new("nesting depth exceeded maximum of 64"));
+    }
     let padded_source = if start_line <= 1 {
         source.to_owned()
     } else {
@@ -217,62 +258,74 @@ fn build_module(pair: Pair<'_, Rule>) -> Result<Module, ParseError> {
     let statements = pair
         .into_inner()
         .filter(|inner| inner.as_rule() == Rule::binding)
-        .map(build_binding)
+        .map(|p| build_binding(p, 0))
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(Module { statements })
 }
 
-fn build_binding(pair: Pair<'_, Rule>) -> Result<Stmt, ParseError> {
+fn build_binding(pair: Pair<'_, Rule>, depth: u32) -> Result<Stmt, ParseError> {
+    if depth > 100 {
+        return Err(ParseError::new("nesting depth exceeded maximum of 100"));
+    }
     let mut inner = pair.into_inner();
     let (name, params) = build_binding_head(next_pair(&mut inner, "binding head")?)?;
-    let expr = build_pipe_expr(next_pair(&mut inner, "binding expression")?)?;
+    let expr = build_pipe_expr(next_pair(&mut inner, "binding expression")?, depth + 1)?;
     Ok(Stmt::Binding { name, params, expr })
 }
 
-fn build_pipe_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_pipe_expr(pair: Pair<'_, Rule>, depth: u32) -> Result<Expr, ParseError> {
+    if depth > 100 {
+        return Err(ParseError::new("nesting depth exceeded maximum of 100"));
+    }
     let mut inner = pair.into_inner();
-    let first = build_sequence(next_pair(&mut inner, "pipe lhs")?)?;
+    let first = build_sequence(next_pair(&mut inner, "pipe lhs")?, depth + 1)?;
 
     inner.try_fold(first, |lhs, rhs| {
         Ok(Expr::Pipe {
             lhs: Box::new(lhs),
-            rhs: Box::new(build_pipe_target(rhs)?),
+            rhs: Box::new(build_pipe_target(rhs, depth + 1)?),
         })
     })
 }
 
-fn build_sequence(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_sequence(pair: Pair<'_, Rule>, depth: u32) -> Result<Expr, ParseError> {
+    if depth > 100 {
+        return Err(ParseError::new("nesting depth exceeded maximum of 100"));
+    }
     let items = pair
         .into_inner()
-        .map(build_item)
+        .map(|p| build_item(p, depth + 1))
         .collect::<Result<Vec<_>, _>>()?;
 
     collapse_sequence(items, "sequence")
 }
 
-fn build_item(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
-    build_expr(first_inner(pair, "sequence item")?)
+fn build_item(pair: Pair<'_, Rule>, depth: u32) -> Result<Expr, ParseError> {
+    build_expr(first_inner(pair, "sequence item")?, depth + 1)
 }
 
-fn build_pipe_target(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
-    build_expr(first_inner(pair, "pipe target")?)
+fn build_pipe_target(pair: Pair<'_, Rule>, depth: u32) -> Result<Expr, ParseError> {
+    build_expr(first_inner(pair, "pipe target")?, depth + 1)
 }
 
-fn build_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_expr(pair: Pair<'_, Rule>, depth: u32) -> Result<Expr, ParseError> {
+    if depth > 100 {
+        return Err(ParseError::new("nesting depth exceeded maximum of 100"));
+    }
     match pair.as_rule() {
-        Rule::stack => build_stack(pair),
-        Rule::postfix => build_postfix(pair),
-        Rule::primary => build_expr(first_inner(pair, "primary expression")?),
-        Rule::group => build_group(pair),
+        Rule::stack => build_stack(pair, depth + 1),
+        Rule::postfix => build_postfix(pair, depth + 1),
+        Rule::primary => build_expr(first_inner(pair, "primary expression")?, depth + 1),
+        Rule::group => build_group(pair, depth + 1),
         Rule::rest => Ok(Expr::Rest),
         Rule::number => build_number(&pair),
         Rule::string => build_string(&pair),
         Rule::identifier => Ok(Expr::Ident(pair.as_str().to_owned())),
-        Rule::pipe_expr => build_pipe_expr(pair),
-        Rule::sequence => build_sequence(pair),
-        Rule::item => build_item(pair),
-        Rule::pipe_target => build_pipe_target(pair),
+        Rule::pipe_expr => build_pipe_expr(pair, depth + 1),
+        Rule::sequence => build_sequence(pair, depth + 1),
+        Rule::item => build_item(pair, depth + 1),
+        Rule::pipe_target => build_pipe_target(pair, depth + 1),
         other => Err(ParseError::new(format!(
             "unexpected parser rule while building AST: {other:?}"
         ))),
@@ -305,30 +358,36 @@ fn build_binding_head(pair: Pair<'_, Rule>) -> Result<(String, Vec<String>), Par
     Ok((name, params))
 }
 
-fn build_stack(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_stack(pair: Pair<'_, Rule>, depth: u32) -> Result<Expr, ParseError> {
+    if depth > 100 {
+        return Err(ParseError::new("nesting depth exceeded maximum of 100"));
+    }
     let layers_pair = next_pair(&mut pair.into_inner(), "stack layers")?;
     let layers = layers_pair
         .into_inner()
-        .map(build_pipe_expr)
+        .map(|p| build_pipe_expr(p, depth + 1))
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(Expr::Stack(layers))
 }
 
-fn build_postfix(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_postfix(pair: Pair<'_, Rule>, depth: u32) -> Result<Expr, ParseError> {
+    if depth > 100 {
+        return Err(ParseError::new("nesting depth exceeded maximum of 100"));
+    }
     let mut inner = pair.into_inner();
     let first = next_pair(&mut inner, "postfix callee")?;
-    let mut expr = build_expr(first)?;
+    let mut expr = build_expr(first, depth + 1)?;
 
     for suffix in inner {
-        let args = build_call_suffix_args(suffix)?;
+        let args = build_call_suffix_args(suffix, depth + 1)?;
         expr = build_call_expr(expr, args)?;
     }
 
     Ok(expr)
 }
 
-fn build_call_suffix_args(pair: Pair<'_, Rule>) -> Result<Vec<Expr>, ParseError> {
+fn build_call_suffix_args(pair: Pair<'_, Rule>, depth: u32) -> Result<Vec<Expr>, ParseError> {
     let mut inner = pair.into_inner();
     let Some(args_pair) = inner.next() else {
         return Ok(Vec::new());
@@ -336,7 +395,7 @@ fn build_call_suffix_args(pair: Pair<'_, Rule>) -> Result<Vec<Expr>, ParseError>
 
     args_pair
         .into_inner()
-        .map(build_pipe_expr)
+        .map(|p| build_pipe_expr(p, depth + 1))
         .collect::<Result<Vec<_>, _>>()
 }
 
@@ -388,10 +447,13 @@ fn build_call_expr(callee: Expr, args: Vec<Expr>) -> Result<Expr, ParseError> {
     })
 }
 
-fn build_group(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_group(pair: Pair<'_, Rule>, depth: u32) -> Result<Expr, ParseError> {
+    if depth > 100 {
+        return Err(ParseError::new("nesting depth exceeded maximum of 100"));
+    }
     let items = pair
         .into_inner()
-        .map(build_item)
+        .map(|p| build_item(p, depth + 1))
         .collect::<Result<Vec<_>, _>>()?;
     Ok(Expr::Group(items))
 }

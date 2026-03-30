@@ -25,3 +25,28 @@ proptest! {
         let _ = eval_module(&source, ReplMode::Loose);
     }
 }
+
+#[test]
+fn havoc_eval_module_sequence_stack_depth() {
+    use orpheus_lang::parse_module;
+    let depth = 500;
+    let mut code = String::from("x = ");
+    for _ in 0..depth {
+        code.push_str("fast(2, [");
+    }
+    code.push_str("bd");
+    for _ in 0..depth {
+        code.push(']');
+        code.push(')');
+    }
+
+    let result = parse_module(&code);
+    match result {
+        Ok(_ast) => {
+            panic!("Should have failed to parse deeply nested pattern");
+        }
+        Err(e) => {
+            assert!(e.to_string().contains("nesting depth exceeded maximum"));
+        }
+    }
+}
