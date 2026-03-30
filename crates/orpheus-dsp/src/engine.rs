@@ -139,8 +139,7 @@ impl SharedTransport {
                 has_pending_routing: self.has_pending_routing.load(Ordering::Relaxed),
             };
 
-            std::sync::atomic::fence(Ordering::Acquire);
-            let end_epoch = self.publish_epoch.load(Ordering::Relaxed);
+            let end_epoch = self.publish_epoch.load(Ordering::Acquire);
             // If the epoch is unchanged, we observed a consistent state.
             if start_epoch == end_epoch {
                 return snap;
