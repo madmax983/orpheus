@@ -1,11 +1,10 @@
 use std::error::Error;
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Display, Formatter, Write as _};
 use std::io::Write;
 use std::path::Path;
 
 use orpheus_dsp::{OfflineRenderError, SampleBank, SampleTrigger, render_events_to_file_with_bank};
 use orpheus_pattern::Event;
-use serde_json::{Value as JsonValue, json};
 
 use crate::eval::{EvalError, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue};
@@ -167,6 +166,27 @@ pub fn export_sample_pattern_to_csv(
     Ok(())
 }
 
+/// Helper function to escape JSON strings.
+fn escape_json_string(s: &str) -> String {
+    let mut escaped = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' => escaped.push_str("\\\""),
+            '\\' => escaped.push_str("\\\\"),
+            '\x08' => escaped.push_str("\\b"),
+            '\x0C' => escaped.push_str("\\f"),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            c if c.is_control() => {
+                let _ = write!(escaped, "\\u{:04x}", c as u32);
+            }
+            c => escaped.push(c),
+        }
+    }
+    escaped
+}
+
 /// Exports a sample pattern's evaluated events to a JSON file.
 ///
 /// The JSON document contains a top-level `kind`, `cycle_count`, and `events`
@@ -188,16 +208,76 @@ pub fn export_sample_pattern_to_json(
 
     let span = render_span(cycle_count)?;
     let events = pattern.try_query(&span)?;
-    let payload = json!({
-        "kind": "sample",
-        "cycle_count": cycle_count,
-        "events": events
-            .into_iter()
-            .map(|event| sample_event_json(&event))
-            .collect::<Vec<_>>(),
-    });
 
-    write_json_file(path.as_ref(), &payload)
+    let mut out = String::new();
+    writeln!(out, "{{").unwrap();
+    writeln!(out, "  \"kind\": \"sample\",").unwrap();
+    writeln!(out, "  \"cycle_count\": {cycle_count},").unwrap();
+    writeln!(out, "  \"events\": [").unwrap();
+
+    for (i, event) in events.iter().enumerate() {
+        let is_last = i == events.len() - 1;
+        let comma = if is_last { "" } else { "," };
+
+        let start_float = f64::from(event.part.start());
+        let end_float = f64::from(event.part.end());
+
+        writeln!(out, "    {{").unwrap();
+        writeln!(
+            out,
+            "      \"start_num\": {},",
+            event.part.start().numerator()
+        )
+        .unwrap();
+        writeln!(
+            out,
+            "      \"start_den\": {},",
+            event.part.start().denominator()
+        )
+        .unwrap();
+        writeln!(out, "      \"start_float\": {start_float:?},").unwrap();
+        writeln!(out, "      \"end_num\": {},", event.part.end().numerator()).unwrap();
+        writeln!(
+            out,
+            "      \"end_den\": {},",
+            event.part.end().denominator()
+        )
+        .unwrap();
+        writeln!(out, "      \"end_float\": {end_float:?},").unwrap();
+        writeln!(
+            out,
+            "      \"sample\": \"{}\",",
+            escape_json_string(event.value.sample())
+        )
+        .unwrap();
+        writeln!(out, "      \"gain\": {:?},", event.value.gain()).unwrap();
+        writeln!(out, "      \"pan\": {:?},", event.value.pan()).unwrap();
+        writeln!(out, "      \"rate\": {:?},", event.value.rate()).unwrap();
+        writeln!(
+            out,
+            "      \"slice_start\": {:?},",
+            event.value.slice_start()
+        )
+        .unwrap();
+        writeln!(out, "      \"slice_end\": {:?},", event.value.slice_end()).unwrap();
+
+        match event.value.hpf_cutoff_hz() {
+            Some(v) => writeln!(out, "      \"hpf_cutoff_hz\": {v:?},").unwrap(),
+            None => writeln!(out, "      \"hpf_cutoff_hz\": null,").unwrap(),
+        }
+        match event.value.lpf_cutoff_hz() {
+            Some(v) => writeln!(out, "      \"lpf_cutoff_hz\": {v:?}").unwrap(),
+            None => writeln!(out, "      \"lpf_cutoff_hz\": null").unwrap(),
+        }
+        writeln!(out, "    }}{comma}").unwrap();
+    }
+
+    writeln!(out, "  ]").unwrap();
+    write!(out, "}}").unwrap();
+
+    let mut file = std::fs::File::create(path).map_err(|e| EvalError::new(e.to_string()))?;
+    file.write_all(out.as_bytes())
+        .map_err(|e| EvalError::new(e.to_string()))
 }
 
 /// Exports a number pattern's evaluated events to a CSV file.
@@ -281,16 +361,52 @@ pub fn export_number_pattern_to_json(
 
     let span = render_span(cycle_count)?;
     let events = pattern.try_query(&span)?;
-    let payload = json!({
-        "kind": "number",
-        "cycle_count": cycle_count,
-        "events": events
-            .into_iter()
-            .map(|event| number_event_json(&event))
-            .collect::<Vec<_>>(),
-    });
 
-    write_json_file(path.as_ref(), &payload)
+    let mut out = String::new();
+    writeln!(out, "{{").unwrap();
+    writeln!(out, "  \"kind\": \"number\",").unwrap();
+    writeln!(out, "  \"cycle_count\": {cycle_count},").unwrap();
+    writeln!(out, "  \"events\": [").unwrap();
+
+    for (i, event) in events.iter().enumerate() {
+        let is_last = i == events.len() - 1;
+        let comma = if is_last { "" } else { "," };
+
+        let start_float = f64::from(event.part.start());
+        let end_float = f64::from(event.part.end());
+
+        writeln!(out, "    {{").unwrap();
+        writeln!(
+            out,
+            "      \"start_num\": {},",
+            event.part.start().numerator()
+        )
+        .unwrap();
+        writeln!(
+            out,
+            "      \"start_den\": {},",
+            event.part.start().denominator()
+        )
+        .unwrap();
+        writeln!(out, "      \"start_float\": {start_float:?},").unwrap();
+        writeln!(out, "      \"end_num\": {},", event.part.end().numerator()).unwrap();
+        writeln!(
+            out,
+            "      \"end_den\": {},",
+            event.part.end().denominator()
+        )
+        .unwrap();
+        writeln!(out, "      \"end_float\": {end_float:?},").unwrap();
+        writeln!(out, "      \"value\": {:?}", event.value).unwrap();
+        writeln!(out, "    }}{comma}").unwrap();
+    }
+
+    writeln!(out, "  ]").unwrap();
+    write!(out, "}}").unwrap();
+
+    let mut file = std::fs::File::create(path).map_err(|e| EvalError::new(e.to_string()))?;
+    file.write_all(out.as_bytes())
+        .map_err(|e| EvalError::new(e.to_string()))
 }
 
 /// Renders a sample pattern to a deterministic stereo audio file using the
@@ -352,42 +468,6 @@ pub fn render_sample_pattern_to_wav(
     cycle_count: u64,
 ) -> Result<(), RenderError> {
     render_sample_pattern_to_file(pattern, path, cycle_count)
-}
-
-fn sample_event_json(event: &Event<crate::value::SampleEvent>) -> JsonValue {
-    json!({
-        "start_num": event.part.start().numerator(),
-        "start_den": event.part.start().denominator(),
-        "start_float": f64::from(event.part.start()),
-        "end_num": event.part.end().numerator(),
-        "end_den": event.part.end().denominator(),
-        "end_float": f64::from(event.part.end()),
-        "sample": event.value.sample(),
-        "gain": event.value.gain(),
-        "pan": event.value.pan(),
-        "rate": event.value.rate(),
-        "slice_start": event.value.slice_start(),
-        "slice_end": event.value.slice_end(),
-        "hpf_cutoff_hz": event.value.hpf_cutoff_hz(),
-        "lpf_cutoff_hz": event.value.lpf_cutoff_hz(),
-    })
-}
-
-fn number_event_json(event: &Event<f64>) -> JsonValue {
-    json!({
-        "start_num": event.part.start().numerator(),
-        "start_den": event.part.start().denominator(),
-        "start_float": f64::from(event.part.start()),
-        "end_num": event.part.end().numerator(),
-        "end_den": event.part.end().denominator(),
-        "end_float": f64::from(event.part.end()),
-        "value": event.value,
-    })
-}
-
-fn write_json_file(path: &Path, payload: &JsonValue) -> Result<(), EvalError> {
-    let file = std::fs::File::create(path).map_err(|error| EvalError::new(error.to_string()))?;
-    serde_json::to_writer_pretty(file, payload).map_err(|error| EvalError::new(error.to_string()))
 }
 
 #[cfg(test)]

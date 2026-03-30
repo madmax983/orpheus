@@ -5,3 +5,7 @@
 ## 2024-03-18 - Extracted Pattern Exporters
 **Tangle:** The `crates/orpheus-lang/src/eval.rs` module had grown over 1400 lines and started turning into a "Blob", violating the Single Responsibility Principle by mixing AST evaluation with CSV exporting and audio rendering logic.
 **Blueprint:** Extracted exporting functions (`export_sample_pattern_to_csv`, `export_number_pattern_to_csv`) and audio rendering functions (`render_sample_pattern_to_file`, `render_sample_pattern_to_wav`) along with `RenderError` into a dedicated `crates/orpheus-lang/src/export.rs` module.
+
+## 2024-11-20 - [Removed Heavy Dependency]
+**Tangle:** The `crates/orpheus-lang` crate relied on the heavy `serde_json` dependency solely to manually construct and serialize a simple JSON object in `export.rs`, introducing unnecessary weight for a straightforward serialization task.
+**Blueprint:** Replaced `serde_json` with custom string formatting (`std::fmt::Write`) and proper escaping in `export.rs` to keep the dependency footprint light, adhering to the principle that "Dependency is debt." Moved `serde_json` to `dev-dependencies` in `Cargo.toml` so tests can continue to rigorously parse and assert against the JSON output structure.
