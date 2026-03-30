@@ -10,6 +10,7 @@ workspace = true
 [dependencies]
 comfy-table.workspace = true
 crossterm.workspace = true
+midly = "0.5.3"
 orpheus-dsp.workspace = true
 orpheus-pattern.workspace = true
 pest = "2.8.6"
