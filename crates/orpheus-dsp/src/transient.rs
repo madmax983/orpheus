@@ -6,7 +6,8 @@ const RELEASE_COEFFICIENT: f32 = 0.02;
 const THRESHOLD_MULTIPLIER: f32 = 3.0;
 const MIN_THRESHOLD: f32 = 0.005;
 
-pub(crate) fn detect_transient_markers(frames: &[f32], sample_rate_hz: u32) -> Arc<[f64]> {
+#[allow(clippy::cast_precision_loss)]
+pub fn detect_transient_markers(frames: &[f32], sample_rate_hz: u32) -> Arc<[f64]> {
     if frames.is_empty() {
         return Arc::from([]);
     }
@@ -72,7 +73,7 @@ pub(crate) fn detect_transient_markers(frames: &[f32], sample_rate_hz: u32) -> A
     )
 }
 
-pub(crate) fn rebase_transient_markers(markers: &[f64], start: f64, end: f64) -> Arc<[f64]> {
+pub fn rebase_transient_markers(markers: &[f64], start: f64, end: f64) -> Arc<[f64]> {
     let range = end - start;
     if !range.is_finite() || range <= f64::EPSILON {
         return Arc::from([]);
@@ -88,7 +89,7 @@ pub(crate) fn rebase_transient_markers(markers: &[f64], start: f64, end: f64) ->
     )
 }
 
-pub(crate) fn resolve_onset_slice(markers: &[f64], onset_index: u32) -> Option<(f64, f64)> {
+pub fn resolve_onset_slice(markers: &[f64], onset_index: u32) -> Option<(f64, f64)> {
     if markers.is_empty() {
         return (onset_index == 0).then_some((0.0, 1.0));
     }

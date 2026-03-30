@@ -924,6 +924,7 @@ impl ReplSession {
         }
     }
 
+    #[allow(clippy::unused_self)]
     fn list_midi_inputs(&self) -> Result<String, String> {
         let midi_in = MidiInput::new("orpheus")
             .map_err(|error| format!("failed to initialize MIDI input subsystem: {error}"))?;
@@ -1011,6 +1012,7 @@ impl ReplSession {
         }
     }
 
+    #[allow(clippy::unused_self)]
     fn list_midi_outputs(&self) -> Result<String, String> {
         let midi_out = MidiOutput::new("orpheus")
             .map_err(|error| format!("failed to initialize MIDI output subsystem: {error}"))?;
@@ -1067,7 +1069,7 @@ impl ReplSession {
         Ok(format!("disconnected MIDI output `{port_name}`"))
     }
 
-    fn send_midi_binding(&mut self, binding_name: &str, channel: u8) -> Result<String, String> {
+    fn send_midi_binding(&self, binding_name: &str, channel: u8) -> Result<String, String> {
         if !(1..=16).contains(&channel) {
             return Err("MIDI channel must be an integer in [1, 16]".to_owned());
         }

@@ -84,7 +84,7 @@ impl From<OfflineRenderError> for RenderError {
 
 /// Helper function to convert a `SampleEvent` from the evaluation phase into a
 /// `SampleTrigger` for the DSP rendering phase.
-pub(crate) fn sample_trigger_from_event(event: &crate::value::SampleEvent) -> SampleTrigger {
+pub fn sample_trigger_from_event(event: &crate::value::SampleEvent) -> SampleTrigger {
     let mut trigger = SampleTrigger::named(event.sample())
         .with_gain(event.gain())
         .with_pan(event.pan())
@@ -583,6 +583,7 @@ use std::fmt::Write as _;
 ///
 /// assert_eq!(escaped, "hello \\\"world\\\"\\nfrom \\\\rust\\\\");
 /// ```
+#[must_use]
 pub fn escape_json_string(s: &str) -> String {
     let mut escaped = String::with_capacity(s.len() * 2);
     for c in s.chars() {

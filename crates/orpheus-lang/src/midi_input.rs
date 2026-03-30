@@ -5,13 +5,13 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum MidiNoteEventKind {
+pub enum MidiNoteEventKind {
     On,
     Off,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct MidiNoteEvent {
+pub struct MidiNoteEvent {
     pub(crate) note: u8,
     pub(crate) velocity: u8,
     pub(crate) channel: u8,
@@ -37,12 +37,12 @@ fn state() -> &'static MidiInputSharedState {
     STATE.get_or_init(MidiInputSharedState::new)
 }
 
-pub(crate) fn cc_normalized(controller: u8) -> f64 {
+pub fn cc_normalized(controller: u8) -> f64 {
     let raw = state().cc_values[controller as usize].load(Ordering::Relaxed);
     f64::from(raw) / 127.0
 }
 
-pub(crate) fn update_from_message(message: &[u8]) {
+pub fn update_from_message(message: &[u8]) {
     if message.is_empty() {
         return;
     }
@@ -81,12 +81,11 @@ pub(crate) fn update_from_message(message: &[u8]) {
     }
 }
 
-pub(crate) fn drain_note_events() -> Vec<MidiNoteEvent> {
-    if let Ok(mut queue) = state().note_events.lock() {
-        queue.drain(..).collect()
-    } else {
-        Vec::new()
-    }
+pub fn drain_note_events() -> Vec<MidiNoteEvent> {
+    state()
+        .note_events
+        .lock()
+        .map_or_else(|_| Vec::new(), |mut queue| queue.drain(..).collect())
 }
 
 #[cfg(test)]

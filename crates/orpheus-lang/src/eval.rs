@@ -220,21 +220,21 @@ impl ExplicitValue {
         }
     }
 
-    fn merge(mut self, other: Self) -> Result<Self, EvalError> {
-        self.append_unsorted(other)?;
-        self.sort();
-        Ok(self)
+    fn merge(self, other: Self) -> Result<Self, EvalError> {
+        let mut result = self.append_unsorted(other)?;
+        result.sort();
+        Ok(result)
     }
 
-    fn append_unsorted(&mut self, other: Self) -> Result<(), EvalError> {
-        match (self, other) {
+    fn append_unsorted(mut self, other: Self) -> Result<Self, EvalError> {
+        match (&mut self, other) {
             (Self::Sample(left), Self::Sample(mut right)) => {
                 left.append(&mut right);
-                Ok(())
+                Ok(self)
             }
             (Self::Number(left), Self::Number(mut right)) => {
                 left.append(&mut right);
-                Ok(())
+                Ok(self)
             }
             (Self::Sample(_), Self::Number(_)) | (Self::Number(_), Self::Sample(_)) => Err(
                 EvalError::new("explicit-time items must all resolve to the same pattern kind"),
@@ -627,7 +627,7 @@ impl Evaluator {
             )?;
             let mut repeated = base.clone();
             repeated.shift(&offset)?;
-            combined.append_unsorted(repeated)?;
+            combined = combined.append_unsorted(repeated)?;
         }
 
         combined.sort();
