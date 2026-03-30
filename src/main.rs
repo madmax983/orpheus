@@ -46,9 +46,9 @@ fn run() -> anyhow::Result<()> {
     };
 
     if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
-        orpheus_lang::tui::run_with_engine_and_path(engine, startup_path.as_deref(), warning)?;
+        orpheus_lang::run_with_engine_and_path(engine, startup_path.as_deref(), warning)?;
     } else {
-        orpheus_lang::repl::run_stdio_with_engine_and_path(
+        orpheus_lang::run_stdio_with_engine_and_path(
             engine,
             startup_path.as_deref(),
             warning,
