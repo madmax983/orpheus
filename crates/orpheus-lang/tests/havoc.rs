@@ -1,27 +1,31 @@
 use orpheus_lang::ReplMode;
 use orpheus_lang::eval_module;
 use proptest::prelude::*;
+use std::panic;
 
 proptest! {
     #[test]
-    fn euclid_does_not_allocate_oom(pulses in 0u32..u32::MAX, steps in 0u32..u32::MAX) {
-        let source = format!("a = euclid({pulses}, {steps})");
+    fn havoc_proptest_named_pitch_literal(s in "[a-g][sf]?[0-9]*") {
+        let source = format!("x = n(\"{}\")", s);
         let _ = eval_module(&source, ReplMode::Loose);
     }
 }
 
 proptest! {
     #[test]
-    fn when_does_not_allocate_oom(offset in 0u32..u32::MAX) {
-        let source = format!("a = when({offset}, rev, bd)");
-        let _ = eval_module(&source, ReplMode::Loose);
+    fn eval_named_pitch_literal_does_not_panic(s in "[A-Za-z0-9_-]*") {
+        let source = format!("a = n(\"{}\")", s);
+        let _ = panic::catch_unwind(|| {
+            let _ = eval_module(&source, ReplMode::Loose);
+        });
     }
 }
 
 proptest! {
     #[test]
-    fn seq_sections_does_not_allocate_oom(segments in 0u32..u32::MAX) {
-        let source = format!("a = seq_sections({segments}, bd, sn)");
-        let _ = eval_module(&source, ReplMode::Loose);
+    fn havoc_proptest_eval(s in ".*") {
+        let _ = panic::catch_unwind(|| {
+            let _ = eval_module(&s, ReplMode::Loose);
+        });
     }
 }

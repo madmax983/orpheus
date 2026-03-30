@@ -37,12 +37,6 @@ impl SharedTransport {
     }
 
     fn publish(&self, core: &EngineCore) {
-        // Real-world implementation using compiler_fence:
-        // Wait, loom doesn't support compiler_fence, we must use loom::sync::atomic::compiler_fence
-        // Actually loom sync doesn't have compiler_fence.
-        // We use loom::sync::atomic::fence instead of compiler_fence for tests.
-        // And use Acquire/Release on the fence. Let's do that!
-
         self.publish_epoch.fetch_add(1, Ordering::Relaxed);
         loom::sync::atomic::fence(Ordering::Release);
 

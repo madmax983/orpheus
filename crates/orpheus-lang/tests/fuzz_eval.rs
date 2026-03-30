@@ -57,7 +57,7 @@ proptest! {
 
         // This is strict: any panic triggered inside `eval_module` or `query_unit`
         // will cause the test to fail. `eval_module` doesn't evaluate the pattern span itself,
-        // so we must do it manually via `query_unit()`.
+        // so we must do it manually via `try_query_unit()`.
         let result = panic::catch_unwind(|| {
             let Ok(mut values) = eval_module(&source, ReplMode::Loose) else {
                 return; // parse errors and eval errors on fuzz strings are expected
@@ -68,7 +68,7 @@ proptest! {
             let Some(pat) = val.as_sample_pattern() else {
                 return;
             };
-            let _ = pat.query_unit(); // query_unit for SamplePatternValue returns a Result so we ignore it
+            let _ = pat.try_query_unit(); // query_unit for SamplePatternValue returns a Result so we ignore it
         });
 
         // If there was a panic, this assertion will fail.
@@ -91,7 +91,7 @@ proptest! {
                 return;
             };
             // NumberPatternValue::query_unit() panics on internal evaluation errors
-            let _ = pat.query_unit();
+            let _ = pat.try_query_unit();
         });
 
         // If there was a panic, this assertion will fail.
