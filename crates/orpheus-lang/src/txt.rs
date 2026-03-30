@@ -34,7 +34,7 @@ pub fn export_sample_pattern_to_txt(
 
     writeln!(file, "Orpheus Sample Pattern Export")?;
     writeln!(file, "=============================")?;
-    writeln!(file, "Cycles: {}", cycle_count)?;
+    writeln!(file, "Cycles: {cycle_count}")?;
     writeln!(file)?;
 
     for event in events {
@@ -47,16 +47,19 @@ pub fn export_sample_pattern_to_txt(
         params.push(format!("rate: {:.2}", event.value.rate()));
 
         if let Some(hpf) = event.value.hpf_cutoff_hz() {
-            params.push(format!("hpf: {:.2}", hpf));
+            params.push(format!("hpf: {hpf:.2}"));
         }
         if let Some(lpf) = event.value.lpf_cutoff_hz() {
-            params.push(format!("lpf: {:.2}", lpf));
+            params.push(format!("lpf: {lpf:.2}"));
         }
 
         writeln!(
             file,
             "[{:.3} -> {:.3}] {} ({})",
-            start, end, event.value.sample(), params.join(", ")
+            start,
+            end,
+            event.value.sample(),
+            params.join(", ")
         )?;
     }
 
@@ -88,7 +91,7 @@ pub fn export_number_pattern_to_txt(
 
     writeln!(file, "Orpheus Number Pattern Export")?;
     writeln!(file, "=============================")?;
-    writeln!(file, "Cycles: {}", cycle_count)?;
+    writeln!(file, "Cycles: {cycle_count}")?;
     writeln!(file)?;
 
     for event in events {
