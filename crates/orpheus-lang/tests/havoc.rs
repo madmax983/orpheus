@@ -21,3 +21,18 @@ fn havoc_seq_sections_timeout() {
             .contains("exceeded the maximum allowed bound")
     );
 }
+
+use proptest::prelude::*;
+use std::panic;
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(10000))]
+    #[test]
+    fn havoc_eval_does_not_panic(s in "\\PC*") {
+        let result = panic::catch_unwind(|| {
+            let _ = eval_module(&s, ReplMode::Loose);
+        });
+
+        assert!(result.is_ok(), "💥 DETONATED: eval_module panicked on input: {:?}", s);
+    }
+}

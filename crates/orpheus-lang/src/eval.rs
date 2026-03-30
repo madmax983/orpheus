@@ -626,7 +626,7 @@ impl Evaluator {
                 let beat_length = rational_from_parts(1, meter.beats_per_cycle)?;
                 beat_index
                     .checked_mul(&beat_length)
-                    .map_err(|error| EvalError::new(error.to_string()))
+                    .map_err(Into::into)
             }
             _ => extract_constant_number_rational(
                 self.eval_expr_in_meter(expr, meter)?,
@@ -1110,17 +1110,15 @@ pub fn render_span(cycle_count: u64) -> Result<TimeSpan, EvalError> {
 }
 
 fn build_span(start: Rational, end: Rational) -> Result<TimeSpan, EvalError> {
-    TimeSpan::new(start, end).map_err(|error| EvalError::new(error.to_string()))
+    TimeSpan::new(start, end).map_err(Into::into)
 }
 
 fn rational_add(left: &Rational, right: &Rational) -> Result<Rational, EvalError> {
-    left.checked_add(right)
-        .map_err(|error| EvalError::new(error.to_string()))
+    left.checked_add(right).map_err(Into::into)
 }
 
 fn rational_from_parts(numerator: i128, denominator: i128) -> Result<Rational, EvalError> {
-    Rational::checked_from_parts(numerator, denominator)
-        .map_err(|error| EvalError::new(error.to_string()))
+    Rational::checked_from_parts(numerator, denominator).map_err(Into::into)
 }
 
 #[cfg(test)]
