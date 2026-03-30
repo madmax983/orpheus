@@ -1900,9 +1900,9 @@ mod tests {
         let message = session.eval_line(":stats pattern 2").unwrap();
 
         assert!(message.contains("Pattern Stats: pattern (2 cycles)"));
-        assert!(message.contains("│ Total Events                        8                 │"));
-        assert!(message.contains("│ Unique Samples                      2 (bd, sn)        │"));
-        assert!(message.contains("│ Event Density                       4.00 events/cycle │"));
+        assert!(message.contains("│ Total Events     8                 │"));
+        assert!(message.contains("│ Unique Samples   2 (bd, sn)        │"));
+        assert!(message.contains("│ Event Density    4.00 events/cycle │"));
     }
 
     #[test]
