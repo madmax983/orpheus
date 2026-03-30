@@ -12,3 +12,7 @@
 ## 2024-10-24 - [NumberPatternValue::query_unit graceful degradation test]
 **Learning:** Pattern structures queried via `query_unit` gracefully handle runtime evaluation errors like span arithmetic bounds checks by silently catching `try_query_unit` errors and returning an empty sequence (`Vec::new()`)
 **Action:** Wrote an explicit test `number_pattern_query_unit_degrades_gracefully_on_overflow` to ensure this specific error handling behavior is continuously verified and prevents silent regressions that might cause panic points if refactored improperly.
+
+## 2024-10-24 - [Coverage Gap in `apply_user_function` Function Invocation]
+**Learning:** The evaluation pipeline code for applying arguments to user-defined functions lacked test coverage around function arity boundaries, specifically the case of successfully currying functions and the over-application error handling branch.
+**Action:** Always check `eval.rs` helper methods for missing branch coverage around dynamic constraints (like function arguments length checks) and ensure those failure cases are covered via `assert_eval_error_contains`.
