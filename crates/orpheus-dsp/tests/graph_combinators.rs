@@ -1,6 +1,6 @@
 //! Tests for the five Faust-style graph combinators.
 
-use orpheus_dsp::graph::{
+use orpheus_dsp::{
     GraphError, Node, constant, delay_line, feedback, merge, par, passthrough, seq, split, sum,
 };
 

@@ -389,6 +389,7 @@ pub enum EngineCommand {
 ///
 /// assert!(matches!(consumer.pop().unwrap(), EngineCommand::PlayTransport));
 /// ```
+#[must_use]
 pub fn new_command_queue() -> (Producer<EngineCommand>, Consumer<EngineCommand>) {
     RingBuffer::<EngineCommand>::new(64)
 }
