@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ReplMode;
 use crate::ast::{Expr, Module, Stmt, binding_expr_self_references};
-use crate::diagnostics::{ParseError, TypeError};
 use crate::parser::parse_module;
 use crate::pitch::parse_named_pitch_literal;
 use crate::types::env::{TypeEnv, TypeScheme};
@@ -12,10 +11,10 @@ use crate::types::{Type, TypeVarId, TypedModule};
 ///
 /// # Errors
 ///
-/// Returns [`TypeError`] when parsing fails or when type inference encounters
+/// Returns [`crate::Error`] when parsing fails or when type inference encounters
 /// an unresolved name or incompatible types.
-pub fn infer_module(source: &str, mode: ReplMode) -> Result<TypedModule, TypeError> {
-    let parsed = parse_module(source).map_err(TypeError::from)?;
+pub fn infer_module(source: &str, mode: ReplMode) -> Result<TypedModule, crate::Error> {
+    let parsed = parse_module(source)?;
     Inferencer::new(mode).infer_module(&parsed)
 }
 
@@ -23,24 +22,18 @@ pub fn infer_module(source: &str, mode: ReplMode) -> Result<TypedModule, TypeErr
 ///
 /// # Errors
 ///
-/// Returns [`TypeError`] when parsing fails or the new snippet does not type
+/// Returns [`crate::Error`] when parsing fails or the new snippet does not type
 /// check against the existing bindings.
 pub fn infer_into_bindings(
     source: &str,
     mode: ReplMode,
     bindings: &mut BTreeMap<String, Type>,
-) -> Result<Option<(String, Type)>, TypeError> {
-    let parsed = parse_module(source).map_err(TypeError::from)?;
+) -> Result<Option<(String, Type)>, crate::Error> {
+    let parsed = parse_module(source)?;
     let mut inferencer = Inferencer::with_bindings(mode, bindings.clone());
     let last_binding = inferencer.infer_statements(&parsed.statements)?;
     *bindings = inferencer.user_bindings;
     Ok(last_binding)
-}
-
-impl From<ParseError> for TypeError {
-    fn from(error: ParseError) -> Self {
-        Self::new(error.to_string())
-    }
 }
 
 struct Inferencer {
@@ -71,7 +64,7 @@ impl Inferencer {
         }
     }
 
-    fn infer_module(mut self, module: &Module) -> Result<TypedModule, TypeError> {
+    fn infer_module(mut self, module: &Module) -> Result<TypedModule, crate::Error> {
         self.infer_statements(&module.statements)?;
         Ok(TypedModule::new(self.user_bindings))
     }
@@ -79,7 +72,7 @@ impl Inferencer {
     fn infer_statements(
         &mut self,
         statements: &[Stmt],
-    ) -> Result<Option<(String, Type)>, TypeError> {
+    ) -> Result<Option<(String, Type)>, crate::Error> {
         let mut last_binding = None;
 
         for statement in statements {
@@ -104,13 +97,13 @@ impl Inferencer {
         name: &str,
         params: &[String],
         expr: &Expr,
-    ) -> Result<Type, TypeError> {
+    ) -> Result<Type, crate::Error> {
         if params.is_empty() {
             return self.infer_expr(expr);
         }
 
         if binding_expr_self_references(name, params, expr) {
-            return Err(TypeError::new(format!(
+            return Err(crate::Error::type_err(format!(
                 "parameterized binding `{name}` cannot contain a self-reference in v1"
             )));
         }
@@ -138,7 +131,7 @@ impl Inferencer {
         result
     }
 
-    fn infer_expr(&mut self, expr: &Expr) -> Result<Type, TypeError> {
+    fn infer_expr(&mut self, expr: &Expr) -> Result<Type, crate::Error> {
         match expr {
             Expr::Seq(items) => self.infer_pattern_items(items, "sequence items"),
             Expr::Stack(layers) => self.infer_homogeneous(layers, "`stack` layers"),
@@ -185,7 +178,7 @@ impl Inferencer {
             Expr::SeqSections(items) => self.infer_homogeneous(items, "`seq_sections` items"),
             Expr::Group(items) => self.infer_pattern_items(items, "group items"),
             Expr::Ident(name) => self.infer_ident(name),
-            Expr::Rest => Err(TypeError::new(
+            Expr::Rest => Err(crate::Error::type_err(
                 "rest markers do not have a standalone type outside pattern sequences",
             )),
             Expr::Number(_) => Ok(Type::pattern(Type::Number)),
@@ -193,16 +186,16 @@ impl Inferencer {
         }
     }
 
-    fn infer_homogeneous(&mut self, items: &[Expr], context: &str) -> Result<Type, TypeError> {
+    fn infer_homogeneous(&mut self, items: &[Expr], context: &str) -> Result<Type, crate::Error> {
         let Some((first, rest)) = items.split_first() else {
-            return Err(TypeError::new(format!("{context} cannot be empty")));
+            return Err(crate::Error::type_err(format!("{context} cannot be empty")));
         };
 
         let expected = self.infer_expr(first)?;
         for item in rest {
             let actual = self.infer_expr(item)?;
             self.unify(expected.clone(), actual.clone()).map_err(|_| {
-                TypeError::new(format!(
+                crate::Error::type_err(format!(
                     "{context} must all have the same type; expected {}, found {}",
                     self.resolve(expected.clone()),
                     self.resolve(actual)
@@ -213,9 +206,9 @@ impl Inferencer {
         Ok(self.resolve(expected))
     }
 
-    fn infer_pattern_items(&mut self, items: &[Expr], context: &str) -> Result<Type, TypeError> {
+    fn infer_pattern_items(&mut self, items: &[Expr], context: &str) -> Result<Type, crate::Error> {
         if items.is_empty() {
-            return Err(TypeError::new(format!("{context} cannot be empty")));
+            return Err(crate::Error::type_err(format!("{context} cannot be empty")));
         }
 
         let mut expected: Option<Type> = None;
@@ -228,7 +221,7 @@ impl Inferencer {
             if let Some(expected_ty) = expected.clone() {
                 self.unify(expected_ty.clone(), actual.clone())
                     .map_err(|_| {
-                        TypeError::new(format!(
+                        crate::Error::type_err(format!(
                             "{context} must all have the same type; expected {}, found {}",
                             self.resolve(expected_ty),
                             self.resolve(actual)
@@ -246,26 +239,28 @@ impl Inferencer {
         }
     }
 
-    fn infer_ident(&mut self, name: &str) -> Result<Type, TypeError> {
+    fn infer_ident(&mut self, name: &str) -> Result<Type, crate::Error> {
         if let Some(scheme) = self.env.get(name).cloned() {
             return Ok(self.instantiate(&scheme));
         }
 
         match parse_named_pitch_literal(name) {
             Ok(Some(_)) => Ok(Type::pattern(Type::Number)),
-            Err(error) => Err(TypeError::new(error.to_string())),
-            Ok(None) => Err(TypeError::new(format!("unresolved identifier `{name}`"))),
+            Err(error) => Err(crate::Error::type_err(error.to_string())),
+            Ok(None) => Err(crate::Error::type_err(format!(
+                "unresolved identifier `{name}`"
+            ))),
         }
     }
 
-    fn apply_argument(&mut self, callee_ty: Type, arg_ty: Type) -> Result<Type, TypeError> {
+    fn apply_argument(&mut self, callee_ty: Type, arg_ty: Type) -> Result<Type, crate::Error> {
         let param_ty = self.fresh_var_type();
         let ret_ty = self.fresh_var_type();
         self.unify(
             callee_ty,
             Type::function(vec![param_ty.clone()], ret_ty.clone()),
         )
-        .map_err(|_| TypeError::new("attempted to call a non-function value"))?;
+        .map_err(|_| crate::Error::type_err("attempted to call a non-function value"))?;
         self.unify(param_ty, arg_ty)?;
         Ok(self.resolve(ret_ty))
     }
@@ -294,7 +289,7 @@ impl Inferencer {
         Type::Var(var)
     }
 
-    fn unify(&mut self, left: Type, right: Type) -> Result<(), TypeError> {
+    fn unify(&mut self, left: Type, right: Type) -> Result<(), crate::Error> {
         let left = self.resolve(left);
         let right = self.resolve(right);
 
@@ -304,7 +299,7 @@ impl Inferencer {
             (Type::Pattern(left), Type::Pattern(right)) => self.unify(*left, *right),
             (Type::Function(left_args, left_ret), Type::Function(right_args, right_ret)) => {
                 if left_args.len() != right_args.len() {
-                    return Err(TypeError::new("function arity mismatch"));
+                    return Err(crate::Error::type_err("function arity mismatch"));
                 }
                 for (left_arg, right_arg) in left_args.into_iter().zip(right_args) {
                     self.unify(left_arg, right_arg)?;
@@ -325,16 +320,16 @@ impl Inferencer {
                     return self.unify(coerced_left, coerced_right);
                 }
 
-                Err(TypeError::new(format!(
+                Err(crate::Error::type_err(format!(
                     "type mismatch: expected {left}, found {right}"
                 )))
             }
         }
     }
 
-    fn bind_var(&mut self, var: TypeVarId, ty: Type) -> Result<(), TypeError> {
+    fn bind_var(&mut self, var: TypeVarId, ty: Type) -> Result<(), crate::Error> {
         if self.occurs(var, &ty) {
-            return Err(TypeError::new(format!(
+            return Err(crate::Error::type_err(format!(
                 "type variable t{} occurs within {}",
                 var.0, ty
             )));

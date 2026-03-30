@@ -4,6 +4,7 @@ pub mod ascii_roll;
 mod ast;
 mod builtins;
 mod diagnostics;
+pub mod error;
 mod eval;
 pub mod export;
 mod loader;
@@ -18,11 +19,11 @@ mod value;
 
 pub use ascii_roll::render_ascii_roll;
 pub use ast::{Expr, Module, Stmt};
-pub use diagnostics::{LoadError, ParseError, TypeError};
-pub use eval::{EvalError, eval_module, render_span};
+pub use error::Error;
+pub use eval::{eval_module, render_span};
 pub use export::{
-    RenderError, export_number_pattern_to_csv, export_number_pattern_to_json,
-    export_sample_pattern_to_csv, export_sample_pattern_to_json, render_sample_pattern_to_file,
+    export_number_pattern_to_csv, export_number_pattern_to_json, export_sample_pattern_to_csv,
+    export_sample_pattern_to_json, render_sample_pattern_to_file,
     render_sample_pattern_to_file_with_bank, render_sample_pattern_to_wav,
 };
 pub use loader::load_file_strict;

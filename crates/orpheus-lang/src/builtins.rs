@@ -10,7 +10,7 @@
 
 use orpheus_pattern::{Rational, TimeSpan};
 
-use crate::eval::{EvalError, apply_function_value, f64_to_rational};
+use crate::eval::{apply_function_value, f64_to_rational};
 use crate::value::{
     ArpDirectionValue, BuiltinFn, BuiltinKind, FunctionValue, GatePatternValue, NumberPatternValue,
     PitchClassSetValue, SamplePatternValue, Value,
@@ -77,9 +77,9 @@ pub fn builtin_value(name: &str) -> Option<Value> {
     }
 }
 
-pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
+pub fn stack_values(values: Vec<Value>) -> Result<Value, crate::Error> {
     if values.is_empty() {
-        return Err(EvalError::new("`stack` requires at least one layer"));
+        return Err(crate::Error::eval("`stack` requires at least one layer"));
     }
 
     if values
@@ -120,7 +120,7 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
         ));
     }
 
-    Err(EvalError::new(
+    Err(crate::Error::eval(
         "`stack` requires all layers to be the same pattern kind",
     ))
 }
@@ -140,12 +140,15 @@ impl BuiltinFn {
         self
     }
 
-    pub(crate) fn apply(self, args: Vec<Value>) -> Result<Value, EvalError> {
+    pub(crate) fn apply(self, args: Vec<Value>) -> Result<Value, crate::Error> {
         apply_builtin_function(&self, args)
     }
 }
 
-pub fn apply_builtin_function(function: &BuiltinFn, args: Vec<Value>) -> Result<Value, EvalError> {
+pub fn apply_builtin_function(
+    function: &BuiltinFn,
+    args: Vec<Value>,
+) -> Result<Value, crate::Error> {
     let kind = function.kind;
     // PRE-ALLOCATE: avoids extra heap allocations when combining bound arguments and explicit arguments.
     let mut combined = Vec::with_capacity(function.bound_args.len() + args.len());
@@ -161,7 +164,7 @@ pub fn apply_builtin_function(function: &BuiltinFn, args: Vec<Value>) -> Result<
     }
 
     if combined.len() > kind.arity() {
-        return Err(EvalError::new(format!(
+        return Err(crate::Error::eval(format!(
             "`{}` expected {} argument(s), got {}",
             kind.name(),
             kind.arity(),
@@ -236,7 +239,7 @@ impl BuiltinKind {
         }
     }
 
-    fn execute(self, function: &BuiltinFn, args: Vec<Value>) -> Result<Value, EvalError> {
+    fn execute(self, function: &BuiltinFn, args: Vec<Value>) -> Result<Value, crate::Error> {
         match self {
             Self::Every => apply_every(args),
             Self::When => apply_when(args),
@@ -272,19 +275,19 @@ impl BuiltinKind {
     }
 }
 
-fn apply_every(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_every(args: Vec<Value>) -> Result<Value, crate::Error> {
     let mut args = args.into_iter();
     let period = extract_positive_integer_factor(
         args.next()
-            .ok_or_else(|| EvalError::new("`every` requires a cycle count argument"))?,
+            .ok_or_else(|| crate::Error::eval("`every` requires a cycle count argument"))?,
         "every",
     )?;
     let transform = args
         .next()
-        .ok_or_else(|| EvalError::new("`every` requires a transform argument"))?;
+        .ok_or_else(|| crate::Error::eval("`every` requires a transform argument"))?;
     let pattern = args
         .next()
-        .ok_or_else(|| EvalError::new("`every` requires a pattern argument"))?;
+        .ok_or_else(|| crate::Error::eval("`every` requires a pattern argument"))?;
 
     match pattern {
         Value::SamplePattern(pattern) => {
@@ -298,37 +301,37 @@ fn apply_every(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(
+        | Value::String(_) => Err(crate::Error::eval(
             "`every` expected a pattern as its final argument",
         )),
     }
 }
 
-fn apply_when(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_when(args: Vec<Value>) -> Result<Value, crate::Error> {
     let mut args = args.into_iter();
     let period = extract_positive_integer_factor(
         args.next()
-            .ok_or_else(|| EvalError::new("`when` requires a cycle period argument"))?,
+            .ok_or_else(|| crate::Error::eval("`when` requires a cycle period argument"))?,
         "when",
     )?;
     let offset = i64::from(extract_whole_number(
         args.next()
-            .ok_or_else(|| EvalError::new("`when` requires a cycle offset argument"))?,
+            .ok_or_else(|| crate::Error::eval("`when` requires a cycle offset argument"))?,
         "`when` offset",
         false,
     )?);
     if offset >= period {
-        return Err(EvalError::new(
+        return Err(crate::Error::eval(
             "`when` requires offset less than the period",
         ));
     }
 
     let transform = args
         .next()
-        .ok_or_else(|| EvalError::new("`when` requires a transform argument"))?;
+        .ok_or_else(|| crate::Error::eval("`when` requires a transform argument"))?;
     let pattern = args
         .next()
-        .ok_or_else(|| EvalError::new("`when` requires a pattern argument"))?;
+        .ok_or_else(|| crate::Error::eval("`when` requires a pattern argument"))?;
 
     match pattern {
         Value::SamplePattern(pattern) => {
@@ -346,20 +349,20 @@ fn apply_when(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(
+        | Value::String(_) => Err(crate::Error::eval(
             "`when` expected a pattern as its final argument",
         )),
     }
 }
 
-fn apply_jux(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_jux(args: Vec<Value>) -> Result<Value, crate::Error> {
     let mut args = args.into_iter();
     let transform = args
         .next()
-        .ok_or_else(|| EvalError::new("`jux` requires a transform argument"))?;
+        .ok_or_else(|| crate::Error::eval("`jux` requires a transform argument"))?;
     let pattern = args
         .next()
-        .ok_or_else(|| EvalError::new("`jux` requires a pattern argument"))?;
+        .ok_or_else(|| crate::Error::eval("`jux` requires a pattern argument"))?;
 
     match pattern {
         Value::SamplePattern(pattern_val) => {
@@ -369,7 +372,7 @@ fn apply_jux(args: Vec<Value>) -> Result<Value, EvalError> {
                 vec![Value::SamplePattern(pattern_val.clone())],
             )?;
             let Value::SamplePattern(transformed_pattern_val) = transformed_val else {
-                return Err(EvalError::new(
+                return Err(crate::Error::eval(
                     "`jux` transform must return a sample pattern",
                 ));
             };
@@ -380,24 +383,24 @@ fn apply_jux(args: Vec<Value>) -> Result<Value, EvalError> {
                 left, right,
             ])))
         }
-        Value::NumberPattern(_) => Err(EvalError::new("`jux` only applies to sample patterns")),
+        Value::NumberPattern(_) => Err(crate::Error::eval("`jux` only applies to sample patterns")),
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(
+        | Value::String(_) => Err(crate::Error::eval(
             "`jux` expected a sample pattern as its final argument",
         )),
     }
 }
 
-fn apply_sometimes(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
+fn apply_sometimes(args: Vec<Value>, site_salt: u64) -> Result<Value, crate::Error> {
     let mut args = args.into_iter();
     let transform = args
         .next()
-        .ok_or_else(|| EvalError::new("`sometimes` requires a transform argument"))?;
+        .ok_or_else(|| crate::Error::eval("`sometimes` requires a transform argument"))?;
     let pattern = args
         .next()
-        .ok_or_else(|| EvalError::new("`sometimes` requires a pattern argument"))?;
+        .ok_or_else(|| crate::Error::eval("`sometimes` requires a pattern argument"))?;
 
     match pattern {
         Value::SamplePattern(pattern) => {
@@ -415,34 +418,34 @@ fn apply_sometimes(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError>
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(
+        | Value::String(_) => Err(crate::Error::eval(
             "`sometimes` expected a pattern as its final argument",
         )),
     }
 }
 
-fn apply_within(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_within(args: Vec<Value>) -> Result<Value, crate::Error> {
     let mut args = args.into_iter();
     let start = extract_unit_interval_boundary(
         args.next()
-            .ok_or_else(|| EvalError::new("`within` requires a start argument"))?,
+            .ok_or_else(|| crate::Error::eval("`within` requires a start argument"))?,
         "start",
     )?;
     let end = extract_unit_interval_boundary(
         args.next()
-            .ok_or_else(|| EvalError::new("`within` requires an end argument"))?,
+            .ok_or_else(|| crate::Error::eval("`within` requires an end argument"))?,
         "end",
     )?;
     if start >= end {
-        return Err(EvalError::new("`within` requires start < end"));
+        return Err(crate::Error::eval("`within` requires start < end"));
     }
 
     let transform = args
         .next()
-        .ok_or_else(|| EvalError::new("`within` requires a transform argument"))?;
+        .ok_or_else(|| crate::Error::eval("`within` requires a transform argument"))?;
     let pattern = args
         .next()
-        .ok_or_else(|| EvalError::new("`within` requires a pattern argument"))?;
+        .ok_or_else(|| crate::Error::eval("`within` requires a pattern argument"))?;
 
     match pattern {
         Value::SamplePattern(pattern) => {
@@ -456,23 +459,23 @@ fn apply_within(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(
+        | Value::String(_) => Err(crate::Error::eval(
             "`within` expected a pattern as its final argument",
         )),
     }
 }
 
-fn apply_mask(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_mask(args: Vec<Value>) -> Result<Value, crate::Error> {
     let mut args = args.into_iter();
     let gate = extract_pattern_gate(
         args.next()
-            .ok_or_else(|| EvalError::new("`mask` requires a gate argument"))?,
+            .ok_or_else(|| crate::Error::eval("`mask` requires a gate argument"))?,
         "mask",
         "first",
     )?;
     let pattern = args
         .next()
-        .ok_or_else(|| EvalError::new("`mask` requires a pattern argument"))?;
+        .ok_or_else(|| crate::Error::eval("`mask` requires a pattern argument"))?;
 
     match pattern {
         Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.mask(gate))),
@@ -480,29 +483,29 @@ fn apply_mask(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(
+        | Value::String(_) => Err(crate::Error::eval(
             "`mask` expected a pattern as its final argument",
         )),
     }
 }
 
-fn apply_euclid(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_euclid(args: Vec<Value>) -> Result<Value, crate::Error> {
     let mut args = args.into_iter();
     let pulses = extract_whole_number(
         args.next()
-            .ok_or_else(|| EvalError::new("`euclid` requires a pulses argument"))?,
+            .ok_or_else(|| crate::Error::eval("`euclid` requires a pulses argument"))?,
         "`euclid` pulses",
         false,
     )?;
     let steps = extract_whole_number(
         args.next()
-            .ok_or_else(|| EvalError::new("`euclid` requires a steps argument"))?,
+            .ok_or_else(|| crate::Error::eval("`euclid` requires a steps argument"))?,
         "`euclid` steps",
         true,
     )?;
 
     if pulses > steps {
-        return Err(EvalError::new(
+        return Err(crate::Error::eval(
             "`euclid` requires pulses less than or equal to steps",
         ));
     }
@@ -512,43 +515,43 @@ fn apply_euclid(args: Vec<Value>) -> Result<Value, EvalError> {
     )))
 }
 
-fn apply_chord(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_chord(args: Vec<Value>) -> Result<Value, crate::Error> {
     let mut args = args.into_iter();
     let root = extract_number_pattern(
         args.next()
-            .ok_or_else(|| EvalError::new("`chord` requires a root pattern argument"))?,
+            .ok_or_else(|| crate::Error::eval("`chord` requires a root pattern argument"))?,
         "chord",
     )?;
     let intervals = extract_interval_set(
         args.next()
-            .ok_or_else(|| EvalError::new("`chord` requires an interval-set argument"))?,
+            .ok_or_else(|| crate::Error::eval("`chord` requires an interval-set argument"))?,
     )?;
 
     Ok(Value::NumberPattern(root.chord(intervals)))
 }
 
-fn apply_strum(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_strum(args: Vec<Value>) -> Result<Value, crate::Error> {
     let pattern = extract_number_pattern(
         args.into_iter()
             .next()
-            .ok_or_else(|| EvalError::new("`strum` requires a number pattern argument"))?,
+            .ok_or_else(|| crate::Error::eval("`strum` requires a number pattern argument"))?,
         "strum",
     )?;
 
     Ok(Value::NumberPattern(pattern.strum()))
 }
 
-fn apply_roll(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_roll(args: Vec<Value>) -> Result<Value, crate::Error> {
     let mut args = args.into_iter();
     let steps = extract_whole_number(
         args.next()
-            .ok_or_else(|| EvalError::new("`roll` requires a step-count argument"))?,
+            .ok_or_else(|| crate::Error::eval("`roll` requires a step-count argument"))?,
         "roll",
         true,
     )?;
     let pattern = args
         .next()
-        .ok_or_else(|| EvalError::new("`roll` requires a pattern argument"))?;
+        .ok_or_else(|| crate::Error::eval("`roll` requires a pattern argument"))?;
 
     match pattern {
         Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.roll(steps))),
@@ -556,66 +559,66 @@ fn apply_roll(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new("`roll` requires a pattern argument")),
+        | Value::String(_) => Err(crate::Error::eval("`roll` requires a pattern argument")),
     }
 }
 
-fn apply_arp(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_arp(args: Vec<Value>) -> Result<Value, crate::Error> {
     let mut args = args.into_iter();
     let steps = extract_whole_number(
         args.next()
-            .ok_or_else(|| EvalError::new("`arp` requires a step-count argument"))?,
+            .ok_or_else(|| crate::Error::eval("`arp` requires a step-count argument"))?,
         "arp",
         true,
     )?;
     let direction_value = args
         .next()
-        .ok_or_else(|| EvalError::new("`arp` requires a direction argument"))?;
+        .ok_or_else(|| crate::Error::eval("`arp` requires a direction argument"))?;
     let direction = extract_arp_direction(&direction_value)?;
     let pattern = extract_number_pattern(
         args.next()
-            .ok_or_else(|| EvalError::new("`arp` requires a number pattern argument"))?,
+            .ok_or_else(|| crate::Error::eval("`arp` requires a number pattern argument"))?,
         "arp",
     )?;
 
     Ok(Value::NumberPattern(pattern.arp(steps, direction)))
 }
 
-fn apply_invert(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_invert(args: Vec<Value>) -> Result<Value, crate::Error> {
     let mut args = args.into_iter();
     let count = extract_inversion_count(
         args.next()
-            .ok_or_else(|| EvalError::new("`invert` requires an inversion-count argument"))?,
+            .ok_or_else(|| crate::Error::eval("`invert` requires an inversion-count argument"))?,
     )?;
     let pattern = extract_number_pattern(
         args.next()
-            .ok_or_else(|| EvalError::new("`invert` requires a number pattern argument"))?,
+            .ok_or_else(|| crate::Error::eval("`invert` requires a number pattern argument"))?,
         "invert",
     )?;
 
     Ok(Value::NumberPattern(pattern.invert(count)))
 }
 
-fn apply_drop(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_drop(args: Vec<Value>) -> Result<Value, crate::Error> {
     let mut args = args.into_iter();
     let count = extract_drop_count(
         args.next()
-            .ok_or_else(|| EvalError::new("`drop` requires a drop-count argument"))?,
+            .ok_or_else(|| crate::Error::eval("`drop` requires a drop-count argument"))?,
     )?;
     let pattern = extract_number_pattern(
         args.next()
-            .ok_or_else(|| EvalError::new("`drop` requires a number pattern argument"))?,
+            .ok_or_else(|| crate::Error::eval("`drop` requires a number pattern argument"))?,
         "drop",
     )?;
 
     Ok(Value::NumberPattern(pattern.drop_voice(count)))
 }
 
-fn apply_pitch_class_set(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_pitch_class_set(args: Vec<Value>) -> Result<Value, crate::Error> {
     let pattern = extract_number_pattern(
         args.into_iter()
             .next()
-            .ok_or_else(|| EvalError::new("`pitch_class_set` requires a pattern argument"))?,
+            .ok_or_else(|| crate::Error::eval("`pitch_class_set` requires a pattern argument"))?,
         "pitch_class_set",
     )?;
     let pitch_classes = extract_pitch_class_values(&pattern)?;
@@ -625,15 +628,15 @@ fn apply_pitch_class_set(args: Vec<Value>) -> Result<Value, EvalError> {
     )?))
 }
 
-fn apply_degrees(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_degrees(args: Vec<Value>) -> Result<Value, crate::Error> {
     let mut args = args.into_iter();
     let collection = extract_pitch_class_set(
         args.next()
-            .ok_or_else(|| EvalError::new("`degrees` requires a pitch class set argument"))?,
+            .ok_or_else(|| crate::Error::eval("`degrees` requires a pitch class set argument"))?,
     )?;
     let pattern = extract_number_pattern(
         args.next()
-            .ok_or_else(|| EvalError::new("`degrees` requires a pattern argument"))?,
+            .ok_or_else(|| crate::Error::eval("`degrees` requires a pattern argument"))?,
         "degrees",
     )?;
     validate_degree_pattern(&pattern)?;
@@ -641,16 +644,16 @@ fn apply_degrees(args: Vec<Value>) -> Result<Value, EvalError> {
     Ok(Value::NumberPattern(pattern.degrees(collection)))
 }
 
-fn apply_fast(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_fast(args: Vec<Value>) -> Result<Value, crate::Error> {
     let mut args = args.into_iter();
     let factor = extract_positive_integer_factor(
         args.next()
-            .ok_or_else(|| EvalError::new("`fast` requires a factor argument"))?,
+            .ok_or_else(|| crate::Error::eval("`fast` requires a factor argument"))?,
         "fast",
     )?;
     let pattern = args
         .next()
-        .ok_or_else(|| EvalError::new("`fast` requires a pattern argument"))?;
+        .ok_or_else(|| crate::Error::eval("`fast` requires a pattern argument"))?;
 
     match pattern {
         Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.fast(factor))),
@@ -658,22 +661,22 @@ fn apply_fast(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(
+        | Value::String(_) => Err(crate::Error::eval(
             "`fast` expected a pattern as its final argument",
         )),
     }
 }
 
-fn apply_slow(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_slow(args: Vec<Value>) -> Result<Value, crate::Error> {
     let mut args = args.into_iter();
     let factor = extract_positive_integer_factor(
         args.next()
-            .ok_or_else(|| EvalError::new("`slow` requires a factor argument"))?,
+            .ok_or_else(|| crate::Error::eval("`slow` requires a factor argument"))?,
         "slow",
     )?;
     let pattern = args
         .next()
-        .ok_or_else(|| EvalError::new("`slow` requires a pattern argument"))?;
+        .ok_or_else(|| crate::Error::eval("`slow` requires a pattern argument"))?;
 
     match pattern {
         Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.slow(factor))),
@@ -681,22 +684,22 @@ fn apply_slow(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(
+        | Value::String(_) => Err(crate::Error::eval(
             "`slow` expected a pattern as its final argument",
         )),
     }
 }
 
-fn apply_shift(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_shift(args: Vec<Value>) -> Result<Value, crate::Error> {
     let mut args = args.into_iter();
     let offset = extract_constant_rational_offset(
         args.next()
-            .ok_or_else(|| EvalError::new("`shift` requires an offset argument"))?,
+            .ok_or_else(|| crate::Error::eval("`shift` requires an offset argument"))?,
         "shift",
     )?;
     let pattern = args
         .next()
-        .ok_or_else(|| EvalError::new("`shift` requires a pattern argument"))?;
+        .ok_or_else(|| crate::Error::eval("`shift` requires a pattern argument"))?;
 
     match pattern {
         Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.shift(offset))),
@@ -704,17 +707,17 @@ fn apply_shift(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(
+        | Value::String(_) => Err(crate::Error::eval(
             "`shift` expected a pattern as its final argument",
         )),
     }
 }
 
-fn apply_rev(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_rev(args: Vec<Value>) -> Result<Value, crate::Error> {
     let pattern = args
         .into_iter()
         .next()
-        .ok_or_else(|| EvalError::new("`rev` requires a pattern argument"))?;
+        .ok_or_else(|| crate::Error::eval("`rev` requires a pattern argument"))?;
 
     match pattern {
         Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.rev())),
@@ -722,11 +725,11 @@ fn apply_rev(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new("`rev` expected a pattern argument")),
+        | Value::String(_) => Err(crate::Error::eval("`rev` expected a pattern argument")),
     }
 }
 
-fn apply_gain(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_gain(args: Vec<Value>) -> Result<Value, crate::Error> {
     apply_sample_numeric_control(
         args,
         "gain",
@@ -737,7 +740,7 @@ fn apply_gain(args: Vec<Value>) -> Result<Value, EvalError> {
     )
 }
 
-fn apply_hpf(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_hpf(args: Vec<Value>) -> Result<Value, crate::Error> {
     apply_sample_numeric_control(
         args,
         "hpf",
@@ -748,7 +751,7 @@ fn apply_hpf(args: Vec<Value>) -> Result<Value, EvalError> {
     )
 }
 
-fn apply_lpf(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_lpf(args: Vec<Value>) -> Result<Value, crate::Error> {
     apply_sample_numeric_control(
         args,
         "lpf",
@@ -759,7 +762,7 @@ fn apply_lpf(args: Vec<Value>) -> Result<Value, EvalError> {
     )
 }
 
-fn apply_pan(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_pan(args: Vec<Value>) -> Result<Value, crate::Error> {
     apply_sample_numeric_control(
         args,
         "pan",
@@ -770,7 +773,7 @@ fn apply_pan(args: Vec<Value>) -> Result<Value, EvalError> {
     )
 }
 
-fn apply_pitch(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_pitch(args: Vec<Value>) -> Result<Value, crate::Error> {
     apply_sample_numeric_control(
         args,
         "pitch",
@@ -781,15 +784,15 @@ fn apply_pitch(args: Vec<Value>) -> Result<Value, EvalError> {
     )
 }
 
-fn apply_transpose(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_transpose(args: Vec<Value>) -> Result<Value, crate::Error> {
     let mut args = args.into_iter();
     let control = extract_transpose_control(
         args.next()
-            .ok_or_else(|| EvalError::new("`transpose` requires a semitone argument"))?,
+            .ok_or_else(|| crate::Error::eval("`transpose` requires a semitone argument"))?,
     )?;
     let pattern = extract_number_pattern(
         args.next()
-            .ok_or_else(|| EvalError::new("`transpose` requires a pattern argument"))?,
+            .ok_or_else(|| crate::Error::eval("`transpose` requires a pattern argument"))?,
         "transpose",
     )?;
 
@@ -799,17 +802,17 @@ fn apply_transpose(args: Vec<Value>) -> Result<Value, EvalError> {
     }))
 }
 
-fn apply_sample(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_sample(args: Vec<Value>) -> Result<Value, crate::Error> {
     let token = extract_string(
         args.into_iter()
             .next()
-            .ok_or_else(|| EvalError::new("`sample` requires a token argument"))?,
+            .ok_or_else(|| crate::Error::eval("`sample` requires a token argument"))?,
         "sample",
     )?;
     Ok(Value::SamplePattern(SamplePatternValue::atom(&token)))
 }
 
-fn apply_rate(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_rate(args: Vec<Value>) -> Result<Value, crate::Error> {
     apply_sample_numeric_control(
         args,
         "rate",
@@ -820,27 +823,27 @@ fn apply_rate(args: Vec<Value>) -> Result<Value, EvalError> {
     )
 }
 
-fn apply_slice(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_slice(args: Vec<Value>) -> Result<Value, crate::Error> {
     let mut args = args.into_iter();
     let start = extract_slice_endpoint_control(
         args.next()
-            .ok_or_else(|| EvalError::new("`slice` requires a start argument"))?,
+            .ok_or_else(|| crate::Error::eval("`slice` requires a start argument"))?,
         "slice start",
     )?;
     let end = extract_slice_endpoint_control(
         args.next()
-            .ok_or_else(|| EvalError::new("`slice` requires an end argument"))?,
+            .ok_or_else(|| crate::Error::eval("`slice` requires an end argument"))?,
         "slice end",
     )?;
     let pattern = args
         .next()
-        .ok_or_else(|| EvalError::new("`slice` requires a pattern argument"))?;
+        .ok_or_else(|| crate::Error::eval("`slice` requires a pattern argument"))?;
 
     match pattern {
         Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match (start, end) {
             (NumericControl::Constant(start), NumericControl::Constant(end)) => {
                 if start >= end {
-                    return Err(EvalError::new("`slice` requires start < end"));
+                    return Err(crate::Error::eval("`slice` requires start < end"));
                 }
                 pattern.slice(start, end)
             }
@@ -851,36 +854,38 @@ fn apply_slice(args: Vec<Value>) -> Result<Value, EvalError> {
                 pattern.slice_pattern(start_pattern, end_pattern)
             }
         })),
-        Value::NumberPattern(_) => Err(EvalError::new("`slice` only applies to sample patterns")),
+        Value::NumberPattern(_) => Err(crate::Error::eval(
+            "`slice` only applies to sample patterns",
+        )),
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(
+        | Value::String(_) => Err(crate::Error::eval(
             "`slice` expected a sample pattern as its final argument",
         )),
     }
 }
 
 #[allow(clippy::unnecessary_wraps)]
-fn apply_rand(_args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
+fn apply_rand(_args: Vec<Value>, site_salt: u64) -> Result<Value, crate::Error> {
     Ok(Value::NumberPattern(NumberPatternValue::rand(site_salt)))
 }
 
-fn apply_slice_idx(args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_slice_idx(args: Vec<Value>) -> Result<Value, crate::Error> {
     let mut args = args.into_iter();
     let index_arg = args
         .next()
-        .ok_or_else(|| EvalError::new("`slice_idx` requires an index argument"))?;
+        .ok_or_else(|| crate::Error::eval("`slice_idx` requires an index argument"))?;
     let segments = extract_whole_number(
         args.next()
-            .ok_or_else(|| EvalError::new("`slice_idx` requires a segment count argument"))?,
+            .ok_or_else(|| crate::Error::eval("`slice_idx` requires a segment count argument"))?,
         "slice_idx segments",
         true,
     )?;
     let index = extract_slice_idx_control(index_arg, segments)?;
     let pattern = args
         .next()
-        .ok_or_else(|| EvalError::new("`slice_idx` requires a pattern argument"))?;
+        .ok_or_else(|| crate::Error::eval("`slice_idx` requires a pattern argument"))?;
 
     match pattern {
         Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match index {
@@ -890,13 +895,13 @@ fn apply_slice_idx(args: Vec<Value>) -> Result<Value, EvalError> {
             }
             SliceIndexControl::Pattern(control) => pattern.slice_idx_pattern(control, segments),
         })),
-        Value::NumberPattern(_) => Err(EvalError::new(
+        Value::NumberPattern(_) => Err(crate::Error::eval(
             "`slice_idx` only applies to sample patterns",
         )),
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(
+        | Value::String(_) => Err(crate::Error::eval(
             "`slice_idx` expected a sample pattern as its final argument",
         )),
     }
@@ -906,24 +911,24 @@ fn apply_sample_numeric_control(
     args: Vec<Value>,
     builtin_name: &str,
     arg_name: &str,
-    extract_control: impl FnOnce(Value) -> Result<NumericControl, EvalError>,
+    extract_control: impl FnOnce(Value) -> Result<NumericControl, crate::Error>,
     apply_constant: impl FnOnce(SamplePatternValue, f64) -> SamplePatternValue,
     apply_pattern: impl FnOnce(SamplePatternValue, NumberPatternValue) -> SamplePatternValue,
-) -> Result<Value, EvalError> {
+) -> Result<Value, crate::Error> {
     let mut args = args.into_iter();
     let control_val = extract_control(args.next().ok_or_else(|| {
-        EvalError::new(format!("`{builtin_name}` requires a {arg_name} argument"))
+        crate::Error::eval(format!("`{builtin_name}` requires a {arg_name} argument"))
     })?)?;
-    let pattern = args
-        .next()
-        .ok_or_else(|| EvalError::new(format!("`{builtin_name}` requires a pattern argument")))?;
+    let pattern = args.next().ok_or_else(|| {
+        crate::Error::eval(format!("`{builtin_name}` requires a pattern argument"))
+    })?;
 
     match pattern {
         Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match control_val {
             NumericControl::Constant(val) => apply_constant(pattern, val),
             NumericControl::Pattern(control) => apply_pattern(pattern, control),
         })),
-        Value::NumberPattern(_) => Err(EvalError::new(if builtin_name == "gain" {
+        Value::NumberPattern(_) => Err(crate::Error::eval(if builtin_name == "gain" {
             format!("`{builtin_name}` only applies to sample patterns in Task 5")
         } else {
             format!("`{builtin_name}` only applies to sample patterns")
@@ -931,29 +936,29 @@ fn apply_sample_numeric_control(
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(format!(
+        | Value::String(_) => Err(crate::Error::eval(format!(
             "`{builtin_name}` expected a sample pattern as its final argument"
         ))),
     }
 }
 
-fn extract_positive_integer_factor(value: Value, builtin_name: &str) -> Result<i64, EvalError> {
+fn extract_positive_integer_factor(value: Value, builtin_name: &str) -> Result<i64, crate::Error> {
     let number = extract_constant_number(value, builtin_name)?;
 
     if !number.is_finite() || number <= 0.0 || number.fract().abs() > f64::EPSILON {
-        return Err(EvalError::new(format!(
+        return Err(crate::Error::eval(format!(
             "`{builtin_name}` requires a positive integer factor"
         )));
     }
 
     let integer = format!("{number:.0}").parse::<i64>().map_err(|_| {
-        EvalError::new(format!(
+        crate::Error::eval(format!(
             "`{builtin_name}` factor exceeded the supported evaluator range"
         ))
     })?;
 
     if integer > 1024 {
-        return Err(EvalError::new(format!(
+        return Err(crate::Error::eval(format!(
             "`{builtin_name}` factor exceeded the maximum allowed bound of 1024"
         )));
     }
@@ -964,7 +969,7 @@ fn extract_positive_integer_factor(value: Value, builtin_name: &str) -> Result<i
 fn extract_constant_rational_offset(
     value: Value,
     builtin_name: &str,
-) -> Result<Rational, EvalError> {
+) -> Result<Rational, crate::Error> {
     let number = extract_constant_number(value, builtin_name)?;
     f64_to_rational(number, &format!("`{builtin_name}` offset"))
 }
@@ -973,7 +978,7 @@ fn extract_unary_pattern_transform(
     transform: Value,
     builtin_name: &str,
     argument_position: &str,
-) -> Result<FunctionValue, EvalError> {
+) -> Result<FunctionValue, crate::Error> {
     let message = format!(
         "`{builtin_name}` requires a unary pattern transform as its {argument_position} argument"
     );
@@ -983,21 +988,21 @@ fn extract_unary_pattern_transform(
             if remaining == 1 {
                 Ok(FunctionValue::Builtin(function))
             } else {
-                Err(EvalError::new(message))
+                Err(crate::Error::eval(message))
             }
         }
         Value::Function(FunctionValue::User(function)) => {
             if function.remaining_params.len() == 1 {
                 Ok(FunctionValue::User(function))
             } else {
-                Err(EvalError::new(message))
+                Err(crate::Error::eval(message))
             }
         }
         Value::SamplePattern(_)
         | Value::NumberPattern(_)
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
-        | Value::String(_) => Err(EvalError::new(message)),
+        | Value::String(_) => Err(crate::Error::eval(message)),
     }
 }
 
@@ -1005,7 +1010,7 @@ fn extract_pattern_gate(
     gate: Value,
     builtin_name: &str,
     argument_position: &str,
-) -> Result<GatePatternValue, EvalError> {
+) -> Result<GatePatternValue, crate::Error> {
     let message =
         format!("`{builtin_name}` requires a pattern gate as its {argument_position} argument");
     match gate {
@@ -1014,7 +1019,7 @@ fn extract_pattern_gate(
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(message)),
+        | Value::String(_) => Err(crate::Error::eval(message)),
     }
 }
 
@@ -1095,11 +1100,11 @@ fn build_euclid_level(
     }
 }
 
-fn extract_unit_interval_boundary(value: Value, label: &str) -> Result<Rational, EvalError> {
+fn extract_unit_interval_boundary(value: Value, label: &str) -> Result<Rational, crate::Error> {
     let rendered = extract_constant_number(value, "within")?;
     let rational = f64_to_rational(rendered, &format!("`within` {label}"))?;
     if rational < Rational::zero() || rational > Rational::one() {
-        return Err(EvalError::new(format!(
+        return Err(crate::Error::eval(format!(
             "`within` requires {label} within [0, 1]"
         )));
     }
@@ -1110,7 +1115,7 @@ fn extract_whole_number(
     value: Value,
     context: &str,
     positive_only: bool,
-) -> Result<u32, EvalError> {
+) -> Result<u32, crate::Error> {
     let number = extract_constant_number(value, context)?;
     let valid = number.is_finite()
         && number >= 0.0
@@ -1123,19 +1128,19 @@ fn extract_whole_number(
         } else {
             "a whole number"
         };
-        return Err(EvalError::new(format!(
+        return Err(crate::Error::eval(format!(
             "`{context}` requires {requirement}"
         )));
     }
 
     let integer = format!("{number:.0}").parse::<u32>().map_err(|_| {
-        EvalError::new(format!(
+        crate::Error::eval(format!(
             "`{context}` exceeded the supported evaluator range"
         ))
     })?;
 
     if integer > 1024 {
-        return Err(EvalError::new(format!(
+        return Err(crate::Error::eval(format!(
             "`{context}` exceeded the maximum allowed bound of 1024"
         )));
     }
@@ -1153,11 +1158,11 @@ enum SliceIndexControl {
     Pattern(NumberPatternValue),
 }
 
-fn extract_gain_control(value: Value) -> Result<NumericControl, EvalError> {
+fn extract_gain_control(value: Value) -> Result<NumericControl, crate::Error> {
     let pattern = extract_number_pattern(value, "gain")?;
     if let Ok(gain) = pattern.constant_value() {
         if !gain.is_finite() {
-            return Err(EvalError::new("`gain` requires a finite numeric value"));
+            return Err(crate::Error::eval("`gain` requires a finite numeric value"));
         }
         return Ok(NumericControl::Constant(gain));
     }
@@ -1166,7 +1171,7 @@ fn extract_gain_control(value: Value) -> Result<NumericControl, EvalError> {
         if value.is_finite() {
             Ok(())
         } else {
-            Err(EvalError::new(
+            Err(crate::Error::eval(
                 "`gain` requires finite numeric control values",
             ))
         }
@@ -1175,11 +1180,11 @@ fn extract_gain_control(value: Value) -> Result<NumericControl, EvalError> {
     Ok(NumericControl::Pattern(pattern))
 }
 
-fn extract_pan_control(value: Value) -> Result<NumericControl, EvalError> {
+fn extract_pan_control(value: Value) -> Result<NumericControl, crate::Error> {
     let pattern = extract_number_pattern(value, "pan")?;
     if let Ok(pan) = pattern.constant_value() {
         if !pan.is_finite() || !(-1.0..=1.0).contains(&pan) {
-            return Err(EvalError::new(
+            return Err(crate::Error::eval(
                 "`pan` requires a finite number within [-1, 1]",
             ));
         }
@@ -1190,7 +1195,7 @@ fn extract_pan_control(value: Value) -> Result<NumericControl, EvalError> {
         if value.is_finite() && (-1.0..=1.0).contains(&value) {
             Ok(())
         } else {
-            Err(EvalError::new(
+            Err(crate::Error::eval(
                 "`pan` requires finite control values within [-1, 1]",
             ))
         }
@@ -1202,11 +1207,11 @@ fn extract_pan_control(value: Value) -> Result<NumericControl, EvalError> {
 fn extract_filter_cutoff_control(
     value: Value,
     builtin_name: &str,
-) -> Result<NumericControl, EvalError> {
+) -> Result<NumericControl, crate::Error> {
     let pattern = extract_number_pattern(value, builtin_name)?;
     if let Ok(cutoff_hz) = pattern.constant_value() {
         if !cutoff_hz.is_finite() || cutoff_hz <= f64::EPSILON {
-            return Err(EvalError::new(format!(
+            return Err(crate::Error::eval(format!(
                 "`{builtin_name}` requires a positive finite numeric value"
             )));
         }
@@ -1217,7 +1222,7 @@ fn extract_filter_cutoff_control(
         if value.is_finite() && value > f64::EPSILON {
             Ok(())
         } else {
-            Err(EvalError::new(format!(
+            Err(crate::Error::eval(format!(
                 "`{builtin_name}` requires positive finite control values"
             )))
         }
@@ -1226,11 +1231,11 @@ fn extract_filter_cutoff_control(
     Ok(NumericControl::Pattern(pattern))
 }
 
-fn extract_rate_control(value: Value) -> Result<NumericControl, EvalError> {
+fn extract_rate_control(value: Value) -> Result<NumericControl, crate::Error> {
     let pattern = extract_number_pattern(value, "rate")?;
     if let Ok(rate) = pattern.constant_value() {
         if !rate.is_finite() || rate.abs() <= f64::EPSILON {
-            return Err(EvalError::new(
+            return Err(crate::Error::eval(
                 "`rate` requires a finite non-zero numeric value",
             ));
         }
@@ -1241,7 +1246,7 @@ fn extract_rate_control(value: Value) -> Result<NumericControl, EvalError> {
         if value.is_finite() && value.abs() > f64::EPSILON {
             Ok(())
         } else {
-            Err(EvalError::new(
+            Err(crate::Error::eval(
                 "`rate` requires finite non-zero control values",
             ))
         }
@@ -1253,11 +1258,11 @@ fn extract_rate_control(value: Value) -> Result<NumericControl, EvalError> {
 fn extract_slice_endpoint_control(
     value: Value,
     context: &str,
-) -> Result<NumericControl, EvalError> {
+) -> Result<NumericControl, crate::Error> {
     let pattern = extract_number_pattern(value, context)?;
     if let Ok(number) = pattern.constant_value() {
         if !number.is_finite() || !(0.0..=1.0).contains(&number) {
-            return Err(EvalError::new(format!(
+            return Err(crate::Error::eval(format!(
                 "`{context}` must be within the closed interval [0, 1]"
             )));
         }
@@ -1268,7 +1273,7 @@ fn extract_slice_endpoint_control(
         if value.is_finite() && (0.0..=1.0).contains(&value) {
             Ok(())
         } else {
-            Err(EvalError::new(format!(
+            Err(crate::Error::eval(format!(
                 "`{context}` requires finite control values within [0, 1]"
             )))
         }
@@ -1277,22 +1282,22 @@ fn extract_slice_endpoint_control(
     Ok(NumericControl::Pattern(pattern))
 }
 
-fn extract_pitch_control(value: Value) -> Result<NumericControl, EvalError> {
+fn extract_pitch_control(value: Value) -> Result<NumericControl, crate::Error> {
     extract_finite_numeric_control(value, "pitch")
 }
 
-fn extract_transpose_control(value: Value) -> Result<NumericControl, EvalError> {
+fn extract_transpose_control(value: Value) -> Result<NumericControl, crate::Error> {
     extract_finite_numeric_control(value, "transpose")
 }
 
 fn extract_finite_numeric_control(
     value: Value,
     builtin_name: &str,
-) -> Result<NumericControl, EvalError> {
+) -> Result<NumericControl, crate::Error> {
     let pattern = extract_number_pattern(value, builtin_name)?;
     if let Ok(semitones) = pattern.constant_value() {
         if !semitones.is_finite() {
-            return Err(EvalError::new(format!(
+            return Err(crate::Error::eval(format!(
                 "`{builtin_name}` requires a finite numeric value"
             )));
         }
@@ -1303,7 +1308,7 @@ fn extract_finite_numeric_control(
         if value.is_finite() {
             Ok(())
         } else {
-            Err(EvalError::new(format!(
+            Err(crate::Error::eval(format!(
                 "`{builtin_name}` requires finite numeric control values"
             )))
         }
@@ -1312,11 +1317,11 @@ fn extract_finite_numeric_control(
     Ok(NumericControl::Pattern(pattern))
 }
 
-fn validate_degree_pattern(pattern: &NumberPatternValue) -> Result<(), EvalError> {
+fn validate_degree_pattern(pattern: &NumberPatternValue) -> Result<(), crate::Error> {
     let events = pattern.try_query(&TimeSpan::unit())?;
     for event in events {
         if !event.value.is_finite() || event.value.fract().abs() > f64::EPSILON {
-            return Err(EvalError::new(
+            return Err(crate::Error::eval(
                 "`degrees` requires whole-number degree values",
             ));
         }
@@ -1324,7 +1329,7 @@ fn validate_degree_pattern(pattern: &NumberPatternValue) -> Result<(), EvalError
     Ok(())
 }
 
-fn extract_pitch_class_values(pattern: &NumberPatternValue) -> Result<Vec<i32>, EvalError> {
+fn extract_pitch_class_values(pattern: &NumberPatternValue) -> Result<Vec<i32>, crate::Error> {
     let events = pattern.try_query(&TimeSpan::unit())?;
     let mut pitch_classes = Vec::with_capacity(events.len());
     for event in events {
@@ -1333,13 +1338,13 @@ fn extract_pitch_class_values(pattern: &NumberPatternValue) -> Result<Vec<i32>, 
     Ok(pitch_classes)
 }
 
-fn extract_interval_set(value: Value) -> Result<Vec<f64>, EvalError> {
+fn extract_interval_set(value: Value) -> Result<Vec<f64>, crate::Error> {
     let pattern = extract_number_pattern(value, "chord")?;
     let events = pattern.try_query(&TimeSpan::unit())?;
     let mut intervals = Vec::with_capacity(events.len());
     for event in events {
         if !event.value.is_finite() {
-            return Err(EvalError::new(
+            return Err(crate::Error::eval(
                 "`chord` requires finite numeric interval values",
             ));
         }
@@ -1348,44 +1353,47 @@ fn extract_interval_set(value: Value) -> Result<Vec<f64>, EvalError> {
     Ok(intervals)
 }
 
-fn extract_inversion_count(value: Value) -> Result<u32, EvalError> {
+fn extract_inversion_count(value: Value) -> Result<u32, crate::Error> {
     let number = extract_constant_number(value, "invert")?;
     if !number.is_finite() {
-        return Err(EvalError::new(
+        return Err(crate::Error::eval(
             "`invert` requires a finite non-negative whole number",
         ));
     }
     if number < 0.0 {
-        return Err(EvalError::new(
+        return Err(crate::Error::eval(
             "`invert` requires a non-negative whole number",
         ));
     }
     if number.fract().abs() > f64::EPSILON {
-        return Err(EvalError::new("`invert` requires a whole number"));
+        return Err(crate::Error::eval("`invert` requires a whole number"));
     }
 
     format!("{number:.0}")
         .parse::<u32>()
-        .map_err(|_| EvalError::new("`invert` exceeded the supported evaluator range"))
+        .map_err(|_| crate::Error::eval("`invert` exceeded the supported evaluator range"))
 }
 
-fn extract_drop_count(value: Value) -> Result<u32, EvalError> {
+fn extract_drop_count(value: Value) -> Result<u32, crate::Error> {
     extract_whole_number(value, "drop", true)
 }
 
-fn whole_number_from_pitch_class_value(value: f64) -> Result<i32, EvalError> {
+fn whole_number_from_pitch_class_value(value: f64) -> Result<i32, crate::Error> {
     if !value.is_finite() || value.fract().abs() > f64::EPSILON {
-        return Err(EvalError::new(
+        return Err(crate::Error::eval(
             "`pitch_class_set` requires whole number pitch classes",
         ));
     }
 
     format!("{value:.0}")
         .parse::<i32>()
-        .map_err(|_| EvalError::new("`pitch_class_set` exceeded the supported evaluator range"))
+        .map_err(|_| crate::Error::eval("`pitch_class_set` exceeded the supported evaluator range"))
 }
 
-fn extract_slice_idx_control(value: Value, segments: u32) -> Result<SliceIndexControl, EvalError> {
+fn extract_slice_idx_control(
+    value: Value,
+    segments: u32,
+) -> Result<SliceIndexControl, crate::Error> {
     let pattern = extract_number_pattern(value, "slice_idx")?;
     if let Ok(index) = pattern.constant_value() {
         return Ok(SliceIndexControl::Constant(validate_slice_idx_constant(
@@ -1404,9 +1412,9 @@ fn validate_numeric_control_pattern<F>(
     pattern: &NumberPatternValue,
     builtin_name: &str,
     validate: F,
-) -> Result<(), EvalError>
+) -> Result<(), crate::Error>
 where
-    F: Fn(f64) -> Result<(), EvalError>,
+    F: Fn(f64) -> Result<(), crate::Error>,
 {
     let events = pattern.try_query(&orpheus_pattern::TimeSpan::unit())?;
     if events.is_empty() {
@@ -1414,7 +1422,7 @@ where
     }
     for event in events {
         validate(event.value).map_err(|error| {
-            EvalError::new(format!(
+            crate::Error::eval(format!(
                 "`{builtin_name}` control pattern is invalid: {error}"
             ))
         })?;
@@ -1422,29 +1430,31 @@ where
     Ok(())
 }
 
-fn validate_slice_idx_constant(value: f64, segments: u32) -> Result<u32, EvalError> {
+fn validate_slice_idx_constant(value: f64, segments: u32) -> Result<u32, crate::Error> {
     if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
-        return Err(EvalError::new("`slice_idx index` requires a whole number"));
+        return Err(crate::Error::eval(
+            "`slice_idx index` requires a whole number",
+        ));
     }
 
-    let index = format!("{value:.0}")
-        .parse::<u32>()
-        .map_err(|_| EvalError::new("`slice_idx index` exceeded the supported evaluator range"))?;
+    let index = format!("{value:.0}").parse::<u32>().map_err(|_| {
+        crate::Error::eval("`slice_idx index` exceeded the supported evaluator range")
+    })?;
     if index >= segments {
-        return Err(EvalError::new("`slice_idx` requires index < segments"));
+        return Err(crate::Error::eval("`slice_idx` requires index < segments"));
     }
 
     Ok(index)
 }
 
-fn validate_slice_idx_control_value(value: f64, segments: u32) -> Result<(), EvalError> {
+fn validate_slice_idx_control_value(value: f64, segments: u32) -> Result<(), crate::Error> {
     if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
-        return Err(EvalError::new(
+        return Err(crate::Error::eval(
             "`slice_idx` requires whole-number control values",
         ));
     }
     if value >= f64::from(segments) {
-        return Err(EvalError::new(
+        return Err(crate::Error::eval(
             "`slice_idx` requires control values with index < segments",
         ));
     }
@@ -1452,10 +1462,10 @@ fn validate_slice_idx_control_value(value: f64, segments: u32) -> Result<(), Eva
     Ok(())
 }
 
-fn slice_idx_bounds(index: u32, segments: u32) -> Result<(f64, f64), EvalError> {
+fn slice_idx_bounds(index: u32, segments: u32) -> Result<(f64, f64), crate::Error> {
     let start = f64::from(index) / f64::from(segments);
     let end = f64::from(index.checked_add(1).ok_or_else(|| {
-        EvalError::new("`slice_idx index` exceeded the supported evaluator range")
+        crate::Error::eval("`slice_idx index` exceeded the supported evaluator range")
     })?) / f64::from(segments);
 
     Ok((start, end))
@@ -1471,7 +1481,7 @@ fn numeric_control_to_pattern(control: NumericControl) -> NumberPatternValue {
 fn validate_slice_control_patterns(
     start_pattern: &NumberPatternValue,
     end_pattern: &NumberPatternValue,
-) -> Result<(), EvalError> {
+) -> Result<(), crate::Error> {
     let unit = TimeSpan::unit();
     let start_events = start_pattern.try_query(&unit)?;
     let end_events = end_pattern.try_query(&unit)?;
@@ -1539,7 +1549,7 @@ fn validate_slice_control_patterns(
         }
 
         if current_start >= current_end {
-            return Err(EvalError::new(
+            return Err(crate::Error::eval(
                 "`slice` requires control values with start < end",
             ));
         }
@@ -1558,31 +1568,31 @@ fn control_spans_overlap(a: &TimeSpan, b: &TimeSpan) -> bool {
     start < end
 }
 
-fn build_control_span(start: Rational, end: Rational) -> Result<TimeSpan, EvalError> {
+fn build_control_span(start: Rational, end: Rational) -> Result<TimeSpan, crate::Error> {
     TimeSpan::new(start, end)
-        .map_err(|error| EvalError::new(format!("slice control span became invalid: {error}")))
+        .map_err(|error| crate::Error::eval(format!("slice control span became invalid: {error}")))
 }
 
 fn extract_number_pattern(
     value: Value,
     builtin_name: &str,
-) -> Result<NumberPatternValue, EvalError> {
+) -> Result<NumberPatternValue, crate::Error> {
     match value {
         Value::NumberPattern(pattern) => Ok(pattern),
         Value::SamplePattern(_)
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(format!(
+        | Value::String(_) => Err(crate::Error::eval(format!(
             "`{builtin_name}` requires a number pattern argument"
         ))),
     }
 }
 
-fn extract_constant_number(value: Value, builtin_name: &str) -> Result<f64, EvalError> {
+fn extract_constant_number(value: Value, builtin_name: &str) -> Result<f64, crate::Error> {
     match value {
         Value::NumberPattern(pattern) => pattern.constant_value().map_err(|_| {
-            EvalError::new(format!(
+            crate::Error::eval(format!(
                 "`{builtin_name}` requires a constant number argument"
             ))
         }),
@@ -1590,48 +1600,48 @@ fn extract_constant_number(value: Value, builtin_name: &str) -> Result<f64, Eval
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(format!(
+        | Value::String(_) => Err(crate::Error::eval(format!(
             "`{builtin_name}` requires a constant number argument"
         ))),
     }
 }
 
-fn extract_string(value: Value, builtin_name: &str) -> Result<String, EvalError> {
+fn extract_string(value: Value, builtin_name: &str) -> Result<String, crate::Error> {
     match value {
         Value::String(string) => Ok(string),
         Value::SamplePattern(_)
         | Value::NumberPattern(_)
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
-        | Value::Function(_) => Err(EvalError::new(format!(
+        | Value::Function(_) => Err(crate::Error::eval(format!(
             "`{builtin_name}` requires a string argument"
         ))),
     }
 }
 
-fn extract_arp_direction(value: &Value) -> Result<ArpDirectionValue, EvalError> {
+fn extract_arp_direction(value: &Value) -> Result<ArpDirectionValue, crate::Error> {
     match value {
         Value::ArpDirection(direction) => Ok(*direction),
         Value::SamplePattern(_)
         | Value::NumberPattern(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(
+        | Value::String(_) => Err(crate::Error::eval(
             "`arp` requires a direction argument like `up` or `down`",
         )),
     }
 }
 
-fn extract_pitch_class_set(value: Value) -> Result<PitchClassSetValue, EvalError> {
+fn extract_pitch_class_set(value: Value) -> Result<PitchClassSetValue, crate::Error> {
     match value {
         Value::PitchClassSet(pitch_class_set) => Ok(pitch_class_set),
-        Value::String(name) => Err(EvalError::new(format!(
+        Value::String(name) => Err(crate::Error::eval(format!(
             "`degrees` now requires a pitch class set value, not a string; use `degrees({name}, ...)` for canonical builtins or `pitch_class_set(...)` for user-defined sets"
         ))),
         Value::SamplePattern(_)
         | Value::NumberPattern(_)
         | Value::ArpDirection(_)
-        | Value::Function(_) => Err(EvalError::new(
+        | Value::Function(_) => Err(crate::Error::eval(
             "`degrees` requires a pitch class set as its first argument",
         )),
     }

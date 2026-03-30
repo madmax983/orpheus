@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use std::io::Write;
 use std::path::Path;
 
-use crate::eval::{EvalError, render_span};
+use crate::eval::render_span;
 use crate::value::SamplePatternValue;
 
 /// Exports a sample pattern's evaluated events to an SVG file representing a piano roll.
@@ -19,14 +19,14 @@ use crate::value::SamplePatternValue;
 ///
 /// # Errors
 ///
-/// Returns [`EvalError`] if pattern querying fails or if the file cannot be written.
+/// Returns [`crate::Error`] if pattern querying fails or if the file cannot be written.
 pub fn export_sample_pattern_to_svg(
     pattern: &SamplePatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,
-) -> Result<(), EvalError> {
+) -> Result<(), crate::Error> {
     if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
+        return Err(crate::Error::eval("exporting requires at least one cycle"));
     }
 
     let span = render_span(cycle_count)?;

@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
-use crate::eval::{EvalError, render_span};
+use crate::eval::render_span;
 use crate::value::SamplePatternValue;
 
 /// Renders a sample pattern's evaluated events to an ASCII piano roll string.
@@ -15,17 +15,19 @@ use crate::value::SamplePatternValue;
 ///
 /// # Errors
 ///
-/// Returns [`EvalError`] if pattern querying fails or if `cycle_count` is 0.
+/// Returns [`crate::Error`] if pattern querying fails or if `cycle_count` is 0.
 pub fn render_ascii_roll(
     pattern: &SamplePatternValue,
     cycle_count: u64,
     steps_per_cycle: u32,
-) -> Result<String, EvalError> {
+) -> Result<String, crate::Error> {
     if cycle_count == 0 {
-        return Err(EvalError::new("rendering requires at least one cycle"));
+        return Err(crate::Error::eval("rendering requires at least one cycle"));
     }
     if steps_per_cycle == 0 {
-        return Err(EvalError::new("steps_per_cycle must be greater than zero"));
+        return Err(crate::Error::eval(
+            "steps_per_cycle must be greater than zero",
+        ));
     }
 
     let span = render_span(cycle_count)?;

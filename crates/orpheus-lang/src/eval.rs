@@ -19,16 +19,12 @@
 //! assert!(bindings.contains_key("song"));
 //! ```
 
+use orpheus_pattern::{Event, PatternNode, Rational, TimeSpan};
 use std::collections::BTreeMap;
-use std::error::Error;
-use std::fmt::{self, Display, Formatter};
-
-use orpheus_pattern::{Event, PatternError, PatternNode, Rational, TimeSpan};
 
 use crate::ReplMode;
 use crate::ast::{Expr, Module, Stmt, binding_expr_self_references};
 use crate::builtins::{builtin_value, is_sample_identifier, stack_values};
-use crate::diagnostics::ParseError;
 use crate::parser::parse_module;
 use crate::pitch::parse_named_pitch_literal;
 use crate::value::{
@@ -37,91 +33,6 @@ use crate::value::{
 
 /// Runtime evaluation error for bootstrap Orpheus modules.
 ///
-/// `EvalError` occurs when an expression fails to evaluate at runtime.
-/// In Orpheus, evaluation errors often stem from invalid arithmetic on rational
-/// time domains (like dividing by zero), out-of-bounds parameters, or attempting
-/// to use an unsupported operation on a pattern. Orpheus patterns operate in an
-/// exact, bounded rational time domain, so overflows during shifts or scaling
-/// can result in an `EvalError`.
-///
-/// # Examples
-///
-/// An `EvalError` provides an error message indicating what went wrong:
-///
-/// ```
-/// use orpheus_lang::EvalError;
-///
-/// let err = EvalError::new("decimal literal exceeded the supported range");
-/// assert_eq!(err.to_string(), "decimal literal exceeded the supported range");
-/// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct EvalError {
-    message: Box<str>,
-}
-
-impl EvalError {
-    /// Creates a new `EvalError` with the given message.
-    ///
-    /// The message explains what went wrong during runtime evaluation.
-    ///
-    /// Common causes for `EvalError` include:
-    /// - Out-of-bounds numeric parameters.
-    /// - Arithmetic overflow during explicit time-shifts.
-    /// - Applying functions to invalid types.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use orpheus_lang::EvalError;
-    ///
-    /// let err = EvalError::new("division by zero");
-    /// assert_eq!(err.to_string(), "division by zero");
-    /// ```
-    pub fn new(message: impl Into<Box<str>>) -> Self {
-        Self {
-            message: message.into(),
-        }
-    }
-}
-
-impl Display for EvalError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.message)
-    }
-}
-
-impl Error for EvalError {}
-
-impl From<ParseError> for EvalError {
-    fn from(error: ParseError) -> Self {
-        Self::new(error.to_string())
-    }
-}
-
-impl From<std::num::TryFromIntError> for EvalError {
-    fn from(error: std::num::TryFromIntError) -> Self {
-        Self::new(error.to_string())
-    }
-}
-
-impl From<std::io::Error> for EvalError {
-    fn from(error: std::io::Error) -> Self {
-        Self::new(error.to_string())
-    }
-}
-
-impl From<std::fmt::Error> for EvalError {
-    fn from(error: std::fmt::Error) -> Self {
-        Self::new(error.to_string())
-    }
-}
-
-impl From<PatternError> for EvalError {
-    fn from(error: PatternError) -> Self {
-        Self::new(error.to_string())
-    }
-}
-
 /// Evaluates bootstrap Orpheus source into runtime values.
 ///
 /// Given a string of Orpheus source code, this parses the text into an AST,
@@ -141,9 +52,9 @@ impl From<PatternError> for EvalError {
 ///
 /// # Errors
 ///
-/// Returns [`EvalError`] when parsing fails or when evaluation encounters an
+/// Returns [`crate::Error`] when parsing fails or when evaluation encounters an
 /// unsupported expression or builtin application.
-pub fn eval_module(source: &str, mode: ReplMode) -> Result<BTreeMap<String, Value>, EvalError> {
+pub fn eval_module(source: &str, mode: ReplMode) -> Result<BTreeMap<String, Value>, crate::Error> {
     let parsed = parse_module(source)?;
     Evaluator::new(mode, &parsed).eval_module(&parsed)
 }
@@ -169,12 +80,12 @@ pub fn eval_module(source: &str, mode: ReplMode) -> Result<BTreeMap<String, Valu
 ///
 /// # Errors
 ///
-/// Returns [`EvalError`] if parsing fails, or if evaluation encounters a runtime error.
+/// Returns [`crate::Error`] if parsing fails, or if evaluation encounters a runtime error.
 pub fn eval_into_bindings(
     source: &str,
     mode: ReplMode,
     bindings: &mut BTreeMap<String, Value>,
-) -> Result<Option<(String, Value)>, EvalError> {
+) -> Result<Option<(String, Value)>, crate::Error> {
     let parsed = parse_module(source)?;
     // ⚡ Bolt: Use `std::mem::take` instead of `bindings.clone()` to move the BTreeMap into the evaluator.
     // This avoids a full heap allocation and deep copy of the environment on every REPL statement.
@@ -209,7 +120,7 @@ impl ExplicitValue {
         }
     }
 
-    fn merge(self, other: Self) -> Result<Self, EvalError> {
+    fn merge(self, other: Self) -> Result<Self, crate::Error> {
         match (self, other) {
             (Self::Sample(mut left), Self::Sample(mut right)) => {
                 left.append(&mut right);
@@ -222,12 +133,12 @@ impl ExplicitValue {
                 Ok(Self::Number(left))
             }
             (Self::Sample(_), Self::Number(_)) | (Self::Number(_), Self::Sample(_)) => Err(
-                EvalError::new("explicit-time items must all resolve to the same pattern kind"),
+                crate::Error::eval("explicit-time items must all resolve to the same pattern kind"),
             ),
         }
     }
 
-    fn shift(&mut self, offset: &Rational) -> Result<(), EvalError> {
+    fn shift(&mut self, offset: &Rational) -> Result<(), crate::Error> {
         match self {
             Self::Sample(events) => shift_events(events, offset),
             Self::Number(events) => shift_events(events, offset),
@@ -248,7 +159,7 @@ impl Evaluator {
         }
     }
 
-    fn eval_module(mut self, module: &Module) -> Result<BTreeMap<String, Value>, EvalError> {
+    fn eval_module(mut self, module: &Module) -> Result<BTreeMap<String, Value>, crate::Error> {
         self.eval_statements(&module.statements)?;
         Ok(self.bindings)
     }
@@ -256,7 +167,7 @@ impl Evaluator {
     fn eval_statements(
         &mut self,
         statements: &[Stmt],
-    ) -> Result<Option<(String, Value)>, EvalError> {
+    ) -> Result<Option<(String, Value)>, crate::Error> {
         let mut last_binding = None;
 
         for statement in statements {
@@ -265,7 +176,7 @@ impl Evaluator {
                     name, params, expr, ..
                 } => {
                     if !params.is_empty() && binding_expr_self_references(name, params, expr) {
-                        return Err(EvalError::new(format!(
+                        return Err(crate::Error::eval(format!(
                             "parameterized binding `{name}` cannot contain a self-reference in v1"
                         )));
                     }
@@ -289,7 +200,7 @@ impl Evaluator {
         Ok(last_binding)
     }
 
-    fn eval_expr(&self, expr: &Expr) -> Result<Value, EvalError> {
+    fn eval_expr(&self, expr: &Expr) -> Result<Value, crate::Error> {
         self.eval_expr_in_meter(expr, None)
     }
 
@@ -297,7 +208,7 @@ impl Evaluator {
         &self,
         expr: &Expr,
         meter: Option<&MeterContext>,
-    ) -> Result<Value, EvalError> {
+    ) -> Result<Value, crate::Error> {
         match expr {
             Expr::Seq(items) => self.eval_sequence(items, meter),
             Expr::Stack(layers) => self.eval_stack(layers, meter),
@@ -310,16 +221,16 @@ impl Evaluator {
                 unit,
                 pattern,
             } => self.eval_meter(beats, unit, pattern, meter),
-            Expr::Beat(_) => Err(EvalError::new(
+            Expr::Beat(_) => Err(crate::Error::eval(
                 "`beat(...)` can only appear inside `at(...)` within an enclosing `meter(...)`",
             )),
-            Expr::Section { .. } => Err(EvalError::new(
+            Expr::Section { .. } => Err(crate::Error::eval(
                 "`section(...)` can only appear inside `seq_sections(...)`",
             )),
             Expr::SeqSections(sections) => self.eval_seq_sections(sections, meter),
             Expr::Group(items) => self.eval_group(items, meter),
             Expr::Ident(name) => self.eval_ident(name),
-            Expr::Rest => Err(EvalError::new(
+            Expr::Rest => Err(crate::Error::eval(
                 "rest markers can only appear inside pattern sequences",
             )),
             Expr::Number(value) => Ok(Value::NumberPattern(NumberPatternValue::constant(*value))),
@@ -331,7 +242,7 @@ impl Evaluator {
         &self,
         items: &[Expr],
         meter: Option<&MeterContext>,
-    ) -> Result<Value, EvalError> {
+    ) -> Result<Value, crate::Error> {
         self.eval_structural_pattern(
             items,
             meter,
@@ -341,7 +252,11 @@ impl Evaluator {
         )
     }
 
-    fn eval_group(&self, items: &[Expr], meter: Option<&MeterContext>) -> Result<Value, EvalError> {
+    fn eval_group(
+        &self,
+        items: &[Expr],
+        meter: Option<&MeterContext>,
+    ) -> Result<Value, crate::Error> {
         self.eval_structural_pattern(
             items,
             meter,
@@ -358,7 +273,7 @@ impl Evaluator {
         context: &str,
         from_sample_nodes: impl FnOnce(Vec<PatternNode<SampleEvent>>) -> SamplePatternValue,
         from_number_nodes: impl FnOnce(Vec<PatternNode<f64>>) -> NumberPatternValue,
-    ) -> Result<Value, EvalError> {
+    ) -> Result<Value, crate::Error> {
         if let Some(error) = Self::unsupported_pattern_item_error(items, context) {
             return Err(error);
         }
@@ -375,7 +290,7 @@ impl Evaluator {
             let _ = self.eval_expr_in_meter(item, meter)?;
         }
 
-        Err(EvalError::new(format!(
+        Err(crate::Error::eval(format!(
             "{context} items must all resolve to the same structural pattern kind"
         )))
     }
@@ -384,7 +299,7 @@ impl Evaluator {
         &self,
         layers: &[Expr],
         meter: Option<&MeterContext>,
-    ) -> Result<Value, EvalError> {
+    ) -> Result<Value, crate::Error> {
         let mut values = Vec::with_capacity(layers.len());
         for layer in layers {
             values.push(self.eval_expr_in_meter(layer, meter)?);
@@ -397,7 +312,7 @@ impl Evaluator {
         &self,
         items: &[Expr],
         meter: Option<&MeterContext>,
-    ) -> Result<Value, EvalError> {
+    ) -> Result<Value, crate::Error> {
         let explicit = self.collect_explicit_items(items, meter)?;
         Ok(explicit.into_value())
     }
@@ -407,7 +322,7 @@ impl Evaluator {
         lhs: &Expr,
         rhs: &Expr,
         meter: Option<&MeterContext>,
-    ) -> Result<Value, EvalError> {
+    ) -> Result<Value, crate::Error> {
         let lhs_value = self.eval_expr_in_meter(lhs, meter)?;
         match rhs {
             Expr::Call { callee, args } => {
@@ -427,7 +342,7 @@ impl Evaluator {
         callee: &Expr,
         args: &[Expr],
         meter: Option<&MeterContext>,
-    ) -> Result<Value, EvalError> {
+    ) -> Result<Value, crate::Error> {
         self.eval_call_with_args(call_expr, callee, args, Vec::new(), meter)
     }
 
@@ -438,7 +353,7 @@ impl Evaluator {
         args: &[Expr],
         piped_args: Vec<Value>,
         meter: Option<&MeterContext>,
-    ) -> Result<Value, EvalError> {
+    ) -> Result<Value, crate::Error> {
         let callee_value = self.eval_expr_in_meter(callee, meter)?;
         let mut evaluated_args = Vec::with_capacity(args.len() + piped_args.len());
         for arg in args {
@@ -453,7 +368,7 @@ impl Evaluator {
         start: &Expr,
         pattern: &Expr,
         meter: Option<&MeterContext>,
-    ) -> Result<Value, EvalError> {
+    ) -> Result<Value, crate::Error> {
         let explicit = self.eval_at_events(start, pattern, meter)?;
         Ok(explicit.into_value())
     }
@@ -464,7 +379,7 @@ impl Evaluator {
         unit: &Expr,
         pattern: &Expr,
         outer_meter: Option<&MeterContext>,
-    ) -> Result<Value, EvalError> {
+    ) -> Result<Value, crate::Error> {
         let meter = self.eval_meter_context(beats, unit, outer_meter)?;
         self.eval_expr_in_meter(pattern, Some(&meter))
     }
@@ -473,7 +388,7 @@ impl Evaluator {
         &self,
         sections: &[Expr],
         meter: Option<&MeterContext>,
-    ) -> Result<Value, EvalError> {
+    ) -> Result<Value, crate::Error> {
         let explicit = self.eval_seq_sections_events(sections, meter)?;
         Ok(explicit.into_value())
     }
@@ -482,7 +397,7 @@ impl Evaluator {
         &self,
         expr: &Expr,
         meter: Option<&MeterContext>,
-    ) -> Result<ExplicitValue, EvalError> {
+    ) -> Result<ExplicitValue, crate::Error> {
         match expr {
             Expr::At { start, pattern } => self.eval_at_events(start, pattern, meter),
             Expr::Stream(items) => self.collect_explicit_items(items, meter),
@@ -495,7 +410,7 @@ impl Evaluator {
                 self.eval_explicit_expr(pattern, Some(&nested_meter))
             }
             Expr::SeqSections(sections) => self.eval_seq_sections_events(sections, meter),
-            Expr::Section { .. } => Err(EvalError::new(
+            Expr::Section { .. } => Err(crate::Error::eval(
                 "`section(...)` can only appear inside `seq_sections(...)`",
             )),
             _ => Self::value_to_explicit(self.eval_expr_in_meter(expr, meter)?),
@@ -506,9 +421,9 @@ impl Evaluator {
         &self,
         items: &[Expr],
         meter: Option<&MeterContext>,
-    ) -> Result<ExplicitValue, EvalError> {
+    ) -> Result<ExplicitValue, crate::Error> {
         let Some((first, rest)) = items.split_first() else {
-            return Err(EvalError::new("`stream` requires at least one item"));
+            return Err(crate::Error::eval("`stream` requires at least one item"));
         };
 
         let mut combined = self.eval_explicit_expr(first, meter)?;
@@ -524,7 +439,7 @@ impl Evaluator {
         start: &Expr,
         pattern: &Expr,
         meter: Option<&MeterContext>,
-    ) -> Result<ExplicitValue, EvalError> {
+    ) -> Result<ExplicitValue, crate::Error> {
         let offset = self.eval_time_expr(start, meter)?;
         let mut explicit = Self::value_to_explicit(self.eval_expr_in_meter(pattern, meter)?)?;
         explicit.shift(&offset)?;
@@ -535,9 +450,9 @@ impl Evaluator {
         &self,
         sections: &[Expr],
         meter: Option<&MeterContext>,
-    ) -> Result<ExplicitValue, EvalError> {
+    ) -> Result<ExplicitValue, crate::Error> {
         let Some((first, rest)) = sections.split_first() else {
-            return Err(EvalError::new(
+            return Err(crate::Error::eval(
                 "`seq_sections` requires at least one section",
             ));
         };
@@ -546,13 +461,13 @@ impl Evaluator {
         let mut combined = self.eval_section_events(first, meter, cycle_offset)?;
         cycle_offset = cycle_offset
             .checked_add(self.eval_section_length(first, meter)?)
-            .ok_or_else(|| EvalError::new("section cycle offset overflowed"))?;
+            .ok_or_else(|| crate::Error::eval("section cycle offset overflowed"))?;
 
         for section in rest {
             combined = combined.merge(self.eval_section_events(section, meter, cycle_offset)?)?;
             cycle_offset = cycle_offset
                 .checked_add(self.eval_section_length(section, meter)?)
-                .ok_or_else(|| EvalError::new("section cycle offset overflowed"))?;
+                .ok_or_else(|| crate::Error::eval("section cycle offset overflowed"))?;
         }
 
         Ok(combined)
@@ -563,16 +478,16 @@ impl Evaluator {
         section: &Expr,
         meter: Option<&MeterContext>,
         cycle_offset: i128,
-    ) -> Result<ExplicitValue, EvalError> {
+    ) -> Result<ExplicitValue, crate::Error> {
         let Expr::Section { pattern, cycles } = section else {
-            return Err(EvalError::new(
+            return Err(crate::Error::eval(
                 "`seq_sections` only accepts `section(pattern, cycles)` items",
             ));
         };
 
         let repeat_count = self.eval_positive_integer(cycles, meter, "section cycle count")?;
         if repeat_count > 1024 {
-            return Err(EvalError::new(
+            return Err(crate::Error::eval(
                 "section cycle count exceeded the maximum allowed bound of 1024",
             ));
         }
@@ -584,7 +499,7 @@ impl Evaluator {
             let offset = rational_from_parts(
                 cycle_offset
                     .checked_add(repeat)
-                    .ok_or_else(|| EvalError::new("section cycle offset overflowed"))?,
+                    .ok_or_else(|| crate::Error::eval("section cycle offset overflowed"))?,
                 1,
             )?;
             let mut repeated = base.clone();
@@ -595,23 +510,23 @@ impl Evaluator {
             });
         }
 
-        combined.ok_or_else(|| EvalError::new("section cycle count must be positive"))
+        combined.ok_or_else(|| crate::Error::eval("section cycle count must be positive"))
     }
 
     fn eval_section_length(
         &self,
         section: &Expr,
         meter: Option<&MeterContext>,
-    ) -> Result<i128, EvalError> {
+    ) -> Result<i128, crate::Error> {
         let Expr::Section { cycles, .. } = section else {
-            return Err(EvalError::new(
+            return Err(crate::Error::eval(
                 "`seq_sections` only accepts `section(pattern, cycles)` items",
             ));
         };
 
         let count = self.eval_positive_integer(cycles, meter, "section cycle count")?;
         if count > 1024 {
-            return Err(EvalError::new(
+            return Err(crate::Error::eval(
                 "section cycle count exceeded the maximum allowed bound of 1024",
             ));
         }
@@ -624,7 +539,7 @@ impl Evaluator {
         beats: &Expr,
         unit: &Expr,
         outer_meter: Option<&MeterContext>,
-    ) -> Result<MeterContext, EvalError> {
+    ) -> Result<MeterContext, crate::Error> {
         let beats_per_cycle = self.eval_positive_integer(beats, outer_meter, "meter beat count")?;
         let _beat_unit = self.eval_positive_integer(unit, outer_meter, "meter beat unit")?;
         Ok(MeterContext { beats_per_cycle })
@@ -634,18 +549,18 @@ impl Evaluator {
         &self,
         expr: &Expr,
         meter: Option<&MeterContext>,
-    ) -> Result<Rational, EvalError> {
+    ) -> Result<Rational, crate::Error> {
         match expr {
             Expr::Number(value) => f64_to_rational(*value, "time expression"),
             Expr::Beat(value) => {
                 let meter = meter.ok_or_else(|| {
-                    EvalError::new("`beat(...)` requires an enclosing `meter(...)`")
+                    crate::Error::eval("`beat(...)` requires an enclosing `meter(...)`")
                 })?;
                 let beat_index = self.eval_time_expr(value, meter.into())?;
                 let beat_length = rational_from_parts(1, meter.beats_per_cycle)?;
                 beat_index
                     .checked_mul(&beat_length)
-                    .map_err(|error| EvalError::new(error.to_string()))
+                    .map_err(|error| crate::Error::eval(error.to_string()))
             }
             _ => extract_constant_number_rational(
                 self.eval_expr_in_meter(expr, meter)?,
@@ -659,20 +574,20 @@ impl Evaluator {
         expr: &Expr,
         meter: Option<&MeterContext>,
         context: &str,
-    ) -> Result<i128, EvalError> {
+    ) -> Result<i128, crate::Error> {
         let value = extract_constant_number_value(self.eval_expr_in_meter(expr, meter)?, context)?;
         if !value.is_finite() || value <= 0.0 || value.fract().abs() > f64::EPSILON {
-            return Err(EvalError::new(format!(
+            return Err(crate::Error::eval(format!(
                 "{context} must be a positive integer"
             )));
         }
 
         format!("{value:.0}")
             .parse::<i128>()
-            .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))
+            .map_err(|_| crate::Error::eval(format!("{context} exceeded the supported range")))
     }
 
-    fn value_to_explicit(value: Value) -> Result<ExplicitValue, EvalError> {
+    fn value_to_explicit(value: Value) -> Result<ExplicitValue, crate::Error> {
         match value {
             Value::SamplePattern(pattern) => {
                 Ok(ExplicitValue::Sample(pattern.try_query(&TimeSpan::unit())?))
@@ -680,16 +595,16 @@ impl Evaluator {
             Value::NumberPattern(pattern) => {
                 Ok(ExplicitValue::Number(pattern.try_query(&TimeSpan::unit())?))
             }
-            Value::Function(_) => Err(EvalError::new(
+            Value::Function(_) => Err(crate::Error::eval(
                 "functions cannot be materialized into explicit-time event streams",
             )),
-            Value::ArpDirection(_) => Err(EvalError::new(
+            Value::ArpDirection(_) => Err(crate::Error::eval(
                 "arp directions cannot be materialized into explicit-time event streams",
             )),
-            Value::PitchClassSet(_) => Err(EvalError::new(
+            Value::PitchClassSet(_) => Err(crate::Error::eval(
                 "pitch class sets cannot be materialized into explicit-time event streams",
             )),
-            Value::String(_) => Err(EvalError::new(
+            Value::String(_) => Err(crate::Error::eval(
                 "strings cannot be materialized into explicit-time event streams",
             )),
         }
@@ -699,7 +614,7 @@ impl Evaluator {
         callee: Value,
         args: Vec<Value>,
         site_salt: Option<u64>,
-    ) -> Result<Value, EvalError> {
+    ) -> Result<Value, crate::Error> {
         match callee {
             Value::Function(FunctionValue::Builtin(function)) => {
                 let function = match site_salt {
@@ -715,7 +630,7 @@ impl Evaluator {
             | Value::NumberPattern(_)
             | Value::ArpDirection(_)
             | Value::PitchClassSet(_)
-            | Value::String(_) => Err(EvalError::new(format!(
+            | Value::String(_) => Err(crate::Error::eval(format!(
                 "cannot call a {}",
                 callee.kind_name()
             ))),
@@ -726,7 +641,7 @@ impl Evaluator {
         self.expr_site_salts.get(&expr_key(expr)).copied()
     }
 
-    fn eval_ident(&self, name: &str) -> Result<Value, EvalError> {
+    fn eval_ident(&self, name: &str) -> Result<Value, crate::Error> {
         if let Some(value) = self.bindings.get(name) {
             return Ok(value.clone());
         }
@@ -741,19 +656,21 @@ impl Evaluator {
                     f64::from(semitones),
                 )));
             }
-            Err(error) => return Err(EvalError::new(error.to_string())),
+            Err(error) => return Err(crate::Error::eval(error.to_string())),
             Ok(None) => {}
         }
 
         match self.mode {
-            ReplMode::Loose => Err(EvalError::new(format!(
+            ReplMode::Loose => Err(crate::Error::eval(format!(
                 "unresolved identifier `{name}` in loose mode; placeholder playback is not implemented in Task 5"
             ))),
-            ReplMode::Strict => Err(EvalError::new(format!("unresolved identifier `{name}`"))),
+            ReplMode::Strict => Err(crate::Error::eval(format!(
+                "unresolved identifier `{name}`"
+            ))),
         }
     }
 
-    fn unsupported_pattern_item_error(items: &[Expr], context: &str) -> Option<EvalError> {
+    fn unsupported_pattern_item_error(items: &[Expr], context: &str) -> Option<crate::Error> {
         items.iter().find_map(|item| match item {
             Expr::Call { callee, args } => {
                 let name = match callee.as_ref() {
@@ -763,13 +680,13 @@ impl Evaluator {
                 if name == "sample" && args.len() == 1 {
                     None
                 } else {
-                    Some(EvalError::new(format!(
+                    Some(crate::Error::eval(format!(
                         "function call `{name}` cannot appear inside a pattern {context} in Task 5; apply transforms with the pipe operator `|>` or call `{name}(..., pattern)` directly"
                     )))
                 }
             }
             Expr::Ident(name) if matches!(builtin_value(name), Some(Value::Function(_))) => {
-                Some(EvalError::new(format!(
+                Some(crate::Error::eval(format!(
                     "function `{name}` cannot appear inside a pattern {context} in Task 5; apply transforms with the pipe operator `|>` or call `{name}(..., pattern)` directly"
                 )))
             }
@@ -778,7 +695,7 @@ impl Evaluator {
             | Expr::Meter { .. }
             | Expr::Beat(_)
             | Expr::Section { .. }
-            | Expr::SeqSections(_) => Some(EvalError::new(format!(
+            | Expr::SeqSections(_) => Some(crate::Error::eval(format!(
                 "explicit-time forms cannot appear inside a pattern {context}; use `stream(...)` or lift the form outside the {context}"
             ))),
             Expr::Group(group_items) => {
@@ -792,7 +709,7 @@ impl Evaluator {
         &self,
         items: &[Expr],
         meter: Option<&MeterContext>,
-    ) -> Result<Option<Vec<PatternNode<SampleEvent>>>, EvalError> {
+    ) -> Result<Option<Vec<PatternNode<SampleEvent>>>, crate::Error> {
         let mut nodes = Vec::with_capacity(items.len());
         for item in items {
             let Some(node) = self.try_sample_node(item, meter)? else {
@@ -808,7 +725,7 @@ impl Evaluator {
         &self,
         expr: &Expr,
         meter: Option<&MeterContext>,
-    ) -> Result<Option<PatternNode<SampleEvent>>, EvalError> {
+    ) -> Result<Option<PatternNode<SampleEvent>>, crate::Error> {
         match expr {
             Expr::Ident(name) if is_sample_identifier(name) => {
                 Ok(Some(PatternNode::atom(SampleEvent::named(name))))
@@ -816,7 +733,7 @@ impl Evaluator {
             Expr::Call { callee, args } if matches!(callee.as_ref(), Expr::Ident(name) if name == "sample") =>
             {
                 let [arg] = args.as_slice() else {
-                    return Err(EvalError::new("`sample` requires exactly one argument"));
+                    return Err(crate::Error::eval("`sample` requires exactly one argument"));
                 };
                 let sample = extract_string_value(
                     self.eval_expr_in_meter(arg, meter)?,
@@ -838,7 +755,7 @@ impl Evaluator {
     fn collect_number_nodes(
         &self,
         items: &[Expr],
-    ) -> Result<Option<Vec<PatternNode<f64>>>, EvalError> {
+    ) -> Result<Option<Vec<PatternNode<f64>>>, crate::Error> {
         let mut nodes = Vec::with_capacity(items.len());
         for item in items {
             let Some(node) = self.try_number_node(item)? else {
@@ -850,12 +767,12 @@ impl Evaluator {
         Ok(Some(nodes))
     }
 
-    fn try_number_node(&self, expr: &Expr) -> Result<Option<PatternNode<f64>>, EvalError> {
+    fn try_number_node(&self, expr: &Expr) -> Result<Option<PatternNode<f64>>, crate::Error> {
         match expr {
             Expr::Number(value) => Ok(Some(PatternNode::atom(*value))),
             Expr::Ident(name) => match parse_named_pitch_literal(name) {
                 Ok(Some(semitones)) => Ok(Some(PatternNode::atom(f64::from(semitones)))),
-                Err(error) => Err(EvalError::new(error.to_string())),
+                Err(error) => Err(crate::Error::eval(error.to_string())),
                 Ok(None) => Ok(None),
             },
             Expr::Rest => Ok(Some(PatternNode::rest())),
@@ -870,18 +787,21 @@ impl Evaluator {
     }
 }
 
-pub fn apply_function_value(function: FunctionValue, args: Vec<Value>) -> Result<Value, EvalError> {
+pub fn apply_function_value(
+    function: FunctionValue,
+    args: Vec<Value>,
+) -> Result<Value, crate::Error> {
     match function {
         FunctionValue::Builtin(function) => function.apply(args),
         FunctionValue::User(function) => apply_user_function(function, args),
     }
 }
 
-fn apply_user_function(mut function: UserFn, args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_user_function(mut function: UserFn, args: Vec<Value>) -> Result<Value, crate::Error> {
     let remaining = function.remaining_params.len();
     let applied = args.len();
     if applied > remaining {
-        return Err(EvalError::new(format!(
+        return Err(crate::Error::eval(format!(
             "function expected {remaining} argument(s), got {applied}"
         )));
     }
@@ -1017,31 +937,31 @@ fn expr_key(expr: &Expr) -> usize {
     std::ptr::from_ref(expr) as usize
 }
 
-fn extract_constant_number_value(value: Value, context: &str) -> Result<f64, EvalError> {
+fn extract_constant_number_value(value: Value, context: &str) -> Result<f64, crate::Error> {
     match value {
         Value::NumberPattern(pattern) => pattern.constant_value(),
         Value::SamplePattern(_)
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(format!(
+        | Value::String(_) => Err(crate::Error::eval(format!(
             "{context} must resolve to a constant number"
         ))),
     }
 }
 
-fn extract_string_value(value: Value, message: &str) -> Result<String, EvalError> {
+fn extract_string_value(value: Value, message: &str) -> Result<String, crate::Error> {
     match value {
         Value::String(string) => Ok(string),
         Value::SamplePattern(_)
         | Value::NumberPattern(_)
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
-        | Value::Function(_) => Err(EvalError::new(message)),
+        | Value::Function(_) => Err(crate::Error::eval(message)),
     }
 }
 
-fn extract_constant_number_rational(value: Value, context: &str) -> Result<Rational, EvalError> {
+fn extract_constant_number_rational(value: Value, context: &str) -> Result<Rational, crate::Error> {
     let constant = extract_constant_number_value(value, context)?;
     f64_to_rational(constant, context)
 }
@@ -1062,15 +982,15 @@ fn extract_constant_number_rational(value: Value, context: &str) -> Result<Ratio
 ///
 /// # Errors
 ///
-/// Returns an [`EvalError`] if the float is not finite, uses scientific notation, or cannot be parsed.
-pub fn f64_to_rational(value: f64, context: &str) -> Result<Rational, EvalError> {
+/// Returns an [`crate::Error`] if the float is not finite, uses scientific notation, or cannot be parsed.
+pub fn f64_to_rational(value: f64, context: &str) -> Result<Rational, crate::Error> {
     if !value.is_finite() {
-        return Err(EvalError::new(format!("{context} must be finite")));
+        return Err(crate::Error::eval(format!("{context} must be finite")));
     }
 
     let rendered = value.to_string();
     if rendered.contains('e') || rendered.contains('E') {
-        return Err(EvalError::new(format!(
+        return Err(crate::Error::eval(format!(
             "{context} must not use scientific notation in Task 12"
         )));
     }
@@ -1084,12 +1004,12 @@ pub fn f64_to_rational(value: f64, context: &str) -> Result<Rational, EvalError>
         let combined = format!("{whole}{fractional}");
         let numerator = combined
             .parse::<i128>()
-            .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?;
+            .map_err(|_| crate::Error::eval(format!("{context} exceeded the supported range")))?;
         (numerator, scale)
     } else {
         let numerator = digits
             .parse::<i128>()
-            .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?;
+            .map_err(|_| crate::Error::eval(format!("{context} exceeded the supported range")))?;
         (numerator, 1_i128)
     };
 
@@ -1097,17 +1017,17 @@ pub fn f64_to_rational(value: f64, context: &str) -> Result<Rational, EvalError>
     rational_from_parts(signed_numerator, denominator)
 }
 
-fn checked_pow10(exponent: usize) -> Result<i128, EvalError> {
+fn checked_pow10(exponent: usize) -> Result<i128, crate::Error> {
     let mut value = 1_i128;
     for _ in 0..exponent {
         value = value
             .checked_mul(10)
-            .ok_or_else(|| EvalError::new("decimal literal exceeded the supported range"))?;
+            .ok_or_else(|| crate::Error::eval("decimal literal exceeded the supported range"))?;
     }
     Ok(value)
 }
 
-fn shift_events<T>(events: &mut [Event<T>], offset: &Rational) -> Result<(), EvalError> {
+fn shift_events<T>(events: &mut [Event<T>], offset: &Rational) -> Result<(), crate::Error> {
     for event in &mut *events {
         event.part = shift_span(&event.part, offset)?;
         if let Some(whole) = event.whole.take() {
@@ -1119,7 +1039,7 @@ fn shift_events<T>(events: &mut [Event<T>], offset: &Rational) -> Result<(), Eva
     Ok(())
 }
 
-fn shift_span(span: &TimeSpan, offset: &Rational) -> Result<TimeSpan, EvalError> {
+fn shift_span(span: &TimeSpan, offset: &Rational) -> Result<TimeSpan, crate::Error> {
     build_span(
         rational_add(span.start(), offset)?,
         rational_add(span.end(), offset)?,
@@ -1151,27 +1071,27 @@ fn sort_events<T>(events: &mut [Event<T>]) {
 ///
 /// # Errors
 ///
-/// Returns an [`EvalError`] if constructing the underlying rational span fails,
+/// Returns an [`crate::Error`] if constructing the underlying rational span fails,
 /// which may occur if the `cycle_count` exceeds the representable range.
-pub fn render_span(cycle_count: u64) -> Result<TimeSpan, EvalError> {
+pub fn render_span(cycle_count: u64) -> Result<TimeSpan, crate::Error> {
     build_span(
         Rational::zero(),
         rational_from_parts(i128::from(cycle_count), 1)?,
     )
 }
 
-fn build_span(start: Rational, end: Rational) -> Result<TimeSpan, EvalError> {
-    TimeSpan::new(start, end).map_err(|error| EvalError::new(error.to_string()))
+fn build_span(start: Rational, end: Rational) -> Result<TimeSpan, crate::Error> {
+    TimeSpan::new(start, end).map_err(|error| crate::Error::eval(error.to_string()))
 }
 
-fn rational_add(left: &Rational, right: &Rational) -> Result<Rational, EvalError> {
+fn rational_add(left: &Rational, right: &Rational) -> Result<Rational, crate::Error> {
     left.checked_add(right)
-        .map_err(|error| EvalError::new(error.to_string()))
+        .map_err(|error| crate::Error::eval(error.to_string()))
 }
 
-fn rational_from_parts(numerator: i128, denominator: i128) -> Result<Rational, EvalError> {
+fn rational_from_parts(numerator: i128, denominator: i128) -> Result<Rational, crate::Error> {
     Rational::checked_from_parts(numerator, denominator)
-        .map_err(|error| EvalError::new(error.to_string()))
+        .map_err(|error| crate::Error::eval(error.to_string()))
 }
 
 #[cfg(test)]
@@ -1183,7 +1103,7 @@ mod tests {
     fn sample_events_for_span(
         value: &Value,
         cycle_count: u64,
-    ) -> Result<Vec<Event<SampleEvent>>, super::EvalError> {
+    ) -> Result<Vec<Event<SampleEvent>>, crate::Error> {
         value
             .as_sample_pattern()
             .unwrap()
@@ -1265,24 +1185,22 @@ right = sometimes(fast(2), cp hh)";
 
     #[test]
     fn eval_error_formats_its_message() {
-        let err = super::EvalError::new("syntax error");
+        let err = crate::Error::eval("syntax error");
         assert_eq!(err.to_string(), "syntax error");
     }
 
     #[test]
     fn render_error_formats_eval_error() {
-        let err = crate::RenderError::Eval(super::EvalError::new("render failed"));
+        let err = crate::Error::eval("render failed");
         assert_eq!(err.to_string(), "render failed");
-        assert!(std::error::Error::source(&err).is_some());
     }
 
     #[test]
     fn render_error_formats_audio_error() {
-        let err = crate::RenderError::Audio(orpheus_dsp::OfflineRenderError::InvalidCycleCount);
+        let err = crate::Error::Render("offline rendering requires at least one cycle".to_string());
         assert_eq!(
             err.to_string(),
             "offline rendering requires at least one cycle"
         );
-        assert!(std::error::Error::source(&err).is_some());
     }
 }

@@ -8,7 +8,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::diagnostics::LoadError;
 use crate::eval::eval_into_bindings;
 use crate::types::infer_into_bindings;
 use crate::{ReplMode, Type, TypedModule, Value};
@@ -30,15 +29,15 @@ pub struct StrictLoadedFile {
 ///
 /// # Errors
 ///
-/// Returns [`LoadError`] when file I/O fails, an import directive is malformed,
+/// Returns [`crate::Error`] when file I/O fails, an import directive is malformed,
 /// an imported name is missing, or strict-mode inference fails.
-pub fn load_file_strict(path: impl AsRef<Path>) -> Result<TypedModule, LoadError> {
+pub fn load_file_strict(path: impl AsRef<Path>) -> Result<TypedModule, crate::Error> {
     let mut visiting = BTreeSet::new();
     let loaded = load_file_strict_inner(path.as_ref(), &mut visiting)?;
     Ok(TypedModule::new(loaded.type_bindings))
 }
 
-pub fn load_file_runtime_strict(path: impl AsRef<Path>) -> Result<StrictLoadedFile, LoadError> {
+pub fn load_file_runtime_strict(path: impl AsRef<Path>) -> Result<StrictLoadedFile, crate::Error> {
     let mut visiting = BTreeSet::new();
     load_file_strict_inner(path.as_ref(), &mut visiting)
 }
@@ -46,9 +45,9 @@ pub fn load_file_runtime_strict(path: impl AsRef<Path>) -> Result<StrictLoadedFi
 fn load_file_strict_inner(
     path: &Path,
     visiting: &mut BTreeSet<PathBuf>,
-) -> Result<StrictLoadedFile, LoadError> {
+) -> Result<StrictLoadedFile, crate::Error> {
     let canonical = path.canonicalize().map_err(|error| {
-        LoadError::new(format!(
+        crate::Error::load(format!(
             "{}: {}",
             path.display(),
             match error.kind() {
@@ -59,14 +58,14 @@ fn load_file_strict_inner(
         ))
     })?;
     if !visiting.insert(canonical.clone()) {
-        return Err(LoadError::new(format!(
+        return Err(crate::Error::load(format!(
             "{}: import cycle detected",
             canonical.display()
         )));
     }
 
     let source = fs::read_to_string(&canonical).map_err(|error| {
-        LoadError::new(format!(
+        crate::Error::load(format!(
             "{}: {}",
             canonical.display(),
             match error.kind() {
@@ -77,7 +76,7 @@ fn load_file_strict_inner(
         ))
     })?;
     let parent = canonical.parent().ok_or_else(|| {
-        LoadError::new(format!(
+        crate::Error::load(format!(
             "{}: cannot resolve the parent directory for imports",
             canonical.display()
         ))
@@ -91,14 +90,14 @@ fn load_file_strict_inner(
         let imported_module = load_file_strict_inner(&imported_path, visiting)?;
         for name in import.names {
             let Some(ty) = imported_module.type_bindings.get(&name).cloned() else {
-                return Err(LoadError::new(format!(
+                return Err(crate::Error::load(format!(
                     "{}: unresolved name `{name}` imported from {}",
                     canonical.display(),
                     imported_path.display()
                 )));
             };
             let Some(value) = imported_module.value_bindings.get(&name).cloned() else {
-                return Err(LoadError::new(format!(
+                return Err(crate::Error::load(format!(
                     "{}: unresolved value `{name}` imported from {}",
                     canonical.display(),
                     imported_path.display()
@@ -117,10 +116,10 @@ fn load_file_strict_inner(
         })
     } else {
         let last_type_binding = infer_into_bindings(&body, ReplMode::Strict, &mut type_bindings)
-            .map_err(|error| LoadError::new(format!("{}: {error}", canonical.display())))?;
+            .map_err(|error| crate::Error::load(format!("{}: {error}", canonical.display())))?;
         let last_value_binding =
             eval_into_bindings(&body, ReplMode::Strict, &mut value_bindings)
-                .map_err(|error| LoadError::new(format!("{}: {error}", canonical.display())))?;
+                .map_err(|error| crate::Error::load(format!("{}: {error}", canonical.display())))?;
         debug_assert_eq!(
             last_type_binding.as_ref().map(|(name, _)| name),
             last_value_binding.as_ref().map(|(name, _)| name)
@@ -137,7 +136,7 @@ fn load_file_strict_inner(
     result
 }
 
-fn split_imports(source: &str, path: &Path) -> Result<(Vec<ImportSpec>, String), LoadError> {
+fn split_imports(source: &str, path: &Path) -> Result<(Vec<ImportSpec>, String), crate::Error> {
     let mut imports = Vec::new();
     let mut body_lines = Vec::new();
 
@@ -157,18 +156,18 @@ fn split_imports(source: &str, path: &Path) -> Result<(Vec<ImportSpec>, String),
     Ok((imports, body_lines.join("\n")))
 }
 
-fn parse_import_line(line: &str, path: &Path) -> Result<Option<ImportSpec>, LoadError> {
+fn parse_import_line(line: &str, path: &Path) -> Result<Option<ImportSpec>, crate::Error> {
     let Some(rest) = line.strip_prefix("use ") else {
         return Ok(None);
     };
     let Some(rest) = rest.strip_prefix('"') else {
-        return Err(LoadError::new(format!(
+        return Err(crate::Error::load(format!(
             "{}: import path must start with a quoted filename",
             path.display()
         )));
     };
     let Some((import_path, trailing)) = rest.split_once('"') else {
-        return Err(LoadError::new(format!(
+        return Err(crate::Error::load(format!(
             "{}: import path is missing a closing quote",
             path.display()
         )));
@@ -178,7 +177,7 @@ fn parse_import_line(line: &str, path: &Path) -> Result<Option<ImportSpec>, Load
         .strip_prefix('(')
         .and_then(|value| value.strip_suffix(')'))
     else {
-        return Err(LoadError::new(format!(
+        return Err(crate::Error::load(format!(
             "{}: import list must use parentheses",
             path.display()
         )));
@@ -191,7 +190,7 @@ fn parse_import_line(line: &str, path: &Path) -> Result<Option<ImportSpec>, Load
         .map(ToOwned::to_owned)
         .collect::<Vec<_>>();
     if parsed_names.is_empty() {
-        return Err(LoadError::new(format!(
+        return Err(crate::Error::load(format!(
             "{}: import list must name at least one binding",
             path.display()
         )));

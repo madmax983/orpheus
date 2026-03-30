@@ -8,7 +8,6 @@ use pest::iterators::{Pair, Pairs};
 use pest_derive::Parser;
 
 use crate::ast::{Expr, Module, Stmt};
-use crate::diagnostics::ParseError;
 
 #[derive(Parser)]
 #[grammar = "grammar/orpheus.pest"]
@@ -22,9 +21,9 @@ struct SyntaxParser;
 ///
 /// # Errors
 ///
-/// Returns [`ParseError`] when the source does not match the Phase 1 grammar
+/// Returns [`crate::Error`] when the source does not match the Phase 1 grammar
 /// or when the parser encounters an internal AST construction failure.
-pub fn parse_module(source: &str) -> Result<Module, ParseError> {
+pub fn parse_module(source: &str) -> Result<Module, crate::Error> {
     let chunks = split_top_level_bindings(source);
     if chunks.is_empty() {
         return parse_single_binding_module(source, 1);
@@ -39,7 +38,7 @@ pub fn parse_module(source: &str) -> Result<Module, ParseError> {
     Ok(Module { statements })
 }
 
-fn parse_single_binding_module(source: &str, start_line: usize) -> Result<Module, ParseError> {
+fn parse_single_binding_module(source: &str, start_line: usize) -> Result<Module, crate::Error> {
     let padded_source = if start_line <= 1 {
         source.to_owned()
     } else {
@@ -81,7 +80,7 @@ fn split_top_level_bindings(source: &str) -> Vec<(usize, String)> {
     bindings
 }
 
-fn enrich_parse_error(source: &str, error: &PestError<Rule>) -> ParseError {
+fn enrich_parse_error(source: &str, error: &PestError<Rule>) -> crate::Error {
     let (line, col) = match error.line_col {
         pest::error::LineColLocation::Pos((l, c))
         | pest::error::LineColLocation::Span((l, c), _) => (l, c),
@@ -104,12 +103,12 @@ fn enrich_parse_error(source: &str, error: &PestError<Rule>) -> ParseError {
     };
 
     if unmatched_open_parens(source) > 0 {
-        return ParseError::new(format!(
+        return crate::Error::parse(format!(
             "parse error at line {line}, col {col}: missing `)` before end of input"
         ));
     }
 
-    ParseError::new(format!("parse error at line {line}, col {col}: {reason}"))
+    crate::Error::parse(format!("parse error at line {line}, col {col}: {reason}"))
 }
 
 fn looks_like_binding(line: &str) -> bool {
@@ -198,22 +197,22 @@ fn unmatched_open_parens(source: &str) -> usize {
 fn next_pair<'a>(
     pairs: &mut Pairs<'a, Rule>,
     context: &'static str,
-) -> Result<Pair<'a, Rule>, ParseError> {
+) -> Result<Pair<'a, Rule>, crate::Error> {
     pairs
         .next()
-        .ok_or_else(|| ParseError::new(format!("missing {context}")))
+        .ok_or_else(|| crate::Error::parse(format!("missing {context}")))
 }
 
 fn first_inner<'a>(
     pair: Pair<'a, Rule>,
     context: &'static str,
-) -> Result<Pair<'a, Rule>, ParseError> {
+) -> Result<Pair<'a, Rule>, crate::Error> {
     pair.into_inner()
         .next()
-        .ok_or_else(|| ParseError::new(format!("missing {context}")))
+        .ok_or_else(|| crate::Error::parse(format!("missing {context}")))
 }
 
-fn build_module(pair: Pair<'_, Rule>) -> Result<Module, ParseError> {
+fn build_module(pair: Pair<'_, Rule>) -> Result<Module, crate::Error> {
     let statements = pair
         .into_inner()
         .filter(|inner| inner.as_rule() == Rule::binding)
@@ -223,14 +222,14 @@ fn build_module(pair: Pair<'_, Rule>) -> Result<Module, ParseError> {
     Ok(Module { statements })
 }
 
-fn build_binding(pair: Pair<'_, Rule>) -> Result<Stmt, ParseError> {
+fn build_binding(pair: Pair<'_, Rule>) -> Result<Stmt, crate::Error> {
     let mut inner = pair.into_inner();
     let (name, params) = build_binding_head(next_pair(&mut inner, "binding head")?)?;
     let expr = build_pipe_expr(next_pair(&mut inner, "binding expression")?)?;
     Ok(Stmt::Binding { name, params, expr })
 }
 
-fn build_pipe_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_pipe_expr(pair: Pair<'_, Rule>) -> Result<Expr, crate::Error> {
     let mut inner = pair.into_inner();
     let first = build_sequence(next_pair(&mut inner, "pipe lhs")?)?;
 
@@ -242,7 +241,7 @@ fn build_pipe_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
     })
 }
 
-fn build_sequence(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_sequence(pair: Pair<'_, Rule>) -> Result<Expr, crate::Error> {
     let items = pair
         .into_inner()
         .map(build_item)
@@ -251,15 +250,15 @@ fn build_sequence(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
     collapse_sequence(items, "sequence")
 }
 
-fn build_item(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_item(pair: Pair<'_, Rule>) -> Result<Expr, crate::Error> {
     build_expr(first_inner(pair, "sequence item")?)
 }
 
-fn build_pipe_target(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_pipe_target(pair: Pair<'_, Rule>) -> Result<Expr, crate::Error> {
     build_expr(first_inner(pair, "pipe target")?)
 }
 
-fn build_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_expr(pair: Pair<'_, Rule>) -> Result<Expr, crate::Error> {
     match pair.as_rule() {
         Rule::stack => build_stack(pair),
         Rule::postfix => build_postfix(pair),
@@ -273,13 +272,13 @@ fn build_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
         Rule::sequence => build_sequence(pair),
         Rule::item => build_item(pair),
         Rule::pipe_target => build_pipe_target(pair),
-        other => Err(ParseError::new(format!(
+        other => Err(crate::Error::parse(format!(
             "unexpected parser rule while building AST: {other:?}"
         ))),
     }
 }
 
-fn build_binding_head(pair: Pair<'_, Rule>) -> Result<(String, Vec<String>), ParseError> {
+fn build_binding_head(pair: Pair<'_, Rule>) -> Result<(String, Vec<String>), crate::Error> {
     let mut identifiers = pair
         .into_inner()
         .filter(|inner| inner.as_rule() == Rule::identifier);
@@ -287,7 +286,7 @@ fn build_binding_head(pair: Pair<'_, Rule>) -> Result<(String, Vec<String>), Par
     let name = identifiers
         .next()
         .map(|identifier| identifier.as_str().to_owned())
-        .ok_or_else(|| ParseError::new("missing binding name"))?;
+        .ok_or_else(|| crate::Error::parse("missing binding name"))?;
     let mut seen = BTreeSet::new();
     let mut params = Vec::new();
 
@@ -295,7 +294,7 @@ fn build_binding_head(pair: Pair<'_, Rule>) -> Result<(String, Vec<String>), Par
         let param = identifier.as_str().to_owned();
         if !seen.insert(param.clone()) {
             let (line, col) = identifier.as_span().start_pos().line_col();
-            return Err(ParseError::new(format!(
+            return Err(crate::Error::parse(format!(
                 "parse error at line {line}, col {col}: duplicate parameter `{param}` in binding `{name}`"
             )));
         }
@@ -305,7 +304,7 @@ fn build_binding_head(pair: Pair<'_, Rule>) -> Result<(String, Vec<String>), Par
     Ok((name, params))
 }
 
-fn build_stack(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_stack(pair: Pair<'_, Rule>) -> Result<Expr, crate::Error> {
     let layers_pair = next_pair(&mut pair.into_inner(), "stack layers")?;
     let layers = layers_pair
         .into_inner()
@@ -315,7 +314,7 @@ fn build_stack(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
     Ok(Expr::Stack(layers))
 }
 
-fn build_postfix(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_postfix(pair: Pair<'_, Rule>) -> Result<Expr, crate::Error> {
     let mut inner = pair.into_inner();
     let first = next_pair(&mut inner, "postfix callee")?;
     let mut expr = build_expr(first)?;
@@ -328,7 +327,7 @@ fn build_postfix(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
     Ok(expr)
 }
 
-fn build_call_suffix_args(pair: Pair<'_, Rule>) -> Result<Vec<Expr>, ParseError> {
+fn build_call_suffix_args(pair: Pair<'_, Rule>) -> Result<Vec<Expr>, crate::Error> {
     let mut inner = pair.into_inner();
     let Some(args_pair) = inner.next() else {
         return Ok(Vec::new());
@@ -340,7 +339,7 @@ fn build_call_suffix_args(pair: Pair<'_, Rule>) -> Result<Vec<Expr>, ParseError>
         .collect::<Result<Vec<_>, _>>()
 }
 
-fn build_call_expr(callee: Expr, args: Vec<Expr>) -> Result<Expr, ParseError> {
+fn build_call_expr(callee: Expr, args: Vec<Expr>) -> Result<Expr, crate::Error> {
     if let Expr::Ident(callee_name) = &callee {
         match callee_name.as_str() {
             "stream" => return Ok(Expr::Stream(args)),
@@ -351,7 +350,7 @@ fn build_call_expr(callee: Expr, args: Vec<Expr>) -> Result<Expr, ParseError> {
                         pattern: Box::new(pattern.clone()),
                     });
                 }
-                _ => return Err(ParseError::new("`at` requires exactly two arguments")),
+                _ => return Err(crate::Error::parse("`at` requires exactly two arguments")),
             },
             "meter" => match args.as_slice() {
                 [beats, unit, pattern] => {
@@ -362,11 +361,15 @@ fn build_call_expr(callee: Expr, args: Vec<Expr>) -> Result<Expr, ParseError> {
                     });
                 }
                 [_, _] => {}
-                _ => return Err(ParseError::new("`meter` requires exactly three arguments")),
+                _ => {
+                    return Err(crate::Error::parse(
+                        "`meter` requires exactly three arguments",
+                    ));
+                }
             },
             "beat" => match args.as_slice() {
                 [value] => return Ok(Expr::Beat(Box::new(value.clone()))),
-                _ => return Err(ParseError::new("`beat` requires exactly one argument")),
+                _ => return Err(crate::Error::parse("`beat` requires exactly one argument")),
             },
             "section" => match args.as_slice() {
                 [pattern, cycles] => {
@@ -375,7 +378,11 @@ fn build_call_expr(callee: Expr, args: Vec<Expr>) -> Result<Expr, ParseError> {
                         cycles: Box::new(cycles.clone()),
                     });
                 }
-                _ => return Err(ParseError::new("`section` requires exactly two arguments")),
+                _ => {
+                    return Err(crate::Error::parse(
+                        "`section` requires exactly two arguments",
+                    ));
+                }
             },
             "seq_sections" => return Ok(Expr::SeqSections(args)),
             _ => {}
@@ -388,7 +395,7 @@ fn build_call_expr(callee: Expr, args: Vec<Expr>) -> Result<Expr, ParseError> {
     })
 }
 
-fn build_group(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_group(pair: Pair<'_, Rule>) -> Result<Expr, crate::Error> {
     let items = pair
         .into_inner()
         .map(build_item)
@@ -396,28 +403,28 @@ fn build_group(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
     Ok(Expr::Group(items))
 }
 
-fn build_number(pair: &Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_number(pair: &Pair<'_, Rule>) -> Result<Expr, crate::Error> {
     pair.as_str()
         .parse::<f64>()
         .map(Expr::Number)
         .map_err(|error| {
-            ParseError::new(format!(
+            crate::Error::parse(format!(
                 "invalid number literal `{}`: {error}",
                 pair.as_str()
             ))
         })
 }
 
-fn build_string(pair: &Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_string(pair: &Pair<'_, Rule>) -> Result<Expr, crate::Error> {
     parse_string_literal(pair.as_str()).map(Expr::String)
 }
 
-fn parse_string_literal(literal: &str) -> Result<String, ParseError> {
+fn parse_string_literal(literal: &str) -> Result<String, crate::Error> {
     let Some(body) = literal
         .strip_prefix('"')
         .and_then(|stripped| stripped.strip_suffix('"'))
     else {
-        return Err(ParseError::new("invalid string literal delimiter"));
+        return Err(crate::Error::parse("invalid string literal delimiter"));
     };
 
     let mut value = String::new();
@@ -429,7 +436,7 @@ fn parse_string_literal(literal: &str) -> Result<String, ParseError> {
         }
 
         let Some(escaped) = characters.next() else {
-            return Err(ParseError::new("unterminated string escape"));
+            return Err(crate::Error::parse("unterminated string escape"));
         };
         match escaped {
             '"' => value.push('"'),
@@ -438,7 +445,7 @@ fn parse_string_literal(literal: &str) -> Result<String, ParseError> {
             'r' => value.push('\r'),
             't' => value.push('\t'),
             other => {
-                return Err(ParseError::new(format!(
+                return Err(crate::Error::parse(format!(
                     "unsupported string escape `\\{other}`"
                 )));
             }
@@ -448,22 +455,22 @@ fn parse_string_literal(literal: &str) -> Result<String, ParseError> {
     Ok(value)
 }
 
-fn collapse_sequence(items: Vec<Expr>, context: &'static str) -> Result<Expr, ParseError> {
+fn collapse_sequence(items: Vec<Expr>, context: &'static str) -> Result<Expr, crate::Error> {
     if let Some(expr) = collapse_meter_annotation(&items)? {
         return Ok(expr);
     }
 
     match items.len() {
-        0 => Err(ParseError::new(format!("missing {context} items"))),
+        0 => Err(crate::Error::parse(format!("missing {context} items"))),
         1 => Ok(items
             .into_iter()
             .next()
-            .ok_or_else(|| ParseError::new(format!("missing {context} item")))?),
+            .ok_or_else(|| crate::Error::parse(format!("missing {context} item")))?),
         _ => Ok(Expr::Seq(items)),
     }
 }
 
-fn collapse_meter_annotation(items: &[Expr]) -> Result<Option<Expr>, ParseError> {
+fn collapse_meter_annotation(items: &[Expr]) -> Result<Option<Expr>, crate::Error> {
     let Some((first, rest)) = items.split_first() else {
         return Ok(None);
     };
@@ -482,7 +489,7 @@ fn collapse_meter_annotation(items: &[Expr]) -> Result<Option<Expr>, ParseError>
         return Ok(None);
     };
     if rest.is_empty() {
-        return Err(ParseError::new(
+        return Err(crate::Error::parse(
             "`meter` annotation requires a following pattern expression",
         ));
     }

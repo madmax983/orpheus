@@ -200,7 +200,7 @@ impl ReplSession {
         };
 
         render_sample_pattern_to_file_with_bank(pattern, &path, cycles, &self.sample_bank)
-            .map_err(|error: crate::export::RenderError| error.to_string())?;
+            .map_err(|error: crate::Error| error.to_string())?;
         Ok(format!(
             "rendered `{binding_name}` to `{path}` ({cycles} cycle(s))"
         ))
@@ -279,16 +279,16 @@ impl ReplSession {
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
                 {
                     crate::svg::export_sample_pattern_to_svg(pattern, &path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
+                        .map_err(|error: crate::Error| error.to_string())?;
                 } else if export_path
                     .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
                 {
                     crate::export::export_sample_pattern_to_json(pattern, &path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
+                        .map_err(|error: crate::Error| error.to_string())?;
                 } else {
                     crate::export::export_sample_pattern_to_csv(pattern, &path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
+                        .map_err(|error: crate::Error| error.to_string())?;
                 }
             }
             Value::NumberPattern(pattern) => {
@@ -303,10 +303,10 @@ impl ReplSession {
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
                 {
                     crate::export::export_number_pattern_to_json(pattern, &path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
+                        .map_err(|error: crate::Error| error.to_string())?;
                 } else {
                     crate::export::export_number_pattern_to_csv(pattern, &path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
+                        .map_err(|error: crate::Error| error.to_string())?;
                 }
             }
             Value::ArpDirection(_)

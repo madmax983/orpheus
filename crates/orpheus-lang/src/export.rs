@@ -4,53 +4,15 @@
 //! files (WAV), or exported as structured data formats like JSON and CSV. These
 //! formats enable interoperability with external tools, data visualization, and DAWs.
 
-use std::error::Error;
-use std::fmt::{self, Display, Formatter};
 use std::io::Write;
 use std::path::Path;
 
-use orpheus_dsp::{OfflineRenderError, SampleBank, SampleTrigger, render_events_to_file_with_bank};
+use orpheus_dsp::{SampleBank, SampleTrigger, render_events_to_file_with_bank};
 use orpheus_pattern::Event;
 
-use crate::eval::{EvalError, render_span};
+use crate::Error;
+use crate::eval::render_span;
 use crate::value::{NumberPatternValue, SamplePatternValue};
-
-/// Errors that can occur during audio rendering or exporting operations.
-#[derive(Debug)]
-pub enum RenderError {
-    Eval(EvalError),
-    Audio(OfflineRenderError),
-}
-
-impl Display for RenderError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Eval(error) => Display::fmt(error, formatter),
-            Self::Audio(error) => Display::fmt(error, formatter),
-        }
-    }
-}
-
-impl Error for RenderError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::Eval(error) => Some(error),
-            Self::Audio(error) => Some(error),
-        }
-    }
-}
-
-impl From<EvalError> for RenderError {
-    fn from(error: EvalError) -> Self {
-        Self::Eval(error)
-    }
-}
-
-impl From<OfflineRenderError> for RenderError {
-    fn from(error: OfflineRenderError) -> Self {
-        Self::Audio(error)
-    }
-}
 
 /// Helper function to convert a `SampleEvent` from the evaluation phase into a
 /// `SampleTrigger` for the DSP rendering phase.
@@ -93,7 +55,7 @@ pub fn render_sample_pattern_to_file(
     pattern: &SamplePatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,
-) -> Result<(), RenderError> {
+) -> Result<(), Error> {
     let sample_bank = SampleBank::load_builtin();
     render_sample_pattern_to_file_with_bank(pattern, path, cycle_count, &sample_bank)
 }
@@ -103,9 +65,9 @@ fn export_pattern_events_to_csv<T, F>(
     path: impl AsRef<Path>,
     header: &str,
     mut write_event: F,
-) -> Result<(), EvalError>
+) -> Result<(), Error>
 where
-    F: FnMut(&mut std::fs::File, &Event<T>) -> Result<(), EvalError>,
+    F: FnMut(&mut std::fs::File, &Event<T>) -> Result<(), Error>,
 {
     let path = path.as_ref();
     let mut file = std::fs::File::create(path)?;
@@ -143,9 +105,9 @@ pub fn export_sample_pattern_to_csv(
     pattern: &SamplePatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,
-) -> Result<(), EvalError> {
+) -> Result<(), Error> {
     if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
+        return Err(Error::eval("exporting requires at least one cycle"));
     }
 
     let span = render_span(cycle_count)?;
@@ -155,7 +117,7 @@ pub fn export_sample_pattern_to_csv(
         &events,
         path,
         "start_num,start_den,start_float,end_num,end_den,end_float,sample,gain,pan,rate,hpf_cutoff_hz,lpf_cutoff_hz",
-        |file, event| {
+        |file, event: &orpheus_pattern::Event<crate::value::SampleEvent>| {
             let start_float = f64::from(event.part.start());
             let end_float = f64::from(event.part.end());
             let hpf = event
@@ -201,9 +163,9 @@ pub fn export_sample_pattern_to_json(
     pattern: &SamplePatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,
-) -> Result<(), EvalError> {
+) -> Result<(), Error> {
     if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
+        return Err(Error::eval("exporting requires at least one cycle"));
     }
 
     let span = render_span(cycle_count)?;
@@ -252,9 +214,9 @@ pub fn export_number_pattern_to_csv(
     pattern: &NumberPatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,
-) -> Result<(), EvalError> {
+) -> Result<(), Error> {
     if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
+        return Err(Error::eval("exporting requires at least one cycle"));
     }
 
     let span = render_span(cycle_count)?;
@@ -297,9 +259,9 @@ pub fn export_number_pattern_to_json(
     pattern: &NumberPatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,
-) -> Result<(), EvalError> {
+) -> Result<(), Error> {
     if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
+        return Err(Error::eval("exporting requires at least one cycle"));
     }
 
     let span = render_span(cycle_count)?;
@@ -350,9 +312,9 @@ pub fn render_sample_pattern_to_file_with_bank(
     path: impl AsRef<Path>,
     cycle_count: u64,
     sample_bank: &SampleBank,
-) -> Result<(), RenderError> {
+) -> Result<(), Error> {
     if cycle_count == 0 {
-        return Err(EvalError::new("rendering requires at least one cycle").into());
+        return Err(Error::eval("rendering requires at least one cycle"));
     }
 
     let span = render_span(cycle_count)?;
@@ -381,7 +343,7 @@ pub fn render_sample_pattern_to_wav(
     pattern: &SamplePatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,
-) -> Result<(), RenderError> {
+) -> Result<(), Error> {
     render_sample_pattern_to_file(pattern, path, cycle_count)
 }
 

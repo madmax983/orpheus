@@ -21,11 +21,7 @@ use std::collections::BTreeMap;
 
 use orpheus_pattern::{CyclePattern, Event, EventStream, PatternNode, Rational, TimeSpan};
 
-use crate::{
-    ReplMode,
-    ast::Expr,
-    eval::{EvalError, apply_function_value},
-};
+use crate::{ReplMode, ast::Expr, eval::apply_function_value};
 
 /// Identifies which core built-in function is being represented.
 ///
@@ -120,9 +116,9 @@ pub struct PitchClassSetValue {
 }
 
 impl PitchClassSetValue {
-    pub(crate) fn new(pitch_classes: Vec<i32>) -> Result<Self, EvalError> {
+    pub(crate) fn new(pitch_classes: Vec<i32>) -> Result<Self, crate::Error> {
         if pitch_classes.first().copied() != Some(0) {
-            return Err(EvalError::new(
+            return Err(crate::Error::eval(
                 "`pitch_class_set` requires the first pitch class to be 0",
             ));
         }
@@ -130,7 +126,7 @@ impl PitchClassSetValue {
         let mut previous = None;
         for pitch_class in &pitch_classes {
             if !(0..=11).contains(pitch_class) {
-                return Err(EvalError::new(
+                return Err(crate::Error::eval(
                     "`pitch_class_set` requires pitch classes within [0, 11]",
                 ));
             }
@@ -138,7 +134,7 @@ impl PitchClassSetValue {
             if let Some(previous) = previous
                 && *pitch_class <= previous
             {
-                return Err(EvalError::new(
+                return Err(crate::Error::eval(
                     "`pitch_class_set` requires strictly increasing pitch classes",
                 ));
             }
@@ -446,23 +442,26 @@ trait PatternValueTransform: Sized {
     fn adjust_pan(&self, amount: f64) -> Self;
     fn adjust_rate(&self, factor: f64) -> Self;
     fn adjust_slice(&self, start: f64, end: f64) -> Self;
-    fn map_degrees(&self, collection: &PitchClassSetValue) -> Result<Self, EvalError>;
-    fn transpose_semitones(&self, semitones: f64) -> Result<Self, EvalError>;
+    fn map_degrees(&self, collection: &PitchClassSetValue) -> Result<Self, crate::Error>;
+    fn transpose_semitones(&self, semitones: f64) -> Result<Self, crate::Error>;
 }
 
 trait PatternRuntimeValue: Clone + PatternValueTransform + Send + Sync + fmt::Debug + Sized {
     fn into_runtime_value(pattern: PatternRuntime<Self>) -> Value;
-    fn try_from_runtime_value(value: Value) -> Result<PatternRuntime<Self>, EvalError>;
-    fn try_from_rand(value: f64) -> Result<Self, EvalError>;
-    fn roll_events(events: Vec<Event<Self>>, steps: u32) -> Result<Vec<Event<Self>>, EvalError>;
-    fn strum_events(events: Vec<Event<Self>>) -> Result<Vec<Event<Self>>, EvalError>;
+    fn try_from_runtime_value(value: Value) -> Result<PatternRuntime<Self>, crate::Error>;
+    fn try_from_rand(value: f64) -> Result<Self, crate::Error>;
+    fn roll_events(events: Vec<Event<Self>>, steps: u32) -> Result<Vec<Event<Self>>, crate::Error>;
+    fn strum_events(events: Vec<Event<Self>>) -> Result<Vec<Event<Self>>, crate::Error>;
     fn arp_events(
         events: Vec<Event<Self>>,
         steps: u32,
         direction: ArpDirectionValue,
-    ) -> Result<Vec<Event<Self>>, EvalError>;
-    fn invert_events(events: Vec<Event<Self>>, count: u32) -> Result<Vec<Event<Self>>, EvalError>;
-    fn drop_events(events: Vec<Event<Self>>, count: u32) -> Result<Vec<Event<Self>>, EvalError>;
+    ) -> Result<Vec<Event<Self>>, crate::Error>;
+    fn invert_events(
+        events: Vec<Event<Self>>,
+        count: u32,
+    ) -> Result<Vec<Event<Self>>, crate::Error>;
+    fn drop_events(events: Vec<Event<Self>>, count: u32) -> Result<Vec<Event<Self>>, crate::Error>;
 }
 
 impl PatternValueTransform for SampleEvent {
@@ -545,14 +544,14 @@ impl PatternValueTransform for SampleEvent {
         }
     }
 
-    fn map_degrees(&self, _collection: &PitchClassSetValue) -> Result<Self, EvalError> {
-        Err(EvalError::new(
+    fn map_degrees(&self, _collection: &PitchClassSetValue) -> Result<Self, crate::Error> {
+        Err(crate::Error::eval(
             "internal evaluator error: degree mapping only applies to number patterns",
         ))
     }
 
-    fn transpose_semitones(&self, _semitones: f64) -> Result<Self, EvalError> {
-        Err(EvalError::new(
+    fn transpose_semitones(&self, _semitones: f64) -> Result<Self, crate::Error> {
+        Err(crate::Error::eval(
             "internal evaluator error: transposition only applies to number patterns",
         ))
     }
@@ -583,17 +582,17 @@ impl PatternValueTransform for f64 {
         *self
     }
 
-    fn map_degrees(&self, collection: &PitchClassSetValue) -> Result<Self, EvalError> {
+    fn map_degrees(&self, collection: &PitchClassSetValue) -> Result<Self, crate::Error> {
         let degree = whole_number_from_degree_value(*self)?;
         map_degree_to_semitones(degree, collection)
     }
 
-    fn transpose_semitones(&self, semitones: f64) -> Result<Self, EvalError> {
+    fn transpose_semitones(&self, semitones: f64) -> Result<Self, crate::Error> {
         let value = *self + semitones;
         if value.is_finite() {
             Ok(value)
         } else {
-            Err(EvalError::new(
+            Err(crate::Error::eval(
                 "`transpose` produced a non-finite numeric value",
             ))
         }
@@ -605,24 +604,24 @@ impl PatternRuntimeValue for SampleEvent {
         Value::SamplePattern(SamplePatternValue { pattern })
     }
 
-    fn try_from_runtime_value(value: Value) -> Result<PatternRuntime<Self>, EvalError> {
+    fn try_from_runtime_value(value: Value) -> Result<PatternRuntime<Self>, crate::Error> {
         match value {
             Value::SamplePattern(pattern) => Ok(pattern.pattern),
             Value::NumberPattern(_)
             | Value::ArpDirection(_)
             | Value::PitchClassSet(_)
             | Value::Function(_)
-            | Value::String(_) => Err(EvalError::new(
+            | Value::String(_) => Err(crate::Error::eval(
                 "transform returned an incompatible value; expected Pattern<Sample>",
             )),
         }
     }
 
-    fn try_from_rand(_value: f64) -> Result<Self, EvalError> {
-        Err(EvalError::new("rand only produces numbers"))
+    fn try_from_rand(_value: f64) -> Result<Self, crate::Error> {
+        Err(crate::Error::eval("rand only produces numbers"))
     }
 
-    fn roll_events(events: Vec<Event<Self>>, steps: u32) -> Result<Vec<Event<Self>>, EvalError> {
+    fn roll_events(events: Vec<Event<Self>>, steps: u32) -> Result<Vec<Event<Self>>, crate::Error> {
         let mut rolled = Vec::new();
         let mut events = events;
         sort_events(&mut events);
@@ -643,8 +642,8 @@ impl PatternRuntimeValue for SampleEvent {
         Ok(rolled)
     }
 
-    fn strum_events(_events: Vec<Event<Self>>) -> Result<Vec<Event<Self>>, EvalError> {
-        Err(EvalError::new(
+    fn strum_events(_events: Vec<Event<Self>>) -> Result<Vec<Event<Self>>, crate::Error> {
+        Err(crate::Error::eval(
             "internal evaluator error: strum only applies to number patterns",
         ))
     }
@@ -653,8 +652,8 @@ impl PatternRuntimeValue for SampleEvent {
         _events: Vec<Event<Self>>,
         _steps: u32,
         _direction: ArpDirectionValue,
-    ) -> Result<Vec<Event<Self>>, EvalError> {
-        Err(EvalError::new(
+    ) -> Result<Vec<Event<Self>>, crate::Error> {
+        Err(crate::Error::eval(
             "internal evaluator error: arp only applies to number patterns",
         ))
     }
@@ -662,14 +661,17 @@ impl PatternRuntimeValue for SampleEvent {
     fn invert_events(
         _events: Vec<Event<Self>>,
         _count: u32,
-    ) -> Result<Vec<Event<Self>>, EvalError> {
-        Err(EvalError::new(
+    ) -> Result<Vec<Event<Self>>, crate::Error> {
+        Err(crate::Error::eval(
             "internal evaluator error: inversion only applies to number patterns",
         ))
     }
 
-    fn drop_events(_events: Vec<Event<Self>>, _count: u32) -> Result<Vec<Event<Self>>, EvalError> {
-        Err(EvalError::new(
+    fn drop_events(
+        _events: Vec<Event<Self>>,
+        _count: u32,
+    ) -> Result<Vec<Event<Self>>, crate::Error> {
+        Err(crate::Error::eval(
             "internal evaluator error: drop voicings only apply to number patterns",
         ))
     }
@@ -680,27 +682,27 @@ impl PatternRuntimeValue for f64 {
         Value::NumberPattern(NumberPatternValue { pattern })
     }
 
-    fn try_from_runtime_value(value: Value) -> Result<PatternRuntime<Self>, EvalError> {
+    fn try_from_runtime_value(value: Value) -> Result<PatternRuntime<Self>, crate::Error> {
         match value {
             Value::NumberPattern(pattern) => Ok(pattern.pattern),
             Value::SamplePattern(_)
             | Value::ArpDirection(_)
             | Value::PitchClassSet(_)
             | Value::Function(_)
-            | Value::String(_) => Err(EvalError::new(
+            | Value::String(_) => Err(crate::Error::eval(
                 "transform returned an incompatible value; expected Pattern<Number>",
             )),
         }
     }
 
-    fn try_from_rand(value: f64) -> Result<Self, EvalError> {
+    fn try_from_rand(value: f64) -> Result<Self, crate::Error> {
         Ok(value)
     }
 
     fn roll_events(
         mut events: Vec<Event<Self>>,
         steps: u32,
-    ) -> Result<Vec<Event<Self>>, EvalError> {
+    ) -> Result<Vec<Event<Self>>, crate::Error> {
         sort_events(&mut events);
         let mut rolled = Vec::new();
         let mut index = 0;
@@ -711,7 +713,7 @@ impl PatternRuntimeValue for f64 {
             while index < events.len() && events[index].part == span {
                 let event = events[index].clone();
                 if !event.value.is_finite() {
-                    return Err(EvalError::new("`roll` requires finite numeric values"));
+                    return Err(crate::Error::eval("`roll` requires finite numeric values"));
                 }
                 cluster.push(event);
                 index += 1;
@@ -724,7 +726,7 @@ impl PatternRuntimeValue for f64 {
         Ok(rolled)
     }
 
-    fn strum_events(mut events: Vec<Event<Self>>) -> Result<Vec<Event<Self>>, EvalError> {
+    fn strum_events(mut events: Vec<Event<Self>>) -> Result<Vec<Event<Self>>, crate::Error> {
         sort_events(&mut events);
         let mut strummed = Vec::with_capacity(events.len());
         let mut index = 0;
@@ -735,7 +737,7 @@ impl PatternRuntimeValue for f64 {
             while index < events.len() && events[index].part == span {
                 let event = events[index].clone();
                 if !event.value.is_finite() {
-                    return Err(EvalError::new("`strum` requires finite numeric values"));
+                    return Err(crate::Error::eval("`strum` requires finite numeric values"));
                 }
                 cluster.push(event);
                 index += 1;
@@ -752,7 +754,7 @@ impl PatternRuntimeValue for f64 {
         mut events: Vec<Event<Self>>,
         steps: u32,
         direction: ArpDirectionValue,
-    ) -> Result<Vec<Event<Self>>, EvalError> {
+    ) -> Result<Vec<Event<Self>>, crate::Error> {
         sort_events(&mut events);
         let mut arped = Vec::new();
         let mut index = 0;
@@ -763,7 +765,7 @@ impl PatternRuntimeValue for f64 {
             while index < events.len() && events[index].part == span {
                 let event = events[index].clone();
                 if !event.value.is_finite() {
-                    return Err(EvalError::new("`arp` requires finite numeric values"));
+                    return Err(crate::Error::eval("`arp` requires finite numeric values"));
                 }
                 cluster.push(event);
                 index += 1;
@@ -779,7 +781,7 @@ impl PatternRuntimeValue for f64 {
     fn invert_events(
         mut events: Vec<Event<Self>>,
         count: u32,
-    ) -> Result<Vec<Event<Self>>, EvalError> {
+    ) -> Result<Vec<Event<Self>>, crate::Error> {
         sort_events(&mut events);
         let mut inverted = Vec::with_capacity(events.len());
         let mut index = 0;
@@ -791,7 +793,9 @@ impl PatternRuntimeValue for f64 {
             while index < events.len() && events[index].part == span {
                 let event = events[index].clone();
                 if !event.value.is_finite() {
-                    return Err(EvalError::new("`invert` requires finite numeric values"));
+                    return Err(crate::Error::eval(
+                        "`invert` requires finite numeric values",
+                    ));
                 }
                 cluster.push(event);
                 index += 1;
@@ -807,7 +811,7 @@ impl PatternRuntimeValue for f64 {
     fn drop_events(
         mut events: Vec<Event<Self>>,
         count: u32,
-    ) -> Result<Vec<Event<Self>>, EvalError> {
+    ) -> Result<Vec<Event<Self>>, crate::Error> {
         sort_events(&mut events);
         let mut dropped = Vec::with_capacity(events.len());
         let mut index = 0;
@@ -819,7 +823,7 @@ impl PatternRuntimeValue for f64 {
             while index < events.len() && events[index].part == span {
                 let event = events[index].clone();
                 if !event.value.is_finite() {
-                    return Err(EvalError::new("`drop` requires finite numeric values"));
+                    return Err(crate::Error::eval("`drop` requires finite numeric values"));
                 }
                 cluster.push(event);
                 index += 1;
@@ -1165,11 +1169,14 @@ impl SamplePatternValue {
     /// Returns an error if an internal runtime transform produces an invalid
     /// span or overflows the evaluator's bounded rational arithmetic.
     #[must_use = "query_unit() returns a Result; ignoring it may drop query errors"]
-    pub fn query_unit(&self) -> Result<Vec<Event<SampleEvent>>, EvalError> {
+    pub fn query_unit(&self) -> Result<Vec<Event<SampleEvent>>, crate::Error> {
         self.try_query(&TimeSpan::unit())
     }
 
-    pub(crate) fn try_query(&self, span: &TimeSpan) -> Result<Vec<Event<SampleEvent>>, EvalError> {
+    pub(crate) fn try_query(
+        &self,
+        span: &TimeSpan,
+    ) -> Result<Vec<Event<SampleEvent>>, crate::Error> {
         self.pattern.try_query(span)
     }
 }
@@ -1418,25 +1425,25 @@ impl NumberPatternValue {
     ///
     /// Returns an error if an internal runtime transform produces an invalid
     /// span or overflows the evaluator's bounded rational arithmetic.
-    pub fn try_query_unit(&self) -> Result<Vec<Event<f64>>, EvalError> {
+    pub fn try_query_unit(&self) -> Result<Vec<Event<f64>>, crate::Error> {
         self.try_query(&TimeSpan::unit())
     }
 
-    pub(crate) fn constant_value(&self) -> Result<f64, EvalError> {
+    pub(crate) fn constant_value(&self) -> Result<f64, crate::Error> {
         let events = self.try_query(&TimeSpan::unit())?;
         let unit = TimeSpan::unit();
 
         match events.as_slice() {
             [event] if event.whole.is_none() && event.part == unit => Ok(event.value),
-            _ => Err(EvalError::new(
+            _ => Err(crate::Error::eval(
                 "expected a constant number pattern over the unit cycle",
             )),
         }
     }
 
     /// # Errors
-    /// Returns `EvalError` if querying fails.
-    pub fn try_query(&self, span: &TimeSpan) -> Result<Vec<Event<f64>>, EvalError> {
+    /// Returns `crate::Error` if querying fails.
+    pub fn try_query(&self, span: &TimeSpan) -> Result<Vec<Event<f64>>, crate::Error> {
         self.pattern.try_query(span)
     }
 
@@ -1619,7 +1626,7 @@ impl GatePatternValue {
 }
 
 impl GatePatternRuntime {
-    fn query_open_spans(&self, span: &TimeSpan) -> Result<Vec<TimeSpan>, EvalError> {
+    fn query_open_spans(&self, span: &TimeSpan) -> Result<Vec<TimeSpan>, crate::Error> {
         let spans = match self {
             Self::Sample(pattern) => pattern
                 .try_query(span)?
@@ -1640,7 +1647,7 @@ impl<T> PatternRuntime<T>
 where
     T: PatternRuntimeValue,
 {
-    fn try_query(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
+    fn try_query(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, crate::Error> {
         match self {
             Self::Cycle(pattern) => pattern.try_query(span).map_err(Into::into),
             Self::Stream(stream) => stream.try_query(span).map_err(Into::into),
@@ -1673,7 +1680,7 @@ where
         }
     }
 
-    fn try_query_transform(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
+    fn try_query_transform(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, crate::Error> {
         match self {
             Self::Roll { steps, inner } => T::roll_events(inner.try_query(span)?, *steps),
             Self::Strum { inner } => T::strum_events(inner.try_query(span)?),
@@ -1764,7 +1771,7 @@ fn apply_value_mutation<T, F>(
     inner: &PatternRuntime<T>,
     span: &TimeSpan,
     mut mutate: F,
-) -> Result<Vec<Event<T>>, EvalError>
+) -> Result<Vec<Event<T>>, crate::Error>
 where
     T: PatternRuntimeValue,
     F: FnMut(&mut T),
@@ -1780,10 +1787,10 @@ fn apply_value_transform<T, F>(
     inner: &PatternRuntime<T>,
     span: &TimeSpan,
     mut transform: F,
-) -> Result<Vec<Event<T>>, EvalError>
+) -> Result<Vec<Event<T>>, crate::Error>
 where
     T: PatternRuntimeValue,
-    F: FnMut(&T) -> Result<T, EvalError>,
+    F: FnMut(&T) -> Result<T, crate::Error>,
 {
     let mut events = inner.try_query(span)?;
     for event in &mut events {
@@ -1792,7 +1799,10 @@ where
     Ok(events)
 }
 
-fn query_stack<T>(layers: &[PatternRuntime<T>], span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError>
+fn query_stack<T>(
+    layers: &[PatternRuntime<T>],
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, crate::Error>
 where
     T: PatternRuntimeValue,
 {
@@ -1810,7 +1820,7 @@ fn query_mask<T>(
     inner: &PatternRuntime<T>,
     gate: &GatePatternRuntime,
     span: &TimeSpan,
-) -> Result<Vec<Event<T>>, EvalError>
+) -> Result<Vec<Event<T>>, crate::Error>
 where
     T: PatternRuntimeValue,
 {
@@ -1862,7 +1872,7 @@ where
     Ok(masked)
 }
 
-fn invert_event_cluster(cluster: &mut Vec<Event<f64>>, count: u32) -> Result<(), EvalError> {
+fn invert_event_cluster(cluster: &mut Vec<Event<f64>>, count: u32) -> Result<(), crate::Error> {
     cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
     for _ in 0..count {
         if cluster.len() <= 1 {
@@ -1872,7 +1882,7 @@ fn invert_event_cluster(cluster: &mut Vec<Event<f64>>, count: u32) -> Result<(),
         let mut lowest = cluster.remove(0);
         lowest.value += 12.0;
         if !lowest.value.is_finite() {
-            return Err(EvalError::new(
+            return Err(crate::Error::eval(
                 "`invert` produced a non-finite numeric value",
             ));
         }
@@ -1885,12 +1895,12 @@ fn invert_event_cluster(cluster: &mut Vec<Event<f64>>, count: u32) -> Result<(),
 fn roll_event_cluster<T: Clone>(
     cluster: Vec<Event<T>>,
     steps: u32,
-) -> Result<Vec<Event<T>>, EvalError> {
+) -> Result<Vec<Event<T>>, crate::Error> {
     if cluster.is_empty() || cluster.len() == 1 && steps == 1 {
         return Ok(cluster);
     }
     if steps == 0 {
-        return Err(EvalError::new(
+        return Err(crate::Error::eval(
             "`roll` requires a positive whole number of steps",
         ));
     }
@@ -1909,17 +1919,17 @@ fn roll_event_cluster<T: Clone>(
 
     let cluster_len = cluster.len();
     let steps_usize = usize::try_from(steps)
-        .map_err(|_| EvalError::new("`roll` exceeded the supported evaluator range"))?;
+        .map_err(|_| crate::Error::eval("`roll` exceeded the supported evaluator range"))?;
     let capacity = cluster_len
         .checked_mul(steps_usize)
-        .ok_or_else(|| EvalError::new("`roll` exceeded the supported evaluator range"))?;
+        .ok_or_else(|| crate::Error::eval("`roll` exceeded the supported evaluator range"))?;
     let mut rolled = Vec::with_capacity(capacity);
 
     for index in 0..steps {
         let offset = rational_mul_parts(&step, i64::from(index), 1)?;
         let start = rational_add(span.start(), &offset)?;
         let end = rational_add(&start, &step)?;
-        let part = TimeSpan::new(start, end).map_err(EvalError::from)?;
+        let part = TimeSpan::new(start, end).map_err(crate::Error::from)?;
         for event in &cluster {
             rolled.push(Event {
                 whole: None,
@@ -1932,7 +1942,7 @@ fn roll_event_cluster<T: Clone>(
     Ok(rolled)
 }
 
-fn strum_event_cluster(mut cluster: Vec<Event<f64>>) -> Result<Vec<Event<f64>>, EvalError> {
+fn strum_event_cluster(mut cluster: Vec<Event<f64>>) -> Result<Vec<Event<f64>>, crate::Error> {
     if cluster.len() <= 1 {
         return Ok(cluster);
     }
@@ -1944,7 +1954,7 @@ fn strum_event_cluster(mut cluster: Vec<Event<f64>>) -> Result<Vec<Event<f64>>, 
         return Ok(cluster);
     }
     let count = i128::try_from(cluster.len())
-        .map_err(|_| EvalError::new("`strum` exceeded the supported evaluator range"))?;
+        .map_err(|_| crate::Error::eval("`strum` exceeded the supported evaluator range"))?;
     let step = rational_mul(
         &width,
         &rational_reciprocal(&rational_from_parts(count, 1)?)?,
@@ -1952,11 +1962,11 @@ fn strum_event_cluster(mut cluster: Vec<Event<f64>>) -> Result<Vec<Event<f64>>, 
 
     for (index, event) in cluster.iter_mut().enumerate() {
         let index = i64::try_from(index)
-            .map_err(|_| EvalError::new("`strum` exceeded the supported evaluator range"))?;
+            .map_err(|_| crate::Error::eval("`strum` exceeded the supported evaluator range"))?;
         let offset = rational_mul_parts(&step, index, 1)?;
         let start = rational_add(span.start(), &offset)?;
         let end = rational_add(&start, &step)?;
-        event.part = TimeSpan::new(start, end).map_err(EvalError::from)?;
+        event.part = TimeSpan::new(start, end).map_err(crate::Error::from)?;
         event.whole = None;
     }
 
@@ -1967,13 +1977,13 @@ fn arp_event_cluster(
     mut cluster: Vec<Event<f64>>,
     steps: u32,
     direction: ArpDirectionValue,
-) -> Result<Vec<Event<f64>>, EvalError> {
+) -> Result<Vec<Event<f64>>, crate::Error> {
     if cluster.is_empty() {
         return Ok(cluster);
     }
 
     if steps == 0 {
-        return Err(EvalError::new(
+        return Err(crate::Error::eval(
             "`arp` requires a positive whole number of steps",
         ));
     }
@@ -1999,7 +2009,7 @@ fn arp_event_cluster(
         let start = rational_add(span.start(), &offset)?;
         let end = rational_add(&start, &step)?;
         let slot = usize::try_from(index)
-            .map_err(|_| EvalError::new("`arp` exceeded the supported evaluator range"))?
+            .map_err(|_| crate::Error::eval("`arp` exceeded the supported evaluator range"))?
             % len;
         let selected = match direction {
             ArpDirectionValue::Up => slot,
@@ -2007,7 +2017,7 @@ fn arp_event_cluster(
         };
         arped.push(Event {
             whole: None,
-            part: TimeSpan::new(start, end).map_err(EvalError::from)?,
+            part: TimeSpan::new(start, end).map_err(crate::Error::from)?,
             value: cluster[selected].value,
         });
     }
@@ -2015,11 +2025,11 @@ fn arp_event_cluster(
     Ok(arped)
 }
 
-fn drop_event_cluster(cluster: &mut [Event<f64>], count: u32) -> Result<(), EvalError> {
+fn drop_event_cluster(cluster: &mut [Event<f64>], count: u32) -> Result<(), crate::Error> {
     cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
     let len = cluster.len();
     let count = usize::try_from(count)
-        .map_err(|_| EvalError::new("`drop` exceeded the supported evaluator range"))?;
+        .map_err(|_| crate::Error::eval("`drop` exceeded the supported evaluator range"))?;
     if len < count {
         return Ok(());
     }
@@ -2027,7 +2037,9 @@ fn drop_event_cluster(cluster: &mut [Event<f64>], count: u32) -> Result<(), Eval
     let target_index = len - count;
     cluster[target_index].value -= 12.0;
     if !cluster[target_index].value.is_finite() {
-        return Err(EvalError::new("`drop` produced a non-finite numeric value"));
+        return Err(crate::Error::eval(
+            "`drop` produced a non-finite numeric value",
+        ));
     }
     cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
     Ok(())
@@ -2048,10 +2060,10 @@ fn apply_event_fragments<T, F>(
     source_events: Vec<Event<T>>,
     control_event_lists: &[&[Event<f64>]],
     mut process_fragment: F,
-) -> Result<Vec<Event<T>>, EvalError>
+) -> Result<Vec<Event<T>>, crate::Error>
 where
     T: PatternRuntimeValue,
-    F: FnMut(&TimeSpan, &T) -> Result<Option<T>, EvalError>,
+    F: FnMut(&TimeSpan, &T) -> Result<Option<T>, crate::Error>,
 {
     let mut composed = Vec::with_capacity(source_events.len());
     for event in source_events {
@@ -2089,7 +2101,7 @@ fn apply_control_pattern<T>(
     control: &PatternRuntime<f64>,
     span: &TimeSpan,
     kind: ControlPatternKind,
-) -> Result<Vec<Event<T>>, EvalError>
+) -> Result<Vec<Event<T>>, crate::Error>
 where
     T: PatternRuntimeValue,
 {
@@ -2126,54 +2138,54 @@ where
 fn validate_control_events(
     control_events: &[Event<f64>],
     kind: ControlPatternKind,
-) -> Result<(), EvalError> {
+) -> Result<(), crate::Error> {
     for event in control_events {
         match kind {
             ControlPatternKind::Gain => {
                 if !event.value.is_finite() {
-                    return Err(EvalError::new(
+                    return Err(crate::Error::eval(
                         "`gain` requires finite numeric control values",
                     ));
                 }
             }
             ControlPatternKind::Hpf => {
                 if !event.value.is_finite() || event.value <= f64::EPSILON {
-                    return Err(EvalError::new(
+                    return Err(crate::Error::eval(
                         "`hpf` requires positive finite control values",
                     ));
                 }
             }
             ControlPatternKind::Lpf => {
                 if !event.value.is_finite() || event.value <= f64::EPSILON {
-                    return Err(EvalError::new(
+                    return Err(crate::Error::eval(
                         "`lpf` requires positive finite control values",
                     ));
                 }
             }
             ControlPatternKind::Pan => {
                 if !event.value.is_finite() || !(-1.0..=1.0).contains(&event.value) {
-                    return Err(EvalError::new(
+                    return Err(crate::Error::eval(
                         "`pan` requires finite control values within [-1, 1]",
                     ));
                 }
             }
             ControlPatternKind::Pitch => {
                 if !event.value.is_finite() {
-                    return Err(EvalError::new(
+                    return Err(crate::Error::eval(
                         "`pitch` requires finite numeric control values",
                     ));
                 }
             }
             ControlPatternKind::Rate => {
                 if !event.value.is_finite() || event.value.abs() <= f64::EPSILON {
-                    return Err(EvalError::new(
+                    return Err(crate::Error::eval(
                         "`rate` requires finite non-zero control values",
                     ));
                 }
             }
             ControlPatternKind::Transpose => {
                 if !event.value.is_finite() {
-                    return Err(EvalError::new(
+                    return Err(crate::Error::eval(
                         "`transpose` requires finite numeric control values",
                     ));
                 }
@@ -2188,19 +2200,22 @@ fn semitones_to_rate_multiplier(semitones: f64) -> f64 {
     (semitones / 12.0).exp2()
 }
 
-fn whole_number_from_degree_value(value: f64) -> Result<i32, EvalError> {
+fn whole_number_from_degree_value(value: f64) -> Result<i32, crate::Error> {
     if !value.is_finite() || value.fract().abs() > f64::EPSILON {
-        return Err(EvalError::new(
+        return Err(crate::Error::eval(
             "`degrees` requires whole-number degree values",
         ));
     }
 
     format!("{value:.0}")
         .parse::<i32>()
-        .map_err(|_| EvalError::new("`degrees` degree exceeded the supported evaluator range"))
+        .map_err(|_| crate::Error::eval("`degrees` degree exceeded the supported evaluator range"))
 }
 
-fn map_degree_to_semitones(degree: i32, collection: &PitchClassSetValue) -> Result<f64, EvalError> {
+fn map_degree_to_semitones(
+    degree: i32,
+    collection: &PitchClassSetValue,
+) -> Result<f64, crate::Error> {
     let intervals = collection.intervals();
     let scale_len = i32::try_from(intervals.len()).unwrap_or_default();
     let octave = degree.div_euclid(scale_len);
@@ -2208,7 +2223,7 @@ fn map_degree_to_semitones(degree: i32, collection: &PitchClassSetValue) -> Resu
     let semitones = octave
         .checked_mul(12)
         .and_then(|value| value.checked_add(intervals[index]))
-        .ok_or_else(|| EvalError::new("`degrees` exceeded the supported evaluator range"))?;
+        .ok_or_else(|| crate::Error::eval("`degrees` exceeded the supported evaluator range"))?;
     Ok(f64::from(semitones))
 }
 
@@ -2217,7 +2232,7 @@ fn apply_slice_pattern<T>(
     start_control: &PatternRuntime<f64>,
     end_control: &PatternRuntime<f64>,
     span: &TimeSpan,
-) -> Result<Vec<Event<T>>, EvalError>
+) -> Result<Vec<Event<T>>, crate::Error>
 where
     T: PatternRuntimeValue,
 {
@@ -2248,7 +2263,7 @@ where
             }
 
             if relative_start >= relative_end {
-                return Err(EvalError::new(
+                return Err(crate::Error::eval(
                     "`slice` requires control values with start < end",
                 ));
             }
@@ -2265,7 +2280,7 @@ fn apply_slice_idx_pattern<T>(
     control: &PatternRuntime<f64>,
     segments: u32,
     span: &TimeSpan,
-) -> Result<Vec<Event<T>>, EvalError>
+) -> Result<Vec<Event<T>>, crate::Error>
 where
     T: PatternRuntimeValue,
 {
@@ -2283,7 +2298,7 @@ where
                 let index = whole_number_from_slice_idx_value(control_event.value)?;
                 let slice_start = f64::from(index) / f64::from(segments);
                 let slice_end = f64::from(index.checked_add(1).ok_or_else(|| {
-                    EvalError::new(
+                    crate::Error::eval(
                         "`slice_idx` control index exceeded the supported evaluator range",
                     )
                 })?) / f64::from(segments);
@@ -2297,10 +2312,10 @@ where
 fn validate_slice_endpoint_events(
     control_events: &[Event<f64>],
     context: &str,
-) -> Result<(), EvalError> {
+) -> Result<(), crate::Error> {
     for event in control_events {
         if !event.value.is_finite() || !(0.0..=1.0).contains(&event.value) {
-            return Err(EvalError::new(format!(
+            return Err(crate::Error::eval(format!(
                 "`{context}` requires finite control values within [0, 1]"
             )));
         }
@@ -2312,11 +2327,11 @@ fn validate_slice_endpoint_events(
 fn validate_slice_idx_control_events(
     control_events: &[Event<f64>],
     segments: u32,
-) -> Result<(), EvalError> {
+) -> Result<(), crate::Error> {
     for event in control_events {
         let index = whole_number_from_slice_idx_value(event.value)?;
         if index >= segments {
-            return Err(EvalError::new(
+            return Err(crate::Error::eval(
                 "`slice_idx` requires control values with index < segments",
             ));
         }
@@ -2325,19 +2340,19 @@ fn validate_slice_idx_control_events(
     Ok(())
 }
 
-fn whole_number_from_slice_idx_value(value: f64) -> Result<u32, EvalError> {
+fn whole_number_from_slice_idx_value(value: f64) -> Result<u32, crate::Error> {
     if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
-        return Err(EvalError::new(
+        return Err(crate::Error::eval(
             "`slice_idx` requires whole-number control values",
         ));
     }
 
     format!("{value:.0}").parse::<u32>().map_err(|_| {
-        EvalError::new("`slice_idx` control value exceeded the supported evaluator range")
+        crate::Error::eval("`slice_idx` control value exceeded the supported evaluator range")
     })
 }
 
-fn query_rand<T>(site_salt: u64, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError>
+fn query_rand<T>(site_salt: u64, span: &TimeSpan) -> Result<Vec<Event<T>>, crate::Error>
 where
     T: PatternRuntimeValue,
 {
@@ -2373,7 +2388,7 @@ fn query_fast<T>(
     inner: &PatternRuntime<T>,
     factor: i64,
     span: &TimeSpan,
-) -> Result<Vec<Event<T>>, EvalError>
+) -> Result<Vec<Event<T>>, crate::Error>
 where
     T: PatternRuntimeValue,
 {
@@ -2386,7 +2401,7 @@ where
 fn query_explicit_cycle<T>(
     stream: &EventStream<T>,
     span: &TimeSpan,
-) -> Result<Vec<Event<T>>, EvalError>
+) -> Result<Vec<Event<T>>, crate::Error>
 where
     T: PatternRuntimeValue,
 {
@@ -2422,7 +2437,7 @@ fn query_every<T>(
     transform: &FunctionValue,
     period: i64,
     span: &TimeSpan,
-) -> Result<Vec<Event<T>>, EvalError>
+) -> Result<Vec<Event<T>>, crate::Error>
 where
     T: PatternRuntimeValue,
 {
@@ -2442,7 +2457,7 @@ fn query_when<T>(
     period: i64,
     offset: i64,
     span: &TimeSpan,
-) -> Result<Vec<Event<T>>, EvalError>
+) -> Result<Vec<Event<T>>, crate::Error>
 where
     T: PatternRuntimeValue,
 {
@@ -2462,7 +2477,7 @@ fn query_sometimes<T>(
     transform: &FunctionValue,
     site_salt: u64,
     span: &TimeSpan,
-) -> Result<Vec<Event<T>>, EvalError>
+) -> Result<Vec<Event<T>>, crate::Error>
 where
     T: PatternRuntimeValue,
 {
@@ -2480,7 +2495,7 @@ fn query_transform_cycles<T, F>(
     transform: &FunctionValue,
     span: &TimeSpan,
     mut should_transform: F,
-) -> Result<Vec<Event<T>>, EvalError>
+) -> Result<Vec<Event<T>>, crate::Error>
 where
     T: PatternRuntimeValue,
     F: FnMut(i128) -> bool,
@@ -2521,7 +2536,7 @@ fn query_within<T>(
     end: &Rational,
     transform: &FunctionValue,
     span: &TimeSpan,
-) -> Result<Vec<Event<T>>, EvalError>
+) -> Result<Vec<Event<T>>, crate::Error>
 where
     T: PatternRuntimeValue,
 {
@@ -2572,7 +2587,7 @@ fn query_slow<T>(
     inner: &PatternRuntime<T>,
     factor: i64,
     span: &TimeSpan,
-) -> Result<Vec<Event<T>>, EvalError>
+) -> Result<Vec<Event<T>>, crate::Error>
 where
     T: PatternRuntimeValue,
 {
@@ -2586,7 +2601,7 @@ fn query_shift<T>(
     inner: &PatternRuntime<T>,
     offset: &Rational,
     span: &TimeSpan,
-) -> Result<Vec<Event<T>>, EvalError>
+) -> Result<Vec<Event<T>>, crate::Error>
 where
     T: PatternRuntimeValue,
 {
@@ -2597,7 +2612,7 @@ where
     Ok(events)
 }
 
-fn query_rev<T>(inner: &PatternRuntime<T>, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError>
+fn query_rev<T>(inner: &PatternRuntime<T>, span: &TimeSpan) -> Result<Vec<Event<T>>, crate::Error>
 where
     T: PatternRuntimeValue,
 {
@@ -2635,7 +2650,7 @@ fn localize_cycle_runtime<T>(
     inner: &PatternRuntime<T>,
     query_cycle: i128,
     origin_cycle: i128,
-) -> Result<PatternRuntime<T>, EvalError>
+) -> Result<PatternRuntime<T>, crate::Error>
 where
     T: PatternRuntimeValue,
 {
@@ -2659,7 +2674,7 @@ fn localize_window_runtime<T>(
     inner: &PatternRuntime<T>,
     window_span: &TimeSpan,
     origin_cycle: i128,
-) -> Result<PatternRuntime<T>, EvalError>
+) -> Result<PatternRuntime<T>, crate::Error>
 where
     T: PatternRuntimeValue,
 {
@@ -2684,11 +2699,11 @@ where
 fn absolute_cycle_for_runtime<T>(
     runtime: &PatternRuntime<T>,
     cycle: i128,
-) -> Result<i128, EvalError> {
+) -> Result<i128, crate::Error> {
     match runtime {
         PatternRuntime::ExplicitCycle { origin_cycle, .. } => origin_cycle
             .checked_add(cycle)
-            .ok_or_else(|| EvalError::new("cycle index overflowed while localizing a pattern")),
+            .ok_or_else(|| crate::Error::eval("cycle index overflowed while localizing a pattern")),
         PatternRuntime::Every { inner, .. }
         | PatternRuntime::When { inner, .. }
         | PatternRuntime::Sometimes { inner, .. }
@@ -2734,7 +2749,7 @@ fn rescale_events<T>(
     events: &mut [Event<T>],
     numerator: i64,
     denominator: i64,
-) -> Result<(), EvalError> {
+) -> Result<(), crate::Error> {
     for event in events {
         event.part = scale_span(&event.part, numerator, denominator)?;
         if let Some(whole) = event.whole.take() {
@@ -2754,7 +2769,7 @@ fn sort_events<T>(events: &mut [Event<T>]) {
     });
 }
 
-fn shift_events<T>(events: &mut [Event<T>], offset: &Rational) -> Result<(), EvalError> {
+fn shift_events<T>(events: &mut [Event<T>], offset: &Rational) -> Result<(), crate::Error> {
     for event in &mut *events {
         event.part = translate_span(&event.part, offset)?;
         if let Some(whole) = event.whole.take() {
@@ -2766,18 +2781,18 @@ fn shift_events<T>(events: &mut [Event<T>], offset: &Rational) -> Result<(), Eva
     Ok(())
 }
 
-fn cycle_span(cycle: i128) -> Result<TimeSpan, EvalError> {
+fn cycle_span(cycle: i128) -> Result<TimeSpan, crate::Error> {
     let start = rational_from_parts(cycle, 1)?;
     let end = rational_from_parts(
-        cycle
-            .checked_add(1)
-            .ok_or_else(|| EvalError::new("cycle index overflowed while reversing a pattern"))?,
+        cycle.checked_add(1).ok_or_else(|| {
+            crate::Error::eval("cycle index overflowed while reversing a pattern")
+        })?,
         1,
     )?;
     build_span(start, end)
 }
 
-fn mirror_span_in_cycle(span: &TimeSpan, cycle: i128) -> Result<TimeSpan, EvalError> {
+fn mirror_span_in_cycle(span: &TimeSpan, cycle: i128) -> Result<TimeSpan, crate::Error> {
     let cycle_start = rational_from_parts(cycle, 1)?;
     let local_start = rational_sub(span.start(), &cycle_start)?;
     let local_end = rational_sub(span.end(), &cycle_start)?;
@@ -2790,7 +2805,7 @@ fn mirror_span_in_cycle(span: &TimeSpan, cycle: i128) -> Result<TimeSpan, EvalEr
     )
 }
 
-fn clip_span(span: &TimeSpan, query: &TimeSpan) -> Result<Option<TimeSpan>, EvalError> {
+fn clip_span(span: &TimeSpan, query: &TimeSpan) -> Result<Option<TimeSpan>, crate::Error> {
     let start = max(span.start(), query.start());
     let end = min(span.end(), query.end());
 
@@ -2801,7 +2816,7 @@ fn clip_span(span: &TimeSpan, query: &TimeSpan) -> Result<Option<TimeSpan>, Eval
     build_span(start.clone(), end.clone()).map(Some)
 }
 
-fn merge_open_spans(mut spans: Vec<TimeSpan>) -> Result<Vec<TimeSpan>, EvalError> {
+fn merge_open_spans(mut spans: Vec<TimeSpan>) -> Result<Vec<TimeSpan>, crate::Error> {
     if spans.is_empty() {
         return Ok(spans);
     }
@@ -2877,21 +2892,21 @@ fn compute_event_fragment_boundaries<'a>(
     Some(boundaries)
 }
 
-fn scale_span(span: &TimeSpan, numerator: i64, denominator: i64) -> Result<TimeSpan, EvalError> {
+fn scale_span(span: &TimeSpan, numerator: i64, denominator: i64) -> Result<TimeSpan, crate::Error> {
     build_span(
         rational_mul_parts(span.start(), numerator, denominator)?,
         rational_mul_parts(span.end(), numerator, denominator)?,
     )
 }
 
-fn scale_span_by_rational(span: &TimeSpan, factor: &Rational) -> Result<TimeSpan, EvalError> {
+fn scale_span_by_rational(span: &TimeSpan, factor: &Rational) -> Result<TimeSpan, crate::Error> {
     build_span(
         rational_mul(span.start(), factor)?,
         rational_mul(span.end(), factor)?,
     )
 }
 
-fn translate_span(span: &TimeSpan, offset: &Rational) -> Result<TimeSpan, EvalError> {
+fn translate_span(span: &TimeSpan, offset: &Rational) -> Result<TimeSpan, crate::Error> {
     build_span(
         rational_add(span.start(), offset)?,
         rational_add(span.end(), offset)?,
@@ -2902,7 +2917,7 @@ fn clip_between(
     query: &TimeSpan,
     start: &Rational,
     end: &Rational,
-) -> Result<Option<TimeSpan>, EvalError> {
+) -> Result<Option<TimeSpan>, crate::Error> {
     if start >= end {
         return Ok(None);
     }
@@ -2913,7 +2928,7 @@ fn within_window_span(
     cycle: i128,
     start: &Rational,
     end: &Rational,
-) -> Result<TimeSpan, EvalError> {
+) -> Result<TimeSpan, crate::Error> {
     let cycle_start = rational_from_parts(cycle, 1)?;
     build_span(
         rational_add(&cycle_start, start)?,
@@ -2921,11 +2936,14 @@ fn within_window_span(
     )
 }
 
-fn window_width(window_span: &TimeSpan) -> Result<Rational, EvalError> {
+fn window_width(window_span: &TimeSpan) -> Result<Rational, crate::Error> {
     rational_sub(window_span.end(), window_span.start())
 }
 
-fn localize_span_to_window(span: &TimeSpan, window_span: &TimeSpan) -> Result<TimeSpan, EvalError> {
+fn localize_span_to_window(
+    span: &TimeSpan,
+    window_span: &TimeSpan,
+) -> Result<TimeSpan, crate::Error> {
     let width = window_width(window_span)?;
     let normalize_factor = rational_reciprocal(&width)?;
     let local_offset = rational_sub(&Rational::zero(), window_span.start())?;
@@ -2936,7 +2954,7 @@ fn localize_span_to_window(span: &TimeSpan, window_span: &TimeSpan) -> Result<Ti
 fn restore_window_localized_events<T>(
     events: &mut [Event<T>],
     window_span: &TimeSpan,
-) -> Result<(), EvalError> {
+) -> Result<(), crate::Error> {
     let width = window_width(window_span)?;
     for event in &mut *events {
         event.part = scale_span_by_rational(&event.part, &width)?;
@@ -2951,23 +2969,23 @@ fn restore_window_localized_events<T>(
     Ok(())
 }
 
-fn build_span(start: Rational, end: Rational) -> Result<TimeSpan, EvalError> {
+fn build_span(start: Rational, end: Rational) -> Result<TimeSpan, crate::Error> {
     Ok(TimeSpan::new(start, end)?)
 }
 
-fn rational_add(left: &Rational, right: &Rational) -> Result<Rational, EvalError> {
+fn rational_add(left: &Rational, right: &Rational) -> Result<Rational, crate::Error> {
     Ok(left.checked_add(right)?)
 }
 
-fn rational_sub(left: &Rational, right: &Rational) -> Result<Rational, EvalError> {
+fn rational_sub(left: &Rational, right: &Rational) -> Result<Rational, crate::Error> {
     Ok(left.checked_sub(right)?)
 }
 
-fn rational_mul(left: &Rational, right: &Rational) -> Result<Rational, EvalError> {
+fn rational_mul(left: &Rational, right: &Rational) -> Result<Rational, crate::Error> {
     left.checked_mul(right).map_err(Into::into)
 }
 
-fn rational_reciprocal(value: &Rational) -> Result<Rational, EvalError> {
+fn rational_reciprocal(value: &Rational) -> Result<Rational, crate::Error> {
     Rational::checked_from_parts(value.denominator(), value.numerator()).map_err(Into::into)
 }
 
@@ -2975,19 +2993,19 @@ fn rational_mul_parts(
     value: &Rational,
     numerator: i64,
     denominator: i64,
-) -> Result<Rational, EvalError> {
+) -> Result<Rational, crate::Error> {
     let factor = Rational::checked_from_parts(i128::from(numerator), i128::from(denominator))?;
     Ok(value.checked_mul(&factor)?)
 }
 
-fn rational_from_parts(numerator: i128, denominator: i128) -> Result<Rational, EvalError> {
+fn rational_from_parts(numerator: i128, denominator: i128) -> Result<Rational, crate::Error> {
     Ok(Rational::checked_from_parts(numerator, denominator)?)
 }
 
 fn apply_unary_transform<T>(
     transform: &FunctionValue,
     localized: PatternRuntime<T>,
-) -> Result<PatternRuntime<T>, EvalError>
+) -> Result<PatternRuntime<T>, crate::Error>
 where
     T: PatternRuntimeValue,
 {

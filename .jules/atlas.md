@@ -5,3 +5,7 @@
 ## 2024-03-18 - Extracted Pattern Exporters
 **Tangle:** The `crates/orpheus-lang/src/eval.rs` module had grown over 1400 lines and started turning into a "Blob", violating the Single Responsibility Principle by mixing AST evaluation with CSV exporting and audio rendering logic.
 **Blueprint:** Extracted exporting functions (`export_sample_pattern_to_csv`, `export_number_pattern_to_csv`) and audio rendering functions (`render_sample_pattern_to_file`, `render_sample_pattern_to_wav`) along with `RenderError` into a dedicated `crates/orpheus-lang/src/export.rs` module.
+
+## 2026-03-30 - [Unified Error Handling]
+**Tangle:** The codebase had disparate error types (`ParseError`, `TypeError`, `LoadError`, `EvalError`, `RenderError`) scattered across modules, making error handling inconsistent.
+**Blueprint:** Extracted all error types into a central `crate::Error` enum in `error.rs` to provide a unified `Result<T, crate::Error>` standard across the `orpheus-lang` crate.
