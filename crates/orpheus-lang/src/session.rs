@@ -9,16 +9,16 @@
 //! `EngineHandle`.
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use midir::{MidiOutput, MidiOutputConnection};
+use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use orpheus_dsp::{
-    load_sample_bank_from_directory, EngineCommand, EngineHandle, PatternUpdate, SampleBank,
-    TransportSnapshot,
+    EngineCommand, EngineHandle, PatternUpdate, SampleBank, TransportSnapshot,
+    load_sample_bank_from_directory,
 };
 use orpheus_pattern::Rational;
 
@@ -26,6 +26,7 @@ use crate::eval::eval_into_bindings;
 use crate::export::render_sample_pattern_to_file_with_bank;
 use crate::export::sample_trigger_from_event;
 use crate::loader::load_file_runtime_strict;
+use crate::midi_input;
 use crate::mixer::MixerState;
 use crate::types::infer_into_bindings;
 use crate::{ReplMode, Type, Value};
@@ -59,6 +60,8 @@ pub struct ReplSession {
     mixer: MixerState,
     pattern_display: RefCell<PatternDisplayState>,
     midi_output: MidiOutputState,
+    midi_input: MidiInputState,
+    midi_note_mappings: HashMap<u8, String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -72,6 +75,12 @@ struct PatternDisplayState {
 #[derive(Default)]
 struct MidiOutputState {
     connection: Option<Arc<Mutex<MidiOutputConnection>>>,
+    port_name: Option<String>,
+}
+
+#[derive(Default)]
+struct MidiInputState {
+    connection: Option<MidiInputConnection<()>>,
     port_name: Option<String>,
 }
 
@@ -276,6 +285,8 @@ impl ReplSession {
             mixer: MixerState::default(),
             pattern_display: RefCell::new(PatternDisplayState::default()),
             midi_output: MidiOutputState::default(),
+            midi_input: MidiInputState::default(),
+            midi_note_mappings: HashMap::new(),
         }
     }
 
@@ -306,6 +317,7 @@ impl ReplSession {
     /// assert_eq!(response, "tempo set to 120 BPM");
     /// ```
     pub fn eval_line(&mut self, source: &str) -> Result<String, String> {
+        self.apply_midi_note_mappings()?;
         if source.starts_with(':') {
             return self.eval_command(source);
         }
@@ -891,6 +903,13 @@ impl ReplSession {
     fn midi_command(&mut self, args: &str) -> Result<String, String> {
         let tokens = args.split_whitespace().collect::<Vec<_>>();
         match tokens.as_slice() {
+            ["in", "list"] => self.list_midi_inputs(),
+            ["in", "connect", port @ ..] if !port.is_empty() => {
+                self.connect_midi_input(&port.join(" "))
+            }
+            ["in", "disconnect"] => self.disconnect_midi_input(),
+            ["in", "map-note", note, binding_name] => self.map_midi_note(note, binding_name),
+            ["in", "unmap-note", note] => self.unmap_midi_note(note),
             ["list"] => self.list_midi_outputs(),
             ["connect", port @ ..] if !port.is_empty() => self.connect_midi_output(&port.join(" ")),
             ["disconnect"] => self.disconnect_midi_output(),
@@ -902,6 +921,93 @@ impl ReplSession {
                 self.send_midi_binding(binding_name, channel)
             }
             _ => Err(midi_usage().to_owned()),
+        }
+    }
+
+    fn list_midi_inputs(&self) -> Result<String, String> {
+        let midi_in = MidiInput::new("orpheus")
+            .map_err(|error| format!("failed to initialize MIDI input subsystem: {error}"))?;
+        let ports = midi_in.ports();
+        let mut port_names = ports
+            .iter()
+            .map(|port| {
+                midi_in
+                    .port_name(port)
+                    .unwrap_or_else(|_| "<unreadable port>".to_owned())
+            })
+            .collect::<Vec<_>>();
+        port_names.sort_unstable();
+        if port_names.is_empty() {
+            Ok("available MIDI input ports: <none>".to_owned())
+        } else {
+            Ok(format!(
+                "available MIDI input ports: {}",
+                port_names.join(", ")
+            ))
+        }
+    }
+
+    fn connect_midi_input(&mut self, raw_port_name: &str) -> Result<String, String> {
+        let port_name = trim_quoted_arg(raw_port_name).to_owned();
+        if port_name.is_empty() {
+            return Err(midi_usage().to_owned());
+        }
+        let mut midi_in = MidiInput::new("orpheus")
+            .map_err(|error| format!("failed to initialize MIDI input subsystem: {error}"))?;
+        midi_in.ignore(Ignore::None);
+        let port = midi_in
+            .ports()
+            .into_iter()
+            .find(|candidate| {
+                midi_in
+                    .port_name(candidate)
+                    .map(|name| name == port_name)
+                    .unwrap_or(false)
+            })
+            .ok_or_else(|| format!("no MIDI input port named `{port_name}`"))?;
+        let connection = midi_in
+            .connect(
+                &port,
+                "orpheus-midi-in",
+                move |_timestamp, message, _| midi_input::update_from_message(message),
+                (),
+            )
+            .map_err(|error| format!("failed to connect to MIDI input `{port_name}`: {error}"))?;
+        self.midi_input.connection = Some(connection);
+        self.midi_input.port_name = Some(port_name.clone());
+        Ok(format!("connected MIDI input `{port_name}`"))
+    }
+
+    fn disconnect_midi_input(&mut self) -> Result<String, String> {
+        let Some(port_name) = self.midi_input.port_name.take() else {
+            return Err("no MIDI input is connected".to_owned());
+        };
+        self.midi_input.connection = None;
+        Ok(format!("disconnected MIDI input `{port_name}`"))
+    }
+
+    fn map_midi_note(&mut self, raw_note: &str, binding_name: &str) -> Result<String, String> {
+        let note = raw_note
+            .parse::<u8>()
+            .map_err(|_| "MIDI note must be an integer in [0, 127]".to_owned())?;
+        if note > 127 {
+            return Err("MIDI note must be an integer in [0, 127]".to_owned());
+        }
+        self.midi_note_mappings
+            .insert(note, binding_name.to_owned());
+        Ok(format!(
+            "mapped MIDI note {note} to binding `{binding_name}`"
+        ))
+    }
+
+    fn unmap_midi_note(&mut self, raw_note: &str) -> Result<String, String> {
+        let note = raw_note
+            .parse::<u8>()
+            .map_err(|_| "MIDI note must be an integer in [0, 127]".to_owned())?;
+        if self.midi_note_mappings.remove(&note).is_some() {
+            Ok(format!("removed MIDI note mapping for {note}"))
+        } else {
+            Err(format!("no MIDI note mapping exists for {note}"))
         }
     }
 
@@ -1024,6 +1130,22 @@ impl ReplSession {
             "queued {} MIDI events from `{binding_name}` on channel {channel}",
             event_count
         ))
+    }
+
+    fn apply_midi_note_mappings(&mut self) -> Result<(), String> {
+        for event in midi_input::drain_note_events() {
+            if event.kind != midi_input::MidiNoteEventKind::On {
+                continue;
+            }
+            let Some(binding_name) = self.midi_note_mappings.get(&event.note).cloned() else {
+                continue;
+            };
+            let Some(value) = self.bindings.get(&binding_name).cloned() else {
+                continue;
+            };
+            self.push_pattern_update(&binding_name, &value)?;
+        }
+        Ok(())
     }
 
     fn enqueue_mixer_snapshot(&mut self) -> Result<(), String> {
@@ -1199,6 +1321,7 @@ impl ReplSession {
 
     #[doc(hidden)]
     pub fn render_test_block_for_tui(&mut self, frames: u64) -> Vec<f32> {
+        let _ = self.apply_midi_note_mappings();
         self.engine.render_test_block(frames)
     }
 
@@ -1253,7 +1376,7 @@ const fn mixer_usage() -> &'static str {
 }
 
 const fn midi_usage() -> &'static str {
-    "usage: :midi <list|connect <port>|disconnect|send <binding> [channel]>"
+    "usage: :midi <list|connect <port>|disconnect|send <binding> [channel]|in list|in connect <port>|in disconnect|in map-note <note> <binding>|in unmap-note <note>>"
 }
 
 const fn open_usage() -> &'static str {
@@ -2043,10 +2166,12 @@ mod tests {
 
         assert!(narrow_rendered.iter().all(|sample| sample.is_finite()));
         assert!(wide_rendered.iter().all(|sample| sample.is_finite()));
-        assert!(narrow_rendered
-            .iter()
-            .zip(&wide_rendered)
-            .any(|(left, right)| (left - right).abs() > f32::EPSILON));
+        assert!(
+            narrow_rendered
+                .iter()
+                .zip(&wide_rendered)
+                .any(|(left, right)| (left - right).abs() > f32::EPSILON)
+        );
     }
 
     #[test]
@@ -2136,6 +2261,13 @@ mod tests {
     }
 
     #[test]
+    fn midi_input_list_command_returns_available_inputs_or_none() {
+        let mut session = ReplSession::new();
+        let message = session.eval_line(":midi in list").unwrap();
+        assert!(message.starts_with("available MIDI input ports: "));
+    }
+
+    #[test]
     fn midi_send_command_requires_active_connection() {
         let mut session = ReplSession::new();
         session.eval_line("notes = 60 64 67").unwrap();
@@ -2151,6 +2283,18 @@ mod tests {
 
         let error = session.eval_line(":midi send drums 1").unwrap_err();
         assert!(error.contains("cannot be sent as MIDI notes"));
+    }
+
+    #[test]
+    fn midi_cc_builtin_reads_normalized_controller_value() {
+        let mut session = ReplSession::new();
+        crate::midi_input::set_cc_value_for_test(1, 64);
+        session.eval_line("control = cc(1)").unwrap();
+        let Value::NumberPattern(pattern) = session.bindings.get("control").unwrap() else {
+            panic!("expected number pattern");
+        };
+        let value = pattern.constant_value().unwrap();
+        assert!((value - (64.0 / 127.0)).abs() < 1e-9);
     }
 
     #[test]

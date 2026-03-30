@@ -11,6 +11,7 @@
 use orpheus_pattern::{Rational, TimeSpan};
 
 use crate::eval::{EvalError, apply_function_value, f64_to_rational};
+use crate::midi_input;
 use crate::value::{
     ArpDirectionValue, BuiltinFn, BuiltinKind, FunctionValue, GatePatternValue, NumberPatternValue,
     PitchClassSetValue, SamplePatternValue, Value,
@@ -135,6 +136,7 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "slice_idx" => Some(builtin_function_value(BuiltinKind::SliceIdx)),
         "rand" => Some(builtin_function_value(BuiltinKind::Rand)),
         "jux" => Some(builtin_function_value(BuiltinKind::Jux)),
+        "cc" | "midi_cc" => Some(builtin_function_value(BuiltinKind::MidiCc)),
         _ => None,
     }
 }
@@ -346,6 +348,7 @@ impl BuiltinKind {
             Self::SliceIdx => "slice_idx",
             Self::Rand => "rand",
             Self::Jux => "jux",
+            Self::MidiCc => "midi_cc",
         }
     }
 
@@ -390,6 +393,7 @@ impl BuiltinKind {
             | Self::Onset
             | Self::Rate
             | Self::Jux => 2,
+            Self::MidiCc => 1,
             Self::Rand => 0,
         }
     }
@@ -443,8 +447,25 @@ impl BuiltinKind {
             Self::SliceIdx => apply_slice_idx(args),
             Self::Rand => apply_rand(args, function.site_salt.unwrap_or_default()),
             Self::Jux => apply_jux(args),
+            Self::MidiCc => apply_midi_cc(args),
         }
     }
+}
+
+fn apply_midi_cc(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let controller = extract_constant_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`midi_cc` requires a controller argument"))?,
+        "midi_cc",
+    )?;
+    if controller.fract() != 0.0 || !(0.0..=127.0).contains(&controller) {
+        return Err(EvalError::new(
+            "`midi_cc` requires an integer controller index within [0, 127]",
+        ));
+    }
+    let value = midi_input::cc_normalized(controller as u8);
+    Ok(Value::NumberPattern(NumberPatternValue::constant(value)))
 }
 
 fn apply_every(args: Vec<Value>) -> Result<Value, EvalError> {

@@ -80,6 +80,7 @@ pub enum BuiltinKind {
     SliceIdx,
     Rand,
     Jux,
+    MidiCc,
 }
 
 /// A partially or fully applied built-in function at runtime.
@@ -4156,7 +4157,6 @@ mod tests {
             query_events.is_empty(),
             "query_unit should degrade to an empty vector on error"
         );
-
     }
 
     #[test]
