@@ -108,7 +108,9 @@ pub struct UserFn {
 /// A callable runtime value, either builtin or user-defined.
 #[derive(Clone, Debug)]
 pub enum FunctionValue {
+    /// A core primitive transformation provided by the language standard library.
     Builtin(BuiltinFn),
+    /// A custom function defined by the user in the REPL or a script file.
     User(UserFn),
 }
 
@@ -317,6 +319,16 @@ impl Value {
         }
     }
 
+    /// Attempts to unwrap the value into a concrete pitch class set.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::Value;
+    ///
+    /// let val = Value::String("foo".into());
+    /// assert!(val.as_pitch_class_set().is_none());
+    /// ```
     #[must_use]
     pub const fn as_pitch_class_set(&self) -> Option<&PitchClassSetValue> {
         match self {
@@ -329,6 +341,16 @@ impl Value {
         }
     }
 
+    /// Attempts to unwrap the value into a concrete arp direction.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::Value;
+    ///
+    /// let val = Value::String("foo".into());
+    /// assert!(val.as_arp_direction().is_none());
+    /// ```
     #[must_use]
     pub const fn as_arp_direction(&self) -> Option<ArpDirectionValue> {
         match self {

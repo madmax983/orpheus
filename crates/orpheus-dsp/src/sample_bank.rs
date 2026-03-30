@@ -62,6 +62,39 @@ impl From<DecodedSample> for PlaybackSample {
     }
 }
 
+/// A central, in-memory repository for decoding, storing, and addressing audio samples.
+///
+/// The `SampleBank` bridges the gap between the interactive language REPL (which
+/// schedules sound using abstract string identifiers like `"bd"` or `"sn"`) and the
+/// high-performance audio synthesis thread (which requires immediately readable `f32` buffers).
+///
+/// Rather than reading from disk or decoding WAV files every time an event fires, the
+/// `SampleBank` loads the entire working set of samples into heap memory before playback
+/// starts. This ensures that the hot DSP loop never blocks on I/O.
+///
+/// # Examples
+///
+/// In a standard application boot sequence, you will typically initialize the bank
+/// with the built-in drum machine assets, and then resolve tokens to extract
+/// `PlaybackSample` instances for rendering.
+///
+/// ```
+/// use orpheus_dsp::SampleBank;
+///
+/// // Load the core library ("bd", "sn", "cp", "hh").
+/// let bank = SampleBank::load_builtin();
+///
+/// // Safely query for a resolved audio buffer.
+/// let kick_buffer = bank.get_by_token("bd").expect("bd is a guaranteed built-in");
+///
+/// // Unknown identifiers degrade gracefully to `None` so the audio thread doesn't panic.
+/// let missing = bank.get_by_token("glitch");
+/// assert!(missing.is_none());
+/// ```
+///
+/// ## Panics
+/// The `SampleBank` uses robust `BTreeMap` structures internally, but developers should
+/// guarantee that sample arrays are not mutated while the DSP loop is actively reading them.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SampleBank {
     samples: BTreeMap<Box<str>, SampleEntry>,
@@ -153,6 +186,7 @@ impl SampleEntry {
 }
 
 impl SampleBank {
+    /// Loads the standard built-in Drum Machine samples into the bank.
     #[must_use]
     pub fn load_builtin() -> Self {
         let mut bank = Self::default();
@@ -165,16 +199,19 @@ impl SampleBank {
         bank
     }
 
+    /// Gets the sample backing the specified built-in voice kind.
     #[must_use]
     pub fn get(&self, voice: VoiceKind) -> Option<&PlaybackSample> {
         self.get_by_token(voice.token())
     }
 
+    /// Gets a sample by its string identifier (e.g., `"bd"`, `"sn"`).
     #[must_use]
     pub fn get_by_token(&self, token: &str) -> Option<&PlaybackSample> {
         self.samples.get(token).map(|entry| &entry.sample)
     }
 
+    /// Returns a list of all currently loaded string identifiers in the bank.
     #[must_use]
     pub fn available_tokens(&self) -> Vec<String> {
         self.samples.keys().map(ToString::to_string).collect()
@@ -200,39 +237,76 @@ impl SampleBank {
 /// Errors raised while scanning a sample directory for override assets.
 #[derive(Debug, Error)]
 pub enum SampleBankError {
+    /// An I/O error occurred while reading the sample directory.
     #[error("failed to read sample directory `{path}`: {message}")]
-    DirectoryIo { path: Box<str>, message: Box<str> },
+    DirectoryIo {
+        /// The path to the sample directory.
+        path: Box<str>,
+        /// The OS-level error message.
+        message: Box<str>,
+    },
+    /// An I/O error occurred while reading the `samples.ron` manifest.
     #[error("failed to read sample manifest `{path}`: {message}")]
-    ManifestIo { path: Box<str>, message: Box<str> },
+    ManifestIo {
+        /// The path to the manifest file.
+        path: Box<str>,
+        /// The OS-level error message.
+        message: Box<str>,
+    },
+    /// The `samples.ron` manifest contained invalid syntax or values.
     #[error("failed to parse sample manifest `{path}`: {message}")]
-    ManifestParse { path: Box<str>, message: Box<str> },
+    ManifestParse {
+        /// The path to the manifest file.
+        path: Box<str>,
+        /// A description of the parsing failure.
+        message: Box<str>,
+    },
+    /// A manifest alias points to a target sample that was not found.
     #[error("sample manifest `{path}` aliases `{alias}` to unknown token `{target}`")]
     ManifestAliasTarget {
+        /// The path to the manifest file.
         path: Box<str>,
+        /// The alias name.
         alias: Box<str>,
+        /// The unresolved target.
         target: Box<str>,
     },
+    /// A manifest alias refers to itself directly or indirectly.
     #[error("sample manifest `{path}` contains an alias cycle at `{alias}` via `{target}`")]
     ManifestAliasCycle {
+        /// The path to the manifest file.
         path: Box<str>,
+        /// The alias involved in the cycle.
         alias: Box<str>,
+        /// The target leading to the cycle.
         target: Box<str>,
     },
+    /// A manifest region points to a target sample that was not found.
     #[error("sample manifest `{path}` region `{region}` targets unknown token `{target}`")]
     ManifestRegionTarget {
+        /// The path to the manifest file.
         path: Box<str>,
+        /// The region name.
         region: Box<str>,
+        /// The unresolved target.
         target: Box<str>,
     },
+    /// A manifest region refers to itself directly or indirectly.
     #[error("sample manifest `{path}` contains a region cycle at `{region}` via `{target}`")]
     ManifestRegionCycle {
+        /// The path to the manifest file.
         path: Box<str>,
+        /// The region involved in the cycle.
         region: Box<str>,
+        /// The target leading to the cycle.
         target: Box<str>,
     },
+    /// An error occurred while decoding a sample file from disk.
     #[error("failed to decode sample override `{path}`: {source}")]
     Decode {
+        /// The path to the audio file.
         path: Box<str>,
+        /// The underlying decoding error.
         #[source]
         source: SampleError,
     },

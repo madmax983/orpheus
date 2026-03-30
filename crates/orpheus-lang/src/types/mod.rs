@@ -58,16 +58,26 @@ pub enum Type {
 }
 
 impl Type {
+    /// Constructs a `Pattern` type wrapping the given inner type.
+    ///
+    /// This is a convenience helper to avoid manually allocating `Box::new`.
     #[must_use]
     pub fn pattern(inner: Self) -> Self {
         Self::Pattern(Box::new(inner))
     }
 
+    /// Constructs a `Function` type with the given arguments and return type.
+    ///
+    /// This is a convenience helper to avoid manually allocating `Box::new`.
     #[must_use]
     pub fn function(args: Vec<Self>, ret: Self) -> Self {
         Self::Function(args, Box::new(ret))
     }
 
+    /// Constructs a sequence of curried `Function` types.
+    ///
+    /// Transforms `(A, B) -> C` into `A -> (B -> C)`. This is necessary for
+    /// Hindley-Milner type inference which strictly evaluates unary functions.
     #[must_use]
     pub fn curried(args: Vec<Self>, ret: Self) -> Self {
         args.into_iter()
@@ -117,6 +127,21 @@ impl TypedModule {
         Self { bindings }
     }
 
+    /// Checks whether a specific variable name was inferred during type checking.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::collections::BTreeMap;
+    /// use orpheus_lang::{Type, TypedModule};
+    ///
+    /// let mut bindings = BTreeMap::new();
+    /// bindings.insert("x".to_string(), Type::Number);
+    /// let module = TypedModule::new(bindings);
+    ///
+    /// assert!(module.contains_key("x"));
+    /// assert!(!module.contains_key("y"));
+    /// ```
     #[must_use]
     pub fn contains_key(&self, name: &str) -> bool {
         self.bindings.contains_key(name)

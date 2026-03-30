@@ -42,6 +42,7 @@ pub enum VoiceKind {
 }
 
 impl VoiceKind {
+    /// Returns the canonical string token for this built-in voice.
     #[must_use]
     pub const fn token(self) -> &'static str {
         match self {

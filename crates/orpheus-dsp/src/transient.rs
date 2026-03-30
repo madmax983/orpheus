@@ -135,14 +135,14 @@ mod tests {
     #[test]
     fn detect_transient_markers_finds_separated_impulses() {
         let mut frames = vec![0.0_f32; 300];
-        for index in 10..14 {
-            frames[index] = 1.0;
+        for frame in frames.iter_mut().take(14).skip(10) {
+            *frame = 1.0;
         }
-        for index in 110..114 {
-            frames[index] = 0.6;
+        for frame in frames.iter_mut().take(114).skip(110) {
+            *frame = 0.6;
         }
-        for index in 210..214 {
-            frames[index] = 0.3;
+        for frame in frames.iter_mut().take(214).skip(210) {
+            *frame = 0.3;
         }
 
         let markers = detect_transient_markers(&frames, 48_000);
