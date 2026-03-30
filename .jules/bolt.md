@@ -17,3 +17,7 @@
 **[Drain Iterator to Avoid Clones]**
 **Learning:** Calling `.cloned()` on an iterator over strings creates heap allocations. If the strings are no longer needed in the source container (like `remaining_params`), draining the items directly (`drain(..applied)`) allows you to move ownership without deep copies.
 **Action:** Replace `iter().take(n).cloned()` with `drain(..n)` when transferring elements from a mutable vector.
+
+**Optimize allocations in `eval_call_with_args` and iterator aggregation in `eval.rs`**
+**Learning:** `eval_pipe` unnecessarily allocated a `vec![lhs_value]` to pass as `piped_args` which then underwent `.extend()` causing potential reallocations. Also, iterator chains like `.collect::<Result<Option<Vec<_>>, _>>()` can hide intermediate allocations and make short-circuiting logic opaque.
+**Action:** Replaced `piped_args: Vec<Value>` with `piped_arg: Option<Value>` in `eval_call_with_args` and allocated the vector with exact capacity `Vec::with_capacity`. Converted `.collect()` chains to simple `for` loops with pre-allocated vectors to eliminate aggregation overhead and turbofish boilerplate.
