@@ -1289,18 +1289,13 @@ where
         return Ok(Vec::new());
     }
 
-    let gate_events = gate_spans
-        .into_iter()
-        .map(|part| Event {
-            whole: None,
-            part,
-            value: 1.0,
-        })
-        .collect::<Vec<_>>();
+    // ⚡ Bolt: Eliminate `.collect::<Vec<_>>()` by working directly with `gate_spans`.
+    // We avoid allocating an intermediate Vec of Event<f64> and iterate directly.
     let mut masked = Vec::with_capacity(source_events.len());
 
     for event in source_events {
-        let Some(boundaries) = compute_event_fragment_boundaries(&event.part, &[&gate_events[..]])
+        let Some(boundaries) =
+            compute_event_fragment_boundaries_from_spans(&event.part, &gate_spans)
         else {
             continue;
         };
@@ -1314,9 +1309,9 @@ where
             }
 
             let part = build_span(start.clone(), end.clone())?;
-            if gate_events
+            if gate_spans
                 .iter()
-                .any(|gate_event| spans_overlap(&gate_event.part, &part))
+                .any(|gate_span| spans_overlap(gate_span, &part))
             {
                 masked.push(Event {
                     whole: None,
@@ -2091,6 +2086,36 @@ fn merge_open_spans(mut spans: Vec<TimeSpan>) -> Result<Vec<TimeSpan>, EvalError
 
 fn spans_overlap(a: &TimeSpan, b: &TimeSpan) -> bool {
     max(a.start(), b.start()) < min(a.end(), b.end())
+}
+
+fn compute_event_fragment_boundaries_from_spans<'a>(
+    source_span: &'a TimeSpan,
+    control_spans: &'a [TimeSpan],
+) -> Option<Vec<&'a Rational>> {
+    let capacity_estimate = 2 + control_spans.len() * 2;
+    // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries.
+    let mut boundaries = Vec::with_capacity(capacity_estimate);
+    boundaries.push(source_span.start());
+    boundaries.push(source_span.end());
+    let mut has_overlap = false;
+
+    for control_span in control_spans {
+        let start = max(control_span.start(), source_span.start());
+        let end = min(control_span.end(), source_span.end());
+        if start < end {
+            has_overlap = true;
+            boundaries.push(start);
+            boundaries.push(end);
+        }
+    }
+
+    if !has_overlap {
+        return None;
+    }
+
+    boundaries.sort();
+    boundaries.dedup();
+    Some(boundaries)
 }
 
 fn compute_event_fragment_boundaries<'a>(

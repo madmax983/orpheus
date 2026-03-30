@@ -5,3 +5,7 @@
 **Remove unnecessary BTreeMap clone in REPL evaluation**
 **Learning:** Functions that accept a mutable reference to a value (`&mut T`), mutate it internally, and then reassign back to it at the end can avoid deep cloning the value by using `std::mem::take` (if `T` implements `Default`). This temporarily replaces the referenced value with its default, moves the original value, and eliminates a full heap allocation.
 **Action:** When a function takes ownership of a `&mut` parameter's inner value only to replace it before returning, prefer `std::mem::take` over `.clone()`.
+
+**Remove `.collect::<Vec<_>>()` on hot paths**
+**Learning:** `.collect()` calls during frequent queries like `query_mask` can cause unnecessary heap allocations, degrading pattern evaluation performance.
+**Action:** Use slices of the originally collected vectors or directly iterate when checking overlap boundaries to keep evaluation O(N) without constant reallocations.
