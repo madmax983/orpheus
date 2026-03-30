@@ -1078,7 +1078,7 @@ where
     T: PatternRuntimeValue,
     F: FnMut(&TimeSpan, &T) -> Result<Option<T>, EvalError>,
 {
-    let mut composed = Vec::with_capacity(source_events.len());
+    let mut composed = Vec::with_capacity(source_events.len() * 2);
     for event in source_events {
         let Some(boundaries) = compute_event_fragment_boundaries(&event.part, control_event_lists)
         else {
