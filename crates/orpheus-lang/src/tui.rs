@@ -398,26 +398,23 @@ impl SessionTui {
             .transcript
             .iter()
             .cloned()
-            .map(|line| {
-                if line.starts_with("> ") {
-                    Line::styled(line, Style::default().fg(Color::DarkGray))
-                } else if line.starts_with("✗ ") {
-                    Line::styled(
-                        line,
-                        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-                    )
-                } else if line.starts_with("⚠️ ") {
-                    Line::styled(
-                        line,
-                        Style::default()
-                            .fg(Color::Yellow)
-                            .add_modifier(Modifier::BOLD),
-                    )
-                } else if line.starts_with("✓ ") {
-                    Line::styled(line, Style::default().fg(Color::Green))
+            .flat_map(|entry| {
+                let style = if entry.starts_with("> ") {
+                    Style::default().fg(Color::DarkGray)
+                } else if entry.starts_with("✗ ") {
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+                } else if entry.starts_with("⚠️ ") {
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                } else if entry.starts_with("✓ ") {
+                    Style::default().fg(Color::Green)
                 } else {
-                    Line::raw(line)
-                }
+                    Style::default()
+                };
+
+                entry
+                    .split('\n')
+                    .map(|line| Line::styled(line.to_owned(), style))
+                    .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();
         let transport = self.session.transport_view();
