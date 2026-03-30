@@ -11,6 +11,19 @@ use crate::eval::{EvalError, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue};
 
 /// Errors that can occur during audio rendering or exporting operations.
+///
+/// This type wraps errors that can happen either when evaluating the pattern
+/// ([`EvalError`]) or when the underlying DSP engine renders it to audio
+/// ([`OfflineRenderError`]).
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{RenderError, EvalError};
+///
+/// let error = RenderError::Eval(EvalError::new("some error"));
+/// assert_eq!(error.to_string(), "some error");
+/// ```
 #[derive(Debug)]
 pub enum RenderError {
     Eval(EvalError),
@@ -173,6 +186,21 @@ pub fn export_sample_pattern_to_csv(
 /// array. Each event uses the same timing fields as the CSV exporter plus the
 /// sample control fields available at runtime.
 ///
+/// # Examples
+///
+/// ```
+/// use tempfile::NamedTempFile;
+/// use orpheus_lang::{ReplMode, eval_module, export_sample_pattern_to_json};
+///
+/// let env = eval_module("x = bd", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+///
+/// let file = NamedTempFile::new().unwrap();
+/// let result = export_sample_pattern_to_json(pattern, file.path(), 2);
+///
+/// assert!(result.is_ok());
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`EvalError`] if the cycle count is 0, if pattern querying fails, or
@@ -266,6 +294,21 @@ pub fn export_number_pattern_to_csv(
 /// array. Each event uses the same timing fields as the CSV exporter plus the
 /// numeric `value`.
 ///
+/// # Examples
+///
+/// ```
+/// use tempfile::NamedTempFile;
+/// use orpheus_lang::{ReplMode, eval_module, export_number_pattern_to_json};
+///
+/// let env = eval_module("x = 1.0", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
+///
+/// let file = NamedTempFile::new().unwrap();
+/// let result = export_number_pattern_to_json(pattern, file.path(), 2);
+///
+/// assert!(result.is_ok());
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`EvalError`] if the cycle count is 0, if pattern querying fails, or
@@ -341,6 +384,20 @@ pub fn render_sample_pattern_to_file_with_bank(
 }
 
 /// Renders a sample pattern directly to a WAV file.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, render_sample_pattern_to_wav};
+///
+/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+///
+/// let path = std::env::temp_dir().join("render_wav.wav");
+/// let result = render_sample_pattern_to_wav(pattern, &path, 2);
+///
+/// assert!(result.is_ok());
+/// ```
 ///
 /// # Errors
 ///

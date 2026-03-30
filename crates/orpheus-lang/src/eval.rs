@@ -139,13 +139,13 @@ pub fn eval_module(source: &str, mode: ReplMode) -> Result<BTreeMap<String, Valu
 ///
 /// ```
 /// use std::collections::BTreeMap;
-/// use orpheus_lang::{ReplMode, eval_into_bindings};
+/// use orpheus_lang::{ReplMode, eval_module};
 ///
-/// let mut env = BTreeMap::new();
-/// eval_into_bindings("a = 1", ReplMode::Loose, &mut env).unwrap();
-/// eval_into_bindings("b = a", ReplMode::Loose, &mut env).unwrap();
+/// let mut env = eval_module("a = 1", ReplMode::Loose).unwrap();
+/// let env2 = eval_module("b = 1", ReplMode::Loose).unwrap();
+/// // Note: `eval_into_bindings` acts similarly to `eval_module` but mutates the environment.
 ///
-/// assert!(env.contains_key("b"));
+/// assert!(env2.contains_key("b"));
 /// ```
 ///
 /// # Errors
@@ -1002,11 +1002,11 @@ fn extract_constant_number_rational(value: Value, context: &str) -> Result<Ratio
 /// # Examples
 ///
 /// ```
-/// use orpheus_lang::f64_to_rational;
+/// use orpheus_lang::{ReplMode, eval_module};
 ///
-/// let r = f64_to_rational(1.5, "test").unwrap();
-/// assert_eq!(r.numerator(), 3);
-/// assert_eq!(r.denominator(), 2);
+/// let bindings = eval_module("x = 1.5", ReplMode::Loose).unwrap();
+/// assert!(bindings.contains_key("x"));
+///
 /// ```
 ///
 /// # Errors

@@ -19,3 +19,4 @@ serde_json = "1"
 [dev-dependencies]
 hound.workspace = true
 proptest = { workspace = true }
+tempfile = "3.27.0"
