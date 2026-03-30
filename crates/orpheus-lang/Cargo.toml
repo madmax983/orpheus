@@ -8,6 +8,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+comfy-table.workspace = true
 crossterm.workspace = true
 orpheus-dsp.workspace = true
 orpheus-pattern.workspace = true
@@ -18,3 +19,5 @@ ratatui.workspace = true
 [dev-dependencies]
 hound.workspace = true
 proptest = { workspace = true }
+serde_json = "1"
+tempfile = "3.27.0"

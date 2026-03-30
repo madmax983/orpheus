@@ -1,5 +1,7 @@
 //! Phase 1 parser for Orpheus bindings and pattern expressions.
 
+use std::collections::BTreeSet;
+
 use pest::Parser;
 use pest::error::Error as PestError;
 use pest::iterators::{Pair, Pairs};
@@ -80,23 +82,50 @@ fn split_top_level_bindings(source: &str) -> Vec<(usize, String)> {
 }
 
 fn enrich_parse_error(source: &str, error: &PestError<Rule>) -> ParseError {
-    let rendered = error.to_string();
+    let (line, col) = match error.line_col {
+        pest::error::LineColLocation::Pos((l, c))
+        | pest::error::LineColLocation::Span((l, c), _) => (l, c),
+    };
+
+    let reason = match &error.variant {
+        pest::error::ErrorVariant::ParsingError { positives, .. } => {
+            if positives.is_empty() {
+                "unexpected token".to_owned()
+            } else {
+                let expected = positives
+                    .iter()
+                    .map(|r| format!("{r:?}"))
+                    .collect::<Vec<_>>()
+                    .join(" or ");
+                format!("expected {expected}")
+            }
+        }
+        pest::error::ErrorVariant::CustomError { message } => message.clone(),
+    };
 
     if unmatched_open_parens(source) > 0 {
         return ParseError::new(format!(
-            "parse error: missing `)` before end of input; {rendered}"
+            "parse error at line {line}, col {col}: missing `)` before end of input"
         ));
     }
 
-    ParseError::new(format!("parse error: {rendered}"))
+    ParseError::new(format!("parse error at line {line}, col {col}: {reason}"))
 }
 
 fn looks_like_binding(line: &str) -> bool {
-    let Some((name, _expr)) = line.split_once('=') else {
+    let Some((header, _expr)) = line.split_once('=') else {
         return false;
     };
 
-    let candidate = name.trim();
+    let mut identifiers = header.split_whitespace();
+    let Some(first) = identifiers.next() else {
+        return false;
+    };
+
+    is_identifier(first) && identifiers.all(is_identifier)
+}
+
+fn is_identifier(candidate: &str) -> bool {
     let mut chars = candidate.chars();
     let Some(first) = chars.next() else {
         return false;
@@ -196,9 +225,9 @@ fn build_module(pair: Pair<'_, Rule>) -> Result<Module, ParseError> {
 
 fn build_binding(pair: Pair<'_, Rule>) -> Result<Stmt, ParseError> {
     let mut inner = pair.into_inner();
-    let name = next_pair(&mut inner, "binding name")?.as_str().to_owned();
+    let (name, params) = build_binding_head(next_pair(&mut inner, "binding head")?)?;
     let expr = build_pipe_expr(next_pair(&mut inner, "binding expression")?)?;
-    Ok(Stmt::Binding { name, expr })
+    Ok(Stmt::Binding { name, params, expr })
 }
 
 fn build_pipe_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
@@ -233,7 +262,8 @@ fn build_pipe_target(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
 fn build_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
     match pair.as_rule() {
         Rule::stack => build_stack(pair),
-        Rule::call => build_call(pair),
+        Rule::postfix => build_postfix(pair),
+        Rule::primary => build_expr(first_inner(pair, "primary expression")?),
         Rule::group => build_group(pair),
         Rule::rest => Ok(Expr::Rest),
         Rule::number => build_number(&pair),
@@ -249,6 +279,32 @@ fn build_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
     }
 }
 
+fn build_binding_head(pair: Pair<'_, Rule>) -> Result<(String, Vec<String>), ParseError> {
+    let mut identifiers = pair
+        .into_inner()
+        .filter(|inner| inner.as_rule() == Rule::identifier);
+
+    let name = identifiers
+        .next()
+        .map(|identifier| identifier.as_str().to_owned())
+        .ok_or_else(|| ParseError::new("missing binding name"))?;
+    let mut seen = BTreeSet::new();
+    let mut params = Vec::new();
+
+    for identifier in identifiers {
+        let param = identifier.as_str().to_owned();
+        if !seen.insert(param.clone()) {
+            let (line, col) = identifier.as_span().start_pos().line_col();
+            return Err(ParseError::new(format!(
+                "parse error at line {line}, col {col}: duplicate parameter `{param}` in binding `{name}`"
+            )));
+        }
+        params.push(param);
+    }
+
+    Ok((name, params))
+}
+
 fn build_stack(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
     let layers_pair = next_pair(&mut pair.into_inner(), "stack layers")?;
     let layers = layers_pair
@@ -259,56 +315,77 @@ fn build_stack(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
     Ok(Expr::Stack(layers))
 }
 
-fn build_call(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_postfix(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
     let mut inner = pair.into_inner();
-    let callee_name = next_pair(&mut inner, "call callee")?.as_str().to_owned();
-    let args = if let Some(args_pair) = inner.next() {
-        args_pair
-            .into_inner()
-            .map(build_pipe_expr)
-            .collect::<Result<Vec<_>, _>>()?
-    } else {
-        Vec::new()
+    let first = next_pair(&mut inner, "postfix callee")?;
+    let mut expr = build_expr(first)?;
+
+    for suffix in inner {
+        let args = build_call_suffix_args(suffix)?;
+        expr = build_call_expr(expr, args)?;
+    }
+
+    Ok(expr)
+}
+
+fn build_call_suffix_args(pair: Pair<'_, Rule>) -> Result<Vec<Expr>, ParseError> {
+    let mut inner = pair.into_inner();
+    let Some(args_pair) = inner.next() else {
+        return Ok(Vec::new());
     };
 
-    match callee_name.as_str() {
-        "stream" => Ok(Expr::Stream(args)),
-        "at" => match args.as_slice() {
-            [start, pattern] => Ok(Expr::At {
-                start: Box::new(start.clone()),
-                pattern: Box::new(pattern.clone()),
-            }),
-            _ => Err(ParseError::new("`at` requires exactly two arguments")),
-        },
-        "meter" => match args.as_slice() {
-            [beats, unit, pattern] => Ok(Expr::Meter {
-                beats: Box::new(beats.clone()),
-                unit: Box::new(unit.clone()),
-                pattern: Box::new(pattern.clone()),
-            }),
-            [_, _] => Ok(Expr::Call {
-                callee: Box::new(Expr::Ident(callee_name)),
-                args,
-            }),
-            _ => Err(ParseError::new("`meter` requires exactly three arguments")),
-        },
-        "beat" => match args.as_slice() {
-            [value] => Ok(Expr::Beat(Box::new(value.clone()))),
-            _ => Err(ParseError::new("`beat` requires exactly one argument")),
-        },
-        "section" => match args.as_slice() {
-            [pattern, cycles] => Ok(Expr::Section {
-                pattern: Box::new(pattern.clone()),
-                cycles: Box::new(cycles.clone()),
-            }),
-            _ => Err(ParseError::new("`section` requires exactly two arguments")),
-        },
-        "seq_sections" => Ok(Expr::SeqSections(args)),
-        _ => Ok(Expr::Call {
-            callee: Box::new(Expr::Ident(callee_name)),
-            args,
-        }),
+    args_pair
+        .into_inner()
+        .map(build_pipe_expr)
+        .collect::<Result<Vec<_>, _>>()
+}
+
+fn build_call_expr(callee: Expr, args: Vec<Expr>) -> Result<Expr, ParseError> {
+    if let Expr::Ident(callee_name) = &callee {
+        match callee_name.as_str() {
+            "stream" => return Ok(Expr::Stream(args)),
+            "at" => match args.as_slice() {
+                [start, pattern] => {
+                    return Ok(Expr::At {
+                        start: Box::new(start.clone()),
+                        pattern: Box::new(pattern.clone()),
+                    });
+                }
+                _ => return Err(ParseError::new("`at` requires exactly two arguments")),
+            },
+            "meter" => match args.as_slice() {
+                [beats, unit, pattern] => {
+                    return Ok(Expr::Meter {
+                        beats: Box::new(beats.clone()),
+                        unit: Box::new(unit.clone()),
+                        pattern: Box::new(pattern.clone()),
+                    });
+                }
+                [_, _] => {}
+                _ => return Err(ParseError::new("`meter` requires exactly three arguments")),
+            },
+            "beat" => match args.as_slice() {
+                [value] => return Ok(Expr::Beat(Box::new(value.clone()))),
+                _ => return Err(ParseError::new("`beat` requires exactly one argument")),
+            },
+            "section" => match args.as_slice() {
+                [pattern, cycles] => {
+                    return Ok(Expr::Section {
+                        pattern: Box::new(pattern.clone()),
+                        cycles: Box::new(cycles.clone()),
+                    });
+                }
+                _ => return Err(ParseError::new("`section` requires exactly two arguments")),
+            },
+            "seq_sections" => return Ok(Expr::SeqSections(args)),
+            _ => {}
+        }
     }
+
+    Ok(Expr::Call {
+        callee: Box::new(callee),
+        args,
+    })
 }
 
 fn build_group(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {

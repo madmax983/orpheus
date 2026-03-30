@@ -1,19 +1,23 @@
 module = { SOI ~ padding ~ binding ~ padding ~ EOI }
 
-binding = { identifier ~ padding ~ "=" ~ padding ~ pipe_expr }
+binding = { binding_head ~ padding ~ "=" ~ padding ~ pipe_expr }
+binding_head = { identifier ~ (required_padding ~ identifier)* }
 
 pipe_expr = { sequence ~ (padding ~ pipe_op ~ padding ~ pipe_target)* }
-pipe_target = { stack | call | group | rest | number | string | identifier }
+pipe_target = { postfix }
 
 sequence = { item ~ (required_padding ~ item)* }
-item = { stack | call | group | rest | number | string | identifier }
+item = { postfix }
+
+postfix = { primary ~ call_suffix* }
+call_suffix = { "(" ~ padding ~ call_args? ~ padding ~ ")" }
+primary = { stack | group | rest | number | string | identifier }
 
 group = { "(" ~ padding ~ item ~ (required_padding ~ item)* ~ padding ~ ")" }
 
 stack = { "stack" ~ "(" ~ padding ~ stack_layers ~ padding ~ ")" }
 stack_layers = { pipe_expr ~ (padding ~ "," ~ padding ~ pipe_expr)* }
 
-call = { identifier ~ "(" ~ padding ~ call_args? ~ padding ~ ")" }
 call_args = { pipe_expr ~ (padding ~ "," ~ padding ~ pipe_expr)* }
 
 identifier = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }

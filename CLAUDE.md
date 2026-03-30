@@ -39,4 +39,7 @@ src/
 
 ## Current Status
 
-Task 1 bootstraps the workspace only. Public APIs are intentionally tiny stubs so later tasks can grow them with tests and proofs instead of speculative scaffolding.
+- `orpheus-pattern`: complete — rational time model, cycle/stream patterns, Verus proofs
+- `orpheus-dsp`: substantial — real-time engine, routing snapshots, sample bank, synth primitives, **Faust-style graph combinators** (`graph/` module: Node trait, 5 combinators, Processor, primitive adapters; ADR 0004)
+- `orpheus-lang`: parser, evaluator, builtins, mixer, REPL, TUI operational
+- root binary: wired with cpal audio, TUI/REPL mode detection

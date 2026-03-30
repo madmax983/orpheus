@@ -4,7 +4,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use orpheus_dsp::{
-    SampleTrigger, load_sample_bank_from_directory, render_events_to_file_with_bank,
+    EngineCommand, EngineHandle, RoutingSnapshot, SampleBank, SampleTrigger, TrackSource,
+    load_sample_bank_from_directory, render_events_to_file_with_bank,
+    render_routing_snapshot_to_stereo_for_test,
 };
 use orpheus_pattern::{Event, Rational, TimeSpan};
 
@@ -271,6 +273,327 @@ fn offline_render_supports_negative_rate_reverse_playback() {
     fs::remove_dir_all(directory).unwrap();
 }
 
+#[test]
+fn offline_render_uses_detected_transient_slices() {
+    let directory = temp_directory("sample-onset-offline");
+    write_wav(directory.join("loop.wav"), &transient_loop_frames());
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+    let path = temp_wav_path();
+
+    let events = vec![Event {
+        whole: None,
+        part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+        value: SampleTrigger::named("loop").with_onset(1),
+    }];
+
+    render_events_to_file_with_bank(&path, &events, 1, &bank).unwrap();
+
+    let mut reader = hound::WavReader::open(&path).unwrap();
+    let samples = reader
+        .samples::<i16>()
+        .take(8)
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let expected = vec![
+        pcm16(0.6 * edge_envelope(0, 100)),
+        pcm16(0.6 * edge_envelope(0, 100)),
+        pcm16(0.6 * edge_envelope(1, 100)),
+        pcm16(0.6 * edge_envelope(1, 100)),
+        pcm16(0.6 * edge_envelope(2, 100)),
+        pcm16(0.6 * edge_envelope(2, 100)),
+        pcm16(0.6 * edge_envelope(3, 100)),
+        pcm16(0.6 * edge_envelope(3, 100)),
+    ];
+
+    assert_eq!(samples, expected);
+
+    let _ = fs::remove_file(path);
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn offline_render_matches_live_shared_delay_bus() {
+    let directory = temp_directory("shared-delay-offline-parity");
+    write_wav(directory.join("pulse.wav"), &[1.0, 0.0, 0.0, 0.0]);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+    let snapshot = RoutingSnapshot::builder()
+        .track_with_source(
+            "drums",
+            TrackSource::SamplePattern(
+                vec![Event {
+                    whole: None,
+                    part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+                    value: SampleTrigger::named("pulse"),
+                }]
+                .into_boxed_slice(),
+            ),
+        )
+        .bus("dub")
+        .bus_effect_delay("dub", Rational::new(1, 8).unwrap(), 0.5, 1.0)
+        .send("drums", "dub", 1.0)
+        .build()
+        .unwrap();
+
+    let offline =
+        render_routing_snapshot_to_stereo_for_test(&snapshot, 1, 48_000.0, &bank).unwrap();
+
+    let mut live = EngineHandle::stub();
+    live.enqueue(EngineCommand::ReplaceSampleBank(bank))
+        .unwrap();
+    live.enqueue(EngineCommand::SetTempo(48_000.0)).unwrap();
+    let _ = live.render_test_block(1);
+    live.enqueue(EngineCommand::SwapRoutingSnapshot(snapshot))
+        .unwrap();
+    let _ = live.render_test_block(live.frames_until_boundary_for_test());
+    let live_block = live.render_test_block(64);
+
+    assert_eq!(&offline[..live_block.len()], live_block.as_slice());
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn analog_offline_render_renders_non_silent_audio() {
+    let events = vec![Event {
+        whole: None,
+        part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+        value: SampleTrigger::named("saw"),
+    }];
+    let path = temp_wav_path();
+
+    render_events_to_file_with_bank(&path, &events, 1, &SampleBank::load_builtin()).unwrap();
+
+    let mut reader = hound::WavReader::open(&path).unwrap();
+    let samples = reader
+        .samples::<i16>()
+        .take(64)
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+
+    assert!(samples.iter().any(|sample| *sample != 0));
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn offline_render_matches_live_shared_reverb_bus() {
+    let directory = temp_directory("shared-reverb-offline-parity");
+    write_wav(directory.join("pulse.wav"), &[1.0, 0.0, 0.0, 0.0]);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+    let snapshot = RoutingSnapshot::builder()
+        .track_with_source(
+            "pad",
+            TrackSource::SamplePattern(
+                vec![Event {
+                    whole: None,
+                    part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+                    value: SampleTrigger::named("pulse"),
+                }]
+                .into_boxed_slice(),
+            ),
+        )
+        .bus("verb")
+        .bus_effect_reverb("verb", 0.75, 0.35, 1.0)
+        .send("pad", "verb", 1.0)
+        .build()
+        .unwrap();
+
+    let offline =
+        render_routing_snapshot_to_stereo_for_test(&snapshot, 4, 48_000.0, &bank).unwrap();
+
+    let mut live = EngineHandle::stub();
+    live.enqueue(EngineCommand::ReplaceSampleBank(bank))
+        .unwrap();
+    live.enqueue(EngineCommand::SetTempo(48_000.0)).unwrap();
+    let _ = live.render_test_block(1);
+    live.enqueue(EngineCommand::SwapRoutingSnapshot(snapshot))
+        .unwrap();
+    let _ = live.render_test_block(live.frames_until_boundary_for_test());
+    let live_block = live.render_test_block(960);
+
+    assert_eq!(&offline[..live_block.len()], live_block.as_slice());
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn offline_render_applies_insert_delay_tail() {
+    let directory = temp_directory("insert-delay-offline");
+    write_wav(directory.join("pulse.wav"), &[1.0, 0.0, 0.0, 0.0]);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+    let snapshot = RoutingSnapshot::builder()
+        .track_with_source(
+            "lead",
+            TrackSource::SamplePattern(
+                vec![Event {
+                    whole: None,
+                    part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+                    value: SampleTrigger::named("pulse")
+                        .with_delay_mix(1.0)
+                        .with_delay_time(0.125)
+                        .with_delay_feedback(0.0),
+                }]
+                .into_boxed_slice(),
+            ),
+        )
+        .route("lead", "master")
+        .build()
+        .unwrap();
+
+    let rendered =
+        render_routing_snapshot_to_stereo_for_test(&snapshot, 1, 48_000.0, &bank).unwrap();
+
+    assert!(
+        rendered[..16]
+            .iter()
+            .all(|sample| sample.abs() <= f32::EPSILON)
+    );
+    assert!(rendered[60..80].iter().any(|sample| sample.abs() > 1.0e-4));
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn offline_render_applies_insert_reverb_tail() {
+    let directory = temp_directory("insert-reverb-offline");
+    write_wav(directory.join("pulse.wav"), &[1.0, 0.0, 0.0, 0.0]);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+    let snapshot = RoutingSnapshot::builder()
+        .track_with_source(
+            "pad",
+            TrackSource::SamplePattern(
+                vec![Event {
+                    whole: None,
+                    part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+                    value: SampleTrigger::named("pulse")
+                        .with_reverb_mix(1.0)
+                        .with_reverb_room(0.9)
+                        .with_reverb_damp(0.2),
+                }]
+                .into_boxed_slice(),
+            ),
+        )
+        .route("pad", "master")
+        .build()
+        .unwrap();
+
+    let rendered =
+        render_routing_snapshot_to_stereo_for_test(&snapshot, 1, 48_000.0, &bank).unwrap();
+
+    assert!(
+        rendered[320..420]
+            .iter()
+            .any(|sample| sample.abs() > 1.0e-5)
+    );
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn offline_render_insert_chorus_creates_stereo_difference() {
+    let directory = temp_directory("insert-chorus-offline");
+    fs::write(
+        directory.join("samples.ron"),
+        "(\n  tokens: {\n    \"vox_ah\": \"vox.wav\",\n  },\n)\n",
+    )
+    .unwrap();
+    let sustained = vec![1.0_f32; 64];
+    write_wav(directory.join("vox.wav"), &sustained);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+    let snapshot = RoutingSnapshot::builder()
+        .track_with_source(
+            "vox",
+            TrackSource::SamplePattern(
+                vec![Event {
+                    whole: None,
+                    part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+                    value: SampleTrigger::named("vox_ah")
+                        .with_chorus_mix(1.0)
+                        .with_chorus_depth(0.8)
+                        .with_chorus_rate(0.6),
+                }]
+                .into_boxed_slice(),
+            ),
+        )
+        .route("vox", "master")
+        .build()
+        .unwrap();
+
+    let rendered =
+        render_routing_snapshot_to_stereo_for_test(&snapshot, 1, 48_000.0, &bank).unwrap();
+
+    let stereo_diverged = rendered
+        .chunks_exact(2)
+        .take(96)
+        .any(|frame| (frame[0] - frame[1]).abs() > 1.0e-4);
+    assert!(stereo_diverged);
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn offline_render_insert_compressor_reduces_peak_level() {
+    let directory = temp_directory("insert-compressor-offline");
+    fs::write(
+        directory.join("samples.ron"),
+        "(\n  tokens: {\n    \"vox_ah\": \"vox.wav\",\n  },\n)\n",
+    )
+    .unwrap();
+    write_wav(directory.join("vox.wav"), &[1.0, 1.0, 1.0, 1.0]);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+
+    let dry_snapshot = RoutingSnapshot::builder()
+        .track_with_source(
+            "vox",
+            TrackSource::SamplePattern(
+                vec![Event {
+                    whole: None,
+                    part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+                    value: SampleTrigger::named("vox_ah"),
+                }]
+                .into_boxed_slice(),
+            ),
+        )
+        .route("vox", "master")
+        .build()
+        .unwrap();
+    let compressed_snapshot = RoutingSnapshot::builder()
+        .track_with_source(
+            "vox",
+            TrackSource::SamplePattern(
+                vec![Event {
+                    whole: None,
+                    part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+                    value: SampleTrigger::named("vox_ah")
+                        .with_compressor_mix(1.0)
+                        .with_compressor_threshold(0.2)
+                        .with_compressor_ratio(8.0),
+                }]
+                .into_boxed_slice(),
+            ),
+        )
+        .route("vox", "master")
+        .build()
+        .unwrap();
+
+    let dry =
+        render_routing_snapshot_to_stereo_for_test(&dry_snapshot, 1, 48_000.0, &bank).unwrap();
+    let compressed =
+        render_routing_snapshot_to_stereo_for_test(&compressed_snapshot, 1, 48_000.0, &bank)
+            .unwrap();
+
+    let dry_peak = dry
+        .iter()
+        .fold(0.0_f32, |peak, sample| peak.max(sample.abs()));
+    let compressed_peak = compressed
+        .iter()
+        .fold(0.0_f32, |peak, sample| peak.max(sample.abs()));
+
+    assert!(compressed_peak < dry_peak);
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
 fn temp_directory(name: &str) -> PathBuf {
     let directory =
         std::env::temp_dir().join(format!("orpheus-dsp-{}-{name}", unique_temp_suffix()));
@@ -303,6 +626,20 @@ fn write_wav(path: impl AsRef<Path>, frames: &[f32]) {
         writer.write_sample(*sample).unwrap();
     }
     writer.finalize().unwrap();
+}
+
+fn transient_loop_frames() -> Vec<f32> {
+    let mut frames = vec![0.0_f32; 300];
+    for index in 10..14 {
+        frames[index] = 1.0;
+    }
+    for index in 110..114 {
+        frames[index] = 0.6;
+    }
+    for index in 210..214 {
+        frames[index] = 0.3;
+    }
+    frames
 }
 
 #[allow(clippy::cast_possible_truncation)]

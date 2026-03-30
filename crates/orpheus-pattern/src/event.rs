@@ -1,4 +1,4 @@
-//! Events scheduled in exact time.
+//! The `event` module provides structures for events scheduled in exact time.
 //!
 //! An event represents a value that is conceptually active over a given span of
 //! time.

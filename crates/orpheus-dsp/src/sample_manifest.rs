@@ -1,3 +1,8 @@
+//! The `sample_manifest` module provides deserialization for sample bank definitions.
+//!
+//! This module defines the expected schema for `samples.ron` files, allowing directories
+//! of audio files to be aliased and configured into structured `SampleBank`s.
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
@@ -19,23 +24,17 @@ pub struct SampleRegion {
 
 #[derive(Debug)]
 pub enum SampleManifestLoadError {
-    Io {
-        path: Box<str>,
-        source: std::io::Error,
-    },
-    Parse {
-        path: Box<str>,
-        message: Box<str>,
-    },
+    Io { path: Box<str>, message: Box<str> },
+    Parse { path: Box<str>, message: Box<str> },
 }
 
 impl std::fmt::Display for SampleManifestLoadError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Io { path, source } => {
+            Self::Io { path, message } => {
                 write!(
                     formatter,
-                    "failed to read sample manifest `{path}`: {source}"
+                    "failed to read sample manifest `{path}`: {message}"
                 )
             }
             Self::Parse { path, message } => {
@@ -51,8 +50,7 @@ impl std::fmt::Display for SampleManifestLoadError {
 impl std::error::Error for SampleManifestLoadError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Io { source, .. } => Some(source),
-            Self::Parse { .. } => None,
+            Self::Io { .. } | Self::Parse { .. } => None,
         }
     }
 }
@@ -68,16 +66,14 @@ impl std::error::Error for SampleManifestLoadError {
 ///
 /// ## Examples
 ///
-/// ```
+/// ```ignore
 /// use orpheus_dsp::load_sample_manifest;
-/// use std::io::Write;
-/// use tempfile::NamedTempFile;
 ///
-/// let mut file = NamedTempFile::new().unwrap();
-/// writeln!(file, "kick: /path/to/kick.wav").unwrap();
-///
-/// let manifest = load_sample_manifest(file.path()).unwrap();
-/// assert_eq!(manifest.get("kick"), Some("/path/to/kick.wav"));
+/// let manifest = load_sample_manifest("samples.ron").unwrap();
+/// assert_eq!(
+///     manifest.tokens.get("kick").map(String::as_str),
+///     Some("kick.wav")
+/// );
 /// ```
 pub fn load_sample_manifest(
     path: impl AsRef<Path>,
@@ -85,7 +81,11 @@ pub fn load_sample_manifest(
     let path = path.as_ref();
     let source = fs::read_to_string(path).map_err(|source| SampleManifestLoadError::Io {
         path: path.display().to_string().into_boxed_str(),
-        source,
+        message: match source.kind() {
+            std::io::ErrorKind::NotFound => "file not found".into(),
+            std::io::ErrorKind::PermissionDenied => "permission denied".into(),
+            _ => source.to_string().into_boxed_str(),
+        },
     })?;
     ManifestParser::new(&source)
         .parse_manifest()
@@ -458,5 +458,343 @@ impl<'a> ManifestParser<'a> {
 
     fn expected_message(&self, expected: &str) -> String {
         format!("expected {expected} near byte {}", self.offset)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sample_manifest_load_error_display() {
+        let err_io = SampleManifestLoadError::Io {
+            path: "test.manifest".into(),
+            message: "file not found".into(),
+        };
+        assert_eq!(
+            err_io.to_string(),
+            "failed to read sample manifest `test.manifest`: file not found"
+        );
+
+        let err_parse = SampleManifestLoadError::Parse {
+            path: "test.manifest".into(),
+            message: "syntax error".into(),
+        };
+        assert_eq!(
+            err_parse.to_string(),
+            "failed to parse sample manifest `test.manifest`: syntax error"
+        );
+    }
+
+    #[test]
+    fn parse_manifest_empty() {
+        let source = "()";
+        let mut parser = ManifestParser::new(source);
+        let manifest = parser.parse_manifest().unwrap();
+        assert_eq!(manifest, SampleManifest::default());
+    }
+
+    #[test]
+    fn parse_manifest_ignores_comments_and_whitespace() {
+        let source = "
+            // this is a comment
+            (
+                tokens: { \"bd\": \"bd.wav\" }, // inline comment
+                aliases: { \"kick\": \"bd\" }
+            )
+        ";
+        let mut parser = ManifestParser::new(source);
+        let manifest = parser.parse_manifest().unwrap();
+        assert_eq!(manifest.tokens.get("bd").unwrap(), "bd.wav");
+        assert_eq!(manifest.aliases.get("kick").unwrap(), "bd");
+    }
+
+    #[test]
+    fn parse_manifest_duplicate_sections_fail() {
+        let source = "( tokens: {}, tokens: {} )";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("duplicate `tokens` section".to_owned())
+        );
+
+        let source = "( aliases: {}, aliases: {} )";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("duplicate `aliases` section".to_owned())
+        );
+
+        let source = "( regions: {}, regions: {} )";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("duplicate `regions` section".to_owned())
+        );
+    }
+
+    #[test]
+    fn parse_manifest_unknown_field_fails() {
+        let source = "( unknown: {} )";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err(
+                "unknown manifest field `unknown`; expected `tokens`, `aliases`, or `regions`"
+                    .to_owned()
+            )
+        );
+    }
+
+    #[test]
+    fn parse_string_map_duplicate_key_fails() {
+        let source = "( tokens: { \"bd\": \"bd.wav\", \"bd\": \"other.wav\" } )";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("duplicate manifest key `bd`".to_owned())
+        );
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn parse_region_success() {
+        let source =
+            "( regions: { \"slice1\": ( token: \"loop\", start: 0.1, end: 0.5, rate: 1.5 ) } )";
+        let mut parser = ManifestParser::new(source);
+        let manifest = parser.parse_manifest().unwrap();
+        let region = manifest.regions.get("slice1").unwrap();
+        assert_eq!(region.token, "loop");
+        assert!((region.start - 0.1).abs() < f64::EPSILON);
+        assert!((region.end - 0.5).abs() < f64::EPSILON);
+        assert!((region.rate - 1.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn parse_region_duplicate_fields_fail() {
+        let source = "( regions: { \"s\": ( token: \"a\", token: \"b\", start: 0.1, end: 0.2 ) } )";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("duplicate `token` field in region".to_owned())
+        );
+
+        let source = "( regions: { \"s\": ( token: \"a\", start: 0.1, start: 0.2, end: 0.3 ) } )";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("duplicate `start` field in region".to_owned())
+        );
+
+        let source = "( regions: { \"s\": ( token: \"a\", start: 0.1, end: 0.2, end: 0.3 ) } )";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("duplicate `end` field in region".to_owned())
+        );
+
+        let source =
+            "( regions: { \"s\": ( token: \"a\", start: 0.1, end: 0.2, rate: 1.0, rate: 2.0 ) } )";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("duplicate `rate` field in region".to_owned())
+        );
+    }
+
+    #[test]
+    fn parse_region_missing_fields_fail() {
+        let source = "( regions: { \"s\": ( start: 0.1, end: 0.2 ) } )";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("region missing required `token` field".to_owned())
+        );
+
+        let source = "( regions: { \"s\": ( token: \"a\", end: 0.2 ) } )";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("region missing required `start` field".to_owned())
+        );
+
+        let source = "( regions: { \"s\": ( token: \"a\", start: 0.1 ) } )";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("region missing required `end` field".to_owned())
+        );
+    }
+
+    #[test]
+    fn parse_region_invalid_bounds_fail() {
+        // Start >= end
+        let source = "( regions: { \"s\": ( token: \"a\", start: 0.5, end: 0.2 ) } )";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("region requires 0 <= start < end <= 1".to_owned())
+        );
+
+        // Start < 0
+        let source = "( regions: { \"s\": ( token: \"a\", start: -0.1, end: 0.2 ) } )";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("region requires 0 <= start < end <= 1".to_owned())
+        );
+
+        // End > 1
+        let source = "( regions: { \"s\": ( token: \"a\", start: 0.1, end: 1.2 ) } )";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("region requires 0 <= start < end <= 1".to_owned())
+        );
+
+        // Invalid rate
+        let source = "( regions: { \"s\": ( token: \"a\", start: 0.1, end: 0.2, rate: -1.0 ) } )";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("region `rate` must be a positive finite number".to_owned())
+        );
+    }
+
+    #[test]
+    fn parse_region_unknown_field_fails() {
+        let source = "( regions: { \"s\": ( unknown: 1.0, token: \"a\", start: 0.1, end: 0.2 ) } )";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err(
+                "unknown region field `unknown`; expected `token`, `start`, `end`, or `rate`"
+                    .to_owned()
+            )
+        );
+    }
+
+    #[test]
+    fn parse_region_duplicate_key_fails() {
+        let source = "( regions: { \"s\": ( token: \"a\", start: 0.1, end: 0.2 ), \"s\": ( token: \"b\", start: 0.2, end: 0.3 ) } )";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("duplicate manifest key `s`".to_owned())
+        );
+    }
+
+    #[test]
+    fn parse_string_escapes_success() {
+        let source = "( tokens: { \"test\": \"value\\n\\t\\\\\\\"\\r\" } )";
+        let mut parser = ManifestParser::new(source);
+        let manifest = parser.parse_manifest().unwrap();
+        assert_eq!(manifest.tokens.get("test").unwrap(), "value\n\t\\\"\r");
+    }
+
+    #[test]
+    fn parse_string_invalid_escape_fails() {
+        let source = "( tokens: { \"test\": \"\\x\" } )";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("unsupported string escape `\\x` in sample manifest".to_owned())
+        );
+    }
+
+    #[test]
+    fn parse_string_unterminated_fails() {
+        let source = "( tokens: { \"test\": \"value";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("unterminated string literal".to_owned())
+        );
+
+        let source = "( tokens: { \"test\": \"value\\";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("unterminated string escape".to_owned())
+        );
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn parse_number_formats() {
+        let mut parser = ManifestParser::new("123 +45.6 -0.78 .9");
+        assert!((parser.parse_number().unwrap() - 123.0).abs() < f64::EPSILON);
+        assert!((parser.parse_number().unwrap() - 45.6).abs() < f64::EPSILON);
+        assert!((parser.parse_number().unwrap() - (-0.78)).abs() < f64::EPSILON);
+        assert!((parser.parse_number().unwrap() - 0.9).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn parse_number_invalid_fails() {
+        let mut parser = ManifestParser::new("abc");
+        assert_eq!(
+            parser.parse_number(),
+            Err("expected number near byte 0".to_owned())
+        );
+    }
+
+    #[test]
+    fn expected_message_formats_correctly() {
+        let parser = ManifestParser::new("abc");
+        assert_eq!(
+            parser.expected_message("identifier"),
+            "expected identifier near byte 0"
+        );
+    }
+
+    #[test]
+    fn parse_manifest_trailing_garbage_fails() {
+        let source = "() trailing";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("expected end of manifest near byte 3".to_owned())
+        );
+    }
+
+    #[test]
+    fn parse_manifest_missing_comma_fails() {
+        let source = "( tokens: {} aliases: {} )";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("expected `,` or `)` near byte 13".to_owned())
+        );
+
+        let source = "( tokens: { \"a\": \"b\" \"c\": \"d\" } )";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("expected `,` or `}` near byte 21".to_owned())
+        );
+
+        let source = "( regions: { \"a\": ( token: \"t\", start: 0.1, end: 0.2 ) \"b\": ( token: \"u\", start: 0.2, end: 0.3 ) } )";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("expected `,` or `}` near byte 55".to_owned())
+        );
+
+        let source = "( regions: { \"a\": ( token: \"t\" start: 0.1, end: 0.2 ) } )";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_manifest(),
+            Err("expected `,` or `)` near byte 31".to_owned())
+        );
+    }
+
+    #[test]
+    fn parse_identifier_invalid_start_fails() {
+        let source = "123";
+        let mut parser = ManifestParser::new(source);
+        assert_eq!(
+            parser.parse_identifier(),
+            Err("expected identifier near byte 0".to_owned())
+        );
     }
 }

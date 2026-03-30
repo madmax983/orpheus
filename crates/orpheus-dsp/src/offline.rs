@@ -1,3 +1,9 @@
+//! The `offline` module provides non-real-time audio rendering.
+//!
+//! This module allows evaluated patterns to be rendered directly to audio files (like `.wav`)
+//! as fast as the CPU allows, bypassing the real-time system audio callbacks. This is useful
+//! for exporting bounces, offline testing, and generating static assets.
+
 use std::fs;
 use std::path::Path;
 
@@ -10,7 +16,9 @@ use orpheus_pattern::Event;
 use thiserror::Error;
 
 use crate::SampleTrigger;
+use crate::effects::BusEffectState;
 use crate::engine::{DEFAULT_SAMPLE_RATE, DEFAULT_TEMPO_BPM, EngineError, frames_per_cycle};
+use crate::routing::{RoutingSnapshot, TrackId, TrackSource};
 use crate::sample_bank::SampleBank;
 use crate::scheduler::Scheduler;
 use crate::voice::{ActiveVoice, VoiceKind};
@@ -29,18 +37,10 @@ pub enum OfflineRenderError {
     Engine(#[from] EngineError),
     #[error("unsupported render format `{0}`")]
     UnsupportedFormat(Box<str>),
-    #[error("failed to write audio file `{path}`: {source}")]
-    Io {
-        path: Box<str>,
-        #[source]
-        source: std::io::Error,
-    },
-    #[error("failed to write wav file `{path}`: {source}")]
-    WavIo {
-        path: Box<str>,
-        #[source]
-        source: hound::Error,
-    },
+    #[error("failed to write audio file `{path}`: {message}")]
+    Io { path: Box<str>, message: Box<str> },
+    #[error("failed to write wav file `{path}`: {message}")]
+    WavIo { path: Box<str>, message: Box<str> },
     #[error("failed to verify FLAC encoder config: {0}")]
     FlacConfig(Box<str>),
     #[error("failed to encode FLAC output: {0}")]
@@ -108,6 +108,205 @@ pub fn render_events_to_wav(
     write_wav(path.as_ref(), &rendered)
 }
 
+/// Renders a validated routing snapshot into an interleaved stereo `f32` buffer
+/// for deterministic tests.
+///
+/// This is intentionally test-oriented instead of user-facing export API: it
+/// exercises the shared routing/effect path without baking a second file format
+/// surface into the crate.
+///
+/// # Errors
+///
+/// Returns [`OfflineRenderError`] if scheduling or sample resolution fails.
+#[doc(hidden)]
+pub fn render_routing_snapshot_to_stereo_for_test(
+    snapshot: &RoutingSnapshot,
+    cycle_count: u64,
+    tempo_bpm: f32,
+    sample_bank: &SampleBank,
+) -> Result<Vec<f32>, OfflineRenderError> {
+    if cycle_count == 0 {
+        return Err(OfflineRenderError::InvalidCycleCount);
+    }
+
+    let frames_per_cycle = frames_per_cycle(DEFAULT_SAMPLE_RATE, tempo_bpm)?;
+    let total_frames = frames_per_cycle
+        .checked_mul(cycle_count)
+        .ok_or(EngineError::FrameOverflow)?;
+    let total_frames_usize =
+        usize::try_from(total_frames).map_err(|_| EngineError::FrameOverflow)?;
+    let mut scheduler = Scheduler::default();
+    schedule_snapshot_cycles(snapshot, cycle_count, frames_per_cycle, &mut scheduler)?;
+
+    let mut active_voices = std::iter::repeat_with(|| None)
+        .take(MAX_ACTIVE_VOICES)
+        .collect::<Vec<_>>();
+    let mut track_mix_buffer = vec![(0.0_f32, 0.0_f32); snapshot.tracks().len()];
+    let mut bus_mix_buffer = vec![(0.0_f32, 0.0_f32); snapshot.buses().len()];
+    let mut bus_effect_states = snapshot
+        .buses()
+        .iter()
+        .map(|bus| {
+            bus.effect()
+                .map(|effect| BusEffectState::from_spec(effect, frames_per_cycle))
+                .transpose()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut rendered = Vec::with_capacity(total_frames_usize * usize::from(OFFLINE_CHANNELS));
+
+    for frame in 0..total_frames {
+        activate_due_snapshot_voices(
+            frame,
+            frames_per_cycle,
+            &mut scheduler,
+            &mut active_voices,
+            sample_bank,
+        )?;
+        let (master_left, master_right) = mix_snapshot_frame(
+            snapshot,
+            &mut active_voices,
+            &mut track_mix_buffer,
+            &mut bus_mix_buffer,
+            &mut bus_effect_states,
+        );
+
+        rendered.push(master_left.clamp(-1.0, 1.0));
+        rendered.push(master_right.clamp(-1.0, 1.0));
+    }
+
+    Ok(rendered)
+}
+
+fn schedule_snapshot_cycles(
+    snapshot: &RoutingSnapshot,
+    cycle_count: u64,
+    frames_per_cycle: u64,
+    scheduler: &mut Scheduler,
+) -> Result<(), OfflineRenderError> {
+    for cycle in 0..cycle_count {
+        let cycle_start = cycle
+            .checked_mul(frames_per_cycle)
+            .ok_or(EngineError::FrameOverflow)?;
+        for track in snapshot.tracks() {
+            if let TrackSource::SamplePattern(events) = track.source() {
+                scheduler.schedule_cycle_events(
+                    track.id(),
+                    cycle_start,
+                    frames_per_cycle,
+                    events.iter().map(|event| Event {
+                        whole: event.whole.clone(),
+                        part: event.part.clone(),
+                        value: &event.value,
+                    }),
+                )?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn activate_due_snapshot_voices(
+    frame: u64,
+    frames_per_cycle: u64,
+    scheduler: &mut Scheduler,
+    active_voices: &mut [Option<ActiveVoice>],
+    sample_bank: &SampleBank,
+) -> Result<(), OfflineRenderError> {
+    while let Some(trigger) = scheduler.pop_due(frame) {
+        activate_voice(
+            active_voices,
+            sample_bank,
+            &trigger.trigger,
+            trigger.fallback_voice,
+            trigger.duration_frames,
+            DEFAULT_SAMPLE_RATE,
+            frames_per_cycle,
+        )?;
+    }
+
+    Ok(())
+}
+
+fn mix_snapshot_frame(
+    snapshot: &RoutingSnapshot,
+    active_voices: &mut [Option<ActiveVoice>],
+    track_mix_buffer: &mut [(f32, f32)],
+    bus_mix_buffer: &mut [(f32, f32)],
+    bus_effect_states: &mut [Option<BusEffectState>],
+) -> (f32, f32) {
+    track_mix_buffer.fill((0.0, 0.0));
+    bus_mix_buffer.fill((0.0, 0.0));
+    mix_offline_voices_into_tracks(active_voices, track_mix_buffer);
+
+    let mut master_left = 0.0_f32;
+    let mut master_right = 0.0_f32;
+
+    for track in snapshot.tracks() {
+        let track_index = usize::try_from(track.id().get())
+            .unwrap_or_else(|_| panic!("track id did not fit in usize"));
+        let (track_left, track_right) = track_mix_buffer[track_index];
+        let track_left = track_left * track.level();
+        let track_right = track_right * track.level();
+
+        if track.muted() {
+            continue;
+        }
+
+        if track.routes_to_master() {
+            master_left += track_left;
+            master_right += track_right;
+        }
+
+        for send in track.sends() {
+            let bus_index = usize::try_from(send.bus_id().get())
+                .unwrap_or_else(|_| panic!("bus id did not fit in usize"));
+            let (bus_left, bus_right) = &mut bus_mix_buffer[bus_index];
+            *bus_left += track_left * send.level();
+            *bus_right += track_right * send.level();
+        }
+    }
+
+    for bus in snapshot.buses() {
+        if !bus.routes_to_master() {
+            continue;
+        }
+
+        let bus_index = usize::try_from(bus.id().get())
+            .unwrap_or_else(|_| panic!("bus id did not fit in usize"));
+        let (bus_left, bus_right) = bus_mix_buffer[bus_index];
+        if let Some(effect) = bus_effect_states[bus_index].as_mut() {
+            let (wet_left, wet_right) = effect.process_frame(bus_left, bus_right);
+            master_left += wet_left;
+            master_right += wet_right;
+        } else {
+            master_left += bus_left;
+            master_right += bus_right;
+        }
+    }
+
+    (master_left, master_right)
+}
+
+fn mix_offline_voices_into_tracks(
+    active_voices: &mut [Option<ActiveVoice>],
+    track_mix_buffer: &mut [(f32, f32)],
+) {
+    for slot in active_voices {
+        if let Some(voice) = slot.as_mut() {
+            if let Some((left, right)) = voice.next_stereo_frame() {
+                let track_index = usize::try_from(voice.track_id().get())
+                    .unwrap_or_else(|_| panic!("track id did not fit in usize"));
+                let (track_left, track_right) = &mut track_mix_buffer[track_index];
+                *track_left += left;
+                *track_right += right;
+            } else {
+                *slot = None;
+            }
+        }
+    }
+}
+
 fn render_events_to_pcm(
     events: &[Event<SampleTrigger>],
     cycle_count: u64,
@@ -127,6 +326,7 @@ fn render_events_to_pcm(
     let total_samples = usize::try_from(total_samples).map_err(|_| EngineError::FrameOverflow)?;
     let mut scheduler = Scheduler::default();
     scheduler.schedule_cycle_events(
+        TrackId::new(0),
         0,
         frames_per_cycle,
         events.iter().map(|event| Event {
@@ -136,7 +336,9 @@ fn render_events_to_pcm(
         }),
     )?;
 
-    let mut active_voices = vec![None; MAX_ACTIVE_VOICES];
+    let mut active_voices = std::iter::repeat_with(|| None)
+        .take(MAX_ACTIVE_VOICES)
+        .collect::<Vec<_>>();
     let mut rendered = Vec::with_capacity(total_samples);
 
     for frame in 0..total_frames {
@@ -146,7 +348,9 @@ fn render_events_to_pcm(
                 sample_bank,
                 &trigger.trigger,
                 trigger.fallback_voice,
+                trigger.duration_frames,
                 DEFAULT_SAMPLE_RATE,
+                frames_per_cycle,
             )?;
         }
 
@@ -169,7 +373,14 @@ fn write_wav(path: &Path, samples: &[i32]) -> Result<(), OfflineRenderError> {
     let mut writer =
         hound::WavWriter::create(path, spec).map_err(|source| OfflineRenderError::WavIo {
             path: path_string.clone().into_boxed_str(),
-            source,
+            message: match &source {
+                hound::Error::IoError(io_err) => match io_err.kind() {
+                    std::io::ErrorKind::NotFound => "file not found".into(),
+                    std::io::ErrorKind::PermissionDenied => "permission denied".into(),
+                    _ => io_err.to_string().into_boxed_str(),
+                },
+                _ => source.to_string().into_boxed_str(),
+            },
         })?;
 
     for sample in samples {
@@ -179,7 +390,14 @@ fn write_wav(path: &Path, samples: &[i32]) -> Result<(), OfflineRenderError> {
             }))
             .map_err(|source| OfflineRenderError::WavIo {
                 path: path_string.clone().into_boxed_str(),
-                source,
+                message: match &source {
+                    hound::Error::IoError(io_err) => match io_err.kind() {
+                        std::io::ErrorKind::NotFound => "file not found".into(),
+                        std::io::ErrorKind::PermissionDenied => "permission denied".into(),
+                        _ => io_err.to_string().into_boxed_str(),
+                    },
+                    _ => source.to_string().into_boxed_str(),
+                },
             })?;
     }
 
@@ -187,7 +405,14 @@ fn write_wav(path: &Path, samples: &[i32]) -> Result<(), OfflineRenderError> {
         .finalize()
         .map_err(|source| OfflineRenderError::WavIo {
             path: path_string.into_boxed_str(),
-            source,
+            message: match &source {
+                hound::Error::IoError(io_err) => match io_err.kind() {
+                    std::io::ErrorKind::NotFound => "file not found".into(),
+                    std::io::ErrorKind::PermissionDenied => "permission denied".into(),
+                    _ => io_err.to_string().into_boxed_str(),
+                },
+                _ => source.to_string().into_boxed_str(),
+            },
         })?;
     Ok(())
 }
@@ -213,7 +438,11 @@ fn write_flac(path: &Path, samples: &[i32]) -> Result<(), OfflineRenderError> {
         .map_err(|error| OfflineRenderError::FlacEncode(error.to_string().into_boxed_str()))?;
     fs::write(path, sink.as_slice()).map_err(|source| OfflineRenderError::Io {
         path: path.display().to_string().into_boxed_str(),
-        source,
+        message: match source.kind() {
+            std::io::ErrorKind::NotFound => "file not found".into(),
+            std::io::ErrorKind::PermissionDenied => "permission denied".into(),
+            _ => source.to_string().into_boxed_str(),
+        },
     })?;
     Ok(())
 }
@@ -223,14 +452,29 @@ fn activate_voice(
     sample_bank: &SampleBank,
     trigger: &SampleTrigger,
     fallback_voice: Option<VoiceKind>,
+    duration_frames: u32,
     sample_rate: u32,
+    frames_per_cycle: u64,
 ) -> Result<(), OfflineRenderError> {
     if let Some(slot) = active_voices.iter_mut().find(|slot| slot.is_none()) {
         *slot = Some(
             if let Some((sample, resolved_trigger)) = sample_bank.resolve_trigger(trigger) {
-                ActiveVoice::from_sample(sample, sample_rate, &resolved_trigger)
+                ActiveVoice::from_sample(
+                    TrackId::new(0),
+                    sample,
+                    sample_rate,
+                    frames_per_cycle,
+                    &resolved_trigger,
+                )
             } else if let Some(voice) = fallback_voice {
-                ActiveVoice::new_with_pan(voice, sample_rate, trigger.pan())
+                ActiveVoice::from_trigger(
+                    TrackId::new(0),
+                    voice,
+                    sample_rate,
+                    frames_per_cycle,
+                    trigger,
+                    duration_frames,
+                )
             } else {
                 return Err(OfflineRenderError::UnknownSampleToken(
                     trigger.token().into(),
