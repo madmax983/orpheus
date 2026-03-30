@@ -28,3 +28,7 @@
 **[Encapsulating Type-Specific Operations]**
 **Learning:** Found repetitive `match` statements across `ExplicitValue::merge` and `eval_section_events` in `crates/orpheus-lang/src/eval.rs` operating manually on enum variants.
 **Action:** Encapsulate operations into helper methods (`append_unsorted`, `sort`) on the type itself. This reduces "Pyramid of Doom" nesting and adheres to the philosophy: "Types are documentation. Use them."
+
+**[Struct Extraction for Multiple Configuration Parameters]**
+**Learning:** Returning anonymous primitive tuples like `(Rational, f32, f32)` from functions (e.g., `parse_bus_delay_params`) creates "Boolean Blindness"-like ambiguity, making it easy to accidentally swap positional arguments like `feedback` and `wet` levels.
+**Action:** Apply the "Struct Extraction" pattern. Define dedicated named structs (e.g., `BusDelayParams`) and unpack the fields explicitly by name when passing them to downstream functions.

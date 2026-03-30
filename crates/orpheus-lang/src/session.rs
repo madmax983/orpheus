@@ -858,14 +858,16 @@ impl ReplSession {
                 Ok(format!("cleared hosted effect on bus `{bus_name}`"))
             }
             ["fx", bus_name, "delay", params @ ..] => {
-                let (time, feedback, wet) = parse_bus_delay_params(params)?;
-                self.mixer.set_bus_delay(bus_name, time, feedback, wet)?;
+                let params = parse_bus_delay_params(params)?;
+                self.mixer
+                    .set_bus_delay(bus_name, params.time, params.feedback, params.wet)?;
                 self.enqueue_mixer_snapshot()?;
                 Ok(format!("attached delay to bus `{bus_name}`"))
             }
             ["fx", bus_name, "reverb", params @ ..] => {
-                let (size, damp, wet) = parse_bus_reverb_params(params)?;
-                self.mixer.set_bus_reverb(bus_name, size, damp, wet)?;
+                let params = parse_bus_reverb_params(params)?;
+                self.mixer
+                    .set_bus_reverb(bus_name, params.size, params.damp, params.wet)?;
                 self.enqueue_mixer_snapshot()?;
                 Ok(format!("attached reverb to bus `{bus_name}`"))
             }
@@ -1395,7 +1397,19 @@ const fn stop_usage() -> &'static str {
     "usage: :stop"
 }
 
-fn parse_bus_delay_params(tokens: &[&str]) -> Result<(Rational, f32, f32), String> {
+struct BusDelayParams {
+    time: Rational,
+    feedback: f32,
+    wet: f32,
+}
+
+struct BusReverbParams {
+    size: f32,
+    damp: f32,
+    wet: f32,
+}
+
+fn parse_bus_delay_params(tokens: &[&str]) -> Result<BusDelayParams, String> {
     let mut time = None;
     let mut feedback = None;
     let mut wet = None;
@@ -1430,10 +1444,14 @@ fn parse_bus_delay_params(tokens: &[&str]) -> Result<(Rational, f32, f32), Strin
     let time = time.ok_or_else(|| "bus fx delay requires time=<num>/<den>".to_owned())?;
     let feedback = feedback.ok_or_else(|| "bus fx delay requires feedback=<f>".to_owned())?;
     let wet = wet.ok_or_else(|| "bus fx delay requires wet=<f>".to_owned())?;
-    Ok((time, feedback, wet))
+    Ok(BusDelayParams {
+        time,
+        feedback,
+        wet,
+    })
 }
 
-fn parse_bus_reverb_params(tokens: &[&str]) -> Result<(f32, f32, f32), String> {
+fn parse_bus_reverb_params(tokens: &[&str]) -> Result<BusReverbParams, String> {
     let mut size = None;
     let mut damp = None;
     let mut wet = None;
@@ -1473,7 +1491,7 @@ fn parse_bus_reverb_params(tokens: &[&str]) -> Result<(f32, f32, f32), String> {
     let size = size.ok_or_else(|| "bus fx reverb requires size=<f>".to_owned())?;
     let damp = damp.ok_or_else(|| "bus fx reverb requires damp=<f>".to_owned())?;
     let wet = wet.ok_or_else(|| "bus fx reverb requires wet=<f>".to_owned())?;
-    Ok((size, damp, wet))
+    Ok(BusReverbParams { size, damp, wet })
 }
 
 fn parse_rational_time(value: &str) -> Result<Rational, String> {
