@@ -282,12 +282,12 @@ impl SampleEvent {
 }
 
 trait PatternValueTransform {
-    fn adjust_gain(&self, factor: f64) -> Self;
-    fn adjust_hpf(&self, cutoff_hz: f64) -> Self;
-    fn adjust_lpf(&self, cutoff_hz: f64) -> Self;
-    fn adjust_pan(&self, amount: f64) -> Self;
-    fn adjust_rate(&self, factor: f64) -> Self;
-    fn adjust_slice(&self, start: f64, end: f64) -> Self;
+    fn adjust_gain(&mut self, factor: f64);
+    fn adjust_hpf(&mut self, cutoff_hz: f64);
+    fn adjust_lpf(&mut self, cutoff_hz: f64);
+    fn adjust_pan(&mut self, amount: f64);
+    fn adjust_rate(&mut self, factor: f64);
+    fn adjust_slice(&mut self, start: f64, end: f64);
 }
 
 trait PatternRuntimeValue: Clone + PatternValueTransform + Send + Sync + fmt::Debug + Sized {
@@ -297,110 +297,47 @@ trait PatternRuntimeValue: Clone + PatternValueTransform + Send + Sync + fmt::De
 }
 
 impl PatternValueTransform for SampleEvent {
-    fn adjust_gain(&self, factor: f64) -> Self {
-        Self {
-            sample: self.sample.clone(),
-            gain: self.gain * factor,
-            hpf_cutoff_hz: self.hpf_cutoff_hz,
-            lpf_cutoff_hz: self.lpf_cutoff_hz,
-            pan: self.pan,
-            rate: self.rate,
-            slice_start: self.slice_start,
-            slice_end: self.slice_end,
-        }
+    fn adjust_gain(&mut self, factor: f64) {
+        self.gain *= factor;
     }
 
-    fn adjust_hpf(&self, cutoff_hz: f64) -> Self {
-        Self {
-            sample: self.sample.clone(),
-            gain: self.gain,
-            hpf_cutoff_hz: Some(cutoff_hz),
-            lpf_cutoff_hz: self.lpf_cutoff_hz,
-            pan: self.pan,
-            rate: self.rate,
-            slice_start: self.slice_start,
-            slice_end: self.slice_end,
-        }
+    fn adjust_hpf(&mut self, cutoff_hz: f64) {
+        self.hpf_cutoff_hz = Some(cutoff_hz);
     }
 
-    fn adjust_lpf(&self, cutoff_hz: f64) -> Self {
-        Self {
-            sample: self.sample.clone(),
-            gain: self.gain,
-            hpf_cutoff_hz: self.hpf_cutoff_hz,
-            lpf_cutoff_hz: Some(cutoff_hz),
-            pan: self.pan,
-            rate: self.rate,
-            slice_start: self.slice_start,
-            slice_end: self.slice_end,
-        }
+    fn adjust_lpf(&mut self, cutoff_hz: f64) {
+        self.lpf_cutoff_hz = Some(cutoff_hz);
     }
 
-    fn adjust_pan(&self, amount: f64) -> Self {
-        Self {
-            sample: self.sample.clone(),
-            gain: self.gain,
-            hpf_cutoff_hz: self.hpf_cutoff_hz,
-            lpf_cutoff_hz: self.lpf_cutoff_hz,
-            pan: (self.pan + amount).clamp(-1.0, 1.0),
-            rate: self.rate,
-            slice_start: self.slice_start,
-            slice_end: self.slice_end,
-        }
+    fn adjust_pan(&mut self, amount: f64) {
+        self.pan = (self.pan + amount).clamp(-1.0, 1.0);
     }
 
-    fn adjust_rate(&self, factor: f64) -> Self {
-        Self {
-            sample: self.sample.clone(),
-            gain: self.gain,
-            hpf_cutoff_hz: self.hpf_cutoff_hz,
-            lpf_cutoff_hz: self.lpf_cutoff_hz,
-            pan: self.pan,
-            rate: self.rate * factor,
-            slice_start: self.slice_start,
-            slice_end: self.slice_end,
-        }
+    fn adjust_rate(&mut self, factor: f64) {
+        self.rate *= factor;
     }
 
-    fn adjust_slice(&self, start: f64, end: f64) -> Self {
+    fn adjust_slice(&mut self, start: f64, end: f64) {
         let current_range = self.slice_end - self.slice_start;
-        Self {
-            sample: self.sample.clone(),
-            gain: self.gain,
-            hpf_cutoff_hz: self.hpf_cutoff_hz,
-            lpf_cutoff_hz: self.lpf_cutoff_hz,
-            pan: self.pan,
-            rate: self.rate,
-            slice_start: current_range.mul_add(start, self.slice_start),
-            slice_end: current_range.mul_add(end, self.slice_start),
-        }
+        let new_start = current_range.mul_add(start, self.slice_start);
+        let new_end = current_range.mul_add(end, self.slice_start);
+        self.slice_start = new_start;
+        self.slice_end = new_end;
     }
 }
 
 impl PatternValueTransform for f64 {
-    fn adjust_gain(&self, _factor: f64) -> Self {
-        *self
-    }
+    fn adjust_gain(&mut self, _factor: f64) {}
 
-    fn adjust_hpf(&self, _cutoff_hz: f64) -> Self {
-        *self
-    }
+    fn adjust_hpf(&mut self, _cutoff_hz: f64) {}
 
-    fn adjust_lpf(&self, _cutoff_hz: f64) -> Self {
-        *self
-    }
+    fn adjust_lpf(&mut self, _cutoff_hz: f64) {}
 
-    fn adjust_pan(&self, _amount: f64) -> Self {
-        *self
-    }
+    fn adjust_pan(&mut self, _amount: f64) {}
 
-    fn adjust_rate(&self, _factor: f64) -> Self {
-        *self
-    }
+    fn adjust_rate(&mut self, _factor: f64) {}
 
-    fn adjust_slice(&self, _start: f64, _end: f64) -> Self {
-        *self
-    }
+    fn adjust_slice(&mut self, _start: f64, _end: f64) {}
 }
 
 impl PatternRuntimeValue for SampleEvent {
@@ -1041,43 +978,43 @@ where
             Self::Shift { offset, inner } => query_shift(inner, offset, span),
             Self::Rev { inner } => query_rev(inner, span),
             Self::Gain { factor, inner } => {
-                apply_value_mutation(inner, span, |value| *value = value.adjust_gain(*factor))
+                apply_value_mutation(inner, span, |value| value.adjust_gain(*factor))
             }
             Self::GainPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Gain)
             }
             Self::Hpf { cutoff_hz, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_hpf(*cutoff_hz);
+                value.adjust_hpf(*cutoff_hz);
             }),
             Self::HpfPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Hpf)
             }
             Self::Lpf { cutoff_hz, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_lpf(*cutoff_hz);
+                value.adjust_lpf(*cutoff_hz);
             }),
             Self::LpfPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Lpf)
             }
             Self::Pan { amount, inner } => {
-                apply_value_mutation(inner, span, |value| *value = value.adjust_pan(*amount))
+                apply_value_mutation(inner, span, |value| value.adjust_pan(*amount))
             }
             Self::PanPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Pan)
             }
             Self::Pitch { semitones, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_rate(semitones_to_rate_multiplier(*semitones));
+                value.adjust_rate(semitones_to_rate_multiplier(*semitones));
             }),
             Self::PitchPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Pitch)
             }
             Self::Rate { factor, inner } => {
-                apply_value_mutation(inner, span, |value| *value = value.adjust_rate(*factor))
+                apply_value_mutation(inner, span, |value| value.adjust_rate(*factor))
             }
             Self::RatePattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Rate)
             }
             Self::Slice { start, end, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_slice(*start, *end);
+                value.adjust_slice(*start, *end);
             }),
             Self::SlicePattern {
                 start_control,
@@ -1194,16 +1131,16 @@ where
         let mut new_value = value.clone();
         for control_event in &control_events {
             if spans_overlap(&control_event.part, part) {
-                new_value = match kind {
+                match kind {
                     ControlPatternKind::Gain => new_value.adjust_gain(control_event.value),
                     ControlPatternKind::Hpf => new_value.adjust_hpf(control_event.value),
                     ControlPatternKind::Lpf => new_value.adjust_lpf(control_event.value),
                     ControlPatternKind::Pan => new_value.adjust_pan(control_event.value),
                     ControlPatternKind::Pitch => {
-                        new_value.adjust_rate(semitones_to_rate_multiplier(control_event.value))
+                        new_value.adjust_rate(semitones_to_rate_multiplier(control_event.value));
                     }
                     ControlPatternKind::Rate => new_value.adjust_rate(control_event.value),
-                };
+                }
             }
         }
         Ok(Some(new_value))
@@ -1309,9 +1246,9 @@ where
                 ));
             }
 
-            Ok(Some(
-                value.clone().adjust_slice(relative_start, relative_end),
-            ))
+            let mut new_value = value.clone();
+            new_value.adjust_slice(relative_start, relative_end);
+            Ok(Some(new_value))
         },
     )
 }
@@ -1343,7 +1280,7 @@ where
                         "`slice_idx` control index exceeded the supported evaluator range",
                     )
                 })?) / f64::from(segments);
-                new_value = new_value.adjust_slice(slice_start, slice_end);
+                new_value.adjust_slice(slice_start, slice_end);
             }
         }
         Ok(Some(new_value))
