@@ -5,3 +5,6 @@
 ## $(date +%Y-%m-%d) - repl & export test coverage gap
 **Learning:** Found testing gaps for early returns resulting from limits (e.g. cycle count 0) and terminal interaction helper loops mapping reader lines to the session state machine.
 **Action:** When working on CLI interaction boundaries, try mocking `BufRead` with `Cursor` structures to unit-test logic branches without doing extensive full-system integration tests.
+## 2024-03-26 - [Eval Error Paths and Unsupported Types]
+**Learning:** Evaluator mappings from implicit values to explicit time events (e.g., `value_to_explicit` and stream/seq_sections empty collections) require explicit unit test checks, as pattern-only expressions correctly bubble up specific context errors that won't panic but might drop coverage mapping if not tested.
+**Action:** When handling expressions mapping types directly (`Value::Function`, `Value::PitchClassSet`, etc.) into constrained domains (`ExplicitValue`), assert the formatting of the resulting `EvalError` to guarantee the underlying constraints don't regress or become ambiguous when the AST parser accepts them.

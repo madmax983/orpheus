@@ -1519,3 +1519,71 @@ right = sometimes(fast(2), cp hh)";
         );
     }
 }
+
+    #[test]
+    fn eval_explicit_expr_stream_empty() {
+        let result = eval_module("x = stream()", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "`stream` requires at least one item"
+        );
+    }
+
+    #[test]
+    fn value_to_explicit_unsupported_types() {
+        use crate::value::{Value, FunctionValue, PitchClassSetValue, ArpDirectionValue};
+        use crate::value::{BuiltinFn, BuiltinKind};
+
+        // Functions
+        let result = Evaluator::value_to_explicit(Value::Function(FunctionValue::Builtin(BuiltinFn::new(BuiltinKind::Fast))));
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "functions cannot be materialized into explicit-time event streams"
+        );
+
+        // Strings
+        let result = Evaluator::value_to_explicit(Value::String("test".into()));
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "strings cannot be materialized into explicit-time event streams"
+        );
+
+        // Pitch class sets
+        let result = Evaluator::value_to_explicit(Value::PitchClassSet(PitchClassSetValue::new(vec![0]).unwrap()));
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "pitch class sets cannot be materialized into explicit-time event streams"
+        );
+
+        // Arp Direction
+        let result = Evaluator::value_to_explicit(Value::ArpDirection(ArpDirectionValue::Up));
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "arp directions cannot be materialized into explicit-time event streams"
+        );
+    }
+
+    #[test]
+    fn seq_sections_empty() {
+        let result = eval_module("x = seq_sections()", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "`seq_sections` requires at least one section"
+        );
+    }
+
+    #[test]
+    fn seq_sections_section_cycle_count_overflow() {
+        let result = eval_module("x = seq_sections(section(1, 1025))", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "section cycle count exceeded the maximum allowed bound of 1024"
+        );
+    }
