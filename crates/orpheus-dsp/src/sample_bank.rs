@@ -1,3 +1,9 @@
+//! The `sample_bank` module manages collections of loaded audio samples.
+//!
+//! A `SampleBank` acts as an in-memory repository mapping string identifiers (like "bd" or "sn")
+//! to fully decoded `DecodedSample` buffers, allowing the engine to quickly look up
+//! and trigger audio events.
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
@@ -10,6 +16,7 @@ use crate::sample::{DecodedSample, SampleError, load_wav_bytes, load_wav_for_tes
 use crate::sample_manifest::{
     SampleManifest, SampleManifestLoadError, SampleRegion, load_sample_manifest,
 };
+use crate::transient::{detect_transient_markers, rebase_transient_markers, resolve_onset_slice};
 use crate::voice::VoiceKind;
 
 const KICK_WAV: &[u8] = include_bytes!("../assets/kick.wav");
@@ -66,11 +73,13 @@ struct SampleEntry {
     rate: f64,
     slice_start: f64,
     slice_end: f64,
+    onset_markers: Arc<[f64]>,
 }
 
 impl SampleEntry {
-    const fn direct(sample: PlaybackSample) -> Self {
+    fn direct(sample: PlaybackSample) -> Self {
         Self {
+            onset_markers: detect_transient_markers(sample.frames(), sample.sample_rate_hz()),
             sample,
             rate: 1.0,
             slice_start: 0.0,
@@ -81,6 +90,7 @@ impl SampleEntry {
     fn compose_region(&self, region: &SampleRegion) -> Self {
         let current_range = self.slice_end - self.slice_start;
         Self {
+            onset_markers: rebase_transient_markers(&self.onset_markers, region.start, region.end),
             sample: self.sample.clone(),
             rate: self.rate * region.rate,
             slice_start: current_range.mul_add(region.start, self.slice_start),
@@ -89,15 +99,30 @@ impl SampleEntry {
     }
 
     fn compose_trigger(&self, trigger: &SampleTrigger) -> SampleTrigger {
-        let current_range = self.slice_end - self.slice_start;
+        let (slice_start, slice_end) = self.compose_slice_bounds(trigger);
         let mut composed = SampleTrigger::named(trigger.token())
             .with_gain(trigger.gain())
             .with_pan(trigger.pan())
+            .with_delay_mix(trigger.delay_mix())
+            .with_delay_time(trigger.delay_time())
+            .with_delay_feedback(trigger.delay_feedback())
+            .with_reverb_mix(trigger.reverb_mix())
+            .with_reverb_room(trigger.reverb_room())
+            .with_reverb_damp(trigger.reverb_damp())
+            .with_chorus_mix(trigger.chorus_mix())
+            .with_chorus_depth(trigger.chorus_depth())
+            .with_chorus_rate(trigger.chorus_rate())
+            .with_compressor_mix(trigger.compressor_mix())
+            .with_compressor_threshold(trigger.compressor_threshold())
+            .with_compressor_ratio(trigger.compressor_ratio())
+            .with_resonance(trigger.resonance())
+            .with_drive(trigger.drive())
+            .with_pulse_width(trigger.pulse_width())
             .with_rate(self.rate * trigger.rate())
-            .with_slice(
-                current_range.mul_add(trigger.slice_start(), self.slice_start),
-                current_range.mul_add(trigger.slice_end(), self.slice_start),
-            );
+            .with_slice(slice_start, slice_end);
+        if let Some(onset_index) = trigger.onset_index() {
+            composed = composed.with_onset(onset_index);
+        }
         if let Some(cutoff_hz) = trigger.hpf_cutoff_hz() {
             composed = composed.with_hpf_cutoff_hz(cutoff_hz);
         }
@@ -105,6 +130,25 @@ impl SampleEntry {
             composed = composed.with_lpf_cutoff_hz(cutoff_hz);
         }
         composed
+    }
+
+    fn compose_slice_bounds(&self, trigger: &SampleTrigger) -> (f64, f64) {
+        let mut base_start = self.slice_start;
+        let mut base_end = self.slice_end;
+        if let Some(onset_index) = trigger.onset_index()
+            && let Some((onset_start, onset_end)) =
+                resolve_onset_slice(&self.onset_markers, onset_index)
+        {
+            (base_start, base_end) =
+                compose_relative_slice(base_start, base_end, onset_start, onset_end);
+        }
+
+        compose_relative_slice(
+            base_start,
+            base_end,
+            trigger.slice_start(),
+            trigger.slice_end(),
+        )
     }
 }
 
@@ -475,4 +519,17 @@ fn resolve_region_target(
 
 fn inferred_token_from_stem(stem: &str) -> String {
     stem.to_ascii_lowercase()
+}
+
+fn compose_relative_slice(
+    base_start: f64,
+    base_end: f64,
+    relative_start: f64,
+    relative_end: f64,
+) -> (f64, f64) {
+    let range = base_end - base_start;
+    (
+        range.mul_add(relative_start, base_start),
+        range.mul_add(relative_end, base_start),
+    )
 }

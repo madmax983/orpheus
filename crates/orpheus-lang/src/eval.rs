@@ -30,6 +30,7 @@ use crate::ast::{Expr, Module, Stmt, binding_expr_self_references};
 use crate::builtins::{builtin_value, is_sample_identifier, stack_values};
 use crate::diagnostics::ParseError;
 use crate::parser::parse_module;
+use crate::pitch::parse_named_pitch_literal;
 use crate::value::{
     FunctionValue, NumberPatternValue, SampleEvent, SamplePatternValue, UserFn, Value,
 };
@@ -93,6 +94,35 @@ impl Error for EvalError {}
 
 impl From<ParseError> for EvalError {
     fn from(error: ParseError) -> Self {
+        Self::new(error.to_string())
+    }
+}
+
+impl From<crate::pitch::PitchLiteralError> for EvalError {
+    fn from(error: crate::pitch::PitchLiteralError) -> Self {
+        Self::new(error.to_string())
+    }
+}
+
+impl From<std::num::TryFromIntError> for EvalError {
+    fn from(error: std::num::TryFromIntError) -> Self {
+        Self::new(error.to_string())
+    }
+}
+
+impl From<std::io::Error> for EvalError {
+    fn from(error: std::io::Error) -> Self {
+        let message = match error.kind() {
+            std::io::ErrorKind::NotFound => "file not found".to_owned(),
+            std::io::ErrorKind::PermissionDenied => "permission denied".to_owned(),
+            _ => error.to_string(),
+        };
+        Self::new(message)
+    }
+}
+
+impl From<std::fmt::Error> for EvalError {
+    fn from(error: std::fmt::Error) -> Self {
         Self::new(error.to_string())
     }
 }
@@ -235,10 +265,9 @@ impl Evaluator {
         &mut self,
         statements: &[Stmt],
     ) -> Result<Option<(String, Value)>, EvalError> {
-        let mut last_binding = None;
-
-        for statement in statements {
-            match statement {
+        statements
+            .iter()
+            .try_fold(None, |_, statement| match statement {
                 Stmt::Binding {
                     name, params, expr, ..
                 } => {
@@ -259,12 +288,9 @@ impl Evaluator {
                         }))
                     };
                     self.bindings.insert(name.clone(), value.clone());
-                    last_binding = Some((name.clone(), value));
+                    Ok(Some((name.clone(), value)))
                 }
-            }
-        }
-
-        Ok(last_binding)
+            })
     }
 
     fn eval_expr(&self, expr: &Expr) -> Result<Value, EvalError> {
@@ -363,12 +389,11 @@ impl Evaluator {
         layers: &[Expr],
         meter: Option<&MeterContext>,
     ) -> Result<Value, EvalError> {
-        let mut values = Vec::with_capacity(layers.len());
-        for layer in layers {
-            values.push(self.eval_expr_in_meter(layer, meter)?);
-        }
-
-        stack_values(values)
+        let values: Result<Vec<_>, _> = layers
+            .iter()
+            .map(|layer| self.eval_expr_in_meter(layer, meter))
+            .collect();
+        stack_values(values?)
     }
 
     fn eval_stream(
@@ -418,10 +443,10 @@ impl Evaluator {
         meter: Option<&MeterContext>,
     ) -> Result<Value, EvalError> {
         let callee_value = self.eval_expr_in_meter(callee, meter)?;
-        let mut evaluated_args = Vec::with_capacity(args.len() + piped_args.len());
-        for arg in args {
-            evaluated_args.push(self.eval_expr_in_meter(arg, meter)?);
-        }
+        let mut evaluated_args: Vec<_> = args
+            .iter()
+            .map(|arg| self.eval_expr_in_meter(arg, meter))
+            .collect::<Result<_, _>>()?;
         evaluated_args.extend(piped_args);
         Self::apply_value(callee_value, evaluated_args, self.expr_site_salt(call_expr))
     }
@@ -489,12 +514,10 @@ impl Evaluator {
             return Err(EvalError::new("`stream` requires at least one item"));
         };
 
-        let mut combined = self.eval_explicit_expr(first, meter)?;
-        for item in rest {
-            combined = combined.merge(self.eval_explicit_expr(item, meter)?)?;
-        }
-
-        Ok(combined)
+        rest.iter()
+            .try_fold(self.eval_explicit_expr(first, meter)?, |acc, item| {
+                acc.merge(self.eval_explicit_expr(item, meter)?)
+            })
     }
 
     fn eval_at_events(
@@ -520,18 +543,27 @@ impl Evaluator {
             ));
         };
 
-        let mut cycle_offset = 0_i128;
-        let mut combined = self.eval_section_events(first, meter, cycle_offset)?;
-        cycle_offset = cycle_offset
-            .checked_add(self.eval_section_length(first, meter)?)
+        let initial_offset = 0_i128;
+        let initial_combined = self.eval_section_events(first, meter, initial_offset)?;
+        let initial_length = self.eval_section_length(first, meter)?;
+        let next_offset = initial_offset
+            .checked_add(initial_length)
             .ok_or_else(|| EvalError::new("section cycle offset overflowed"))?;
 
-        for section in rest {
-            combined = combined.merge(self.eval_section_events(section, meter, cycle_offset)?)?;
-            cycle_offset = cycle_offset
-                .checked_add(self.eval_section_length(section, meter)?)
-                .ok_or_else(|| EvalError::new("section cycle offset overflowed"))?;
-        }
+        let (combined, _) = rest.iter().try_fold(
+            (initial_combined, next_offset),
+            |(acc_combined, acc_offset), section| -> Result<(ExplicitValue, i128), EvalError> {
+                let section_events = self.eval_section_events(section, meter, acc_offset)?;
+                let section_length = self.eval_section_length(section, meter)?;
+
+                let next_combined = acc_combined.merge(section_events)?;
+                let next_offset = acc_offset
+                    .checked_add(section_length)
+                    .ok_or_else(|| EvalError::new("section cycle offset overflowed"))?;
+
+                Ok((next_combined, next_offset))
+            },
+        )?;
 
         Ok(combined)
     }
@@ -556,7 +588,21 @@ impl Evaluator {
         }
 
         let base = Self::value_to_explicit(self.eval_expr_in_meter(pattern, meter)?)?;
-        let mut combined: Option<ExplicitValue> = None;
+        if repeat_count == 0 {
+            return Err(EvalError::new("section cycle count must be positive"));
+        }
+
+        let repeat_count_usize = usize::try_from(repeat_count)
+            .map_err(|_| EvalError::new("section cycle count exceeded evaluator limits"))?;
+
+        let mut combined = match base {
+            ExplicitValue::Sample(ref events) => ExplicitValue::Sample(Vec::with_capacity(
+                events.len().checked_mul(repeat_count_usize).unwrap_or(0),
+            )),
+            ExplicitValue::Number(ref events) => ExplicitValue::Number(Vec::with_capacity(
+                events.len().checked_mul(repeat_count_usize).unwrap_or(0),
+            )),
+        };
 
         for repeat in 0..repeat_count {
             let offset = rational_from_parts(
@@ -567,13 +613,33 @@ impl Evaluator {
             )?;
             let mut repeated = base.clone();
             repeated.shift(&offset)?;
-            combined = Some(match combined {
-                Some(existing) => existing.merge(repeated)?,
-                None => repeated,
-            });
+            // Inline merge without the sort at every step
+            match (&mut combined, repeated) {
+                (ExplicitValue::Sample(combined_events), ExplicitValue::Sample(mut new_events)) => {
+                    combined_events.append(&mut new_events);
+                }
+                (ExplicitValue::Number(combined_events), ExplicitValue::Number(mut new_events)) => {
+                    combined_events.append(&mut new_events);
+                }
+                _ => {
+                    return Err(EvalError::new(
+                        "explicit-time items must all resolve to the same pattern kind",
+                    ));
+                }
+            }
         }
 
-        combined.ok_or_else(|| EvalError::new("section cycle count must be positive"))
+        // Final sort exactly once
+        match combined {
+            ExplicitValue::Sample(mut events) => {
+                sort_events(&mut events);
+                Ok(ExplicitValue::Sample(events))
+            }
+            ExplicitValue::Number(mut events) => {
+                sort_events(&mut events);
+                Ok(ExplicitValue::Number(events))
+            }
+        }
     }
 
     fn eval_section_length(
@@ -621,9 +687,7 @@ impl Evaluator {
                 })?;
                 let beat_index = self.eval_time_expr(value, meter.into())?;
                 let beat_length = rational_from_parts(1, meter.beats_per_cycle)?;
-                beat_index
-                    .checked_mul(&beat_length)
-                    .map_err(|error| EvalError::new(error.to_string()))
+                Ok(beat_index.checked_mul(&beat_length)?)
             }
             _ => extract_constant_number_rational(
                 self.eval_expr_in_meter(expr, meter)?,
@@ -661,6 +725,12 @@ impl Evaluator {
             Value::Function(_) => Err(EvalError::new(
                 "functions cannot be materialized into explicit-time event streams",
             )),
+            Value::ArpDirection(_) => Err(EvalError::new(
+                "arp directions cannot be materialized into explicit-time event streams",
+            )),
+            Value::PitchClassSet(_) => Err(EvalError::new(
+                "pitch class sets cannot be materialized into explicit-time event streams",
+            )),
             Value::String(_) => Err(EvalError::new(
                 "strings cannot be materialized into explicit-time event streams",
             )),
@@ -683,9 +753,14 @@ impl Evaluator {
                 apply_function_value(FunctionValue::Builtin(function), args)
             }
             Value::Function(function) => apply_function_value(function, args),
-            Value::SamplePattern(_) | Value::NumberPattern(_) | Value::String(_) => Err(
-                EvalError::new(format!("cannot call a {}", callee.kind_name())),
-            ),
+            Value::SamplePattern(_)
+            | Value::NumberPattern(_)
+            | Value::ArpDirection(_)
+            | Value::PitchClassSet(_)
+            | Value::String(_) => Err(EvalError::new(format!(
+                "cannot call a {}",
+                callee.kind_name()
+            ))),
         }
     }
 
@@ -700,6 +775,12 @@ impl Evaluator {
 
         if let Some(value) = builtin_value(name) {
             return Ok(value);
+        }
+
+        if let Some(semitones) = parse_named_pitch_literal(name)? {
+            return Ok(Value::NumberPattern(NumberPatternValue::constant(
+                f64::from(semitones),
+            )));
         }
 
         match self.mode {
@@ -750,15 +831,10 @@ impl Evaluator {
         items: &[Expr],
         meter: Option<&MeterContext>,
     ) -> Result<Option<Vec<PatternNode<SampleEvent>>>, EvalError> {
-        let mut nodes = Vec::with_capacity(items.len());
-        for item in items {
-            let Some(node) = self.try_sample_node(item, meter)? else {
-                return Ok(None);
-            };
-            nodes.push(node);
-        }
-
-        Ok(Some(nodes))
+        items
+            .iter()
+            .map(|item| self.try_sample_node(item, meter))
+            .collect::<Result<Option<Vec<_>>, _>>()
     }
 
     fn try_sample_node(
@@ -796,20 +872,17 @@ impl Evaluator {
         &self,
         items: &[Expr],
     ) -> Result<Option<Vec<PatternNode<f64>>>, EvalError> {
-        let mut nodes = Vec::with_capacity(items.len());
-        for item in items {
-            let Some(node) = self.try_number_node(item)? else {
-                return Ok(None);
-            };
-            nodes.push(node);
-        }
-
-        Ok(Some(nodes))
+        items
+            .iter()
+            .map(|item| self.try_number_node(item))
+            .collect::<Result<Option<Vec<_>>, _>>()
     }
 
     fn try_number_node(&self, expr: &Expr) -> Result<Option<PatternNode<f64>>, EvalError> {
         match expr {
             Expr::Number(value) => Ok(Some(PatternNode::atom(*value))),
+            Expr::Ident(name) => Ok(parse_named_pitch_literal(name)?
+                .map(|semitones| PatternNode::atom(f64::from(semitones)))),
             Expr::Rest => Ok(Some(PatternNode::rest())),
             Expr::Group(items) => {
                 let Some(nodes) = self.collect_number_nodes(items)? else {
@@ -822,6 +895,39 @@ impl Evaluator {
     }
 }
 
+/// Applies a list of arguments to a runtime function value.
+///
+/// This handles both built-in primitive transformations (like `fast`) and
+/// custom user-defined closures. If the number of arguments provided is
+/// less than the function's arity, it returns a new, curried `FunctionValue`
+/// with the provided arguments bound.
+///
+/// # Parameters
+/// - `function`: The [`FunctionValue`] (built-in or user-defined) to invoke.
+/// - `args`: The list of evaluated [`Value`]s to pass as arguments.
+///
+/// # Errors
+///
+/// Returns an [`EvalError`] if the function application results in a runtime
+/// error (e.g., mismatched types during builtin execution) or if the arity
+/// of user-defined functions is violated during execution.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::Value;
+/// use orpheus_lang::{apply_function_value, builtin_value};
+///
+/// let fast_func = builtin_value("fast").unwrap();
+/// let bd = builtin_value("bd").unwrap();
+///
+/// if let Value::Function(func) = fast_func {
+///     // `fast` takes 2 arguments: a rate and a pattern.
+///     // Here we simulate applying a single argument to a curried function
+///     let curried = apply_function_value(func, vec![bd]).unwrap();
+///     assert!(matches!(curried, Value::Function(_)));
+/// }
+/// ```
 pub fn apply_function_value(function: FunctionValue, args: Vec<Value>) -> Result<Value, EvalError> {
     match function {
         FunctionValue::Builtin(function) => function.apply(args),
@@ -838,17 +944,10 @@ fn apply_user_function(mut function: UserFn, args: Vec<Value>) -> Result<Value, 
         )));
     }
 
-    for (param, arg) in function
-        .remaining_params
-        .iter()
-        .take(applied)
-        .cloned()
-        .zip(args)
-    {
+    // ⚡ Bolt: Drain parameters directly to avoid cloning strings when binding arguments
+    for (param, arg) in function.remaining_params.drain(..applied).zip(args) {
         function.captured_bindings.insert(param, arg);
     }
-
-    function.remaining_params.drain(..applied);
 
     if !function.remaining_params.is_empty() {
         return Ok(Value::Function(FunctionValue::User(function)));
@@ -972,18 +1071,24 @@ fn expr_key(expr: &Expr) -> usize {
 fn extract_constant_number_value(value: Value, context: &str) -> Result<f64, EvalError> {
     match value {
         Value::NumberPattern(pattern) => pattern.constant_value(),
-        Value::SamplePattern(_) | Value::Function(_) | Value::String(_) => Err(EvalError::new(
-            format!("{context} must resolve to a constant number"),
-        )),
+        Value::SamplePattern(_)
+        | Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new(format!(
+            "{context} must resolve to a constant number"
+        ))),
     }
 }
 
 fn extract_string_value(value: Value, message: &str) -> Result<String, EvalError> {
     match value {
         Value::String(string) => Ok(string),
-        Value::SamplePattern(_) | Value::NumberPattern(_) | Value::Function(_) => {
-            Err(EvalError::new(message))
-        }
+        Value::SamplePattern(_)
+        | Value::NumberPattern(_)
+        | Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_) => Err(EvalError::new(message)),
     }
 }
 
@@ -1111,17 +1216,15 @@ pub fn render_span(cycle_count: u64) -> Result<TimeSpan, EvalError> {
 }
 
 fn build_span(start: Rational, end: Rational) -> Result<TimeSpan, EvalError> {
-    TimeSpan::new(start, end).map_err(|error| EvalError::new(error.to_string()))
+    Ok(TimeSpan::new(start, end)?)
 }
 
 fn rational_add(left: &Rational, right: &Rational) -> Result<Rational, EvalError> {
-    left.checked_add(right)
-        .map_err(|error| EvalError::new(error.to_string()))
+    Ok(left.checked_add(right)?)
 }
 
 fn rational_from_parts(numerator: i128, denominator: i128) -> Result<Rational, EvalError> {
-    Rational::checked_from_parts(numerator, denominator)
-        .map_err(|error| EvalError::new(error.to_string()))
+    Ok(Rational::checked_from_parts(numerator, denominator)?)
 }
 
 #[cfg(test)]
@@ -1234,5 +1337,232 @@ right = sometimes(fast(2), cp hh)";
             "offline rendering requires at least one cycle"
         );
         assert!(std::error::Error::source(&err).is_some());
+    }
+
+    #[test]
+    fn eval_error_from_parse_error() {
+        let parse_err =
+            crate::diagnostics::ParseError::new("parse error at line 0, col 0: test parse error");
+        let err: super::EvalError = parse_err.into();
+        assert_eq!(
+            err.to_string(),
+            "parse error at line 0, col 0: test parse error"
+        );
+    }
+
+    #[test]
+    fn eval_error_from_try_from_int_error() {
+        let num_err: Result<u8, _> = 256u16.try_into();
+        let err: super::EvalError = num_err.unwrap_err().into();
+        assert!(err.to_string().contains("out of range"));
+    }
+
+    #[test]
+    fn eval_error_from_io_error() {
+        let not_found = std::io::Error::new(std::io::ErrorKind::NotFound, "oops");
+        let err: super::EvalError = not_found.into();
+        assert_eq!(err.to_string(), "file not found");
+
+        let permission_denied = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "oops");
+        let err2: super::EvalError = permission_denied.into();
+        assert_eq!(err2.to_string(), "permission denied");
+
+        let other_err = std::io::Error::other("custom error message");
+        let err3: super::EvalError = other_err.into();
+        assert_eq!(err3.to_string(), "custom error message");
+    }
+
+    #[test]
+    fn eval_error_from_fmt_error() {
+        let fmt_err = std::fmt::Error;
+        let err: super::EvalError = fmt_err.into();
+        assert_eq!(
+            err.to_string(),
+            "an error occurred when formatting an argument"
+        );
+    }
+
+    #[test]
+    fn eval_error_from_pattern_error() {
+        use orpheus_pattern::PatternError;
+        let pattern_err = PatternError::InvalidDenominator { denominator: 0 };
+        let err: super::EvalError = pattern_err.into();
+        assert_eq!(err.to_string(), "rational denominator cannot be zero");
+    }
+
+    #[test]
+    fn eval_structural_pattern_mixed_types() {
+        let result = eval_module("x = (bd 1)", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "group items must all resolve to the same structural pattern kind"
+        );
+    }
+
+    #[test]
+    fn eval_structural_pattern_mixed_types_sequence() {
+        let result = eval_module("x = bd 1", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "sequence items must all resolve to the same structural pattern kind"
+        );
+    }
+
+    #[test]
+    fn explicit_stream_mixed_types() {
+        let result = eval_module("x = stream(at(0, bd), at(1, 1))", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "explicit-time items must all resolve to the same pattern kind"
+        );
+    }
+
+    #[test]
+    fn eval_apply_value_to_non_function() {
+        let result = eval_module("x = 1 |> 2", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "cannot call a number pattern"
+        );
+    }
+
+    #[test]
+    fn eval_explicit_to_implicit_error() {
+        let result = eval_module("x = bd stream(at(0, sn))", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "explicit-time forms cannot appear inside a pattern sequence; use `stream(...)` or lift the form outside the sequence"
+        );
+    }
+
+    #[test]
+    fn eval_explicit_to_implicit_group_error() {
+        let result = eval_module("x = (bd stream(at(0, sn)))", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "explicit-time forms cannot appear inside a pattern group; use `stream(...)` or lift the form outside the group"
+        );
+    }
+
+    #[test]
+    fn eval_rest_marker_error() {
+        let result = eval_module("x = ~", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "rest markers can only appear inside pattern sequences"
+        );
+    }
+
+    #[test]
+    fn eval_explicit_to_implicit_error_unsupported_pattern_item_error_sample() {
+        let result = eval_module("x = bd sample(\"bd\", sn)", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "function call `sample` cannot appear inside a pattern sequence in Task 5; apply transforms with the pipe operator `|>` or call `sample(..., pattern)` directly"
+        );
+    }
+
+    #[test]
+    fn eval_explicit_to_implicit_error_unsupported_pattern_item_error_function() {
+        let result = eval_module("x = fast bd", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "function `fast` cannot appear inside a pattern sequence in Task 5; apply transforms with the pipe operator `|>` or call `fast(..., pattern)` directly"
+        );
+    }
+
+    #[test]
+    fn eval_explicit_expr_errors() {
+        let result = eval_module("x = stream(section(1, 1))", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "`section(...)` can only appear inside `seq_sections(...)`"
+        );
+    }
+
+    #[test]
+    fn eval_seq_sections_invalid_item() {
+        let result = eval_module("x = seq_sections(1)", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "`seq_sections` only accepts `section(pattern, cycles)` items"
+        );
+    }
+
+    #[test]
+    fn eval_meter_without_beat() {
+        let result = eval_module("x = beat(0)", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "`beat(...)` can only appear inside `at(...)` within an enclosing `meter(...)`"
+        );
+    }
+
+    #[test]
+    fn eval_section_standalone() {
+        let result = eval_module("x = section(1, 1)", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "`section(...)` can only appear inside `seq_sections(...)`"
+        );
+    }
+
+    #[test]
+    fn explicit_stream_value_conversion() {
+        let result = eval_module("x = stream(bd)", ReplMode::Strict);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn eval_meter_nested_beat_missing_meter() {
+        let result = eval_module("x = at(beat(0), bd)", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "`beat(...)` requires an enclosing `meter(...)`"
+        );
+    }
+
+    #[test]
+    fn eval_explicit_to_implicit_error_unsupported_pattern_item_error_group_nested() {
+        let result = eval_module("x = (bd (stream(at(0, sn))))", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "explicit-time forms cannot appear inside a pattern group; use `stream(...)` or lift the form outside the group"
+        );
+    }
+
+    #[test]
+    fn eval_explicit_to_implicit_error_unsupported_pattern_item_error_sample_group() {
+        let result = eval_module("x = (bd sample(\"bd\", sn))", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "function call `sample` cannot appear inside a pattern group in Task 5; apply transforms with the pipe operator `|>` or call `sample(..., pattern)` directly"
+        );
+    }
+
+    #[test]
+    fn eval_explicit_to_implicit_error_unsupported_pattern_item_error_function_group() {
+        let result = eval_module("x = (fast bd)", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "function `fast` cannot appear inside a pattern group in Task 5; apply transforms with the pipe operator `|>` or call `fast(..., pattern)` directly"
+        );
     }
 }

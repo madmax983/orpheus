@@ -1,3 +1,10 @@
+//! The `tui` module implements the advanced terminal user interface.
+//!
+//! This module provides the full-screen interactive live-coding environment using
+//! `ratatui` and `crossterm`. It visualizes the current evaluated bindings,
+//! the active audio transport state, and provides real-time feedback for errors
+//! and evaluation events.
+
 use std::cell::Cell;
 use std::io;
 use std::path::Path;
@@ -17,7 +24,7 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 use ratatui::{Frame, Terminal};
 
-use crate::session::{ReplSession, TransportView};
+use crate::session::{MixerView, ReplSession, TransportView};
 
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const STATUS_TOAST_TTL: Duration = Duration::from_secs(3);
@@ -29,14 +36,20 @@ const FULL_HELP_FOOTER: &str = "Esc close   ? toggle   Ctrl-C quit";
 const MEDIUM_HELP_FOOTER: &str = "Esc close   ?   Ctrl-C";
 const COMPACT_HELP_FOOTER: &str = "Esc ? Ctrl-C";
 const MIN_HELP_FOOTER: &str = "Esc ?";
-const COMMAND_HINTS: [(&str, &str); 7] = [
+const COMMAND_HINTS: [(&str, &str); 13] = [
+    (":bus", ":bus <new|fx> ..."),
     (":export", ":export <binding> <path> [cycles]"),
+    (":mixer", ":mixer"),
     (":open", ":open <path>"),
     (":play", ":play"),
     (":quit", ":quit"),
     (":render", ":render <binding> <path> [cycles]"),
+    (":roll", ":roll <binding> [cycles] [steps_per_cycle]"),
+    (":send", ":send <track> <bus> <level>"),
+    (":stats", ":stats <binding> [cycles]"),
     (":stop", ":stop"),
     (":tempo", ":tempo <bpm>"),
+    (":track", ":track <new|bind|level|mute> ..."),
 ];
 
 /// Runs the interactive ratatui session shell with the provided audio engine.
@@ -419,6 +432,7 @@ impl SessionTui {
 
     fn transport_text(&self) -> Text<'static> {
         let transport = self.session.transport_view();
+        let mixer = self.session.mixer_view();
         let mut lines = vec![Line::raw(format!(
             "Pattern: {}",
             transport.active_pattern_name().unwrap_or("none")
@@ -426,14 +440,22 @@ impl SessionTui {
         if let Some(pending_pattern_name) = transport.pending_pattern_name() {
             lines.push(Line::raw(format!("Next: {pending_pattern_name}")));
         }
+        lines.push(routing_status_line(&mixer));
+        if !mixer.tracks().is_empty() || !mixer.buses().is_empty() {
+            lines.push(Line::raw("Mixer:"));
+            lines.extend(mixer.tracks().iter().cloned().map(Line::raw));
+            lines.extend(mixer.buses().iter().cloned().map(Line::raw));
+        }
         lines.extend([
             Line::raw("Space: toggle"),
             Line::raw("empty input only"),
             Line::raw("Open: :open <path>"),
             Line::raw("Transport: :play / :stop"),
+            Line::raw("Mixer: :track / :bus new|fx / :send / :mixer"),
             Line::raw("Set: :tempo <bpm>"),
             Line::raw("Render: :render <binding> <path> [cycles]"),
             Line::raw("Export: :export <binding> <path> [cycles]"),
+            Line::raw("Analyze: :roll <binding>, :stats <binding>"),
             Line::raw("Help: ?"),
         ]);
         if let Some(message) = &self.status_message {
@@ -460,7 +482,7 @@ impl SessionTui {
     }
 
     const fn help_overlay_body() -> &'static str {
-        "Toggle: ?\nClose: Esc\nTransport: Space toggle, :play, :stop, :tempo <bpm>\nRender: :render <binding> <path> [cycles]\nExport: :export <binding> <path> [cycles]\nSession: :open <path>, :quit\nBindings: PgUp/PgDn\nInput: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
+        "Toggle: ?\nClose: Esc\nTransport: Space toggle, :play, :stop, :tempo <bpm>\nMixer: :track, :bus new|fx, :send, :mixer\nRender: :render <binding> <path> [cycles]\nExport: :export <binding> <path> [cycles]\nAnalyze: :roll <binding> [cycles] [steps_per_cycle], :stats <binding> [cycles]\nSession: :open <path>, :quit\nBindings: PgUp/PgDn\nInput: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
     }
 
     const fn help_overlay_footer() -> &'static str {
@@ -1114,6 +1136,20 @@ fn transport_status_line(
     Line::from(spans)
 }
 
+fn routing_status_line(mixer: &MixerView) -> Line<'static> {
+    let status = if mixer.has_pending_routing() {
+        Span::styled(
+            "pending",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
+    } else {
+        Span::styled("live", Style::default().fg(Color::Green))
+    };
+    Line::from(vec![Span::raw("Routing: "), status])
+}
+
 fn binding_list_item(summary: String, transport: &TransportView) -> ListItem<'static> {
     let name = summary
         .split_once(": ")
@@ -1345,6 +1381,98 @@ mod tests {
     }
 
     #[test]
+    fn transport_pane_shows_active_track_assignment_summary() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = "groove = bd sn".to_owned();
+        app.submit_line();
+        app.input = ":track new drums".to_owned();
+        app.submit_line();
+        app.input = ":track bind drums groove".to_owned();
+        app.submit_line();
+
+        let frame = render_frame_for_test(&app, 80, 24);
+        assert!(frame.contains("Mixer:"));
+        assert!(frame.contains("drums -> groove"));
+    }
+
+    #[test]
+    fn transport_pane_shows_pending_routing_state() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = "groove = bd sn".to_owned();
+        app.submit_line();
+        app.input = ":track new drums".to_owned();
+        app.submit_line();
+        app.input = ":track bind drums groove".to_owned();
+        app.submit_line();
+        let _ = app.session.render_test_block_for_tui(1);
+
+        let frame = render_frame_for_test(&app, 80, 24);
+        assert!(frame.contains("Routing: pending"));
+    }
+
+    #[test]
+    fn transport_pane_shows_bus_sends_compactly() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = "groove = bd sn".to_owned();
+        app.submit_line();
+        app.input = ":track new drums".to_owned();
+        app.submit_line();
+        app.input = ":track bind drums groove".to_owned();
+        app.submit_line();
+        app.input = ":bus new verb".to_owned();
+        app.submit_line();
+        app.input = ":send drums verb 0.35".to_owned();
+        app.submit_line();
+
+        let frame = render_frame_for_test(&app, 100, 24);
+        assert!(frame.contains("drums -> groove"));
+        assert!(frame.contains("verb @ 0.35"));
+        assert!(frame.contains("└── verb -> master"));
+    }
+
+    #[test]
+    fn transport_pane_shows_hosted_bus_effect_summary() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = ":bus new dub".to_owned();
+        app.submit_line();
+        app.input = ":bus fx dub delay time=3/16 feedback=0.45 wet=1.0".to_owned();
+        app.submit_line();
+
+        let frame = render_frame_for_test(&app, 100, 24);
+        assert!(frame.contains("└── dub -> master"));
+        assert!(frame.contains("delay(3/16"));
+    }
+
+    #[test]
+    fn transport_pane_shows_hosted_reverb_bus_effect_summary() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = ":bus new verb".to_owned();
+        app.submit_line();
+        app.input = ":bus fx verb reverb size=0.75 damp=0.35 wet=1.0".to_owned();
+        app.submit_line();
+
+        let frame = render_frame_for_test(&app, 160, 24);
+        assert!(frame.contains("└── verb -> master"));
+        assert!(frame.contains("reverb(size=0.75"));
+        assert!(frame.contains("damp=0.35"));
+        assert!(frame.contains("wet=1.00)"));
+    }
+
+    #[test]
+    fn transport_pane_shows_pending_routing_after_bus_fx_change() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = ":bus new dub".to_owned();
+        app.submit_line();
+        let _ = app.session.render_test_block_for_tui(1);
+        app.input = ":bus fx dub delay time=3/16 feedback=0.45 wet=1.0".to_owned();
+        app.submit_line();
+        let _ = app.session.render_test_block_for_tui(1);
+
+        let frame = render_frame_for_test(&app, 80, 24);
+        assert!(frame.contains("Routing: pending"));
+    }
+
+    #[test]
     fn bindings_pane_marks_live_and_next_patterns() {
         let mut app = SessionTui::new(EngineHandle::stub());
         app.input = "drums = bd sn".to_owned();
@@ -1489,6 +1617,17 @@ mod tests {
     }
 
     #[test]
+    fn tab_completes_track_command_prefix() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = ":tr".to_owned();
+        app.cursor_index = app.input.len();
+
+        handle_key_event(&mut app, press(KeyCode::Tab));
+
+        assert_eq!(app.input, ":track ");
+    }
+
+    #[test]
     fn up_and_down_walk_input_history() {
         let mut app = SessionTui::new(EngineHandle::stub());
         app.input = "drums = bd sn".to_owned();
@@ -1519,6 +1658,15 @@ mod tests {
             app.repl_body()
                 .contains("Hint: Tab -> :render <binding> <path> [cycles]")
         );
+    }
+
+    #[test]
+    fn repl_body_shows_updated_bus_completion_hint() {
+        let mut app = SessionTui::new(EngineHandle::stub());
+        app.input = ":bu".to_owned();
+        app.cursor_index = app.input.len();
+
+        assert!(app.repl_body().contains("Hint: Tab -> :bus <new|fx> ..."));
     }
 
     #[test]
@@ -1812,7 +1960,7 @@ mod tests {
 
         handle_key_event(&mut app, press(KeyCode::Char('?')));
         assert_eq!(app.status_message.as_deref(), Some("help overlay shown"));
-        let overlay_frame = render_frame_for_test(&app, 80, 26);
+        let overlay_frame = render_frame_for_test(&app, 80, 30);
         assert!(overlay_frame.contains("Help"));
         assert!(overlay_frame.contains("Space"));
         assert!(overlay_frame.contains(":play"));
@@ -1821,16 +1969,17 @@ mod tests {
         assert!(overlay_frame.contains(":open <path>"));
         assert!(overlay_frame.contains(":render <binding>"));
         assert!(overlay_frame.contains(":export <binding>"));
+        assert!(overlay_frame.contains(":track"));
+        assert!(overlay_frame.contains(":mixer"));
         assert!(overlay_frame.contains("Bindings: PgUp/PgDn"));
         assert!(overlay_frame.contains("Ctrl-A/E/K"));
-        assert!(overlay_frame.contains("Alt-B/F"));
         assert!(!app.should_quit);
 
         handle_key_event(&mut app, press(KeyCode::Esc));
 
         assert!(!app.should_quit);
         assert_eq!(app.status_message.as_deref(), Some("help overlay hidden"));
-        let normal_frame = render_frame_for_test(&app, 80, 24);
+        let normal_frame = render_frame_for_test(&app, 80, 28);
         assert!(!normal_frame.contains("Toggle: ?"));
         assert!(!normal_frame.contains("Words: Alt-B/F"));
         assert!(normal_frame.contains("Help: ?"));

@@ -1,0 +1,24 @@
+m7 = 0 3 7 10
+reference = chord(c4, m7) |> invert(1) |> arp(8, down)
+
+kick = bd ~ bd ~ |> mask(euclid(5, 8))
+snare = ~ sn ~ sn |> when(4, 2, rev)
+hats = hh hh hh hh |> fast(2) |> mask(euclid(11, 16))
+rolls = sn ~ ~ ~ |> roll(4) |> mask(euclid(2, 8))
+drums = stack(kick, snare, hats, rolls)
+
+bass_steps = degrees(aeolian, 0 -2 -3 -2)
+bass = saw |> pitch(bass_steps) |> cutoff(220) |> res(0.18) |> drive(1.5) |> gain(0.35)
+
+pad_shape = chord(degrees(aeolian, 0 2 4 5), m7) |> invert(1) |> strum
+pad = tri |> pitch(pad_shape) |> cutoff(900) |> res(0.28) |> drive(1.1) |> gain(0.18)
+
+lead_shape = chord(degrees(minor_pentatonic, 0 1 2 4), 0 7 12) |> drop(2) |> arp(16, up)
+lead = pulse |> pitch(lead_shape) |> pw(0.28) |> cutoff(2000) |> res(0.42) |> drive(1.25) |> gain(0.20)
+
+song = stack(
+  drums,
+  bass |> slow(2),
+  within(0, 0.5, rev, pad),
+  when(8, 4, rev, lead)
+)

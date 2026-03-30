@@ -6,10 +6,36 @@ use std::path::PathBuf;
 use anyhow::{Context, anyhow};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream};
+use crossterm::style::Stylize;
 use orpheus_dsp::EngineHandle;
 
-fn main() -> anyhow::Result<()> {
-    let startup_path = startup_path_from_args(env::args_os().skip(1))?;
+fn main() {
+    if let Err(error) = run() {
+        eprintln!("{} {:?}", "✗ error:".red().bold(), error);
+        std::process::exit(1);
+    }
+}
+
+enum CliAction {
+    Help,
+    Version,
+    Run(Option<PathBuf>),
+}
+
+fn run() -> anyhow::Result<()> {
+    let action = startup_path_from_args(env::args_os().skip(1))?;
+    let startup_path = match action {
+        CliAction::Help => {
+            print_help();
+            return Ok(());
+        }
+        CliAction::Version => {
+            println!("orpheus {}", env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
+        CliAction::Run(path) => path,
+    };
+
     let (engine, _stream, warning) = match start_live_audio() {
         Ok((engine, stream)) => (engine, Some(stream), None),
         Err(error) => (
@@ -31,44 +57,46 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn startup_path_from_args(
-    args: impl IntoIterator<Item = OsString>,
-) -> anyhow::Result<Option<PathBuf>> {
+fn startup_path_from_args(args: impl IntoIterator<Item = OsString>) -> anyhow::Result<CliAction> {
     let args = args.into_iter().collect::<Vec<_>>();
     match args.as_slice() {
-        [] => Ok(None),
+        [] => Ok(CliAction::Run(None)),
         [path] => {
             let path_str = path.to_string_lossy();
             if path_str == "--help" || path_str == "-h" {
-                print_help();
-                std::process::exit(0);
+                return Ok(CliAction::Help);
             }
             if path_str == "--version" || path_str == "-V" {
-                println!("orpheus {}", env!("CARGO_PKG_VERSION"));
-                std::process::exit(0);
+                return Ok(CliAction::Version);
             }
             if path_str.starts_with('-') {
                 return Err(anyhow!(
                     "unexpected argument '{path_str}' found\n\nUsage: orpheus [PATH]\n\nFor more information, try '--help'."
                 ));
             }
-            Ok(Some(PathBuf::from(path)))
+            Ok(CliAction::Run(Some(PathBuf::from(path))))
         }
         _ => Err(anyhow!("usage: orpheus [path/to/song.ode]")),
     }
 }
 
 fn print_help() {
-    println!("\x1b[1;36mOrpheus\x1b[0m - A cycle-based live-coding audio environment");
+    println!(
+        "{} - A cycle-based live-coding audio environment",
+        "Orpheus".cyan().bold()
+    );
     println!();
-    println!("\x1b[1;33mUsage:\x1b[0m orpheus [OPTIONS] [PATH]");
+    println!("{} orpheus [OPTIONS] [PATH]", "Usage:".yellow().bold());
     println!();
-    println!("\x1b[1;33mArguments:\x1b[0m");
-    println!("  \x1b[1;32m[PATH]\x1b[0m  Optional startup .ode file to load");
+    println!("{}", "Arguments:".yellow().bold());
+    println!(
+        "  {}  Optional startup .ode file to load",
+        "[PATH]".green().bold()
+    );
     println!();
-    println!("\x1b[1;33mOptions:\x1b[0m");
-    println!("  \x1b[1;32m-h, --help\x1b[0m     Print help");
-    println!("  \x1b[1;32m-V, --version\x1b[0m  Print version");
+    println!("{}", "Options:".yellow().bold());
+    println!("  {}     Print help", "-h, --help".green().bold());
+    println!("  {}  Print version", "-V, --version".green().bold());
 }
 
 fn start_live_audio() -> anyhow::Result<(EngineHandle, Stream)> {

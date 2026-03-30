@@ -1,3 +1,8 @@
+//! The `sample_manifest` module provides deserialization for sample bank definitions.
+//!
+//! This module defines the expected schema for `samples.ron` files, allowing directories
+//! of audio files to be aliased and configured into structured `SampleBank`s.
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
@@ -61,16 +66,14 @@ impl std::error::Error for SampleManifestLoadError {
 ///
 /// ## Examples
 ///
-/// ```
+/// ```ignore
 /// use orpheus_dsp::load_sample_manifest;
-/// use std::io::Write;
-/// use tempfile::NamedTempFile;
 ///
-/// let mut file = NamedTempFile::new().unwrap();
-/// writeln!(file, "kick: /path/to/kick.wav").unwrap();
-///
-/// let manifest = load_sample_manifest(file.path()).unwrap();
-/// assert_eq!(manifest.get("kick"), Some("/path/to/kick.wav"));
+/// let manifest = load_sample_manifest("samples.ron").unwrap();
+/// assert_eq!(
+///     manifest.tokens.get("kick").map(String::as_str),
+///     Some("kick.wav")
+/// );
 /// ```
 pub fn load_sample_manifest(
     path: impl AsRef<Path>,

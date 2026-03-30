@@ -1,14 +1,23 @@
+//! The `scheduler` module implements the precise temporal scheduling of audio events.
+//!
+//! The scheduler maintains a queue of upcoming `SampleTrigger` events and translates
+//! their logical fractional timing into exact frame-accurate offsets within the current
+//! audio buffer, ensuring sample-accurate playback without jitter.
+
 use std::collections::VecDeque;
 
 use orpheus_pattern::{Event, Rational};
 
 use crate::SampleTrigger;
 use crate::engine::EngineError;
+use crate::routing::TrackId;
 use crate::voice::VoiceKind;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScheduledTrigger {
     pub frame: u64,
+    pub duration_frames: u32,
+    pub track_id: TrackId,
     pub trigger: SampleTrigger,
     pub fallback_voice: Option<VoiceKind>,
 }
@@ -32,7 +41,7 @@ impl Scheduler {
     ///
     /// Panics if `token` does not resolve to one of the built-in drum voices.
     pub fn push_test_event(&mut self, frame: u64, token: &str) {
-        self.schedule_trigger(frame, token)
+        self.schedule_trigger(frame, TrackId::new(0), token)
             .unwrap_or_else(|error| panic!("invalid test trigger: {error}"));
     }
 
@@ -47,6 +56,7 @@ impl Scheduler {
     /// clock.
     pub fn schedule_cycle_events<'a, I>(
         &mut self,
+        track_id: TrackId,
         cycle_start_frame: u64,
         frames_per_cycle: u64,
         events: I,
@@ -62,6 +72,8 @@ impl Scheduler {
                 .ok_or(EngineError::FrameOverflow)?;
             pending.push(ScheduledTrigger {
                 frame,
+                duration_frames: duration_frames_for_event(&event, frames_per_cycle)?,
+                track_id,
                 trigger: event.value.clone(),
                 fallback_voice: VoiceKind::from_token(event.value.token()),
             });
@@ -108,11 +120,18 @@ impl Scheduler {
     /// # Errors
     ///
     /// Returns an error if `token` does not map to a built-in playback mapping.
-    pub fn schedule_trigger(&mut self, frame: u64, token: &str) -> Result<(), EngineError> {
+    pub fn schedule_trigger(
+        &mut self,
+        frame: u64,
+        track_id: TrackId,
+        token: &str,
+    ) -> Result<(), EngineError> {
         let voice =
             VoiceKind::from_token(token).ok_or_else(|| EngineError::UnknownVoice(token.into()))?;
         self.insert_trigger(ScheduledTrigger {
             frame,
+            duration_frames: 1,
+            track_id,
             trigger: SampleTrigger::named(token),
             fallback_voice: Some(voice),
         });
@@ -140,4 +159,14 @@ fn rational_to_frame_offset(start: &Rational, frames_per_cycle: u64) -> Result<u
         .ok_or(EngineError::FrameOverflow)?;
     let offset = scaled / start.denominator();
     u64::try_from(offset).map_err(|_| EngineError::FrameOverflow)
+}
+
+fn duration_frames_for_event(
+    event: &Event<&SampleTrigger>,
+    frames_per_cycle: u64,
+) -> Result<u32, EngineError> {
+    let start = rational_to_frame_offset(event.part.start(), frames_per_cycle)?;
+    let end = rational_to_frame_offset(event.part.end(), frames_per_cycle)?;
+    let duration = end.saturating_sub(start).max(1);
+    u32::try_from(duration).map_err(|_| EngineError::FrameOverflow)
 }

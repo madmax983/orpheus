@@ -1,3 +1,9 @@
+//! The `sample` module provides audio sample decoding and buffering.
+//!
+//! This module is responsible for loading audio files from disk (e.g., `.wav`), decoding
+//! them into raw floating-point channels, and storing them in memory as `DecodedSample`s
+//! so they can be instantly read by the real-time audio thread without allocation.
+
 use std::fs::File;
 use std::io::{Cursor, Read, Seek};
 use std::path::Path;
@@ -47,6 +53,28 @@ pub fn load_wav_for_test(path: impl AsRef<Path>) -> Result<DecodedSample, Sample
     decode_wav_reader(file, &display_path)
 }
 
+/// Decodes a WAV file from an in-memory byte slice.
+///
+/// This is used primarily to load built-in audio samples that are bundled
+/// directly into the binary at compile time via `include_bytes!`.
+///
+/// # Parameters
+/// - `bytes`: The raw WAV file bytes.
+/// - `display_path`: A string representing the origin of the bytes, used for error reporting.
+///
+/// # Errors
+///
+/// Returns [`SampleError`] if the bytes do not form a valid WAV file, if
+/// the format is unsupported, or if an IO error occurs during memory reading.
+///
+/// # Examples
+///
+/// ```compile_fail
+/// // Conceptual example of loading bundled assets
+/// use orpheus_dsp::load_wav_bytes;
+/// let bytes = include_bytes!("../assets/kick.wav");
+/// let decoded = load_wav_bytes(bytes, "builtin:kick").unwrap();
+/// ```
 pub fn load_wav_bytes(
     bytes: &'static [u8],
     display_path: &'static str,

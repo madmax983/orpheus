@@ -207,6 +207,17 @@ fn filter_builtins_preserve_sample_pattern_types() {
 }
 
 #[test]
+fn synth_atoms_and_controls_preserve_sample_pattern_types() {
+    let typed = infer_module(
+        r"lead = pulse |> cutoff(1200) |> res(0.25 0.5) |> drive(1.2) |> pw(0.35)",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(typed.type_of("lead").to_string(), "Pattern<Sample>");
+}
+
+#[test]
 fn slice_idx_preserves_sample_pattern_types() {
     let typed = infer_module(
         r#"lead = sample("amen") |> slice_idx(3, 8)"#,
@@ -364,4 +375,228 @@ fn euclid_masks_preserve_source_pattern_types() {
     .unwrap();
 
     assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn pitch_class_set_infers_first_class_values() {
+    let typed = infer_module("hirajoshi = pitch_class_set(0 2 3 7 8)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("hirajoshi").to_string(), "PitchClassSet");
+}
+
+#[test]
+fn degrees_accept_canonical_pitch_class_set_bindings() {
+    let typed = infer_module("line = degrees(aeolian, 0 2 4)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("line").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn degrees_accept_user_defined_pitch_class_sets() {
+    let typed = infer_module(
+        "hirajoshi = pitch_class_set(0 2 3 7 8)\n\
+         line = degrees(hirajoshi, 0 1 2 4)",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(typed.type_of("line").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn degrees_transpose_preserves_number_pattern_types() {
+    let typed = infer_module(
+        "line = degrees(aeolian, 0 2 4) |> transpose(45)",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(typed.type_of("line").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn degrees_reject_string_collection_arguments() {
+    let error = infer_module(r#"line = degrees("aeolian", 0 2 4)"#, ReplMode::Strict).unwrap_err();
+    let message = error.to_string();
+
+    assert!(message.contains("PitchClassSet") || message.contains("degrees"));
+}
+
+#[test]
+fn named_pitch_literals_infer_number_patterns() {
+    let typed = infer_module("melody = c4 ef4 g4 bf4", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("melody").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn named_pitch_literals_compose_with_transforms() {
+    let typed = infer_module("riff = fs4 a4 cs5 |> fast(2)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("riff").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn named_pitch_literals_report_pitch_specific_diagnostics() {
+    let error = infer_module("bad = cf", ReplMode::Strict).unwrap_err();
+    let message = error.to_string();
+
+    assert!(message.contains("pitch"));
+    assert!(message.contains("octave"));
+}
+
+#[test]
+fn chord_infers_number_patterns() {
+    let typed = infer_module("pad = chord(c4, 0 4 7)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("pad").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn chord_infers_over_root_sequences() {
+    let typed = infer_module("line = chord(c4 e4, 0 7)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("line").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn chord_accepts_degree_derived_roots() {
+    let typed = infer_module(
+        "harm = chord(degrees(aeolian, 0 2) |> transpose(60), 0 3 7)",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(typed.type_of("harm").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn invert_infers_number_patterns() {
+    let typed = infer_module("pad = invert(1, chord(c4, 0 4 7))", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("pad").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn invert_pipe_form_infers_number_patterns() {
+    let typed = infer_module("pad = chord(c4, 0 4 7) |> invert(1)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("pad").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn invert_rejects_sample_patterns_at_typecheck() {
+    let error = infer_module("bad = invert(1, bd)", ReplMode::Strict).unwrap_err();
+    let message = error.to_string();
+
+    assert!(message.contains("expected Number"));
+    assert!(message.contains("Sample"));
+}
+
+#[test]
+fn drop_infers_number_patterns() {
+    let typed = infer_module("pad = drop(2, chord(c4, 0 4 7 10))", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("pad").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn drop_pipe_form_infers_number_patterns() {
+    let typed = infer_module("pad = chord(c4, 0 4 7 10) |> drop(2)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("pad").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn drop_rejects_sample_patterns_at_typecheck() {
+    let error = infer_module("bad = drop(2, bd)", ReplMode::Strict).unwrap_err();
+    let message = error.to_string();
+
+    assert!(message.contains("expected Number"));
+    assert!(message.contains("Sample"));
+}
+
+#[test]
+fn strum_infers_number_patterns() {
+    let typed = infer_module("pad = strum(chord(c4, 0 4 7))", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("pad").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn strum_pipe_form_infers_number_patterns() {
+    let typed = infer_module("pad = chord(c4, 0 4 7) |> strum", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("pad").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn strum_rejects_sample_patterns_at_typecheck() {
+    let error = infer_module("bad = strum(bd)", ReplMode::Strict).unwrap_err();
+    let message = error.to_string();
+
+    assert!(message.contains("expected Number"));
+    assert!(message.contains("Sample"));
+}
+
+#[test]
+fn arp_infers_number_patterns() {
+    let typed = infer_module("lead = arp(5, up, chord(c4, 0 4 7))", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("lead").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn arp_pipe_form_infers_number_patterns() {
+    let typed = infer_module("lead = chord(c4, 0 4 7) |> arp(5, up)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("lead").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn arp_rejects_sample_patterns_at_typecheck() {
+    let error = infer_module("bad = arp(5, up, bd)", ReplMode::Strict).unwrap_err();
+    let message = error.to_string();
+
+    assert!(message.contains("expected Number"));
+    assert!(message.contains("Sample"));
+}
+
+#[test]
+fn arp_rejects_non_direction_arguments_at_typecheck() {
+    let error = infer_module("bad = arp(5, c4, chord(c4, 0 4 7))", ReplMode::Strict).unwrap_err();
+    let message = error.to_string();
+
+    assert!(message.contains("ArpDirection"));
+    assert!(message.contains("Pattern<Number>") || message.contains("Number"));
+}
+
+#[test]
+fn roll_infers_sample_patterns() {
+    let typed = infer_module("buzz = roll(4, sn)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("buzz").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn roll_infers_number_patterns() {
+    let typed = infer_module("stabs = roll(4, chord(c4, 0 4 7))", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("stabs").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn roll_pipe_form_preserves_sample_patterns() {
+    let typed = infer_module("buzz = sn |> roll(4)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("buzz").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn roll_rejects_non_pattern_values_at_typecheck() {
+    let error = infer_module("bad = roll(4, aeolian)", ReplMode::Strict).unwrap_err();
+    let message = error.to_string();
+
+    assert!(message.contains("Pattern"));
+    assert!(message.contains("PitchClassSet"));
 }

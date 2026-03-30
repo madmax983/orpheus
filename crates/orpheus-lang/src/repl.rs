@@ -1,3 +1,9 @@
+//! The `repl` module provides a simple standard I/O command-line interface.
+//!
+//! This module implements a basic interactive read-eval-print loop (REPL) that
+//! reads user input line-by-line from `stdin`, evaluates it against a running
+//! `ReplSession`, and prints the formatted results or errors to `stdout`.
+
 use crossterm::style::Stylize;
 use std::io::{self, BufRead, Write};
 use std::path::Path;
@@ -97,4 +103,40 @@ where
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn run_with_handles_evaluates_lines_and_quits() {
+        let input = "a = bd sn\n\n:quit\n";
+        let reader = std::io::Cursor::new(input);
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+
+        run_with_handles(reader, &mut stdout, &mut stderr, &mut session).unwrap();
+
+        let stdout_str = String::from_utf8(stdout).unwrap();
+        let stderr_str = String::from_utf8(stderr).unwrap();
+
+        assert!(stdout_str.contains("✓ bound a"));
+        assert_eq!(stderr_str, "");
+    }
+
+    #[test]
+    fn run_with_handles_reports_errors_to_stderr() {
+        let input = "a = \n:quit\n";
+        let reader = std::io::Cursor::new(input);
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+
+        run_with_handles(reader, &mut stdout, &mut stderr, &mut session).unwrap();
+
+        let stderr_str = String::from_utf8(stderr).unwrap();
+        assert!(stderr_str.contains("✗ parse error"));
+    }
 }

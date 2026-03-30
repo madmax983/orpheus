@@ -10,6 +10,11 @@ use std::collections::BTreeMap;
 
 use crate::types::{Type, TypeVarId};
 
+/// A polymorphic type scheme containing universally quantified type variables.
+///
+/// This allows functions like `fast` to operate on `Pattern<t>` regardless of
+/// whether `t` is a `Sample` or a `Number`. During type inference, the scheme
+/// is instantiated to produce a concrete type for each specific usage.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
     pub vars: Vec<TypeVarId>,
@@ -26,6 +31,10 @@ impl TypeScheme {
     }
 }
 
+/// A mapping from variable names to their corresponding `TypeScheme`s.
+///
+/// Stores both the predefined built-in primitives and any user-defined
+/// variables created during a session.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeEnv {
     entries: BTreeMap<String, TypeScheme>,
@@ -41,6 +50,16 @@ impl TypeEnv {
         env.insert("sn", TypeScheme::monomorphic(Type::pattern(Type::Sample)));
         env.insert("cp", TypeScheme::monomorphic(Type::pattern(Type::Sample)));
         env.insert("hh", TypeScheme::monomorphic(Type::pattern(Type::Sample)));
+        env.insert("saw", TypeScheme::monomorphic(Type::pattern(Type::Sample)));
+        env.insert(
+            "pulse",
+            TypeScheme::monomorphic(Type::pattern(Type::Sample)),
+        );
+        env.insert("tri", TypeScheme::monomorphic(Type::pattern(Type::Sample)));
+        env.insert(
+            "noise",
+            TypeScheme::monomorphic(Type::pattern(Type::Sample)),
+        );
 
         let alpha = TypeVarId::new(0);
         for name in ["fast", "slow", "shift"] {
@@ -51,10 +70,39 @@ impl TypeEnv {
         env.insert("sometimes", sometimes_transform_scheme(alpha));
         env.insert("within", within_transform_scheme(alpha));
         env.insert("mask", mask_scheme());
+        env.insert("strum", unary_number_pattern_scheme());
+        env.insert("roll", numeric_pattern_transform_scheme(alpha));
+        env.insert("arp", arp_scheme());
+        env.insert("up", TypeScheme::monomorphic(Type::ArpDirection));
+        env.insert("down", TypeScheme::monomorphic(Type::ArpDirection));
+        env.insert("invert", number_pattern_control_scheme());
+        env.insert("drop", number_pattern_control_scheme());
+        env.insert("chord", number_pattern_control_scheme());
         env.insert("euclid", euclid_scheme());
+        env.insert(
+            "pitch_class_set",
+            TypeScheme::monomorphic(Type::curried(
+                vec![Type::pattern(Type::Number)],
+                Type::PitchClassSet,
+            )),
+        );
+        env.insert("degrees", degrees_scheme());
+        env.insert("transpose", number_pattern_control_scheme());
+        for name in [
+            "ionian",
+            "dorian",
+            "phrygian",
+            "mixolydian",
+            "aeolian",
+            "minor_pentatonic",
+        ] {
+            env.insert(name, TypeScheme::monomorphic(Type::PitchClassSet));
+        }
         env.insert("jux", jux_transform_scheme());
         env.insert("rev", unary_pattern_transform_scheme(alpha));
-        for name in ["gain", "hpf", "lpf", "pan", "pitch", "rate"] {
+        for name in [
+            "gain", "hpf", "lpf", "cutoff", "res", "drive", "pw", "pan", "pitch", "rate",
+        ] {
             env.insert(name, sample_control_scheme());
         }
         env.insert(
@@ -64,6 +112,7 @@ impl TypeEnv {
                 Type::pattern(Type::Sample),
             )),
         );
+        env.insert("onset", sample_control_scheme());
         env.insert(
             "slice",
             TypeScheme::monomorphic(Type::curried(
@@ -216,6 +265,38 @@ fn mask_scheme() -> TypeScheme {
 fn euclid_scheme() -> TypeScheme {
     TypeScheme::monomorphic(Type::curried(
         vec![Type::pattern(Type::Number), Type::pattern(Type::Number)],
+        Type::pattern(Type::Number),
+    ))
+}
+
+fn arp_scheme() -> TypeScheme {
+    TypeScheme::monomorphic(Type::curried(
+        vec![
+            Type::pattern(Type::Number),
+            Type::ArpDirection,
+            Type::pattern(Type::Number),
+        ],
+        Type::pattern(Type::Number),
+    ))
+}
+
+fn degrees_scheme() -> TypeScheme {
+    TypeScheme::monomorphic(Type::curried(
+        vec![Type::PitchClassSet, Type::pattern(Type::Number)],
+        Type::pattern(Type::Number),
+    ))
+}
+
+fn number_pattern_control_scheme() -> TypeScheme {
+    TypeScheme::monomorphic(Type::curried(
+        vec![Type::pattern(Type::Number), Type::pattern(Type::Number)],
+        Type::pattern(Type::Number),
+    ))
+}
+
+fn unary_number_pattern_scheme() -> TypeScheme {
+    TypeScheme::monomorphic(Type::curried(
+        vec![Type::pattern(Type::Number)],
         Type::pattern(Type::Number),
     ))
 }

@@ -1,3 +1,9 @@
+//! The `loader` module handles the resolution and loading of Orpheus source files.
+//!
+//! This module implements the logic for reading `.ode` files from disk, recursively
+//! resolving `import` statements, preventing cyclic dependencies during resolution,
+//! and compiling the modules with strict Hindley-Milner type inference.
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -13,6 +19,11 @@ struct ImportSpec {
     names: Vec<String>,
 }
 
+/// The result of parsing, typechecking, and evaluating an Orpheus module.
+///
+/// Contains the fully inferred type bindings and fully evaluated runtime values
+/// for all top-level statements. Also tracks the name of the final binding
+/// so the REPL knows what pattern to make active automatically.
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
     pub type_bindings: BTreeMap<String, Type>,
@@ -32,6 +43,28 @@ pub fn load_file_strict(path: impl AsRef<Path>) -> Result<TypedModule, LoadError
     Ok(TypedModule::new(loaded.type_bindings))
 }
 
+/// Loads an Orpheus source file from disk and performs strict compilation
+/// for runtime evaluation.
+///
+/// This resolves any `import` statements recursively while preventing
+/// cyclic dependencies. It performs full type inference to ensure
+/// type safety before generating the loaded module.
+///
+/// # Parameters
+/// - `path`: The file path to the entry `.ode` source file.
+///
+/// # Errors
+/// Returns a [`LoadError`] if the file cannot be read, if a parsing/type error
+/// occurs, or if a cyclic dependency is detected.
+///
+/// # Examples
+///
+/// ```no_run
+/// use orpheus_lang::load_file_runtime_strict;
+///
+/// // This will typecheck and load `main.ode` and all its dependencies.
+/// let module = load_file_runtime_strict("main.ode").unwrap();
+/// ```
 pub fn load_file_runtime_strict(path: impl AsRef<Path>) -> Result<StrictLoadedFile, LoadError> {
     let mut visiting = BTreeSet::new();
     load_file_strict_inner(path.as_ref(), &mut visiting)

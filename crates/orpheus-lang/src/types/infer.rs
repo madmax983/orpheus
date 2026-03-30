@@ -4,6 +4,7 @@ use crate::ReplMode;
 use crate::ast::{Expr, Module, Stmt, binding_expr_self_references};
 use crate::diagnostics::{ParseError, TypeError};
 use crate::parser::parse_module;
+use crate::pitch::parse_named_pitch_literal;
 use crate::types::env::{TypeEnv, TypeScheme};
 use crate::types::{Type, TypeVarId, TypedModule};
 
@@ -30,10 +31,12 @@ pub fn infer_into_bindings(
     bindings: &mut BTreeMap<String, Type>,
 ) -> Result<Option<(String, Type)>, TypeError> {
     let parsed = parse_module(source).map_err(TypeError::from)?;
-    let mut inferencer = Inferencer::with_bindings(mode, bindings.clone());
-    let last_binding = inferencer.infer_statements(&parsed.statements)?;
+    // ⚡ Bolt: Use `std::mem::take` instead of `bindings.clone()` to move the BTreeMap into the inferencer.
+    // This avoids a full heap allocation and deep copy of the environment on every inference pass.
+    let mut inferencer = Inferencer::with_bindings(mode, std::mem::take(bindings));
+    let result = inferencer.infer_statements(&parsed.statements);
     *bindings = inferencer.user_bindings;
-    Ok(last_binding)
+    result
 }
 
 impl From<ParseError> for TypeError {
@@ -246,12 +249,15 @@ impl Inferencer {
     }
 
     fn infer_ident(&mut self, name: &str) -> Result<Type, TypeError> {
-        let scheme = self
-            .env
-            .get(name)
-            .cloned()
-            .ok_or_else(|| TypeError::new(format!("unresolved identifier `{name}`")))?;
-        Ok(self.instantiate(&scheme))
+        if let Some(scheme) = self.env.get(name).cloned() {
+            return Ok(self.instantiate(&scheme));
+        }
+
+        match parse_named_pitch_literal(name) {
+            Ok(Some(_)) => Ok(Type::pattern(Type::Number)),
+            Err(error) => Err(TypeError::new(error.to_string())),
+            Ok(None) => Err(TypeError::new(format!("unresolved identifier `{name}`"))),
+        }
     }
 
     fn apply_argument(&mut self, callee_ty: Type, arg_ty: Type) -> Result<Type, TypeError> {
@@ -311,6 +317,8 @@ impl Inferencer {
             | (Type::Note, Type::Note)
             | (Type::Number, Type::Number)
             | (Type::Duration, Type::Duration)
+            | (Type::ArpDirection, Type::ArpDirection)
+            | (Type::PitchClassSet, Type::PitchClassSet)
             | (Type::String, Type::String)
             | (Type::Unit, Type::Unit) => Ok(()),
             (left, right) => {
@@ -349,6 +357,8 @@ impl Inferencer {
             | Type::Note
             | Type::Number
             | Type::Duration
+            | Type::ArpDirection
+            | Type::PitchClassSet
             | Type::String
             | Type::Unit => false,
         }
@@ -370,6 +380,8 @@ impl Inferencer {
             Type::Note => Type::Note,
             Type::Number => Type::Number,
             Type::Duration => Type::Duration,
+            Type::ArpDirection => Type::ArpDirection,
+            Type::PitchClassSet => Type::PitchClassSet,
             Type::String => Type::String,
             Type::Unit => Type::Unit,
         }
@@ -419,6 +431,8 @@ fn substitute_scheme_vars(ty: &Type, replacements: &BTreeMap<TypeVarId, Type>) -
         Type::Note => Type::Note,
         Type::Number => Type::Number,
         Type::Duration => Type::Duration,
+        Type::ArpDirection => Type::ArpDirection,
+        Type::PitchClassSet => Type::PitchClassSet,
         Type::String => Type::String,
         Type::Unit => Type::Unit,
     }
@@ -436,8 +450,13 @@ fn free_type_vars(ty: &Type) -> BTreeSet<TypeVarId> {
             vars
         }
         Type::Var(var) => BTreeSet::from([*var]),
-        Type::Sample | Type::Note | Type::Number | Type::Duration | Type::String | Type::Unit => {
-            BTreeSet::new()
-        }
+        Type::Sample
+        | Type::Note
+        | Type::Number
+        | Type::Duration
+        | Type::ArpDirection
+        | Type::PitchClassSet
+        | Type::String
+        | Type::Unit => BTreeSet::new(),
     }
 }
