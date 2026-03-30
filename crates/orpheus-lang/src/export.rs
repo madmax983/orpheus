@@ -685,4 +685,50 @@ mod tests {
 
         let _ = fs::remove_file(path);
     }
+
+    #[test]
+    fn export_sample_pattern_to_csv_returns_error_for_zero_cycles() {
+        let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+        let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+        let path = std::env::temp_dir().join("test_zero_cycles_sample.csv");
+        let result = super::export_sample_pattern_to_csv(pattern, &path, 0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn export_number_pattern_to_csv_returns_error_for_zero_cycles() {
+        let env = eval_module("x = 1 2 3", ReplMode::Loose).unwrap();
+        let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
+        let path = std::env::temp_dir().join("test_zero_cycles_number.csv");
+        let result = super::export_number_pattern_to_csv(pattern, &path, 0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn export_sample_pattern_to_json_returns_error_for_zero_cycles() {
+        let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+        let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+        let path = std::env::temp_dir().join("test_zero_cycles_sample.json");
+        let result = super::export_sample_pattern_to_json(pattern, &path, 0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn export_number_pattern_to_json_returns_error_for_zero_cycles() {
+        let env = eval_module("x = 1 2 3", ReplMode::Loose).unwrap();
+        let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
+        let path = std::env::temp_dir().join("test_zero_cycles_number.json");
+        let result = super::export_number_pattern_to_json(pattern, &path, 0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn render_sample_pattern_to_file_with_bank_returns_error_for_zero_cycles() {
+        let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+        let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+        let path = std::env::temp_dir().join("test_zero_cycles_render.wav");
+        let bank = orpheus_dsp::SampleBank::load_builtin();
+        let result = super::render_sample_pattern_to_file_with_bank(pattern, &path, 0, &bank);
+        assert!(result.is_err());
+    }
 }
