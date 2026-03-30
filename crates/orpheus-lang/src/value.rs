@@ -1127,19 +1127,17 @@ where
 
     apply_event_fragments(source_events, &[&control_events[..]], |part, value| {
         let mut new_value = value.clone();
-        for control_event in &control_events {
-            if spans_overlap(&control_event.part, part) {
-                new_value = match kind {
-                    ControlPatternKind::Gain => new_value.adjust_gain(control_event.value),
-                    ControlPatternKind::Hpf => new_value.adjust_hpf(control_event.value),
-                    ControlPatternKind::Lpf => new_value.adjust_lpf(control_event.value),
-                    ControlPatternKind::Pan => new_value.adjust_pan(control_event.value),
-                    ControlPatternKind::Pitch => {
-                        new_value.adjust_rate(semitones_to_rate_multiplier(control_event.value))
-                    }
-                    ControlPatternKind::Rate => new_value.adjust_rate(control_event.value),
-                };
-            }
+        for control_event in find_overlapping_control_events(&control_events, part) {
+            new_value = match kind {
+                ControlPatternKind::Gain => new_value.adjust_gain(control_event.value),
+                ControlPatternKind::Hpf => new_value.adjust_hpf(control_event.value),
+                ControlPatternKind::Lpf => new_value.adjust_lpf(control_event.value),
+                ControlPatternKind::Pan => new_value.adjust_pan(control_event.value),
+                ControlPatternKind::Pitch => {
+                    new_value.adjust_rate(semitones_to_rate_multiplier(control_event.value))
+                }
+                ControlPatternKind::Rate => new_value.adjust_rate(control_event.value),
+            };
         }
         Ok(Some(new_value))
     })
@@ -1227,15 +1225,11 @@ where
         |part, value| {
             let mut relative_start = 0.0;
             let mut relative_end = 1.0;
-            for control_event in &start_events {
-                if spans_overlap(&control_event.part, part) {
-                    relative_start = control_event.value;
-                }
+            for control_event in find_overlapping_control_events(&start_events, part) {
+                relative_start = control_event.value;
             }
-            for control_event in &end_events {
-                if spans_overlap(&control_event.part, part) {
-                    relative_end = control_event.value;
-                }
+            for control_event in find_overlapping_control_events(&end_events, part) {
+                relative_end = control_event.value;
             }
 
             if relative_start >= relative_end {
@@ -1269,17 +1263,15 @@ where
 
     apply_event_fragments(source_events, &[&control_events[..]], |part, value| {
         let mut new_value = value.clone();
-        for control_event in &control_events {
-            if spans_overlap(&control_event.part, part) {
-                let index = whole_number_from_slice_idx_value(control_event.value)?;
-                let slice_start = f64::from(index) / f64::from(segments);
-                let slice_end = f64::from(index.checked_add(1).ok_or_else(|| {
-                    EvalError::new(
-                        "`slice_idx` control index exceeded the supported evaluator range",
-                    )
-                })?) / f64::from(segments);
-                new_value = new_value.adjust_slice(slice_start, slice_end);
-            }
+        for control_event in find_overlapping_control_events(&control_events, part) {
+            let index = whole_number_from_slice_idx_value(control_event.value)?;
+            let slice_start = f64::from(index) / f64::from(segments);
+            let slice_end = f64::from(index.checked_add(1).ok_or_else(|| {
+                EvalError::new(
+                    "`slice_idx` control index exceeded the supported evaluator range",
+                )
+            })?) / f64::from(segments);
+            new_value = new_value.adjust_slice(slice_start, slice_end);
         }
         Ok(Some(new_value))
     })
@@ -1683,6 +1675,15 @@ fn clip_span(span: &TimeSpan, query: &TimeSpan) -> Result<Option<TimeSpan>, Eval
     }
 
     build_span(start.clone(), end.clone()).map(Some)
+}
+
+fn find_overlapping_control_events<'a>(
+    control_events: &'a [Event<f64>],
+    part: &'a TimeSpan,
+) -> impl Iterator<Item = &'a Event<f64>> {
+    control_events
+        .iter()
+        .filter(move |event| spans_overlap(&event.part, part))
 }
 
 fn spans_overlap(a: &TimeSpan, b: &TimeSpan) -> bool {
