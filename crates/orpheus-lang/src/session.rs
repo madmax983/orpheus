@@ -11,10 +11,14 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Duration, Instant};
 
+use midir::{MidiOutput, MidiOutputConnection};
 use orpheus_dsp::{
-    EngineCommand, EngineHandle, PatternUpdate, SampleBank, TransportSnapshot,
-    load_sample_bank_from_directory,
+    load_sample_bank_from_directory, EngineCommand, EngineHandle, PatternUpdate, SampleBank,
+    TransportSnapshot,
 };
 use orpheus_pattern::Rational;
 
@@ -54,6 +58,7 @@ pub struct ReplSession {
     type_bindings: BTreeMap<String, Type>,
     mixer: MixerState,
     pattern_display: RefCell<PatternDisplayState>,
+    midi_output: MidiOutputState,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -62,6 +67,12 @@ struct PatternDisplayState {
     pending_pattern_name: Option<String>,
     pending_enqueued_after_publish: Option<u64>,
     last_loaded_pattern_name: Option<String>,
+}
+
+#[derive(Default)]
+struct MidiOutputState {
+    connection: Option<Arc<Mutex<MidiOutputConnection>>>,
+    port_name: Option<String>,
 }
 
 /// A snapshot of the transport state formatted for visual presentation.
@@ -264,6 +275,7 @@ impl ReplSession {
             type_bindings: BTreeMap::new(),
             mixer: MixerState::default(),
             pattern_display: RefCell::new(PatternDisplayState::default()),
+            midi_output: MidiOutputState::default(),
         }
     }
 
@@ -395,6 +407,7 @@ impl ReplSession {
                 }
             }
             "mixer" => self.mixer_command(args),
+            "midi" => self.midi_command(args),
             "reload-samples" => self.reload_sample_directory(args),
             "play" => self.play_transport(args),
             "stop" => self.stop_transport(args),
@@ -875,6 +888,144 @@ impl ReplSession {
         }
     }
 
+    fn midi_command(&mut self, args: &str) -> Result<String, String> {
+        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        match tokens.as_slice() {
+            ["list"] => self.list_midi_outputs(),
+            ["connect", port @ ..] if !port.is_empty() => self.connect_midi_output(&port.join(" ")),
+            ["disconnect"] => self.disconnect_midi_output(),
+            ["send", binding_name] => self.send_midi_binding(binding_name, 1),
+            ["send", binding_name, channel] => {
+                let channel = channel
+                    .parse::<u8>()
+                    .map_err(|_| "MIDI channel must be an integer in [1, 16]".to_owned())?;
+                self.send_midi_binding(binding_name, channel)
+            }
+            _ => Err(midi_usage().to_owned()),
+        }
+    }
+
+    fn list_midi_outputs(&self) -> Result<String, String> {
+        let midi_out = MidiOutput::new("orpheus")
+            .map_err(|error| format!("failed to initialize MIDI output subsystem: {error}"))?;
+        let ports = midi_out.ports();
+        let mut port_names = ports
+            .iter()
+            .map(|port| {
+                midi_out
+                    .port_name(port)
+                    .unwrap_or_else(|_| "<unreadable port>".to_owned())
+            })
+            .collect::<Vec<_>>();
+        port_names.sort_unstable();
+        if port_names.is_empty() {
+            Ok("available MIDI output ports: <none>".to_owned())
+        } else {
+            Ok(format!(
+                "available MIDI output ports: {}",
+                port_names.join(", ")
+            ))
+        }
+    }
+
+    fn connect_midi_output(&mut self, raw_port_name: &str) -> Result<String, String> {
+        let port_name = trim_quoted_arg(raw_port_name).to_owned();
+        if port_name.is_empty() {
+            return Err(midi_usage().to_owned());
+        }
+        let midi_out = MidiOutput::new("orpheus")
+            .map_err(|error| format!("failed to initialize MIDI output subsystem: {error}"))?;
+        let port = midi_out
+            .ports()
+            .into_iter()
+            .find(|candidate| {
+                midi_out
+                    .port_name(candidate)
+                    .map(|name| name == port_name)
+                    .unwrap_or(false)
+            })
+            .ok_or_else(|| format!("no MIDI output port named `{port_name}`"))?;
+        let connection = midi_out
+            .connect(&port, "orpheus-midi-out")
+            .map_err(|error| format!("failed to connect to MIDI output `{port_name}`: {error}"))?;
+        self.midi_output.connection = Some(Arc::new(Mutex::new(connection)));
+        self.midi_output.port_name = Some(port_name.clone());
+        Ok(format!("connected MIDI output `{port_name}`"))
+    }
+
+    fn disconnect_midi_output(&mut self) -> Result<String, String> {
+        let Some(port_name) = self.midi_output.port_name.take() else {
+            return Err("no MIDI output is connected".to_owned());
+        };
+        self.midi_output.connection = None;
+        Ok(format!("disconnected MIDI output `{port_name}`"))
+    }
+
+    fn send_midi_binding(&mut self, binding_name: &str, channel: u8) -> Result<String, String> {
+        if !(1..=16).contains(&channel) {
+            return Err("MIDI channel must be an integer in [1, 16]".to_owned());
+        }
+        let Some(connection) = self.midi_output.connection.clone() else {
+            return Err("no MIDI output is connected; run `:midi connect <port>` first".to_owned());
+        };
+        let value = self
+            .bindings
+            .get(binding_name)
+            .ok_or_else(|| format!("no binding named `{binding_name}`"))?;
+        let Value::NumberPattern(pattern) = value else {
+            return Err(format!(
+                "binding `{binding_name}` is a {} and cannot be sent as MIDI notes",
+                value.kind_name()
+            ));
+        };
+
+        let mut midi_events = Vec::new();
+        for event in pattern.query_unit() {
+            let note = event.value.round().clamp(0.0, 127.0) as u8;
+            let start = f64::from(event.part.start());
+            let end = f64::from(event.part.end());
+            if end > start {
+                midi_events.push((start, true, note));
+                midi_events.push((end, false, note));
+            }
+        }
+        midi_events.sort_by(|left, right| {
+            left.0
+                .total_cmp(&right.0)
+                .then_with(|| right.1.cmp(&left.1))
+                .then_with(|| left.2.cmp(&right.2))
+        });
+
+        let event_count = midi_events.len();
+        let transport = self.transport_snapshot();
+        let seconds_per_cycle = 240.0 / f64::from(transport.tempo_bpm());
+        let status_base = 0x90_u8 + (channel - 1);
+        thread::spawn(move || {
+            let start = Instant::now();
+            for (offset_in_cycle, note_on, note) in midi_events {
+                let target_time = Duration::from_secs_f64(offset_in_cycle * seconds_per_cycle);
+                let elapsed = start.elapsed();
+                if target_time > elapsed {
+                    thread::sleep(target_time - elapsed);
+                }
+                let status = if note_on {
+                    status_base
+                } else {
+                    status_base - 0x10
+                };
+                let velocity = if note_on { 100 } else { 0 };
+                if let Ok(mut guard) = connection.lock() {
+                    let _ = guard.send(&[status, note, velocity]);
+                }
+            }
+        });
+
+        Ok(format!(
+            "queued {} MIDI events from `{binding_name}` on channel {channel}",
+            event_count
+        ))
+    }
+
     fn enqueue_mixer_snapshot(&mut self) -> Result<(), String> {
         let snapshot = self.mixer.compile_snapshot(&self.bindings)?;
         self.engine
@@ -1101,6 +1252,10 @@ const fn mixer_usage() -> &'static str {
     "usage: :mixer"
 }
 
+const fn midi_usage() -> &'static str {
+    "usage: :midi <list|connect <port>|disconnect|send <binding> [channel]>"
+}
+
 const fn open_usage() -> &'static str {
     "usage: :open <path>"
 }
@@ -1210,6 +1365,15 @@ fn parse_rational_time(value: &str) -> Result<Rational, String> {
         .map_err(|_| "delay time must be a rational like 1/8".to_owned())?;
     Rational::new(numerator, denominator)
         .map_err(|_| "delay time must be a rational like 1/8".to_owned())
+}
+
+fn trim_quoted_arg(value: &str) -> &str {
+    let trimmed = value.trim();
+    if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"') {
+        &trimmed[1..trimmed.len() - 1]
+    } else {
+        trimmed
+    }
 }
 
 #[cfg(test)]
@@ -1879,12 +2043,10 @@ mod tests {
 
         assert!(narrow_rendered.iter().all(|sample| sample.is_finite()));
         assert!(wide_rendered.iter().all(|sample| sample.is_finite()));
-        assert!(
-            narrow_rendered
-                .iter()
-                .zip(&wide_rendered)
-                .any(|(left, right)| (left - right).abs() > f32::EPSILON)
-        );
+        assert!(narrow_rendered
+            .iter()
+            .zip(&wide_rendered)
+            .any(|(left, right)| (left - right).abs() > f32::EPSILON));
     }
 
     #[test]
@@ -1964,6 +2126,31 @@ mod tests {
         let _ = session.render_test_block_for_tui(1);
         assert_eq!(play_message, "transport playing");
         assert!(session.transport_snapshot().is_playing());
+    }
+
+    #[test]
+    fn midi_list_command_returns_available_outputs_or_none() {
+        let mut session = ReplSession::new();
+        let message = session.eval_line(":midi list").unwrap();
+        assert!(message.starts_with("available MIDI output ports: "));
+    }
+
+    #[test]
+    fn midi_send_command_requires_active_connection() {
+        let mut session = ReplSession::new();
+        session.eval_line("notes = 60 64 67").unwrap();
+
+        let error = session.eval_line(":midi send notes 1").unwrap_err();
+        assert!(error.contains("no MIDI output is connected"));
+    }
+
+    #[test]
+    fn midi_send_command_rejects_non_number_patterns() {
+        let mut session = ReplSession::new();
+        session.eval_line("drums = bd sn").unwrap();
+
+        let error = session.eval_line(":midi send drums 1").unwrap_err();
+        assert!(error.contains("cannot be sent as MIDI notes"));
     }
 
     #[test]
