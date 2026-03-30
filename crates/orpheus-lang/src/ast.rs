@@ -4,7 +4,7 @@
 #[derive(Clone, Debug, PartialEq)]
 pub struct Module {
     /// Top-level statements in source order.
-    pub statements: Vec<Stmt>,
+    pub(crate) statements: Vec<Stmt>,
 }
 
 /// Phase 1 expression forms.
@@ -238,5 +238,13 @@ mod tests {
         let params = vec!["foo".to_string()];
         let expr = Expr::Ident("foo".to_string());
         assert!(!binding_expr_self_references("foo", &params, &expr));
+    }
+}
+
+impl Module {
+    /// Returns the top-level statements in this module.
+    #[must_use]
+    pub fn statements(&self) -> &[Stmt] {
+        &self.statements
     }
 }

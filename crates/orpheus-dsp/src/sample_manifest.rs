@@ -9,17 +9,17 @@ use std::path::Path;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SampleManifest {
-    pub tokens: BTreeMap<String, String>,
-    pub aliases: BTreeMap<String, String>,
-    pub regions: BTreeMap<String, SampleRegion>,
+    pub(crate) tokens: BTreeMap<String, String>,
+    pub(crate) aliases: BTreeMap<String, String>,
+    pub(crate) regions: BTreeMap<String, SampleRegion>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SampleRegion {
-    pub token: String,
-    pub start: f64,
-    pub end: f64,
-    pub rate: f64,
+    pub(crate) token: String,
+    pub(crate) start: f64,
+    pub(crate) end: f64,
+    pub(crate) rate: f64,
 }
 
 #[derive(Debug)]

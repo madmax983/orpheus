@@ -53,17 +53,17 @@ fn built_in_bd_trigger_prefers_embedded_wav_frames() {
     engine.schedule_test_trigger(0, "bd");
     let rendered = engine.render_test_block(4);
     let total_output_frames =
-        u32::try_from(sample.frames.len()).unwrap_or_else(|_| panic!("sample too large for test"));
+        u32::try_from(sample.frames().len()).unwrap_or_else(|_| panic!("sample too large for test"));
 
     let expected = vec![
-        sample.frames[0] * edge_envelope(0, total_output_frames),
-        sample.frames[0] * edge_envelope(0, total_output_frames),
-        sample.frames[1] * edge_envelope(1, total_output_frames),
-        sample.frames[1] * edge_envelope(1, total_output_frames),
-        sample.frames[2] * edge_envelope(2, total_output_frames),
-        sample.frames[2] * edge_envelope(2, total_output_frames),
-        sample.frames[3] * edge_envelope(3, total_output_frames),
-        sample.frames[3] * edge_envelope(3, total_output_frames),
+        sample.frames()[0] * edge_envelope(0, total_output_frames),
+        sample.frames()[0] * edge_envelope(0, total_output_frames),
+        sample.frames()[1] * edge_envelope(1, total_output_frames),
+        sample.frames()[1] * edge_envelope(1, total_output_frames),
+        sample.frames()[2] * edge_envelope(2, total_output_frames),
+        sample.frames()[2] * edge_envelope(2, total_output_frames),
+        sample.frames()[3] * edge_envelope(3, total_output_frames),
+        sample.frames()[3] * edge_envelope(3, total_output_frames),
     ];
 
     assert_samples_close(&rendered, &expected);

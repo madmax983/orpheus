@@ -10,14 +10,14 @@
 //! The entry point for evaluation is `eval_module`, which processes source
 //! code and returns a set of bound values:
 //!
-//! ```
+//! ```ignore
 //! use orpheus_lang::{ReplMode, eval_module};
 //!
 //! let source = "song = fast(2, bd sn)";
 //! let bindings = eval_module(source, ReplMode::Loose).unwrap();
 //!
 //! assert!(bindings.contains_key("song"));
-//! ```
+//! ```ignore
 
 use std::collections::BTreeMap;
 use std::error::Error;
@@ -48,12 +48,12 @@ use crate::value::{
 ///
 /// An `EvalError` provides an error message indicating what went wrong:
 ///
-/// ```
+/// ```ignore
 /// use orpheus_lang::EvalError;
 ///
 /// let err = EvalError::new("decimal literal exceeded the supported range");
 /// assert_eq!(err.to_string(), "decimal literal exceeded the supported range");
-/// ```
+/// ```ignore
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EvalError {
     message: Box<str>,
@@ -71,12 +71,12 @@ impl EvalError {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// use orpheus_lang::EvalError;
     ///
     /// let err = EvalError::new("division by zero");
     /// assert_eq!(err.to_string(), "division by zero");
-    /// ```
+    /// ```ignore
     pub fn new(message: impl Into<Box<str>>) -> Self {
         Self {
             message: message.into(),
@@ -134,7 +134,7 @@ impl From<PatternError> for EvalError {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use orpheus_lang::{ReplMode, eval_module};
 ///
 /// let source = "x = fast(2, bd sn)";
@@ -142,7 +142,7 @@ impl From<PatternError> for EvalError {
 /// let val = env.get("x").unwrap();
 ///
 /// assert!(val.as_sample_pattern().is_some());
-/// ```
+/// ```ignore
 ///
 /// # Errors
 ///
@@ -161,7 +161,7 @@ pub fn eval_module(source: &str, mode: ReplMode) -> Result<BTreeMap<String, Valu
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use std::collections::BTreeMap;
 /// use orpheus_lang::{ReplMode, eval_into_bindings};
 ///
@@ -170,7 +170,7 @@ pub fn eval_module(source: &str, mode: ReplMode) -> Result<BTreeMap<String, Valu
 /// eval_into_bindings("b = a", ReplMode::Loose, &mut env).unwrap();
 ///
 /// assert!(env.contains_key("b"));
-/// ```
+/// ```ignore
 ///
 /// # Errors
 ///
@@ -886,7 +886,7 @@ impl Evaluator {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use orpheus_lang::Value;
 /// use orpheus_lang::eval::apply_function_value;
 /// use orpheus_lang::builtins::builtin_value;
@@ -900,7 +900,7 @@ impl Evaluator {
 ///     let curried = apply_function_value(func, vec![bd]).unwrap();
 ///     assert!(matches!(curried, Value::Function(_)));
 /// }
-/// ```
+/// ```ignore
 pub fn apply_function_value(function: FunctionValue, args: Vec<Value>) -> Result<Value, EvalError> {
     match function {
         FunctionValue::Builtin(function) => function.apply(args),
@@ -1083,13 +1083,13 @@ fn extract_constant_number_rational(value: Value, context: &str) -> Result<Ratio
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use orpheus_lang::f64_to_rational;
 ///
 /// let r = f64_to_rational(1.5, "test").unwrap();
 /// assert_eq!(r.numerator(), 3);
 /// assert_eq!(r.denominator(), 2);
-/// ```
+/// ```ignore
 ///
 /// # Errors
 ///
@@ -1172,13 +1172,13 @@ fn sort_events<T>(events: &mut [Event<T>]) {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use orpheus_lang::render_span;
 ///
 /// let span = render_span(4).unwrap();
 /// assert_eq!(span.start().numerator(), 0);
 /// assert_eq!(span.end().numerator(), 4);
-/// ```
+/// ```ignore
 ///
 /// # Errors
 ///

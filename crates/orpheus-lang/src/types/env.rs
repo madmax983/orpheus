@@ -12,8 +12,8 @@ use crate::types::{Type, TypeVarId};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
-    pub vars: Vec<TypeVarId>,
-    pub ty: Type,
+    pub(crate) vars: Vec<TypeVarId>,
+    pub(crate) ty: Type,
 }
 
 impl TypeScheme {

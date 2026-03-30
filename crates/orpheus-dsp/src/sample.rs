@@ -13,9 +13,9 @@ use thiserror::Error;
 /// Decoded PCM sample data normalized to interleaved `f32` frames.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DecodedSample {
-    pub channels: u16,
-    pub sample_rate_hz: u32,
-    pub frames: Vec<f32>,
+    pub(crate) channels: u16,
+    pub(crate) sample_rate_hz: u32,
+    pub(crate) frames: Vec<f32>,
 }
 
 /// Errors raised while decoding WAV sample assets.
@@ -147,7 +147,7 @@ fn normalize_int_sample(sample: i32, scale: f64) -> f32 {
     (f64::from(sample) / scale).clamp(-1.0, 1.0) as f32
 }
 
-#[cfg(test)]
+
 mod tests {
     use super::*;
 
@@ -192,5 +192,13 @@ mod tests {
         // Out of bounds, should be clamped
         assert!((normalize_int_sample(40000, 32768.0) - 1.0).abs() < f32::EPSILON);
         assert!((normalize_int_sample(-40000, 32768.0) - (-1.0)).abs() < f32::EPSILON);
+    }
+}
+
+impl DecodedSample {
+    #[must_use]
+
+    pub fn frames(&self) -> &[f32] {
+        &self.frames
     }
 }

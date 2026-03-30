@@ -14,9 +14,9 @@ use crate::voice::VoiceKind;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScheduledTrigger {
-    pub frame: u64,
-    pub trigger: SampleTrigger,
-    pub fallback_voice: Option<VoiceKind>,
+    pub(crate) frame: u64,
+    pub(crate) trigger: SampleTrigger,
+    pub(crate) fallback_voice: Option<VoiceKind>,
 }
 
 /// Sample-clock scheduler that bridges exact pattern time to audio frames.

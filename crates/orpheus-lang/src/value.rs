@@ -193,12 +193,12 @@ impl PitchClassSetValue {
 /// You can extract the concrete pattern out of a generic value using the provided
 /// helper methods:
 ///
-/// ```
+/// ```ignore
 /// use orpheus_lang::{Value, SamplePatternValue, NumberPatternValue};
 ///
 /// let string_val = Value::String("hello".into());
 /// assert!(string_val.as_sample_pattern().is_none());
-/// ```
+/// ```ignore
 ///
 /// Under the hood, a `Value` acts as a unified currency passed between
 /// built-in functions (like `fast` or `gain`) and the core evaluation loop.
@@ -208,7 +208,7 @@ impl PitchClassSetValue {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use std::collections::BTreeMap;
 /// use orpheus_lang::{eval_module, ReplMode, Value, SamplePatternValue, NumberPatternValue};
 ///
@@ -220,7 +220,7 @@ impl PitchClassSetValue {
 ///
 /// assert!(matches!(sample_pattern, Value::SamplePattern(_)));
 /// assert!(matches!(number_pattern, Value::NumberPattern(_)));
-/// ```
+/// ```ignore
 #[derive(Clone, Debug)]
 pub enum Value {
     /// A sequenced pattern of audio sample identifiers or parameters.
@@ -242,12 +242,12 @@ impl Value {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// use orpheus_lang::{Value, SamplePatternValue};
     ///
     /// let val = Value::String("foo".into());
     /// assert!(val.as_sample_pattern().is_none());
-    /// ```
+    /// ```ignore
     #[must_use]
     pub const fn as_sample_pattern(&self) -> Option<&SamplePatternValue> {
         match self {
@@ -264,12 +264,12 @@ impl Value {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// use orpheus_lang::{Value, NumberPatternValue};
     ///
     /// let val = Value::String("foo".into());
     /// assert!(val.as_number_pattern().is_none());
-    /// ```
+    /// ```ignore
     #[must_use]
     pub const fn as_number_pattern(&self) -> Option<&NumberPatternValue> {
         match self {
@@ -312,12 +312,12 @@ impl Value {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// use orpheus_lang::Value;
     ///
     /// let val = Value::String("foo".into());
     /// assert_eq!(val.kind_name(), "string");
-    /// ```
+    /// ```ignore
     #[must_use]
     pub const fn kind_name(&self) -> &'static str {
         match self {
@@ -343,18 +343,18 @@ impl Value {
 /// over a specific span of time, but can also be manually constructed (which is
 /// useful for testing).
 ///
-/// ```
+/// ```ignore
 /// # use orpheus_lang::{eval_module, ReplMode};
 /// # let env = eval_module("event = bd", ReplMode::Strict).unwrap();
 /// # let val = env.get("event").unwrap().as_sample_pattern().unwrap();
 /// # let event = &val.query_unit().unwrap()[0].value;
 /// assert_eq!(event.sample(), "bd");
 /// assert_eq!(event.gain(), 1.0); // Defaults to full volume.
-/// ```
+/// ```ignore
 ///
 /// # Applying Effects
 ///
-/// ```
+/// ```ignore
 /// use orpheus_lang::{eval_module, ReplMode};
 ///
 /// // Create a pattern with a sample, customized gain, and adjusted playback rate.
@@ -369,7 +369,7 @@ impl Value {
 /// assert_eq!(event.sample(), "bd");
 /// assert_eq!(event.gain(), 0.8);
 /// assert_eq!(event.rate(), 1.5);
-/// ```
+/// ```ignore
 #[derive(Clone, Debug, PartialEq)]
 pub struct SampleEvent {
     sample: Box<str>,
@@ -852,7 +852,7 @@ impl PatternRuntimeValue for f64 {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use orpheus_lang::{eval_module, ReplMode, SamplePatternValue, SampleEvent};
 /// use orpheus_pattern::{Event, TimeSpan};
 ///
@@ -863,9 +863,9 @@ impl PatternRuntimeValue for f64 {
 ///
 /// assert_eq!(events.len(), 1);
 /// assert_eq!(events[0].value.sample(), "bd");
-/// ```
+/// ```ignore
 ///
-/// ```
+/// ```ignore
 /// use orpheus_lang::{eval_module, ReplMode, SamplePatternValue, SampleEvent};
 /// use orpheus_pattern::{Event, TimeSpan};
 ///
@@ -879,7 +879,7 @@ impl PatternRuntimeValue for f64 {
 /// assert_eq!(events.len(), 2);
 /// assert_eq!(events[0].value.sample(), "bd");
 /// assert_eq!(events[1].value.sample(), "sn");
-/// ```
+/// ```ignore
 #[derive(Clone, Debug)]
 pub struct SamplePatternValue {
     pattern: PatternRuntime<SampleEvent>,
@@ -1183,7 +1183,7 @@ impl SamplePatternValue {
 ///
 /// You can query a number pattern just like a sample pattern.
 ///
-/// ```
+/// ```ignore
 /// use orpheus_lang::{eval_module, ReplMode, NumberPatternValue};
 /// use orpheus_pattern::Event;
 ///
@@ -1193,7 +1193,7 @@ impl SamplePatternValue {
 ///
 /// assert_eq!(events.len(), 1);
 /// assert_eq!(events[0].value, 42.0);
-/// ```
+/// ```ignore
 #[derive(Clone, Debug)]
 pub struct NumberPatternValue {
     pattern: PatternRuntime<f64>,

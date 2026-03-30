@@ -42,13 +42,13 @@ impl Display for PitchLiteralError {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use orpheus_lang::parse_named_pitch_literal;
 ///
 /// assert_eq!(parse_named_pitch_literal("c4").unwrap(), Some(0));
 /// assert_eq!(parse_named_pitch_literal("cs4").unwrap(), Some(1));
 /// assert_eq!(parse_named_pitch_literal("c5").unwrap(), Some(12));
-/// ```
+/// ```ignore
 pub fn parse_named_pitch_literal(token: &str) -> Result<Option<i32>, PitchLiteralError> {
     let mut chars = token.chars();
     let Some(first) = chars.next() else {

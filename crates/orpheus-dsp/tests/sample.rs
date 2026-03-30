@@ -23,7 +23,7 @@ fn fixture(name: &str) -> PathBuf {
 fn wav_loader_decodes_mono_f32_samples() {
     let sample = load_wav_for_test(fixture("kick.wav")).unwrap();
 
-    assert!(!sample.frames.is_empty());
+    assert!(!sample.frames().is_empty());
 }
 
 #[test]
@@ -52,7 +52,7 @@ fn built_in_drum_assets_decode_for_test_use() {
     for token in ["bd", "sn", "cp", "hh"] {
         let sample = load_builtin_sample_for_test(token).unwrap();
         assert!(
-            !sample.frames.is_empty(),
+            !sample.frames().is_empty(),
             "builtin sample {token} was empty"
         );
     }

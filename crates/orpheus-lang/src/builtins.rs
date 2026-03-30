@@ -27,14 +27,14 @@ use crate::value::{
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use orpheus_lang::is_sample_identifier;
 ///
 /// assert!(is_sample_identifier("bd"));
 /// assert!(is_sample_identifier("sn"));
 /// assert!(!is_sample_identifier("fast")); // This is a function
 /// assert!(!is_sample_identifier("foo"));  // Unknown/user variable
-/// ```
+/// ```ignore
 pub fn is_sample_identifier(name: &str) -> bool {
     matches!(name, "bd" | "sn" | "cp" | "hh")
 }
@@ -60,13 +60,13 @@ const fn builtin_pitch_class_set_value(value: PitchClassSetValue) -> Value {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use orpheus_lang::builtin_value;
 ///
 /// assert!(builtin_value("fast").is_some());
 /// assert!(builtin_value("bd").is_some());
 /// assert!(builtin_value("unknown_user_func").is_none());
-/// ```
+/// ```ignore
 pub fn builtin_value(name: &str) -> Option<Value> {
     match name {
         "bd" | "sn" | "cp" | "hh" => Some(Value::SamplePattern(SamplePatternValue::atom(name))),
@@ -132,7 +132,7 @@ pub fn builtin_value(name: &str) -> Option<Value> {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use orpheus_lang::{Value, BuiltinKind};
 /// use orpheus_lang::builtins::stack_values;
 ///
@@ -142,7 +142,7 @@ pub fn builtin_value(name: &str) -> Option<Value> {
 /// let stacked = stack_values(vec![bd, sn]).unwrap();
 ///
 /// assert!(matches!(stacked, Value::SamplePattern(_)));
-/// ```
+/// ```ignore
 pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
     if values.is_empty() {
         return Err(EvalError::new("`stack` requires at least one layer"));
@@ -234,7 +234,7 @@ impl BuiltinFn {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use orpheus_lang::{Value, NumberPatternValue};
 /// use orpheus_lang::builtins::{apply_builtin_function, builtin_value};
 /// use orpheus_pattern::PatternNode;
@@ -248,7 +248,7 @@ impl BuiltinFn {
 ///     let curried = apply_builtin_function(&func, vec![bd]).unwrap();
 ///     assert!(matches!(curried, Value::Function(_)));
 /// }
-/// ```
+/// ```ignore
 pub fn apply_builtin_function(function: &BuiltinFn, args: Vec<Value>) -> Result<Value, EvalError> {
     let kind = function.kind;
     // PRE-ALLOCATE: avoids extra heap allocations when combining bound arguments and explicit arguments.

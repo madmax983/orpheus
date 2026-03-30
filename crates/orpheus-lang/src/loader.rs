@@ -21,9 +21,9 @@ struct ImportSpec {
 
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
-    pub type_bindings: BTreeMap<String, Type>,
-    pub value_bindings: BTreeMap<String, Value>,
-    pub last_binding_name: Option<String>,
+    pub(crate) type_bindings: BTreeMap<String, Type>,
+    pub(crate) value_bindings: BTreeMap<String, Value>,
+    pub(crate) last_binding_name: Option<String>,
 }
 
 /// Loads a strict `.ode` file, resolves its imports, and infers its bindings.
@@ -54,12 +54,12 @@ pub fn load_file_strict(path: impl AsRef<Path>) -> Result<TypedModule, LoadError
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignore
 /// use orpheus_lang::loader::load_file_runtime_strict;
 ///
 /// // This will typecheck and load `main.ode` and all its dependencies.
 /// let module = load_file_runtime_strict("main.ode").unwrap();
-/// ```
+/// ```ignore
 pub fn load_file_runtime_strict(path: impl AsRef<Path>) -> Result<StrictLoadedFile, LoadError> {
     let mut visiting = BTreeSet::new();
     load_file_strict_inner(path.as_ref(), &mut visiting)

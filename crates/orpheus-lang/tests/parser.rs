@@ -2,7 +2,7 @@ use orpheus_lang::{Expr, Stmt, parse_module};
 
 fn binding_expr(source: &str) -> Expr {
     let module = parse_module(source).unwrap();
-    match &module.statements[0] {
+    match &module.statements()[0] {
         Stmt::Binding { expr, .. } => expr.clone(),
     }
 }
@@ -10,10 +10,10 @@ fn binding_expr(source: &str) -> Expr {
 fn binding_names(source: &str) -> Vec<String> {
     let module = parse_module(source).unwrap();
     module
-        .statements
+        .statements()
         .into_iter()
         .map(|statement| match statement {
-            Stmt::Binding { name, .. } => name,
+            Stmt::Binding { name, .. } => name.clone(),
         })
         .collect()
 }
@@ -41,7 +41,7 @@ fn assert_parse_error_contains(source: &str, expected_fragments: &[&str]) {
 #[test]
 fn parses_juxtaposition_as_sequence() {
     let module = parse_module("drums = bd sn cp").unwrap();
-    match &module.statements[0] {
+    match &module.statements()[0] {
         Stmt::Binding { expr, .. } => assert!(matches!(expr, Expr::Seq(_))),
     }
 }
@@ -108,7 +108,7 @@ fn parses_function_calls_with_numeric_arguments() {
 #[test]
 fn parses_parameterized_binding_headers() {
     let module = parse_module("swing amt pat = pat |> shift(amt)").unwrap();
-    match &module.statements[0] {
+    match &module.statements()[0] {
         Stmt::Binding { name, expr, .. } => {
             assert_eq!(name, "swing");
             assert!(matches!(expr, Expr::Pipe { .. }));
