@@ -428,7 +428,7 @@ impl Evaluator {
         let lhs_value = self.eval_expr_in_meter(lhs, meter)?;
         match rhs {
             Expr::Call { callee, args } => {
-                self.eval_call_with_args(rhs, callee, args, vec![lhs_value], meter)
+                self.eval_call_with_args(rhs, callee, args, Some(lhs_value), meter)
             }
             _ => Self::apply_value(
                 self.eval_expr_in_meter(rhs, meter)?,
@@ -445,7 +445,7 @@ impl Evaluator {
         args: &[Expr],
         meter: Option<&MeterContext>,
     ) -> Result<Value, EvalError> {
-        self.eval_call_with_args(call_expr, callee, args, Vec::new(), meter)
+        self.eval_call_with_args(call_expr, callee, args, None, meter)
     }
 
     fn eval_call_with_args(
@@ -453,15 +453,17 @@ impl Evaluator {
         call_expr: &Expr,
         callee: &Expr,
         args: &[Expr],
-        piped_args: Vec<Value>,
+        piped_arg: Option<Value>,
         meter: Option<&MeterContext>,
     ) -> Result<Value, EvalError> {
         let callee_value = self.eval_expr_in_meter(callee, meter)?;
-        let mut evaluated_args: Vec<_> = args
-            .iter()
-            .map(|arg| self.eval_expr_in_meter(arg, meter))
-            .collect::<Result<_, _>>()?;
-        evaluated_args.extend(piped_args);
+        let mut evaluated_args = Vec::with_capacity(args.len() + usize::from(piped_arg.is_some()));
+        for arg in args {
+            evaluated_args.push(self.eval_expr_in_meter(arg, meter)?);
+        }
+        if let Some(piped) = piped_arg {
+            evaluated_args.push(piped);
+        }
         Self::apply_value(callee_value, evaluated_args, self.expr_site_salt(call_expr))
     }
 
@@ -823,10 +825,14 @@ impl Evaluator {
         items: &[Expr],
         meter: Option<&MeterContext>,
     ) -> Result<Option<Vec<PatternNode<SampleEvent>>>, EvalError> {
-        items
-            .iter()
-            .map(|item| self.try_sample_node(item, meter))
-            .collect::<Result<Option<Vec<_>>, _>>()
+        let mut nodes = Vec::with_capacity(items.len());
+        for item in items {
+            let Some(node) = self.try_sample_node(item, meter)? else {
+                return Ok(None);
+            };
+            nodes.push(node);
+        }
+        Ok(Some(nodes))
     }
 
     fn try_sample_node(
@@ -864,10 +870,14 @@ impl Evaluator {
         &self,
         items: &[Expr],
     ) -> Result<Option<Vec<PatternNode<f64>>>, EvalError> {
-        items
-            .iter()
-            .map(|item| self.try_number_node(item))
-            .collect::<Result<Option<Vec<_>>, _>>()
+        let mut nodes = Vec::with_capacity(items.len());
+        for item in items {
+            let Some(node) = self.try_number_node(item)? else {
+                return Ok(None);
+            };
+            nodes.push(node);
+        }
+        Ok(Some(nodes))
     }
 
     fn try_number_node(&self, expr: &Expr) -> Result<Option<PatternNode<f64>>, EvalError> {
