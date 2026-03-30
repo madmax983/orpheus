@@ -347,15 +347,14 @@ impl ActiveVoice {
             return None;
         }
 
-        let (dry_left, dry_right) = match dry_sample {
-            Some(sample) => (
+        let (dry_left, dry_right) = if let Some(sample) = dry_sample {
+            (
                 (f64::from(sample) * self.left_gain) as f32,
                 (f64::from(sample) * self.right_gain) as f32,
-            ),
-            None => {
-                self.tail_frames_remaining = self.tail_frames_remaining.saturating_sub(1);
-                (0.0, 0.0)
-            }
+            )
+        } else {
+            self.tail_frames_remaining = self.tail_frames_remaining.saturating_sub(1);
+            (0.0, 0.0)
         };
 
         Some(self.insert_effects.process_frame(dry_left, dry_right))
@@ -530,6 +529,8 @@ impl InsertChorusState {
         let modulation_depth = depth.mul_add(6.0, 1.5);
         let rate_hz = rate.mul_add(5.75, 0.25);
         let phase_step = (TAU * rate_hz) / (sample_rate as f32);
+        #[allow(clippy::cast_possible_truncation)]
+        #[allow(clippy::cast_sign_loss)]
         let tail_frames = (base_delay + modulation_depth).ceil() as u32;
 
         Some(Self {
@@ -551,10 +552,13 @@ impl InsertChorusState {
     fn process_frame(&mut self, input_left: f32, input_right: f32) -> (f32, f32) {
         self.buffer[self.write_index] = (input_left, input_right);
 
-        let left_delay =
-            self.base_delay + self.modulation_depth * (self.phase.sin().mul_add(0.5, 0.5));
-        let right_delay = self.base_delay
-            + self.modulation_depth * ((self.phase + (TAU * 0.25)).sin().mul_add(0.5, 0.5));
+        let left_delay = self
+            .modulation_depth
+            .mul_add(self.phase.sin().mul_add(0.5, 0.5), self.base_delay);
+        let right_delay = self.modulation_depth.mul_add(
+            TAU.mul_add(0.25, self.phase).sin().mul_add(0.5, 0.5),
+            self.base_delay,
+        );
         let wet_left = self.read_interpolated(left_delay, true);
         let wet_right = self.read_interpolated(right_delay, false);
 
@@ -578,6 +582,7 @@ impl InsertChorusState {
     fn read_interpolated(&self, delay_frames: f32, left_channel: bool) -> f32 {
         let buffer_len = self.buffer.len() as f32;
         let read_position = ((self.write_index as f32) - delay_frames).rem_euclid(buffer_len);
+        #[allow(clippy::cast_sign_loss)]
         let base_index = read_position.floor() as usize;
         let next_index = (base_index + 1) % self.buffer.len();
         let fraction = read_position - (base_index as f32);
@@ -760,6 +765,7 @@ fn cycle_fraction_to_frames(fraction: f64, frames_per_cycle: u64) -> Option<u32>
     let frames = (fraction * (frames_per_cycle as f64))
         .round()
         .clamp(1.0, f64::from(u32::MAX));
+    #[allow(clippy::cast_sign_loss)]
     Some(frames as u32)
 }
 
@@ -772,8 +778,9 @@ fn decay_repeat_count(feedback: f32) -> u32 {
         return INSERT_DECAY_REPEAT_CAP;
     }
 
-    let repeats = (1.0e-3_f32.ln() / feedback.ln()).ceil();
+    let repeats = 1.0e-3_f32.log(feedback).ceil();
     if repeats.is_finite() {
+        #[allow(clippy::cast_sign_loss)]
         (repeats as u32).clamp(1, INSERT_DECAY_REPEAT_CAP)
     } else {
         INSERT_DECAY_REPEAT_CAP

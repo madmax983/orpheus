@@ -1,7 +1,7 @@
 //! Tests for existing-primitive adapters.
 
-use orpheus_dsp::graph::{Node, gain_node, ladder_filter, noise, saw, soft_sat, tri};
 use orpheus_dsp::{Gain, LadderFilter, Noise, SawOsc, SoftSat, TriOsc};
+use orpheus_dsp::{Node, gain_node, ladder_filter, noise, saw, soft_sat, tri};
 
 const SR: f32 = 48_000.0;
 const FRAMES: usize = 256;

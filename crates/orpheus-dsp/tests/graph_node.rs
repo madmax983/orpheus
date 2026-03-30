@@ -2,7 +2,7 @@
 
 #![allow(clippy::cast_precision_loss)]
 
-use orpheus_dsp::graph::{Node, constant, delay_line, one_pole, passthrough, sine, sum, wire};
+use orpheus_dsp::{Node, constant, delay_line, one_pole, passthrough, sine, sum, wire};
 
 const SR: f32 = 48_000.0;
 const FRAMES: usize = 128;

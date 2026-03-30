@@ -84,6 +84,7 @@ impl From<OfflineRenderError> for RenderError {
 
 /// Helper function to convert a `SampleEvent` from the evaluation phase into a
 /// `SampleTrigger` for the DSP rendering phase.
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) fn sample_trigger_from_event(event: &crate::value::SampleEvent) -> SampleTrigger {
     let mut trigger = SampleTrigger::named(event.sample())
         .with_gain(event.gain())
