@@ -1,0 +1,11 @@
+--- crates/orpheus-lang/src/eval.rs
++++ crates/orpheus-lang/src/eval.rs
+@@ -396,7 +396,7 @@
+         meter: Option<&MeterContext>,
+     ) -> Result<Value, EvalError> {
+         let callee_value = self.eval_expr_in_meter(callee, meter)?;
+-        let capacity = args.len() + if piped_arg.is_some() { 1 } else { 0 };
++        let capacity = args.len() + usize::from(piped_arg.is_some());
+         let mut evaluated_args = Vec::with_capacity(capacity);
+         for arg in args {
+             evaluated_args.push(self.eval_expr_in_meter(arg, meter)?);

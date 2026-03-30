@@ -1,7 +1,3 @@
-**Inlining clip_span vs LLVM**
-**Learning:** Manually inlining a helper function like `clip_span()` to avoid a perceived struct allocation (`TimeSpan`) and `.clone()` calls is often a false micro-optimization. In `clip_span`, the early return on non-overlapping windows already bypassed the allocation, and LLVM trivially inlines small helper functions anyway. Manual inlining violated DRY without a real performance gain.
-**Action:** Trust LLVM for small helper functions that return early. Focus on algorithmic changes or reducing guaranteed heap allocations (like `Vec::new()`) inside loops instead.
-
-**Remove unnecessary BTreeMap clone in REPL evaluation**
-**Learning:** Functions that accept a mutable reference to a value (`&mut T`), mutate it internally, and then reassign back to it at the end can avoid deep cloning the value by using `std::mem::take` (if `T` implements `Default`). This temporarily replaces the referenced value with its default, moves the original value, and eliminates a full heap allocation.
-**Action:** When a function takes ownership of a `&mut` parameter's inner value only to replace it before returning, prefer `std::mem::take` over `.clone()`.
+**Remove unnecessary vector allocation for piped arguments**
+**Learning:** `eval_call_with_args` previously took a `Vec<Value>` for `piped_args`, which forced an empty heap allocation for every standard function call (`eval_call`), and a 1-item allocation for every pipe (`eval_pipe`).
+**Action:** Changed the signature to take an `Option<Value>` for the piped argument. This avoids allocating a vector purely to pass an argument that is either missing or singular, providing a zero-cost abstraction for the hot evaluation path.

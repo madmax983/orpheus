@@ -1,0 +1,12 @@
+--- crates/orpheus-dsp/src/sample_manifest.rs
++++ crates/orpheus-dsp/src/sample_manifest.rs
+@@ -53,8 +53,7 @@
+ impl std::error::Error for SampleManifestLoadError {
+     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+         match self {
+-            Self::Io { .. } => None,
+-            Self::Parse { .. } => None,
++            _ => None,
+         }
+     }
+ }

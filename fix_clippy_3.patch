@@ -1,0 +1,29 @@
+--- crates/orpheus-pattern/src/rational.rs
++++ crates/orpheus-pattern/src/rational.rs
+@@ -452,12 +452,10 @@
+     fn rational_converts_to_f64() {
+         let r = Rational::new(3, 4).unwrap();
+         let f: f64 = r.into();
+-        #[allow(clippy::float_cmp)]
+-        assert_eq!(f, 0.75);
++        assert!((f - 0.75).abs() < f64::EPSILON);
+
+         let ref_r = &Rational::new(1, 2).unwrap();
+         let f2: f64 = ref_r.into();
+-        #[allow(clippy::float_cmp)]
+-        assert_eq!(f2, 0.5);
++        assert!((f2 - 0.5).abs() < f64::EPSILON);
+     }
+ }
+--- crates/orpheus-dsp/src/sample_manifest.rs
++++ crates/orpheus-dsp/src/sample_manifest.rs
+@@ -52,9 +52,7 @@
+
+ impl std::error::Error for SampleManifestLoadError {
+     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+-        match self {
+-            _ => None,
+-        }
++        None
+     }
+ }

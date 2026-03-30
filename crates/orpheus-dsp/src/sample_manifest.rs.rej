@@ -1,0 +1,11 @@
+--- crates/orpheus-dsp/src/sample_manifest.rs
++++ crates/orpheus-dsp/src/sample_manifest.rs
+@@ -51,8 +51,7 @@
+     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+         match self {
+-            Self::Io { .. } => None,
+-            Self::Parse { .. } => None,
++            _ => None,
+         }
+     }
+ }

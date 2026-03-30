@@ -453,10 +453,12 @@ mod tests {
     fn rational_converts_to_f64() {
         let r = Rational::new(3, 4).unwrap();
         let f: f64 = r.into();
-        assert!((f - 0.75).abs() < f64::EPSILON);
+        #[allow(clippy::float_cmp)]
+        assert_eq!(f, 0.75);
 
         let ref_r = &Rational::new(1, 2).unwrap();
         let f2: f64 = ref_r.into();
-        assert!((f2 - 0.5).abs() < f64::EPSILON);
+        #[allow(clippy::float_cmp)]
+        assert_eq!(f2, 0.5);
     }
 }

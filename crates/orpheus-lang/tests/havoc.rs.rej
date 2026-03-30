@@ -1,0 +1,15 @@
+--- crates/orpheus-lang/tests/havoc.rs
++++ crates/orpheus-lang/tests/havoc.rs
+@@ -7,10 +7,8 @@
+     let source = "a = seq_sections(section(bd, 2000000000), 2)";
+
+     let start = Instant::now();
+-    let result = eval_module(&source, ReplMode::Loose);
++    let result = eval_module(source, ReplMode::Loose);
+     let duration = start.elapsed();
+-    if duration.as_secs() > 2 {
+-        panic!("💥 DETONATED: Evaluation took too long, likely due to an unbounded loop!");
+-    }
++    assert!(duration.as_secs() <= 2, "💥 DETONATED: Evaluation took too long, likely due to an unbounded loop!");
+     assert!(result.is_err(), "Expected an error");
+ }

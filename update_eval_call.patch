@@ -1,0 +1,41 @@
+--- crates/orpheus-lang/src/eval.rs
++++ crates/orpheus-lang/src/eval.rs
+@@ -367,7 +367,7 @@
+         let lhs_value = self.eval_expr_in_meter(lhs, meter)?;
+         match rhs {
+             Expr::Call { callee, args } => {
+-                self.eval_call_with_args(rhs, callee, args, vec![lhs_value], meter)
++                self.eval_call_with_args(rhs, callee, args, Some(lhs_value), meter)
+             }
+             _ => Self::apply_value(
+                 self.eval_expr_in_meter(rhs, meter)?,
+@@ -384,24 +384,27 @@
+         args: &[Expr],
+         meter: Option<&MeterContext>,
+     ) -> Result<Value, EvalError> {
+-        self.eval_call_with_args(call_expr, callee, args, Vec::new(), meter)
++        self.eval_call_with_args(call_expr, callee, args, None, meter)
+     }
+
+     fn eval_call_with_args(
+         &self,
+         call_expr: &Expr,
+         callee: &Expr,
+         args: &[Expr],
+-        piped_args: Vec<Value>,
++        piped_arg: Option<Value>,
+         meter: Option<&MeterContext>,
+     ) -> Result<Value, EvalError> {
+         let callee_value = self.eval_expr_in_meter(callee, meter)?;
+-        let mut evaluated_args = Vec::with_capacity(args.len() + piped_args.len());
++        let capacity = args.len() + if piped_arg.is_some() { 1 } else { 0 };
++        let mut evaluated_args = Vec::with_capacity(capacity);
+         for arg in args {
+             evaluated_args.push(self.eval_expr_in_meter(arg, meter)?);
+         }
+-        evaluated_args.extend(piped_args);
++        if let Some(arg) = piped_arg {
++            evaluated_args.push(arg);
++        }
+         Self::apply_value(callee_value, evaluated_args, self.expr_site_salt(call_expr))
+     }

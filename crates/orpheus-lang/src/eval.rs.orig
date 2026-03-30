@@ -367,7 +367,7 @@ impl Evaluator {
         let lhs_value = self.eval_expr_in_meter(lhs, meter)?;
         match rhs {
             Expr::Call { callee, args } => {
-                self.eval_call_with_args(rhs, callee, args, Some(lhs_value), meter)
+                self.eval_call_with_args(rhs, callee, args, vec![lhs_value], meter)
             }
             _ => Self::apply_value(
                 self.eval_expr_in_meter(rhs, meter)?,
@@ -384,7 +384,7 @@ impl Evaluator {
         args: &[Expr],
         meter: Option<&MeterContext>,
     ) -> Result<Value, EvalError> {
-        self.eval_call_with_args(call_expr, callee, args, None, meter)
+        self.eval_call_with_args(call_expr, callee, args, Vec::new(), meter)
     }
 
     fn eval_call_with_args(
@@ -392,18 +392,15 @@ impl Evaluator {
         call_expr: &Expr,
         callee: &Expr,
         args: &[Expr],
-        piped_arg: Option<Value>,
+        piped_args: Vec<Value>,
         meter: Option<&MeterContext>,
     ) -> Result<Value, EvalError> {
         let callee_value = self.eval_expr_in_meter(callee, meter)?;
-        let capacity = args.len() + usize::from(piped_arg.is_some());
-        let mut evaluated_args = Vec::with_capacity(capacity);
+        let mut evaluated_args = Vec::with_capacity(args.len() + piped_args.len());
         for arg in args {
             evaluated_args.push(self.eval_expr_in_meter(arg, meter)?);
         }
-        if let Some(arg) = piped_arg {
-            evaluated_args.push(arg);
-        }
+        evaluated_args.extend(piped_args);
         Self::apply_value(callee_value, evaluated_args, self.expr_site_salt(call_expr))
     }
 

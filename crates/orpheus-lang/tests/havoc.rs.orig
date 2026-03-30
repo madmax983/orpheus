@@ -7,13 +7,12 @@ fn havoc_seq_sections_timeout() {
     let source = "a = seq_sections(section(bd, 9999999))";
 
     let start = Instant::now();
-    let result = eval_module(source, ReplMode::Loose);
+    let result = eval_module(&source, ReplMode::Loose);
     let duration = start.elapsed();
 
-    assert!(
-        duration.as_secs() <= 2,
-        "💥 DETONATED: Evaluation took too long, likely due to an unbounded loop!"
-    );
+    if duration.as_secs() > 2 {
+        panic!("💥 DETONATED: Evaluation took too long, likely due to an unbounded loop!");
+    }
 
     let err = result.unwrap_err();
     assert!(
