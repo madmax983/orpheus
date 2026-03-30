@@ -24,3 +24,6 @@
 ## 2026-03-19 - Type annotations for generic tests
 **Learning:** When creating empty generic structs (like `CyclePattern::from_nodes(vec![])`) in test cases, the compiler will error out with `E0282: type annotations needed` because it lacks context to infer `T`.
 **Action:** Always provide explicit type bounds (e.g., `let pattern: CyclePattern<&str> = ...`) when instantiating empty generic containers for tests.
+## 2025-05-18 - Type Coercion testing
+**Learning:** `try_loose_coercion` handles coercing types like `Sample` into `Pattern<Sample>`. This ensures correct behaviors under different strictness modes. Testing strictness modes helps prevent type failures or invalid inferences from surfacing unprompted in user REPLs.
+**Action:** explicitly test coercion boundaries with tests injecting primitive structures into REPL configurations.

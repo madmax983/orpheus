@@ -365,3 +365,30 @@ fn euclid_masks_preserve_source_pattern_types() {
 
     assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
 }
+
+#[test]
+fn test_try_loose_coercion_strict_and_loose() {
+    let mut bindings = std::collections::BTreeMap::new();
+    bindings.insert("bare_num".to_string(), Type::Number);
+    bindings.insert("bare_sample".to_string(), Type::Sample);
+
+    // Test strict mode failure
+    let err_strict = orpheus_lang::infer_into_bindings(
+        "x = bare_num |> gain",
+        ReplMode::Strict,
+        &mut bindings.clone(),
+    )
+    .unwrap_err();
+    assert!(err_strict.to_string().contains("type mismatch"));
+
+    // Test loose mode success
+    let mut loose_bindings = bindings.clone();
+    let _res_loose = orpheus_lang::infer_into_bindings(
+        "x = bare_num |> gain",
+        ReplMode::Loose,
+        &mut loose_bindings,
+    )
+    .unwrap();
+    // It succeeded and inferred x
+    assert!(loose_bindings.contains_key("x"));
+}
