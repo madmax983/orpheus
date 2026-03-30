@@ -16,6 +16,32 @@ use crate::eval::{EvalError, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue};
 
 /// Errors that can occur during audio rendering or exporting operations.
+///
+/// This error type encapsulates failures that happen when translating the logical
+/// events of a pattern into physical, deterministic audio files via the offline
+/// DSP engine. It can stem from two distinct sources: a failure during pattern
+/// evaluation (e.g., mathematical overflows or type mismatches represented by
+/// [`EvalError`]), or a failure during audio file I/O operations (e.g., an
+/// invalid sample rate or permission denied errors represented by
+/// `OfflineRenderError`).
+///
+/// # Examples
+///
+/// ```
+/// use std::path::PathBuf;
+/// use orpheus_lang::{eval_module, ReplMode};
+/// use orpheus_lang::export::{RenderError, render_sample_pattern_to_file};
+///
+/// // Create an empty pattern
+/// let env = eval_module("x = bd", ReplMode::Strict).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+///
+/// // Trying to render an empty pattern with 0 cycles produces a RenderError::Eval
+/// let path = PathBuf::from("dummy.wav");
+/// let result = render_sample_pattern_to_file(pattern, &path, 0);
+///
+/// assert!(matches!(result, Err(RenderError::Eval(_))));
+/// ```
 #[derive(Debug)]
 pub enum RenderError {
     Eval(EvalError),

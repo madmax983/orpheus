@@ -31,6 +31,22 @@ use crate::{
 ///
 /// These variants map exactly to the standard Orpheus primitive transformations
 /// available in the base language.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{eval_module, ReplMode, Value};
+///
+/// let env = eval_module("f = fast", ReplMode::Strict).unwrap();
+/// let val = env.get("f").unwrap();
+///
+/// if let Value::Function(func) = val {
+///     // `func` is a `FunctionValue`, which contains the `BuiltinKind`
+///     // internally. Builtin functions evaluate to this variant.
+/// } else {
+///     panic!("Expected a builtin function");
+/// }
+/// ```
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
     Every,
@@ -70,6 +86,22 @@ pub enum BuiltinKind {
 /// This structure tracks the function's identity alongside arguments that have
 /// already been supplied. It supports partial application up to the function's
 /// required arity.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{eval_module, ReplMode, Value};
+///
+/// // `fast` is partially applied here, taking one argument (2) out of two.
+/// let env = eval_module("f = fast(2)", ReplMode::Strict).unwrap();
+/// let val = env.get("f").unwrap();
+///
+/// if let Value::Function(func) = val {
+///     // `func` is a `FunctionValue` containing a `BuiltinFn` with 1 bound argument.
+/// } else {
+///     panic!("Expected a builtin function");
+/// }
+/// ```
 #[derive(Clone, Debug)]
 pub struct BuiltinFn {
     pub(crate) kind: BuiltinKind,
@@ -78,6 +110,26 @@ pub struct BuiltinFn {
 }
 
 /// A user-defined top-level curried function with captured bindings.
+///
+/// This tracks the function parameters, the syntax tree of the body, and the
+/// lexical environment of bindings that existed at the point of definition.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{eval_module, ReplMode, Value};
+///
+/// // Define a custom function `my_drop`
+/// let source = "my_drop pattern = drop(12, pattern)";
+/// let env = eval_module(source, ReplMode::Strict).unwrap();
+/// let val = env.get("my_drop").unwrap();
+///
+/// if let Value::Function(func) = val {
+///     // `func` is a `FunctionValue` containing a `UserFn`.
+/// } else {
+///     panic!("Expected a user function");
+/// }
+/// ```
 #[derive(Clone, Debug)]
 pub struct UserFn {
     pub(crate) mode: ReplMode,
@@ -88,6 +140,25 @@ pub struct UserFn {
 }
 
 /// A callable runtime value, either builtin or user-defined.
+///
+/// This enum allows the language to treat both core primitives (like `fast` or `every`)
+/// and user-defined lambda definitions seamlessly during runtime evaluation.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{eval_module, ReplMode, Value};
+///
+/// // Create one of each function type
+/// let source = "fast_func = fast\nuser_func p = fast(2, p)";
+/// let env = eval_module(source, ReplMode::Strict).unwrap();
+///
+/// let fast_func = env.get("fast_func").unwrap();
+/// let user_func = env.get("user_func").unwrap();
+///
+/// assert!(matches!(fast_func, Value::Function(_)));
+/// assert!(matches!(user_func, Value::Function(_)));
+/// ```
 #[derive(Clone, Debug)]
 pub enum FunctionValue {
     Builtin(BuiltinFn),
