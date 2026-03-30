@@ -50,7 +50,7 @@ pub use export::escape_json_string;
 #[doc(hidden)]
 pub use loader::load_file_runtime_strict;
 #[doc(hidden)]
-pub use pitch::parse_named_pitch_literal;
+pub use pitch::{PitchLiteralError, parse_named_pitch_literal};
 #[doc(hidden)]
 pub use session::{MixerView, ReplSession, TransportView};
 #[doc(hidden)]

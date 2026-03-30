@@ -31,8 +31,10 @@ pub enum SampleError {
     UnsupportedChannelCount(String),
     #[error("wav file `{0}` uses an unsupported float encoding")]
     UnsupportedFloatEncoding(String),
+    /// The WAV file uses an integer encoding (bit depth) that the decoder does not support.
     #[error("wav file `{0}` uses an unsupported integer bit depth")]
     UnsupportedIntEncoding(String),
+    /// A requested built-in sample token is not recognized.
     #[error("unknown built-in sample `{0}`")]
     UnknownBuiltinSample(String),
 }
