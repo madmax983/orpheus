@@ -32,3 +32,7 @@
 **[Struct Extraction for Multiple Configuration Parameters]**
 **Learning:** Returning anonymous primitive tuples like `(Rational, f32, f32)` from functions (e.g., `parse_bus_delay_params`) creates "Boolean Blindness"-like ambiguity, making it easy to accidentally swap positional arguments like `feedback` and `wet` levels.
 **Action:** Apply the "Struct Extraction" pattern. Define dedicated named structs (e.g., `BusDelayParams`) and unpack the fields explicitly by name when passing them to downstream functions.
+
+**[Struct Extraction to reduce parameter count]**
+**Learning:** A function, `activate_voice`, took 8 arguments (`trigger`, `fallback_voice`, `duration_frames`, `track_id`, etc). This triggered `clippy::too-many-arguments` and made the function harder to read.
+**Action:** Used "Struct Extraction" to pass the unified `&ScheduledTrigger` struct instead of destructing it at the caller site, reducing parameter count to 5 and improving readability.

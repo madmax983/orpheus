@@ -20,8 +20,8 @@ use crate::effects::BusEffectState;
 use crate::engine::{DEFAULT_SAMPLE_RATE, DEFAULT_TEMPO_BPM, EngineError, frames_per_cycle};
 use crate::routing::{RoutingSnapshot, TrackId, TrackSource};
 use crate::sample_bank::SampleBank;
-use crate::scheduler::Scheduler;
-use crate::voice::{ActiveVoice, VoiceKind};
+use crate::scheduler::{ScheduledTrigger, Scheduler};
+use crate::voice::ActiveVoice;
 
 const OFFLINE_CHANNELS: u16 = 2;
 const MAX_ACTIVE_VOICES: usize = 32;
@@ -188,6 +188,10 @@ pub fn render_routing_snapshot_to_stereo_for_test(
 ///
 /// Returns [`OfflineRenderError`] if scheduling, rendering, sample resolution, or
 /// file I/O fails.
+///
+/// # Panics
+///
+/// Panics if a track ID or bus ID cannot be converted into a `usize`.
 pub fn render_routing_snapshot_to_stem_wavs(
     snapshot: &RoutingSnapshot,
     cycle_count: u64,
@@ -343,12 +347,9 @@ fn activate_due_snapshot_voices(
         activate_voice(
             active_voices,
             sample_bank,
-            &trigger.trigger,
-            trigger.fallback_voice,
-            trigger.duration_frames,
+            &trigger,
             DEFAULT_SAMPLE_RATE,
             frames_per_cycle,
-            trigger.track_id,
         )?;
     }
 
@@ -525,12 +526,9 @@ fn render_events_to_pcm(
             activate_voice(
                 &mut active_voices,
                 sample_bank,
-                &trigger.trigger,
-                trigger.fallback_voice,
-                trigger.duration_frames,
+                &trigger,
                 DEFAULT_SAMPLE_RATE,
                 frames_per_cycle,
-                trigger.track_id,
             )?;
         }
 
@@ -630,35 +628,32 @@ fn write_flac(path: &Path, samples: &[i32]) -> Result<(), OfflineRenderError> {
 fn activate_voice(
     active_voices: &mut [Option<ActiveVoice>],
     sample_bank: &SampleBank,
-    trigger: &SampleTrigger,
-    fallback_voice: Option<VoiceKind>,
-    duration_frames: u32,
+    trigger: &ScheduledTrigger,
     sample_rate: u32,
     frames_per_cycle: u64,
-    track_id: TrackId,
 ) -> Result<(), OfflineRenderError> {
     if let Some(slot) = active_voices.iter_mut().find(|slot| slot.is_none()) {
         *slot = Some(
-            if let Some((sample, resolved_trigger)) = sample_bank.resolve_trigger(trigger) {
+            if let Some((sample, resolved_trigger)) = sample_bank.resolve_trigger(&trigger.trigger) {
                 ActiveVoice::from_sample(
-                    track_id,
+                    trigger.track_id,
                     sample,
                     sample_rate,
                     frames_per_cycle,
                     &resolved_trigger,
                 )
-            } else if let Some(voice) = fallback_voice {
+            } else if let Some(voice) = trigger.fallback_voice {
                 ActiveVoice::from_trigger(
-                    track_id,
+                    trigger.track_id,
                     voice,
                     sample_rate,
                     frames_per_cycle,
-                    trigger,
-                    duration_frames,
+                    &trigger.trigger,
+                    trigger.duration_frames,
                 )
             } else {
                 return Err(OfflineRenderError::UnknownSampleToken(
-                    trigger.token().into(),
+                    trigger.trigger.token().into(),
                 ));
             },
         );
