@@ -407,7 +407,9 @@ impl SessionTui {
                 } else if entry.starts_with("✗ ") {
                     Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
                 } else if entry.starts_with("⚠️ ") {
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD)
                 } else if entry.starts_with("✓ ") {
                     Style::default().fg(Color::Green)
                 } else {
