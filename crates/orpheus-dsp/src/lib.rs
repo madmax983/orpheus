@@ -28,7 +28,8 @@ pub use command::{EngineCommand, PatternUpdate, SampleTrigger, new_command_queue
 pub use engine::{EngineError, EngineHandle, RenderEngine, TransportSnapshot, frames_per_cycle};
 pub use offline::{
     OfflineRenderError, render_events_to_file, render_events_to_file_with_bank,
-    render_events_to_wav, render_routing_snapshot_to_stereo_for_test,
+    render_events_to_wav, render_routing_snapshot_to_stem_wavs,
+    render_routing_snapshot_to_stereo_for_test,
 };
 pub use routing::{
     BusEffectSpec, BusId, BusView, DelaySpec, ReverbSpec, RoutingError, RoutingSnapshot,
