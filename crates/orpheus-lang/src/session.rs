@@ -13,12 +13,12 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use orpheus_dsp::{
     EngineCommand, EngineHandle, PatternUpdate, SampleBank, TransportSnapshot,
-    load_sample_bank_from_directory,
+    load_sample_bank_from_directory, render_routing_snapshot_to_stem_wavs,
 };
 use orpheus_pattern::Rational;
 
@@ -372,6 +372,8 @@ impl ReplSession {
             "export" => {
                 if args.is_empty() {
                     Err(export_usage().to_owned())
+                } else if args.starts_with("stems") {
+                    self.export_stems(args)
                 } else {
                     self.export_binding(args)
                 }
@@ -575,6 +577,65 @@ impl ReplSession {
 
         Ok(format!(
             "exported `{binding_name}` to `{path}` ({cycles} cycle(s))"
+        ))
+    }
+
+    fn export_stems(&self, args: &str) -> Result<String, String> {
+        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        if tokens.first().copied() != Some("stems") {
+            return Err(export_usage().to_owned());
+        }
+
+        let mut cycles = 1_u64;
+        let mut include_buses = false;
+        for token in tokens.iter().skip(1) {
+            if *token == "--buses" {
+                include_buses = true;
+            } else {
+                cycles = token
+                    .parse::<u64>()
+                    .map_err(|_| "cycles must be a positive integer".to_owned())?;
+            }
+        }
+        if cycles == 0 {
+            return Err("cycles must be a positive integer".to_owned());
+        }
+
+        let snapshot = self.mixer.compile_snapshot(&self.bindings)?;
+        let has_active_tracks = snapshot
+            .tracks()
+            .iter()
+            .any(|track| !track.source().is_unbound() && !track.muted());
+        if !has_active_tracks {
+            return Err(
+                "no active sample tracks to export; bind a sample pattern or create/bind tracks first"
+                    .to_owned(),
+            );
+        }
+
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|error| error.to_string())?
+            .as_secs();
+        let export_dir = PathBuf::from("exports").join(format!("stems-{timestamp}"));
+        let tempo_bpm = self.transport_snapshot().tempo_bpm();
+        let written = render_routing_snapshot_to_stem_wavs(
+            &snapshot,
+            cycles,
+            tempo_bpm,
+            &self.sample_bank,
+            &export_dir,
+            include_buses,
+        )
+        .map_err(|error| error.to_string())?;
+        if written.is_empty() {
+            return Err("no stems were written for the current routing state".to_owned());
+        }
+
+        Ok(format!(
+            "exported {} stem(s) to `{}` ({cycles} cycle(s))",
+            written.len(),
+            export_dir.display()
         ))
     }
 
@@ -1340,7 +1401,7 @@ const fn render_usage() -> &'static str {
 }
 
 const fn export_usage() -> &'static str {
-    "usage: :export <binding> <path> [cycles]"
+    "usage: :export <binding> <path> [cycles] | :export stems [cycles] [--buses]"
 }
 
 const fn roll_usage() -> &'static str {
@@ -2071,6 +2132,48 @@ mod tests {
     }
 
     #[test]
+    fn export_stems_command_writes_track_stems() {
+        let mut session = ReplSession::new();
+
+        session.eval_line("drums = bd").unwrap();
+        session.eval_line("bass = cp").unwrap();
+        session.eval_line(":track new drums_track").unwrap();
+        session.eval_line(":track bind drums_track drums").unwrap();
+        session.eval_line(":track new bass_track").unwrap();
+        session.eval_line(":track bind bass_track bass").unwrap();
+
+        let message = session.eval_line(":export stems 1").unwrap();
+        assert!(message.contains("exported 2 stem(s)"));
+        let rendered_dir = parse_exported_stem_dir(&message);
+        assert!(rendered_dir.join("drums_track.wav").exists());
+        assert!(rendered_dir.join("bass_track.wav").exists());
+
+        fs::remove_dir_all(rendered_dir).unwrap();
+    }
+
+    #[test]
+    fn export_stems_command_can_include_bus_stems() {
+        let mut session = ReplSession::new();
+
+        session.eval_line("drums = bd").unwrap();
+        session.eval_line(":track new drums").unwrap();
+        session.eval_line(":track bind drums drums").unwrap();
+        session.eval_line(":bus new verb").unwrap();
+        session
+            .eval_line(":bus fx verb reverb size=0.75 damp=0.35 wet=1.0")
+            .unwrap();
+        session.eval_line(":send drums verb 1.0").unwrap();
+
+        let message = session.eval_line(":export stems 1 --buses").unwrap();
+        assert!(message.contains("exported 2 stem(s)"));
+        let rendered_dir = parse_exported_stem_dir(&message);
+        assert!(rendered_dir.join("drums.wav").exists());
+        assert!(rendered_dir.join("verb_bus.wav").exists());
+
+        fs::remove_dir_all(rendered_dir).unwrap();
+    }
+
+    #[test]
     fn samples_command_loads_directory_overrides_for_live_playback() {
         let mut session = ReplSession::new();
         let directory = temp_directory("repl-samples");
@@ -2352,6 +2455,17 @@ mod tests {
             .as_nanos();
         let counter = UNIQUE_TEMP_ID.fetch_add(1, Ordering::Relaxed);
         format!("{timestamp}-{counter}")
+    }
+
+    fn parse_exported_stem_dir(message: &str) -> PathBuf {
+        let start = message
+            .find('`')
+            .unwrap_or_else(|| panic!("expected export path in message: {message}"));
+        let end = message[start + 1..]
+            .find('`')
+            .map(|index| start + 1 + index)
+            .unwrap_or_else(|| panic!("expected export path in message: {message}"));
+        PathBuf::from(&message[start + 1..end])
     }
 
     fn write_wav(path: impl AsRef<Path>, frames: &[f32]) {
