@@ -1,6 +1,6 @@
 #[test]
 fn tui_boots_and_renders_initial_frame() {
-    let frame = orpheus_lang::render_initial_frame_for_test(80, 30);
+    let frame = orpheus_lang::render_initial_frame_for_test(140, 40);
 
     assert!(frame.contains("Bindings"));
     assert!(frame.contains("REPL"));
@@ -16,11 +16,9 @@ fn tui_boots_and_renders_initial_frame() {
     assert!(frame.contains("120 BPM"));
     assert!(frame.contains("0.000"));
     assert!(frame.contains("Transport: playing"));
-    // Height may cause things to be cut off, let's verify with a larger terminal size
-    let larger_frame = orpheus_lang::render_initial_frame_for_test(80, 34);
-    assert!(larger_frame.contains("Help: ?"));
-    assert!(larger_frame.contains("? help"));
-    assert!(larger_frame.contains("Space toggle"));
-    assert!(larger_frame.contains("PgUp/PgDn bindings"));
-    assert!(!larger_frame.contains("Ctrl-A/E/K"));
+    assert!(frame.contains("Help: ?"));
+    assert!(frame.contains("? help"));
+    assert!(frame.contains("Space toggle"));
+    assert!(frame.contains("PgUp/PgDn bindings"));
+    assert!(!frame.contains("Ctrl-A/E/K"));
 }

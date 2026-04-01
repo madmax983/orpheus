@@ -12,7 +12,6 @@
 //! - **Sends:** Connections that route a portion of a track's audio to a bus.
 
 use std::collections::BTreeMap;
-use std::fmt::Write;
 
 use orpheus_dsp::{RoutingSnapshot, SampleTrigger, TrackSource};
 use orpheus_pattern::Event;
@@ -335,75 +334,75 @@ impl MixerState {
     }
 
     pub(crate) fn track_summary_lines(&self) -> Vec<String> {
-        let mut lines = Vec::new();
+        let mut table = comfy_table::Table::new();
+        table.load_preset(comfy_table::presets::UTF8_BORDERS_ONLY);
+        table.set_header(vec!["Track", "Binding", "Level", "Muted", "Sends"]);
 
-        if self.has_explicit_bound_tracks() {
-            lines.push("Tracks:".to_owned());
-        } else if let Some(binding_name) = &self.compatibility_main_binding {
-            lines.push(format!("main -> {binding_name} (auto)"));
-        } else {
-            lines.push("main -> <unbound> (auto)".to_owned());
+        if !self.has_explicit_bound_tracks() {
+            let binding_name = self.compatibility_main_binding.as_deref().unwrap_or("<unbound>");
+            table.add_row(vec![
+                "main".to_owned(),
+                format!("{binding_name} (auto)"),
+                "1.00".to_owned(),
+                "false".to_owned(),
+                "".to_owned(),
+            ]);
         }
 
-        let track_count = self.tracks.len();
-        for (i, (track_name, track)) in self.tracks.iter().enumerate() {
-            let is_last_track = i == track_count - 1;
+        for (track_name, track) in &self.tracks {
             let binding_name = track.binding_name.as_deref().unwrap_or("<unbound>");
-            let track_prefix = if is_last_track {
-                "└──"
-            } else {
-                "├──"
-            };
-            let mut line = format!("{track_prefix} {track_name} -> {binding_name}");
-            if track.muted {
-                line.push_str(" [muted]");
-            }
-            if (track.level - 1.0).abs() > f32::EPSILON {
-                write!(&mut line, " level {:.2}", track.level)
-                    .expect("writing to String should not fail");
-            }
-            lines.push(line);
+            let level = format!("{:.2}", track.level);
+            let muted = if track.muted { "true" } else { "false" };
 
-            let send_count = track.sends.len();
-            for (j, (bus_name, level)) in track.sends.iter().enumerate() {
-                let is_last_send = j == send_count - 1;
-                let track_indent = if is_last_track { "   " } else { "│  " };
-                let send_prefix = if is_last_send {
-                    "└──"
-                } else {
-                    "├──"
-                };
-                lines.push(format!(
-                    "{track_indent} {send_prefix} send {bus_name} @ {level:.2}"
-                ));
-            }
+            let sends = track.sends.iter()
+                .map(|(bus, level)| format!("{bus} @ {level:.2}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            table.add_row(vec![
+                track_name.clone(),
+                binding_name.to_owned(),
+                level,
+                muted.to_owned(),
+                sends,
+            ]);
         }
 
+        let mut lines = Vec::new();
+        lines.push("Tracks:".to_owned());
+        for line in table.to_string().lines() {
+            lines.push(line.to_owned());
+        }
         lines
     }
 
     pub(crate) fn bus_summary_lines(&self) -> Vec<String> {
-        let mut lines = Vec::new();
-        if !self.buses.is_empty() {
-            lines.push("Buses:".to_owned());
+        if self.buses.is_empty() {
+            return Vec::new();
         }
 
-        let bus_count = self.buses.len();
-        for (i, (bus_name, bus)) in self.buses.iter().enumerate() {
-            let is_last_bus = i == bus_count - 1;
-            let bus_prefix = if is_last_bus {
-                "└──"
+        let mut table = comfy_table::Table::new();
+        table.load_preset(comfy_table::presets::UTF8_BORDERS_ONLY);
+        table.set_header(vec!["Bus", "Effect"]);
+
+        for (bus_name, bus) in &self.buses {
+            let effect = if let Some(effect) = &bus.effect {
+                effect.summary()
             } else {
-                "├──"
+                "none".to_owned()
             };
-            let mut line = format!("{bus_prefix} {bus_name} -> master");
-            if let Some(effect) = &bus.effect {
-                write!(&mut line, " {}", effect.summary())
-                    .expect("writing to String should not fail");
-            }
-            lines.push(line);
+
+            table.add_row(vec![
+                bus_name.clone(),
+                effect,
+            ]);
         }
 
+        let mut lines = Vec::new();
+        lines.push("Buses:".to_owned());
+        for line in table.to_string().lines() {
+            lines.push(line.to_owned());
+        }
         lines
     }
 }

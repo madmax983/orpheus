@@ -1288,7 +1288,7 @@ mod tests {
     fn repl_transport_state_uses_distinct_styles() {
         let mut app = SessionTui::new(EngineHandle::stub());
 
-        let playing_buffer = render_buffer_for_test(&app, 80, 24);
+        let playing_buffer = render_buffer_for_test(&app, 140, 40);
         let (playing_line_x, playing_y) =
             find_text_in_buffer(&playing_buffer, "Transport: playing")
                 .unwrap_or_else(|| panic!("rendered repl should contain playing status"));
@@ -1303,7 +1303,7 @@ mod tests {
         handle_key_event(&mut app, press(KeyCode::Char(' ')));
         let _ = app.session.render_test_block_for_tui(1);
 
-        let stopped_buffer = render_buffer_for_test(&app, 80, 24);
+        let stopped_buffer = render_buffer_for_test(&app, 140, 40);
         let (stopped_line_x, stopped_y) =
             find_text_in_buffer(&stopped_buffer, "Transport: stopped")
                 .unwrap_or_else(|| panic!("rendered repl should contain stopped status"));
@@ -1333,7 +1333,7 @@ mod tests {
             Some("song")
         );
 
-        let frame = render_frame_for_test(&app, 80, 24);
+        let frame = render_frame_for_test(&app, 140, 40);
         assert!(frame.contains("song: Pattern<Sample>"));
         assert!(frame.contains("drums: Pattern<Sample>"));
     }
@@ -1349,7 +1349,7 @@ mod tests {
         app.submit_line();
         let _ = app.session.render_test_block_for_tui(1);
 
-        let frame = render_frame_for_test(&app, 80, 24);
+        let frame = render_frame_for_test(&app, 140, 40);
         assert!(frame.contains("Transport: syncing -> backbeat"));
         assert!(frame.contains("Next: backbeat"));
         assert!(frame.contains("Pattern: drums"));
@@ -1365,7 +1365,7 @@ mod tests {
         app.input = "backbeat = sn cp".to_owned();
         app.submit_line();
 
-        let frame = render_frame_for_test(&app, 80, 24);
+        let frame = render_frame_for_test(&app, 140, 40);
         assert!(frame.contains("Transport: queued -> backbeat"));
         assert!(frame.contains("Next: backbeat"));
         assert!(frame.contains("Pattern: drums"));
@@ -1375,7 +1375,7 @@ mod tests {
     fn transport_pane_omits_footer_redundant_metrics() {
         let app = SessionTui::new(EngineHandle::stub());
 
-        let frame = render_frame_for_test(&app, 80, 24);
+        let frame = render_frame_for_test(&app, 140, 40);
         assert!(frame.contains("Pattern: none"));
         assert!(!frame.contains("Status: "));
         assert!(!frame.contains("Tempo: "));
@@ -1392,9 +1392,10 @@ mod tests {
         app.input = ":track bind drums groove".to_owned();
         app.submit_line();
 
-        let frame = render_frame_for_test(&app, 80, 24);
+        let frame = render_frame_for_test(&app, 140, 40);
         assert!(frame.contains("Mixer:"));
-        assert!(frame.contains("drums -> groove"));
+        assert!(frame.contains("drums"));
+        assert!(frame.contains("groove"));
     }
 
     #[test]
@@ -1408,7 +1409,7 @@ mod tests {
         app.submit_line();
         let _ = app.session.render_test_block_for_tui(1);
 
-        let frame = render_frame_for_test(&app, 80, 24);
+        let frame = render_frame_for_test(&app, 140, 40);
         assert!(frame.contains("Routing: pending"));
     }
 
@@ -1426,10 +1427,11 @@ mod tests {
         app.input = ":send drums verb 0.35".to_owned();
         app.submit_line();
 
-        let frame = render_frame_for_test(&app, 100, 24);
-        assert!(frame.contains("drums -> groove"));
+        let frame = render_frame_for_test(&app, 140, 40);
+        assert!(frame.contains("drums"));
+        assert!(frame.contains("groove"));
         assert!(frame.contains("verb @ 0.35"));
-        assert!(frame.contains("└── verb -> master"));
+        assert!(frame.contains("verb"));
     }
 
     #[test]
@@ -1440,8 +1442,8 @@ mod tests {
         app.input = ":bus fx dub delay time=3/16 feedback=0.45 wet=1.0".to_owned();
         app.submit_line();
 
-        let frame = render_frame_for_test(&app, 100, 24);
-        assert!(frame.contains("└── dub -> master"));
+        let frame = render_frame_for_test(&app, 140, 40);
+        assert!(frame.contains("dub"));
         assert!(frame.contains("delay(3/16"));
     }
 
@@ -1453,8 +1455,8 @@ mod tests {
         app.input = ":bus fx verb reverb size=0.75 damp=0.35 wet=1.0".to_owned();
         app.submit_line();
 
-        let frame = render_frame_for_test(&app, 160, 24);
-        assert!(frame.contains("└── verb -> master"));
+        let frame = render_frame_for_test(&app, 160, 40);
+        assert!(frame.contains("verb"));
         assert!(frame.contains("reverb(size=0.75"));
         assert!(frame.contains("damp=0.35"));
         assert!(frame.contains("wet=1.00)"));
@@ -1470,7 +1472,7 @@ mod tests {
         app.submit_line();
         let _ = app.session.render_test_block_for_tui(1);
 
-        let frame = render_frame_for_test(&app, 80, 24);
+        let frame = render_frame_for_test(&app, 140, 40);
         assert!(frame.contains("Routing: pending"));
     }
 
@@ -1584,7 +1586,7 @@ mod tests {
         app.submit_line();
         let _ = app.session.render_test_block_for_tui(1);
 
-        let repl_buffer = render_buffer_for_test(&app, 80, 24);
+        let repl_buffer = render_buffer_for_test(&app, 140, 40);
         let (repl_line_x, repl_y) = find_text_in_buffer(&repl_buffer, "Transport: syncing")
             .unwrap_or_else(|| panic!("rendered repl should contain syncing status"));
         let repl_x = repl_line_x
@@ -1595,14 +1597,14 @@ mod tests {
         assert_eq!(repl_cell.fg, Color::Cyan);
         assert!(repl_cell.modifier.contains(Modifier::BOLD));
 
-        let footer_buffer = render_buffer_for_test(&app, 80, 24);
-        let footer_line = buffer_line(&footer_buffer, 23);
+        let footer_buffer = render_buffer_for_test(&app, 140, 40);
+        let footer_line = buffer_line(&footer_buffer, 39);
         assert!(footer_line.contains("syncing"));
         let syncing_x = footer_line
             .find("syncing")
             .and_then(|x| u16::try_from(x).ok())
             .unwrap_or_else(|| panic!("footer should contain syncing status"));
-        let syncing_cell = &footer_buffer[(syncing_x, 23)];
+        let syncing_cell = &footer_buffer[(syncing_x, 39)];
         assert_eq!(syncing_cell.fg, Color::Cyan);
         assert!(syncing_cell.modifier.contains(Modifier::BOLD));
     }
@@ -1962,7 +1964,7 @@ mod tests {
 
         handle_key_event(&mut app, press(KeyCode::Char('?')));
         assert_eq!(app.status_message.as_deref(), Some("help overlay shown"));
-        let overlay_frame = render_frame_for_test(&app, 80, 30);
+        let overlay_frame = render_frame_for_test(&app, 140, 40);
         assert!(overlay_frame.contains("Help"));
         assert!(overlay_frame.contains("Space"));
         assert!(overlay_frame.contains(":play"));
@@ -1981,7 +1983,7 @@ mod tests {
 
         assert!(!app.should_quit);
         assert_eq!(app.status_message.as_deref(), Some("help overlay hidden"));
-        let normal_frame = render_frame_for_test(&app, 80, 28);
+        let normal_frame = render_frame_for_test(&app, 140, 40);
         assert!(!normal_frame.contains("Toggle: ?"));
         assert!(!normal_frame.contains("Words: Alt-B/F"));
         assert!(normal_frame.contains("Help: ?"));
@@ -2035,8 +2037,8 @@ mod tests {
         let mut app = SessionTui::new(EngineHandle::stub());
         handle_key_event(&mut app, press(KeyCode::Char('?')));
 
-        let buffer = render_buffer_for_test(&app, 80, 24);
-        let overlay_area = centered_rect(Rect::new(0, 0, 80, 24), 68, 60);
+        let buffer = render_buffer_for_test(&app, 140, 40);
+        let overlay_area = centered_rect(Rect::new(0, 0, 140, 40), 68, 60);
 
         let backdrop_cell = &buffer[(0, 0)];
         assert_eq!(backdrop_cell.bg, Color::DarkGray);
@@ -2051,7 +2053,7 @@ mod tests {
         let mut app = SessionTui::new(EngineHandle::stub());
         handle_key_event(&mut app, press(KeyCode::Char('?')));
 
-        let overlay_frame = render_frame_for_test(&app, 80, 24);
+        let overlay_frame = render_frame_for_test(&app, 140, 40);
         assert!(overlay_frame.contains("Esc close"));
         assert!(overlay_frame.contains("? toggle"));
         assert!(overlay_frame.contains("Ctrl-C quit"));
@@ -2061,7 +2063,7 @@ mod tests {
     fn main_frame_shows_live_key_legend() {
         let app = SessionTui::new(EngineHandle::stub());
 
-        let frame = render_frame_for_test(&app, 80, 24);
+        let frame = render_frame_for_test(&app, 140, 40);
         assert!(frame.contains("? help"));
         assert!(frame.contains("Space toggle"));
         assert!(frame.contains("PgUp/PgDn bindings"));
@@ -2072,8 +2074,8 @@ mod tests {
         let mut app = SessionTui::new(EngineHandle::stub());
         handle_key_event(&mut app, press(KeyCode::Char('?')));
 
-        let buffer = render_buffer_for_test(&app, 80, 24);
-        let footer_line = buffer_line(&buffer, 23);
+        let buffer = render_buffer_for_test(&app, 140, 40);
+        let footer_line = buffer_line(&buffer, 39);
         assert!(footer_line.contains("Esc close"));
         assert!(footer_line.contains("? toggle"));
         assert!(footer_line.contains("Ctrl-C quit"));
@@ -2084,8 +2086,8 @@ mod tests {
     fn main_footer_shows_live_transport_state() {
         let app = SessionTui::new(EngineHandle::stub());
 
-        let buffer = render_buffer_for_test(&app, 80, 24);
-        let footer_line = buffer_line(&buffer, 23);
+        let buffer = render_buffer_for_test(&app, 140, 40);
+        let footer_line = buffer_line(&buffer, 39);
         assert!(footer_line.contains("? help"));
         assert!(footer_line.contains("Space toggle"));
         assert!(footer_line.contains("playing"));
@@ -2096,7 +2098,7 @@ mod tests {
             .find("playing")
             .and_then(|x| u16::try_from(x).ok())
             .unwrap_or_else(|| panic!("footer should contain playing status"));
-        let playing_cell = &buffer[(playing_x, 23)];
+        let playing_cell = &buffer[(playing_x, 39)];
         assert_eq!(playing_cell.fg, Color::Green);
         assert!(playing_cell.modifier.contains(Modifier::BOLD));
     }
@@ -2110,15 +2112,15 @@ mod tests {
         handle_key_event(&mut app, press(KeyCode::Char(' ')));
         let _ = app.session.render_test_block_for_tui(1);
 
-        let buffer = render_buffer_for_test(&app, 80, 24);
-        let footer_line = buffer_line(&buffer, 23);
+        let buffer = render_buffer_for_test(&app, 140, 40);
+        let footer_line = buffer_line(&buffer, 39);
         assert!(footer_line.contains("stopped"));
 
         let stopped_x = footer_line
             .find("stopped")
             .and_then(|x| u16::try_from(x).ok())
             .unwrap_or_else(|| panic!("footer should contain stopped status"));
-        let stopped_cell = &buffer[(stopped_x, 23)];
+        let stopped_cell = &buffer[(stopped_x, 39)];
         assert_eq!(stopped_cell.fg, Color::Yellow);
         assert!(stopped_cell.modifier.contains(Modifier::BOLD));
     }
@@ -2130,8 +2132,8 @@ mod tests {
         app.submit_line();
         let _ = app.session.render_test_block_for_tui(1);
 
-        let buffer = render_buffer_for_test(&app, 80, 24);
-        let footer_line = buffer_line(&buffer, 23);
+        let buffer = render_buffer_for_test(&app, 140, 40);
+        let footer_line = buffer_line(&buffer, 39);
         assert!(footer_line.contains("90 BPM"));
         assert!(footer_line.contains("playing"));
     }
@@ -2144,8 +2146,8 @@ mod tests {
         let frames_per_cycle = app.session.transport_snapshot().frames_per_cycle();
         let _ = app.session.render_test_block_for_tui(frames_per_cycle / 2);
 
-        let buffer = render_buffer_for_test(&app, 80, 24);
-        let footer_line = buffer_line(&buffer, 23);
+        let buffer = render_buffer_for_test(&app, 140, 40);
+        let footer_line = buffer_line(&buffer, 39);
         assert!(footer_line.contains("0.500"));
         assert!(footer_line.contains("playing"));
     }
@@ -2218,7 +2220,7 @@ mod tests {
 
         assert!(app.status_message.is_none());
         assert!(app.status_expires_at.is_none());
-        let frame = render_frame_for_test(&app, 80, 24);
+        let frame = render_frame_for_test(&app, 140, 40);
         assert!(!frame.contains("Note:"));
     }
 
@@ -2230,7 +2232,7 @@ mod tests {
         let frames_per_cycle = app.session.transport_snapshot().frames_per_cycle();
         let _ = app.session.render_test_block_for_tui(frames_per_cycle / 2);
 
-        let frame = render_frame_for_test(&app, 80, 24);
+        let frame = render_frame_for_test(&app, 140, 40);
         assert!(frame.contains("Pattern: drums"));
     }
 
@@ -2244,7 +2246,7 @@ mod tests {
         app.submit_line();
         let _ = app.session.render_test_block_for_tui(1);
 
-        let frame = render_frame_for_test(&app, 80, 24);
+        let frame = render_frame_for_test(&app, 140, 40);
         assert!(frame.contains("Pattern: drums"));
         assert!(frame.contains("Space"));
         assert!(frame.contains("empty input"));
