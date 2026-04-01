@@ -6,7 +6,7 @@
 
 use std::collections::BTreeSet;
 
-use unicode_width::UnicodeWidthStr;
+use comfy_table::{Table, presets::UTF8_BORDERS_ONLY};
 
 use crate::eval::{EvalError, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue};
@@ -152,40 +152,14 @@ pub fn number_pattern_stats(
 }
 
 fn build_stats_table(title: &str, rows: &[[String; 2]]) -> String {
-    let mut col1_width = 0;
-    let mut col2_width = 0;
-    for row in rows {
-        col1_width = col1_width.max(row[0].width());
-        col2_width = col2_width.max(row[1].width());
-    }
-
-    let inner_width = col1_width + 3 + col2_width; // 3 spaces between columns
-    let title_width = title.width();
-    let max_inner_width = inner_width.max(title_width);
-
-    let top_border = format!("┌{}┐\n", "─".repeat(max_inner_width + 2));
-    let title_line = format!("│ {:<width$} │\n", title, width = max_inner_width);
-    let separator = format!("╞{}╡\n", "═".repeat(max_inner_width + 2));
-
-    let mut out = String::new();
-    out.push_str(&top_border);
-    out.push_str(&title_line);
-    out.push_str(&separator);
+    let mut table = Table::new();
+    table.load_preset(UTF8_BORDERS_ONLY);
 
     for row in rows {
-        let pad1 = " ".repeat(col1_width - row[0].width());
-        let mut line = format!("│ {}{}   {}", row[0], pad1, row[1]);
-
-        let current_len = line.width() - 2; // don't count "│ "
-        let pad2 = " ".repeat(max_inner_width.saturating_sub(current_len));
-        line.push_str(&pad2);
-        line.push_str(" │\n");
-        out.push_str(&line);
+        table.add_row(vec![&row[0], &row[1]]);
     }
 
-    let bot_border = format!("└{}┘", "─".repeat(max_inner_width + 2));
-    out.push_str(&bot_border);
-    out
+    format!("{title}\n{table}")
 }
 
 #[cfg(test)]
@@ -201,9 +175,12 @@ mod tests {
 
         let stats = sample_pattern_stats("pattern", pattern, 2).unwrap();
         assert!(stats.contains("Pattern Stats: pattern (2 cycles)"));
-        assert!(stats.contains("Total Events     8"));
-        assert!(stats.contains("Unique Samples   2 (bd, sn)"));
-        assert!(stats.contains("Event Density    4.00 events/cycle"));
+        assert!(stats.contains("Total Events"));
+        assert!(stats.contains("8"));
+        assert!(stats.contains("Unique Samples"));
+        assert!(stats.contains("2 (bd, sn)"));
+        assert!(stats.contains("Event Density"));
+        assert!(stats.contains("4.00 events/cycle"));
     }
 
     #[test]
@@ -214,11 +191,16 @@ mod tests {
 
         let stats = number_pattern_stats("pattern", pattern, 1).unwrap();
         assert!(stats.contains("Pattern Stats: pattern (1 cycles)"));
-        assert!(stats.contains("Total Events    3"));
-        assert!(stats.contains("Min Value       1.000"));
-        assert!(stats.contains("Max Value       3.000"));
-        assert!(stats.contains("Average Value   2.000"));
-        assert!(stats.contains("Event Density   3.00 events/cycle"));
+        assert!(stats.contains("Total Events"));
+        assert!(stats.contains("3"));
+        assert!(stats.contains("Min Value"));
+        assert!(stats.contains("1.000"));
+        assert!(stats.contains("Max Value"));
+        assert!(stats.contains("3.000"));
+        assert!(stats.contains("Average Value"));
+        assert!(stats.contains("2.000"));
+        assert!(stats.contains("Event Density"));
+        assert!(stats.contains("3.00 events/cycle"));
     }
 
     #[test]
