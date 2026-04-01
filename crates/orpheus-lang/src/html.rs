@@ -73,7 +73,7 @@ pub fn export_sample_pattern_to_html(
     // Draw events
     for event in events {
         let sample = event.value.sample().to_string();
-        let lane_idx = sample_list.iter().position(|s| *s == sample).unwrap();
+        let lane_idx = sample_list.iter().position(|s| *s == sample).ok_or_else(|| EvalError::new(format!("sample `{sample}` not found in provided list")))?;
         #[allow(clippy::cast_precision_loss)]
         let y = (lane_idx as f64).mul_add(lane_height, 40.0) + 5.0;
 

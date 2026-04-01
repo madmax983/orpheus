@@ -27,7 +27,7 @@ use orpheus_pattern::{Event, PatternError, PatternNode, Rational, TimeSpan};
 
 use crate::ReplMode;
 use crate::ast::{Expr, Module, Stmt, binding_expr_self_references};
-use crate::builtins::{builtin_value, is_sample_identifier, stack_values};
+use crate::value::{builtin_value, is_sample_identifier, stack_values};
 use crate::diagnostics::ParseError;
 use crate::parser::parse_module;
 use crate::pitch::parse_named_pitch_literal;
