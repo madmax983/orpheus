@@ -115,6 +115,9 @@ pub(crate) fn sample_trigger_from_event(event: &crate::value::SampleEvent) -> Sa
     if let Some(cutoff) = event.lpf_cutoff_hz() {
         trigger = trigger.with_lpf_cutoff_hz(cutoff);
     }
+    if let Some(pedal_program) = event.pedal_program() {
+        trigger = trigger.with_pedal_program(pedal_program.clone());
+    }
     trigger
 }
 
@@ -765,7 +768,7 @@ mod tests {
 
     use super::{
         export_number_pattern_to_json, export_number_pattern_to_md, export_sample_pattern_to_json,
-        export_sample_pattern_to_md,
+        export_sample_pattern_to_md, sample_trigger_from_event,
     };
     use crate::{ReplMode, eval_module};
 
@@ -974,6 +977,37 @@ mod tests {
         assert_json_fixture_matches(&path, "roll_progression_export.json");
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn sample_trigger_from_event_forwards_pedal_program() {
+        let module = eval_module(
+            "drivebox = graph { wet = input |> clip(model=silicon_hard); wet |> output }\n\
+             lead = through(drivebox, bd)",
+            ReplMode::Strict,
+        )
+        .unwrap();
+        let event = module
+            .get("lead")
+            .unwrap()
+            .as_sample_pattern()
+            .unwrap()
+            .query_unit()
+            .unwrap()
+            .remove(0)
+            .value;
+
+        let trigger = sample_trigger_from_event(&event);
+        let pedal_program = trigger
+            .pedal_program()
+            .expect("sample trigger should retain the pedal program");
+
+        assert!(pedal_program.source().contains("graph {"));
+        assert!(
+            pedal_program
+                .explain()
+                .contains("clip(input, model=silicon_hard)")
+        );
     }
 
     #[test]

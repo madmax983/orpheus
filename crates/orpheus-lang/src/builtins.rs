@@ -487,8 +487,7 @@ fn apply_midi_cc(args: Vec<Value>) -> Result<Value, EvalError> {
 
 fn apply_through(args: Vec<Value>) -> Result<Value, EvalError> {
     let mut args = args.into_iter();
-    // Task 4 only validates the pedal surface; event-level attachment arrives in Task 5.
-    let _pedal = extract_pedal(
+    let pedal = extract_pedal(
         args.next()
             .ok_or_else(|| EvalError::new("`through` requires a pedal argument"))?,
         "through",
@@ -498,8 +497,12 @@ fn apply_through(args: Vec<Value>) -> Result<Value, EvalError> {
             .ok_or_else(|| EvalError::new("`through` requires a sample pattern argument"))?,
         "through",
     )?;
+    let pedal_program = std::sync::Arc::new(orpheus_dsp::PedalProgram::new(
+        pedal.format_source(),
+        pedal.explain(),
+    ));
 
-    Ok(Value::SamplePattern(pattern))
+    Ok(Value::SamplePattern(pattern.through(pedal_program)))
 }
 
 fn apply_every(args: Vec<Value>) -> Result<Value, EvalError> {

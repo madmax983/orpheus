@@ -18,6 +18,7 @@
 use core::cmp::{max, min};
 use core::fmt;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use orpheus_pattern::{CyclePattern, Event, EventStream, PatternNode, Rational, TimeSpan};
 
@@ -479,6 +480,7 @@ pub struct SampleEvent {
     onset_index: Option<u32>,
     slice_start: f64,
     slice_end: f64,
+    pedal_program: Option<Arc<orpheus_dsp::PedalProgram>>,
 }
 
 impl SampleEvent {
@@ -508,6 +510,7 @@ impl SampleEvent {
             onset_index: None,
             slice_start: 0.0,
             slice_end: 1.0,
+            pedal_program: None,
         }
     }
 
@@ -655,6 +658,11 @@ impl SampleEvent {
         self.slice_end
     }
 
+    #[must_use]
+    pub fn pedal_program(&self) -> Option<&Arc<orpheus_dsp::PedalProgram>> {
+        self.pedal_program.as_ref()
+    }
+
     fn clone_with(&self, mutate: impl FnOnce(&mut Self)) -> Self {
         let mut cloned = self.clone();
         mutate(&mut cloned);
@@ -685,6 +693,7 @@ trait PatternValueTransform: Sized {
     fn adjust_rate(&self, factor: f64) -> Self;
     fn adjust_onset(&self, onset_index: u32) -> Self;
     fn adjust_slice(&self, start: f64, end: f64) -> Self;
+    fn attach_pedal_program(&self, pedal_program: &Arc<orpheus_dsp::PedalProgram>) -> Self;
     fn map_degrees(&self, collection: &PitchClassSetValue) -> Result<Self, EvalError>;
     fn transpose_semitones(&self, semitones: f64) -> Result<Self, EvalError>;
 }
@@ -798,6 +807,10 @@ impl PatternValueTransform for SampleEvent {
         })
     }
 
+    fn attach_pedal_program(&self, pedal_program: &Arc<orpheus_dsp::PedalProgram>) -> Self {
+        self.clone_with(|event| event.pedal_program = Some(pedal_program.clone()))
+    }
+
     fn map_degrees(&self, _collection: &PitchClassSetValue) -> Result<Self, EvalError> {
         Err(EvalError::new(
             "internal evaluator error: degree mapping only applies to number patterns",
@@ -897,6 +910,10 @@ impl PatternValueTransform for f64 {
     }
 
     fn adjust_slice(&self, _start: f64, _end: f64) -> Self {
+        *self
+    }
+
+    fn attach_pedal_program(&self, _pedal_program: &Arc<orpheus_dsp::PedalProgram>) -> Self {
         *self
     }
 
@@ -1775,6 +1792,15 @@ impl SamplePatternValue {
         }
     }
 
+    pub(crate) fn through(self, pedal_program: Arc<orpheus_dsp::PedalProgram>) -> Self {
+        Self {
+            pattern: PatternRuntime::Pedal {
+                pedal_program,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn from_events(events: Vec<Event<SampleEvent>>) -> Self {
         Self {
             pattern: PatternRuntime::Stream(EventStream::new(events)),
@@ -2360,6 +2386,10 @@ enum PatternRuntime<T> {
         segments: u32,
         inner: Box<Self>,
     },
+    Pedal {
+        pedal_program: Arc<orpheus_dsp::PedalProgram>,
+        inner: Box<Self>,
+    },
     Rand {
         site_salt: u64,
     },
@@ -2604,6 +2634,12 @@ where
                 segments,
                 inner,
             } => apply_slice_idx_pattern(inner, control, *segments, span),
+            Self::Pedal {
+                pedal_program,
+                inner,
+            } => apply_value_mutation(inner, span, |value| {
+                *value = value.attach_pedal_program(pedal_program);
+            }),
             Self::Rand { site_salt } => query_rand(*site_salt, span),
             Self::Cycle(_)
             | Self::Stream(_)
@@ -3919,7 +3955,8 @@ fn absolute_cycle_for_runtime<T>(
         | PatternRuntime::OnsetPattern { inner, .. }
         | PatternRuntime::Slice { inner, .. }
         | PatternRuntime::SlicePattern { inner, .. }
-        | PatternRuntime::SliceIdxPattern { inner, .. } => absolute_cycle_for_runtime(inner, cycle),
+        | PatternRuntime::SliceIdxPattern { inner, .. }
+        | PatternRuntime::Pedal { inner, .. } => absolute_cycle_for_runtime(inner, cycle),
         PatternRuntime::Stack(layers) => layers
             .first()
             .map_or(Ok(cycle), |layer| absolute_cycle_for_runtime(layer, cycle)),

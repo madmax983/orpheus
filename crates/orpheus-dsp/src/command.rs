@@ -4,11 +4,40 @@
 //! thread down to the real-time audio thread. It includes parameter definitions like
 //! `SampleTrigger` and system-level operations like `EngineCommand`.
 
+use std::sync::Arc;
+
 use orpheus_pattern::Event;
 use rtrb::{Consumer, Producer, RingBuffer};
 
 use crate::routing::RoutingSnapshot;
 use crate::sample_bank::SampleBank;
+
+/// Immutable pedal metadata attached to triggers off the audio thread.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PedalProgram {
+    source: Box<str>,
+    explain: Box<str>,
+}
+
+impl PedalProgram {
+    #[must_use]
+    pub fn new(source: impl Into<Box<str>>, explain: impl Into<Box<str>>) -> Self {
+        Self {
+            source: source.into(),
+            explain: explain.into(),
+        }
+    }
+
+    #[must_use]
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
+    #[must_use]
+    pub fn explain(&self) -> &str {
+        &self.explain
+    }
+}
 
 /// Per-event playback parameters resolved before scheduling.
 #[derive(Clone, Debug, PartialEq)]
@@ -37,6 +66,7 @@ pub struct SampleTrigger {
     slice_start: f64,
     slice_end: f64,
     pan: f64,
+    pedal_program: Option<Arc<PedalProgram>>,
 }
 
 impl SampleTrigger {
@@ -78,6 +108,7 @@ impl SampleTrigger {
             slice_start: 0.0,
             slice_end: 1.0,
             pan: 0.0,
+            pedal_program: None,
         }
     }
 
@@ -242,6 +273,12 @@ impl SampleTrigger {
 
     /// The unique name of the sample in the loaded sample bank.
     #[must_use]
+    pub fn with_pedal_program(mut self, pedal_program: Arc<PedalProgram>) -> Self {
+        self.pedal_program = Some(pedal_program);
+        self
+    }
+
+    #[must_use]
     pub fn token(&self) -> &str {
         self.token.as_ref()
     }
@@ -383,6 +420,11 @@ impl SampleTrigger {
     pub const fn pan(&self) -> f64 {
         self.pan
     }
+
+    #[must_use]
+    pub fn pedal_program(&self) -> Option<&Arc<PedalProgram>> {
+        self.pedal_program.as_ref()
+    }
 }
 
 /// A fully resolved unit-cycle pattern ready for audio-thread scheduling.
@@ -492,11 +534,13 @@ mod tests {
         assert!((trigger.slice_start() - 0.0).abs() < f64::EPSILON);
         assert!((trigger.slice_end() - 1.0).abs() < f64::EPSILON);
         assert!((trigger.pan() - 0.0).abs() < f64::EPSILON);
+        assert!(trigger.pedal_program().is_none());
     }
 
     #[test]
     #[allow(clippy::float_cmp)]
     fn sample_trigger_builder_methods_update_fields() {
+        let pedal_program = Arc::new(PedalProgram::new("graph { input |> output }", "result"));
         let trigger = SampleTrigger::named("sn")
             .with_gain(0.8)
             .with_hpf_cutoff_hz(500.0)
@@ -519,7 +563,8 @@ mod tests {
             .with_compressor_ratio(6.0)
             .with_onset(3)
             .with_slice(0.2, 0.8)
-            .with_pan(0.3);
+            .with_pan(0.3)
+            .with_pedal_program(pedal_program.clone());
 
         assert_eq!(trigger.token(), "sn");
         assert!((trigger.gain() - 0.8).abs() < f64::EPSILON);
@@ -545,6 +590,12 @@ mod tests {
         assert!((trigger.slice_start() - 0.2).abs() < f64::EPSILON);
         assert!((trigger.slice_end() - 0.8).abs() < f64::EPSILON);
         assert!((trigger.pan() - 0.3).abs() < f64::EPSILON);
+        assert!(Arc::ptr_eq(
+            trigger
+                .pedal_program()
+                .expect("sample trigger should expose the pedal program"),
+            &pedal_program
+        ));
     }
 
     #[test]

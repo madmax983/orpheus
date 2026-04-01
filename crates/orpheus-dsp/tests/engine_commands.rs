@@ -1,11 +1,12 @@
 use orpheus_dsp::{
-    EngineCommand, EngineError, EngineHandle, PatternUpdate, RoutingSnapshot, SampleTrigger,
-    TrackSource, load_builtin_sample_for_test, load_sample_bank_from_directory,
+    EngineCommand, EngineError, EngineHandle, PatternUpdate, PedalProgram, RoutingSnapshot,
+    SampleTrigger, TrackSource, load_builtin_sample_for_test, load_sample_bank_from_directory,
     render_routing_snapshot_to_stereo_for_test,
 };
 use orpheus_pattern::{Event, Rational, TimeSpan};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -97,6 +98,29 @@ fn analog_saw_token_sustains_across_its_event_span() {
         rendered[80..96]
             .iter()
             .any(|sample| sample.abs() > f32::EPSILON)
+    );
+}
+
+#[test]
+fn sample_trigger_carries_pedal_program() {
+    let pedal_program = Arc::new(PedalProgram::new(
+        "graph { wet = input |> clip(model=silicon_hard); wet |> output }",
+        "signal_kind=Audio\nbinding wet: Audio clip(input, model=silicon_hard)\nresult: Audio output(wet)",
+    ));
+    let trigger = SampleTrigger::named("bd").with_pedal_program(pedal_program.clone());
+
+    assert!(Arc::ptr_eq(
+        trigger
+            .pedal_program()
+            .expect("sample trigger should expose the pedal program"),
+        &pedal_program
+    ));
+    assert!(
+        trigger
+            .pedal_program()
+            .unwrap()
+            .explain()
+            .contains("clip(input, model=silicon_hard)")
     );
 }
 

@@ -162,6 +162,9 @@ impl SampleEntry {
         if let Some(cutoff_hz) = trigger.lpf_cutoff_hz() {
             composed = composed.with_lpf_cutoff_hz(cutoff_hz);
         }
+        if let Some(pedal_program) = trigger.pedal_program() {
+            composed = composed.with_pedal_program(pedal_program.clone());
+        }
         composed
     }
 
