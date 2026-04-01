@@ -2531,6 +2531,12 @@ fn apply_slice_idx_pattern<T>(
 where
     T: PatternRuntimeValue,
 {
+    if segments == 0 {
+        return Err(EvalError::new(
+            "`slice_idx` requires segments > 0",
+        ));
+    }
+
     let source_events = inner.try_query(span)?;
     let control_events = control.try_query(span)?;
     validate_slice_idx_control_events(&control_events, segments)?;

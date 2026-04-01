@@ -336,14 +336,12 @@ impl MixerState {
     pub(crate) fn track_summary_lines(&self) -> Vec<String> {
         let mut lines = Vec::new();
 
-        if !self.has_explicit_bound_tracks() {
-            if let Some(binding_name) = &self.compatibility_main_binding {
-                lines.push(format!("main -> {binding_name} (auto)"));
-            } else {
-                lines.push("main -> <unbound> (auto)".to_owned());
-            }
-        } else {
+        if self.has_explicit_bound_tracks() {
             lines.push("Tracks:".to_owned());
+        } else if let Some(binding_name) = &self.compatibility_main_binding {
+            lines.push(format!("main -> {binding_name} (auto)"));
+        } else {
+            lines.push("main -> <unbound> (auto)".to_owned());
         }
 
         let track_count = self.tracks.len();
