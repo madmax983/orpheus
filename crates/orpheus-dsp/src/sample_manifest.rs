@@ -459,6 +459,7 @@ impl<'a> ManifestParser<'a> {
 }
 
 #[cfg(test)]
+#[allow(clippy::float_cmp)]
 mod tests {
     use super::*;
 
