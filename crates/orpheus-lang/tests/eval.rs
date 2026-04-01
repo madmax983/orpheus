@@ -11,6 +11,7 @@ fn sample_names(value: &Value) -> Vec<String> {
         .unwrap()
         .query_unit()
         .unwrap()
+        .unwrap()
         .into_iter()
         .map(|event| event.value.sample().to_owned())
         .collect()
@@ -208,6 +209,7 @@ fn shift_rotates_sample_events_forward_within_the_cycle() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 3);
@@ -230,7 +232,8 @@ fn shift_rotates_number_patterns_forward_within_the_cycle() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 2);
     assert_eq!(events[0].part.start(), &Rational::zero());
@@ -285,6 +288,7 @@ fn direct_call_matches_pipe_application_for_shift() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
     let piped_events = piped
         .get("drums")
@@ -292,6 +296,7 @@ fn direct_call_matches_pipe_application_for_shift() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(direct_events, piped_events);
@@ -312,6 +317,7 @@ fn parameterized_binding_can_be_applied_curried() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events[0].value.sample(), "sn");
@@ -340,6 +346,7 @@ fn parameterized_binding_can_be_used_from_pipe() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
     let piped_events = piped
         .get("groove")
@@ -347,6 +354,7 @@ fn parameterized_binding_can_be_used_from_pipe() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(direct_events, piped_events);
@@ -374,6 +382,7 @@ fn within_reverses_only_the_selected_window() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(
@@ -409,6 +418,7 @@ fn within_pipe_matches_direct_call() {
             .as_sample_pattern()
             .unwrap()
             .query_unit()
+            .unwrap()
             .unwrap(),
         piped
             .get("drums")
@@ -416,6 +426,7 @@ fn within_pipe_matches_direct_call() {
             .as_sample_pattern()
             .unwrap()
             .query_unit()
+            .unwrap()
             .unwrap(),
     );
 }
@@ -432,6 +443,7 @@ fn within_full_cycle_window_matches_direct_transform() {
             .as_sample_pattern()
             .unwrap()
             .query_unit()
+            .unwrap()
             .unwrap(),
         within
             .get("drums")
@@ -439,6 +451,7 @@ fn within_full_cycle_window_matches_direct_transform() {
             .as_sample_pattern()
             .unwrap()
             .query_unit()
+            .unwrap()
             .unwrap(),
     );
 }
@@ -457,6 +470,7 @@ fn within_accepts_parameterized_unary_transforms() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(
@@ -542,6 +556,7 @@ fn mask_keeps_only_fragments_overlapping_the_gate() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 2);
@@ -565,6 +580,7 @@ fn mask_pipe_matches_direct_call() {
             .as_sample_pattern()
             .unwrap()
             .query_unit()
+            .unwrap()
             .unwrap(),
         piped
             .get("drums")
@@ -572,6 +588,7 @@ fn mask_pipe_matches_direct_call() {
             .as_sample_pattern()
             .unwrap()
             .query_unit()
+            .unwrap()
             .unwrap(),
     );
 }
@@ -588,6 +605,7 @@ fn mask_accepts_number_pattern_gates() {
             .as_sample_pattern()
             .unwrap()
             .query_unit()
+            .unwrap()
             .unwrap(),
         number_gate
             .get("drums")
@@ -595,6 +613,7 @@ fn mask_accepts_number_pattern_gates() {
             .as_sample_pattern()
             .unwrap()
             .query_unit()
+            .unwrap()
             .unwrap(),
     );
 }
@@ -608,6 +627,7 @@ fn mask_merges_adjacent_gate_events_into_one_open_region() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 1);
@@ -625,6 +645,7 @@ fn mask_drops_source_events_with_no_gate_overlap() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 1);
@@ -647,6 +668,7 @@ fn mask_accepts_parameterized_bindings() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 2);
@@ -671,7 +693,8 @@ fn euclid_generates_three_open_steps_in_eight() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 3);
     assert_eq!(events[0].part.start(), &Rational::zero());
@@ -695,7 +718,8 @@ fn euclid_zero_pulses_generates_no_events() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert!(events.is_empty());
 }
@@ -708,7 +732,8 @@ fn euclid_full_pulses_generates_all_steps() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 8);
     assert_eq!(events[0].part.start(), &Rational::zero());
@@ -725,7 +750,8 @@ fn euclid_generates_five_open_steps_in_eight() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 5);
     assert_eq!(
@@ -756,6 +782,7 @@ fn euclid_masks_expected_slices() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 3);
@@ -807,7 +834,8 @@ fn degrees_map_aeolian_steps_with_octave_carry() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 5);
     assert_eq!(
@@ -824,7 +852,8 @@ fn degrees_map_negative_aeolian_steps_downward() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -845,7 +874,8 @@ fn degrees_map_user_defined_pitch_class_sets() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -865,7 +895,8 @@ fn degrees_transpose_shifts_number_patterns_by_semitones() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -885,7 +916,8 @@ fn degrees_transpose_accepts_pattern_valued_offsets() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -944,7 +976,8 @@ fn named_pitch_literals_map_to_absolute_semitones() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -960,7 +993,8 @@ fn named_pitch_literals_compose_with_transpose() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -981,7 +1015,8 @@ fn chord_stacks_interval_sets_over_a_single_root() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 3);
     assert_eq!(
@@ -999,7 +1034,8 @@ fn chord_stacks_interval_sets_over_each_root_event() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 4);
     assert_eq!(
@@ -1028,7 +1064,8 @@ fn chord_composes_with_transpose() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -1048,7 +1085,8 @@ fn chord_accepts_degree_derived_roots() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -1082,7 +1120,8 @@ fn invert_first_inversion_raises_the_lowest_note() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -1099,7 +1138,8 @@ fn invert_second_inversion_repeats_the_process() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -1115,7 +1155,8 @@ fn invert_applies_per_exact_span_cluster() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -1139,7 +1180,8 @@ fn invert_leaves_single_note_clusters_unchanged() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -1159,7 +1201,8 @@ fn invert_accepts_degree_derived_harmony() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -1211,7 +1254,8 @@ fn drop_second_highest_note_by_one_octave() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -1227,7 +1271,8 @@ fn drop_third_highest_note_by_one_octave() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -1243,7 +1288,8 @@ fn drop_applies_per_exact_span_cluster() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -1267,7 +1313,8 @@ fn drop_leaves_small_clusters_unchanged() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -1287,7 +1334,8 @@ fn drop_accepts_degree_derived_harmony() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -1307,7 +1355,8 @@ fn drop_composes_with_invert() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -1368,7 +1417,8 @@ fn strum_partitions_triads_into_equal_thirds() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -1390,7 +1440,8 @@ fn strum_applies_per_exact_span_cluster() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -1414,7 +1465,8 @@ fn strum_leaves_single_note_clusters_unchanged() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -1438,7 +1490,8 @@ fn strum_composes_with_drop() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -1462,7 +1515,8 @@ fn strum_composes_with_invert() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -1482,7 +1536,8 @@ fn strum_pipe_matches_direct_call() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     let piped = eval_module("pad = chord(c4 e4, 0 7) |> strum", ReplMode::Loose).unwrap();
     let piped_events = piped
@@ -1490,7 +1545,8 @@ fn strum_pipe_matches_direct_call() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(direct_events, piped_events);
 }
@@ -1512,7 +1568,8 @@ fn arp_wraps_upward_across_equal_fifths() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -1532,7 +1589,8 @@ fn arp_wraps_downward_across_equal_fifths() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -1548,7 +1606,8 @@ fn arp_applies_per_exact_span_cluster() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -1572,7 +1631,8 @@ fn arp_repeats_single_note_clusters() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -1588,7 +1648,8 @@ fn arp_pipe_matches_direct_call() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     let piped = eval_module("lead = chord(c4, 0 4 7) |> arp(5, up)", ReplMode::Loose).unwrap();
     let piped_events = piped
@@ -1596,7 +1657,8 @@ fn arp_pipe_matches_direct_call() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(direct_events, piped_events);
 }
@@ -1613,7 +1675,8 @@ fn arp_composes_with_drop() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(
         events.iter().map(|event| event.value).collect::<Vec<_>>(),
@@ -1684,6 +1747,7 @@ fn roll_retriggers_sample_hits_across_equal_quarters() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 4);
@@ -1704,7 +1768,8 @@ fn roll_retriggers_chord_clusters_across_equal_quarters() {
         .unwrap()
         .as_number_pattern()
         .unwrap()
-        .query_unit();
+        .query_unit()
+        .unwrap();
 
     assert_eq!(events.len(), 12);
     assert_eq!(
@@ -1728,6 +1793,7 @@ fn roll_applies_per_exact_span_cluster() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 8);
@@ -1794,6 +1860,7 @@ fn roll_pipe_matches_direct_call() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     let piped = eval_module("buzz = sn |> roll(4)", ReplMode::Loose).unwrap();
@@ -1803,6 +1870,7 @@ fn roll_pipe_matches_direct_call() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(direct_events, piped_events);
@@ -1817,6 +1885,7 @@ fn roll_with_one_step_is_identity() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     let rolled = eval_module("buzz = roll(1, bd sn)", ReplMode::Loose).unwrap();
@@ -1826,6 +1895,7 @@ fn roll_with_one_step_is_identity() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(rolled_events, original_events);
@@ -1881,6 +1951,7 @@ fn gain_updates_sample_event_amplitude() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
     assert_eq!(event.len(), 1);
     assert!((event[0].value.gain() - 0.8).abs() < f64::EPSILON);
@@ -1899,6 +1970,7 @@ fn meter_translates_beats_into_cycle_relative_time() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 1);
@@ -1919,6 +1991,7 @@ fn meter_prefix_annotation_translates_beats_into_cycle_relative_time() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 1);
@@ -1960,6 +2033,7 @@ fn rate_and_slice_builtins_update_sample_event_playback_params() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 1);
@@ -1984,6 +2058,7 @@ fn filter_builtins_update_sample_event_filter_params() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 1);
@@ -2005,6 +2080,7 @@ fn synth_atoms_and_controls_update_sample_event_params() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 1);
@@ -2028,6 +2104,7 @@ fn pattern_valued_synth_controls_split_sample_events() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 2);
@@ -2056,6 +2133,7 @@ fn pattern_valued_filter_controls_split_sample_events() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 2);
@@ -2087,6 +2165,7 @@ fn negative_rate_is_preserved_on_sample_events() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 1);
@@ -2102,6 +2181,7 @@ fn pitch_builtin_maps_semitones_to_rate_multipliers() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
     assert_eq!(up_events.len(), 1);
     assert!((up_events[0].value.rate() - 2.0).abs() < f64::EPSILON);
@@ -2113,6 +2193,7 @@ fn pitch_builtin_maps_semitones_to_rate_multipliers() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
     assert_eq!(down_events.len(), 1);
     assert!((down_events[0].value.rate() - 0.5).abs() < f64::EPSILON);
@@ -2131,6 +2212,7 @@ fn pitch_accepts_pattern_valued_controls_and_composes_with_existing_rate() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 2);
@@ -2155,6 +2237,7 @@ fn pattern_valued_pitch_controls_repeat_under_fast() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
     let rates = events
         .iter()
@@ -2177,6 +2260,7 @@ fn slice_accepts_pattern_valued_start_and_end_controls() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 2);
@@ -2203,6 +2287,7 @@ fn pattern_valued_slice_controls_compose_with_pitch_and_fast() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 4);
@@ -2231,6 +2316,7 @@ fn rate_accepts_pattern_valued_controls_and_splits_sample_events() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 2);
@@ -2255,6 +2341,7 @@ fn pattern_valued_rate_controls_repeat_under_fast() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
     let rates = events
         .iter()
@@ -2277,6 +2364,7 @@ fn gain_accepts_pattern_valued_controls_and_splits_sample_events() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 2);
@@ -2301,6 +2389,7 @@ fn pattern_valued_gain_controls_repeat_under_fast() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
     let gains = events
         .iter()
@@ -2323,6 +2412,7 @@ fn pan_accepts_pattern_valued_controls_and_composes_with_existing_pan() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 2);
@@ -2343,6 +2433,7 @@ fn slice_idx_builtin_maps_zero_based_segments_into_normalized_slice_bounds() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 1);
@@ -2364,6 +2455,7 @@ fn slice_idx_composes_with_existing_slice_bounds() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 1);
@@ -2384,6 +2476,7 @@ fn slice_idx_accepts_pattern_valued_indices_and_splits_sample_events() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
 
     assert_eq!(events.len(), 4);
@@ -2421,6 +2514,7 @@ fn pattern_valued_slice_idx_repeats_under_fast() {
         .as_sample_pattern()
         .unwrap()
         .query_unit()
+        .unwrap()
         .unwrap();
     let slice_starts = events
         .iter()

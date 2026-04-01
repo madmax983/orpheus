@@ -423,7 +423,7 @@ fn compile_track_source(
         .get(binding_name)
         .and_then(Value::as_sample_pattern)
         .ok_or_else(|| format!("no binding named `{binding_name}`"))?;
-    let events = pattern.query_unit().map_err(|error| {
+    let events = pattern.try_query_unit().map_err(|error| {
         format!("failed to query unit span for track binding `{binding_name}`: {error}")
     })?;
     Ok(TrackSource::SamplePattern(

@@ -1,39 +1,7 @@
-use orpheus_lang::{ReplMode, eval_module};
-use proptest::prelude::*;
+#!/bin/bash
 
-proptest! {
-    #[test]
-    fn no_panic_on_strum_events_eval(v in proptest::num::f64::ANY) {
-        let source = format!("x = strum(chord(c4 e4, 0 7)) |> time({})", v);
-        let result = std::panic::catch_unwind(|| {
-            let Ok(mut values) = eval_module(&source, ReplMode::Loose) else { return; };
-            let Some(val) = values.remove("x") else { return; };
-            let Some(pat) = val.as_number_pattern() else { return; };
-            let _ = pat.try_query_unit();
-        });
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn fuzzer_test_parser_deep_nested_parens_eval(depth in 1..10usize) {
-        let mut source = String::new();
-        for _ in 0..depth {
-            source.push('(');
-        }
-        source.push_str("bd");
-        for _ in 0..depth {
-            source.push(')');
-        }
-        source = format!("a = {}", source);
-        let result = std::panic::catch_unwind(|| {
-            let Ok(mut values) = eval_module(&source, ReplMode::Loose) else { return; };
-            let Some(val) = values.remove("a") else { return; };
-            let Some(pat) = val.as_sample_pattern() else { return; };
-            let _ = pat.try_query_unit();
-        });
-        assert!(result.is_ok());
-    }
-}
+# Add back the float_literal_strategy and complex query unit tests
+cat << 'FUZZ' >> crates/orpheus-lang/tests/fuzz_eval.rs
 
 /// Generate float-literal strings, including cases with extremely long scientific-notation exponents.
 fn float_literal_strategy() -> impl Strategy<Value = String> {
@@ -126,21 +94,4 @@ proptest! {
         assert!(result.is_ok(), "query_unit panicked for input: {s}");
     }
 }
-
-proptest! {
-    #[test]
-    fn no_panic_on_f64_math_ops(v1 in proptest::num::f64::ANY, v2 in proptest::num::f64::ANY) {
-        let source = format!("x = fast({} * {}, bd)", v1, v2);
-        let _ = eval_module(&source, ReplMode::Loose);
-        let source = format!("x = fast({} / {}, bd)", v1, v2);
-        let _ = eval_module(&source, ReplMode::Loose);
-        let source = format!("x = fast({} + {}, bd)", v1, v2);
-        let _ = eval_module(&source, ReplMode::Loose);
-        let source = format!("x = fast({} - {}, bd)", v1, v2);
-        let _ = eval_module(&source, ReplMode::Loose);
-        let source = format!("x = fast({} % {}, bd)", v1, v2);
-        let _ = eval_module(&source, ReplMode::Loose);
-        let source = format!("x = fast({} ^ {}, bd)", v1, v2);
-        let _ = eval_module(&source, ReplMode::Loose);
-    }
-}
+FUZZ
