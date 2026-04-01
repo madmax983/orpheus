@@ -15,6 +15,7 @@ mod effects;
 mod engine;
 mod graph;
 mod offline;
+mod pedal;
 mod routing;
 mod sample;
 mod sample_bank;
@@ -31,6 +32,10 @@ pub use offline::{
     OfflineRenderError, render_events_to_file, render_events_to_file_with_bank,
     render_events_to_wav, render_routing_snapshot_to_stem_wavs,
     render_routing_snapshot_to_stereo_for_test,
+};
+pub use pedal::{
+    ClipModel, FilterMode, NodeRef, PedalGraphProgram, PedalInstance, PedalNode, PedalNodeKind,
+    PedalStage, PreampModel, SignalKind, ToneModel,
 };
 pub use routing::{
     BusEffectSpec, BusId, BusView, DelaySpec, ReverbSpec, RoutingError, RoutingSnapshot,
