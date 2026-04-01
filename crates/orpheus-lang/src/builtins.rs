@@ -137,6 +137,7 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "rand" => Some(builtin_function_value(BuiltinKind::Rand)),
         "jux" => Some(builtin_function_value(BuiltinKind::Jux)),
         "cc" | "midi_cc" => Some(builtin_function_value(BuiltinKind::MidiCc)),
+        "chaos" => Some(builtin_function_value(BuiltinKind::Chaos)),
         _ => None,
     }
 }
@@ -349,6 +350,7 @@ impl BuiltinKind {
             Self::Rand => "rand",
             Self::Jux => "jux",
             Self::MidiCc => "midi_cc",
+            Self::Chaos => "chaos",
         }
     }
 
@@ -356,7 +358,7 @@ impl BuiltinKind {
         match self {
             Self::Every | Self::Arp | Self::Slice | Self::SliceIdx => 3,
             Self::When | Self::Within => 4,
-            Self::PitchClassSet | Self::Rev | Self::Sample | Self::Strum => 1,
+            Self::PitchClassSet | Self::Rev | Self::Sample | Self::Strum | Self::Chaos => 1,
             Self::Sometimes
             | Self::Mask
             | Self::Roll
@@ -448,6 +450,7 @@ impl BuiltinKind {
             Self::Rand => apply_rand(args, function.site_salt.unwrap_or_default()),
             Self::Jux => apply_jux(args),
             Self::MidiCc => apply_midi_cc(args),
+            Self::Chaos => apply_chaos(args, function.site_salt.unwrap_or_default()),
         }
     }
 }
@@ -919,6 +922,22 @@ fn apply_rev(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::String(_) => Err(EvalError::new("`rev` expected a pattern argument")),
+    }
+}
+
+fn apply_chaos(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
+    let pattern = args
+        .into_iter()
+        .next()
+        .ok_or_else(|| EvalError::new("`chaos` requires a pattern argument"))?;
+
+    match pattern {
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.chaos_with_site_salt(site_salt))),
+        Value::NumberPattern(pattern) => Ok(Value::NumberPattern(pattern.chaos_with_site_salt(site_salt))),
+        Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new("`chaos` expected a pattern argument")),
     }
 }
 
