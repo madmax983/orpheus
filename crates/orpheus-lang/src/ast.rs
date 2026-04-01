@@ -105,43 +105,63 @@ pub enum BinaryOp {
 
 impl Expr {
     fn references_ident(&self, target: &str) -> bool {
+        self.references_ident_with_shadow(target, false)
+    }
+
+    fn references_ident_with_shadow(&self, target: &str, shadowed: bool) -> bool {
         match self {
             Self::Seq(items)
             | Self::Stack(items)
             | Self::Stream(items)
             | Self::SeqSections(items)
-            | Self::Group(items) => items.iter().any(|item| item.references_ident(target)),
+            | Self::Group(items) => items
+                .iter()
+                .any(|item| item.references_ident_with_shadow(target, shadowed)),
             Self::Graph { bindings, result } => {
-                bindings
-                    .iter()
-                    .any(|binding| binding.name != target && binding.expr.references_ident(target))
-                    || result.references_ident(target)
+                let mut shadowed = shadowed;
+                for binding in bindings {
+                    if binding.expr.references_ident_with_shadow(target, shadowed) {
+                        return true;
+                    }
+                    if binding.name == target {
+                        shadowed = true;
+                    }
+                }
+                result.references_ident_with_shadow(target, shadowed)
             }
-            Self::Pipe { lhs, rhs } => lhs.references_ident(target) || rhs.references_ident(target),
+            Self::Pipe { lhs, rhs } => {
+                lhs.references_ident_with_shadow(target, shadowed)
+                    || rhs.references_ident_with_shadow(target, shadowed)
+            }
             Self::Binary { lhs, rhs, .. } => {
-                lhs.references_ident(target) || rhs.references_ident(target)
+                lhs.references_ident_with_shadow(target, shadowed)
+                    || rhs.references_ident_with_shadow(target, shadowed)
             }
             Self::Call { callee, args } => {
-                callee.references_ident(target)
-                    || args.iter().any(|arg| arg.references_ident(target))
+                callee.references_ident_with_shadow(target, shadowed)
+                    || args
+                        .iter()
+                        .any(|arg| arg.references_ident_with_shadow(target, shadowed))
             }
             Self::At { start, pattern } => {
-                start.references_ident(target) || pattern.references_ident(target)
+                start.references_ident_with_shadow(target, shadowed)
+                    || pattern.references_ident_with_shadow(target, shadowed)
             }
             Self::Meter {
                 beats,
                 unit,
                 pattern,
             } => {
-                beats.references_ident(target)
-                    || unit.references_ident(target)
-                    || pattern.references_ident(target)
+                beats.references_ident_with_shadow(target, shadowed)
+                    || unit.references_ident_with_shadow(target, shadowed)
+                    || pattern.references_ident_with_shadow(target, shadowed)
             }
-            Self::Beat(value) => value.references_ident(target),
+            Self::Beat(value) => value.references_ident_with_shadow(target, shadowed),
             Self::Section { pattern, cycles } => {
-                pattern.references_ident(target) || cycles.references_ident(target)
+                pattern.references_ident_with_shadow(target, shadowed)
+                    || cycles.references_ident_with_shadow(target, shadowed)
             }
-            Self::Ident(name) => name == target,
+            Self::Ident(name) => !shadowed && name == target,
             Self::Rest | Self::Number(_) | Self::String(_) => false,
         }
     }
@@ -301,5 +321,26 @@ mod tests {
         let params = vec!["foo".to_string()];
         let expr = Expr::Ident("foo".to_string());
         assert!(!binding_expr_self_references("foo", &params, &expr));
+    }
+
+    #[test]
+    fn test_binding_expr_self_references_with_graph_shadowing() {
+        let shadowing_result = Expr::Graph {
+            bindings: vec![GraphBinding {
+                name: "foo".to_string(),
+                expr: Expr::Ident("bar".to_string()),
+            }],
+            result: Box::new(Expr::Ident("foo".to_string())),
+        };
+        assert!(!binding_expr_self_references("foo", &[], &shadowing_result));
+
+        let shadowing_rhs = Expr::Graph {
+            bindings: vec![GraphBinding {
+                name: "foo".to_string(),
+                expr: Expr::Ident("foo".to_string()),
+            }],
+            result: Box::new(Expr::Number(0.0)),
+        };
+        assert!(binding_expr_self_references("foo", &[], &shadowing_rhs));
     }
 }
