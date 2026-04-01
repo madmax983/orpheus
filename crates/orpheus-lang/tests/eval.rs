@@ -472,6 +472,47 @@ fn through_rejects_non_sample_targets() {
 }
 
 #[test]
+fn through_preserves_sample_pattern_type_and_attaches_pedal() {
+    let module = eval_module(
+        "drivebox = graph { wet = input |> clip(model=silicon_hard); wet |> output }\n\
+         lead = through(drivebox, bd sn)",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    let pattern = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .expect("through should keep a sample pattern");
+    let events = pattern.query_unit().unwrap();
+
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event.value.sample())
+            .collect::<Vec<_>>(),
+        vec!["bd", "sn"]
+    );
+
+    let first_program = events[0]
+        .value
+        .pedal_program()
+        .expect("first event should carry a pedal program");
+    let second_program = events[1]
+        .value
+        .pedal_program()
+        .expect("second event should carry a pedal program");
+
+    assert!(std::sync::Arc::ptr_eq(first_program, second_program));
+    assert!(
+        first_program
+            .explain()
+            .contains("clip(input, model=silicon_hard)")
+    );
+}
+
+#[test]
 fn self_recursive_parameterized_binding_is_rejected() {
     assert_eval_error_contains(
         "loop pat = loop(pat)",

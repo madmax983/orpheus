@@ -24,7 +24,7 @@ mod synth;
 mod transient;
 mod voice;
 
-pub use command::{EngineCommand, PatternUpdate, SampleTrigger, new_command_queue};
+pub use command::{EngineCommand, PatternUpdate, PedalProgram, SampleTrigger, new_command_queue};
 pub use engine::{EngineError, EngineHandle, RenderEngine, TransportSnapshot, frames_per_cycle};
 pub use offline::{
     OfflineRenderError, render_events_to_file, render_events_to_file_with_bank,
