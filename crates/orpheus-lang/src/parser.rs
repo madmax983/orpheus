@@ -76,7 +76,8 @@ fn split_top_level_bindings(source: &str) -> Vec<(usize, String)> {
             current.push('\n');
         }
         current.push_str(line);
-        let (next_paren_depth, next_brace_depth) = update_nesting_depth(paren_depth, brace_depth, line);
+        let (next_paren_depth, next_brace_depth) =
+            update_nesting_depth(paren_depth, brace_depth, line);
         paren_depth = next_paren_depth;
         brace_depth = next_brace_depth;
     }
@@ -255,7 +256,7 @@ fn build_pipe_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
 fn build_sequence(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
     let items = pair
         .into_inner()
-        .map(build_assign_expr)
+        .map(build_sum_expr)
         .collect::<Result<Vec<_>, _>>()?;
 
     collapse_sequence(items, "sequence")
@@ -271,7 +272,6 @@ fn build_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
         Rule::application => build_application(pair),
         Rule::product_expr => build_product_expr(pair),
         Rule::sum_expr => build_sum_expr(pair),
-        Rule::assign_expr => build_assign_expr(pair),
         Rule::graph => build_graph(pair),
         Rule::primary => build_expr(first_inner(pair, "primary expression")?),
         Rule::group => build_group(pair),
@@ -345,16 +345,12 @@ fn build_call_suffix_args(pair: Pair<'_, Rule>) -> Result<Vec<Expr>, ParseError>
 
     args_pair
         .into_inner()
-        .map(build_pipe_expr)
+        .map(build_call_arg)
         .collect::<Result<Vec<_>, _>>()
 }
 
 fn build_sum_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
     build_binary_expr(pair, BinaryRule::Add)
-}
-
-fn build_assign_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
-    build_binary_expr(pair, BinaryRule::Assign)
 }
 
 fn build_product_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
@@ -365,13 +361,11 @@ fn build_product_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
 enum BinaryRule {
     Add,
     Mul,
-    Assign,
 }
 
 fn build_binary_expr(pair: Pair<'_, Rule>, expected_rule: BinaryRule) -> Result<Expr, ParseError> {
     let mut inner = pair.into_inner();
     let first = match expected_rule {
-        BinaryRule::Assign => build_sum_expr(next_pair(&mut inner, "binary lhs")?)?,
         BinaryRule::Add => build_product_expr(next_pair(&mut inner, "binary lhs")?)?,
         BinaryRule::Mul => build_application(next_pair(&mut inner, "binary lhs")?)?,
     };
@@ -382,12 +376,10 @@ fn build_binary_expr(pair: Pair<'_, Rule>, expected_rule: BinaryRule) -> Result<
             .next()
             .ok_or_else(|| ParseError::new("missing binary rhs"))?;
         let rhs = match expected_rule {
-            BinaryRule::Assign => build_sum_expr(rhs_pair)?,
             BinaryRule::Add => build_product_expr(rhs_pair)?,
             BinaryRule::Mul => build_application(rhs_pair)?,
         };
         let op = match (expected_rule, op_pair.as_rule()) {
-            (BinaryRule::Assign, Rule::assign_op) => BinaryOp::Assign,
             (BinaryRule::Add, Rule::add_op) => BinaryOp::Add,
             (BinaryRule::Mul, Rule::mul_op) => BinaryOp::Mul,
             _ => {
@@ -452,6 +444,31 @@ fn build_call_expr(callee: Expr, args: Vec<Expr>) -> Result<Expr, ParseError> {
     Ok(Expr::Call {
         callee: Box::new(callee),
         args,
+    })
+}
+
+fn build_call_arg(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+    match pair.as_rule() {
+        Rule::call_arg => build_call_arg(first_inner(pair, "call arg")?),
+        Rule::named_call_arg => build_named_call_arg(pair),
+        Rule::pipe_expr => build_pipe_expr(pair),
+        other => Err(ParseError::new(format!(
+            "unexpected parser rule while building call argument: {other:?}"
+        ))),
+    }
+}
+
+fn build_named_call_arg(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+    let mut inner = pair.into_inner();
+    let name = next_pair(&mut inner, "named call argument name")?
+        .as_str()
+        .to_owned();
+    let value = build_pipe_expr(next_pair(&mut inner, "named call argument value")?)?;
+
+    Ok(Expr::Binary {
+        lhs: Box::new(Expr::Ident(name)),
+        op: BinaryOp::Assign,
+        rhs: Box::new(value),
     })
 }
 

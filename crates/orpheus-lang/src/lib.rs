@@ -22,7 +22,7 @@ mod types;
 mod value;
 
 pub use ascii_roll::render_ascii_roll;
-pub use ast::{Expr, Module, Stmt};
+pub use ast::{BinaryOp, Expr, Module, Stmt};
 pub use diagnostics::{LoadError, ParseError, TypeError};
 pub use eval::{EvalError, eval_module, render_span};
 pub use export::{

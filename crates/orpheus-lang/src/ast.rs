@@ -92,9 +92,10 @@ impl Expr {
             | Self::SeqSections(items)
             | Self::Group(items) => items.iter().any(|item| item.references_ident(target)),
             Self::Graph { bindings, result } => {
-                bindings.iter().any(|binding| {
-                    binding.name != target && binding.expr.references_ident(target)
-                }) || result.references_ident(target)
+                bindings
+                    .iter()
+                    .any(|binding| binding.name != target && binding.expr.references_ident(target))
+                    || result.references_ident(target)
             }
             Self::Pipe { lhs, rhs } => lhs.references_ident(target) || rhs.references_ident(target),
             Self::Binary { lhs, rhs, .. } => {
