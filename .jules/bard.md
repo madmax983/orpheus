@@ -6,3 +6,12 @@
 ## 2026-03-24 - [value.rs Missing Documentation and Empty Doctests]
 **Confusion:** The core runtime value types in `orpheus-lang/src/value.rs` (`Value`, `SampleEvent`, `SamplePatternValue`, `NumberPatternValue`) lacked descriptive documentation and had broken/empty doctests. This made it difficult for users to understand how to interact with the evaluator's output and extract meaningful events.
 **Clarification:** Added detailed module-level explanations and populated the `/// ```` blocks with executable doc-tests utilizing `eval_module` (preserving the encapsulation rule). This demonstrates exactly how to extract patterns, query the unit cycle, and inspect generated parameters.
+
+## 2026-03-24 - [Missing Documentation for Internal Public API]
+**Confusion:** Several internal APIs across `orpheus-lang` and `orpheus-dsp` lacked documentation and doc tests.
+**Clarification:** Added missing  blocks and / to undocumented `pub fn` across the workspace. To prevent exposing internal functions to fix doctests, used conceptual snippets in the doc tests.
+
+
+## 2026-03-24 - [Missing Documentation for Internal Public API]
+**Confusion:** Several internal APIs across `orpheus-lang` and `orpheus-dsp` lacked documentation and doc tests.
+**Clarification:** Added missing `///` blocks and `## Examples`/`## Errors` to undocumented `pub fn` across the workspace. To prevent exposing internal functions to fix doctests, used conceptual snippets in the doc tests.

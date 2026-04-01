@@ -6,8 +6,20 @@ use orpheus_dsp::EngineHandle;
 
 use crate::session::ReplSession;
 
+/// Runs the phase-one Orpheus REPL.
+///
+/// This provides a line-based terminal interface for evaluating patterns
+/// sequentially against a persistent evaluation context.
 ///
 /// Blank lines are ignored. `:quit` exits the session.
+///
+/// # Examples
+///
+/// ```no_run
+/// use orpheus_lang::repl::run_stdio;
+///
+/// // run_stdio().unwrap(); // Blocks main thread waiting for stdin
+/// ```
 ///
 /// # Errors
 ///
@@ -21,6 +33,16 @@ pub fn run_stdio() -> io::Result<()> {
 ///
 /// Blank lines are ignored. `:quit` exits the session.
 ///
+/// # Examples
+///
+/// ```no_run
+/// use orpheus_dsp::EngineHandle;
+/// use orpheus_lang::repl::run_stdio_with_engine;
+///
+/// let engine = EngineHandle::stub();
+/// // run_stdio_with_engine(engine).unwrap();
+/// ```
+///
 /// # Errors
 ///
 /// Returns any terminal I/O failure encountered while reading input or
@@ -30,6 +52,18 @@ pub fn run_stdio_with_engine(engine: EngineHandle) -> io::Result<()> {
 }
 
 /// Runs the phase-one Orpheus REPL with an optional startup `.ode` preload.
+///
+/// # Examples
+///
+/// ```no_run
+/// use std::path::Path;
+/// use orpheus_dsp::EngineHandle;
+/// use orpheus_lang::repl::run_stdio_with_engine_and_path;
+///
+/// let engine = EngineHandle::stub();
+/// let start_file = Path::new("init.ode");
+/// // run_stdio_with_engine_and_path(engine, Some(start_file), None).unwrap();
+/// ```
 ///
 /// # Errors
 ///

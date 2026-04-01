@@ -44,11 +44,44 @@ impl TransportView {
         &self.snapshot
     }
 
+    /// Returns the name of the currently active/playing pattern sequence.
+    ///
+    /// The active pattern is the one that has already been fully scheduled and
+    /// is actively driving the audio rendering thread.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use orpheus_lang::session::ReplSession;
+    ///
+    /// let mut session = ReplSession::new();
+    /// session.eval_line("x = bd sn").unwrap();
+    /// session.render_test_block_for_tui(1024);
+    ///
+    /// let view = session.transport_view();
+    /// assert_eq!(view.active_pattern_name(), Some("x"));
+    /// ```
     #[must_use]
     pub fn active_pattern_name(&self) -> Option<&str> {
         self.active_pattern_name.as_deref()
     }
 
+    /// Returns the name of the pending pattern sequence queued to play next.
+    ///
+    /// This reflects a pattern that was evaluated but is waiting for the
+    /// musical cycle boundary before replacing the active pattern.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use orpheus_lang::session::ReplSession;
+    ///
+    /// let mut session = ReplSession::new();
+    /// session.eval_line("y = cp").unwrap();
+    ///
+    /// let view = session.transport_view();
+    /// assert_eq!(view.pending_pattern_name(), Some("y"));
+    /// ```
     #[must_use]
     pub fn pending_pattern_name(&self) -> Option<&str> {
         self.pending_pattern_name.as_deref()

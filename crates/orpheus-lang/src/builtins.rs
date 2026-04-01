@@ -3,10 +3,39 @@ use orpheus_pattern::{Rational, TimeSpan};
 use crate::eval::{EvalError, f64_to_rational};
 use crate::value::{BuiltinFn, BuiltinKind, NumberPatternValue, SamplePatternValue, Value};
 
+/// Checks whether a given identifier string refers to a core sample.
+///
+/// This is used during parsing or type-checking to distinguish sample literals
+/// from normal bindings.
+///
+/// # Examples
+///
+/// ```ignore
+/// use orpheus_lang::builtins::is_sample_identifier;
+///
+/// assert!(is_sample_identifier("bd"));
+/// assert!(!is_sample_identifier("foo"));
+/// ```
 pub fn is_sample_identifier(name: &str) -> bool {
     matches!(name, "bd" | "sn" | "cp" | "hh")
 }
 
+/// Retrieves the evaluated form of a standard builtin name, if it exists.
+///
+/// Returns a pre-allocated [`Value`] (such as a function or sample atom)
+/// corresponding to the name.
+///
+/// # Examples
+///
+/// ```ignore
+/// use orpheus_lang::builtins::builtin_value;
+///
+/// let val = builtin_value("fast").unwrap();
+/// assert!(val.as_function().is_some());
+///
+/// let missing = builtin_value("not_a_builtin");
+/// assert!(missing.is_none());
+/// ```
 pub fn builtin_value(name: &str) -> Option<Value> {
     match name {
         "bd" | "sn" | "cp" | "hh" => Some(Value::SamplePattern(SamplePatternValue::atom(name))),
@@ -31,6 +60,28 @@ pub fn builtin_value(name: &str) -> Option<Value> {
     }
 }
 
+/// Combines multiple patterns into a single stacked (parallel) pattern value.
+///
+/// This is the core logic behind the `stack(...)` construct, creating a composite
+/// runtime pattern that evaluates all of its inner layers simultaneously. All inputs
+/// must share the same pattern type (e.g. all sample patterns or all numeric patterns).
+///
+/// # Examples
+///
+/// ```ignore
+/// use orpheus_lang::{builtins::builtin_value, builtins::stack_values};
+///
+/// let bd = builtin_value("bd").unwrap();
+/// let sn = builtin_value("sn").unwrap();
+/// let stacked = stack_values(vec![bd, sn]).unwrap();
+///
+/// assert!(stacked.as_sample_pattern().is_some());
+/// ```
+///
+/// # Errors
+///
+/// Returns [`EvalError`] if the list of values is empty or if it contains a
+/// mixture of incompatible types (e.g. samples mixed with numbers).
 pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
     if values.is_empty() {
         return Err(EvalError::new("`stack` requires at least one layer"));
@@ -91,6 +142,29 @@ impl BuiltinFn {
     }
 }
 
+/// Applies a list of argument values to a built-in function, evaluating it if saturated.
+///
+/// If the arguments provided do not meet the function's arity, this returns a partially
+/// applied function (currying). If the exact arity is reached, it executes the builtin logic.
+///
+/// # Examples
+///
+/// ```ignore
+/// use orpheus_lang::{builtins::apply_builtin_function, builtins::builtin_value, Value, NumberPatternValue};
+///
+/// let fast_fn = builtin_value("fast").unwrap();
+/// let fast_func = fast_fn.as_function().unwrap();
+///
+/// // Partially apply `fast` with a single argument (factor = 2.0).
+/// let factor = Value::NumberPattern(NumberPatternValue::constant(2.0));
+/// let curried = apply_builtin_function(fast_func, vec![factor]).unwrap();
+/// assert!(curried.as_function().is_some());
+/// ```
+///
+/// # Errors
+///
+/// Returns [`EvalError`] if too many arguments are passed or if the arguments
+/// are invalid for the specific built-in transformation.
 pub fn apply_builtin_function(function: &BuiltinFn, args: Vec<Value>) -> Result<Value, EvalError> {
     let kind = function.kind;
     // PRE-ALLOCATE: avoids extra heap allocations when combining bound arguments and explicit arguments.

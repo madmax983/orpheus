@@ -41,6 +41,19 @@ const COMMAND_HINTS: [(&str, &str); 7] = [
 
 /// Runs the interactive ratatui session shell with the provided audio engine.
 ///
+/// This provides a full-screen terminal interface for evaluating patterns
+/// and viewing live metrics.
+///
+/// # Examples
+///
+/// ```no_run
+/// use orpheus_dsp::EngineHandle;
+/// use orpheus_lang::tui::run_with_engine;
+///
+/// let engine = EngineHandle::stub(); // Stub engine for testing
+/// // run_with_engine(engine).unwrap(); // Blocks main thread
+/// ```
+///
 /// # Errors
 ///
 /// Returns any terminal initialization, draw, input polling, or terminal
@@ -51,6 +64,21 @@ pub fn run_with_engine(engine: EngineHandle) -> io::Result<()> {
 
 /// Runs the interactive ratatui session shell with an optional startup `.ode`
 /// preload.
+///
+/// This initializes the audio engine and preemptively loads variables from
+/// a given script before passing control over to the interactive event loop.
+///
+/// # Examples
+///
+/// ```no_run
+/// use std::path::Path;
+/// use orpheus_dsp::EngineHandle;
+/// use orpheus_lang::tui::run_with_engine_and_path;
+///
+/// let engine = EngineHandle::stub();
+/// let start_file = Path::new("init.ode");
+/// // run_with_engine_and_path(engine, Some(start_file), None).unwrap();
+/// ```
 ///
 /// # Errors
 ///
@@ -261,11 +289,7 @@ impl SessionTui {
         Self::try_new(engine, None, None)
     }
 
-    fn try_new(
-        engine: EngineHandle,
-        startup_path: Option<&Path>,
-        warning: Option<String>,
-    ) -> Self {
+    fn try_new(engine: EngineHandle, startup_path: Option<&Path>, warning: Option<String>) -> Self {
         let mut transcript = vec![
             "Interactive shell ready.".to_owned(),
             "Press Esc to quit.".to_owned(),

@@ -9,6 +9,15 @@ use crate::types::{Type, TypeVarId, TypedModule};
 
 /// Infers the types of top-level bindings in an Orpheus module.
 ///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, infer_module, Type};
+///
+/// let typed = infer_module("x = bd sn", ReplMode::Strict).unwrap();
+/// assert_eq!(typed.type_of("x"), &Type::pattern(Type::Sample));
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`TypeError`] when parsing fails or when type inference encounters
@@ -19,6 +28,17 @@ pub fn infer_module(source: &str, mode: ReplMode) -> Result<TypedModule, TypeErr
 }
 
 /// Infers one source snippet against an existing binding environment.
+///
+/// # Examples
+///
+/// ```ignore
+/// use std::collections::BTreeMap;
+/// use orpheus_lang::{ReplMode, Type, types::infer::infer_into_bindings};
+///
+/// let mut env = BTreeMap::new();
+/// let result = infer_into_bindings("x = bd", ReplMode::Strict, &mut env).unwrap();
+/// assert_eq!(result.unwrap().1, Type::pattern(Type::Sample));
+/// ```
 ///
 /// # Errors
 ///

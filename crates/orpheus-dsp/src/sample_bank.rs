@@ -204,6 +204,14 @@ pub enum SampleBankError {
 /// If `samples.ron` exists, explicit `tokens`, `regions`, and `aliases` are
 /// loaded after directory inference and override it.
 ///
+/// # Examples
+///
+/// ```no_run
+/// use orpheus_dsp::load_sample_bank_from_directory;
+///
+/// let bank = load_sample_bank_from_directory("my_samples").unwrap();
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`SampleBankError`] if the directory cannot be read or if one of the

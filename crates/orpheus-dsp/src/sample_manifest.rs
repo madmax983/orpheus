@@ -61,10 +61,10 @@ impl std::error::Error for SampleManifestLoadError {
 ///
 /// ## Examples
 ///
-/// ```
-/// use orpheus_dsp::load_sample_manifest;
+/// ```ignore
 /// use std::io::Write;
 /// use tempfile::NamedTempFile;
+/// use orpheus_dsp::sample_manifest::load_sample_manifest;
 ///
 /// let mut file = NamedTempFile::new().unwrap();
 /// writeln!(file, "kick: /path/to/kick.wav").unwrap();

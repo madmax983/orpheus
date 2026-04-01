@@ -47,6 +47,23 @@ pub fn load_wav_for_test(path: impl AsRef<Path>) -> Result<DecodedSample, Sample
     decode_wav_reader(file, &display_path)
 }
 
+/// Decodes an audio sample from a static byte slice.
+///
+/// Primarily used for loading built-in core samples directly from the executable.
+///
+/// # Examples
+///
+/// ```ignore
+/// use orpheus_dsp::sample::load_wav_bytes;
+///
+/// let empty_wav = include_bytes!("../assets/kick.wav");
+/// let decoded = load_wav_bytes(empty_wav, "kick.wav").unwrap();
+/// assert!(!decoded.frames.is_empty());
+/// ```
+///
+/// # Errors
+///
+/// Returns a [`SampleError`] if the format is invalid or decoding fails.
 pub fn load_wav_bytes(
     bytes: &'static [u8],
     display_path: &'static str,

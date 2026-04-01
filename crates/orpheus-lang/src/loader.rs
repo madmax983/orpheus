@@ -32,6 +32,25 @@ pub fn load_file_strict(path: impl AsRef<Path>) -> Result<TypedModule, LoadError
     Ok(TypedModule::new(loaded.type_bindings))
 }
 
+/// Loads a module and all its recursive imports directly into the runtime environment.
+///
+/// Unlike [`load_file_strict`], which drops the runtime bindings and only keeps types,
+/// this returns a [`StrictLoadedFile`] containing the fully evaluated runtime values,
+/// suitable for initializing a complete working session.
+///
+/// # Examples
+///
+/// ```ignore
+/// use orpheus_lang::loader::load_file_runtime_strict;
+///
+/// let loaded = load_file_runtime_strict("song.ode").unwrap();
+/// assert!(loaded.value_bindings.contains_key("main"));
+/// ```
+///
+/// # Errors
+///
+/// Returns [`LoadError`] if file I/O fails, circular imports are detected,
+/// or evaluation fails within any of the loaded files.
 pub fn load_file_runtime_strict(path: impl AsRef<Path>) -> Result<StrictLoadedFile, LoadError> {
     let mut visiting = BTreeSet::new();
     load_file_strict_inner(path.as_ref(), &mut visiting)

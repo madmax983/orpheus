@@ -654,6 +654,25 @@ const fn default_stream_config() -> StreamConfig {
     }
 }
 
+/// Calculates the exact number of audio frames per musical cycle.
+///
+/// Cycles in Orpheus consist of 4 beats. Given the sample rate and the beats
+/// per minute, this calculates how many frames comprise one full cycle.
+///
+/// # Examples
+///
+/// ```ignore
+/// use orpheus_dsp::engine::frames_per_cycle;
+///
+/// let frames = frames_per_cycle(48000, 120.0).unwrap();
+/// // At 120 BPM, a cycle (4 beats) is 2 seconds, which is 96000 frames at 48kHz.
+/// assert_eq!(frames, 96000);
+/// ```
+///
+/// # Errors
+///
+/// Returns an [`EngineError`] if the tempo is invalid or the duration calculation
+/// overflows the frame counters.
 pub fn frames_per_cycle(sample_rate: u32, tempo_bpm: f32) -> Result<u64, EngineError> {
     use std::time::Duration;
 

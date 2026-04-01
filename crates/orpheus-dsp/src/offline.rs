@@ -48,6 +48,20 @@ pub enum OfflineRenderError {
 /// - `.wav`
 /// - `.flac`
 ///
+/// # Examples
+///
+/// ```no_run
+/// use orpheus_dsp::{SampleTrigger, render_events_to_file};
+/// use orpheus_pattern::{Event, TimeSpan};
+///
+/// let events = vec![Event {
+///     whole: None,
+///     part: TimeSpan::unit(),
+///     value: SampleTrigger::named("bd")
+/// }];
+/// render_events_to_file("out.wav", &events, 1).unwrap();
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`OfflineRenderError`] if event scheduling fails or if the output
