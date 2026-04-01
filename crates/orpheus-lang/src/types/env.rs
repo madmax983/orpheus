@@ -100,6 +100,7 @@ impl TypeEnv {
         }
         env.insert("jux", jux_transform_scheme());
         env.insert("rev", unary_pattern_transform_scheme(alpha));
+        env.insert("chaos", unary_pattern_transform_scheme(alpha));
         for name in [
             "gain", "hpf", "lpf", "cutoff", "res", "drive", "pw", "pan", "pitch", "rate",
         ] {
