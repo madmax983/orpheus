@@ -1032,7 +1032,7 @@ impl ReplSession {
             .connect(
                 &port,
                 "orpheus-midi-in",
-                move |_timestamp, message, _| midi_input::update_from_message(message),
+                move |_timestamp, message, ()| midi_input::update_from_message(message),
                 (),
             )
             .map_err(|error| format!("failed to connect to MIDI input `{port_name}`: {error}"))?;
@@ -1150,6 +1150,7 @@ impl ReplSession {
 
         let mut midi_events = Vec::new();
         for event in pattern.query_unit() {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             let note = event.value.round().clamp(0.0, 127.0) as u8;
             let start = f64::from(event.part.start());
             let end = f64::from(event.part.end());
@@ -1175,7 +1176,7 @@ impl ReplSession {
                 let target_time = Duration::from_secs_f64(offset_in_cycle * seconds_per_cycle);
                 let elapsed = start.elapsed();
                 if target_time > elapsed {
-                    thread::sleep(target_time - elapsed);
+                    thread::sleep(target_time.checked_sub(elapsed).unwrap_or_default());
                 }
                 let status = if note_on {
                     status_base
@@ -1190,8 +1191,7 @@ impl ReplSession {
         });
 
         Ok(format!(
-            "queued {} MIDI events from `{binding_name}` on channel {channel}",
-            event_count
+            "queued {event_count} MIDI events from `{binding_name}` on channel {channel}"
         ))
     }
 
@@ -2481,8 +2481,7 @@ mod tests {
             .unwrap_or_else(|| panic!("expected export path in message: {message}"));
         let end = message[start + 1..]
             .find('`')
-            .map(|index| start + 1 + index)
-            .unwrap_or_else(|| panic!("expected export path in message: {message}"));
+            .map_or_else(|| panic!("expected export path in message: {message}"), |index| start + 1 + index);
         PathBuf::from(&message[start + 1..end])
     }
 
