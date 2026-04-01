@@ -1563,4 +1563,21 @@ right = sometimes(fast(2), cp hh)";
             "function `fast` cannot appear inside a pattern group in Task 5; apply transforms with the pipe operator `|>` or call `fast(..., pattern)` directly"
         );
     }
+
+    #[test]
+    fn eval_apply_user_function_over_application_error() {
+        let result = eval_module("f x = x\nerr = f(1, 2)", ReplMode::Loose);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "function expected 1 argument(s), got 2"
+        );
+    }
+
+    #[test]
+    fn eval_apply_user_function_currying_success() {
+        let result = eval_module("f x y = x y\npartial = f(1)", ReplMode::Loose).unwrap();
+        let partial = result.get("partial").unwrap();
+        assert!(matches!(partial, Value::Function(crate::value::FunctionValue::User(_))));
+    }
 }
