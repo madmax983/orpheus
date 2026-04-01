@@ -353,6 +353,55 @@ fn parameterized_binding_can_be_used_from_pipe() {
 }
 
 #[test]
+fn pedal_graph_binding_evaluates_to_pedal_value() {
+    let module = eval_module(
+        "fx = graph { wet = input |> clip(model=silicon_hard); wet |> output }",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert!(matches!(module.get("fx"), Some(Value::Pedal(_))));
+}
+
+#[test]
+fn pedal_graph_rejects_unbound_local_signal() {
+    assert_eval_error_contains(
+        "fx = graph { wet = dry |> output; wet |> output }",
+        ReplMode::Strict,
+        &["dry", "unbound local signal"],
+    );
+}
+
+#[test]
+fn pedal_graph_rejects_implicit_cycle() {
+    assert_eval_error_contains(
+        "fx = graph { wet = wet |> gain(0.5); wet |> output }",
+        ReplMode::Strict,
+        &["wet", "implicit cycle", "feedback"],
+    );
+}
+
+#[test]
+fn pedal_graph_accepts_explicit_feedback_node() {
+    let module = eval_module(
+        "fx = graph { wet = feedback(wet |> gain(0.5)); wet |> output }",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert!(matches!(module.get("fx"), Some(Value::Pedal(_))));
+}
+
+#[test]
+fn pedal_graph_rejects_output_misuse() {
+    assert_eval_error_contains(
+        "fx = graph { wet = output(input); wet |> output }",
+        ReplMode::Strict,
+        &["output", "final pipe target"],
+    );
+}
+
+#[test]
 fn self_recursive_parameterized_binding_is_rejected() {
     assert_eval_error_contains(
         "loop pat = loop(pat)",

@@ -30,6 +30,7 @@ use crate::ast::{Expr, Module, Stmt, binding_expr_self_references};
 use crate::builtins::{builtin_value, is_sample_identifier, stack_values};
 use crate::diagnostics::ParseError;
 use crate::parser::parse_module;
+use crate::pedal::compile_graph;
 use crate::pitch::parse_named_pitch_literal;
 use crate::value::{
     FunctionValue, NumberPatternValue, SampleEvent, SamplePatternValue, UserFn, Value,
@@ -342,9 +343,7 @@ impl Evaluator {
             )),
             Expr::Number(value) => Ok(Value::NumberPattern(NumberPatternValue::constant(*value))),
             Expr::String(value) => Ok(Value::String(value.clone())),
-            Expr::Graph { .. } => Err(EvalError::new(
-                "pedal graph bindings are parsed but not yet executable in evaluation",
-            )),
+            Expr::Graph { bindings, result } => compile_graph(bindings, result).map(Value::Pedal),
             Expr::Binary { .. } => Err(EvalError::new(
                 "binary pedal expressions are parsed but not yet executable in evaluation",
             )),
