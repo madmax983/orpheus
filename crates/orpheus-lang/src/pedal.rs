@@ -426,7 +426,7 @@ impl<'a> GraphCompiler<'a> {
                         "named pedal parameters require an identifier on the left-hand side",
                     ));
                 };
-                let compiled = self.compile_named_argument_value(rhs)?;
+                let compiled = self.compile_named_argument_value(param_name, rhs)?;
                 if compiled.signal_kind() == &SignalKind::Audio {
                     return Err(EvalError::new(format!(
                         "parameter `{param_name}` on `{name}` cannot be driven by an audio signal in Task 3"
@@ -447,7 +447,11 @@ impl<'a> GraphCompiler<'a> {
         }
     }
 
-    fn compile_named_argument_value(&self, expr: &Expr) -> Result<ValidatedPedalNode, EvalError> {
+    fn compile_named_argument_value(
+        &self,
+        param_name: &str,
+        expr: &Expr,
+    ) -> Result<ValidatedPedalNode, EvalError> {
         if let Expr::Ident(name) = expr {
             if let Some(kind) = self.resolved_signals.get(name) {
                 return Ok(ValidatedPedalNode::new(
@@ -459,11 +463,14 @@ impl<'a> GraphCompiler<'a> {
             if self.binding_names.contains(name) || name == "input" || name == "output" {
                 return self.compile_expr(expr, false);
             }
-            return Ok(ValidatedPedalNode::new(
-                SignalKind::Control,
-                PedalNodeKind::Constant,
-                name,
-            ));
+            if is_selector_atom(param_name, name) {
+                return Ok(ValidatedPedalNode::new(
+                    SignalKind::Control,
+                    PedalNodeKind::Constant,
+                    name,
+                ));
+            }
+            return Err(EvalError::new(format!("unbound local signal `{name}`")));
         }
 
         self.compile_expr(expr, false)
@@ -502,7 +509,7 @@ impl<'a> GraphCompiler<'a> {
                         "named pedal parameters require an identifier on the left-hand side",
                     ));
                 };
-                let compiled = scoped.compile_named_argument_value(rhs)?;
+                let compiled = scoped.compile_named_argument_value(param_name, rhs)?;
                 if compiled.signal_kind() == &SignalKind::Audio {
                     return Err(EvalError::new(format!(
                         "parameter `{param_name}` on `feedback` cannot be driven by an audio signal in Task 3"
@@ -690,13 +697,122 @@ fn format_stage_summary(
     format!("{name}({})", rendered.join(", "))
 }
 
-fn format_graph_source(bindings: &[ValidatedPedalBinding], result: &ValidatedPedalNode) -> String {
+fn is_selector_atom(param_name: &str, ident: &str) -> bool {
+    matches!(
+        (param_name, ident),
+        ("model", "silicon_hard")
+            | ("model", "silicon_soft")
+            | ("model", "germanium_soft")
+            | ("model", "red_led")
+            | ("model", "mid_hump")
+            | ("model", "jfet_clean")
+            | ("model", "opamp_tight")
+            | ("kind", "hard")
+            | ("kind", "soft")
+    )
+}
+
+fn format_graph_source(bindings: &[GraphBinding], result: &Expr) -> String {
     let mut entries = bindings
         .iter()
-        .map(|binding| format!("{} = {}", binding.name(), binding.node().summary()))
+        .map(|binding| format!("{} = {}", binding.name, format_expr_source(&binding.expr)))
         .collect::<Vec<_>>();
-    entries.push(result.summary().to_owned());
+    entries.push(format_expr_source(result));
     format!("graph {{ {} }}", entries.join(" ; "))
+}
+
+fn format_expr_source(expr: &Expr) -> String {
+    match expr {
+        Expr::Seq(items) => items
+            .iter()
+            .map(format_expr_source)
+            .collect::<Vec<_>>()
+            .join(" "),
+        Expr::Stack(items) => format!(
+            "stack({})",
+            items
+                .iter()
+                .map(format_expr_source)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        Expr::Stream(items) => format!(
+            "stream({})",
+            items
+                .iter()
+                .map(format_expr_source)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        Expr::Graph { bindings, result } => format_graph_source(bindings, result),
+        Expr::Pipe { lhs, rhs } => {
+            format!("{} |> {}", format_expr_source(lhs), format_expr_source(rhs))
+        }
+        Expr::Binary { lhs, op, rhs } => {
+            let symbol = match op {
+                BinaryOp::Add => " + ",
+                BinaryOp::Mul => " * ",
+                BinaryOp::Assign => "=",
+            };
+            format!(
+                "{}{}{}",
+                format_expr_source(lhs),
+                symbol,
+                format_expr_source(rhs)
+            )
+        }
+        Expr::Call { callee, args } => format!(
+            "{}({})",
+            format_expr_source(callee),
+            args.iter()
+                .map(format_expr_source)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        Expr::At { start, pattern } => {
+            format!(
+                "at({}, {})",
+                format_expr_source(start),
+                format_expr_source(pattern)
+            )
+        }
+        Expr::Meter {
+            beats,
+            unit,
+            pattern,
+        } => format!(
+            "meter({}, {}, {})",
+            format_expr_source(beats),
+            format_expr_source(unit),
+            format_expr_source(pattern)
+        ),
+        Expr::Beat(value) => format!("beat({})", format_expr_source(value)),
+        Expr::Section { pattern, cycles } => format!(
+            "section({}, {})",
+            format_expr_source(pattern),
+            format_expr_source(cycles)
+        ),
+        Expr::SeqSections(items) => format!(
+            "seq_sections({})",
+            items
+                .iter()
+                .map(format_expr_source)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        Expr::Group(items) => format!(
+            "({})",
+            items
+                .iter()
+                .map(format_expr_source)
+                .collect::<Vec<_>>()
+                .join(" ")
+        ),
+        Expr::Ident(name) => name.clone(),
+        Expr::Rest => "~".to_owned(),
+        Expr::Number(value) => value.to_string(),
+        Expr::String(value) => format!("{value:?}"),
+    }
 }
 
 /// Compiles a source-level pedal graph into a validated plan.
@@ -706,7 +822,10 @@ fn format_graph_source(bindings: &[ValidatedPedalBinding], result: &ValidatedPed
 /// Returns [`EvalError`] when the graph references an undefined local signal,
 /// uses `output` outside the final result position, introduces an implicit cycle,
 /// or violates the v1 audio/control classification rules.
-pub fn compile_graph(bindings: &[GraphBinding], result: &Expr) -> Result<PedalValue, EvalError> {
+pub fn compile_graph(
+    bindings: &[GraphBinding],
+    result_expr: &Expr,
+) -> Result<PedalValue, EvalError> {
     let binding_names = bindings
         .iter()
         .map(|binding| binding.name.clone())
@@ -730,14 +849,14 @@ pub fn compile_graph(bindings: &[GraphBinding], result: &Expr) -> Result<PedalVa
         binding_names: &binding_names,
         current_binding: None,
     };
-    let result = compiler.compile_expr(result, true)?;
+    let result = compiler.compile_expr(result_expr, true)?;
     if result.kind() != &PedalNodeKind::Output {
         return Err(EvalError::new(
             "pedal graphs must route their final result through `output`",
         ));
     }
 
-    let graph = PedalGraph::new(format_graph_source(&compiled_bindings, &result));
+    let graph = PedalGraph::new(format_graph_source(bindings, result_expr));
     let plan = ValidatedPedalPlan::new(compiled_bindings, result);
     Ok(PedalValue::new(graph, plan))
 }
