@@ -1022,9 +1022,7 @@ mod tests {
 
     #[test]
     fn routing_snapshot_builder_catches_duplicate_bus_names() {
-        let builder = RoutingSnapshotBuilder::default()
-            .bus("verb")
-            .bus("verb");
+        let builder = RoutingSnapshotBuilder::default().bus("verb").bus("verb");
         let result = builder.build();
         assert_eq!(
             result,
