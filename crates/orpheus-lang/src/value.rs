@@ -1341,6 +1341,36 @@ enum ControlPatternKind {
     Rate,
 }
 
+fn process_event_fragments<T, F>(
+    event: &Event<T>,
+    boundaries: &[&Rational],
+    composed: &mut Vec<Event<T>>,
+    process_fragment: &mut F,
+) -> Result<(), EvalError>
+where
+    T: PatternRuntimeValue,
+    F: FnMut(&TimeSpan, &T) -> Result<Option<T>, EvalError>,
+{
+    for window in boundaries.windows(2) {
+        let &[start, end] = window else {
+            continue;
+        };
+        if start >= end {
+            continue;
+        }
+
+        let part = build_span(start.clone(), end.clone())?;
+        if let Some(value) = process_fragment(&part, &event.value)? {
+            composed.push(Event {
+                whole: None,
+                part,
+                value,
+            });
+        }
+    }
+    Ok(())
+}
+
 fn apply_event_fragments<T, F>(
     source_events: Vec<Event<T>>,
     control_event_lists: &[&[Event<f64>]],
@@ -1358,23 +1388,7 @@ where
             continue;
         };
 
-        for window in boundaries.windows(2) {
-            let &[start, end] = window else {
-                continue;
-            };
-            if start >= end {
-                continue;
-            }
-
-            let part = build_span(start.clone(), end.clone())?;
-            if let Some(value) = process_fragment(&part, &event.value)? {
-                composed.push(Event {
-                    whole: None,
-                    part,
-                    value,
-                });
-            }
-        }
+        process_event_fragments(&event, &boundaries, &mut composed, &mut process_fragment)?;
     }
 
     sort_events(&mut composed);
