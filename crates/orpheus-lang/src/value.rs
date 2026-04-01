@@ -1027,7 +1027,11 @@ impl PatternRuntimeValue for f64 {
         direction: ArpDirectionValue,
     ) -> Result<Vec<Event<Self>>, EvalError> {
         sort_events(&mut events);
-        let mut arped = Vec::with_capacity(events.len() * steps as usize);
+        let capacity = events
+            .len()
+            .checked_mul(steps as usize)
+            .ok_or_else(|| EvalError::new("`arp` capacity exceeded evaluator limits"))?;
+        let mut arped = Vec::with_capacity(capacity);
         let mut index = 0;
 
         while index < events.len() {
@@ -2779,7 +2783,8 @@ fn arp_event_cluster(
         &rational_reciprocal(&rational_from_parts(step_count, 1)?)?,
     )?;
     let len = cluster.len();
-    let mut arped = Vec::with_capacity(usize::try_from(steps).unwrap_or(cluster.len()));
+    let capacity = usize::try_from(steps).map_err(|_| EvalError::new("`arp` capacity exceeded evaluator limits"))?;
+    let mut arped = Vec::with_capacity(capacity);
 
     for index in 0..steps {
         let offset_index = i64::from(index);

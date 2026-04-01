@@ -611,10 +611,16 @@ impl Evaluator {
 
         let mut combined = match base {
             ExplicitValue::Sample(ref events) => ExplicitValue::Sample(Vec::with_capacity(
-                events.len().checked_mul(repeat_count_usize).unwrap_or(0),
+                events
+                    .len()
+                    .checked_mul(repeat_count_usize)
+                    .ok_or_else(|| EvalError::new("section capacity exceeded evaluator limits"))?,
             )),
             ExplicitValue::Number(ref events) => ExplicitValue::Number(Vec::with_capacity(
-                events.len().checked_mul(repeat_count_usize).unwrap_or(0),
+                events
+                    .len()
+                    .checked_mul(repeat_count_usize)
+                    .ok_or_else(|| EvalError::new("section capacity exceeded evaluator limits"))?,
             )),
         };
 
