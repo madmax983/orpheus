@@ -1,4 +1,8 @@
 use core::fmt::{self, Display, Formatter};
+use std::collections::{BTreeMap, BTreeSet};
+
+use crate::ast::{BinaryOp, Expr, GraphBinding};
+use crate::eval::EvalError;
 
 /// The coarse signal domain understood by the pedal DSL.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -12,6 +16,34 @@ impl Display for SignalKind {
         match self {
             Self::Audio => formatter.write_str("Audio"),
             Self::Control => formatter.write_str("Control"),
+        }
+    }
+}
+
+/// The node categories used by the validated pedal plan.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PedalNodeKind {
+    Input,
+    Reference,
+    Constant,
+    Binary,
+    Stage,
+    Mix,
+    Feedback,
+    Output,
+}
+
+impl Display for PedalNodeKind {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Input => formatter.write_str("input"),
+            Self::Reference => formatter.write_str("reference"),
+            Self::Constant => formatter.write_str("constant"),
+            Self::Binary => formatter.write_str("binary"),
+            Self::Stage => formatter.write_str("stage"),
+            Self::Mix => formatter.write_str("mix"),
+            Self::Feedback => formatter.write_str("feedback"),
+            Self::Output => formatter.write_str("output"),
         }
     }
 }
@@ -41,18 +73,20 @@ impl PedalGraph {
     }
 }
 
-/// A validated pedal plan, ready for later lowering or rendering.
+/// A validated node in the internal pedal plan.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ValidatedPedalPlan {
+pub struct ValidatedPedalNode {
     signal_kind: SignalKind,
+    kind: PedalNodeKind,
     summary: String,
 }
 
-impl ValidatedPedalPlan {
+impl ValidatedPedalNode {
     #[must_use]
-    pub fn new(signal_kind: SignalKind, summary: impl Into<String>) -> Self {
+    pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
             signal_kind,
+            kind,
             summary: summary.into(),
         }
     }
@@ -63,8 +97,93 @@ impl ValidatedPedalPlan {
     }
 
     #[must_use]
+    pub fn kind(&self) -> &PedalNodeKind {
+        &self.kind
+    }
+
+    #[must_use]
+    pub fn summary(&self) -> &str {
+        &self.summary
+    }
+}
+
+/// A validated let-bound signal inside the pedal plan.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ValidatedPedalBinding {
+    name: String,
+    node: ValidatedPedalNode,
+}
+
+impl ValidatedPedalBinding {
+    #[must_use]
+    pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
+        Self {
+            name: name.into(),
+            node,
+        }
+    }
+
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    #[must_use]
+    pub fn node(&self) -> &ValidatedPedalNode {
+        &self.node
+    }
+}
+
+/// A validated pedal plan, ready for later lowering or rendering.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ValidatedPedalPlan {
+    signal_kind: SignalKind,
+    bindings: Vec<ValidatedPedalBinding>,
+    result: ValidatedPedalNode,
+}
+
+impl ValidatedPedalPlan {
+    #[must_use]
+    pub fn new(bindings: Vec<ValidatedPedalBinding>, result: ValidatedPedalNode) -> Self {
+        Self {
+            signal_kind: result.signal_kind().clone(),
+            bindings,
+            result,
+        }
+    }
+
+    #[must_use]
+    pub fn signal_kind(&self) -> &SignalKind {
+        &self.signal_kind
+    }
+
+    #[must_use]
+    pub fn bindings(&self) -> &[ValidatedPedalBinding] {
+        &self.bindings
+    }
+
+    #[must_use]
+    pub fn result(&self) -> &ValidatedPedalNode {
+        &self.result
+    }
+
+    #[must_use]
     pub fn explain(&self) -> String {
-        format!("signal_kind={}, plan={}", self.signal_kind, self.summary)
+        let mut lines = vec![format!("signal_kind={}", self.signal_kind)];
+        for binding in &self.bindings {
+            lines.push(format!(
+                "binding {}: {} {}",
+                binding.name(),
+                binding.node().signal_kind(),
+                binding.node().summary()
+            ));
+        }
+        lines.push(format!(
+            "result: {} {}",
+            self.result.signal_kind(),
+            self.result.summary()
+        ));
+        lines.join("\n")
     }
 }
 
@@ -100,4 +219,525 @@ impl PedalValue {
     pub fn explain(&self) -> String {
         self.plan.explain()
     }
+}
+
+#[derive(Clone)]
+struct GraphCompiler<'a> {
+    resolved_signals: &'a BTreeMap<String, SignalKind>,
+    binding_names: &'a BTreeSet<String>,
+    current_binding: Option<&'a str>,
+}
+
+impl<'a> GraphCompiler<'a> {
+    fn compile_expr(
+        &self,
+        expr: &Expr,
+        allow_output: bool,
+    ) -> Result<ValidatedPedalNode, EvalError> {
+        match expr {
+            Expr::Ident(name) => self.compile_ident(name, allow_output),
+            Expr::Number(value) => Ok(ValidatedPedalNode::new(
+                SignalKind::Control,
+                PedalNodeKind::Constant,
+                value.to_string(),
+            )),
+            Expr::String(value) => Ok(ValidatedPedalNode::new(
+                SignalKind::Control,
+                PedalNodeKind::Constant,
+                format!("{value:?}"),
+            )),
+            Expr::Binary { lhs, op, rhs } => self.compile_binary(lhs, *op, rhs),
+            Expr::Pipe { lhs, rhs } => {
+                let lhs = self.compile_expr(lhs, false)?;
+                self.compile_pipe_target(lhs, rhs, allow_output)
+            }
+            Expr::Call { callee, args } => self.compile_call(callee, args, None, allow_output),
+            Expr::Group(items) if items.len() == 1 => self.compile_expr(&items[0], allow_output),
+            Expr::Seq(_)
+            | Expr::Stack(_)
+            | Expr::Stream(_)
+            | Expr::Graph { .. }
+            | Expr::At { .. }
+            | Expr::Meter { .. }
+            | Expr::Beat(_)
+            | Expr::Section { .. }
+            | Expr::SeqSections(_)
+            | Expr::Group(_)
+            | Expr::Rest => Err(EvalError::new(
+                "pedal graphs only support local names, literals, binary control/audio expressions, stage calls, and pipes in Task 3",
+            )),
+        }
+    }
+
+    fn compile_ident(
+        &self,
+        name: &str,
+        allow_output: bool,
+    ) -> Result<ValidatedPedalNode, EvalError> {
+        if let Some(kind) = self.resolved_signals.get(name) {
+            return Ok(ValidatedPedalNode::new(
+                kind.clone(),
+                PedalNodeKind::Reference,
+                name,
+            ));
+        }
+
+        match name {
+            "input" => Ok(ValidatedPedalNode::new(
+                SignalKind::Audio,
+                PedalNodeKind::Input,
+                "input",
+            )),
+            "output" if allow_output => Err(EvalError::new(
+                "`output` must receive an audio signal as the pedal graph final result",
+            )),
+            "output" => Err(EvalError::new(
+                "`output` may only appear in the pedal graph final result",
+            )),
+            _ if self.binding_names.contains(name) => {
+                let owner = self.current_binding.unwrap_or("result");
+                Err(EvalError::new(format!(
+                    "implicit cycle: `{owner}` references `{name}` before it is defined; use `feedback(...)` for recursive pedal paths"
+                )))
+            }
+            _ => Err(EvalError::new(format!("unbound local signal `{name}`"))),
+        }
+    }
+
+    fn compile_binary(
+        &self,
+        lhs: &Expr,
+        op: BinaryOp,
+        rhs: &Expr,
+    ) -> Result<ValidatedPedalNode, EvalError> {
+        if op == BinaryOp::Assign {
+            return Err(EvalError::new(
+                "named pedal parameters are only valid inside stage calls",
+            ));
+        }
+
+        let lhs = self.compile_expr(lhs, false)?;
+        let rhs = self.compile_expr(rhs, false)?;
+        let symbol = match op {
+            BinaryOp::Add => "+",
+            BinaryOp::Mul => "*",
+            BinaryOp::Assign => "=",
+        };
+
+        match (op, lhs.signal_kind(), rhs.signal_kind()) {
+            (BinaryOp::Add, SignalKind::Control, SignalKind::Control)
+            | (BinaryOp::Mul, SignalKind::Control, SignalKind::Control) => {
+                Ok(ValidatedPedalNode::new(
+                    SignalKind::Control,
+                    PedalNodeKind::Binary,
+                    format!("({} {symbol} {})", lhs.summary(), rhs.summary()),
+                ))
+            }
+            (BinaryOp::Add, SignalKind::Audio, SignalKind::Audio) => Ok(ValidatedPedalNode::new(
+                SignalKind::Audio,
+                PedalNodeKind::Binary,
+                format!("({} + {})", lhs.summary(), rhs.summary()),
+            )),
+            (BinaryOp::Mul, SignalKind::Audio, SignalKind::Control)
+            | (BinaryOp::Mul, SignalKind::Control, SignalKind::Audio) => {
+                let (audio, control) = if lhs.signal_kind() == &SignalKind::Audio {
+                    (lhs.summary(), rhs.summary())
+                } else {
+                    (rhs.summary(), lhs.summary())
+                };
+                Ok(ValidatedPedalNode::new(
+                    SignalKind::Audio,
+                    PedalNodeKind::Binary,
+                    format!("({audio} * {control})"),
+                ))
+            }
+            (BinaryOp::Add, _, _) => Err(EvalError::new(
+                "`+` inside pedal graphs requires either two audio signals or two control expressions",
+            )),
+            (BinaryOp::Mul, _, _) => Err(EvalError::new(
+                "`*` inside pedal graphs requires control*control or audio*control operands",
+            )),
+            (BinaryOp::Assign, _, _) => unreachable!(),
+        }
+    }
+
+    fn compile_pipe_target(
+        &self,
+        lhs: ValidatedPedalNode,
+        rhs: &Expr,
+        allow_output: bool,
+    ) -> Result<ValidatedPedalNode, EvalError> {
+        match rhs {
+            Expr::Ident(name) => self.compile_named_stage(name, &[], Some(lhs), allow_output),
+            Expr::Call { callee, args } => self.compile_call(callee, args, Some(lhs), allow_output),
+            _ => Err(EvalError::new(
+                "pedal graph pipe targets must be stage names or stage calls",
+            )),
+        }
+    }
+
+    fn compile_call(
+        &self,
+        callee: &Expr,
+        args: &[Expr],
+        piped_input: Option<ValidatedPedalNode>,
+        allow_output: bool,
+    ) -> Result<ValidatedPedalNode, EvalError> {
+        let Expr::Ident(name) = callee else {
+            return Err(EvalError::new(
+                "pedal graph stage calls require a simple stage identifier",
+            ));
+        };
+        self.compile_named_stage(name, args, piped_input, allow_output)
+    }
+
+    fn compile_named_stage(
+        &self,
+        name: &str,
+        args: &[Expr],
+        piped_input: Option<ValidatedPedalNode>,
+        allow_output: bool,
+    ) -> Result<ValidatedPedalNode, EvalError> {
+        if name == "output" && piped_input.is_none() {
+            return Err(EvalError::new(
+                "`output` may only appear as the pedal graph final pipe target",
+            ));
+        }
+        if name == "feedback" {
+            return self.compile_feedback_exprs(args, piped_input);
+        }
+
+        let mut positional = Vec::new();
+        let mut named = Vec::new();
+
+        if let Some(input) = piped_input {
+            positional.push(input);
+        }
+
+        for arg in args {
+            if let Expr::Binary {
+                lhs,
+                op: BinaryOp::Assign,
+                rhs,
+            } = arg
+            {
+                let Expr::Ident(param_name) = lhs.as_ref() else {
+                    return Err(EvalError::new(
+                        "named pedal parameters require an identifier on the left-hand side",
+                    ));
+                };
+                let compiled = self.compile_named_argument_value(rhs)?;
+                if compiled.signal_kind() == &SignalKind::Audio {
+                    return Err(EvalError::new(format!(
+                        "parameter `{param_name}` on `{name}` cannot be driven by an audio signal in Task 3"
+                    )));
+                }
+                named.push((param_name.clone(), compiled));
+            } else {
+                positional.push(self.compile_expr(arg, false)?);
+            }
+        }
+
+        match name {
+            "output" => self.compile_output_stage(positional, named, allow_output),
+            "mix" => self.compile_mix_stage(positional, named),
+            "lfo" | "constant" => self.compile_control_source(name, positional, named),
+            "env_follow" => self.compile_env_follow(positional, named),
+            _ => self.compile_audio_stage(name, positional, named),
+        }
+    }
+
+    fn compile_named_argument_value(&self, expr: &Expr) -> Result<ValidatedPedalNode, EvalError> {
+        if let Expr::Ident(name) = expr {
+            if let Some(kind) = self.resolved_signals.get(name) {
+                return Ok(ValidatedPedalNode::new(
+                    kind.clone(),
+                    PedalNodeKind::Reference,
+                    name,
+                ));
+            }
+            if self.binding_names.contains(name) || name == "input" || name == "output" {
+                return self.compile_expr(expr, false);
+            }
+            return Ok(ValidatedPedalNode::new(
+                SignalKind::Control,
+                PedalNodeKind::Constant,
+                name,
+            ));
+        }
+
+        self.compile_expr(expr, false)
+    }
+
+    fn compile_feedback_exprs(
+        &self,
+        args: &[Expr],
+        piped_input: Option<ValidatedPedalNode>,
+    ) -> Result<ValidatedPedalNode, EvalError> {
+        let mut scoped_signals = self.resolved_signals.clone();
+        if let Some(current_binding) = self.current_binding {
+            scoped_signals.insert(current_binding.to_owned(), SignalKind::Audio);
+        }
+        let scoped = GraphCompiler {
+            resolved_signals: &scoped_signals,
+            binding_names: self.binding_names,
+            current_binding: self.current_binding,
+        };
+
+        let mut positional = Vec::new();
+        let mut named = Vec::new();
+        if let Some(input) = piped_input {
+            positional.push(input);
+        }
+
+        for arg in args {
+            if let Expr::Binary {
+                lhs,
+                op: BinaryOp::Assign,
+                rhs,
+            } = arg
+            {
+                let Expr::Ident(param_name) = lhs.as_ref() else {
+                    return Err(EvalError::new(
+                        "named pedal parameters require an identifier on the left-hand side",
+                    ));
+                };
+                let compiled = scoped.compile_named_argument_value(rhs)?;
+                if compiled.signal_kind() == &SignalKind::Audio {
+                    return Err(EvalError::new(format!(
+                        "parameter `{param_name}` on `feedback` cannot be driven by an audio signal in Task 3"
+                    )));
+                }
+                named.push((param_name.clone(), compiled));
+            } else {
+                positional.push(scoped.compile_expr(arg, false)?);
+            }
+        }
+
+        self.compile_feedback_stage(positional, named)
+    }
+
+    fn compile_output_stage(
+        &self,
+        positional: Vec<ValidatedPedalNode>,
+        named: Vec<(String, ValidatedPedalNode)>,
+        allow_output: bool,
+    ) -> Result<ValidatedPedalNode, EvalError> {
+        if !allow_output {
+            return Err(EvalError::new(
+                "`output` may only appear as the pedal graph final pipe target",
+            ));
+        }
+        if !named.is_empty() || positional.len() != 1 {
+            return Err(EvalError::new(
+                "`output` requires exactly one audio signal as the pedal graph final pipe target",
+            ));
+        }
+        if positional[0].signal_kind() != &SignalKind::Audio {
+            return Err(EvalError::new(
+                "`output` requires an audio signal as the pedal graph final pipe target",
+            ));
+        }
+
+        Ok(ValidatedPedalNode::new(
+            SignalKind::Audio,
+            PedalNodeKind::Output,
+            format!("output({})", positional[0].summary()),
+        ))
+    }
+
+    fn compile_mix_stage(
+        &self,
+        positional: Vec<ValidatedPedalNode>,
+        named: Vec<(String, ValidatedPedalNode)>,
+    ) -> Result<ValidatedPedalNode, EvalError> {
+        if !named.is_empty() {
+            return Err(EvalError::new(
+                "`mix` does not accept named parameters in Task 3",
+            ));
+        }
+        if positional.len() < 2 {
+            return Err(EvalError::new("`mix` requires at least two audio inputs"));
+        }
+        if positional
+            .iter()
+            .any(|node| node.signal_kind() != &SignalKind::Audio)
+        {
+            return Err(EvalError::new(
+                "`mix` requires every positional argument to resolve to an audio signal",
+            ));
+        }
+
+        Ok(ValidatedPedalNode::new(
+            SignalKind::Audio,
+            PedalNodeKind::Mix,
+            format!(
+                "mix({})",
+                positional
+                    .iter()
+                    .map(ValidatedPedalNode::summary)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        ))
+    }
+
+    fn compile_feedback_stage(
+        &self,
+        positional: Vec<ValidatedPedalNode>,
+        named: Vec<(String, ValidatedPedalNode)>,
+    ) -> Result<ValidatedPedalNode, EvalError> {
+        if positional.len() != 1 || positional[0].signal_kind() != &SignalKind::Audio {
+            return Err(EvalError::new(
+                "`feedback(...)` requires exactly one audio signal input",
+            ));
+        }
+
+        let mut rendered = vec![positional[0].summary().to_owned()];
+        rendered.extend(
+            named
+                .iter()
+                .map(|(name, node)| format!("{name}={}", node.summary())),
+        );
+        Ok(ValidatedPedalNode::new(
+            SignalKind::Audio,
+            PedalNodeKind::Feedback,
+            format!("feedback({})", rendered.join(", ")),
+        ))
+    }
+
+    fn compile_control_source(
+        &self,
+        name: &str,
+        positional: Vec<ValidatedPedalNode>,
+        named: Vec<(String, ValidatedPedalNode)>,
+    ) -> Result<ValidatedPedalNode, EvalError> {
+        if positional
+            .iter()
+            .any(|node| node.signal_kind() == &SignalKind::Audio)
+        {
+            return Err(EvalError::new(format!(
+                "`{name}` cannot take an audio input; it is a control source"
+            )));
+        }
+
+        Ok(ValidatedPedalNode::new(
+            SignalKind::Control,
+            PedalNodeKind::Stage,
+            format_stage_summary(name, &positional, &named),
+        ))
+    }
+
+    fn compile_env_follow(
+        &self,
+        positional: Vec<ValidatedPedalNode>,
+        named: Vec<(String, ValidatedPedalNode)>,
+    ) -> Result<ValidatedPedalNode, EvalError> {
+        if positional.len() != 1 || positional[0].signal_kind() != &SignalKind::Audio {
+            return Err(EvalError::new(
+                "`env_follow` requires exactly one audio signal input",
+            ));
+        }
+
+        Ok(ValidatedPedalNode::new(
+            SignalKind::Control,
+            PedalNodeKind::Stage,
+            format_stage_summary("env_follow", &positional, &named),
+        ))
+    }
+
+    fn compile_audio_stage(
+        &self,
+        name: &str,
+        positional: Vec<ValidatedPedalNode>,
+        named: Vec<(String, ValidatedPedalNode)>,
+    ) -> Result<ValidatedPedalNode, EvalError> {
+        let audio_inputs = positional
+            .iter()
+            .filter(|node| node.signal_kind() == &SignalKind::Audio)
+            .count();
+
+        match audio_inputs {
+            0 => Err(EvalError::new(format!(
+                "`{name}` requires an audio input in Task 3"
+            ))),
+            1 => Ok(ValidatedPedalNode::new(
+                SignalKind::Audio,
+                PedalNodeKind::Stage,
+                format_stage_summary(name, &positional, &named),
+            )),
+            _ => Err(EvalError::new(format!(
+                "`{name}` cannot take multiple audio inputs; use `mix(...)` for branch recombination"
+            ))),
+        }
+    }
+}
+
+fn format_stage_summary(
+    name: &str,
+    positional: &[ValidatedPedalNode],
+    named: &[(String, ValidatedPedalNode)],
+) -> String {
+    let mut rendered = positional
+        .iter()
+        .map(|node| node.summary().to_owned())
+        .collect::<Vec<_>>();
+    rendered.extend(
+        named
+            .iter()
+            .map(|(param, node)| format!("{param}={}", node.summary())),
+    );
+    format!("{name}({})", rendered.join(", "))
+}
+
+fn format_graph_source(bindings: &[ValidatedPedalBinding], result: &ValidatedPedalNode) -> String {
+    let mut entries = bindings
+        .iter()
+        .map(|binding| format!("{} = {}", binding.name(), binding.node().summary()))
+        .collect::<Vec<_>>();
+    entries.push(result.summary().to_owned());
+    format!("graph {{ {} }}", entries.join(" ; "))
+}
+
+/// Compiles a source-level pedal graph into a validated plan.
+///
+/// # Errors
+///
+/// Returns [`EvalError`] when the graph references an undefined local signal,
+/// uses `output` outside the final result position, introduces an implicit cycle,
+/// or violates the v1 audio/control classification rules.
+pub fn compile_graph(bindings: &[GraphBinding], result: &Expr) -> Result<PedalValue, EvalError> {
+    let binding_names = bindings
+        .iter()
+        .map(|binding| binding.name.clone())
+        .collect::<BTreeSet<_>>();
+    let mut resolved_signals = BTreeMap::new();
+    let mut compiled_bindings = Vec::with_capacity(bindings.len());
+
+    for binding in bindings {
+        let compiler = GraphCompiler {
+            resolved_signals: &resolved_signals,
+            binding_names: &binding_names,
+            current_binding: Some(binding.name.as_str()),
+        };
+        let node = compiler.compile_expr(&binding.expr, false)?;
+        resolved_signals.insert(binding.name.clone(), node.signal_kind().clone());
+        compiled_bindings.push(ValidatedPedalBinding::new(binding.name.clone(), node));
+    }
+
+    let compiler = GraphCompiler {
+        resolved_signals: &resolved_signals,
+        binding_names: &binding_names,
+        current_binding: None,
+    };
+    let result = compiler.compile_expr(result, true)?;
+    if result.kind() != &PedalNodeKind::Output {
+        return Err(EvalError::new(
+            "pedal graphs must route their final result through `output`",
+        ));
+    }
+
+    let graph = PedalGraph::new(format_graph_source(&compiled_bindings, &result));
+    let plan = ValidatedPedalPlan::new(compiled_bindings, result);
+    Ok(PedalValue::new(graph, plan))
 }
