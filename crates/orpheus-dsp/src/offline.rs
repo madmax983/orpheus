@@ -188,6 +188,10 @@ pub fn render_routing_snapshot_to_stereo_for_test(
 ///
 /// Returns [`OfflineRenderError`] if scheduling, rendering, sample resolution, or
 /// file I/O fails.
+///
+/// # Panics
+///
+/// This function will panic if the track id cannot be converted into `usize` safely.
 pub fn render_routing_snapshot_to_stem_wavs(
     snapshot: &RoutingSnapshot,
     cycle_count: u64,
@@ -627,6 +631,7 @@ fn write_flac(path: &Path, samples: &[i32]) -> Result<(), OfflineRenderError> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn activate_voice(
     active_voices: &mut [Option<ActiveVoice>],
     sample_bank: &SampleBank,
