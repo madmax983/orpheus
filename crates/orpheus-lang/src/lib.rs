@@ -14,11 +14,12 @@ mod types;
 mod value;
 
 pub use ast::{Expr, Module, Stmt};
-pub use diagnostics::{LoadError, ParseError, TypeError};
+pub use diagnostics::{
+    EvalError, LangError as Error, LoadError, ParseError, RenderError, TypeError,
+};
 pub use eval::{
-    EvalError, RenderError, eval_module, export_number_pattern_to_csv,
-    export_sample_pattern_to_csv, render_sample_pattern_to_file, render_sample_pattern_to_wav,
-    render_span,
+    eval_module, export_number_pattern_to_csv, export_sample_pattern_to_csv,
+    render_sample_pattern_to_file, render_sample_pattern_to_wav, render_span,
 };
 pub use loader::load_file_strict;
 pub use parser::parse_module;

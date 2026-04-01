@@ -2,7 +2,8 @@ use std::collections::BTreeSet;
 use std::io::Write;
 use std::path::Path;
 
-use crate::eval::{EvalError, render_span};
+use crate::diagnostics::EvalError;
+use crate::eval::render_span;
 use crate::value::SamplePatternValue;
 
 /// Exports a sample pattern's evaluated events to an SVG file representing a piano roll.

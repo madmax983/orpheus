@@ -1,6 +1,7 @@
 use orpheus_pattern::{Rational, TimeSpan};
 
-use crate::eval::{EvalError, f64_to_rational};
+use crate::diagnostics::EvalError;
+use crate::eval::f64_to_rational;
 use crate::value::{BuiltinFn, BuiltinKind, NumberPatternValue, SamplePatternValue, Value};
 
 pub fn is_sample_identifier(name: &str) -> bool {

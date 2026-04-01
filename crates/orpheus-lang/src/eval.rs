@@ -20,121 +20,20 @@
 //! ```
 
 use std::collections::BTreeMap;
-use std::error::Error;
-use std::fmt::{self, Display, Formatter};
+
 use std::path::Path;
 
 use std::io::Write;
 
-use orpheus_dsp::{OfflineRenderError, SampleBank, SampleTrigger, render_events_to_file_with_bank};
+use orpheus_dsp::{SampleBank, SampleTrigger, render_events_to_file_with_bank};
 use orpheus_pattern::{Event, PatternNode, Rational, TimeSpan};
 
 use crate::ReplMode;
 use crate::ast::{Expr, Module, Stmt};
 use crate::builtins::{builtin_value, is_sample_identifier, stack_values};
-use crate::diagnostics::ParseError;
+use crate::diagnostics::{EvalError, RenderError};
 use crate::parser::parse_module;
 use crate::value::{NumberPatternValue, SampleEvent, SamplePatternValue, Value};
-
-/// Runtime evaluation error for bootstrap Orpheus modules.
-///
-/// `EvalError` occurs when an expression fails to evaluate at runtime.
-/// In Orpheus, evaluation errors often stem from invalid arithmetic on rational
-/// time domains (like dividing by zero), out-of-bounds parameters, or attempting
-/// to use an unsupported operation on a pattern. Orpheus patterns operate in an
-/// exact, bounded rational time domain, so overflows during shifts or scaling
-/// can result in an `EvalError`.
-///
-/// # Examples
-///
-/// An `EvalError` provides an error message indicating what went wrong:
-///
-/// ```
-/// use orpheus_lang::EvalError;
-///
-/// let err = EvalError::new("decimal literal exceeded the supported range");
-/// assert_eq!(err.to_string(), "decimal literal exceeded the supported range");
-/// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct EvalError {
-    message: Box<str>,
-}
-
-impl EvalError {
-    /// Creates a new `EvalError` with the given message.
-    ///
-    /// The message explains what went wrong during runtime evaluation.
-    ///
-    /// Common causes for `EvalError` include:
-    /// - Out-of-bounds numeric parameters.
-    /// - Arithmetic overflow during explicit time-shifts.
-    /// - Applying functions to invalid types.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use orpheus_lang::EvalError;
-    ///
-    /// let err = EvalError::new("division by zero");
-    /// assert_eq!(err.to_string(), "division by zero");
-    /// ```
-    pub fn new(message: impl Into<Box<str>>) -> Self {
-        Self {
-            message: message.into(),
-        }
-    }
-}
-
-impl Display for EvalError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.message)
-    }
-}
-
-impl Error for EvalError {}
-
-impl From<ParseError> for EvalError {
-    fn from(error: ParseError) -> Self {
-        Self::new(error.to_string())
-    }
-}
-
-/// Error raised while rendering an Orpheus sample pattern to an audio file.
-#[derive(Debug)]
-pub enum RenderError {
-    Eval(EvalError),
-    Audio(OfflineRenderError),
-}
-
-impl Display for RenderError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Eval(error) => Display::fmt(error, formatter),
-            Self::Audio(error) => Display::fmt(error, formatter),
-        }
-    }
-}
-
-impl Error for RenderError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::Eval(error) => Some(error),
-            Self::Audio(error) => Some(error),
-        }
-    }
-}
-
-impl From<EvalError> for RenderError {
-    fn from(error: EvalError) -> Self {
-        Self::Eval(error)
-    }
-}
-
-impl From<OfflineRenderError> for RenderError {
-    fn from(error: OfflineRenderError) -> Self {
-        Self::Audio(error)
-    }
-}
 
 /// Evaluates bootstrap Orpheus source into runtime values.
 ///

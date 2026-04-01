@@ -22,7 +22,8 @@ use orpheus_pattern::{
     CyclePattern, Event, EventStream, PatternError, PatternNode, Rational, TimeSpan,
 };
 
-use crate::{builtins::apply_builtin_function, eval::EvalError};
+use crate::builtins::apply_builtin_function;
+use crate::diagnostics::EvalError;
 
 /// Identifies which core built-in function is being represented.
 ///
