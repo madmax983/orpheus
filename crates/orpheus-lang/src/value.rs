@@ -3562,10 +3562,30 @@ where
         }
 
         // Extract values to shuffle
-        let mut values = cycle_events.iter().map(|e| e.value.clone()).collect::<Vec<_>>();
+        let mut values = cycle_events
+            .iter()
+            .map(|e| e.value.clone())
+            .collect::<Vec<_>>();
 
         // Shuffle using a deterministic RNG seeded by site_salt and cycle index
-        let [b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15] = cycle.to_le_bytes();
+        let [
+            b0,
+            b1,
+            b2,
+            b3,
+            b4,
+            b5,
+            b6,
+            b7,
+            b8,
+            b9,
+            b10,
+            b11,
+            b12,
+            b13,
+            b14,
+            b15,
+        ] = cycle.to_le_bytes();
         let lower = u64::from_le_bytes([b0, b1, b2, b3, b4, b5, b6, b7]);
         let upper = u64::from_le_bytes([b8, b9, b10, b11, b12, b13, b14, b15]);
         let mut state = lower ^ upper.rotate_left(32) ^ site_salt.rotate_left(17);
@@ -3577,7 +3597,9 @@ where
         let mut rng_state = state;
         for i in (1..values.len()).rev() {
             // LCG for next random number
-            rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            rng_state = rng_state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let j = (rng_state as usize) % (i + 1);
             values.swap(i, j);
         }

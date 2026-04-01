@@ -932,8 +932,12 @@ fn apply_chaos(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
         .ok_or_else(|| EvalError::new("`chaos` requires a pattern argument"))?;
 
     match pattern {
-        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.chaos_with_site_salt(site_salt))),
-        Value::NumberPattern(pattern) => Ok(Value::NumberPattern(pattern.chaos_with_site_salt(site_salt))),
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(
+            pattern.chaos_with_site_salt(site_salt),
+        )),
+        Value::NumberPattern(pattern) => Ok(Value::NumberPattern(
+            pattern.chaos_with_site_salt(site_salt),
+        )),
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)

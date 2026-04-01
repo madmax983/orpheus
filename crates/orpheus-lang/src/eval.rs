@@ -1578,6 +1578,9 @@ right = sometimes(fast(2), cp hh)";
     fn eval_apply_user_function_currying_success() {
         let result = eval_module("f x y = x y\npartial = f(1)", ReplMode::Loose).unwrap();
         let partial = result.get("partial").unwrap();
-        assert!(matches!(partial, Value::Function(crate::value::FunctionValue::User(_))));
+        assert!(matches!(
+            partial,
+            Value::Function(crate::value::FunctionValue::User(_))
+        ));
     }
 }

@@ -6,7 +6,7 @@
 
 use std::collections::BTreeSet;
 
-use unicode_width::UnicodeWidthStr;
+use comfy_table::{Table, presets::UTF8_BORDERS_ONLY};
 
 use crate::eval::{EvalError, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue};
@@ -152,40 +152,12 @@ pub fn number_pattern_stats(
 }
 
 fn build_stats_table(title: &str, rows: &[[String; 2]]) -> String {
-    let mut col1_width = 0;
-    let mut col2_width = 0;
+    let mut table = Table::new();
+    table.load_preset(UTF8_BORDERS_ONLY);
     for row in rows {
-        col1_width = col1_width.max(row[0].width());
-        col2_width = col2_width.max(row[1].width());
+        table.add_row(vec![&row[0], &row[1]]);
     }
-
-    let inner_width = col1_width + 3 + col2_width; // 3 spaces between columns
-    let title_width = title.width();
-    let max_inner_width = inner_width.max(title_width);
-
-    let top_border = format!("┌{}┐\n", "─".repeat(max_inner_width + 2));
-    let title_line = format!("│ {:<width$} │\n", title, width = max_inner_width);
-    let separator = format!("╞{}╡\n", "═".repeat(max_inner_width + 2));
-
-    let mut out = String::new();
-    out.push_str(&top_border);
-    out.push_str(&title_line);
-    out.push_str(&separator);
-
-    for row in rows {
-        let pad1 = " ".repeat(col1_width - row[0].width());
-        let mut line = format!("│ {}{}   {}", row[0], pad1, row[1]);
-
-        let current_len = line.width() - 2; // don't count "│ "
-        let pad2 = " ".repeat(max_inner_width.saturating_sub(current_len));
-        line.push_str(&pad2);
-        line.push_str(" │\n");
-        out.push_str(&line);
-    }
-
-    let bot_border = format!("└{}┘", "─".repeat(max_inner_width + 2));
-    out.push_str(&bot_border);
-    out
+    format!("{title}\n{table}")
 }
 
 #[cfg(test)]
