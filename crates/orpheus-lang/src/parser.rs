@@ -38,6 +38,11 @@ pub fn parse_module(source: &str) -> Result<Module, ParseError> {
 }
 
 fn parse_single_binding_module(source: &str, start_line: usize) -> Result<Module, ParseError> {
+    let paren_depth = max_paren_depth(source);
+    if paren_depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("exceeded maximum AST depth"));
+    }
+
     let padded_source = if start_line <= 1 {
         source.to_owned()
     } else {
@@ -47,6 +52,40 @@ fn parse_single_binding_module(source: &str, start_line: usize) -> Result<Module
         .map_err(|error| enrich_parse_error(source, &error))?;
     let module_pair = next_pair(&mut pairs, "module")?;
     build_module(module_pair)
+}
+
+fn max_paren_depth(source: &str) -> usize {
+    let mut max_depth = 0_usize;
+    let mut current_depth = 0_usize;
+    let mut in_string = false;
+    let mut escaping = false;
+
+    for character in source.chars() {
+        if in_string {
+            if escaping {
+                escaping = false;
+                continue;
+            }
+            match character {
+                '\\' => escaping = true,
+                '"' => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+
+        match character {
+            '"' => in_string = true,
+            '(' => {
+                current_depth += 1;
+                max_depth = max_depth.max(current_depth);
+            }
+            ')' => current_depth = current_depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+
+    max_depth
 }
 
 fn split_top_level_bindings(source: &str) -> Vec<(usize, String)> {
@@ -216,75 +255,98 @@ fn build_module(pair: Pair<'_, Rule>) -> Result<Module, ParseError> {
 fn build_binding(pair: Pair<'_, Rule>) -> Result<Stmt, ParseError> {
     let mut inner = pair.into_inner();
     let name = next_pair(&mut inner, "binding name")?.as_str().to_owned();
-    let expr = build_pipe_expr(next_pair(&mut inner, "binding expression")?)?;
+    let expr = build_pipe_expr_depth(next_pair(&mut inner, "binding expression")?, 0)?;
     Ok(Stmt::Binding { name, expr })
 }
 
-fn build_pipe_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+const MAX_AST_DEPTH: usize = 64;
+
+fn build_pipe_expr_depth(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("exceeded maximum AST depth"));
+    }
     let mut inner = pair.into_inner();
-    let first = build_sequence(next_pair(&mut inner, "pipe lhs")?)?;
+    let first = build_sequence_depth(next_pair(&mut inner, "pipe lhs")?, depth + 1)?;
 
     inner.try_fold(first, |lhs, rhs| {
         Ok(Expr::Pipe {
             lhs: Box::new(lhs),
-            rhs: Box::new(build_pipe_target(rhs)?),
+            rhs: Box::new(build_pipe_target_depth(rhs, depth + 1)?),
         })
     })
 }
 
-fn build_sequence(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_sequence_depth(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("exceeded maximum AST depth"));
+    }
     let items = pair
         .into_inner()
-        .map(build_item)
+        .map(|p| build_item_depth(p, depth + 1))
         .collect::<Result<Vec<_>, _>>()?;
 
     collapse_sequence(items, "sequence")
 }
 
-fn build_item(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
-    build_expr(first_inner(pair, "sequence item")?)
+fn build_item_depth(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("exceeded maximum AST depth"));
+    }
+    build_expr_depth(first_inner(pair, "sequence item")?, depth + 1)
 }
 
-fn build_pipe_target(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
-    build_expr(first_inner(pair, "pipe target")?)
+fn build_pipe_target_depth(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("exceeded maximum AST depth"));
+    }
+    build_expr_depth(first_inner(pair, "pipe target")?, depth + 1)
 }
 
-fn build_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_expr_depth(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("exceeded maximum AST depth"));
+    }
     match pair.as_rule() {
-        Rule::stack => build_stack(pair),
-        Rule::call => build_call(pair),
-        Rule::group => build_group(pair),
+        Rule::stack => build_stack_depth(pair, depth + 1),
+        Rule::call => build_call_depth(pair, depth + 1),
+        Rule::group => build_group_depth(pair, depth + 1),
         Rule::rest => Ok(Expr::Rest),
         Rule::number => build_number(&pair),
         Rule::string => build_string(&pair),
         Rule::identifier => Ok(Expr::Ident(pair.as_str().to_owned())),
-        Rule::pipe_expr => build_pipe_expr(pair),
-        Rule::sequence => build_sequence(pair),
-        Rule::item => build_item(pair),
-        Rule::pipe_target => build_pipe_target(pair),
+        Rule::pipe_expr => build_pipe_expr_depth(pair, depth + 1),
+        Rule::sequence => build_sequence_depth(pair, depth + 1),
+        Rule::item => build_item_depth(pair, depth + 1),
+        Rule::pipe_target => build_pipe_target_depth(pair, depth + 1),
         other => Err(ParseError::new(format!(
             "unexpected parser rule while building AST: {other:?}"
         ))),
     }
 }
 
-fn build_stack(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_stack_depth(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("exceeded maximum AST depth"));
+    }
     let layers_pair = next_pair(&mut pair.into_inner(), "stack layers")?;
     let layers = layers_pair
         .into_inner()
-        .map(build_pipe_expr)
+        .map(|p| build_pipe_expr_depth(p, depth + 1))
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(Expr::Stack(layers))
 }
 
-fn build_call(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_call_depth(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("exceeded maximum AST depth"));
+    }
     let mut inner = pair.into_inner();
     let callee_name = next_pair(&mut inner, "call callee")?.as_str().to_owned();
     let args = if let Some(args_pair) = inner.next() {
         args_pair
             .into_inner()
-            .map(build_pipe_expr)
+            .map(|p| build_pipe_expr_depth(p, depth + 1))
             .collect::<Result<Vec<_>, _>>()?
     } else {
         Vec::new()
@@ -330,10 +392,13 @@ fn build_call(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
     }
 }
 
-fn build_group(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_group_depth(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("exceeded maximum AST depth"));
+    }
     let items = pair
         .into_inner()
-        .map(build_item)
+        .map(|p| build_item_depth(p, depth + 1))
         .collect::<Result<Vec<_>, _>>()?;
     Ok(Expr::Group(items))
 }
