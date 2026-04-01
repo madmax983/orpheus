@@ -166,6 +166,10 @@ pub enum EngineError {
     UnknownVoice(String),
     #[error("output buffer length must be a whole number of frames")]
     MisalignedOutputBuffer,
+    #[error("unknown track id in active routing")]
+    UnknownTrackId,
+    #[error("unknown bus id in active routing")]
+    UnknownBusId,
 }
 
 #[derive(Debug)]
@@ -268,11 +272,11 @@ impl EngineCore {
                 Ok(())
             }
             EngineCommand::PlayTransport => {
-                self.play_transport();
+                self.play_transport()?;
                 Ok(())
             }
             EngineCommand::StopTransport => {
-                self.stop_transport();
+                self.stop_transport()?;
                 Ok(())
             }
         }
@@ -335,16 +339,22 @@ impl EngineCore {
                 self.activate_trigger(&trigger);
             }
 
-            let (left, right) = self.mix_routed_voices();
-            if let Some(first) = frame.first_mut() {
-                *first = left;
-            }
-            if frame.len() >= 2 {
-                frame[1] = right;
-            }
-            let mono_fill = (left + right) * 0.5;
-            for sample in frame.iter_mut().skip(2) {
-                *sample = mono_fill;
+            match self.mix_routed_voices() {
+                Ok((left, right)) => {
+                    if let Some(first) = frame.first_mut() {
+                        *first = left;
+                    }
+                    if frame.len() >= 2 {
+                        frame[1] = right;
+                    }
+                    let mono_fill = (left + right) * 0.5;
+                    for sample in frame.iter_mut().skip(2) {
+                        *sample = mono_fill;
+                    }
+                }
+                Err(_) => {
+                    frame.fill(0.0);
+                }
             }
 
             self.current_frame = self.current_frame.saturating_add(1);
@@ -388,29 +398,24 @@ impl EngineCore {
         }
     }
 
-    fn play_transport(&mut self) {
+    fn play_transport(&mut self) -> Result<(), EngineError> {
         if self.is_playing {
-            return;
+            return Ok(());
         }
 
         if let Some(routing) = self.pending_routing.take() {
-            self.adopt_routing_snapshot(routing)
-                .unwrap_or_else(|error| {
-                    panic!("pending routing should adopt while playing: {error}")
-                });
+            self.adopt_routing_snapshot(routing)?;
             self.active_pattern_name = self.pending_pattern_name.take();
         }
         self.next_cycle_boundary_frame = self.frames_per_cycle;
         self.prime_initial_routing = routing_snapshot_has_audio(&self.active_routing);
         self.is_playing = true;
+        Ok(())
     }
 
-    fn stop_transport(&mut self) {
+    fn stop_transport(&mut self) -> Result<(), EngineError> {
         if let Some(routing) = self.pending_routing.take() {
-            self.adopt_routing_snapshot(routing)
-                .unwrap_or_else(|error| {
-                    panic!("pending routing should adopt while stopping: {error}")
-                });
+            self.adopt_routing_snapshot(routing)?;
             self.active_pattern_name = self.pending_pattern_name.take();
         }
 
@@ -425,6 +430,7 @@ impl EngineCore {
         self.last_swap_frame = None;
         self.reset_bus_effect_states();
         self.is_playing = false;
+        Ok(())
     }
 
     fn resize_mix_buffers(&mut self) {
@@ -488,7 +494,7 @@ impl EngineCore {
         }
     }
 
-    fn mix_routed_voices(&mut self) -> (f32, f32) {
+    fn mix_routed_voices(&mut self) -> Result<(f32, f32), EngineError> {
         self.track_mix_buffer.fill((0.0, 0.0));
         self.bus_mix_buffer.fill((0.0, 0.0));
 
@@ -496,8 +502,11 @@ impl EngineCore {
             if let Some(voice) = slot.as_mut() {
                 if let Some((voice_left, voice_right)) = voice.next_stereo_frame() {
                     let track_index = usize::try_from(voice.track_id().get())
-                        .unwrap_or_else(|_| panic!("track id did not fit in usize"));
-                    let (left, right) = &mut self.track_mix_buffer[track_index];
+                        .map_err(|_| EngineError::UnknownTrackId)?;
+                    let (left, right) = self
+                        .track_mix_buffer
+                        .get_mut(track_index)
+                        .ok_or(EngineError::UnknownTrackId)?;
                     *left += voice_left;
                     *right += voice_right;
                 } else {
@@ -511,8 +520,11 @@ impl EngineCore {
 
         for track in self.active_routing.tracks() {
             let track_index = usize::try_from(track.id().get())
-                .unwrap_or_else(|_| panic!("track id did not fit in usize"));
-            let (track_left, track_right) = self.track_mix_buffer[track_index];
+                .map_err(|_| EngineError::UnknownTrackId)?;
+            let &(track_left, track_right) = self
+                .track_mix_buffer
+                .get(track_index)
+                .ok_or(EngineError::UnknownTrackId)?;
             let track_left = track_left * track.level();
             let track_right = track_right * track.level();
 
@@ -527,8 +539,11 @@ impl EngineCore {
 
             for send in track.sends() {
                 let bus_index = usize::try_from(send.bus_id().get())
-                    .unwrap_or_else(|_| panic!("bus id did not fit in usize"));
-                let (bus_left, bus_right) = &mut self.bus_mix_buffer[bus_index];
+                    .map_err(|_| EngineError::UnknownBusId)?;
+                let (bus_left, bus_right) = self
+                    .bus_mix_buffer
+                    .get_mut(bus_index)
+                    .ok_or(EngineError::UnknownBusId)?;
                 *bus_left += track_left * send.level();
                 *bus_right += track_right * send.level();
             }
@@ -540,9 +555,16 @@ impl EngineCore {
             }
 
             let bus_index = usize::try_from(bus.id().get())
-                .unwrap_or_else(|_| panic!("bus id did not fit in usize"));
-            let (bus_left, bus_right) = self.bus_mix_buffer[bus_index];
-            if let Some(effect) = self.bus_effect_states[bus_index].as_mut() {
+                .map_err(|_| EngineError::UnknownBusId)?;
+            let &(bus_left, bus_right) = self
+                .bus_mix_buffer
+                .get(bus_index)
+                .ok_or(EngineError::UnknownBusId)?;
+            let effect_state = self
+                .bus_effect_states
+                .get_mut(bus_index)
+                .ok_or(EngineError::UnknownBusId)?;
+            if let Some(effect) = effect_state.as_mut() {
                 let (wet_left, wet_right) = effect.process_frame(bus_left, bus_right);
                 master_left += wet_left;
                 master_right += wet_right;
@@ -552,7 +574,7 @@ impl EngineCore {
             }
         }
 
-        (master_left.clamp(-1.0, 1.0), master_right.clamp(-1.0, 1.0))
+        Ok((master_left.clamp(-1.0, 1.0), master_right.clamp(-1.0, 1.0)))
     }
 }
 

@@ -25,3 +25,23 @@ proptest! {
         let _ = eval_module(&source, ReplMode::Loose);
     }
 }
+
+proptest! {
+    #[test]
+    fn fuzz_math_extreme_vals_add(a in proptest::num::f64::ANY, b in proptest::num::f64::ANY) {
+        let s = format!("x = {} + {}", a, b);
+        let _ = eval_module(&s, ReplMode::Loose);
+    }
+
+    #[test]
+    fn fuzz_math_extreme_vals_mul(a in proptest::num::f64::ANY, b in proptest::num::f64::ANY) {
+        let s = format!("x = {} * {}", a, b);
+        let _ = eval_module(&s, ReplMode::Loose);
+    }
+
+    #[test]
+    fn fuzz_run_negative_extreme(count in proptest::num::i64::ANY) {
+        let s = format!("x = run(-{})", count.saturating_abs());
+        let _ = eval_module(&s, ReplMode::Loose);
+    }
+}
