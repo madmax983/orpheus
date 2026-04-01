@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ReplMode;
-use crate::ast::{Expr, Module, Stmt, binding_expr_self_references};
+use crate::ast::{BinaryOp, Expr, Module, Stmt, binding_expr_self_references};
 use crate::diagnostics::{ParseError, TypeError};
 use crate::parser::parse_module;
 use crate::pitch::parse_named_pitch_literal;
@@ -193,9 +193,46 @@ impl Inferencer {
             Expr::Number(_) => Ok(Type::pattern(Type::Number)),
             Expr::String(_) => Ok(Type::String),
             Expr::Graph { .. } => Ok(Type::Pedal),
-            Expr::Binary { .. } => Err(TypeError::new(
-                "binary pedal expressions are parsed but not yet supported by type inference",
-            )),
+            Expr::Binary { lhs, op, rhs } => self.infer_binary_expr(lhs, *op, rhs),
+        }
+    }
+
+    fn infer_binary_expr(
+        &mut self,
+        lhs: &Expr,
+        op: BinaryOp,
+        rhs: &Expr,
+    ) -> Result<Type, TypeError> {
+        match op {
+            BinaryOp::Add | BinaryOp::Mul => {
+                self.require_numeric_binary_operand(lhs)?;
+                self.require_numeric_binary_operand(rhs)?;
+                Ok(Type::pattern(Type::Number))
+            }
+            BinaryOp::Assign => {
+                if !matches!(lhs, Expr::Ident(_)) {
+                    return Err(TypeError::new(
+                        "named arguments require an identifier on the left-hand side",
+                    ));
+                }
+                self.infer_expr(rhs)
+            }
+        }
+    }
+
+    fn require_numeric_binary_operand(&mut self, expr: &Expr) -> Result<(), TypeError> {
+        let ty = self.infer_expr(expr)?;
+        let resolved = self.resolve(ty.clone());
+
+        match resolved {
+            Type::Pattern(inner) if inner.as_ref() == &Type::Number => Ok(()),
+            Type::Var(_) => {
+                self.unify(ty, Type::pattern(Type::Number))?;
+                Ok(())
+            }
+            other => Err(TypeError::new(format!(
+                "type mismatch: expected Number, found {other}"
+            ))),
         }
     }
 
