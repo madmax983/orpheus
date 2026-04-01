@@ -1,3 +1,18 @@
+//! Type inference engine for Orpheus source code.
+//!
+//! This module implements a strict Hindley-Milner style type inference algorithm
+//! for the Orpheus language. It ensures that variables, function parameters,
+//! and return types are consistent before runtime evaluation begins, catching
+//! errors early.
+//!
+//! # Concepts
+//!
+//! The inferencer works by:
+//! 1. Collecting all top-level bindings in a module.
+//! 2. Traversing the AST to generate type constraints.
+//! 3. Solving those constraints via unification to infer concrete types or
+//!    generic type schemes.
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ReplMode;

@@ -54,6 +54,16 @@ const COMMAND_HINTS: [(&str, &str); 13] = [
 
 /// Runs the interactive ratatui session shell with the provided audio engine.
 ///
+/// # Examples
+///
+/// ```no_run
+/// use orpheus_dsp::EngineHandle;
+/// use orpheus_lang::tui::run_with_engine;
+///
+/// let engine = EngineHandle::stub();
+/// run_with_engine(engine).unwrap();
+/// ```
+///
 /// # Errors
 ///
 /// Returns any terminal initialization, draw, input polling, or terminal
@@ -64,6 +74,18 @@ pub fn run_with_engine(engine: EngineHandle) -> io::Result<()> {
 
 /// Runs the interactive ratatui session shell with an optional startup `.ode`
 /// preload.
+///
+/// # Examples
+///
+/// ```no_run
+/// use std::path::Path;
+/// use orpheus_dsp::EngineHandle;
+/// use orpheus_lang::tui::run_with_engine_and_path;
+///
+/// let engine = EngineHandle::stub();
+/// let start_script = Path::new("startup.ode");
+/// run_with_engine_and_path(engine, Some(start_script), None).unwrap();
+/// ```
 ///
 /// # Errors
 ///

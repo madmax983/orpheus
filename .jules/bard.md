@@ -28,3 +28,7 @@
 ## 2026-03-24 - [The "Missing Link": Missing Examples in Export and Stats Functions]
 **Confusion:** Export formatting functions (e.g., `export_sample_pattern_to_svg`, `export_sample_pattern_to_html`, `export_number_pattern_to_txt`) and analysis tools (`sample_pattern_stats`) in `orpheus-lang` had no `/// ## Examples` executable blocks. This made it difficult for developers to understand how to correctly extract a pattern from an evaluation environment and interact with these APIs.
 **Clarification:** Added executable doctests to all functions in `crates/orpheus-lang/src/svg.rs`, `html.rs`, `txt.rs`, and `stats.rs` that utilize `eval_module` to parse a string, extract the pattern with `.get("...").unwrap().as_sample_pattern().unwrap()`, and pass it to the export functions, demonstrating correct instantiation and usage.
+
+## 2026-03-24 - [Add Examples and Module Documentation]
+**Confusion:** Some public features like tui entry points lack executable examples and type inferencing lacks module documentation explaining why it exists.
+**Clarification:** I added `/// # Examples` code blocks for `run_with_engine` and `run_with_engine_and_path` in `tui.rs` and added `//!` module documentation for `infer.rs`.
