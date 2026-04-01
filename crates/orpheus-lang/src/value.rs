@@ -81,6 +81,7 @@ pub enum BuiltinKind {
     SliceIdx,
     Rand,
     Jux,
+    Through,
     MidiCc,
 }
 

@@ -36,8 +36,9 @@ const FULL_HELP_FOOTER: &str = "Esc close   ? toggle   Ctrl-C quit";
 const MEDIUM_HELP_FOOTER: &str = "Esc close   ?   Ctrl-C";
 const COMPACT_HELP_FOOTER: &str = "Esc ? Ctrl-C";
 const MIN_HELP_FOOTER: &str = "Esc ?";
-const COMMAND_HINTS: [(&str, &str); 13] = [
+const COMMAND_HINTS: [(&str, &str); 14] = [
     (":bus", ":bus <new|fx> ..."),
+    (":explain", ":explain <binding>"),
     (":export", ":export <binding> <path> [cycles]"),
     (":mixer", ":mixer"),
     (":open", ":open <path>"),

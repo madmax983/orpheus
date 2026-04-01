@@ -417,6 +417,61 @@ fn pedal_graph_rejects_output_misuse() {
 }
 
 #[test]
+fn through_direct_call_wraps_sample_pattern() {
+    let module = eval_module(
+        "drivebox = graph { wet = input |> clip(model=silicon_hard); wet |> output }\n\
+         lead = through(drivebox, saw)",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(sample_names(module.get("lead").unwrap()), ["saw"]);
+}
+
+#[test]
+fn through_pipe_form_matches_direct_call() {
+    let direct = eval_module(
+        "drivebox = graph { wet = input |> clip(model=silicon_hard); wet |> output }\n\
+         lead = through(drivebox, saw)",
+        ReplMode::Strict,
+    )
+    .unwrap();
+    let piped = eval_module(
+        "drivebox = graph { wet = input |> clip(model=silicon_hard); wet |> output }\n\
+         lead = saw |> through(drivebox)",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(
+        direct
+            .get("lead")
+            .unwrap()
+            .as_sample_pattern()
+            .unwrap()
+            .query_unit()
+            .unwrap(),
+        piped
+            .get("lead")
+            .unwrap()
+            .as_sample_pattern()
+            .unwrap()
+            .query_unit()
+            .unwrap(),
+    );
+}
+
+#[test]
+fn through_rejects_non_sample_targets() {
+    assert_eval_error_contains(
+        "drivebox = graph { wet = input |> clip(model=silicon_hard); wet |> output }\n\
+         bad = through(drivebox, 1.0)",
+        ReplMode::Strict,
+        &["through", "sample pattern"],
+    );
+}
+
+#[test]
 fn self_recursive_parameterized_binding_is_rejected() {
     assert_eval_error_contains(
         "loop pat = loop(pat)",
