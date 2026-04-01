@@ -296,6 +296,20 @@ fn pedal_value_is_not_a_sample_pattern() {
 }
 
 #[test]
+fn binary_control_expressions_infer_number_patterns() {
+    let typed = infer_module("mix = 1 + 2 * 3", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("mix").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn named_call_arguments_infer_from_their_rhs_value() {
+    let typed = infer_module(r#"lead = sample(name="vox_ah")"#, ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("lead").to_string(), "Pattern<Sample>");
+}
+
+#[test]
 fn parameterized_binding_infers_a_curried_function_type() {
     let typed = infer_module("swing amt pat = pat |> shift(amt)", ReplMode::Strict).unwrap();
 
