@@ -24,7 +24,22 @@ struct SyntaxParser;
 ///
 /// Returns [`ParseError`] when the source does not match the Phase 1 grammar
 /// or when the parser encounters an internal AST construction failure.
+const MAX_PARSE_DEPTH: usize = 128;
+
+/// Parses Phase 1 Orpheus source text into an AST module.
+///
+/// Phase 1 accepts one or more top-level bindings. Bindings are discovered at
+/// line starts while the parser is not nested inside parentheses, then each
+/// binding body is parsed with the Phase 1 expression grammar.
+///
+/// # Errors
+///
+/// Returns [`ParseError`] when the source does not match the Phase 1 grammar,
+/// when the parser encounters an internal AST construction failure, or when
+/// the recursion depth limit is exceeded.
 pub fn parse_module(source: &str) -> Result<Module, ParseError> {
+    check_nesting_depth(source)?;
+
     let chunks = split_top_level_bindings(source);
     if chunks.is_empty() {
         return parse_single_binding_module(source, 1);
@@ -163,6 +178,61 @@ fn update_paren_depth(current: i32, line: &str) -> i32 {
     }
 
     depth
+}
+
+fn check_nesting_depth(source: &str) -> Result<(), ParseError> {
+    let mut parens_depth: usize = 0;
+    let mut pipe_depth: usize = 0;
+    let mut max_parens_depth: usize = 0;
+    let mut max_pipe_depth: usize = 0;
+    let mut in_string = false;
+    let mut escaping = false;
+    let mut last_char = ' ';
+
+    for character in source.chars() {
+        if in_string {
+            if escaping {
+                escaping = false;
+                continue;
+            }
+            match character {
+                '\\' => escaping = true,
+                '"' => in_string = false,
+                _ => {}
+            }
+        } else {
+            match character {
+                '"' => in_string = true,
+                '(' => {
+                    parens_depth += 1;
+                    if parens_depth > max_parens_depth {
+                        max_parens_depth = parens_depth;
+                    }
+                }
+                ')' => {
+                    parens_depth = parens_depth.saturating_sub(1);
+                }
+                '>' => {
+                    if last_char == '|' {
+                        pipe_depth += 1;
+                        if pipe_depth > max_pipe_depth {
+                            max_pipe_depth = pipe_depth;
+                        }
+                    }
+                }
+                '\n' | '\r' => {
+                    pipe_depth = 0;
+                }
+                _ => {}
+            }
+        }
+        last_char = character;
+    }
+
+    if max_parens_depth > MAX_PARSE_DEPTH || max_pipe_depth > MAX_PARSE_DEPTH {
+        return Err(ParseError::new("recursion limit exceeded during parsing"));
+    }
+    Ok(())
 }
 
 fn unmatched_open_parens(source: &str) -> usize {

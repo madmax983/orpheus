@@ -98,3 +98,30 @@ proptest! {
         assert!(result.is_ok(), "query_unit panicked for input: {s}");
     }
 }
+
+#[test]
+fn havoc_deeply_nested_group_returns_error_instead_of_stack_overflow() {
+    let mut source = "a = ".to_string();
+    for _ in 0..1000 {
+        source.push('(');
+    }
+    source.push_str("bd");
+    for _ in 0..1000 {
+        source.push(')');
+    }
+    let res = eval_module(&source, ReplMode::Loose);
+    assert!(res.is_err(), "Expected error from deep recursion");
+    assert!(res.unwrap_err().to_string().contains("recursion"));
+}
+
+#[test]
+fn havoc_deeply_nested_pipe_returns_error_instead_of_stack_overflow() {
+    let mut source = "a = ".to_string();
+    source.push_str("bd");
+    for _ in 0..1000 {
+        source.push_str(" |> rev");
+    }
+    let res = eval_module(&source, ReplMode::Loose);
+    assert!(res.is_err());
+    assert!(res.unwrap_err().to_string().contains("recursion"));
+}
