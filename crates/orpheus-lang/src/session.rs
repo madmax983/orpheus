@@ -25,6 +25,30 @@ use crate::mixer::MixerState;
 use crate::types::infer_into_bindings;
 use crate::{ReplMode, Type, Value};
 
+/// The primary interface for interacting with the Orpheus language environment.
+///
+/// `ReplSession` bridges user inputs (e.g. from a REPL or TUI) with the DSP engine
+/// and language evaluator. It manages variable bindings, type environments, external
+/// sample banks, and mixer routing logic.
+///
+/// Under the hood, it retains an [`EngineHandle`] which allows it to send asynchronous
+/// commands to the real-time audio thread, such as setting the active pattern, modifying
+/// tempo, or stopping transport.
+///
+/// # Examples
+///
+/// ```ignore
+/// use orpheus_dsp::SampleBank;
+/// use orpheus_lang::session::ReplSession;
+/// use orpheus_lang::ReplMode;
+/// // (Implementation details omitted for dummy engine handle)
+///
+/// // Create a session
+/// let mut session = ReplSession::with_engine(engine_handle);
+///
+/// // Evaluate a simple variable binding
+/// session.eval_line("tempo = 120").unwrap();
+/// ```
 pub struct ReplSession {
     mode: ReplMode,
     engine: EngineHandle,

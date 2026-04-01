@@ -24,6 +24,17 @@ struct SyntaxParser;
 ///
 /// Returns [`ParseError`] when the source does not match the Phase 1 grammar
 /// or when the parser encounters an internal AST construction failure.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::parse_module;
+///
+/// let source = "beat = bd sn";
+/// let module = parse_module(source).unwrap();
+///
+/// assert_eq!(module.statements.len(), 1);
+/// ```
 pub fn parse_module(source: &str) -> Result<Module, ParseError> {
     let chunks = split_top_level_bindings(source);
     if chunks.is_empty() {

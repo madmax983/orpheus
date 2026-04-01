@@ -20,6 +20,22 @@ use crate::value::SamplePatternValue;
 /// # Errors
 ///
 /// Returns [`EvalError`] if pattern querying fails or if `cycle_count` is 0.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, render_ascii_roll, Value};
+///
+/// let source = "song = fast(2, bd sn)";
+/// let bindings = eval_module(source, ReplMode::Loose).unwrap();
+/// let Value::SamplePattern(pattern) = bindings.get("song").unwrap() else { panic!() };
+///
+/// // Render 1 cycle with 8 steps of resolution.
+/// let roll = render_ascii_roll(pattern, 1, 8).unwrap();
+///
+/// assert!(roll.contains("bd"));
+/// assert!(roll.contains("sn"));
+/// ```
 pub fn render_ascii_roll(
     pattern: &SamplePatternValue,
     cycle_count: u64,

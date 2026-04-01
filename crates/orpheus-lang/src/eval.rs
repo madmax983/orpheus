@@ -1084,6 +1084,16 @@ fn extract_constant_number_rational(value: Value, context: &str) -> Result<Ratio
 /// # Errors
 ///
 /// Returns an [`EvalError`] if the float is not finite, uses scientific notation, or cannot be parsed.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::f64_to_rational;
+/// use orpheus_pattern::Rational;
+///
+/// let rational = f64_to_rational(1.5, "tempo").unwrap();
+/// assert_eq!(rational, Rational::new(3, 2).unwrap());
+/// ```
 pub fn f64_to_rational(value: f64, context: &str) -> Result<Rational, EvalError> {
     if !value.is_finite() {
         return Err(EvalError::new(format!("{context} must be finite")));

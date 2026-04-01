@@ -58,6 +58,15 @@ const COMMAND_HINTS: [(&str, &str); 13] = [
 ///
 /// Returns any terminal initialization, draw, input polling, or terminal
 /// restoration failure encountered while the shell is active.
+///
+/// # Examples
+///
+/// ```ignore
+/// use orpheus_lang::tui::run_with_engine;
+///
+/// // Starts the interactive TUI shell. This will block until the user quits.
+/// run_with_engine(engine).unwrap();
+/// ```
 pub fn run_with_engine(engine: EngineHandle) -> io::Result<()> {
     run_with_engine_and_path(engine, None, None)
 }

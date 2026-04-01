@@ -20,6 +20,24 @@ use crate::value::{NumberPatternValue, SamplePatternValue};
 /// # Errors
 ///
 /// Returns [`EvalError`] if pattern querying fails or if the file cannot be written.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, export_sample_pattern_to_svg, Value};
+/// use tempfile::NamedTempFile;
+///
+/// let source = "song = fast(2, bd sn)";
+/// let bindings = eval_module(source, ReplMode::Loose).unwrap();
+/// let Value::SamplePattern(pattern) = bindings.get("song").unwrap() else { panic!() };
+///
+/// let file = NamedTempFile::new().unwrap();
+/// export_sample_pattern_to_svg(pattern, file.path(), 1).unwrap();
+///
+/// let content = std::fs::read_to_string(file.path()).unwrap();
+/// assert!(content.contains("<svg"));
+/// assert!(content.contains("bd"));
+/// ```
 pub fn export_sample_pattern_to_svg(
     pattern: &SamplePatternValue,
     path: impl AsRef<Path>,
@@ -116,6 +134,23 @@ pub fn export_sample_pattern_to_svg(
 /// # Errors
 ///
 /// Returns [`EvalError`] if pattern querying fails or if the file cannot be written.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, export_number_pattern_to_svg, Value};
+/// use tempfile::NamedTempFile;
+///
+/// let source = "notes = fast(2, 0 1 2 3)";
+/// let bindings = eval_module(source, ReplMode::Loose).unwrap();
+/// let Value::NumberPattern(pattern) = bindings.get("notes").unwrap() else { panic!() };
+///
+/// let file = NamedTempFile::new().unwrap();
+/// export_number_pattern_to_svg(pattern, file.path(), 1).unwrap();
+///
+/// let content = std::fs::read_to_string(file.path()).unwrap();
+/// assert!(content.contains("<svg"));
+/// ```
 pub fn export_number_pattern_to_svg(
     pattern: &NumberPatternValue,
     path: impl AsRef<Path>,

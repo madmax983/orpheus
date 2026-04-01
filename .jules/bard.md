@@ -24,3 +24,7 @@
 ## 2026-03-24 - [The "Black Box": Missing Documentation in Mixer State]
 **Confusion:** The mixer routing logic in `crates/orpheus-lang/src/mixer.rs` was acting as a black box due to missing module-level (`//!`) documentation and missing `///` struct documentation for `MixerState`. It was unclear how tracks, buses, and sends mapped from the evaluated language environment into DSP routing snapshots.
 **Clarification:** Added detailed module-level documentation explaining the concepts of Tracks, Buses, and Sends. Added struct-level `///` documentation for `MixerState` along with an executable doctest demonstrating how to construct tracks, buses, and sends programmatically.
+
+## 2026-03-24 - [The "Missing Links": Undocumented Core Public APIs]
+**Confusion:** Several core public APIs lacked `///` documentation and executable examples. These included `ReplSession` in `session.rs`, `parse_module` in `parser.rs`, `render_ascii_roll` in `ascii_roll.rs`, `export_sample_pattern_to_svg` and `export_number_pattern_to_svg` in `svg.rs`, `f64_to_rational` in `eval.rs`, and `run_with_engine` in `tui.rs`. This made the library difficult to consume programmatically.
+**Clarification:** Added `///` documentation blocks and `/// # Examples` sections with executable doc-tests to all missing core public functions and structs, bridging the gap between implementation logic and user comprehension.
