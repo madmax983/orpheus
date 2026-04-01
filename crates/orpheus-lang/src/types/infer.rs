@@ -203,13 +203,13 @@ impl Inferencer {
         let expected = self.infer_expr(first)?;
         for item in rest {
             let actual = self.infer_expr(item)?;
-            self.unify(expected.clone(), actual.clone()).map_err(|_| {
-                TypeError::new(format!(
+            if let Err(_err) = self.unify(expected.clone(), actual.clone()) {
+                return Err(TypeError::new(format!(
                     "{context} must all have the same type; expected {}, found {}",
-                    self.resolve(expected.clone()),
+                    self.resolve(expected),
                     self.resolve(actual)
-                ))
-            })?;
+                )));
+            }
         }
 
         Ok(self.resolve(expected))
@@ -227,15 +227,14 @@ impl Inferencer {
             }
 
             let actual = self.infer_expr(item)?;
-            if let Some(expected_ty) = expected.clone() {
-                self.unify(expected_ty.clone(), actual.clone())
-                    .map_err(|_| {
-                        TypeError::new(format!(
-                            "{context} must all have the same type; expected {}, found {}",
-                            self.resolve(expected_ty),
-                            self.resolve(actual)
-                        ))
-                    })?;
+            if let Some(expected_ty) = expected.as_ref() {
+                if let Err(_err) = self.unify(expected_ty.clone(), actual.clone()) {
+                    return Err(TypeError::new(format!(
+                        "{context} must all have the same type; expected {}, found {}",
+                        self.resolve(expected_ty.clone()),
+                        self.resolve(actual)
+                    )));
+                }
             } else {
                 expected = Some(actual);
             }
@@ -322,7 +321,7 @@ impl Inferencer {
             | (Type::String, Type::String)
             | (Type::Unit, Type::Unit) => Ok(()),
             (left, right) => {
-                if let Some((coerced_left, coerced_right)) = self.try_loose_coercion(&left, &right)
+                if let Some((coerced_left, coerced_right)) = self.try_loose_coercion(left.clone(), right.clone())
                 {
                     return self.unify(coerced_left, coerced_right);
                 }
@@ -387,17 +386,17 @@ impl Inferencer {
         }
     }
 
-    fn try_loose_coercion(&self, left: &Type, right: &Type) -> Option<(Type, Type)> {
+    fn try_loose_coercion(&self, left: Type, right: Type) -> Option<(Type, Type)> {
         if self.mode != ReplMode::Loose {
             return None;
         }
 
-        match (left, right) {
+        match (&left, &right) {
             (Type::Pattern(inner), other) if inner.as_ref() == other => {
-                Some((left.clone(), left.clone()))
+                Some((left.clone(), left))
             }
             (other, Type::Pattern(inner)) if other == inner.as_ref() => {
-                Some((right.clone(), right.clone()))
+                Some((right.clone(), right))
             }
             _ => None,
         }
