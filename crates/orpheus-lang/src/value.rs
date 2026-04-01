@@ -3561,11 +3561,25 @@ where
             continue;
         }
 
-        // Extract values to shuffle
-        let mut values = cycle_events.iter().map(|e| e.value.clone()).collect::<Vec<_>>();
-
         // Shuffle using a deterministic RNG seeded by site_salt and cycle index
-        let [b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15] = cycle.to_le_bytes();
+        let [
+            b0,
+            b1,
+            b2,
+            b3,
+            b4,
+            b5,
+            b6,
+            b7,
+            b8,
+            b9,
+            b10,
+            b11,
+            b12,
+            b13,
+            b14,
+            b15,
+        ] = cycle.to_le_bytes();
         let lower = u64::from_le_bytes([b0, b1, b2, b3, b4, b5, b6, b7]);
         let upper = u64::from_le_bytes([b8, b9, b10, b11, b12, b13, b14, b15]);
         let mut state = lower ^ upper.rotate_left(32) ^ site_salt.rotate_left(17);
@@ -3575,17 +3589,22 @@ where
         state ^= state >> 31;
 
         let mut rng_state = state;
-        for i in (1..values.len()).rev() {
+        let len = cycle_events.len();
+        for i in (1..len).rev() {
             // LCG for next random number
-            rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            rng_state = rng_state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let j = (rng_state as usize) % (i + 1);
-            values.swap(i, j);
+            if i != j {
+                // ⚡ Bolt: Swap values in-place without allocating an intermediate `Vec` or deep cloning strings.
+                // We use `split_at_mut` to get two disjoint mutable slices, guaranteeing safety.
+                let (left, right) = cycle_events.split_at_mut(i.max(j));
+                std::mem::swap(&mut left[i.min(j)].value, &mut right[0].value);
+            }
         }
 
         // Apply shuffled values back to the original timing structure and clip to the query slice
-        for (event, shuffled_value) in cycle_events.iter_mut().zip(values) {
-            event.value = shuffled_value;
-        }
 
         for event in cycle_events {
             if spans_overlap(&event.part, &query_slice) {
