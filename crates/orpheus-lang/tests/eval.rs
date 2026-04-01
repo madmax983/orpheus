@@ -360,7 +360,13 @@ fn pedal_graph_binding_evaluates_to_pedal_value() {
     )
     .unwrap();
 
-    assert!(matches!(module.get("fx"), Some(Value::Pedal(_))));
+    let pedal = module
+        .get("fx")
+        .unwrap()
+        .as_pedal()
+        .expect("expected pedal value");
+
+    assert!(pedal.format_source().contains("clip(model=silicon_hard)"));
 }
 
 #[test]
@@ -369,6 +375,15 @@ fn pedal_graph_rejects_unbound_local_signal() {
         "fx = graph { wet = dry |> output; wet |> output }",
         ReplMode::Strict,
         &["dry", "unbound local signal"],
+    );
+}
+
+#[test]
+fn pedal_graph_rejects_unbound_named_parameter_identifier() {
+    assert_eval_error_contains(
+        "fx = graph { wet = input |> clip(model=ghost); wet |> output }",
+        ReplMode::Strict,
+        &["ghost", "unbound local signal"],
     );
 }
 
