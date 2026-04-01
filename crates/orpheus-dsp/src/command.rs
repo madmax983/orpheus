@@ -9,6 +9,7 @@ use std::sync::Arc;
 use orpheus_pattern::Event;
 use rtrb::{Consumer, Producer, RingBuffer};
 
+use crate::pedal::{NodeRef, PedalGraphProgram};
 use crate::routing::RoutingSnapshot;
 use crate::sample_bank::SampleBank;
 
@@ -17,6 +18,7 @@ use crate::sample_bank::SampleBank;
 pub struct PedalProgram {
     source: Box<str>,
     explain: Box<str>,
+    graph: PedalGraphProgram,
 }
 
 impl PedalProgram {
@@ -25,6 +27,7 @@ impl PedalProgram {
         Self {
             source: source.into(),
             explain: explain.into(),
+            graph: PedalGraphProgram::new(Vec::new(), NodeRef::Input),
         }
     }
 
@@ -36,6 +39,17 @@ impl PedalProgram {
     #[must_use]
     pub fn explain(&self) -> &str {
         &self.explain
+    }
+
+    #[must_use]
+    pub fn with_graph(mut self, nodes: Vec<crate::pedal::PedalNode>, output: NodeRef) -> Self {
+        self.graph = PedalGraphProgram::new(nodes, output);
+        self
+    }
+
+    #[must_use]
+    pub const fn graph(&self) -> &PedalGraphProgram {
+        &self.graph
     }
 }
 
