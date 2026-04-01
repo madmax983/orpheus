@@ -662,6 +662,7 @@ impl ReplSession {
             Value::ArpDirection(_)
             | Value::PitchClassSet(_)
             | Value::Function(_)
+            | Value::Pedal(_)
             | Value::String(_) => {
                 return Err(format!(
                     "binding `{binding_name}` is a {} and cannot be exported",

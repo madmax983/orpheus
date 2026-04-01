@@ -192,9 +192,7 @@ impl Inferencer {
             )),
             Expr::Number(_) => Ok(Type::pattern(Type::Number)),
             Expr::String(_) => Ok(Type::String),
-            Expr::Graph { .. } => Err(TypeError::new(
-                "pedal graph bindings are parsed but not yet supported by type inference",
-            )),
+            Expr::Graph { .. } => Ok(Type::Pedal),
             Expr::Binary { .. } => Err(TypeError::new(
                 "binary pedal expressions are parsed but not yet supported by type inference",
             )),
@@ -320,6 +318,7 @@ impl Inferencer {
                 self.unify(*left_ret, *right_ret)
             }
             (Type::Sample, Type::Sample)
+            | (Type::Pedal, Type::Pedal)
             | (Type::Note, Type::Note)
             | (Type::Number, Type::Number)
             | (Type::Duration, Type::Duration)
@@ -360,6 +359,7 @@ impl Inferencer {
                 args.iter().any(|arg| self.occurs(needle, arg)) || self.occurs(needle, &ret)
             }
             Type::Sample
+            | Type::Pedal
             | Type::Note
             | Type::Number
             | Type::Duration
@@ -383,6 +383,7 @@ impl Inferencer {
                 self.resolve(*ret),
             ),
             Type::Sample => Type::Sample,
+            Type::Pedal => Type::Pedal,
             Type::Note => Type::Note,
             Type::Number => Type::Number,
             Type::Duration => Type::Duration,
@@ -434,6 +435,7 @@ fn substitute_scheme_vars(ty: &Type, replacements: &BTreeMap<TypeVarId, Type>) -
         ),
         Type::Var(var) => replacements.get(var).cloned().unwrap_or(Type::Var(*var)),
         Type::Sample => Type::Sample,
+        Type::Pedal => Type::Pedal,
         Type::Note => Type::Note,
         Type::Number => Type::Number,
         Type::Duration => Type::Duration,
@@ -457,6 +459,7 @@ fn free_type_vars(ty: &Type) -> BTreeSet<TypeVarId> {
         }
         Type::Var(var) => BTreeSet::from([*var]),
         Type::Sample
+        | Type::Pedal
         | Type::Note
         | Type::Number
         | Type::Duration

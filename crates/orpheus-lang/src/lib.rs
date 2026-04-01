@@ -11,6 +11,7 @@ mod loader;
 mod midi_input;
 pub(crate) mod mixer;
 mod parser;
+mod pedal;
 mod pitch;
 pub mod repl;
 pub(crate) mod session;
@@ -34,6 +35,7 @@ pub use export::{
 pub use html::{export_number_pattern_to_html, export_sample_pattern_to_html};
 pub use loader::load_file_strict;
 pub use parser::parse_module;
+pub use pedal::{PedalGraph, PedalValue, SignalKind, ValidatedPedalPlan};
 pub use stats::{number_pattern_stats, sample_pattern_stats};
 pub use svg::{export_number_pattern_to_svg, export_sample_pattern_to_svg};
 pub use txt::{export_number_pattern_to_txt, export_sample_pattern_to_txt};
