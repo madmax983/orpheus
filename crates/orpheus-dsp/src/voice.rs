@@ -8,6 +8,7 @@ use core::f32::consts::TAU;
 
 use crate::SampleTrigger;
 use crate::effects::ReverbState;
+use crate::pedal::PedalInstance;
 use crate::routing::ReverbSpec;
 use crate::routing::TrackId;
 use crate::sample_bank::PlaybackSample;
@@ -84,6 +85,7 @@ impl VoiceKind {
 pub struct ActiveVoice {
     track_id: TrackId,
     state: ActiveVoiceState,
+    pedal: Option<PedalInstance>,
     insert_effects: InsertEffectsState,
     tail_frames_remaining: u32,
     left_gain: f64,
@@ -130,9 +132,16 @@ impl ActiveVoice {
         duration_frames: u32,
     ) -> Self {
         let (left_gain, right_gain) = stereo_gains_for_pan(trigger.pan());
+        let pedal = trigger
+            .pedal_program()
+            .cloned()
+            .map(|program| PedalInstance::new(program, sample_rate as f32));
         let insert_effects =
             InsertEffectsState::from_trigger(trigger, sample_rate, frames_per_cycle);
-        let tail_frames_remaining = insert_effects.tail_frames();
+        let tail_frames_remaining = pedal
+            .as_ref()
+            .map_or(0, PedalInstance::tail_frames)
+            .saturating_add(insert_effects.tail_frames());
 
         if kind.is_drum_voice() {
             return Self {
@@ -144,6 +153,7 @@ impl ActiveVoice {
                     sample_rate_hz: f64::from(sample_rate),
                     noise_state: 0x00C0_FFEE_u32,
                 },
+                pedal,
                 insert_effects,
                 tail_frames_remaining,
                 left_gain,
@@ -159,6 +169,7 @@ impl ActiveVoice {
                 frame_index: 0,
                 duration_frames: duration_frames.max(1),
             },
+            pedal,
             insert_effects,
             tail_frames_remaining,
             left_gain,
@@ -191,9 +202,16 @@ impl ActiveVoice {
             .div_ceil(2)
             .clamp(1, MAX_SAMPLE_EDGE_RAMP_FRAMES);
         let (left_gain, right_gain) = stereo_gains_for_pan(trigger.pan());
+        let pedal = trigger
+            .pedal_program()
+            .cloned()
+            .map(|program| PedalInstance::new(program, output_sample_rate as f32));
         let insert_effects =
             InsertEffectsState::from_trigger(trigger, output_sample_rate, frames_per_cycle);
-        let tail_frames_remaining = insert_effects.tail_frames();
+        let tail_frames_remaining = pedal
+            .as_ref()
+            .map_or(0, PedalInstance::tail_frames)
+            .saturating_add(insert_effects.tail_frames());
         let (frame_position, frame_limit) = if frame_step.is_sign_negative() {
             (slice_end, slice_start)
         } else {
@@ -217,6 +235,7 @@ impl ActiveVoice {
                 total_output_frames: output_frame_count,
                 edge_ramp_frames,
             },
+            pedal,
             insert_effects,
             tail_frames_remaining,
             left_gain,
@@ -347,16 +366,19 @@ impl ActiveVoice {
             return None;
         }
 
-        let (dry_left, dry_right) = match dry_sample {
-            Some(sample) => (
-                (f64::from(sample) * self.left_gain) as f32,
-                (f64::from(sample) * self.right_gain) as f32,
-            ),
+        let mono_sample = match dry_sample {
+            Some(sample) => sample,
             None => {
                 self.tail_frames_remaining = self.tail_frames_remaining.saturating_sub(1);
-                (0.0, 0.0)
+                0.0
             }
         };
+        let mono_sample = self
+            .pedal
+            .as_mut()
+            .map_or(mono_sample, |pedal| pedal.process_sample(mono_sample));
+        let dry_left = (f64::from(mono_sample) * self.left_gain) as f32;
+        let dry_right = (f64::from(mono_sample) * self.right_gain) as f32;
 
         Some(self.insert_effects.process_frame(dry_left, dry_right))
     }
