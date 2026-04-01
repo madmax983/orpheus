@@ -7,7 +7,7 @@ use pest::error::Error as PestError;
 use pest::iterators::{Pair, Pairs};
 use pest_derive::Parser;
 
-use crate::ast::{Expr, Module, Stmt};
+use crate::ast::{BinaryOp, Expr, GraphBinding, Module, Stmt};
 use crate::diagnostics::ParseError;
 
 #[derive(Parser)]
@@ -56,11 +56,16 @@ fn split_top_level_bindings(source: &str) -> Vec<(usize, String)> {
     let mut current = String::new();
     let mut current_start_line = 1_usize;
     let mut paren_depth = 0_i32;
+    let mut brace_depth = 0_i32;
 
     for (index, line) in source.lines().enumerate() {
         let line_number = index + 1;
         let trimmed = line.trim();
-        if paren_depth == 0 && !current.trim().is_empty() && looks_like_binding(trimmed) {
+        if paren_depth == 0
+            && brace_depth == 0
+            && !current.trim().is_empty()
+            && looks_like_binding(trimmed)
+        {
             bindings.push((current_start_line, std::mem::take(&mut current)));
             current_start_line = line_number;
         } else if current.is_empty() && !trimmed.is_empty() {
@@ -71,7 +76,9 @@ fn split_top_level_bindings(source: &str) -> Vec<(usize, String)> {
             current.push('\n');
         }
         current.push_str(line);
-        paren_depth = update_paren_depth(paren_depth, line);
+        let (next_paren_depth, next_brace_depth) = update_nesting_depth(paren_depth, brace_depth, line);
+        paren_depth = next_paren_depth;
+        brace_depth = next_brace_depth;
     }
 
     if !current.trim().is_empty() {
@@ -135,8 +142,9 @@ fn is_identifier(candidate: &str) -> bool {
         && chars.all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
-fn update_paren_depth(current: i32, line: &str) -> i32 {
-    let mut depth = current;
+fn update_nesting_depth(current_paren: i32, current_brace: i32, line: &str) -> (i32, i32) {
+    let mut paren_depth = current_paren;
+    let mut brace_depth = current_brace;
     let mut in_string = false;
     let mut escaping = false;
 
@@ -156,13 +164,15 @@ fn update_paren_depth(current: i32, line: &str) -> i32 {
 
         match character {
             '"' => in_string = true,
-            '(' => depth = depth.saturating_add(1),
-            ')' => depth = depth.saturating_sub(1),
+            '(' => paren_depth = paren_depth.saturating_add(1),
+            ')' => paren_depth = paren_depth.saturating_sub(1),
+            '{' => brace_depth = brace_depth.saturating_add(1),
+            '}' => brace_depth = brace_depth.saturating_sub(1),
             _ => {}
         }
     }
 
-    depth
+    (paren_depth, brace_depth)
 }
 
 fn unmatched_open_parens(source: &str) -> usize {
@@ -245,24 +255,24 @@ fn build_pipe_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
 fn build_sequence(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
     let items = pair
         .into_inner()
-        .map(build_item)
+        .map(build_assign_expr)
         .collect::<Result<Vec<_>, _>>()?;
 
     collapse_sequence(items, "sequence")
 }
 
-fn build_item(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
-    build_expr(first_inner(pair, "sequence item")?)
-}
-
 fn build_pipe_target(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
-    build_expr(first_inner(pair, "pipe target")?)
+    build_sequence(first_inner(pair, "pipe target")?)
 }
 
 fn build_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
     match pair.as_rule() {
         Rule::stack => build_stack(pair),
-        Rule::postfix => build_postfix(pair),
+        Rule::application => build_application(pair),
+        Rule::product_expr => build_product_expr(pair),
+        Rule::sum_expr => build_sum_expr(pair),
+        Rule::assign_expr => build_assign_expr(pair),
+        Rule::graph => build_graph(pair),
         Rule::primary => build_expr(first_inner(pair, "primary expression")?),
         Rule::group => build_group(pair),
         Rule::rest => Ok(Expr::Rest),
@@ -271,7 +281,6 @@ fn build_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
         Rule::identifier => Ok(Expr::Ident(pair.as_str().to_owned())),
         Rule::pipe_expr => build_pipe_expr(pair),
         Rule::sequence => build_sequence(pair),
-        Rule::item => build_item(pair),
         Rule::pipe_target => build_pipe_target(pair),
         other => Err(ParseError::new(format!(
             "unexpected parser rule while building AST: {other:?}"
@@ -315,9 +324,9 @@ fn build_stack(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
     Ok(Expr::Stack(layers))
 }
 
-fn build_postfix(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_application(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
     let mut inner = pair.into_inner();
-    let first = next_pair(&mut inner, "postfix callee")?;
+    let first = next_pair(&mut inner, "application callee")?;
     let mut expr = build_expr(first)?;
 
     for suffix in inner {
@@ -338,6 +347,64 @@ fn build_call_suffix_args(pair: Pair<'_, Rule>) -> Result<Vec<Expr>, ParseError>
         .into_inner()
         .map(build_pipe_expr)
         .collect::<Result<Vec<_>, _>>()
+}
+
+fn build_sum_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+    build_binary_expr(pair, BinaryRule::Add)
+}
+
+fn build_assign_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+    build_binary_expr(pair, BinaryRule::Assign)
+}
+
+fn build_product_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+    build_binary_expr(pair, BinaryRule::Mul)
+}
+
+#[derive(Clone, Copy)]
+enum BinaryRule {
+    Add,
+    Mul,
+    Assign,
+}
+
+fn build_binary_expr(pair: Pair<'_, Rule>, expected_rule: BinaryRule) -> Result<Expr, ParseError> {
+    let mut inner = pair.into_inner();
+    let first = match expected_rule {
+        BinaryRule::Assign => build_sum_expr(next_pair(&mut inner, "binary lhs")?)?,
+        BinaryRule::Add => build_product_expr(next_pair(&mut inner, "binary lhs")?)?,
+        BinaryRule::Mul => build_application(next_pair(&mut inner, "binary lhs")?)?,
+    };
+
+    let mut expr = first;
+    while let Some(op_pair) = inner.next() {
+        let rhs_pair = inner
+            .next()
+            .ok_or_else(|| ParseError::new("missing binary rhs"))?;
+        let rhs = match expected_rule {
+            BinaryRule::Assign => build_sum_expr(rhs_pair)?,
+            BinaryRule::Add => build_product_expr(rhs_pair)?,
+            BinaryRule::Mul => build_application(rhs_pair)?,
+        };
+        let op = match (expected_rule, op_pair.as_rule()) {
+            (BinaryRule::Assign, Rule::assign_op) => BinaryOp::Assign,
+            (BinaryRule::Add, Rule::add_op) => BinaryOp::Add,
+            (BinaryRule::Mul, Rule::mul_op) => BinaryOp::Mul,
+            _ => {
+                return Err(ParseError::new(format!(
+                    "unexpected binary operator while building AST: {:?}",
+                    op_pair.as_rule()
+                )));
+            }
+        };
+        expr = Expr::Binary {
+            lhs: Box::new(expr),
+            op,
+            rhs: Box::new(rhs),
+        };
+    }
+
+    Ok(expr)
 }
 
 fn build_call_expr(callee: Expr, args: Vec<Expr>) -> Result<Expr, ParseError> {
@@ -391,9 +458,76 @@ fn build_call_expr(callee: Expr, args: Vec<Expr>) -> Result<Expr, ParseError> {
 fn build_group(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
     let items = pair
         .into_inner()
-        .map(build_item)
+        .map(build_sum_expr)
         .collect::<Result<Vec<_>, _>>()?;
     Ok(Expr::Group(items))
+}
+
+fn build_graph(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+    let mut bindings = Vec::new();
+    let mut result = None;
+    let (line, col) = pair.as_span().start_pos().line_col();
+
+    let Some(body_pair) = pair.into_inner().next() else {
+        return Err(ParseError::new(format!(
+            "parse error at line {line}, col {col}: `graph` blocks require a result expression"
+        )));
+    };
+
+    for entry_pair in body_pair.into_inner() {
+        match entry_pair.as_rule() {
+            Rule::graph_entry => {
+                let entry = first_inner(entry_pair, "graph entry")?;
+                match entry.as_rule() {
+                    Rule::graph_binding => {
+                        if result.is_some() {
+                            return Err(ParseError::new(format!(
+                                "parse error at line {line}, col {col}: `graph` bindings must appear before the final result expression"
+                            )));
+                        }
+                        bindings.push(build_graph_binding(entry)?);
+                    }
+                    Rule::graph_result => {
+                        if result.is_some() {
+                            return Err(ParseError::new(format!(
+                                "parse error at line {line}, col {col}: `graph` blocks may contain only one result expression"
+                            )));
+                        }
+                        result = Some(build_pipe_expr(first_inner(entry, "graph result")?)?);
+                    }
+                    other => {
+                        return Err(ParseError::new(format!(
+                            "unexpected graph entry while building AST: {other:?}"
+                        )));
+                    }
+                }
+            }
+            other => {
+                return Err(ParseError::new(format!(
+                    "unexpected graph body rule while building AST: {other:?}"
+                )));
+            }
+        }
+    }
+
+    let result = result.ok_or_else(|| {
+        ParseError::new(format!(
+            "parse error at line {line}, col {col}: `graph` blocks require a result expression"
+        ))
+    })?;
+    Ok(Expr::Graph {
+        bindings,
+        result: Box::new(result),
+    })
+}
+
+fn build_graph_binding(pair: Pair<'_, Rule>) -> Result<GraphBinding, ParseError> {
+    let mut inner = pair.into_inner();
+    let name = next_pair(&mut inner, "graph binding name")?
+        .as_str()
+        .to_owned();
+    let expr = build_pipe_expr(next_pair(&mut inner, "graph binding expression")?)?;
+    Ok(GraphBinding { name, expr })
 }
 
 fn build_number(pair: &Pair<'_, Rule>) -> Result<Expr, ParseError> {

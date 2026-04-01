@@ -192,6 +192,12 @@ impl Inferencer {
             )),
             Expr::Number(_) => Ok(Type::pattern(Type::Number)),
             Expr::String(_) => Ok(Type::String),
+            Expr::Graph { .. } => Err(TypeError::new(
+                "pedal graph bindings are parsed but not yet supported by type inference",
+            )),
+            Expr::Binary { .. } => Err(TypeError::new(
+                "binary pedal expressions are parsed but not yet supported by type inference",
+            )),
         }
     }
 

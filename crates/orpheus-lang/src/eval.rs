@@ -342,6 +342,12 @@ impl Evaluator {
             )),
             Expr::Number(value) => Ok(Value::NumberPattern(NumberPatternValue::constant(*value))),
             Expr::String(value) => Ok(Value::String(value.clone())),
+            Expr::Graph { .. } => Err(EvalError::new(
+                "pedal graph bindings are parsed but not yet executable in evaluation",
+            )),
+            Expr::Binary { .. } => Err(EvalError::new(
+                "binary pedal expressions are parsed but not yet executable in evaluation",
+            )),
         }
     }
 
@@ -1036,6 +1042,20 @@ fn record_expr_site_salts(expr: &Expr, seed: u64, salts: &mut BTreeMap<usize, u6
             record_expr_list(sections, seed, ROLE_SEQ_SECTION_ITEM, salts);
         }
         Expr::Group(items) => record_expr_list(items, seed, ROLE_GROUP_ITEM, salts),
+        Expr::Graph { bindings, result } => {
+            for (index, binding) in bindings.iter().enumerate() {
+                record_expr_site_salts(
+                    &binding.expr,
+                    derive_site_seed(seed, ROLE_GROUP_ITEM, index as u64),
+                    salts,
+                );
+            }
+            record_expr_site_salts(result, derive_site_seed(seed, ROLE_GROUP_ITEM, 0), salts);
+        }
+        Expr::Binary { lhs, rhs, .. } => {
+            record_expr_site_salts(lhs, derive_site_seed(seed, ROLE_GROUP_ITEM, 0), salts);
+            record_expr_site_salts(rhs, derive_site_seed(seed, ROLE_GROUP_ITEM, 1), salts);
+        }
         Expr::Ident(_) | Expr::Rest | Expr::Number(_) | Expr::String(_) => {}
     }
 }
