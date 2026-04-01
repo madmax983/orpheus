@@ -32,3 +32,7 @@
 **[Struct Extraction for Multiple Configuration Parameters]**
 **Learning:** Returning anonymous primitive tuples like `(Rational, f32, f32)` from functions (e.g., `parse_bus_delay_params`) creates "Boolean Blindness"-like ambiguity, making it easy to accidentally swap positional arguments like `feedback` and `wet` levels.
 **Action:** Apply the "Struct Extraction" pattern. Define dedicated named structs (e.g., `BusDelayParams`) and unpack the fields explicitly by name when passing them to downstream functions.
+
+**[Extract Validation Rules to Helper]**
+**Learning:** Found deeply nested duplicated validation logic in a "God Function" `validate_control_events` looping over variants and repeatedly writing out error bounds and similar logic, causing the `clippy::too_many_lines` lint to trigger.
+**Action:** Extract individual constraint-checking logic into a smaller, generic helper function (`validate_control_value`) and collapse matching enum variants into groups sharing the same constraints. Use iterator chains (`.iter().try_for_each`) to flatten the loop and avoid repetitive checking over slices.
