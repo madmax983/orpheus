@@ -678,6 +678,11 @@ impl ReplSession {
                 {
                     crate::txt::export_sample_pattern_to_txt(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path.extension().is_some_and(|ext| {
+                    ext.eq_ignore_ascii_case("trk") || ext.eq_ignore_ascii_case("tracker")
+                }) {
+                    crate::tracker::export_sample_pattern_to_tracker(pattern, path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
                 } else {
                     crate::export::export_sample_pattern_to_csv(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
@@ -714,6 +719,11 @@ impl ReplSession {
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("txt"))
                 {
                     crate::txt::export_number_pattern_to_txt(pattern, path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path.extension().is_some_and(|ext| {
+                    ext.eq_ignore_ascii_case("trk") || ext.eq_ignore_ascii_case("tracker")
+                }) {
+                    crate::tracker::export_number_pattern_to_tracker(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 } else {
                     crate::export::export_number_pattern_to_csv(pattern, path, cycles)
