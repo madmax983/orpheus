@@ -2660,24 +2660,16 @@ where
         return Ok(Vec::new());
     }
 
-    let gate_events = gate_spans
-        .into_iter()
-        .map(|part| Event {
-            whole: None,
-            part,
-            value: 1.0,
-        })
-        .collect::<Vec<_>>();
     let mut masked = Vec::with_capacity(source_events.len());
 
     for event in source_events {
-        let Some(boundaries) = compute_event_fragment_boundaries(&event.part, &[&gate_events[..]])
+        let Some(boundaries) = compute_event_fragment_boundaries(&event.part, gate_spans.iter())
         else {
             continue;
         };
 
         for window in boundaries.windows(2) {
-            let &[start, end] = window else {
+            let [start, end] = window else {
                 continue;
             };
             if start >= end {
@@ -2685,9 +2677,9 @@ where
             }
 
             let part = build_span(start.clone(), end.clone())?;
-            if gate_events
+            if gate_spans
                 .iter()
-                .any(|gate_event| spans_overlap(&gate_event.part, &part))
+                .any(|gate_span| spans_overlap(gate_span, &part))
             {
                 masked.push(Event {
                     whole: None,
@@ -2912,25 +2904,27 @@ enum ControlPatternKind {
     Transpose,
 }
 
-fn apply_event_fragments<T, F>(
+fn apply_event_fragments<'a, T, F, I>(
     source_events: Vec<Event<T>>,
-    control_event_lists: &[&[Event<f64>]],
+    control_parts: I,
     mut process_fragment: F,
 ) -> Result<Vec<Event<T>>, EvalError>
 where
     T: PatternRuntimeValue,
     F: FnMut(&TimeSpan, &T) -> Result<Option<T>, EvalError>,
+    I: Iterator<Item = &'a TimeSpan> + Clone,
 {
     let mut composed = Vec::with_capacity(source_events.len());
     for event in source_events {
-        let Some(boundaries) = compute_event_fragment_boundaries(&event.part, control_event_lists)
+        let Some(boundaries) =
+            compute_event_fragment_boundaries(&event.part, control_parts.clone())
         else {
             composed.push(event);
             continue;
         };
 
         for window in boundaries.windows(2) {
-            let &[start, end] = window else {
+            let [start, end] = window else {
                 continue;
             };
             if start >= end {
@@ -2968,68 +2962,75 @@ where
         return Ok(source_events);
     }
 
-    apply_event_fragments(source_events, &[&control_events[..]], |part, value| {
-        let mut new_value = value.clone();
-        for control_event in &control_events {
-            if spans_overlap(&control_event.part, part) {
-                new_value = match kind {
-                    ControlPatternKind::Gain => Ok(new_value.adjust_gain(control_event.value)),
-                    ControlPatternKind::DelayMix => {
-                        Ok(new_value.adjust_delay_mix(control_event.value))
-                    }
-                    ControlPatternKind::DelayTime => {
-                        Ok(new_value.adjust_delay_time(control_event.value))
-                    }
-                    ControlPatternKind::DelayFeedback => {
-                        Ok(new_value.adjust_delay_feedback(control_event.value))
-                    }
-                    ControlPatternKind::Hpf => Ok(new_value.adjust_hpf(control_event.value)),
-                    ControlPatternKind::Lpf => Ok(new_value.adjust_lpf(control_event.value)),
-                    ControlPatternKind::ReverbMix => {
-                        Ok(new_value.adjust_reverb_mix(control_event.value))
-                    }
-                    ControlPatternKind::ReverbRoom => {
-                        Ok(new_value.adjust_reverb_room(control_event.value))
-                    }
-                    ControlPatternKind::ReverbDamp => {
-                        Ok(new_value.adjust_reverb_damp(control_event.value))
-                    }
-                    ControlPatternKind::Res => Ok(new_value.adjust_resonance(control_event.value)),
-                    ControlPatternKind::Drive => Ok(new_value.adjust_drive(control_event.value)),
-                    ControlPatternKind::ChorusMix => {
-                        Ok(new_value.adjust_chorus_mix(control_event.value))
-                    }
-                    ControlPatternKind::ChorusDepth => {
-                        Ok(new_value.adjust_chorus_depth(control_event.value))
-                    }
-                    ControlPatternKind::ChorusRate => {
-                        Ok(new_value.adjust_chorus_rate(control_event.value))
-                    }
-                    ControlPatternKind::PulseWidth => {
-                        Ok(new_value.adjust_pulse_width(control_event.value))
-                    }
-                    ControlPatternKind::Pan => Ok(new_value.adjust_pan(control_event.value)),
-                    ControlPatternKind::CompressorMix => {
-                        Ok(new_value.adjust_compressor_mix(control_event.value))
-                    }
-                    ControlPatternKind::CompressorThreshold => {
-                        Ok(new_value.adjust_compressor_threshold(control_event.value))
-                    }
-                    ControlPatternKind::CompressorRatio => {
-                        Ok(new_value.adjust_compressor_ratio(control_event.value))
-                    }
-                    ControlPatternKind::Pitch => Ok(
-                        new_value.adjust_rate(semitones_to_rate_multiplier(control_event.value))
-                    ),
-                    ControlPatternKind::Rate => Ok(new_value.adjust_rate(control_event.value)),
-                    ControlPatternKind::Transpose => {
-                        new_value.transpose_semitones(control_event.value)
-                    }
-                }?;
+    apply_event_fragments(
+        source_events,
+        control_events.iter().map(|e| &e.part),
+        |part, value| {
+            let mut new_value = value.clone();
+            for control_event in &control_events {
+                if spans_overlap(&control_event.part, part) {
+                    new_value = match kind {
+                        ControlPatternKind::Gain => Ok(new_value.adjust_gain(control_event.value)),
+                        ControlPatternKind::DelayMix => {
+                            Ok(new_value.adjust_delay_mix(control_event.value))
+                        }
+                        ControlPatternKind::DelayTime => {
+                            Ok(new_value.adjust_delay_time(control_event.value))
+                        }
+                        ControlPatternKind::DelayFeedback => {
+                            Ok(new_value.adjust_delay_feedback(control_event.value))
+                        }
+                        ControlPatternKind::Hpf => Ok(new_value.adjust_hpf(control_event.value)),
+                        ControlPatternKind::Lpf => Ok(new_value.adjust_lpf(control_event.value)),
+                        ControlPatternKind::ReverbMix => {
+                            Ok(new_value.adjust_reverb_mix(control_event.value))
+                        }
+                        ControlPatternKind::ReverbRoom => {
+                            Ok(new_value.adjust_reverb_room(control_event.value))
+                        }
+                        ControlPatternKind::ReverbDamp => {
+                            Ok(new_value.adjust_reverb_damp(control_event.value))
+                        }
+                        ControlPatternKind::Res => {
+                            Ok(new_value.adjust_resonance(control_event.value))
+                        }
+                        ControlPatternKind::Drive => {
+                            Ok(new_value.adjust_drive(control_event.value))
+                        }
+                        ControlPatternKind::ChorusMix => {
+                            Ok(new_value.adjust_chorus_mix(control_event.value))
+                        }
+                        ControlPatternKind::ChorusDepth => {
+                            Ok(new_value.adjust_chorus_depth(control_event.value))
+                        }
+                        ControlPatternKind::ChorusRate => {
+                            Ok(new_value.adjust_chorus_rate(control_event.value))
+                        }
+                        ControlPatternKind::PulseWidth => {
+                            Ok(new_value.adjust_pulse_width(control_event.value))
+                        }
+                        ControlPatternKind::Pan => Ok(new_value.adjust_pan(control_event.value)),
+                        ControlPatternKind::CompressorMix => {
+                            Ok(new_value.adjust_compressor_mix(control_event.value))
+                        }
+                        ControlPatternKind::CompressorThreshold => {
+                            Ok(new_value.adjust_compressor_threshold(control_event.value))
+                        }
+                        ControlPatternKind::CompressorRatio => {
+                            Ok(new_value.adjust_compressor_ratio(control_event.value))
+                        }
+                        ControlPatternKind::Pitch => Ok(new_value
+                            .adjust_rate(semitones_to_rate_multiplier(control_event.value))),
+                        ControlPatternKind::Rate => Ok(new_value.adjust_rate(control_event.value)),
+                        ControlPatternKind::Transpose => {
+                            new_value.transpose_semitones(control_event.value)
+                        }
+                    }?;
+                }
             }
-        }
-        Ok(Some(new_value))
-    })
+            Ok(Some(new_value))
+        },
+    )
 }
 
 fn validate_control_events(
@@ -3246,7 +3247,10 @@ where
 
     apply_event_fragments(
         source_events,
-        &[&start_events[..], &end_events[..]],
+        start_events
+            .iter()
+            .map(|e| &e.part)
+            .chain(end_events.iter().map(|e| &e.part)),
         |part, value| {
             let mut relative_start = 0.0;
             let mut relative_end = 1.0;
@@ -3290,22 +3294,26 @@ where
         return Ok(source_events);
     }
 
-    apply_event_fragments(source_events, &[&control_events[..]], |part, value| {
-        let mut new_value = value.clone();
-        for control_event in &control_events {
-            if spans_overlap(&control_event.part, part) {
-                let index = whole_number_from_slice_idx_value(control_event.value)?;
-                let slice_start = f64::from(index) / f64::from(segments);
-                let slice_end = f64::from(index.checked_add(1).ok_or_else(|| {
-                    EvalError::new(
-                        "`slice_idx` control index exceeded the supported evaluator range",
-                    )
-                })?) / f64::from(segments);
-                new_value = new_value.adjust_slice(slice_start, slice_end);
+    apply_event_fragments(
+        source_events,
+        control_events.iter().map(|e| &e.part),
+        |part, value| {
+            let mut new_value = value.clone();
+            for control_event in &control_events {
+                if spans_overlap(&control_event.part, part) {
+                    let index = whole_number_from_slice_idx_value(control_event.value)?;
+                    let slice_start = f64::from(index) / f64::from(segments);
+                    let slice_end = f64::from(index.checked_add(1).ok_or_else(|| {
+                        EvalError::new(
+                            "`slice_idx` control index exceeded the supported evaluator range",
+                        )
+                    })?) / f64::from(segments);
+                    new_value = new_value.adjust_slice(slice_start, slice_end);
+                }
             }
-        }
-        Ok(Some(new_value))
-    })
+            Ok(Some(new_value))
+        },
+    )
 }
 
 fn apply_onset_pattern<T>(
@@ -3323,16 +3331,20 @@ where
         return Ok(source_events);
     }
 
-    apply_event_fragments(source_events, &[&control_events[..]], |part, value| {
-        let mut new_value = value.clone();
-        for control_event in &control_events {
-            if spans_overlap(&control_event.part, part) {
-                new_value =
-                    new_value.adjust_onset(whole_number_from_onset_value(control_event.value)?);
+    apply_event_fragments(
+        source_events,
+        control_events.iter().map(|e| &e.part),
+        |part, value| {
+            let mut new_value = value.clone();
+            for control_event in &control_events {
+                if spans_overlap(&control_event.part, part) {
+                    new_value =
+                        new_value.adjust_onset(whole_number_from_onset_value(control_event.value)?);
+                }
             }
-        }
-        Ok(Some(new_value))
-    })
+            Ok(Some(new_value))
+        },
+    )
 }
 
 fn validate_slice_endpoint_events(
@@ -4032,30 +4044,27 @@ fn spans_overlap(a: &TimeSpan, b: &TimeSpan) -> bool {
     max(a.start(), b.start()) < min(a.end(), b.end())
 }
 
-fn compute_event_fragment_boundaries<'a>(
+fn compute_event_fragment_boundaries<'a, 'b, I>(
     source_span: &'a TimeSpan,
-    control_event_lists: &[&'a [Event<f64>]],
-) -> Option<Vec<&'a Rational>> {
-    let capacity_estimate = 2 + control_event_lists
-        .iter()
-        .map(|list| list.len())
-        .sum::<usize>()
-        * 2;
+    control_parts: I,
+) -> Option<Vec<Rational>>
+where
+    I: Iterator<Item = &'b TimeSpan> + Clone,
+{
+    let capacity_estimate = 2 + control_parts.clone().count() * 2;
     // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries.
     let mut boundaries = Vec::with_capacity(capacity_estimate);
-    boundaries.push(source_span.start());
-    boundaries.push(source_span.end());
+    boundaries.push(source_span.start().clone());
+    boundaries.push(source_span.end().clone());
     let mut has_overlap = false;
 
-    for control_events in control_event_lists {
-        for control_event in *control_events {
-            let start = max(control_event.part.start(), source_span.start());
-            let end = min(control_event.part.end(), source_span.end());
-            if start < end {
-                has_overlap = true;
-                boundaries.push(start);
-                boundaries.push(end);
-            }
+    for control_part in control_parts {
+        let start = max(control_part.start(), source_span.start());
+        let end = min(control_part.end(), source_span.end());
+        if start < end {
+            has_overlap = true;
+            boundaries.push(start.clone());
+            boundaries.push(end.clone());
         }
     }
 
