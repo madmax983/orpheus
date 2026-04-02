@@ -48,7 +48,7 @@ fn parse_single_binding_module(source: &str, start_line: usize) -> Result<Module
     let mut pairs = SyntaxParser::parse(Rule::module, &padded_source)
         .map_err(|error| enrich_parse_error(source, &error))?;
     let module_pair = next_pair(&mut pairs, "module")?;
-    build_module(module_pair)
+    build_module(module_pair, 0)
 }
 
 fn split_top_level_bindings(source: &str) -> Vec<(usize, String)> {
@@ -224,64 +224,75 @@ fn first_inner<'a>(
         .ok_or_else(|| ParseError::new(format!("missing {context}")))
 }
 
-fn build_module(pair: Pair<'_, Rule>) -> Result<Module, ParseError> {
+const MAX_AST_DEPTH: usize = 64;
+
+fn build_module(pair: Pair<'_, Rule>, depth: usize) -> Result<Module, ParseError> {
     let statements = pair
         .into_inner()
         .filter(|inner| inner.as_rule() == Rule::binding)
-        .map(build_binding)
+        .map(|p| build_binding(p, depth))
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(Module { statements })
 }
 
-fn build_binding(pair: Pair<'_, Rule>) -> Result<Stmt, ParseError> {
+fn build_binding(pair: Pair<'_, Rule>, depth: usize) -> Result<Stmt, ParseError> {
     let mut inner = pair.into_inner();
     let (name, params) = build_binding_head(next_pair(&mut inner, "binding head")?)?;
-    let expr = build_pipe_expr(next_pair(&mut inner, "binding expression")?)?;
+    let expr = build_pipe_expr(next_pair(&mut inner, "binding expression")?, depth)?;
     Ok(Stmt::Binding { name, params, expr })
 }
 
-fn build_pipe_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_pipe_expr(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
     let mut inner = pair.into_inner();
-    let first = build_sequence(next_pair(&mut inner, "pipe lhs")?)?;
+    let first = build_sequence(next_pair(&mut inner, "pipe lhs")?, depth)?;
 
+    let mut current_depth = depth;
     inner.try_fold(first, |lhs, rhs| {
+        current_depth += 1;
+        if current_depth > MAX_AST_DEPTH {
+            return Err(ParseError::new("maximum AST depth exceeded"));
+        }
         Ok(Expr::Pipe {
             lhs: Box::new(lhs),
-            rhs: Box::new(build_pipe_target(rhs)?),
+            rhs: Box::new(build_pipe_target(rhs, current_depth)?),
         })
     })
 }
 
-fn build_sequence(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_sequence(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
     let items = pair
         .into_inner()
-        .map(build_sum_expr)
+        .map(|p| build_sum_expr(p, depth))
         .collect::<Result<Vec<_>, _>>()?;
 
-    collapse_sequence(items, "sequence")
+    collapse_sequence(items, "sequence", depth)
 }
 
-fn build_pipe_target(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
-    build_application(first_inner(pair, "pipe target")?)
+fn build_pipe_target(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    build_application(first_inner(pair, "pipe target")?, depth)
 }
 
-fn build_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_expr(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("maximum AST depth exceeded"));
+    }
+    let next_depth = depth + 1;
     match pair.as_rule() {
-        Rule::stack => build_stack(pair),
-        Rule::application => build_application(pair),
-        Rule::product_expr => build_product_expr(pair),
-        Rule::sum_expr => build_sum_expr(pair),
-        Rule::graph => build_graph(pair),
-        Rule::primary => build_expr(first_inner(pair, "primary expression")?),
-        Rule::group => build_group(pair),
+        Rule::stack => build_stack(pair, next_depth),
+        Rule::application => build_application(pair, next_depth),
+        Rule::product_expr => build_product_expr(pair, next_depth),
+        Rule::sum_expr => build_sum_expr(pair, next_depth),
+        Rule::graph => build_graph(pair, next_depth),
+        Rule::primary => build_expr(first_inner(pair, "primary expression")?, next_depth),
+        Rule::group => build_group(pair, next_depth),
         Rule::rest => Ok(Expr::Rest),
         Rule::number => build_number(&pair),
         Rule::string => build_string(&pair),
         Rule::identifier => Ok(Expr::Ident(pair.as_str().to_owned())),
-        Rule::pipe_expr => build_pipe_expr(pair),
-        Rule::sequence => build_sequence(pair),
-        Rule::pipe_target => build_pipe_target(pair),
+        Rule::pipe_expr => build_pipe_expr(pair, next_depth),
+        Rule::sequence => build_sequence(pair, next_depth),
+        Rule::pipe_target => build_pipe_target(pair, next_depth),
         other => Err(ParseError::new(format!(
             "unexpected parser rule while building AST: {other:?}"
         ))),
@@ -314,30 +325,35 @@ fn build_binding_head(pair: Pair<'_, Rule>) -> Result<(String, Vec<String>), Par
     Ok((name, params))
 }
 
-fn build_stack(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_stack(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
     let layers_pair = next_pair(&mut pair.into_inner(), "stack layers")?;
     let layers = layers_pair
         .into_inner()
-        .map(build_pipe_expr)
+        .map(|p| build_pipe_expr(p, depth))
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(Expr::Stack(layers))
 }
 
-fn build_application(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_application(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
     let mut inner = pair.into_inner();
     let first = next_pair(&mut inner, "application callee")?;
-    let mut expr = build_expr(first)?;
+    let mut expr = build_expr(first, depth)?;
 
+    let mut current_depth = depth;
     for suffix in inner {
-        let args = build_call_suffix_args(suffix)?;
+        current_depth += 1;
+        if current_depth > MAX_AST_DEPTH {
+            return Err(ParseError::new("maximum AST depth exceeded"));
+        }
+        let args = build_call_suffix_args(suffix, current_depth)?;
         expr = build_call_expr(expr, args)?;
     }
 
     Ok(expr)
 }
 
-fn build_call_suffix_args(pair: Pair<'_, Rule>) -> Result<Vec<Expr>, ParseError> {
+fn build_call_suffix_args(pair: Pair<'_, Rule>, depth: usize) -> Result<Vec<Expr>, ParseError> {
     let mut inner = pair.into_inner();
     let Some(args_pair) = inner.next() else {
         return Ok(Vec::new());
@@ -345,16 +361,16 @@ fn build_call_suffix_args(pair: Pair<'_, Rule>) -> Result<Vec<Expr>, ParseError>
 
     args_pair
         .into_inner()
-        .map(build_call_arg)
+        .map(|p| build_call_arg(p, depth))
         .collect::<Result<Vec<_>, _>>()
 }
 
-fn build_sum_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
-    build_binary_expr(pair, BinaryRule::Add)
+fn build_sum_expr(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    build_binary_expr(pair, BinaryRule::Add, depth)
 }
 
-fn build_product_expr(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
-    build_binary_expr(pair, BinaryRule::Mul)
+fn build_product_expr(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    build_binary_expr(pair, BinaryRule::Mul, depth)
 }
 
 #[derive(Clone, Copy)]
@@ -363,21 +379,34 @@ enum BinaryRule {
     Mul,
 }
 
-fn build_binary_expr(pair: Pair<'_, Rule>, expected_rule: BinaryRule) -> Result<Expr, ParseError> {
+fn build_binary_expr(
+    pair: Pair<'_, Rule>,
+    expected_rule: BinaryRule,
+    depth: usize,
+) -> Result<Expr, ParseError> {
     let mut inner = pair.into_inner();
+    let initial_depth = depth + 1;
+    if initial_depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("maximum AST depth exceeded"));
+    }
     let first = match expected_rule {
-        BinaryRule::Add => build_product_expr(next_pair(&mut inner, "binary lhs")?)?,
-        BinaryRule::Mul => build_application(next_pair(&mut inner, "binary lhs")?)?,
+        BinaryRule::Add => build_product_expr(next_pair(&mut inner, "binary lhs")?, initial_depth)?,
+        BinaryRule::Mul => build_application(next_pair(&mut inner, "binary lhs")?, initial_depth)?,
     };
 
     let mut expr = first;
+    let mut current_depth = initial_depth;
     while let Some(op_pair) = inner.next() {
+        current_depth += 1;
+        if current_depth > MAX_AST_DEPTH {
+            return Err(ParseError::new("maximum AST depth exceeded"));
+        }
         let rhs_pair = inner
             .next()
             .ok_or_else(|| ParseError::new("missing binary rhs"))?;
         let rhs = match expected_rule {
-            BinaryRule::Add => build_product_expr(rhs_pair)?,
-            BinaryRule::Mul => build_application(rhs_pair)?,
+            BinaryRule::Add => build_product_expr(rhs_pair, current_depth)?,
+            BinaryRule::Mul => build_application(rhs_pair, current_depth)?,
         };
         let op = match (expected_rule, op_pair.as_rule()) {
             (BinaryRule::Add, Rule::add_op) => BinaryOp::Add,
@@ -447,23 +476,23 @@ fn build_call_expr(callee: Expr, args: Vec<Expr>) -> Result<Expr, ParseError> {
     })
 }
 
-fn build_call_arg(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_call_arg(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
     match pair.as_rule() {
-        Rule::call_arg => build_call_arg(first_inner(pair, "call arg")?),
-        Rule::named_call_arg => build_named_call_arg(pair),
-        Rule::pipe_expr => build_pipe_expr(pair),
+        Rule::call_arg => build_call_arg(first_inner(pair, "call arg")?, depth),
+        Rule::named_call_arg => build_named_call_arg(pair, depth),
+        Rule::pipe_expr => build_pipe_expr(pair, depth),
         other => Err(ParseError::new(format!(
             "unexpected parser rule while building call argument: {other:?}"
         ))),
     }
 }
 
-fn build_named_call_arg(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_named_call_arg(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
     let mut inner = pair.into_inner();
     let name = next_pair(&mut inner, "named call argument name")?
         .as_str()
         .to_owned();
-    let value = build_pipe_expr(next_pair(&mut inner, "named call argument value")?)?;
+    let value = build_pipe_expr(next_pair(&mut inner, "named call argument value")?, depth)?;
 
     Ok(Expr::Binary {
         lhs: Box::new(Expr::Ident(name)),
@@ -472,15 +501,15 @@ fn build_named_call_arg(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
     })
 }
 
-fn build_group(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_group(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
     let items = pair
         .into_inner()
-        .map(build_sum_expr)
+        .map(|p| build_sum_expr(p, depth))
         .collect::<Result<Vec<_>, _>>()?;
     Ok(Expr::Group(items))
 }
 
-fn build_graph(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+fn build_graph(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
     let mut bindings = Vec::new();
     let mut result = None;
     let (line, col) = pair.as_span().start_pos().line_col();
@@ -502,7 +531,7 @@ fn build_graph(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
                                 "parse error at line {line}, col {col}: `graph` bindings must appear before the final result expression"
                             )));
                         }
-                        bindings.push(build_graph_binding(entry)?);
+                        bindings.push(build_graph_binding(entry, depth)?);
                     }
                     Rule::graph_result => {
                         if result.is_some() {
@@ -510,7 +539,7 @@ fn build_graph(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
                                 "parse error at line {line}, col {col}: `graph` blocks may contain only one result expression"
                             )));
                         }
-                        result = Some(build_pipe_expr(first_inner(entry, "graph result")?)?);
+                        result = Some(build_pipe_expr(first_inner(entry, "graph result")?, depth)?);
                     }
                     other => {
                         return Err(ParseError::new(format!(
@@ -538,12 +567,12 @@ fn build_graph(pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
     })
 }
 
-fn build_graph_binding(pair: Pair<'_, Rule>) -> Result<GraphBinding, ParseError> {
+fn build_graph_binding(pair: Pair<'_, Rule>, depth: usize) -> Result<GraphBinding, ParseError> {
     let mut inner = pair.into_inner();
     let name = next_pair(&mut inner, "graph binding name")?
         .as_str()
         .to_owned();
-    let expr = build_pipe_expr(next_pair(&mut inner, "graph binding expression")?)?;
+    let expr = build_pipe_expr(next_pair(&mut inner, "graph binding expression")?, depth)?;
     Ok(GraphBinding { name, expr })
 }
 
@@ -599,8 +628,12 @@ fn parse_string_literal(literal: &str) -> Result<String, ParseError> {
     Ok(value)
 }
 
-fn collapse_sequence(items: Vec<Expr>, context: &'static str) -> Result<Expr, ParseError> {
-    if let Some(expr) = collapse_meter_annotation(&items)? {
+fn collapse_sequence(
+    items: Vec<Expr>,
+    context: &'static str,
+    depth: usize,
+) -> Result<Expr, ParseError> {
+    if let Some(expr) = collapse_meter_annotation(&items, depth)? {
         return Ok(expr);
     }
 
@@ -614,7 +647,7 @@ fn collapse_sequence(items: Vec<Expr>, context: &'static str) -> Result<Expr, Pa
     }
 }
 
-fn collapse_meter_annotation(items: &[Expr]) -> Result<Option<Expr>, ParseError> {
+fn collapse_meter_annotation(items: &[Expr], depth: usize) -> Result<Option<Expr>, ParseError> {
     let Some((first, rest)) = items.split_first() else {
         return Ok(None);
     };
@@ -638,7 +671,11 @@ fn collapse_meter_annotation(items: &[Expr]) -> Result<Option<Expr>, ParseError>
         ));
     }
 
-    let pattern = collapse_sequence(rest.to_vec(), "meter annotation")?;
+    let next_depth = depth + 1;
+    if next_depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("maximum AST depth exceeded"));
+    }
+    let pattern = collapse_sequence(rest.to_vec(), "meter annotation", next_depth)?;
     Ok(Some(Expr::Meter {
         beats: Box::new(beats.clone()),
         unit: Box::new(unit.clone()),

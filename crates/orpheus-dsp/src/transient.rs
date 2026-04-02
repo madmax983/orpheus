@@ -6,6 +6,8 @@ const RELEASE_COEFFICIENT: f32 = 0.02;
 const THRESHOLD_MULTIPLIER: f32 = 3.0;
 const MIN_THRESHOLD: f32 = 0.005;
 
+#[allow(clippy::redundant_pub_crate)]
+#[allow(clippy::cast_precision_loss)]
 pub(crate) fn detect_transient_markers(frames: &[f32], sample_rate_hz: u32) -> Arc<[f64]> {
     if frames.is_empty() {
         return Arc::from([]);
@@ -72,6 +74,8 @@ pub(crate) fn detect_transient_markers(frames: &[f32], sample_rate_hz: u32) -> A
     )
 }
 
+#[allow(clippy::redundant_pub_crate)]
+#[allow(clippy::cast_precision_loss)]
 pub(crate) fn rebase_transient_markers(markers: &[f64], start: f64, end: f64) -> Arc<[f64]> {
     let range = end - start;
     if !range.is_finite() || range <= f64::EPSILON {
@@ -88,6 +92,7 @@ pub(crate) fn rebase_transient_markers(markers: &[f64], start: f64, end: f64) ->
     )
 }
 
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) fn resolve_onset_slice(markers: &[f64], onset_index: u32) -> Option<(f64, f64)> {
     if markers.is_empty() {
         return (onset_index == 0).then_some((0.0, 1.0));
@@ -130,14 +135,14 @@ mod tests {
     #[test]
     fn detect_transient_markers_finds_separated_impulses() {
         let mut frames = vec![0.0_f32; 300];
-        for index in 10..14 {
-            frames[index] = 1.0;
+        for frame in frames.iter_mut().take(14).skip(10) {
+            *frame = 1.0;
         }
-        for index in 110..114 {
-            frames[index] = 0.6;
+        for frame in frames.iter_mut().take(114).skip(110) {
+            *frame = 0.6;
         }
-        for index in 210..214 {
-            frames[index] = 0.3;
+        for frame in frames.iter_mut().take(214).skip(210) {
+            *frame = 0.3;
         }
 
         let markers = detect_transient_markers(&frames, 48_000);

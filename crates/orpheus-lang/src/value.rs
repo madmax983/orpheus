@@ -84,6 +84,7 @@ pub enum BuiltinKind {
     Jux,
     Through,
     MidiCc,
+    Chaos,
 }
 
 /// A partially or fully applied built-in function at runtime.
@@ -111,7 +112,9 @@ pub struct UserFn {
 /// A callable runtime value, either builtin or user-defined.
 #[derive(Clone, Debug)]
 pub enum FunctionValue {
+    /// A core primitive transformation provided by the language standard library.
     Builtin(BuiltinFn),
+    /// A custom function defined by the user in the REPL or a script file.
     User(UserFn),
 }
 
@@ -324,6 +327,16 @@ impl Value {
         }
     }
 
+    /// Attempts to unwrap the value into a concrete pitch class set.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::Value;
+    ///
+    /// let val = Value::String("foo".into());
+    /// assert!(val.as_pitch_class_set().is_none());
+    /// ```
     #[must_use]
     pub const fn as_pitch_class_set(&self) -> Option<&PitchClassSetValue> {
         match self {
@@ -337,6 +350,16 @@ impl Value {
         }
     }
 
+    /// Attempts to unwrap the value into a concrete arp direction.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::Value;
+    ///
+    /// let val = Value::String("foo".into());
+    /// assert!(val.as_arp_direction().is_none());
+    /// ```
     #[must_use]
     pub const fn as_arp_direction(&self) -> Option<ArpDirectionValue> {
         match self {
@@ -1233,6 +1256,15 @@ impl SamplePatternValue {
         }
     }
 
+    pub(crate) fn chaos_with_site_salt(self, site_salt: u64) -> Self {
+        Self {
+            pattern: PatternRuntime::Chaos {
+                site_salt,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn every(self, period: i64, transform: FunctionValue) -> Self {
         Self {
             pattern: PatternRuntime::Every {
@@ -2012,6 +2044,15 @@ impl NumberPatternValue {
         }
     }
 
+    pub(crate) fn chaos_with_site_salt(self, site_salt: u64) -> Self {
+        Self {
+            pattern: PatternRuntime::Chaos {
+                site_salt,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     /// Queries the pattern over the default unit cycle `[0, 1)`.
     ///
     #[must_use]
@@ -2145,6 +2186,10 @@ enum PatternRuntime<T> {
         inner: Box<Self>,
     },
     Rev {
+        inner: Box<Self>,
+    },
+    Chaos {
+        site_salt: u64,
         inner: Box<Self>,
     },
     Gain {
@@ -2413,6 +2458,7 @@ where
                 inner,
             } => query_within(inner, start, end, transform, span),
             Self::Mask { gate, inner } => query_mask(inner, gate, span),
+            Self::Chaos { site_salt, inner } => query_chaos(inner, *site_salt, span),
             _ => self.try_query_transform(span),
         }
     }
@@ -2605,7 +2651,8 @@ where
             | Self::When { .. }
             | Self::Sometimes { .. }
             | Self::Within { .. }
-            | Self::Mask { .. } => unreachable!("base query variants handled in try_query"),
+            | Self::Mask { .. }
+            | Self::Chaos { .. } => unreachable!("base query variants handled in try_query"),
         }
     }
 }
@@ -3546,6 +3593,103 @@ where
     })
 }
 
+fn query_chaos<T>(
+    inner: &PatternRuntime<T>,
+    site_salt: u64,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut events = Vec::with_capacity(8);
+    let start_cycle = floor_rational(span.start());
+    let end_cycle = ceil_rational(span.end());
+
+    for cycle in start_cycle..end_cycle {
+        let cycle_span = cycle_span(cycle)?;
+        let Some(query_slice) = clip_span(&cycle_span, span)? else {
+            continue;
+        };
+
+        // Query the underlying events for this whole cycle to shuffle them accurately
+        let mut cycle_events = inner.try_query(&cycle_span)?;
+        if cycle_events.is_empty() {
+            continue;
+        }
+
+        // Shuffle using a deterministic RNG seeded by site_salt and cycle index
+        let [
+            b0,
+            b1,
+            b2,
+            b3,
+            b4,
+            b5,
+            b6,
+            b7,
+            b8,
+            b9,
+            b10,
+            b11,
+            b12,
+            b13,
+            b14,
+            b15,
+        ] = cycle.to_le_bytes();
+        let lower = u64::from_le_bytes([b0, b1, b2, b3, b4, b5, b6, b7]);
+        let upper = u64::from_le_bytes([b8, b9, b10, b11, b12, b13, b14, b15]);
+        let mut state = lower ^ upper.rotate_left(32) ^ site_salt.rotate_left(17);
+        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        state = (state ^ (state >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        state = (state ^ (state >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        state ^= state >> 31;
+
+        let mut rng_state = state;
+        let len = cycle_events.len();
+        for i in (1..len).rev() {
+            // LCG for next random number
+            rng_state = rng_state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            let j = (rng_state as usize) % (i + 1);
+            if i != j {
+                // ⚡ Bolt: Swap values in-place without allocating an intermediate `Vec` or deep cloning strings.
+                // We use `split_at_mut` to get two disjoint mutable slices, guaranteeing safety.
+                let (left, right) = cycle_events.split_at_mut(i.max(j));
+                std::mem::swap(&mut left[i.min(j)].value, &mut right[0].value);
+            }
+        }
+
+        // Apply shuffled values back to the original timing structure and clip to the query slice
+
+        for event in cycle_events {
+            if spans_overlap(&event.part, &query_slice) {
+                // If it partially overlaps, we need to clip it
+                if let Some(clipped_part) = clip_span(&event.part, &query_slice)? {
+                    // Update the `whole` span if it was clipped, or preserve it
+                    let whole = if clipped_part == event.part {
+                        event.whole.clone()
+                    } else {
+                        Some(event.whole.unwrap_or(event.part.clone()))
+                    };
+                    events.push(Event {
+                        whole,
+                        part: clipped_part,
+                        value: event.value,
+                    });
+                }
+            }
+        }
+    }
+
+    sort_events(&mut events);
+    Ok(events)
+}
+
 fn query_transform_cycles<T, F>(
     inner: &PatternRuntime<T>,
     transform: &FunctionValue,
@@ -3765,6 +3909,7 @@ fn absolute_cycle_for_runtime<T>(
         | PatternRuntime::Sometimes { inner, .. }
         | PatternRuntime::Within { inner, .. }
         | PatternRuntime::Mask { inner, .. }
+        | PatternRuntime::Chaos { inner, .. }
         | PatternRuntime::Roll { inner, .. }
         | PatternRuntime::Strum { inner }
         | PatternRuntime::Arp { inner, .. }
@@ -4394,6 +4539,40 @@ mod tests {
         let mut events = cluster.clone();
         let events = arp_event_cluster(&mut events, 5, ArpDirectionValue::Up).unwrap();
         assert_eq!(events, cluster);
+    }
+
+    #[test]
+    fn chaos_shuffles_events_deterministically() {
+        let source = "a = chaos(bd sn cp hh)";
+        let module = crate::eval_module(source, crate::ReplMode::Loose).unwrap();
+        let pattern = module.get("a").unwrap().as_sample_pattern().unwrap();
+
+        let span = TimeSpan::new(Rational::zero(), Rational::new(2, 1).unwrap()).unwrap();
+        let events = pattern.try_query(&span).unwrap();
+
+        assert_eq!(events.len(), 8); // 4 events per cycle
+
+        let c0_names: Vec<_> = events[0..4].iter().map(|e| e.value.sample()).collect();
+        let c1_names: Vec<_> = events[4..8].iter().map(|e| e.value.sample()).collect();
+
+        // Timing should be intact
+        assert_eq!(events[0].part.start(), &Rational::zero());
+        assert_eq!(events[0].part.end(), &Rational::new(1, 4).unwrap());
+        assert_eq!(events[4].part.start(), &Rational::one());
+        assert_eq!(events[4].part.end(), &Rational::new(5, 4).unwrap());
+
+        // Should contain all elements
+        let mut c0_sorted = c0_names.clone();
+        c0_sorted.sort();
+        assert_eq!(c0_sorted, vec!["bd", "cp", "hh", "sn"]);
+
+        let mut c1_sorted = c1_names.clone();
+        c1_sorted.sort();
+        assert_eq!(c1_sorted, vec!["bd", "cp", "hh", "sn"]);
+
+        // C0 and C1 should likely be different permutations
+        assert_ne!(c0_names, vec!["bd", "sn", "cp", "hh"]);
+        assert_ne!(c0_names, c1_names);
     }
 
     #[test]

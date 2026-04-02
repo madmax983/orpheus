@@ -35,7 +35,7 @@ mod tests {
     #[test]
     fn softsat_new_and_default_initialize_state() {
         let s1 = SoftSat::new();
-        let s2 = SoftSat::default();
+        let s2 = SoftSat;
         assert_eq!(s1, s2);
     }
 
@@ -48,9 +48,9 @@ mod tests {
     #[test]
     fn process_passes_zero_input_unchanged() {
         let mut sat = SoftSat::new();
-        assert_eq!(sat.process(0.0, 0.0), 0.0);
-        assert_eq!(sat.process(0.0, 1.0), 0.0);
-        assert_eq!(sat.process(0.0, 10.0), 0.0);
+        assert!((sat.process(0.0, 0.0) - 0.0).abs() < f32::EPSILON);
+        assert!((sat.process(0.0, 1.0) - 0.0).abs() < f32::EPSILON);
+        assert!((sat.process(0.0, 10.0) - 0.0).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -59,9 +59,9 @@ mod tests {
         // tanh(0) = 0
         // tanh(1) = 0.76159...
         // tanh(10) ~= 1.0
-        assert_eq!(sat.process(0.0, 0.0), 0.0_f32.tanh());
-        assert_eq!(sat.process(1.0, 0.0), 1.0_f32.tanh());
-        assert_eq!(sat.process(-1.0, 0.0), (-1.0_f32).tanh());
+        assert!((sat.process(0.0, 0.0) - 0.0_f32.tanh()).abs() < f32::EPSILON);
+        assert!((sat.process(1.0, 0.0) - 1.0_f32.tanh()).abs() < f32::EPSILON);
+        assert!((sat.process(-1.0, 0.0) - (-1.0_f32).tanh()).abs() < f32::EPSILON);
 
         let saturated = sat.process(10.0, 0.0);
         assert!(
@@ -71,7 +71,7 @@ mod tests {
 
         let saturated_neg = sat.process(-10.0, 0.0);
         assert!(
-            saturated_neg < -0.99 && saturated_neg >= -1.0,
+            (-1.0..=-0.99).contains(&saturated_neg),
             "Large negative inputs clip softly to -1.0"
         );
     }
@@ -81,9 +81,9 @@ mod tests {
         let mut sat = SoftSat::new();
         // input * (1 + drive)
         // input=1.0, drive=1.0 -> tanh(2.0)
-        assert_eq!(sat.process(1.0, 1.0), 2.0_f32.tanh());
+        assert!((sat.process(1.0, 1.0) - 2.0_f32.tanh()).abs() < f32::EPSILON);
         // input=0.5, drive=3.0 -> tanh(0.5 * 4.0) = tanh(2.0)
-        assert_eq!(sat.process(0.5, 3.0), 2.0_f32.tanh());
+        assert!((sat.process(0.5, 3.0) - 2.0_f32.tanh()).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -91,14 +91,12 @@ mod tests {
         let mut sat = SoftSat::new();
         // If drive < 0, it should max to 0.0
         // input=1.0, drive=-1.0 -> drive.max(0)=0.0 -> tanh(1.0 * 1.0)
-        assert_eq!(
-            sat.process(1.0, -1.0),
-            1.0_f32.tanh(),
+        assert!(
+            (sat.process(1.0, -1.0) - 1.0_f32.tanh()).abs() < f32::EPSILON,
             "Negative drive is clamped to 0"
         );
-        assert_eq!(
-            sat.process(1.0, f32::NEG_INFINITY),
-            1.0_f32.tanh(),
+        assert!(
+            (sat.process(1.0, f32::NEG_INFINITY) - 1.0_f32.tanh()).abs() < f32::EPSILON,
             "Negative infinity drive is clamped to 0"
         );
     }
@@ -107,15 +105,16 @@ mod tests {
     fn process_handles_non_finite_inputs() {
         let mut sat = SoftSat::new();
         // Non-finite input yields 0.0 (which results in tanh(0.0) = 0.0)
-        assert_eq!(sat.process(f32::NAN, 1.0), 0.0, "NaN input yields 0.0");
-        assert_eq!(
-            sat.process(f32::INFINITY, 1.0),
-            0.0,
+        assert!(
+            (sat.process(f32::NAN, 1.0) - 0.0).abs() < f32::EPSILON,
+            "NaN input yields 0.0"
+        );
+        assert!(
+            (sat.process(f32::INFINITY, 1.0) - 0.0).abs() < f32::EPSILON,
             "Infinity input yields 0.0"
         );
-        assert_eq!(
-            sat.process(f32::NEG_INFINITY, 1.0),
-            0.0,
+        assert!(
+            (sat.process(f32::NEG_INFINITY, 1.0) - 0.0).abs() < f32::EPSILON,
             "Neg Infinity input yields 0.0"
         );
     }
@@ -125,14 +124,12 @@ mod tests {
         let mut sat = SoftSat::new();
         // Non-finite drive yields 0.0
         // input=1.0, non-finite drive -> tanh(1.0 * (1.0 + 0.0)) = tanh(1.0)
-        assert_eq!(
-            sat.process(1.0, f32::NAN),
-            1.0_f32.tanh(),
+        assert!(
+            (sat.process(1.0, f32::NAN) - 1.0_f32.tanh()).abs() < f32::EPSILON,
             "NaN drive yields 0.0 drive"
         );
-        assert_eq!(
-            sat.process(1.0, f32::INFINITY),
-            1.0_f32.tanh(),
+        assert!(
+            (sat.process(1.0, f32::INFINITY) - 1.0_f32.tanh()).abs() < f32::EPSILON,
             "Infinity drive yields 0.0 drive"
         );
     }

@@ -1,6 +1,6 @@
 //! Tests for the Processor wrapper.
 
-use orpheus_dsp::graph::{Node, Processor, constant, passthrough, seq};
+use orpheus_dsp::{Node, Processor, constant, passthrough, seq};
 
 const FRAMES: usize = 64;
 

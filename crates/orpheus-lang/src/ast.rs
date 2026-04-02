@@ -30,23 +30,35 @@ pub enum Expr {
         rhs: Box<Self>,
     },
     /// Function application created by `callee(...)`.
-    Call { callee: Box<Self>, args: Vec<Self> },
+    Call {
+        /// The function being called.
+        callee: Box<Self>,
+        /// The arguments passed to the function.
+        args: Vec<Self>,
+    },
     /// Explicit placement created by `at(time, pattern)`.
     At {
+        /// The explicit time offset.
         start: Box<Self>,
+        /// The pattern to schedule at the offset.
         pattern: Box<Self>,
     },
     /// Meter annotation created by `meter(n, d, pattern)`.
     Meter {
+        /// The number of beats per measure.
         beats: Box<Self>,
+        /// The duration of a single beat.
         unit: Box<Self>,
+        /// The pattern to apply the meter to.
         pattern: Box<Self>,
     },
     /// Beat-relative numeric literal created by `beat(...)`.
     Beat(Box<Self>),
     /// One section in a song structure created by `section(pattern, cycles)`.
     Section {
+        /// The pattern representing the musical section.
         pattern: Box<Self>,
+        /// The duration of the section in cycles.
         cycles: Box<Self>,
     },
     /// Sequential section composition created by `seq_sections(...)`.
@@ -152,8 +164,11 @@ impl Expr {
 pub enum Stmt {
     /// A top-level binding statement.
     Binding {
+        /// The name of the identifier being bound.
         name: String,
+        /// Optional parameter names for user-defined functions.
         params: Vec<String>,
+        /// The right-hand side expression.
         expr: Expr,
     },
 }

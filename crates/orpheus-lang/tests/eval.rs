@@ -1,7 +1,7 @@
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use orpheus_lang::{ReplMode, Value, eval_module, export_sample_pattern_to_json};
+use orpheus_lang::{FunctionValue, ReplMode, Value, eval_module, export_sample_pattern_to_json};
 use orpheus_pattern::{Rational, TimeSpan};
 use serde_json::Value as JsonValue;
 
@@ -2909,4 +2909,20 @@ fn rand_builtin_generates_deterministic_random_numbers() {
     assert!((0.0..=1.0).contains(&v1));
     assert!((0.0..=1.0).contains(&v2));
     assert!((v1 - v2).abs() > f64::EPSILON);
+}
+
+#[test]
+fn apply_user_function_curries_arguments_when_partially_applied() {
+    let module = eval_module("f x y = x y\npartial = f(1)", ReplMode::Loose).unwrap();
+    let partial = module.get("partial").unwrap();
+    assert!(matches!(partial, Value::Function(FunctionValue::User(_))));
+}
+
+#[test]
+fn apply_user_function_returns_error_when_overapplied() {
+    assert_eval_error_contains(
+        "f x = x\nerr = f(1, 2)",
+        ReplMode::Loose,
+        &["function expected 1 argument(s), got 2"],
+    );
 }

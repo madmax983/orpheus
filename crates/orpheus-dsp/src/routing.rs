@@ -525,14 +525,12 @@ impl RoutingSnapshot {
     }
 
     #[must_use]
-    #[allow(dead_code)]
-    pub(crate) fn tracks(&self) -> &[TrackState] {
+    pub fn tracks(&self) -> &[TrackState] {
         &self.tracks
     }
 
     #[must_use]
-    #[allow(dead_code)]
-    pub(crate) fn buses(&self) -> &[BusState] {
+    pub fn buses(&self) -> &[BusState] {
         &self.buses
     }
 }
@@ -1002,4 +1000,182 @@ fn route_to_master(
     Err(RoutingError::UnknownTrack {
         name: route.from_name.clone(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn routing_snapshot_builder_catches_duplicate_track_names() {
+        let builder = RoutingSnapshotBuilder::default()
+            .track("drums")
+            .track("drums");
+        let result = builder.build();
+        assert_eq!(
+            result,
+            Err(RoutingError::DuplicateName {
+                name: Box::<str>::from("drums")
+            })
+        );
+    }
+
+    #[test]
+    fn routing_snapshot_builder_catches_duplicate_bus_names() {
+        let builder = RoutingSnapshotBuilder::default().bus("verb").bus("verb");
+        let result = builder.build();
+        assert_eq!(
+            result,
+            Err(RoutingError::DuplicateName {
+                name: Box::<str>::from("verb")
+            })
+        );
+    }
+
+    #[test]
+    fn routing_snapshot_builder_catches_track_and_bus_name_collisions() {
+        let builder = RoutingSnapshotBuilder::default()
+            .track("shared")
+            .bus("shared");
+        let result = builder.build();
+        assert_eq!(
+            result,
+            Err(RoutingError::DuplicateName {
+                name: Box::<str>::from("shared")
+            })
+        );
+    }
+
+    #[test]
+    fn routing_snapshot_builder_catches_reserved_master_name_for_tracks() {
+        let builder = RoutingSnapshotBuilder::default().track("master");
+        let result = builder.build();
+        assert_eq!(
+            result,
+            Err(RoutingError::ReservedName {
+                name: Box::<str>::from("master")
+            })
+        );
+    }
+
+    #[test]
+    fn routing_snapshot_builder_catches_reserved_master_name_for_buses() {
+        let builder = RoutingSnapshotBuilder::default().bus("master");
+        let result = builder.build();
+        assert_eq!(
+            result,
+            Err(RoutingError::ReservedName {
+                name: Box::<str>::from("master")
+            })
+        );
+    }
+
+    #[test]
+    fn routing_snapshot_builder_catches_unknown_track_in_send() {
+        let builder = RoutingSnapshotBuilder::default()
+            .bus("verb")
+            .send("drums", "verb", 1.0);
+        let result = builder.build();
+        assert_eq!(
+            result,
+            Err(RoutingError::UnknownTrack {
+                name: Box::<str>::from("drums")
+            })
+        );
+    }
+
+    #[test]
+    fn routing_snapshot_builder_catches_unknown_bus_in_send() {
+        let builder = RoutingSnapshotBuilder::default()
+            .track("drums")
+            .send("drums", "verb", 1.0);
+        let result = builder.build();
+        assert_eq!(
+            result,
+            Err(RoutingError::UnknownBus {
+                name: Box::<str>::from("verb")
+            })
+        );
+    }
+
+    #[test]
+    fn routing_snapshot_builder_catches_duplicate_send() {
+        let builder = RoutingSnapshotBuilder::default()
+            .track("drums")
+            .bus("verb")
+            .send("drums", "verb", 0.5)
+            .send("drums", "verb", 0.8);
+        let result = builder.build();
+        assert_eq!(
+            result,
+            Err(RoutingError::DuplicateSend {
+                track: Box::<str>::from("drums"),
+                bus: Box::<str>::from("verb")
+            })
+        );
+    }
+
+    #[test]
+    fn routing_snapshot_builder_catches_track_to_track_route() {
+        let builder = RoutingSnapshotBuilder::default()
+            .track("drums")
+            .track("comp")
+            .route("drums", "comp");
+        let result = builder.build();
+        assert_eq!(
+            result,
+            Err(RoutingError::TrackToTrackRoute {
+                from: Box::<str>::from("drums"),
+                to: Box::<str>::from("comp")
+            })
+        );
+    }
+
+    #[test]
+    fn routing_snapshot_builder_catches_bus_to_bus_route() {
+        let builder = RoutingSnapshotBuilder::default()
+            .bus("delay")
+            .bus("verb")
+            .route("delay", "verb");
+        let result = builder.build();
+        assert_eq!(
+            result,
+            Err(RoutingError::BusToBusRoute {
+                from: Box::<str>::from("delay"),
+                to: Box::<str>::from("verb")
+            })
+        );
+    }
+
+    #[test]
+    fn routing_snapshot_builder_catches_bus_to_track_route() {
+        let builder = RoutingSnapshotBuilder::default()
+            .track("drums")
+            .bus("verb")
+            .route("verb", "drums");
+        let result = builder.build();
+        assert_eq!(
+            result,
+            Err(RoutingError::BusToTrackRoute {
+                from: Box::<str>::from("verb"),
+                to: Box::<str>::from("drums")
+            })
+        );
+    }
+
+    #[test]
+    fn routing_snapshot_builder_catches_track_to_bus_route() {
+        let builder = RoutingSnapshotBuilder::default()
+            .track("drums")
+            .bus("verb")
+            .route("drums", "verb");
+        let result = builder.build();
+        assert_eq!(
+            result,
+            Err(RoutingError::TrackToBusRouteRequiresSend {
+                from: Box::<str>::from("drums"),
+                to: Box::<str>::from("verb")
+            })
+        );
+    }
 }

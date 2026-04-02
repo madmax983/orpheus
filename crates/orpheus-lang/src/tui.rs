@@ -39,7 +39,10 @@ const MIN_HELP_FOOTER: &str = "Esc ?";
 const COMMAND_HINTS: [(&str, &str); 14] = [
     (":bus", ":bus <new|fx> ..."),
     (":explain", ":explain <binding>"),
-    (":export", ":export <binding> <path> [cycles]"),
+    (
+        ":export",
+        ":export <binding> <path> [cycles] | :export stems [cycles] [--buses]",
+    ),
     (":mixer", ":mixer"),
     (":open", ":open <path>"),
     (":play", ":play"),
@@ -399,26 +402,25 @@ impl SessionTui {
             .transcript
             .iter()
             .cloned()
-            .map(|line| {
-                if line.starts_with("> ") {
-                    Line::styled(line, Style::default().fg(Color::DarkGray))
-                } else if line.starts_with("✗ ") {
-                    Line::styled(
-                        line,
-                        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-                    )
-                } else if line.starts_with("⚠️ ") {
-                    Line::styled(
-                        line,
-                        Style::default()
-                            .fg(Color::Yellow)
-                            .add_modifier(Modifier::BOLD),
-                    )
-                } else if line.starts_with("✓ ") {
-                    Line::styled(line, Style::default().fg(Color::Green))
+            .flat_map(|entry| {
+                let style = if entry.starts_with("> ") {
+                    Style::default().fg(Color::DarkGray)
+                } else if entry.starts_with("✗ ") {
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+                } else if entry.starts_with("⚠️ ") {
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD)
+                } else if entry.starts_with("✓ ") {
+                    Style::default().fg(Color::Green)
                 } else {
-                    Line::raw(line)
-                }
+                    Style::default()
+                };
+
+                entry
+                    .split('\n')
+                    .map(|line| Line::styled(line.to_owned(), style))
+                    .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();
         let transport = self.session.transport_view();
@@ -455,7 +457,9 @@ impl SessionTui {
             Line::raw("Mixer: :track / :bus new|fx / :send / :mixer"),
             Line::raw("Set: :tempo <bpm>"),
             Line::raw("Render: :render <binding> <path> [cycles]"),
-            Line::raw("Export: :export <binding> <path> [cycles]"),
+            Line::raw(
+                "Export: :export <binding> <path> [cycles] | :export stems [cycles] [--buses]",
+            ),
             Line::raw("Analyze: :roll <binding>, :stats <binding>, :explain <binding>"),
             Line::raw("Help: ?"),
         ]);
@@ -483,7 +487,7 @@ impl SessionTui {
     }
 
     const fn help_overlay_body() -> &'static str {
-        "Toggle: ?\nClose: Esc\nTransport: Space toggle, :play, :stop, :tempo <bpm>\nMixer: :track, :bus new|fx, :send, :mixer\nRender: :render <binding> <path> [cycles]\nExport: :export <binding> <path> [cycles]\nAnalyze: :roll <binding> [cycles] [steps_per_cycle], :stats <binding> [cycles], :explain <binding>\nSession: :open <path>, :quit\nBindings: PgUp/PgDn\nInput: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
+        "Toggle: ?\nClose: Esc\nTransport: Space toggle, :play, :stop, :tempo <bpm>\nMixer: :track, :bus new|fx, :send, :mixer\nRender: :render <binding> <path> [cycles]\nExport: :export <binding> <path> [cycles] | :export stems [cycles] [--buses]\nAnalyze: :roll <binding> [cycles] [steps_per_cycle], :stats <binding> [cycles], :explain <binding>\nSession: :open <path>, :quit\nBindings: PgUp/PgDn\nInput: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
     }
 
     const fn help_overlay_footer() -> &'static str {

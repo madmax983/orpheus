@@ -6,7 +6,7 @@
 
 use std::collections::BTreeSet;
 
-use comfy_table::{Table, presets::UTF8_BORDERS_ONLY};
+use unicode_width::UnicodeWidthStr;
 
 use crate::eval::{EvalError, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue};
@@ -54,21 +54,20 @@ pub fn sample_pattern_stats(
     #[allow(clippy::cast_precision_loss)]
     let density = (total_events as f64) / (cycle_count as f64);
 
-    let mut table = Table::new();
-    table
-        .load_preset(UTF8_BORDERS_ONLY)
-        .set_header(vec![
-            format!("Pattern Stats: {binding_name} ({cycle_count} cycles)"),
-            String::new(),
-        ])
-        .add_row(vec!["Total Events", &total_events.to_string()])
-        .add_row(vec![
-            "Unique Samples",
-            &format!("{unique_count} ({sample_list})"),
-        ])
-        .add_row(vec!["Event Density", &format!("{density:.2} events/cycle")]);
+    let title = format!("Pattern Stats: {binding_name} ({cycle_count} cycles)");
+    let rows = vec![
+        ["Total Events".to_string(), total_events.to_string()],
+        [
+            "Unique Samples".to_string(),
+            format!("{unique_count} ({sample_list})"),
+        ],
+        [
+            "Event Density".to_string(),
+            format!("{density:.2} events/cycle"),
+        ],
+    ];
 
-    Ok(table.to_string())
+    Ok(build_stats_table(&title, &rows))
 }
 
 /// Analyzes a number pattern's evaluated events and returns a formatted report.
@@ -137,20 +136,56 @@ pub fn number_pattern_stats(
     #[allow(clippy::cast_precision_loss)]
     let density = (total_events as f64) / (cycle_count as f64);
 
-    let mut table = Table::new();
-    table
-        .load_preset(UTF8_BORDERS_ONLY)
-        .set_header(vec![
-            format!("Pattern Stats: {binding_name} ({cycle_count} cycles)"),
-            String::new(),
-        ])
-        .add_row(vec!["Total Events", &total_events.to_string()])
-        .add_row(vec!["Min Value", &format!("{min_val:.3}")])
-        .add_row(vec!["Max Value", &format!("{max_val:.3}")])
-        .add_row(vec!["Average Value", &format!("{avg:.3}")])
-        .add_row(vec!["Event Density", &format!("{density:.2} events/cycle")]);
+    let title = format!("Pattern Stats: {binding_name} ({cycle_count} cycles)");
+    let rows = vec![
+        ["Total Events".to_string(), total_events.to_string()],
+        ["Min Value".to_string(), format!("{min_val:.3}")],
+        ["Max Value".to_string(), format!("{max_val:.3}")],
+        ["Average Value".to_string(), format!("{avg:.3}")],
+        [
+            "Event Density".to_string(),
+            format!("{density:.2} events/cycle"),
+        ],
+    ];
 
-    Ok(table.to_string())
+    Ok(build_stats_table(&title, &rows))
+}
+
+fn build_stats_table(title: &str, rows: &[[String; 2]]) -> String {
+    let mut col1_width = 0;
+    let mut col2_width = 0;
+    for row in rows {
+        col1_width = col1_width.max(row[0].width());
+        col2_width = col2_width.max(row[1].width());
+    }
+
+    let inner_width = col1_width + 3 + col2_width; // 3 spaces between columns
+    let title_width = title.width();
+    let max_inner_width = inner_width.max(title_width);
+
+    let top_border = format!("┌{}┐\n", "─".repeat(max_inner_width + 2));
+    let title_line = format!("│ {:<width$} │\n", title, width = max_inner_width);
+    let separator = format!("╞{}╡\n", "═".repeat(max_inner_width + 2));
+
+    let mut out = String::new();
+    out.push_str(&top_border);
+    out.push_str(&title_line);
+    out.push_str(&separator);
+
+    for row in rows {
+        let pad1 = " ".repeat(col1_width - row[0].width());
+        let mut line = format!("│ {}{}   {}", row[0], pad1, row[1]);
+
+        let current_len = line.width() - 2; // don't count "│ "
+        let pad2 = " ".repeat(max_inner_width.saturating_sub(current_len));
+        line.push_str(&pad2);
+        line.push_str(" │\n");
+        out.push_str(&line);
+    }
+
+    let bot_border = format!("└{}┘", "─".repeat(max_inner_width + 2));
+    out.push_str(&bot_border);
+    out
 }
 
 #[cfg(test)]
@@ -166,9 +201,9 @@ mod tests {
 
         let stats = sample_pattern_stats("pattern", pattern, 2).unwrap();
         assert!(stats.contains("Pattern Stats: pattern (2 cycles)"));
-        assert!(stats.contains("Total Events                        8"));
-        assert!(stats.contains("Unique Samples                      2 (bd, sn)"));
-        assert!(stats.contains("Event Density                       4.00 events/cycle"));
+        assert!(stats.contains("Total Events     8"));
+        assert!(stats.contains("Unique Samples   2 (bd, sn)"));
+        assert!(stats.contains("Event Density    4.00 events/cycle"));
     }
 
     #[test]
@@ -179,11 +214,11 @@ mod tests {
 
         let stats = number_pattern_stats("pattern", pattern, 1).unwrap();
         assert!(stats.contains("Pattern Stats: pattern (1 cycles)"));
-        assert!(stats.contains("Total Events                        3"));
-        assert!(stats.contains("Min Value                           1.000"));
-        assert!(stats.contains("Max Value                           3.000"));
-        assert!(stats.contains("Average Value                       2.000"));
-        assert!(stats.contains("Event Density                       3.00 events/cycle"));
+        assert!(stats.contains("Total Events    3"));
+        assert!(stats.contains("Min Value       1.000"));
+        assert!(stats.contains("Max Value       3.000"));
+        assert!(stats.contains("Average Value   2.000"));
+        assert!(stats.contains("Event Density   3.00 events/cycle"));
     }
 
     #[test]

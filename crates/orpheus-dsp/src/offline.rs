@@ -5,7 +5,7 @@
 //! for exporting bounces, offline testing, and generating static assets.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use flacenc::bitsink::ByteSink;
 use flacenc::component::BitRepr;
@@ -20,8 +20,8 @@ use crate::effects::BusEffectState;
 use crate::engine::{DEFAULT_SAMPLE_RATE, DEFAULT_TEMPO_BPM, EngineError, frames_per_cycle};
 use crate::routing::{RoutingSnapshot, TrackId, TrackSource};
 use crate::sample_bank::SampleBank;
-use crate::scheduler::Scheduler;
-use crate::voice::{ActiveVoice, VoiceKind};
+use crate::scheduler::{ScheduledTrigger, Scheduler};
+use crate::voice::ActiveVoice;
 
 const OFFLINE_CHANNELS: u16 = 2;
 const MAX_ACTIVE_VOICES: usize = 32;
@@ -177,6 +177,136 @@ pub fn render_routing_snapshot_to_stereo_for_test(
     Ok(rendered)
 }
 
+/// Offline-renders a routing snapshot to per-track stem WAV files.
+///
+/// Track stems are written for bound, unmuted tracks. When `include_buses` is
+/// true, bus stems are also written as post-effect stereo files.
+///
+/// Returns the file paths that were written.
+///
+/// # Errors
+///
+/// Returns [`OfflineRenderError`] if scheduling, rendering, sample resolution, or
+/// file I/O fails.
+///
+/// # Panics
+///
+/// Panics if a track ID, a bus ID, or the sample rate cannot fit into a `usize`.
+pub fn render_routing_snapshot_to_stem_wavs(
+    snapshot: &RoutingSnapshot,
+    cycle_count: u64,
+    tempo_bpm: f32,
+    sample_bank: &SampleBank,
+    output_dir: impl AsRef<Path>,
+    include_buses: bool,
+) -> Result<Vec<PathBuf>, OfflineRenderError> {
+    if cycle_count == 0 {
+        return Err(OfflineRenderError::InvalidCycleCount);
+    }
+
+    let output_dir = output_dir.as_ref();
+    fs::create_dir_all(output_dir).map_err(|source| OfflineRenderError::Io {
+        path: output_dir.display().to_string().into_boxed_str(),
+        message: source.to_string().into_boxed_str(),
+    })?;
+
+    let frames_per_cycle = frames_per_cycle(DEFAULT_SAMPLE_RATE, tempo_bpm)?;
+    let total_frames = frames_per_cycle
+        .checked_mul(cycle_count)
+        .ok_or(EngineError::FrameOverflow)?;
+    let total_frames_usize =
+        usize::try_from(total_frames).map_err(|_| EngineError::FrameOverflow)?;
+    let mut scheduler = Scheduler::default();
+    schedule_snapshot_cycles(snapshot, cycle_count, frames_per_cycle, &mut scheduler)?;
+
+    let mut active_voices = std::iter::repeat_with(|| None)
+        .take(MAX_ACTIVE_VOICES)
+        .collect::<Vec<_>>();
+    let mut track_mix_buffer = vec![(0.0_f32, 0.0_f32); snapshot.tracks().len()];
+    let mut bus_mix_buffer = vec![(0.0_f32, 0.0_f32); snapshot.buses().len()];
+    let mut track_stem_frame = vec![(0.0_f32, 0.0_f32); snapshot.tracks().len()];
+    let mut bus_stem_frame = vec![(0.0_f32, 0.0_f32); snapshot.buses().len()];
+    let mut bus_effect_states = snapshot
+        .buses()
+        .iter()
+        .map(|bus| {
+            bus.effect()
+                .map(|effect| BusEffectState::from_spec(effect, frames_per_cycle))
+                .transpose()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut track_stems = snapshot
+        .tracks()
+        .iter()
+        .map(|_| Vec::with_capacity(total_frames_usize * usize::from(OFFLINE_CHANNELS)))
+        .collect::<Vec<_>>();
+    let mut bus_stems = snapshot
+        .buses()
+        .iter()
+        .map(|_| Vec::with_capacity(total_frames_usize * usize::from(OFFLINE_CHANNELS)))
+        .collect::<Vec<_>>();
+
+    for frame in 0..total_frames {
+        activate_due_snapshot_voices(
+            frame,
+            frames_per_cycle,
+            &mut scheduler,
+            &mut active_voices,
+            sample_bank,
+        )?;
+        mix_snapshot_frame_with_stems(
+            snapshot,
+            &mut active_voices,
+            &mut track_mix_buffer,
+            &mut bus_mix_buffer,
+            &mut bus_effect_states,
+            &mut track_stem_frame,
+            &mut bus_stem_frame,
+        );
+
+        for (index, buffer) in track_stems.iter_mut().enumerate() {
+            let (left, right) = track_stem_frame[index];
+            buffer.push(i32::from(float_to_pcm16(left)));
+            buffer.push(i32::from(float_to_pcm16(right)));
+        }
+        for (index, buffer) in bus_stems.iter_mut().enumerate() {
+            let (left, right) = bus_stem_frame[index];
+            buffer.push(i32::from(float_to_pcm16(left)));
+            buffer.push(i32::from(float_to_pcm16(right)));
+        }
+    }
+
+    let mut written_paths = Vec::new();
+    for track in snapshot.tracks() {
+        if track.source().is_unbound() || track.muted() {
+            continue;
+        }
+        let track_index =
+            usize::try_from(track.id().get()).unwrap_or_else(|_| panic!("track id should fit"));
+        let stem_name = format!("{}.wav", sanitize_stem_name(track.name()));
+        let stem_path = output_dir.join(stem_name);
+        write_wav(&stem_path, &track_stems[track_index])?;
+        written_paths.push(stem_path);
+    }
+
+    if include_buses {
+        for bus in snapshot.buses() {
+            if !bus.routes_to_master() {
+                continue;
+            }
+            let bus_index =
+                usize::try_from(bus.id().get()).unwrap_or_else(|_| panic!("bus id should fit"));
+            let stem_name = format!("{}_bus.wav", sanitize_stem_name(bus.name()));
+            let stem_path = output_dir.join(stem_name);
+            write_wav(&stem_path, &bus_stems[bus_index])?;
+            written_paths.push(stem_path);
+        }
+    }
+
+    Ok(written_paths)
+}
+
 fn schedule_snapshot_cycles(
     snapshot: &RoutingSnapshot,
     cycle_count: u64,
@@ -217,9 +347,7 @@ fn activate_due_snapshot_voices(
         activate_voice(
             active_voices,
             sample_bank,
-            &trigger.trigger,
-            trigger.fallback_voice,
-            trigger.duration_frames,
+            &trigger,
             DEFAULT_SAMPLE_RATE,
             frames_per_cycle,
         )?;
@@ -288,6 +416,58 @@ fn mix_snapshot_frame(
     (master_left, master_right)
 }
 
+fn mix_snapshot_frame_with_stems(
+    snapshot: &RoutingSnapshot,
+    active_voices: &mut [Option<ActiveVoice>],
+    track_mix_buffer: &mut [(f32, f32)],
+    bus_mix_buffer: &mut [(f32, f32)],
+    bus_effect_states: &mut [Option<BusEffectState>],
+    track_stem_frame: &mut [(f32, f32)],
+    bus_stem_frame: &mut [(f32, f32)],
+) {
+    track_mix_buffer.fill((0.0, 0.0));
+    bus_mix_buffer.fill((0.0, 0.0));
+    track_stem_frame.fill((0.0, 0.0));
+    bus_stem_frame.fill((0.0, 0.0));
+    mix_offline_voices_into_tracks(active_voices, track_mix_buffer);
+
+    for track in snapshot.tracks() {
+        let track_index = usize::try_from(track.id().get())
+            .unwrap_or_else(|_| panic!("track id did not fit in usize"));
+        let (track_left, track_right) = track_mix_buffer[track_index];
+        let track_left = track_left * track.level();
+        let track_right = track_right * track.level();
+
+        if track.muted() {
+            continue;
+        }
+        track_stem_frame[track_index] = (track_left, track_right);
+
+        for send in track.sends() {
+            let bus_index = usize::try_from(send.bus_id().get())
+                .unwrap_or_else(|_| panic!("bus id did not fit in usize"));
+            let (bus_left, bus_right) = &mut bus_mix_buffer[bus_index];
+            *bus_left += track_left * send.level();
+            *bus_right += track_right * send.level();
+        }
+    }
+
+    for bus in snapshot.buses() {
+        if !bus.routes_to_master() {
+            continue;
+        }
+
+        let bus_index = usize::try_from(bus.id().get())
+            .unwrap_or_else(|_| panic!("bus id did not fit in usize"));
+        let (bus_left, bus_right) = bus_mix_buffer[bus_index];
+        if let Some(effect) = bus_effect_states[bus_index].as_mut() {
+            bus_stem_frame[bus_index] = effect.process_frame(bus_left, bus_right);
+        } else {
+            bus_stem_frame[bus_index] = (bus_left, bus_right);
+        }
+    }
+}
+
 fn mix_offline_voices_into_tracks(
     active_voices: &mut [Option<ActiveVoice>],
     track_mix_buffer: &mut [(f32, f32)],
@@ -346,9 +526,7 @@ fn render_events_to_pcm(
             activate_voice(
                 &mut active_voices,
                 sample_bank,
-                &trigger.trigger,
-                trigger.fallback_voice,
-                trigger.duration_frames,
+                &trigger,
                 DEFAULT_SAMPLE_RATE,
                 frames_per_cycle,
             )?;
@@ -450,34 +628,34 @@ fn write_flac(path: &Path, samples: &[i32]) -> Result<(), OfflineRenderError> {
 fn activate_voice(
     active_voices: &mut [Option<ActiveVoice>],
     sample_bank: &SampleBank,
-    trigger: &SampleTrigger,
-    fallback_voice: Option<VoiceKind>,
-    duration_frames: u32,
+    scheduled_trigger: &ScheduledTrigger,
     sample_rate: u32,
     frames_per_cycle: u64,
 ) -> Result<(), OfflineRenderError> {
     if let Some(slot) = active_voices.iter_mut().find(|slot| slot.is_none()) {
         *slot = Some(
-            if let Some((sample, resolved_trigger)) = sample_bank.resolve_trigger(trigger) {
+            if let Some((sample, resolved_trigger)) =
+                sample_bank.resolve_trigger(&scheduled_trigger.trigger)
+            {
                 ActiveVoice::from_sample(
-                    TrackId::new(0),
+                    scheduled_trigger.track_id,
                     sample,
                     sample_rate,
                     frames_per_cycle,
                     &resolved_trigger,
                 )
-            } else if let Some(voice) = fallback_voice {
+            } else if let Some(voice) = scheduled_trigger.fallback_voice {
                 ActiveVoice::from_trigger(
-                    TrackId::new(0),
+                    scheduled_trigger.track_id,
                     voice,
                     sample_rate,
                     frames_per_cycle,
-                    trigger,
-                    duration_frames,
+                    &scheduled_trigger.trigger,
+                    scheduled_trigger.duration_frames,
                 )
             } else {
                 return Err(OfflineRenderError::UnknownSampleToken(
-                    trigger.token().into(),
+                    scheduled_trigger.trigger.token().into(),
                 ));
             },
         );
@@ -512,4 +690,21 @@ fn extension(path: &Path) -> Option<String> {
     path.extension()
         .and_then(|extension| extension.to_str())
         .map(str::to_ascii_lowercase)
+}
+
+fn sanitize_stem_name(name: &str) -> String {
+    let mut sanitized = String::with_capacity(name.len());
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+            sanitized.push(ch);
+        } else {
+            sanitized.push('_');
+        }
+    }
+    let trimmed = sanitized.trim_matches('_');
+    if trimmed.is_empty() {
+        "stem".to_owned()
+    } else {
+        trimmed.to_owned()
+    }
 }
