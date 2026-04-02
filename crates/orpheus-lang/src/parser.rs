@@ -464,7 +464,11 @@ fn parse_string_literal(literal: &str) -> Result<String, ParseError> {
     Ok(value)
 }
 
-fn collapse_sequence(items: Vec<Expr>, context: &'static str, depth: usize) -> Result<Expr, ParseError> {
+fn collapse_sequence(
+    items: Vec<Expr>,
+    context: &'static str,
+    depth: usize,
+) -> Result<Expr, ParseError> {
     if let Some(expr) = collapse_meter_annotation(&items, depth)? {
         return Ok(expr);
     }
