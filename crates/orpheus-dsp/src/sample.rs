@@ -13,22 +13,30 @@ use thiserror::Error;
 /// Decoded PCM sample data normalized to interleaved `f32` frames.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DecodedSample {
+    /// The number of interleaved channels (e.g., 1 for mono, 2 for stereo).
     pub channels: u16,
+    /// The original sample rate of the audio file in Hertz.
     pub sample_rate_hz: u32,
+    /// The interleaved floating-point PCM audio data.
     pub frames: Vec<f32>,
 }
 
 /// Errors raised while decoding WAV sample assets.
 #[derive(Debug, Error)]
 pub enum SampleError {
+    /// An IO error occurred while reading or parsing the underlying WAV file.
     #[error("failed to read wav file `{path}`: {source}")]
     Io {
+        /// The path or identifier of the file that failed to load.
         path: Box<str>,
+        /// The underlying hound decoder error.
         #[source]
         source: hound::Error,
     },
+    /// The WAV file had an unsupported number of channels (Orpheus currently expects mono or stereo).
     #[error("wav file `{0}` must contain either mono or stereo audio")]
     UnsupportedChannelCount(String),
+    /// The WAV file uses a floating-point encoding that the decoder does not support.
     #[error("wav file `{0}` uses an unsupported float encoding")]
     UnsupportedFloatEncoding(String),
     /// The WAV file uses an integer encoding (bit depth) that the decoder does not support.

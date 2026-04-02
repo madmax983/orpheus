@@ -31,20 +31,38 @@ const FLAC_BLOCK_SIZE: usize = 1024;
 /// Errors raised while rendering an offline export.
 #[derive(Debug, Error)]
 pub enum OfflineRenderError {
+    /// The renderer was requested to render fewer than 1 cycle.
     #[error("offline rendering requires at least one cycle")]
     InvalidCycleCount,
+    /// An underlying error was returned by the audio engine during offline execution.
     #[error(transparent)]
     Engine(#[from] EngineError),
+    /// The requested output file extension is not supported for offline rendering.
     #[error("unsupported render format `{0}`")]
     UnsupportedFormat(Box<str>),
+    /// A general filesystem or IO error occurred during rendering.
     #[error("failed to write audio file `{path}`: {message}")]
-    Io { path: Box<str>, message: Box<str> },
+    Io {
+        /// The path where rendering failed.
+        path: Box<str>,
+        /// The IO error message.
+        message: Box<str>,
+    },
+    /// A specific error occurred within the WAV encoding process.
     #[error("failed to write wav file `{path}`: {message}")]
-    WavIo { path: Box<str>, message: Box<str> },
+    WavIo {
+        /// The path where the WAV write failed.
+        path: Box<str>,
+        /// The WAV encoder error message.
+        message: Box<str>,
+    },
+    /// The FLAC encoder encountered an invalid configuration.
     #[error("failed to verify FLAC encoder config: {0}")]
     FlacConfig(Box<str>),
+    /// An error occurred while streaming frames into the FLAC encoder.
     #[error("failed to encode FLAC output: {0}")]
     FlacEncode(Box<str>),
+    /// The offline renderer could not resolve a requested sample name.
     #[error("unknown sample token `{0}`")]
     UnknownSampleToken(Box<str>),
 }

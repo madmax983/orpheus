@@ -21,11 +21,13 @@ use crate::SampleTrigger;
 pub struct TrackId(u32);
 
 impl TrackId {
+    /// Creates a new `TrackId`.
     #[must_use]
     pub const fn new(value: u32) -> Self {
         Self(value)
     }
 
+    /// Extracts the raw numeric identifier used to index into the snapshot's track array.
     #[must_use]
     pub const fn get(self) -> u32 {
         self.0
@@ -43,11 +45,13 @@ impl fmt::Display for TrackId {
 pub struct BusId(u32);
 
 impl BusId {
+    /// Creates a new `BusId`.
     #[must_use]
     pub const fn new(value: u32) -> Self {
         Self(value)
     }
 
+    /// Extracts the raw numeric identifier used to index into the snapshot's bus array.
     #[must_use]
     pub const fn get(self) -> u32 {
         self.0
@@ -70,6 +74,7 @@ pub enum TrackSource {
 }
 
 impl TrackSource {
+    /// Returns `true` if the track is present but has no signal source bound to it.
     #[must_use]
     pub const fn is_unbound(&self) -> bool {
         matches!(self, Self::Unbound)
@@ -104,11 +109,14 @@ impl SendRoute {
 /// Validated shared bus effect configuration carried by a routing snapshot.
 #[derive(Clone, Debug, PartialEq)]
 pub enum BusEffectSpec {
+    /// A delay effect specification.
     Delay(DelaySpec),
+    /// A reverb effect specification.
     Reverb(ReverbSpec),
 }
 
 impl BusEffectSpec {
+    /// Returns a human-readable string identifier for the effect kind (e.g., "delay" or "reverb").
     #[must_use]
     pub const fn kind_name(&self) -> &'static str {
         match self {
@@ -127,6 +135,7 @@ pub struct DelaySpec {
 }
 
 impl DelaySpec {
+    /// Creates a new `DelaySpec`.
     #[must_use]
     pub const fn new(time: Rational, feedback: f32, wet: f32) -> Self {
         Self {
@@ -136,16 +145,19 @@ impl DelaySpec {
         }
     }
 
+    /// The delay time expressed as a fractional ratio of a musical cycle.
     #[must_use]
     pub const fn time(&self) -> &Rational {
         &self.time
     }
 
+    /// The proportion of the delayed signal that is fed back into the delay line.
     #[must_use]
     pub const fn feedback(&self) -> f32 {
         self.feedback
     }
 
+    /// The volume level of the processed delay signal relative to the dry input.
     #[must_use]
     pub const fn wet(&self) -> f32 {
         self.wet
@@ -161,21 +173,25 @@ pub struct ReverbSpec {
 }
 
 impl ReverbSpec {
+    /// Creates a new `ReverbSpec`.
     #[must_use]
     pub const fn new(size: f32, damp: f32, wet: f32) -> Self {
         Self { size, damp, wet }
     }
 
+    /// The simulated physical dimension of the reverberating space.
     #[must_use]
     pub const fn size(&self) -> f32 {
         self.size
     }
 
+    /// The rate at which high frequencies are absorbed by the simulated room walls.
     #[must_use]
     pub const fn damp(&self) -> f32 {
         self.damp
     }
 
+    /// The volume level of the processed reverberation signal relative to the dry input.
     #[must_use]
     pub const fn wet(&self) -> f32 {
         self.wet
@@ -319,46 +335,56 @@ pub struct TrackView<'a> {
 }
 
 impl<'a> TrackView<'a> {
+    /// The numeric handle used to lookup this track's state buffers in the DSP engine.
     #[must_use]
     pub const fn id(self) -> TrackId {
         self.state.id()
     }
 
+    /// The user-defined string name of the track.
     #[must_use]
     pub fn name(self) -> &'a str {
         self.state.name()
     }
 
+    /// The origin of the audio signal (e.g., an evaluated `SamplePattern`).
     #[must_use]
     pub const fn source(self) -> &'a TrackSource {
         self.state.source()
     }
 
+    /// The volume multiplier applied to the track's post-FX output.
     #[must_use]
     pub const fn level(self) -> f32 {
         self.state.level()
     }
 
+    /// The stereo positioning of the track (-1.0 for left, 1.0 for right).
     #[must_use]
     pub const fn pan(self) -> f32 {
         self.state.pan()
     }
 
+    /// Indicates whether the track has been explicitly silenced by the user.
     #[must_use]
     pub const fn muted(self) -> bool {
         self.state.muted()
     }
 
+    /// Indicates that the track's signal is sent to the final output mix.
     #[must_use]
     pub const fn routes_to_master(self) -> bool {
         self.state.routes_to_master()
     }
 
+    /// The quantity of auxiliary sends branching off this track.
     #[must_use]
     pub fn send_count(self) -> usize {
         self.state.sends.len()
     }
 
+    /// A performance optimization flag indicating that no voices are currently active on this track,
+    /// allowing the DSP engine to bypass mixing calculations entirely.
     #[must_use]
     pub fn is_phase1_silent(self) -> bool {
         self.state.is_phase1_silent()
@@ -372,21 +398,25 @@ pub struct BusView<'a> {
 }
 
 impl<'a> BusView<'a> {
+    /// The numeric handle used to lookup this bus's state buffers in the DSP engine.
     #[must_use]
     pub const fn id(self) -> BusId {
         self.state.id()
     }
 
+    /// The user-defined string name of the bus.
     #[must_use]
     pub fn name(self) -> &'a str {
         self.state.name()
     }
 
+    /// Indicates that the sum of the signals on this bus is sent to the final output mix.
     #[must_use]
     pub const fn routes_to_master(self) -> bool {
         self.state.routes_to_master()
     }
 
+    /// The DSP configuration payload defining the shared effect applied to all signals traversing this bus.
     #[must_use]
     pub const fn effect(self) -> Option<&'a BusEffectSpec> {
         self.state.effect()
@@ -431,46 +461,133 @@ struct PendingRoute {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum RoutingError {
+    /// A track or bus name was defined multiple times.
     #[error("duplicate routing name '{name}'")]
-    DuplicateName { name: Box<str> },
+    DuplicateName {
+        /// The duplicated name.
+        name: Box<str>,
+    },
+    /// A track was configured to send to the same bus multiple times.
     #[error("duplicate send from track '{track}' to bus '{bus}'")]
-    DuplicateSend { track: Box<str>, bus: Box<str> },
+    DuplicateSend {
+        /// The track name.
+        track: Box<str>,
+        /// The bus name.
+        bus: Box<str>,
+    },
+    /// An operation referenced a track that does not exist.
     #[error("unknown track '{name}'")]
-    UnknownTrack { name: Box<str> },
+    UnknownTrack {
+        /// The unknown track name.
+        name: Box<str>,
+    },
+    /// An operation referenced a bus that does not exist.
     #[error("unknown bus '{name}'")]
-    UnknownBus { name: Box<str> },
+    UnknownBus {
+        /// The unknown bus name.
+        name: Box<str>,
+    },
+    /// The routing configuration attempted to use a reserved internal name (like "master").
     #[error("reserved routing name '{name}' is not allowed")]
-    ReservedName { name: Box<str> },
+    ReservedName {
+        /// The reserved name that was inappropriately used.
+        name: Box<str>,
+    },
+    /// A send level was outside the valid range.
     #[error("invalid send level {level}; expected a finite value in [0, 1]")]
-    InvalidLevel { level: f32 },
+    InvalidLevel {
+        /// The invalid level value.
+        level: f32,
+    },
+    /// A track volume level was invalid (must be >= 0).
     #[error("invalid track level {level}; expected a finite value >= 0")]
-    InvalidTrackLevel { level: f32 },
+    InvalidTrackLevel {
+        /// The invalid track volume level.
+        level: f32,
+    },
+    /// A track stereo pan setting was outside the valid bounds (-1.0 to 1.0).
     #[error("invalid track pan {pan}; expected a finite value in [-1, 1]")]
-    InvalidPan { pan: f32 },
+    InvalidPan {
+        /// The invalid panning value.
+        pan: f32,
+    },
+    /// A delay feedback amount was outside the valid bounds (0.0 to 1.0).
     #[error("invalid delay feedback {feedback}; expected a finite value in [0, 1]")]
-    InvalidDelayFeedback { feedback: f32 },
+    InvalidDelayFeedback {
+        /// The invalid feedback value.
+        feedback: f32,
+    },
+    /// A delay wet mix was outside the valid bounds (0.0 to 1.0).
     #[error("invalid delay wet {wet}; expected a finite value in [0, 1]")]
-    InvalidDelayWet { wet: f32 },
+    InvalidDelayWet {
+        /// The invalid wet mix value.
+        wet: f32,
+    },
+    /// A delay time was negative or invalid.
     #[error("invalid delay time; expected a positive musical subdivision")]
     InvalidDelayTime,
+    /// The specified reverb size is out of bounds (must be between 0.0 and 1.0).
     #[error("invalid reverb size {size}; expected a finite value in [0, 1]")]
-    InvalidReverbSize { size: f32 },
+    InvalidReverbSize {
+        /// The invalid size value.
+        size: f32,
+    },
+    /// The specified reverb damping amount is out of bounds (must be between 0.0 and 1.0).
     #[error("invalid reverb damp {damp}; expected a finite value in [0, 1]")]
-    InvalidReverbDamp { damp: f32 },
+    InvalidReverbDamp {
+        /// The invalid damping value.
+        damp: f32,
+    },
+    /// The specified reverb wet/dry mix is out of bounds (must be between 0.0 and 1.0).
     #[error("invalid reverb wet {wet}; expected a finite value in [0, 1]")]
-    InvalidReverbWet { wet: f32 },
+    InvalidReverbWet {
+        /// The invalid wet mix value.
+        wet: f32,
+    },
+    /// A bus was assigned multiple effects, which is not supported.
     #[error("bus '{bus}' already hosts an effect")]
-    DuplicateBusEffect { bus: Box<str> },
+    DuplicateBusEffect {
+        /// The name of the bus that received multiple effects.
+        bus: Box<str>,
+    },
+    /// An attempt was made to directly route a track to a bus instead of using a send.
     #[error("track-to-bus routes must use send(...): '{from}' -> '{to}'")]
-    TrackToBusRouteRequiresSend { from: Box<str>, to: Box<str> },
+    TrackToBusRouteRequiresSend {
+        /// The source track name.
+        from: Box<str>,
+        /// The destination bus name.
+        to: Box<str>,
+    },
+    /// An attempt was made to route a bus into another bus, which could cause feedback loops.
     #[error("bus-to-bus routes are forbidden: '{from}' -> '{to}'")]
-    BusToBusRoute { from: Box<str>, to: Box<str> },
+    BusToBusRoute {
+        /// The source bus name.
+        from: Box<str>,
+        /// The destination bus name.
+        to: Box<str>,
+    },
+    /// An attempt was made to route a bus back into a track, which violates the mixing hierarchy.
     #[error("bus-to-track routes are forbidden: '{from}' -> '{to}'")]
-    BusToTrackRoute { from: Box<str>, to: Box<str> },
+    BusToTrackRoute {
+        /// The source bus name.
+        from: Box<str>,
+        /// The destination track name.
+        to: Box<str>,
+    },
+    /// An attempt was made to route a track directly into another track, which violates the mixing hierarchy.
     #[error("track-to-track routes are forbidden: '{from}' -> '{to}'")]
-    TrackToTrackRoute { from: Box<str>, to: Box<str> },
+    TrackToTrackRoute {
+        /// The source track name.
+        from: Box<str>,
+        /// The destination track name.
+        to: Box<str>,
+    },
+    /// The number of tracks or buses exceeded the limit that can be safely addressed.
     #[error("{kind} count exceeds the supported id range")]
-    IdOverflow { kind: &'static str },
+    IdOverflow {
+        /// The type of identifier that overflowed (e.g., "track" or "bus").
+        kind: &'static str,
+    },
 }
 
 /// Immutable routing snapshot consumed by the render thread.
@@ -483,21 +600,25 @@ pub struct RoutingSnapshot {
 }
 
 impl RoutingSnapshot {
+    /// Creates a new `RoutingSnapshotBuilder` for configuring mixer routing.
     #[must_use]
     pub fn builder() -> RoutingSnapshotBuilder {
         RoutingSnapshotBuilder::default()
     }
 
+    /// The total count of parallel signal origins managed by the snapshot.
     #[must_use]
     pub fn track_count(&self) -> usize {
         self.tracks.len()
     }
 
+    /// The total count of shared effect processors managed by the snapshot.
     #[must_use]
     pub fn bus_count(&self) -> usize {
         self.buses.len()
     }
 
+    /// Locates a track's properties and runtime state based on its user-assigned name.
     #[must_use]
     pub fn track(&self, name: &str) -> Option<TrackView<'_>> {
         self.tracks
@@ -506,6 +627,7 @@ impl RoutingSnapshot {
             .map(|state| TrackView { state })
     }
 
+    /// Locates a bus's properties and runtime state based on its user-assigned name.
     #[must_use]
     pub fn bus(&self, name: &str) -> Option<BusView<'_>> {
         self.buses
@@ -514,21 +636,25 @@ impl RoutingSnapshot {
             .map(|state| BusView { state })
     }
 
+    /// The list of tracks whose signals must be summed into the final output buffer.
     #[must_use]
     pub fn master_track_ids(&self) -> &[TrackId] {
         &self.master_track_ids
     }
 
+    /// The list of buses whose signals must be summed into the final output buffer.
     #[must_use]
     pub fn master_bus_ids(&self) -> &[BusId] {
         &self.master_bus_ids
     }
 
+    /// Read-only access to the sequential list of track states.
     #[must_use]
     pub fn tracks(&self) -> &[TrackState] {
         &self.tracks
     }
 
+    /// Read-only access to the sequential list of bus states.
     #[must_use]
     pub fn buses(&self) -> &[BusState] {
         &self.buses
@@ -546,17 +672,20 @@ pub struct RoutingSnapshotBuilder {
 }
 
 impl RoutingSnapshotBuilder {
+    /// Adds a new track to the routing snapshot with default parameters.
     #[must_use]
     pub fn track(self, name: impl Into<Box<str>>) -> Self {
         self.track_with_source(name, TrackSource::Unbound)
     }
 
+    /// Adds a new track with a specific `TrackSource` (e.g., pattern-driven or direct).
     #[must_use]
     pub fn track_with_source(mut self, name: impl Into<Box<str>>, source: TrackSource) -> Self {
         self = self.track_with_source_and_mix(name, source, 1.0, 0.0, false);
         self
     }
 
+    /// Adds a new track with fully specified mix parameters and source.
     #[must_use]
     pub fn track_with_source_and_mix(
         mut self,
@@ -578,6 +707,7 @@ impl RoutingSnapshotBuilder {
         self
     }
 
+    /// Adds the default "main" track used as the root fallback for patterns.
     #[must_use]
     pub fn main_track(self) -> Self {
         let mut builder = self.track_with_source("main", TrackSource::Unbound);
@@ -587,12 +717,14 @@ impl RoutingSnapshotBuilder {
         builder
     }
 
+    /// Adds a new empty effect bus to the routing snapshot.
     #[must_use]
     pub fn bus(mut self, name: impl Into<Box<str>>) -> Self {
         self.buses.push(PendingBus { name: name.into() });
         self
     }
 
+    /// Configures a bus to host a delay effect.
     #[must_use]
     pub fn bus_effect_delay(
         mut self,
@@ -608,6 +740,7 @@ impl RoutingSnapshotBuilder {
         self
     }
 
+    /// Configures a bus to host a reverb effect.
     #[must_use]
     pub fn bus_effect_reverb(
         mut self,
@@ -623,6 +756,7 @@ impl RoutingSnapshotBuilder {
         self
     }
 
+    /// Creates an auxiliary send from a track to a bus.
     #[must_use]
     pub fn send(
         mut self,
@@ -638,6 +772,7 @@ impl RoutingSnapshotBuilder {
         self
     }
 
+    /// Establishes a direct routing connection (e.g., routing a bus output to the master bus).
     #[must_use]
     pub fn route(mut self, from_name: impl Into<Box<str>>, to_name: impl Into<Box<str>>) -> Self {
         self.routes.push(PendingRoute {
