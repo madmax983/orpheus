@@ -2477,13 +2477,13 @@ where
                 apply_control_pattern(inner, control, span, ControlPatternKind::ReverbMix)
             }
             Self::ReverbRoom { room, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_reverb_room(*room)
+                *value = value.adjust_reverb_room(*room);
             }),
             Self::ReverbRoomPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::ReverbRoom)
             }
             Self::ReverbDamp { damp, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_reverb_damp(*damp)
+                *value = value.adjust_reverb_damp(*damp);
             }),
             Self::ReverbDampPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::ReverbDamp)
@@ -2513,7 +2513,7 @@ where
                 apply_control_pattern(inner, control, span, ControlPatternKind::ChorusDepth)
             }
             Self::ChorusRate { rate, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_chorus_rate(*rate)
+                *value = value.adjust_chorus_rate(*rate);
             }),
             Self::ChorusRatePattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::ChorusRate)
@@ -2566,7 +2566,7 @@ where
                 apply_control_pattern(inner, control, span, ControlPatternKind::Rate)
             }
             Self::Onset { onset_index, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_onset(*onset_index)
+                *value = value.adjust_onset(*onset_index);
             }),
             Self::OnsetPattern { control, inner } => apply_onset_pattern(inner, control, span),
             Self::Slice { start, end, inner } => apply_value_mutation(inner, span, |value| {
@@ -2657,18 +2657,11 @@ where
         return Ok(Vec::new());
     }
 
-    let gate_events = gate_spans
-        .into_iter()
-        .map(|part| Event {
-            whole: None,
-            part,
-            value: 1.0,
-        })
-        .collect::<Vec<_>>();
+    let capacity_estimate = 2 + gate_spans.len() * 2;
     let mut masked = Vec::with_capacity(source_events.len());
 
     for event in source_events {
-        let Some(boundaries) = compute_event_fragment_boundaries(&event.part, &[&gate_events[..]])
+        let Some(boundaries) = compute_event_fragment_boundaries(&event.part, gate_spans.iter(), capacity_estimate)
         else {
             continue;
         };
@@ -2682,9 +2675,9 @@ where
             }
 
             let part = build_span(start.clone(), end.clone())?;
-            if gate_events
+            if gate_spans
                 .iter()
-                .any(|gate_event| spans_overlap(&gate_event.part, &part))
+                .any(|gate_span| spans_overlap(gate_span, &part))
             {
                 masked.push(Event {
                     whole: None,
@@ -2918,10 +2911,18 @@ where
     T: PatternRuntimeValue,
     F: FnMut(&TimeSpan, &T) -> Result<Option<T>, EvalError>,
 {
+    let capacity_estimate = 2 + control_event_lists
+        .iter()
+        .map(|list| list.len())
+        .sum::<usize>()
+        * 2;
     let mut composed = Vec::with_capacity(source_events.len());
     for event in source_events {
-        let Some(boundaries) = compute_event_fragment_boundaries(&event.part, control_event_lists)
-        else {
+        let control_spans = control_event_lists
+            .iter()
+            .flat_map(|list| list.iter())
+            .map(|control_event| &control_event.part);
+        let Some(boundaries) = compute_event_fragment_boundaries(&event.part, control_spans, capacity_estimate) else {
             composed.push(event);
             continue;
         };
@@ -3595,6 +3596,7 @@ where
             rng_state = rng_state
                 .wrapping_mul(6364136223846793005)
                 .wrapping_add(1442695040888963407);
+            #[allow(clippy::cast_possible_truncation)]
             let j = (rng_state as usize) % (i + 1);
             if i != j {
                 // ⚡ Bolt: Swap values in-place without allocating an intermediate `Vec` or deep cloning strings.
@@ -4031,28 +4033,22 @@ fn spans_overlap(a: &TimeSpan, b: &TimeSpan) -> bool {
 
 fn compute_event_fragment_boundaries<'a>(
     source_span: &'a TimeSpan,
-    control_event_lists: &[&'a [Event<f64>]],
+    control_spans: impl Iterator<Item = &'a TimeSpan>,
+    capacity_estimate: usize,
 ) -> Option<Vec<&'a Rational>> {
-    let capacity_estimate = 2 + control_event_lists
-        .iter()
-        .map(|list| list.len())
-        .sum::<usize>()
-        * 2;
     // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries.
     let mut boundaries = Vec::with_capacity(capacity_estimate);
     boundaries.push(source_span.start());
     boundaries.push(source_span.end());
     let mut has_overlap = false;
 
-    for control_events in control_event_lists {
-        for control_event in *control_events {
-            let start = max(control_event.part.start(), source_span.start());
-            let end = min(control_event.part.end(), source_span.end());
-            if start < end {
-                has_overlap = true;
-                boundaries.push(start);
-                boundaries.push(end);
-            }
+    for control_span in control_spans {
+        let start = max(control_span.start(), source_span.start());
+        let end = min(control_span.end(), source_span.end());
+        if start < end {
+            has_overlap = true;
+            boundaries.push(start);
+            boundaries.push(end);
         }
     }
 
