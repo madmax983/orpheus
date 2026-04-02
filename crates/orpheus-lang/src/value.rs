@@ -2657,18 +2657,10 @@ where
         return Ok(Vec::new());
     }
 
-    let gate_events = gate_spans
-        .into_iter()
-        .map(|part| Event {
-            whole: None,
-            part,
-            value: 1.0,
-        })
-        .collect::<Vec<_>>();
     let mut masked = Vec::with_capacity(source_events.len());
 
     for event in source_events {
-        let Some(boundaries) = compute_event_fragment_boundaries(&event.part, &[&gate_events[..]])
+        let Some(boundaries) = compute_event_fragment_boundaries(&event.part, gate_spans.iter())
         else {
             continue;
         };
@@ -2682,9 +2674,9 @@ where
             }
 
             let part = build_span(start.clone(), end.clone())?;
-            if gate_events
+            if gate_spans
                 .iter()
-                .any(|gate_event| spans_overlap(&gate_event.part, &part))
+                .any(|gate_span| spans_overlap(gate_span, &part))
             {
                 masked.push(Event {
                     whole: None,
@@ -2920,8 +2912,12 @@ where
 {
     let mut composed = Vec::with_capacity(source_events.len());
     for event in source_events {
-        let Some(boundaries) = compute_event_fragment_boundaries(&event.part, control_event_lists)
-        else {
+        let Some(boundaries) = compute_event_fragment_boundaries(
+            &event.part,
+            control_event_lists
+                .iter()
+                .flat_map(|list| list.iter().map(|e| &e.part)),
+        ) else {
             composed.push(event);
             continue;
         };
@@ -4029,30 +4025,28 @@ fn spans_overlap(a: &TimeSpan, b: &TimeSpan) -> bool {
     max(a.start(), b.start()) < min(a.end(), b.end())
 }
 
-fn compute_event_fragment_boundaries<'a>(
+fn compute_event_fragment_boundaries<'a, I>(
     source_span: &'a TimeSpan,
-    control_event_lists: &[&'a [Event<f64>]],
-) -> Option<Vec<&'a Rational>> {
-    let capacity_estimate = 2 + control_event_lists
-        .iter()
-        .map(|list| list.len())
-        .sum::<usize>()
-        * 2;
-    // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries.
-    let mut boundaries = Vec::with_capacity(capacity_estimate);
+    control_events: I,
+) -> Option<Vec<&'a Rational>>
+where
+    I: Iterator<Item = &'a TimeSpan>,
+{
+    // PRE-ALLOCATE: Assuming an average of 4 fragments, pre-allocate a modest boundary vector.
+    // We can't know the exact length since we're using a generic Iterator, but avoiding
+    // the initial small reallocations helps.
+    let mut boundaries = Vec::with_capacity(16);
     boundaries.push(source_span.start());
     boundaries.push(source_span.end());
     let mut has_overlap = false;
 
-    for control_events in control_event_lists {
-        for control_event in *control_events {
-            let start = max(control_event.part.start(), source_span.start());
-            let end = min(control_event.part.end(), source_span.end());
-            if start < end {
-                has_overlap = true;
-                boundaries.push(start);
-                boundaries.push(end);
-            }
+    for control_span in control_events {
+        let start = max(control_span.start(), source_span.start());
+        let end = min(control_span.end(), source_span.end());
+        if start < end {
+            has_overlap = true;
+            boundaries.push(start);
+            boundaries.push(end);
         }
     }
 
