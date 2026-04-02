@@ -1,3 +1,9 @@
+//! The root binary crate for the Orpheus live-coding audio environment.
+//!
+//! This crate parses command-line arguments, sets up the real-time audio backend using `cpal`,
+//! launches the Digital Signal Processing engine, and hands over control to the `orpheus-lang`
+//! Read-Eval-Print Loop (REPL) or Terminal User Interface (TUI).
+
 use std::env;
 use std::ffi::OsString;
 use std::io::IsTerminal;

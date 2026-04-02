@@ -38,41 +38,49 @@ pub struct TransportSnapshot {
 }
 
 impl TransportSnapshot {
+    /// A monotonically increasing counter representing the number of successful routing snapshot replacements.
     #[must_use]
     pub const fn publish_epoch(&self) -> u64 {
         self.publish_epoch
     }
 
+    /// The absolute count of frames processed since the audio engine started.
     #[must_use]
     pub const fn current_frame(&self) -> u64 {
         self.current_frame
     }
 
+    /// The frame index representing the boundary where the current active cycle began.
     #[must_use]
     pub const fn current_cycle_start_frame(&self) -> u64 {
         self.current_cycle_start_frame
     }
 
+    /// The length of a single musical cycle expressed in audio frames, derived from the active tempo.
     #[must_use]
     pub const fn frames_per_cycle(&self) -> u64 {
         self.frames_per_cycle
     }
 
+    /// The transport speed expressed in Beats Per Minute (BPM).
     #[must_use]
     pub const fn tempo_bpm(&self) -> f32 {
         f32::from_bits(self.tempo_bpm_bits)
     }
 
+    /// Indicates whether the transport is advancing time and triggering events (`true`) or halted (`false`).
     #[must_use]
     pub const fn is_playing(&self) -> bool {
         self.is_playing
     }
 
+    /// Indicates that a `LoadPattern` command was received but the engine is waiting for the next cycle boundary to apply it.
     #[must_use]
     pub const fn has_pending_pattern(&self) -> bool {
         self.has_pending_pattern
     }
 
+    /// Indicates that a `SwapRoutingSnapshot` command was received but the engine is waiting for the next cycle boundary to apply it.
     #[must_use]
     pub const fn has_pending_routing(&self) -> bool {
         self.has_pending_routing
@@ -151,18 +159,25 @@ impl SharedTransport {
 /// Errors raised by the minimal Orpheus audio engine.
 #[derive(Debug, Error)]
 pub enum EngineError {
+    /// The audio backend provided an invalid number of channels.
     #[error("audio output must have at least one channel")]
     InvalidChannelCount,
+    /// The lock-free queue sending commands to the audio thread is full and cannot accept more messages.
     #[error("engine command queue is full")]
     CommandQueueFull,
+    /// The requested tempo is invalid (e.g., zero, negative, or NaN).
     #[error("tempo must be a finite positive value")]
     InvalidTempo,
+    /// A timing calculation resulted in a schedule time earlier than the beginning of the cycle.
     #[error("pattern time produced a negative cycle offset")]
     NegativeCycleOffset,
+    /// A sample clock calculation overflowed a 64-bit integer, usually indicating unreachable execution time.
     #[error("sample-clock conversion overflowed the supported range")]
     FrameOverflow,
+    /// The engine was asked to play a sample or voice token that does not exist.
     #[error("unknown built-in voice token `{0}`")]
     UnknownVoice(String),
+    /// The interleaved output slice length cannot be evenly divided into frames.
     #[error("output buffer length must be a whole number of frames")]
     MisalignedOutputBuffer,
 }
