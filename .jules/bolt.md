@@ -21,3 +21,7 @@
 **Optimize allocations in `eval_call_with_args` and iterator aggregation in `eval.rs`**
 **Learning:** `eval_pipe` unnecessarily allocated a `vec![lhs_value]` to pass as `piped_args` which then underwent `.extend()` causing potential reallocations. Also, iterator chains like `.collect::<Result<Option<Vec<_>>, _>>()` can hide intermediate allocations and make short-circuiting logic opaque.
 **Action:** Replaced `piped_args: Vec<Value>` with `piped_arg: Option<Value>` in `eval_call_with_args` and allocated the vector with exact capacity `Vec::with_capacity`. Converted `.collect()` chains to simple `for` loops with pre-allocated vectors to eliminate aggregation overhead and turbofish boilerplate.
+
+**In-place mutation for vector clustering**
+**Learning:** Functions that cluster or modify contiguous groups of events (like `strum`, `invert`, and `drop`) often allocate new vectors (`Vec::with_capacity(events.len())`) to accumulate the modified slices using `.extend_from_slice()`. Since the original `events` vector is passed by value and the element count remains the same, we can mutate the clusters in place, avoiding a redundant O(N) allocation entirely.
+**Action:** When a function accepts a `Vec<T>` by value and modifies its contents without changing its length, modify the elements in place instead of allocating a new intermediate vector to collect the modified slices.
