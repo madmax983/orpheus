@@ -460,7 +460,7 @@ impl SessionTui {
                 "Export: :export <binding> <path> [cycles] | :export stems [cycles] [--buses]",
             ),
             Line::raw("Analyze: :roll <binding>, :stats <binding>"),
-            Line::raw("Help: ?"),
+            Line::raw("? help"),
         ]);
         if let Some(message) = &self.status_message {
             if message.contains("error")
@@ -1986,7 +1986,7 @@ mod tests {
         let normal_frame = render_frame_for_test(&app, 80, 28);
         assert!(!normal_frame.contains("Toggle: ?"));
         assert!(!normal_frame.contains("Words: Alt-B/F"));
-        assert!(normal_frame.contains("Help: ?"));
+        assert!(normal_frame.contains("? help"));
     }
 
     #[test]

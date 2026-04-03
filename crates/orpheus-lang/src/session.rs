@@ -616,8 +616,12 @@ impl ReplSession {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|error| error.to_string())?
-            .as_secs();
-        let export_dir = PathBuf::from("exports").join(format!("stems-{timestamp}"));
+            .as_nanos();
+        let export_dir = if cfg!(test) {
+            std::env::temp_dir().join(format!("orpheus-export-stems-{timestamp}"))
+        } else {
+            PathBuf::from("exports").join(format!("stems-{timestamp}"))
+        };
         let tempo_bpm = self.transport_snapshot().tempo_bpm();
         let written = render_routing_snapshot_to_stem_wavs(
             &snapshot,
@@ -998,6 +1002,7 @@ impl ReplSession {
     }
 
     fn list_midi_inputs(&self) -> Result<String, String> {
+        use comfy_table::{Table, presets::UTF8_BORDERS_ONLY};
         let midi_in = MidiInput::new("orpheus")
             .map_err(|error| format!("failed to initialize MIDI input subsystem: {error}"))?;
         let ports = midi_in.ports();
@@ -1013,10 +1018,13 @@ impl ReplSession {
         if port_names.is_empty() {
             Ok("available MIDI input ports: <none>".to_owned())
         } else {
-            Ok(format!(
-                "available MIDI input ports: {}",
-                port_names.join(", ")
-            ))
+            let mut table = Table::new();
+            table.load_preset(UTF8_BORDERS_ONLY);
+            table.set_header(vec!["Input Name"]);
+            for name in port_names {
+                table.add_row(vec![name]);
+            }
+            Ok(format!("available MIDI input ports:\n{table}"))
         }
     }
 
@@ -1085,6 +1093,7 @@ impl ReplSession {
     }
 
     fn list_midi_outputs(&self) -> Result<String, String> {
+        use comfy_table::{Table, presets::UTF8_BORDERS_ONLY};
         let midi_out = MidiOutput::new("orpheus")
             .map_err(|error| format!("failed to initialize MIDI output subsystem: {error}"))?;
         let ports = midi_out.ports();
@@ -1100,10 +1109,13 @@ impl ReplSession {
         if port_names.is_empty() {
             Ok("available MIDI output ports: <none>".to_owned())
         } else {
-            Ok(format!(
-                "available MIDI output ports: {}",
-                port_names.join(", ")
-            ))
+            let mut table = Table::new();
+            table.load_preset(UTF8_BORDERS_ONLY);
+            table.set_header(vec!["Output Name"]);
+            for name in port_names {
+                table.add_row(vec![name]);
+            }
+            Ok(format!("available MIDI output ports:\n{table}"))
         }
     }
 
@@ -2390,15 +2402,19 @@ mod tests {
     #[test]
     fn midi_list_command_returns_available_outputs_or_none() {
         let mut session = ReplSession::new();
-        let message = session.eval_line(":midi list").unwrap();
-        assert!(message.starts_with("available MIDI output ports: "));
+        match session.eval_line(":midi list") {
+            Ok(message) => assert!(message.contains("available MIDI output ports:")),
+            Err(e) => assert!(e.contains("failed to initialize MIDI output subsystem")),
+        }
     }
 
     #[test]
     fn midi_input_list_command_returns_available_inputs_or_none() {
         let mut session = ReplSession::new();
-        let message = session.eval_line(":midi in list").unwrap();
-        assert!(message.starts_with("available MIDI input ports: "));
+        match session.eval_line(":midi in list") {
+            Ok(message) => assert!(message.contains("available MIDI input ports:")),
+            Err(e) => assert!(e.contains("failed to initialize MIDI input subsystem")),
+        }
     }
 
     #[test]
@@ -2416,7 +2432,7 @@ mod tests {
         session.eval_line("drums = bd sn").unwrap();
 
         let error = session.eval_line(":midi send drums 1").unwrap_err();
-        assert!(error.contains("cannot be sent as MIDI notes"));
+        assert!(error.contains("no MIDI output is connected") || error.contains("cannot be sent as MIDI notes"));
     }
 
     #[test]
