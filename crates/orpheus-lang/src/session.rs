@@ -1052,7 +1052,7 @@ impl ReplSession {
             .connect(
                 &port,
                 "orpheus-midi-in",
-                move |_timestamp, message, _| midi_input::update_from_message(message),
+                move |_timestamp, message, ()| midi_input::update_from_message(message),
                 (),
             )
             .map_err(|error| format!("failed to connect to MIDI input `{port_name}`: {error}"))?;
@@ -1195,7 +1195,7 @@ impl ReplSession {
                 let target_time = Duration::from_secs_f64(offset_in_cycle * seconds_per_cycle);
                 let elapsed = start.elapsed();
                 if target_time > elapsed {
-                    thread::sleep(target_time - elapsed);
+                    thread::sleep(target_time.checked_sub(elapsed).unwrap());
                 }
                 let status = if note_on {
                     status_base
@@ -1210,8 +1210,7 @@ impl ReplSession {
         });
 
         Ok(format!(
-            "queued {} MIDI events from `{binding_name}` on channel {channel}",
-            event_count
+            "queued {event_count} MIDI events from `{binding_name}` on channel {channel}"
         ))
     }
 

@@ -2480,13 +2480,13 @@ where
                 apply_control_pattern(inner, control, span, ControlPatternKind::ReverbMix)
             }
             Self::ReverbRoom { room, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_reverb_room(*room)
+                *value = value.adjust_reverb_room(*room);
             }),
             Self::ReverbRoomPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::ReverbRoom)
             }
             Self::ReverbDamp { damp, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_reverb_damp(*damp)
+                *value = value.adjust_reverb_damp(*damp);
             }),
             Self::ReverbDampPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::ReverbDamp)
@@ -2516,7 +2516,7 @@ where
                 apply_control_pattern(inner, control, span, ControlPatternKind::ChorusDepth)
             }
             Self::ChorusRate { rate, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_chorus_rate(*rate)
+                *value = value.adjust_chorus_rate(*rate);
             }),
             Self::ChorusRatePattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::ChorusRate)
@@ -2569,7 +2569,7 @@ where
                 apply_control_pattern(inner, control, span, ControlPatternKind::Rate)
             }
             Self::Onset { onset_index, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_onset(*onset_index)
+                *value = value.adjust_onset(*onset_index);
             }),
             Self::OnsetPattern { control, inner } => apply_onset_pattern(inner, control, span),
             Self::Slice { start, end, inner } => apply_value_mutation(inner, span, |value| {

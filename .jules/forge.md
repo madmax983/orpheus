@@ -32,3 +32,7 @@
 **[Struct Extraction for Multiple Configuration Parameters]**
 **Learning:** Returning anonymous primitive tuples like `(Rational, f32, f32)` from functions (e.g., `parse_bus_delay_params`) creates "Boolean Blindness"-like ambiguity, making it easy to accidentally swap positional arguments like `feedback` and `wet` levels.
 **Action:** Apply the "Struct Extraction" pattern. Define dedicated named structs (e.g., `BusDelayParams`) and unpack the fields explicitly by name when passing them to downstream functions.
+
+**Flattening Deeply Nested AST Walkers (`match` and `if let`)**
+**Learning:** Heavy recursive tree walking (e.g. `eval.rs`) naturally clusters logic into massive, deeply nested `match` statements across AST node variants. This causes functions like `eval_explicit_expr` and `record_expr_site_salts` to grow horizontally and vertically out of control ("God Functions" and "Pyramids of Doom"), harming readability.
+**Action:** Relentlessly extract the bodies of complex match arms into specific `eval_variant` or `check_variant` helper methods. Replace `match` statements that only execute logic for one or two variants (while defaulting the rest) with `if let` guard clauses.
