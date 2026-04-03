@@ -2359,18 +2359,12 @@ impl GatePatternValue {
 impl GatePatternRuntime {
     fn query_open_spans(&self, span: &TimeSpan) -> Result<Vec<TimeSpan>, EvalError> {
         match self {
-            Self::Sample(pattern) => merge_open_spans(
-                pattern
-                    .try_query(span)?
-                    .into_iter()
-                    .map(|event| event.part),
-            ),
-            Self::Number(pattern) => merge_open_spans(
-                pattern
-                    .try_query(span)?
-                    .into_iter()
-                    .map(|event| event.part),
-            ),
+            Self::Sample(pattern) => {
+                merge_open_spans(pattern.try_query(span)?.into_iter().map(|event| event.part))
+            }
+            Self::Number(pattern) => {
+                merge_open_spans(pattern.try_query(span)?.into_iter().map(|event| event.part))
+            }
         }
     }
 }
@@ -4043,7 +4037,8 @@ fn compute_event_fragment_boundaries<'a, 'b, I>(
 where
     I: Iterator<Item = &'b TimeSpan> + Clone,
 {
-    let capacity_estimate = 2 + control_parts.clone().count() * 2;
+    let (lower, upper) = control_parts.size_hint();
+    let capacity_estimate = 2 + upper.unwrap_or(lower) * 2;
     // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries.
     let mut boundaries = Vec::with_capacity(capacity_estimate);
     boundaries.push(source_span.start().clone());

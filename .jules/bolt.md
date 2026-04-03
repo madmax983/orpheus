@@ -5,3 +5,7 @@
 **Merge open spans via IntoIterator instead of Vec collection**
 **Learning:** Functions designed to aggregate or merge ordered sequences (like `merge_open_spans`) shouldn't force callers to `.collect()` intermediate lists. `try_query` naturally outputs ordered slices. Intermediate allocations just to satisfy `Vec<T>` function arguments inflate allocation profiles.
 **Action:** Refactor collection aggregators to accept `I: Iterator<Item = T>`, removing unnecessary `<Vec<_>>()` boundaries, providing zero-cost sequential evaluation passes without extra heap allocations on evaluation hot paths.
+
+## YYYY-MM-DD - [Optimize Event Fragment Boundary Capacity Allocation]
+**Learning:** Calling `.clone().count()` on iterators passed generically as `I: Iterator + Clone` forces an immediate O(N) evaluation simply to estimate capacity. Even when elements are references and cloning is cheap, iterating just to count introduces a measurable latency spike in deep processing pipelines like the DSP event fragments loop.
+**Action:** Default to `iter.size_hint()` (specifically `let (lower, upper) = iter.size_hint(); upper.unwrap_or(lower)`) when pre-allocating `Vec::with_capacity` based on an iterator's bounds. This provides instant O(1) allocation bounds and drops the strict requirement for the iterator to be clonable, leading to cleaner signatures and fewer allocations.
