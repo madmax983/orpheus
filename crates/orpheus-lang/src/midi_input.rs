@@ -39,6 +39,18 @@ fn state() -> &'static MidiInputSharedState {
     STATE.get_or_init(MidiInputSharedState::new)
 }
 
+#[cfg(test)]
+#[allow(clippy::redundant_pub_crate)]
+pub(crate) fn reset_state_for_test() {
+    // Cannot easily reset OnceLock, but we can clear the internal data
+    if let Ok(mut queue) = state().note_events.lock() {
+        queue.clear();
+    }
+    for val in &state().cc_values {
+        val.store(0, Ordering::Relaxed);
+    }
+}
+
 #[allow(clippy::redundant_pub_crate)]
 pub(crate) fn cc_normalized(controller: u8) -> f64 {
     if let Some(atomic_val) = state().cc_values.get(controller as usize) {
@@ -110,6 +122,30 @@ pub(crate) fn set_cc_value_for_test(controller: u8, value: u8) {
 mod tests {
     use super::*;
 
+    /// 👺 Havoc: Tests that rapid concurrent MIDI messages across multiple threads
+    /// do not cause deadlocks or corrupt the underlying message queues or CC atomic state.
+    #[test]
+    fn test_havoc_midi_input_concurrency() {
+        loom::model(|| {
+            // We just need a few operations under loom to verify there are no data races or deadlocks.
+            // Reset state first to isolate runs.
+            reset_state_for_test();
+
+            let t1 = loom::thread::spawn(|| {
+                update_from_message(&[0x90, 60, 100]); // Note On
+                update_from_message(&[0xB0, 10, 127]); // CC
+            });
+
+            let t2 = loom::thread::spawn(|| {
+                drain_note_events();
+                cc_normalized(10);
+            });
+
+            t1.join().unwrap();
+            t2.join().unwrap();
+        });
+    }
+
     #[test]
     fn test_cc_normalized_out_of_bounds() {
         // Should not panic and return 0.0
@@ -121,5 +157,18 @@ mod tests {
     fn test_set_cc_value_for_test_out_of_bounds() {
         // Should not panic
         set_cc_value_for_test(128, 64);
+    }
+
+    /// 👺 Havoc: Tests that injecting malformed or garbage byte sequences into the
+    /// MIDI message parser correctly ignores them without panicking via out-of-bounds indexing.
+    #[test]
+    fn test_havoc_update_from_message_fuzz() {
+        // Havoc: Inject garbage bytes to simulate invalid MIDI messages.
+        // It shouldn't panic on array indexing.
+        update_from_message(&[0xB0, 255, 255]); // OOB controller CC
+        update_from_message(&[0x90, 255, 255]); // High note/velocity
+        update_from_message(&[0xFF, 0xFF, 0xFF, 0xFF]); // Random bytes
+        update_from_message(&[]); // Empty
+        update_from_message(&[0xB0]); // Incomplete
     }
 }
