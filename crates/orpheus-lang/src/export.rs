@@ -374,6 +374,18 @@ where
 /// array. Each event uses the same timing fields as the CSV exporter plus the
 /// sample control fields available at runtime.
 ///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, export_sample_pattern_to_json};
+///
+/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+///
+/// let path = std::env::temp_dir().join("export.json");
+/// export_sample_pattern_to_json(pattern, &path, 2).unwrap();
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`EvalError`] if the cycle count is 0, if pattern querying fails, or
@@ -483,6 +495,18 @@ pub fn export_number_pattern_to_csv(
 /// array. Each event uses the same timing fields as the CSV exporter plus the
 /// numeric `value`.
 ///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, export_number_pattern_to_json};
+///
+/// let env = eval_module("x = 1 2 3", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
+///
+/// let path = std::env::temp_dir().join("export_number_pattern.json");
+/// export_number_pattern_to_json(pattern, &path, 2).unwrap();
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`EvalError`] if the cycle count is 0, if pattern querying fails, or
@@ -546,6 +570,18 @@ pub fn render_sample_pattern_to_file_with_bank(
 }
 
 /// Renders a sample pattern directly to a WAV file.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, render_sample_pattern_to_wav};
+///
+/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+///
+/// let path = std::env::temp_dir().join("render_direct.wav");
+/// render_sample_pattern_to_wav(pattern, &path, 2).unwrap();
+/// ```
 ///
 /// # Errors
 ///
