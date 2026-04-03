@@ -1112,6 +1112,7 @@ dependencies = [
  "comfy-table",
  "crossterm 0.28.1",
  "hound",
+ "loom",
  "midir",
  "orpheus-dsp",
  "orpheus-pattern",
@@ -1121,7 +1122,6 @@ dependencies = [
  "ratatui",
  "serde_json",
  "tempfile",
- "unicode-width 0.2.0",
 ]
 
 [[package]]

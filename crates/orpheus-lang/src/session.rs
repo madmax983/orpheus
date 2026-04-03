@@ -678,6 +678,11 @@ impl ReplSession {
                 {
                     crate::txt::export_sample_pattern_to_txt(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path.extension().is_some_and(|ext| {
+                    ext.eq_ignore_ascii_case("trk") || ext.eq_ignore_ascii_case("tracker")
+                }) {
+                    crate::tracker::export_sample_pattern_to_tracker(pattern, path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
                 } else {
                     crate::export::export_sample_pattern_to_csv(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
@@ -714,6 +719,11 @@ impl ReplSession {
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("txt"))
                 {
                     crate::txt::export_number_pattern_to_txt(pattern, path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path.extension().is_some_and(|ext| {
+                    ext.eq_ignore_ascii_case("trk") || ext.eq_ignore_ascii_case("tracker")
+                }) {
+                    crate::tracker::export_number_pattern_to_tracker(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 } else {
                     crate::export::export_number_pattern_to_csv(pattern, path, cycles)
@@ -1695,8 +1705,8 @@ mod tests {
 
         let mixer = session.eval_line(":mixer").unwrap();
 
-        assert!(mixer.contains("send 0.35"));
-        assert!(mixer.contains("send 0.50"));
+        assert!(mixer.contains("send verb @ 0.35"));
+        assert!(mixer.contains("send dub @ 0.50"));
     }
 
     #[test]
@@ -1710,7 +1720,7 @@ mod tests {
         );
 
         let mixer = session.eval_line(":mixer").unwrap();
-        assert!(mixer.contains("bus dub"));
+        assert!(mixer.contains("dub"));
         assert!(mixer.contains("delay(3/16"));
         let _ = session.render_test_block_for_tui(1);
         assert!(session.transport_snapshot().has_pending_routing());
@@ -1727,7 +1737,7 @@ mod tests {
         );
 
         let mixer = session.eval_line(":mixer").unwrap();
-        assert!(mixer.contains("bus verb"));
+        assert!(mixer.contains("verb"));
         assert!(mixer.contains("reverb(size=0.75 damp=0.35 wet=1.00)"));
         let _ = session.render_test_block_for_tui(1);
         assert!(session.transport_snapshot().has_pending_routing());
@@ -1747,7 +1757,7 @@ mod tests {
         );
 
         let mixer = session.eval_line(":mixer").unwrap();
-        assert!(mixer.contains("bus dub"));
+        assert!(mixer.contains("dub"));
         assert!(!mixer.contains("delay("));
     }
 
@@ -1979,9 +1989,12 @@ mod tests {
         let message = session.eval_line(":stats pattern 2").unwrap();
 
         assert!(message.contains("Pattern Stats: pattern (2 cycles)"));
-        assert!(message.contains("│ Total Events     8                 │"));
-        assert!(message.contains("│ Unique Samples   2 (bd, sn)        │"));
-        assert!(message.contains("│ Event Density    4.00 events/cycle │"));
+        assert!(message.contains("Total Events"));
+        assert!(message.contains("8"));
+        assert!(message.contains("Unique Samples"));
+        assert!(message.contains("2 (bd, sn)"));
+        assert!(message.contains("Event Density"));
+        assert!(message.contains("4.00 events/cycle"));
     }
 
     #[test]

@@ -41,8 +41,12 @@ fn state() -> &'static MidiInputSharedState {
 
 #[allow(clippy::redundant_pub_crate)]
 pub(crate) fn cc_normalized(controller: u8) -> f64 {
-    let raw = state().cc_values[controller as usize].load(Ordering::Relaxed);
-    f64::from(raw) / 127.0
+    if let Some(atomic_val) = state().cc_values.get(controller as usize) {
+        let raw = atomic_val.load(Ordering::Relaxed);
+        f64::from(raw) / 127.0
+    } else {
+        0.0
+    }
 }
 
 #[allow(clippy::redundant_pub_crate)]
@@ -97,5 +101,25 @@ pub(crate) fn drain_note_events() -> Vec<MidiNoteEvent> {
 #[cfg(test)]
 #[allow(clippy::redundant_pub_crate)]
 pub(crate) fn set_cc_value_for_test(controller: u8, value: u8) {
-    state().cc_values[controller as usize].store(value, Ordering::Relaxed);
+    if let Some(atomic_val) = state().cc_values.get(controller as usize) {
+        atomic_val.store(value, Ordering::Relaxed);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cc_normalized_out_of_bounds() {
+        // Should not panic and return 0.0
+        let val = cc_normalized(128);
+        assert_eq!(val, 0.0);
+    }
+
+    #[test]
+    fn test_set_cc_value_for_test_out_of_bounds() {
+        // Should not panic
+        set_cc_value_for_test(128, 64);
+    }
 }

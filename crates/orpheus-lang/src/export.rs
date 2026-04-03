@@ -147,6 +147,28 @@ pub fn render_sample_pattern_to_file(
     render_sample_pattern_to_file_with_bank(pattern, path, cycle_count, &sample_bank)
 }
 
+fn query_sample_pattern_events(
+    pattern: &SamplePatternValue,
+    cycle_count: u64,
+) -> Result<Vec<Event<crate::value::SampleEvent>>, EvalError> {
+    if cycle_count == 0 {
+        return Err(EvalError::new("exporting requires at least one cycle"));
+    }
+    let span = render_span(cycle_count)?;
+    pattern.try_query(&span)
+}
+
+fn query_number_pattern_events(
+    pattern: &NumberPatternValue,
+    cycle_count: u64,
+) -> Result<Vec<Event<f64>>, EvalError> {
+    if cycle_count == 0 {
+        return Err(EvalError::new("exporting requires at least one cycle"));
+    }
+    let span = render_span(cycle_count)?;
+    pattern.try_query(&span)
+}
+
 fn export_pattern_events_to_csv<T, F>(
     events: &[Event<T>],
     path: impl AsRef<Path>,
@@ -219,12 +241,7 @@ pub fn export_sample_pattern_to_md(
     path: impl AsRef<Path>,
     cycle_count: u64,
 ) -> Result<(), EvalError> {
-    if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
-    }
-
-    let span = render_span(cycle_count)?;
-    let events = pattern.try_query(&span)?;
+    let events = query_sample_pattern_events(pattern, cycle_count)?;
 
     export_pattern_events_to_md(
         &events,
@@ -284,12 +301,7 @@ pub fn export_sample_pattern_to_csv(
     path: impl AsRef<Path>,
     cycle_count: u64,
 ) -> Result<(), EvalError> {
-    if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
-    }
-
-    let span = render_span(cycle_count)?;
-    let events = pattern.try_query(&span)?;
+    let events = query_sample_pattern_events(pattern, cycle_count)?;
 
     export_pattern_events_to_csv(
         &events,
@@ -371,12 +383,7 @@ pub fn export_sample_pattern_to_json(
     path: impl AsRef<Path>,
     cycle_count: u64,
 ) -> Result<(), EvalError> {
-    if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
-    }
-
-    let span = render_span(cycle_count)?;
-    let events = pattern.try_query(&span)?;
+    let events = query_sample_pattern_events(pattern, cycle_count)?;
 
     export_pattern_events_to_json(&events, path, "sample", cycle_count, sample_event_json)
 }
@@ -406,12 +413,7 @@ pub fn export_number_pattern_to_md(
     path: impl AsRef<Path>,
     cycle_count: u64,
 ) -> Result<(), EvalError> {
-    if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
-    }
-
-    let span = render_span(cycle_count)?;
-    let events = pattern.try_query(&span)?;
+    let events = query_number_pattern_events(pattern, cycle_count)?;
 
     export_pattern_events_to_md(&events, path, "| start | end | value |", |file, event| {
         let start_float = f64::from(event.part.start());
@@ -450,12 +452,7 @@ pub fn export_number_pattern_to_csv(
     path: impl AsRef<Path>,
     cycle_count: u64,
 ) -> Result<(), EvalError> {
-    if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
-    }
-
-    let span = render_span(cycle_count)?;
-    let events = pattern.try_query(&span)?;
+    let events = query_number_pattern_events(pattern, cycle_count)?;
 
     export_pattern_events_to_csv(
         &events,
@@ -495,12 +492,7 @@ pub fn export_number_pattern_to_json(
     path: impl AsRef<Path>,
     cycle_count: u64,
 ) -> Result<(), EvalError> {
-    if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
-    }
-
-    let span = render_span(cycle_count)?;
-    let events = pattern.try_query(&span)?;
+    let events = query_number_pattern_events(pattern, cycle_count)?;
 
     export_pattern_events_to_json(&events, path, "number", cycle_count, number_event_json)
 }
@@ -532,12 +524,13 @@ pub fn render_sample_pattern_to_file_with_bank(
     cycle_count: u64,
     sample_bank: &SampleBank,
 ) -> Result<(), RenderError> {
-    if cycle_count == 0 {
-        return Err(EvalError::new("rendering requires at least one cycle").into());
-    }
-
-    let span = render_span(cycle_count)?;
-    let events = pattern.try_query(&span)?;
+    let events = query_sample_pattern_events(pattern, cycle_count).map_err(|e| {
+        if e.to_string().contains("exporting requires") {
+            EvalError::new("rendering requires at least one cycle").into()
+        } else {
+            RenderError::from(e)
+        }
+    })?;
     let rendered_events = events
         .into_iter()
         .map(|event| Event {

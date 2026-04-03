@@ -1020,9 +1020,11 @@ impl PatternRuntimeValue for f64 {
         Ok(rolled)
     }
 
+    /// Applies a strum effect across overlapping events.
+    ///
+    /// ⚡ Bolt: Mutates overlapping clusters in-place, eliminating the need to allocate and copy into an intermediate `strummed` vector.
     fn strum_events(mut events: Vec<Event<Self>>) -> Result<Vec<Event<Self>>, EvalError> {
         sort_events(&mut events);
-        let mut strummed = Vec::with_capacity(events.len());
         let mut index = 0;
 
         while index < events.len() {
@@ -1037,11 +1039,10 @@ impl PatternRuntimeValue for f64 {
 
             let cluster = &mut events[start_index..index];
             strum_event_cluster(cluster)?;
-            strummed.extend_from_slice(cluster);
         }
 
-        sort_events(&mut strummed);
-        Ok(strummed)
+        sort_events(&mut events);
+        Ok(events)
     }
 
     fn arp_events(
@@ -1071,12 +1072,14 @@ impl PatternRuntimeValue for f64 {
         Ok(arped)
     }
 
+    /// Applies a chord inversion effect to overlapping events.
+    ///
+    /// ⚡ Bolt: Modifies clusters in-place and directly returns the original `events` vector, bypassing O(N) allocation overhead for intermediate `inverted` tracking.
     fn invert_events(
         mut events: Vec<Event<Self>>,
         count: u32,
     ) -> Result<Vec<Event<Self>>, EvalError> {
         sort_events(&mut events);
-        let mut inverted = Vec::with_capacity(events.len());
         let mut index = 0;
 
         while index < events.len() {
@@ -1091,18 +1094,19 @@ impl PatternRuntimeValue for f64 {
 
             let cluster = &mut events[start_index..index];
             invert_event_cluster(cluster, count)?;
-            inverted.extend_from_slice(cluster);
         }
 
-        Ok(inverted)
+        Ok(events)
     }
 
+    /// Drops the lowest `count` voices from overlapping chords down an octave.
+    ///
+    /// ⚡ Bolt: Applies the pitch drop in-place over mutable subslices of `events`, completely removing the `dropped` vector allocation step from the hot path.
     fn drop_events(
         mut events: Vec<Event<Self>>,
         count: u32,
     ) -> Result<Vec<Event<Self>>, EvalError> {
         sort_events(&mut events);
-        let mut dropped = Vec::with_capacity(events.len());
         let mut index = 0;
 
         while index < events.len() {
@@ -1117,10 +1121,9 @@ impl PatternRuntimeValue for f64 {
 
             let cluster = &mut events[start_index..index];
             drop_event_cluster(cluster, count)?;
-            dropped.extend_from_slice(cluster);
         }
 
-        Ok(dropped)
+        Ok(events)
     }
 }
 
