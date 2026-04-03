@@ -2358,19 +2358,20 @@ impl GatePatternValue {
 
 impl GatePatternRuntime {
     fn query_open_spans(&self, span: &TimeSpan) -> Result<Vec<TimeSpan>, EvalError> {
-        let spans = match self {
-            Self::Sample(pattern) => pattern
-                .try_query(span)?
-                .into_iter()
-                .map(|event| event.part)
-                .collect(),
-            Self::Number(pattern) => pattern
-                .try_query(span)?
-                .into_iter()
-                .map(|event| event.part)
-                .collect(),
-        };
-        merge_open_spans(spans)
+        match self {
+            Self::Sample(pattern) => merge_open_spans(
+                pattern
+                    .try_query(span)?
+                    .into_iter()
+                    .map(|event| event.part),
+            ),
+            Self::Number(pattern) => merge_open_spans(
+                pattern
+                    .try_query(span)?
+                    .into_iter()
+                    .map(|event| event.part),
+            ),
+        }
     }
 }
 
@@ -2662,7 +2663,7 @@ where
 
     let mut masked = Vec::with_capacity(source_events.len());
 
-    for event in source_events {
+    for event in &source_events {
         let Some(boundaries) = compute_event_fragment_boundaries(&event.part, gate_spans.iter())
         else {
             continue;
@@ -2676,7 +2677,7 @@ where
                 continue;
             }
 
-            let part = build_span(start.clone(), end.clone())?;
+            let part = build_span((*start).clone(), (*end).clone())?;
             if gate_spans
                 .iter()
                 .any(|gate_span| spans_overlap(gate_span, &part))
@@ -2905,7 +2906,7 @@ enum ControlPatternKind {
 }
 
 fn apply_event_fragments<'a, T, F, I>(
-    source_events: Vec<Event<T>>,
+    source_events: &'a [Event<T>],
     control_parts: I,
     mut process_fragment: F,
 ) -> Result<Vec<Event<T>>, EvalError>
@@ -2919,7 +2920,7 @@ where
         let Some(boundaries) =
             compute_event_fragment_boundaries(&event.part, control_parts.clone())
         else {
-            composed.push(event);
+            composed.push(event.clone());
             continue;
         };
 
@@ -2931,7 +2932,7 @@ where
                 continue;
             }
 
-            let part = build_span(start.clone(), end.clone())?;
+            let part = build_span((*start).clone(), (*end).clone())?;
             if let Some(value) = process_fragment(&part, &event.value)? {
                 composed.push(Event {
                     whole: None,
@@ -2963,7 +2964,7 @@ where
     }
 
     apply_event_fragments(
-        source_events,
+        &source_events,
         control_events.iter().map(|e| &e.part),
         |part, value| {
             let mut new_value = value.clone();
@@ -3246,7 +3247,7 @@ where
     }
 
     apply_event_fragments(
-        source_events,
+        &source_events,
         start_events
             .iter()
             .map(|e| &e.part)
@@ -3295,7 +3296,7 @@ where
     }
 
     apply_event_fragments(
-        source_events,
+        &source_events,
         control_events.iter().map(|e| &e.part),
         |part, value| {
             let mut new_value = value.clone();
@@ -3332,7 +3333,7 @@ where
     }
 
     apply_event_fragments(
-        source_events,
+        &source_events,
         control_events.iter().map(|e| &e.part),
         |part, value| {
             let mut new_value = value.clone();
@@ -4004,23 +4005,14 @@ fn clip_span(span: &TimeSpan, query: &TimeSpan) -> Result<Option<TimeSpan>, Eval
     build_span(start.clone(), end.clone()).map(Some)
 }
 
-fn merge_open_spans(mut spans: Vec<TimeSpan>) -> Result<Vec<TimeSpan>, EvalError> {
-    if spans.is_empty() {
-        return Ok(spans);
-    }
+fn merge_open_spans<I: Iterator<Item = TimeSpan>>(mut iter: I) -> Result<Vec<TimeSpan>, EvalError> {
+    let Some(mut current) = iter.next() else {
+        return Ok(Vec::new());
+    };
 
-    spans.sort_by(|left, right| {
-        left.start()
-            .cmp(right.start())
-            .then(left.end().cmp(right.end()))
-    });
-
-    // ⚡ Bolt: Pre-allocate vector using the initial span count as the maximum bound
+    // ⚡ Bolt: Pre-allocate vector using the iterator's size hint as the maximum bound
     // to reduce heap reallocations during merge operations.
-    let capacity = spans.len();
-    let mut iter = spans.into_iter();
-    let mut current = iter.next().expect("non-empty after early return");
-    let mut merged = Vec::with_capacity(capacity);
+    let mut merged = Vec::with_capacity(iter.size_hint().0.saturating_add(1));
 
     for span in iter {
         if span.start() <= current.end() {

@@ -1,6 +1,6 @@
-use proptest::prelude::*;
-use orpheus_lang::ReplSession;
 use orpheus_dsp::EngineHandle;
+use orpheus_lang::ReplSession;
+use proptest::prelude::*;
 
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(1000))]
