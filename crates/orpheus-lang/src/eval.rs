@@ -226,14 +226,14 @@ impl ExplicitValue {
         Ok(self)
     }
 
-    fn append_unsorted(&mut self, other: Self) -> Result<(), EvalError> {
-        match (self, other) {
-            (Self::Sample(left), Self::Sample(mut right)) => {
-                left.append(&mut right);
+    fn append_unsorted(&mut self, mut other: Self) -> Result<(), EvalError> {
+        match (self, &mut other) {
+            (Self::Sample(left), Self::Sample(right)) => {
+                left.append(right);
                 Ok(())
             }
-            (Self::Number(left), Self::Number(mut right)) => {
-                left.append(&mut right);
+            (Self::Number(left), Self::Number(right)) => {
+                left.append(right);
                 Ok(())
             }
             (Self::Sample(_), Self::Number(_)) | (Self::Number(_), Self::Sample(_)) => Err(
@@ -253,6 +253,25 @@ impl ExplicitValue {
         match self {
             Self::Sample(events) => shift_events(events, offset),
             Self::Number(events) => shift_events(events, offset),
+        }
+    }
+
+    fn empty_with_capacity_matching(&self, multiplier: usize) -> Result<Self, EvalError> {
+        match self {
+            Self::Sample(events) => {
+                let capacity = events
+                    .len()
+                    .checked_mul(multiplier)
+                    .ok_or_else(|| EvalError::new("section pattern capacity overflowed"))?;
+                Ok(Self::Sample(Vec::with_capacity(capacity)))
+            }
+            Self::Number(events) => {
+                let capacity = events
+                    .len()
+                    .checked_mul(multiplier)
+                    .ok_or_else(|| EvalError::new("section pattern capacity overflowed"))?;
+                Ok(Self::Number(Vec::with_capacity(capacity)))
+            }
         }
     }
 }
@@ -618,22 +637,7 @@ impl Evaluator {
         let repeat_count_usize = usize::try_from(repeat_count)
             .map_err(|_| EvalError::new("section cycle count exceeded evaluator limits"))?;
 
-        let mut combined = match base {
-            ExplicitValue::Sample(ref events) => {
-                let capacity = events
-                    .len()
-                    .checked_mul(repeat_count_usize)
-                    .ok_or_else(|| EvalError::new("section pattern capacity overflowed"))?;
-                ExplicitValue::Sample(Vec::with_capacity(capacity))
-            }
-            ExplicitValue::Number(ref events) => {
-                let capacity = events
-                    .len()
-                    .checked_mul(repeat_count_usize)
-                    .ok_or_else(|| EvalError::new("section pattern capacity overflowed"))?;
-                ExplicitValue::Number(Vec::with_capacity(capacity))
-            }
-        };
+        let mut combined = base.empty_with_capacity_matching(repeat_count_usize)?;
 
         for repeat in 0..repeat_count {
             let offset = rational_from_parts(
@@ -821,9 +825,10 @@ impl Evaluator {
     fn check_unsupported_pattern_item(item: &Expr, context: &str) -> Option<EvalError> {
         match item {
             Expr::Call { callee, args } => {
-                let name = match callee.as_ref() {
-                    Expr::Ident(name) => name.as_str(),
-                    _ => "call",
+                let name = if let Expr::Ident(name) = callee.as_ref() {
+                    name.as_str()
+                } else {
+                    "call"
                 };
                 if name == "sample" && args.len() == 1 {
                     None
@@ -1131,27 +1136,19 @@ fn expr_key(expr: &Expr) -> usize {
 }
 
 fn extract_constant_number_value(value: Value, context: &str) -> Result<f64, EvalError> {
-    match value {
-        Value::NumberPattern(pattern) => pattern.constant_value(),
-        Value::SamplePattern(_)
-        | Value::ArpDirection(_)
-        | Value::PitchClassSet(_)
-        | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(format!(
+    let Value::NumberPattern(pattern) = value else {
+        return Err(EvalError::new(format!(
             "{context} must resolve to a constant number"
-        ))),
-    }
+        )));
+    };
+    pattern.constant_value()
 }
 
 fn extract_string_value(value: Value, message: &str) -> Result<String, EvalError> {
-    match value {
-        Value::String(string) => Ok(string),
-        Value::SamplePattern(_)
-        | Value::NumberPattern(_)
-        | Value::ArpDirection(_)
-        | Value::PitchClassSet(_)
-        | Value::Function(_) => Err(EvalError::new(message)),
-    }
+    let Value::String(string) = value else {
+        return Err(EvalError::new(message));
+    };
+    Ok(string)
 }
 
 fn extract_constant_number_rational(value: Value, context: &str) -> Result<Rational, EvalError> {
