@@ -36,6 +36,7 @@ use crate::value::{
 /// assert!(!is_sample_identifier("fast")); // This is a function
 /// assert!(!is_sample_identifier("foo"));  // Unknown/user variable
 /// ```
+#[must_use]
 pub fn is_sample_identifier(name: &str) -> bool {
     matches!(
         name,
@@ -71,6 +72,7 @@ const fn builtin_pitch_class_set_value(value: PitchClassSetValue) -> Value {
 /// assert!(builtin_value("bd").is_some());
 /// assert!(builtin_value("unknown_user_func").is_none());
 /// ```
+#[must_use]
 pub fn builtin_value(name: &str) -> Option<Value> {
     match name {
         "bd" | "sn" | "cp" | "hh" | "saw" | "pulse" | "tri" | "noise" => {

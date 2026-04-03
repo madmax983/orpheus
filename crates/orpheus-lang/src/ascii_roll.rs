@@ -97,7 +97,7 @@ pub fn render_ascii_roll(
     writeln!(output, "┌{:─<1$}┐", "", inner_width + 2)?;
 
     // Header
-    writeln!(output, "│ {:<1$} │", header_text, inner_width)?;
+    writeln!(output, "│ {header_text:<inner_width$} │")?;
 
     // Separator
     writeln!(output, "╞{:═<1$}╡", "", inner_width + 2)?;

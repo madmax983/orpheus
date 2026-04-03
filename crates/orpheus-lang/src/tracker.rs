@@ -118,7 +118,7 @@ pub fn export_sample_pattern_to_tracker(
     writeln!(file)?;
 
     // Print Grid Rows
-    for (step, val_opt) in grid.iter().enumerate().take(total_steps) {
+    for (step, _val_opt) in grid.iter().enumerate().take(total_steps) {
         let cycle_num = step / (steps_per_cycle as usize);
         let sub_step = step % (steps_per_cycle as usize);
         let time = (step as f64) / f64::from(steps_per_cycle);
@@ -210,7 +210,7 @@ pub fn export_number_pattern_to_tracker(
     writeln!(file, "------+-------+---------+")?;
 
     // Print Grid Rows
-    for (step, val_opt) in grid.iter().enumerate().take(total_steps) {
+    for (step, _val_opt) in grid.iter().enumerate().take(total_steps) {
         let cycle_num = step / (steps_per_cycle as usize);
         let sub_step = step % (steps_per_cycle as usize);
         let time = (step as f64) / f64::from(steps_per_cycle);

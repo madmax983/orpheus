@@ -426,15 +426,14 @@ impl Evaluator {
         meter: Option<&MeterContext>,
     ) -> Result<Value, EvalError> {
         let lhs_value = self.eval_expr_in_meter(lhs, meter)?;
-        match rhs {
-            Expr::Call { callee, args } => {
-                self.eval_call_with_args(rhs, callee, args, Some(lhs_value), meter)
-            }
-            _ => Self::apply_value(
+        if let Expr::Call { callee, args } = rhs {
+            self.eval_call_with_args(rhs, callee, args, Some(lhs_value), meter)
+        } else {
+            Self::apply_value(
                 self.eval_expr_in_meter(rhs, meter)?,
                 vec![lhs_value],
                 self.expr_site_salt(rhs),
-            ),
+            )
         }
     }
 
@@ -509,16 +508,24 @@ impl Evaluator {
                 beats,
                 unit,
                 pattern,
-            } => {
-                let nested_meter = self.eval_meter_context(beats, unit, meter)?;
-                self.eval_explicit_expr(pattern, Some(&nested_meter))
-            }
+            } => self.eval_nested_meter(beats, unit, pattern, meter),
             Expr::SeqSections(sections) => self.eval_seq_sections_events(sections, meter),
             Expr::Section { .. } => Err(EvalError::new(
                 "`section(...)` can only appear inside `seq_sections(...)`",
             )),
             _ => Self::value_to_explicit(self.eval_expr_in_meter(expr, meter)?),
         }
+    }
+
+    fn eval_nested_meter(
+        &self,
+        beats: &Expr,
+        unit: &Expr,
+        pattern: &Expr,
+        meter: Option<&MeterContext>,
+    ) -> Result<ExplicitValue, EvalError> {
+        let nested_meter = self.eval_meter_context(beats, unit, meter)?;
+        self.eval_explicit_expr(pattern, Some(&nested_meter))
     }
 
     fn collect_explicit_items(
@@ -675,19 +682,24 @@ impl Evaluator {
     ) -> Result<Rational, EvalError> {
         match expr {
             Expr::Number(value) => f64_to_rational(*value, "time expression"),
-            Expr::Beat(value) => {
-                let meter = meter.ok_or_else(|| {
-                    EvalError::new("`beat(...)` requires an enclosing `meter(...)`")
-                })?;
-                let beat_index = self.eval_time_expr(value, meter.into())?;
-                let beat_length = rational_from_parts(1, meter.beats_per_cycle)?;
-                Ok(beat_index.checked_mul(&beat_length)?)
-            }
+            Expr::Beat(value) => self.eval_beat_expr(value, meter),
             _ => extract_constant_number_rational(
                 self.eval_expr_in_meter(expr, meter)?,
                 "time expression",
             ),
         }
+    }
+
+    fn eval_beat_expr(
+        &self,
+        value: &Expr,
+        meter: Option<&MeterContext>,
+    ) -> Result<Rational, EvalError> {
+        let meter = meter
+            .ok_or_else(|| EvalError::new("`beat(...)` requires an enclosing `meter(...)`"))?;
+        let beat_index = self.eval_time_expr(value, meter.into())?;
+        let beat_length = rational_from_parts(1, meter.beats_per_cycle)?;
+        Ok(beat_index.checked_mul(&beat_length)?)
     }
 
     fn eval_positive_integer(
@@ -738,12 +750,7 @@ impl Evaluator {
     ) -> Result<Value, EvalError> {
         match callee {
             Value::Function(FunctionValue::Builtin(function)) => {
-                let function = match site_salt {
-                    Some(site_salt) if function.site_salt.is_none() => {
-                        function.with_site_salt(site_salt)
-                    }
-                    Some(_) | None => function,
-                };
+                let function = Self::apply_site_salt_to_builtin(function, site_salt);
                 apply_function_value(FunctionValue::Builtin(function), args)
             }
             Value::Function(function) => apply_function_value(function, args),
@@ -756,6 +763,18 @@ impl Evaluator {
                 callee.kind_name()
             ))),
         }
+    }
+
+    const fn apply_site_salt_to_builtin(
+        function: crate::value::BuiltinFn,
+        site_salt: Option<u64>,
+    ) -> crate::value::BuiltinFn {
+        if let Some(salt) = site_salt {
+            if function.site_salt.is_none() {
+                return function.with_site_salt(salt);
+            }
+        }
+        function
     }
 
     fn expr_site_salt(&self, expr: &Expr) -> Option<u64> {
@@ -786,7 +805,13 @@ impl Evaluator {
     }
 
     fn unsupported_pattern_item_error(items: &[Expr], context: &str) -> Option<EvalError> {
-        items.iter().find_map(|item| match item {
+        items
+            .iter()
+            .find_map(|item| Self::check_unsupported_pattern_item(item, context))
+    }
+
+    fn check_unsupported_pattern_item(item: &Expr, context: &str) -> Option<EvalError> {
+        match item {
             Expr::Call { callee, args } => {
                 let name = match callee.as_ref() {
                     Expr::Ident(name) => name.as_str(),
@@ -813,11 +838,9 @@ impl Evaluator {
             | Expr::SeqSections(_) => Some(EvalError::new(format!(
                 "explicit-time forms cannot appear inside a pattern {context}; use `stream(...)` or lift the form outside the {context}"
             ))),
-            Expr::Group(group_items) => {
-                Self::unsupported_pattern_item_error(group_items, context)
-            }
+            Expr::Group(group_items) => Self::unsupported_pattern_item_error(group_items, context),
             _ => None,
-        })
+        }
     }
 
     fn collect_sample_nodes(
@@ -856,14 +879,20 @@ impl Evaluator {
                 Ok(Some(PatternNode::atom(SampleEvent::named(&sample))))
             }
             Expr::Rest => Ok(Some(PatternNode::rest())),
-            Expr::Group(items) => {
-                let Some(nodes) = self.collect_sample_nodes(items, meter)? else {
-                    return Ok(None);
-                };
-                Ok(Some(PatternNode::group(nodes)))
-            }
+            Expr::Group(items) => self.collect_sample_group(items, meter),
             _ => Ok(None),
         }
+    }
+
+    fn collect_sample_group(
+        &self,
+        items: &[Expr],
+        meter: Option<&MeterContext>,
+    ) -> Result<Option<PatternNode<SampleEvent>>, EvalError> {
+        let Some(nodes) = self.collect_sample_nodes(items, meter)? else {
+            return Ok(None);
+        };
+        Ok(Some(PatternNode::group(nodes)))
     }
 
     fn collect_number_nodes(
@@ -886,14 +915,16 @@ impl Evaluator {
             Expr::Ident(name) => Ok(parse_named_pitch_literal(name)?
                 .map(|semitones| PatternNode::atom(f64::from(semitones)))),
             Expr::Rest => Ok(Some(PatternNode::rest())),
-            Expr::Group(items) => {
-                let Some(nodes) = self.collect_number_nodes(items)? else {
-                    return Ok(None);
-                };
-                Ok(Some(PatternNode::group(nodes)))
-            }
+            Expr::Group(items) => self.collect_number_group(items),
             _ => Ok(None),
         }
+    }
+
+    fn collect_number_group(&self, items: &[Expr]) -> Result<Option<PatternNode<f64>>, EvalError> {
+        let Some(nodes) = self.collect_number_nodes(items)? else {
+            return Ok(None);
+        };
+        Ok(Some(PatternNode::group(nodes)))
     }
 }
 
@@ -1002,52 +1033,73 @@ fn record_expr_site_salts(expr: &Expr, seed: u64, salts: &mut BTreeMap<usize, u6
         Expr::Seq(items) => record_expr_list(items, seed, ROLE_SEQ_ITEM, salts),
         Expr::Stack(layers) => record_expr_list(layers, seed, ROLE_STACK_LAYER, salts),
         Expr::Stream(items) => record_expr_list(items, seed, ROLE_STREAM_ITEM, salts),
-        Expr::Pipe { lhs, rhs } => {
-            record_expr_site_salts(lhs, derive_site_seed(seed, ROLE_PIPE_LHS, 0), salts);
-            record_expr_site_salts(rhs, derive_site_seed(seed, ROLE_PIPE_RHS, 0), salts);
-        }
-        Expr::Call { callee, args } => {
-            record_expr_site_salts(callee, derive_site_seed(seed, ROLE_CALL_CALLEE, 0), salts);
-            record_expr_list(args, seed, ROLE_CALL_ARG, salts);
-        }
-        Expr::At { start, pattern } => {
-            record_expr_site_salts(start, derive_site_seed(seed, ROLE_AT_START, 0), salts);
-            record_expr_site_salts(pattern, derive_site_seed(seed, ROLE_AT_PATTERN, 0), salts);
-        }
+        Expr::Pipe { lhs, rhs } => record_pipe_salts(lhs, rhs, seed, salts),
+        Expr::Call { callee, args } => record_call_salts(callee, args, seed, salts),
+        Expr::At { start, pattern } => record_at_salts(start, pattern, seed, salts),
         Expr::Meter {
             beats,
             unit,
             pattern,
-        } => {
-            record_expr_site_salts(beats, derive_site_seed(seed, ROLE_METER_BEATS, 0), salts);
-            record_expr_site_salts(unit, derive_site_seed(seed, ROLE_METER_UNIT, 0), salts);
-            record_expr_site_salts(
-                pattern,
-                derive_site_seed(seed, ROLE_METER_PATTERN, 0),
-                salts,
-            );
-        }
+        } => record_meter_salts(beats, unit, pattern, seed, salts),
         Expr::Beat(value) => {
             record_expr_site_salts(value, derive_site_seed(seed, ROLE_BEAT_VALUE, 0), salts);
         }
-        Expr::Section { pattern, cycles } => {
-            record_expr_site_salts(
-                pattern,
-                derive_site_seed(seed, ROLE_SECTION_PATTERN, 0),
-                salts,
-            );
-            record_expr_site_salts(
-                cycles,
-                derive_site_seed(seed, ROLE_SECTION_CYCLES, 0),
-                salts,
-            );
-        }
+        Expr::Section { pattern, cycles } => record_section_salts(pattern, cycles, seed, salts),
         Expr::SeqSections(sections) => {
             record_expr_list(sections, seed, ROLE_SEQ_SECTION_ITEM, salts);
         }
         Expr::Group(items) => record_expr_list(items, seed, ROLE_GROUP_ITEM, salts),
         Expr::Ident(_) | Expr::Rest | Expr::Number(_) | Expr::String(_) => {}
     }
+}
+
+fn record_pipe_salts(lhs: &Expr, rhs: &Expr, seed: u64, salts: &mut BTreeMap<usize, u64>) {
+    record_expr_site_salts(lhs, derive_site_seed(seed, ROLE_PIPE_LHS, 0), salts);
+    record_expr_site_salts(rhs, derive_site_seed(seed, ROLE_PIPE_RHS, 0), salts);
+}
+
+fn record_call_salts(callee: &Expr, args: &[Expr], seed: u64, salts: &mut BTreeMap<usize, u64>) {
+    record_expr_site_salts(callee, derive_site_seed(seed, ROLE_CALL_CALLEE, 0), salts);
+    record_expr_list(args, seed, ROLE_CALL_ARG, salts);
+}
+
+fn record_at_salts(start: &Expr, pattern: &Expr, seed: u64, salts: &mut BTreeMap<usize, u64>) {
+    record_expr_site_salts(start, derive_site_seed(seed, ROLE_AT_START, 0), salts);
+    record_expr_site_salts(pattern, derive_site_seed(seed, ROLE_AT_PATTERN, 0), salts);
+}
+
+fn record_meter_salts(
+    beats: &Expr,
+    unit: &Expr,
+    pattern: &Expr,
+    seed: u64,
+    salts: &mut BTreeMap<usize, u64>,
+) {
+    record_expr_site_salts(beats, derive_site_seed(seed, ROLE_METER_BEATS, 0), salts);
+    record_expr_site_salts(unit, derive_site_seed(seed, ROLE_METER_UNIT, 0), salts);
+    record_expr_site_salts(
+        pattern,
+        derive_site_seed(seed, ROLE_METER_PATTERN, 0),
+        salts,
+    );
+}
+
+fn record_section_salts(
+    pattern: &Expr,
+    cycles: &Expr,
+    seed: u64,
+    salts: &mut BTreeMap<usize, u64>,
+) {
+    record_expr_site_salts(
+        pattern,
+        derive_site_seed(seed, ROLE_SECTION_PATTERN, 0),
+        salts,
+    );
+    record_expr_site_salts(
+        cycles,
+        derive_site_seed(seed, ROLE_SECTION_CYCLES, 0),
+        salts,
+    );
 }
 
 fn record_expr_list(items: &[Expr], seed: u64, role: u64, salts: &mut BTreeMap<usize, u64>) {
