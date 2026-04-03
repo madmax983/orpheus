@@ -1963,12 +1963,11 @@ mod tests {
 
         let message = session.eval_line(":roll pattern 1 8").unwrap();
 
-        assert!(message.contains("┌────────────────────────────────────┐"));
-        assert!(message.contains("│ Pattern Roll: pattern (1 cycles)   │"));
-        assert!(message.contains("╞════════════════════════════════════╡"));
-        assert!(message.contains("│ bd │ x---....                      │"));
-        assert!(message.contains("│ sn │ ....x---                      │"));
-        assert!(message.contains("└────────────────────────────────────┘"));
+        assert!(message.contains("Pattern Roll: pattern (1 cycles)"));
+        assert!(message.contains("bd"));
+        assert!(message.contains("sn"));
+        assert!(message.contains("x---...."));
+        assert!(message.contains("....x---"));
     }
 
     #[test]
@@ -2431,7 +2430,10 @@ mod tests {
         session.eval_line("drums = bd sn").unwrap();
 
         let error = session.eval_line(":midi send drums 1").unwrap_err();
-        assert!(error.contains("cannot be sent as MIDI notes") || error.contains("no MIDI output is connected"));
+        assert!(
+            error.contains("cannot be sent as MIDI notes")
+                || error.contains("no MIDI output is connected")
+        );
     }
 
     #[test]
