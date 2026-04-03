@@ -1583,4 +1583,13 @@ right = sometimes(fast(2), cp hh)";
             Value::Function(crate::value::FunctionValue::User(_))
         ));
     }
+
+    #[test]
+    fn eval_apply_user_function_too_many_args_returns_error() {
+        let source = "f x = x\nresult = f(1, 2)";
+        let result = eval_module(source, ReplMode::Loose);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("function expected 1 argument(s), got 2"));
+    }
 }
