@@ -133,10 +133,19 @@ fn query_cycle_pattern<T: Clone>(
     let start_cycle = floor_rational(span.start());
     let end_cycle = ceil_rational(span.end());
 
-    let cycle_count = usize::try_from(end_cycle.saturating_sub(start_cycle)).unwrap_or(0);
+    let cycle_count = usize::try_from(end_cycle.saturating_sub(start_cycle)).map_err(|_| {
+        PatternError::ArithmeticOverflow {
+            operation: "cycle count exceeded evaluator limits",
+        }
+    })?;
+    let capacity = cycle_count.checked_mul(unit_events.len()).ok_or_else(|| {
+        PatternError::ArithmeticOverflow {
+            operation: "pattern capacity calculation",
+        }
+    })?;
     // ⚡ Bolt: Pre-allocate vector using the cycle count and unit event count
     // to reduce heap reallocations during pattern querying.
-    let mut events = Vec::with_capacity(cycle_count.saturating_mul(unit_events.len()));
+    let mut events = Vec::with_capacity(capacity);
 
     for cycle in start_cycle..end_cycle {
         let cycle_offset = Rational::checked_from_parts(cycle, 1)?;

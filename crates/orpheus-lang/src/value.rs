@@ -2822,7 +2822,9 @@ fn arp_event_cluster(
         &rational_reciprocal(&rational_from_parts(step_count, 1)?)?,
     )?;
     let len = cluster.len();
-    let mut arped = Vec::with_capacity(usize::try_from(steps).unwrap_or(cluster.len()));
+    let capacity = usize::try_from(steps)
+        .map_err(|_| EvalError::new("`arp` exceeded the supported evaluator range"))?;
+    let mut arped = Vec::with_capacity(capacity);
 
     for index in 0..steps {
         let offset_index = i64::from(index);
@@ -3218,9 +3220,14 @@ fn whole_number_from_degree_value(value: f64) -> Result<i32, EvalError> {
 
 fn map_degree_to_semitones(degree: i32, collection: &PitchClassSetValue) -> Result<f64, EvalError> {
     let intervals = collection.intervals();
-    let scale_len = i32::try_from(intervals.len()).unwrap_or_default();
+    let scale_len = i32::try_from(intervals.len())
+        .map_err(|_| EvalError::new("`degrees` scale length exceeded the supported evaluator range"))?;
+    if scale_len == 0 {
+        return Err(EvalError::new("`degrees` requires a non-empty pitch class set"));
+    }
     let octave = degree.div_euclid(scale_len);
-    let index = usize::try_from(degree.rem_euclid(scale_len)).unwrap_or_default();
+    let index = usize::try_from(degree.rem_euclid(scale_len))
+        .map_err(|_| EvalError::new("`degrees` scale index exceeded the supported evaluator range"))?;
     let semitones = octave
         .checked_mul(12)
         .and_then(|value| value.checked_add(intervals[index]))
