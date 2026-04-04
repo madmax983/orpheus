@@ -82,3 +82,91 @@ fn delay_frames(time: &Rational, frames_per_cycle: u64) -> Result<usize, EngineE
     }
     usize::try_from(frames).map_err(|_| EngineError::FrameOverflow)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_calculate_delay_frames_correctly() {
+        let time = Rational::new(1, 2);
+        let frames_per_cycle = 44100;
+        assert_eq!(delay_frames(&time, frames_per_cycle).unwrap(), 22050);
+    }
+
+    #[test]
+    fn should_return_error_when_time_is_zero() {
+        let time = Rational::new(0, 1);
+        let frames_per_cycle = 44100;
+        assert!(matches!(
+            delay_frames(&time, frames_per_cycle),
+            Err(EngineError::FrameOverflow)
+        ));
+    }
+
+    #[test]
+    fn should_return_error_when_time_is_negative() {
+        let time = Rational::new(-1, 2);
+        let frames_per_cycle = 44100;
+        assert!(matches!(
+            delay_frames(&time, frames_per_cycle),
+            Err(EngineError::FrameOverflow)
+        ));
+    }
+
+    #[test]
+    fn should_initialize_delay_state_correctly() {
+        let spec = DelaySpec::new(Rational::new(1, 4), 0.5, 0.2);
+        let state = DelayState::new(&spec, 44100).unwrap();
+        assert_eq!(state.buffer.len(), 11025);
+        assert_eq!(state.write_index, 0);
+        assert_eq!(state.delay_frames, 11025);
+        assert_eq!(state.feedback, 0.5);
+        assert_eq!(state.wet, 0.2);
+    }
+
+    #[test]
+    fn should_sync_timing_correctly() {
+        let spec1 = DelaySpec::new(Rational::new(1, 4), 0.5, 0.2);
+        let mut state = DelayState::new(&spec1, 44100).unwrap();
+
+        let spec2 = DelaySpec::new(Rational::new(1, 2), 0.7, 0.3);
+        state.sync_timing(&spec2, 44100).unwrap();
+
+        assert_eq!(state.buffer.len(), 22050);
+        assert_eq!(state.write_index, 0);
+        assert_eq!(state.delay_frames, 22050);
+        assert_eq!(state.feedback, 0.7);
+        assert_eq!(state.wet, 0.3);
+    }
+
+    #[test]
+    fn should_process_frame_correctly() {
+        let spec = DelaySpec::new(Rational::new(1, 44100), 0.5, 1.0); // 1 frame delay
+        let mut state = DelayState::new(&spec, 44100).unwrap();
+
+        // Frame 1
+        let out1 = state.process_frame(1.0, -1.0);
+        assert_eq!(out1, (0.0, 0.0));
+
+        // Frame 2
+        let out2 = state.process_frame(0.0, 0.0);
+        assert_eq!(out2, (1.0, -1.0));
+
+        // Frame 3 (Feedback)
+        let out3 = state.process_frame(0.0, 0.0);
+        assert_eq!(out3, (0.5, -0.5));
+    }
+
+    #[test]
+    fn should_reset_state_correctly() {
+        let spec = DelaySpec::new(Rational::new(1, 4), 0.5, 0.2);
+        let mut state = DelayState::new(&spec, 44100).unwrap();
+
+        state.process_frame(1.0, 1.0);
+        state.reset();
+
+        assert_eq!(state.write_index, 0);
+        assert_eq!(state.buffer[0], (0.0, 0.0));
+    }
+}

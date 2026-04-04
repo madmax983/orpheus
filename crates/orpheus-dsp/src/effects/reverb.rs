@@ -193,3 +193,115 @@ impl AllpassState {
 fn reverb_feedback(size: f32) -> f32 {
     size.mul_add(0.55, 0.35)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_calculate_reverb_feedback() {
+        assert_eq!(reverb_feedback(0.0), 0.35);
+        assert_eq!(reverb_feedback(1.0), 0.9);
+        assert_eq!(reverb_feedback(0.5), 0.625);
+    }
+
+    #[test]
+    fn should_initialize_reverb_state() {
+        let spec = ReverbSpec::new(0.5, 0.2, 0.3);
+        let state = ReverbState::new(&spec);
+
+        assert_eq!(state.left.combs.len(), 4);
+        assert_eq!(state.left.allpasses.len(), 2);
+        assert_eq!(state.right.combs.len(), 4);
+        assert_eq!(state.right.allpasses.len(), 2);
+        assert_eq!(state.wet, 0.3);
+
+        assert_eq!(state.left.combs[0].feedback, 0.625);
+        assert_eq!(state.left.combs[0].damp, 0.2);
+    }
+
+    #[test]
+    fn should_sync_reverb_spec() {
+        let spec1 = ReverbSpec::new(0.5, 0.2, 0.3);
+        let mut state = ReverbState::new(&spec1);
+
+        let spec2 = ReverbSpec::new(1.0, 0.8, 0.5);
+        state.sync_spec(&spec2);
+
+        assert_eq!(state.wet, 0.5);
+        assert_eq!(state.left.combs[0].feedback, 0.9);
+        assert_eq!(state.left.combs[0].damp, 0.8);
+    }
+
+    #[test]
+    fn should_process_reverb_frame() {
+        let spec = ReverbSpec::new(0.5, 0.2, 0.3);
+        let mut state = ReverbState::new(&spec);
+
+        let out = state.process_frame(1.0, -1.0);
+        // initial delay lines are zero, but processing updates internal indices
+        assert_eq!(out, (0.0, 0.0));
+    }
+
+    #[test]
+    fn should_reset_reverb_state() {
+        let spec = ReverbSpec::new(0.5, 0.2, 0.3);
+        let mut state = ReverbState::new(&spec);
+
+        state.process_frame(1.0, 1.0);
+        state.reset();
+
+        for comb in &state.left.combs {
+            assert_eq!(comb.index, 0);
+            assert_eq!(comb.filter_store, 0.0);
+            assert!(comb.buffer.iter().all(|&x| x == 0.0));
+        }
+
+        for allpass in &state.left.allpasses {
+            assert_eq!(allpass.index, 0);
+            assert!(allpass.buffer.iter().all(|&x| x == 0.0));
+        }
+    }
+
+    #[test]
+    fn should_process_comb_filter() {
+        let mut comb = CombState::new(4, 0.5, 0.2);
+
+        // Frame 1
+        let out1 = comb.process(1.0);
+        assert_eq!(out1, 0.0);
+        assert_eq!(comb.buffer[0], 0.5);
+        assert_eq!(comb.index, 1);
+
+        // Advance to loop point
+        comb.process(0.0);
+        comb.process(0.0);
+        comb.process(0.0);
+
+        // Frame 5 (feedback occurs)
+        let out5 = comb.process(0.0);
+        assert_eq!(out5, 0.5); // previous input comes out
+        assert_eq!(comb.index, 1);
+    }
+
+    #[test]
+    fn should_process_allpass_filter() {
+        let mut allpass = AllpassState::new(2, 0.5);
+
+        // Frame 1
+        let out1 = allpass.process(1.0);
+        assert_eq!(out1, -1.0); // 0.0 - 1.0
+        assert_eq!(allpass.buffer[0], 0.5); // 0.0 + 0.5 * 1.0
+        assert_eq!(allpass.index, 1);
+
+        // Frame 2
+        let out2 = allpass.process(0.0);
+        assert_eq!(out2, 0.0);
+        assert_eq!(allpass.buffer[1], 0.0);
+        assert_eq!(allpass.index, 0);
+
+        // Frame 3 (feedback occurs)
+        let out3 = allpass.process(0.0);
+        assert_eq!(out3, 0.5); // buffered 0.5 - 0.0
+    }
+}
