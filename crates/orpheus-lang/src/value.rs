@@ -4042,7 +4042,7 @@ fn compute_event_fragment_boundaries<'a, 'b, I>(
     control_parts: I,
 ) -> Option<Vec<Rational>>
 where
-    I: Iterator<Item = &'b TimeSpan> + Clone,
+    I: Iterator<Item = &'b TimeSpan>,
 {
     let (lower, upper) = control_parts.size_hint();
     let capacity_estimate = 2 + upper.unwrap_or(lower) * 2;
