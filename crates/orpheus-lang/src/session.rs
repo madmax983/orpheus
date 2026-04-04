@@ -986,14 +986,14 @@ impl ReplSession {
     fn midi_command(&mut self, args: &str) -> Result<String, String> {
         let tokens = args.split_whitespace().collect::<Vec<_>>();
         match tokens.as_slice() {
-            ["in", "list"] => self.list_midi_inputs(),
+            ["in", "list"] => Self::list_midi_inputs(),
             ["in", "connect", port @ ..] if !port.is_empty() => {
                 self.connect_midi_input(&port.join(" "))
             }
             ["in", "disconnect"] => self.disconnect_midi_input(),
             ["in", "map-note", note, binding_name] => self.map_midi_note(note, binding_name),
             ["in", "unmap-note", note] => self.unmap_midi_note(note),
-            ["list"] => self.list_midi_outputs(),
+            ["list"] => Self::list_midi_outputs(),
             ["connect", port @ ..] if !port.is_empty() => self.connect_midi_output(&port.join(" ")),
             ["disconnect"] => self.disconnect_midi_output(),
             ["send", binding_name] => self.send_midi_binding(binding_name, 1),
@@ -1007,7 +1007,7 @@ impl ReplSession {
         }
     }
 
-    fn list_midi_inputs(&self) -> Result<String, String> {
+    fn list_midi_inputs() -> Result<String, String> {
         let midi_in = MidiInput::new("orpheus")
             .map_err(|error| format!("failed to initialize MIDI input subsystem: {error}"))?;
         let ports = midi_in.ports();
@@ -1094,7 +1094,7 @@ impl ReplSession {
         }
     }
 
-    fn list_midi_outputs(&self) -> Result<String, String> {
+    fn list_midi_outputs() -> Result<String, String> {
         let midi_out = MidiOutput::new("orpheus")
             .map_err(|error| format!("failed to initialize MIDI output subsystem: {error}"))?;
         let ports = midi_out.ports();
@@ -1150,7 +1150,7 @@ impl ReplSession {
         Ok(format!("disconnected MIDI output `{port_name}`"))
     }
 
-    fn send_midi_binding(&mut self, binding_name: &str, channel: u8) -> Result<String, String> {
+    fn send_midi_binding(&self, binding_name: &str, channel: u8) -> Result<String, String> {
         if !(1..=16).contains(&channel) {
             return Err("MIDI channel must be an integer in [1, 16]".to_owned());
         }
@@ -1170,6 +1170,7 @@ impl ReplSession {
 
         let mut midi_events = Vec::new();
         for event in pattern.query_unit() {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             let note = event.value.round().clamp(0.0, 127.0) as u8;
             let start = f64::from(event.part.start());
             let end = f64::from(event.part.end());
@@ -2431,7 +2432,10 @@ mod tests {
         session.eval_line("drums = bd sn").unwrap();
 
         let error = session.eval_line(":midi send drums 1").unwrap_err();
-        assert!(error.contains("cannot be sent as MIDI notes") || error.contains("no MIDI output is connected"));
+        assert!(
+            error.contains("cannot be sent as MIDI notes")
+                || error.contains("no MIDI output is connected")
+        );
     }
 
     #[test]

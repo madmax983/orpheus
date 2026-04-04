@@ -659,86 +659,65 @@ fn sample_event_json(event: &Event<crate::value::SampleEvent>) -> String {
         "      \"end_float\": {:.6},",
         f64::from(event.part.end())
     );
+    sample_event_json_params(&mut s, &event.value);
+    s.push_str("    }");
+    s
+}
+
+fn sample_event_json_params(s: &mut String, value: &crate::value::SampleEvent) {
     let _ = writeln!(
         s,
         "      \"sample\": \"{}\",",
-        escape_json_string(event.value.sample())
+        escape_json_string(value.sample())
     );
-    let _ = writeln!(s, "      \"gain\": {:.6},", event.value.gain());
-    let _ = writeln!(s, "      \"pan\": {:.6},", event.value.pan());
-    let _ = writeln!(s, "      \"rate\": {:.6},", event.value.rate());
-    let _ = writeln!(s, "      \"delay_mix\": {:.6},", event.value.delay_mix());
-    let _ = writeln!(s, "      \"delay_time\": {:.6},", event.value.delay_time());
+    let _ = writeln!(s, "      \"gain\": {:.6},", value.gain());
+    let _ = writeln!(s, "      \"pan\": {:.6},", value.pan());
+    let _ = writeln!(s, "      \"rate\": {:.6},", value.rate());
+    let _ = writeln!(s, "      \"delay_mix\": {:.6},", value.delay_mix());
+    let _ = writeln!(s, "      \"delay_time\": {:.6},", value.delay_time());
     let _ = writeln!(
         s,
         "      \"delay_feedback\": {:.6},",
-        event.value.delay_feedback()
+        value.delay_feedback()
     );
-    let _ = writeln!(s, "      \"reverb_mix\": {:.6},", event.value.reverb_mix());
-    let _ = writeln!(
-        s,
-        "      \"reverb_room\": {:.6},",
-        event.value.reverb_room()
-    );
-    let _ = writeln!(
-        s,
-        "      \"reverb_damp\": {:.6},",
-        event.value.reverb_damp()
-    );
-    let _ = writeln!(s, "      \"chorus_mix\": {:.6},", event.value.chorus_mix());
-    let _ = writeln!(
-        s,
-        "      \"chorus_depth\": {:.6},",
-        event.value.chorus_depth()
-    );
-    let _ = writeln!(
-        s,
-        "      \"chorus_rate\": {:.6},",
-        event.value.chorus_rate()
-    );
+    let _ = writeln!(s, "      \"reverb_mix\": {:.6},", value.reverb_mix());
+    let _ = writeln!(s, "      \"reverb_room\": {:.6},", value.reverb_room());
+    let _ = writeln!(s, "      \"reverb_damp\": {:.6},", value.reverb_damp());
+    let _ = writeln!(s, "      \"chorus_mix\": {:.6},", value.chorus_mix());
+    let _ = writeln!(s, "      \"chorus_depth\": {:.6},", value.chorus_depth());
+    let _ = writeln!(s, "      \"chorus_rate\": {:.6},", value.chorus_rate());
     let _ = writeln!(
         s,
         "      \"compressor_mix\": {:.6},",
-        event.value.compressor_mix()
+        value.compressor_mix()
     );
     let _ = writeln!(
         s,
         "      \"compressor_threshold\": {:.6},",
-        event.value.compressor_threshold()
+        value.compressor_threshold()
     );
     let _ = writeln!(
         s,
         "      \"compressor_ratio\": {:.6},",
-        event.value.compressor_ratio()
+        value.compressor_ratio()
     );
-    let _ = writeln!(s, "      \"resonance\": {:.6},", event.value.resonance());
-    let _ = writeln!(s, "      \"drive\": {:.6},", event.value.drive());
-    let _ = writeln!(
-        s,
-        "      \"pulse_width\": {:.6},",
-        event.value.pulse_width()
-    );
-    let _ = writeln!(
-        s,
-        "      \"slice_start\": {:.6},",
-        event.value.slice_start()
-    );
-    let _ = writeln!(s, "      \"slice_end\": {:.6},", event.value.slice_end());
+    let _ = writeln!(s, "      \"resonance\": {:.6},", value.resonance());
+    let _ = writeln!(s, "      \"drive\": {:.6},", value.drive());
+    let _ = writeln!(s, "      \"pulse_width\": {:.6},", value.pulse_width());
+    let _ = writeln!(s, "      \"slice_start\": {:.6},", value.slice_start());
+    let _ = writeln!(s, "      \"slice_end\": {:.6},", value.slice_end());
 
-    if let Some(hpf) = event.value.hpf_cutoff_hz() {
+    if let Some(hpf) = value.hpf_cutoff_hz() {
         let _ = writeln!(s, "      \"hpf_cutoff_hz\": {hpf:.6},");
     } else {
         s.push_str("      \"hpf_cutoff_hz\": null,\n");
     }
 
-    if let Some(lpf) = event.value.lpf_cutoff_hz() {
+    if let Some(lpf) = value.lpf_cutoff_hz() {
         let _ = writeln!(s, "      \"lpf_cutoff_hz\": {lpf:.6}");
     } else {
         s.push_str("      \"lpf_cutoff_hz\": null\n");
     }
-
-    s.push_str("    }");
-    s
 }
 
 fn number_event_json(event: &Event<f64>) -> String {
