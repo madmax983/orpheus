@@ -1649,4 +1649,13 @@ right = sometimes(fast(2), cp hh)";
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("function expected 1 argument(s), got 2"));
     }
+
+    #[test]
+    fn eval_apply_builtin_function_too_many_args_returns_error() {
+        let source = "result = fast(1, bd, sn)";
+        let result = eval_module(source, ReplMode::Loose);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("expected 2 argument(s), got 3"));
+    }
 }
