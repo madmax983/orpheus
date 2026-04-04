@@ -360,7 +360,12 @@ impl BuiltinKind {
         match self {
             Self::Every | Self::Arp | Self::Slice | Self::SliceIdx => 3,
             Self::When | Self::Within => 4,
-            Self::PitchClassSet | Self::Rev | Self::Sample | Self::Strum | Self::Chaos => 1,
+            Self::PitchClassSet
+            | Self::Rev
+            | Self::Sample
+            | Self::Strum
+            | Self::Chaos
+            | Self::MidiCc => 1,
             Self::Sometimes
             | Self::Mask
             | Self::Roll
@@ -397,7 +402,6 @@ impl BuiltinKind {
             | Self::Onset
             | Self::Rate
             | Self::Jux => 2,
-            Self::MidiCc => 1,
             Self::Rand => 0,
         }
     }
@@ -469,6 +473,7 @@ fn apply_midi_cc(args: Vec<Value>) -> Result<Value, EvalError> {
             "`midi_cc` requires an integer controller index within [0, 127]",
         ));
     }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let value = midi_input::cc_normalized(controller as u8);
     Ok(Value::NumberPattern(NumberPatternValue::constant(value)))
 }
