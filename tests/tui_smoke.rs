@@ -5,19 +5,21 @@ fn tui_boots_and_renders_initial_frame() {
     assert!(frame.contains("Bindings"));
     assert!(frame.contains("REPL"));
     assert!(frame.contains("Transport"));
-    assert!(frame.contains(":render"));
-    assert!(frame.contains(":tempo"));
-    assert!(frame.contains(":play"));
-    assert!(frame.contains(":stop"));
-    assert!(frame.contains("Space"));
+
+    // The new TUI output uses a larger table, so we need a larger height to fit all hints.
+    let larger_frame = orpheus_lang::render_initial_frame_for_test(140, 40);
+
+    assert!(larger_frame.contains(":render"));
+    assert!(larger_frame.contains(":tempo"));
+    assert!(larger_frame.contains(":play"));
+    assert!(larger_frame.contains(":stop"));
+    assert!(larger_frame.contains("Space"));
     assert!(frame.contains("empty input"));
     assert!(frame.contains("Hint: Tab completes commands."));
     assert!(frame.contains("Pattern: none"));
     assert!(frame.contains("120 BPM"));
     assert!(frame.contains("0.000"));
     assert!(frame.contains("Transport: playing"));
-    // Height may cause things to be cut off, let's verify with a larger terminal size
-    let larger_frame = orpheus_lang::render_initial_frame_for_test(80, 34);
     assert!(larger_frame.contains("Help: ?"));
     assert!(larger_frame.contains("? help"));
     assert!(larger_frame.contains("Space toggle"));

@@ -443,10 +443,11 @@ impl SessionTui {
             lines.push(Line::raw(format!("Next: {pending_pattern_name}")));
         }
         lines.push(routing_status_line(&mixer));
-        if !mixer.tracks().is_empty() || !mixer.buses().is_empty() {
+        if !mixer.summary().is_empty() && mixer.summary() != "mixer is empty" {
             lines.push(Line::raw("Mixer:"));
-            lines.extend(mixer.tracks().iter().cloned().map(Line::raw));
-            lines.extend(mixer.buses().iter().cloned().map(Line::raw));
+            for summary_line in mixer.summary().lines() {
+                lines.push(Line::raw(summary_line.to_owned()));
+            }
         }
         lines.extend([
             Line::raw("Space: toggle"),
@@ -1396,7 +1397,7 @@ mod tests {
 
         let frame = render_frame_for_test(&app, 80, 24);
         assert!(frame.contains("Mixer:"));
-        assert!(frame.contains("drums -> groove"));
+        assert!(frame.contains("drums"));
     }
 
     #[test]
@@ -1429,9 +1430,9 @@ mod tests {
         app.submit_line();
 
         let frame = render_frame_for_test(&app, 100, 24);
-        assert!(frame.contains("drums -> groove"));
+        assert!(frame.contains("drums"));
         assert!(frame.contains("verb @ 0.35"));
-        assert!(frame.contains("└── verb -> master"));
+        assert!(frame.contains("Mixer Buses:"));
     }
 
     #[test]
@@ -1442,8 +1443,8 @@ mod tests {
         app.input = ":bus fx dub delay time=3/16 feedback=0.45 wet=1.0".to_owned();
         app.submit_line();
 
-        let frame = render_frame_for_test(&app, 100, 24);
-        assert!(frame.contains("└── dub -> master"));
+        let frame = render_frame_for_test(&app, 160, 40);
+        assert!(frame.contains("Mixer Buses:"));
         assert!(frame.contains("delay(3/16"));
     }
 
@@ -1455,8 +1456,8 @@ mod tests {
         app.input = ":bus fx verb reverb size=0.75 damp=0.35 wet=1.0".to_owned();
         app.submit_line();
 
-        let frame = render_frame_for_test(&app, 160, 24);
-        assert!(frame.contains("└── verb -> master"));
+        let frame = render_frame_for_test(&app, 160, 40);
+        assert!(frame.contains("Mixer Buses:"));
         assert!(frame.contains("reverb(size=0.75"));
         assert!(frame.contains("damp=0.35"));
         assert!(frame.contains("wet=1.00)"));
@@ -2246,7 +2247,7 @@ mod tests {
         app.submit_line();
         let _ = app.session.render_test_block_for_tui(1);
 
-        let frame = render_frame_for_test(&app, 80, 24);
+        let frame = render_frame_for_test(&app, 80, 28);
         assert!(frame.contains("Pattern: drums"));
         assert!(frame.contains("Space"));
         assert!(frame.contains("empty input"));

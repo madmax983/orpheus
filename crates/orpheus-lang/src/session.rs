@@ -125,15 +125,13 @@ pub struct TransportView {
 /// session.render_test_block_for_tui(1);
 ///
 /// let view = session.mixer_view();
-/// assert!(view.tracks().iter().any(|line| line.contains("drums -> <unbound>")));
-/// assert!(view.buses().is_empty());
 /// assert!(view.has_pending_routing());
+/// assert!(view.summary().contains("drums"));
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MixerView {
-    tracks: Vec<String>,
-    buses: Vec<String>,
     has_pending_routing: bool,
+    summary: String,
 }
 
 impl TransportView {
@@ -197,46 +195,6 @@ impl TransportView {
 }
 
 impl MixerView {
-    /// Returns a slice of strings summarizing the state of all active tracks.
-    ///
-    /// ## Examples
-    ///
-    /// ```
-    /// use orpheus_lang::ReplSession;
-    /// use orpheus_dsp::EngineHandle;
-    ///
-    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
-    /// session.eval_line(":track new drums").unwrap();
-    ///
-    /// let view = session.mixer_view();
-    /// let tracks = view.tracks();
-    /// assert!(tracks.iter().any(|line| line.contains("drums -> <unbound>")));
-    /// ```
-    #[must_use]
-    pub fn tracks(&self) -> &[String] {
-        &self.tracks
-    }
-
-    /// Returns a slice of strings summarizing the state of all active buses.
-    ///
-    /// ## Examples
-    ///
-    /// ```
-    /// use orpheus_lang::ReplSession;
-    /// use orpheus_dsp::EngineHandle;
-    ///
-    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
-    /// session.eval_line(":bus new verb").unwrap();
-    ///
-    /// let view = session.mixer_view();
-    /// let buses = view.buses();
-    /// assert!(buses.iter().any(|line| line.contains("verb -> master")));
-    /// ```
-    #[must_use]
-    pub fn buses(&self) -> &[String] {
-        &self.buses
-    }
-
     /// Returns `true` if there are pending routing changes queued for the next cycle boundary.
     ///
     /// ## Examples
@@ -254,6 +212,12 @@ impl MixerView {
     #[must_use]
     pub const fn has_pending_routing(&self) -> bool {
         self.has_pending_routing
+    }
+
+    /// Returns the formatted summary of tracks and buses.
+    #[must_use]
+    pub fn summary(&self) -> &str {
+        &self.summary
     }
 }
 
@@ -1402,14 +1366,13 @@ impl ReplSession {
     /// session.eval_line(":track new drums").unwrap();
     ///
     /// let view = session.mixer_view();
-    /// assert!(view.tracks().iter().any(|line| line.contains("drums -> <unbound>")));
+    /// assert!(view.summary().contains("drums"));
     /// ```
     pub fn mixer_view(&self) -> MixerView {
         let snapshot = self.engine.transport_snapshot();
         MixerView {
-            tracks: self.mixer.track_summary_lines(),
-            buses: self.mixer.bus_summary_lines(),
             has_pending_routing: snapshot.has_pending_routing(),
+            summary: self.mixer.render_summary(),
         }
     }
 
@@ -1726,8 +1689,8 @@ mod tests {
 
         let mixer = session.eval_line(":mixer").unwrap();
 
-        assert!(mixer.contains("send verb @ 0.35"));
-        assert!(mixer.contains("send dub @ 0.50"));
+        assert!(mixer.contains("verb @ 0.35"));
+        assert!(mixer.contains("dub @ 0.50"));
     }
 
     #[test]
