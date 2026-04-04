@@ -1,3 +1,9 @@
+//! An algorithmic stereo reverberator.
+//!
+//! This reverb is constructed from parallel comb filters fed into a series of
+//! allpass filters. The hardcoded delay lengths are tuned slightly differently
+//! for the left and right channels to create a wide stereo image from a mono input.
+
 use crate::routing::ReverbSpec;
 
 const LEFT_COMB_LENGTHS: [usize; 4] = [149, 211, 263, 293];
