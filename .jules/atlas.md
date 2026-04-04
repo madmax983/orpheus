@@ -13,3 +13,7 @@
 ## YYYY-MM-DD - [Workspace Module Encapsulation]
 **Tangle:** Root crates (`orpheus-dsp`, `orpheus-lang`) leaked entire inner module namespaces to public consumers via `pub mod graph;`, `pub mod repl;`, and `pub mod tui;`, exposing unnecessary sub-module internal structures instead of providing a clean top-level API.
 **Blueprint:** Refactored crate roots using the Facade pattern: switched all `pub mod` to private `mod` and explicitly re-exported only the required items to the root via `pub use`. All tests and `src/main.rs` were updated to use the new flattened, decoupled API.
+
+## 2024-05-23 - [Standardize error types]
+**Tangle:** The `PitchLiteralError` struct in `crates/orpheus-lang/src/pitch.rs` did not implement the standard `std::error::Error` trait, violating error standardization across the workspace.
+**Blueprint:** Implemented `std::error::Error` for `PitchLiteralError` to align with other error types in the workspace and the broader Rust ecosystem.
