@@ -1,3 +1,16 @@
+//! Hindley-Milner type inference for the Orpheus language.
+//!
+//! This module provides the [`infer_module`] and [`infer_into_bindings`] functions,
+//! which analyze parsed Abstract Syntax Trees ([`crate::ast::Module`]) and assign
+//! concrete types to all top-level bindings.
+//!
+//! # Loose vs Strict Mode
+//! The inference engine respects the active [`ReplMode`].
+//! - In **Strict** mode, types must unify exactly, catching logic errors early in `.ode` files.
+//! - In **Loose** mode (typical for the REPL), the engine permits implicit coercions
+//!   (e.g., automatically lifting a single `Number` into a `Pattern<Number>`) to allow
+//!   for rapid live-coding iteration without excessive ceremony.
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ReplMode;

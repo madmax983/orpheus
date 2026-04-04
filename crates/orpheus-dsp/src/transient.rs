@@ -1,3 +1,14 @@
+//! Transient detection and sample chopping.
+//!
+//! This module provides algorithms to analyze raw audio buffers and identify rhythmic
+//! onset points (transients). This is primarily used by the `chop` function in the
+//! pattern language to automatically slice drum loops into individual hits.
+//!
+//! # Algorithm
+//! Transients are detected by calculating the amplitude envelope of the signal and
+//! measuring the "flux" (the positive difference in amplitude between consecutive samples).
+//! Peaks in the flux that exceed a dynamic local threshold are marked as transients.
+
 use std::sync::Arc;
 
 const SILENCE_FLOOR: f32 = 1.0e-4;
