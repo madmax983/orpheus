@@ -634,9 +634,7 @@ pub fn escape_json_string(s: &str) -> String {
     escaped
 }
 
-fn sample_event_json(event: &Event<crate::value::SampleEvent>) -> String {
-    let mut s = String::new();
-    s.push_str("    {\n");
+fn append_event_time_json<T>(s: &mut String, event: &Event<T>) {
     let _ = writeln!(
         s,
         "      \"start_num\": {},",
@@ -659,6 +657,12 @@ fn sample_event_json(event: &Event<crate::value::SampleEvent>) -> String {
         "      \"end_float\": {:.6},",
         f64::from(event.part.end())
     );
+}
+
+fn sample_event_json(event: &Event<crate::value::SampleEvent>) -> String {
+    let mut s = String::new();
+    s.push_str("    {\n");
+    append_event_time_json(&mut s, event);
     let _ = writeln!(
         s,
         "      \"sample\": \"{}\",",
@@ -744,28 +748,7 @@ fn sample_event_json(event: &Event<crate::value::SampleEvent>) -> String {
 fn number_event_json(event: &Event<f64>) -> String {
     let mut s = String::new();
     s.push_str("    {\n");
-    let _ = writeln!(
-        s,
-        "      \"start_num\": {},",
-        event.part.start().numerator()
-    );
-    let _ = writeln!(
-        s,
-        "      \"start_den\": {},",
-        event.part.start().denominator()
-    );
-    let _ = writeln!(
-        s,
-        "      \"start_float\": {:.6},",
-        f64::from(event.part.start())
-    );
-    let _ = writeln!(s, "      \"end_num\": {},", event.part.end().numerator());
-    let _ = writeln!(s, "      \"end_den\": {},", event.part.end().denominator());
-    let _ = writeln!(
-        s,
-        "      \"end_float\": {:.6},",
-        f64::from(event.part.end())
-    );
+    append_event_time_json(&mut s, event);
     let _ = writeln!(s, "      \"value\": {:.6}", event.value);
     s.push_str("    }");
     s
