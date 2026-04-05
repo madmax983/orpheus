@@ -341,11 +341,7 @@ fn schedule_snapshot_cycles(
                     track.id(),
                     cycle_start,
                     frames_per_cycle,
-                    events.iter().map(|event| Event {
-                        whole: event.whole.clone(),
-                        part: event.part.clone(),
-                        value: &event.value,
-                    }),
+                    events.iter(),
                 )?;
             }
         }
@@ -523,16 +519,7 @@ fn render_events_to_pcm(
         .ok_or(EngineError::FrameOverflow)?;
     let total_samples = usize::try_from(total_samples).map_err(|_| EngineError::FrameOverflow)?;
     let mut scheduler = Scheduler::default();
-    scheduler.schedule_cycle_events(
-        TrackId::new(0),
-        0,
-        frames_per_cycle,
-        events.iter().map(|event| Event {
-            whole: event.whole.clone(),
-            part: event.part.clone(),
-            value: &event.value,
-        }),
-    )?;
+    scheduler.schedule_cycle_events(TrackId::new(0), 0, frames_per_cycle, events.iter())?;
 
     let mut active_voices = std::iter::repeat_with(|| None)
         .take(MAX_ACTIVE_VOICES)

@@ -5,7 +5,6 @@
 //! `EngineHandle` for the front-end to control the `RenderEngine` running on the audio thread.
 
 use cpal::{BufferSize, SampleRate, StreamConfig};
-use orpheus_pattern::Event;
 use rtrb::{Consumer, Producer};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
@@ -319,11 +318,7 @@ impl EngineCore {
                     track.id(),
                     self.current_cycle_start_frame,
                     self.frames_per_cycle,
-                    events.iter().map(|event| Event {
-                        whole: event.whole.clone(),
-                        part: event.part.clone(),
-                        value: &event.value,
-                    }),
+                    events.iter(),
                 )?;
             }
         }

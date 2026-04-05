@@ -62,17 +62,20 @@ impl Scheduler {
         events: I,
     ) -> Result<(), EngineError>
     where
-        I: IntoIterator<Item = Event<&'a SampleTrigger>>,
+        I: IntoIterator<Item = &'a Event<SampleTrigger>>,
     {
-        let mut pending = Vec::new();
-        for event in events {
+        let iter = events.into_iter();
+        let (lower, upper) = iter.size_hint();
+        // ⚡ Bolt: Pre-allocate vectors based on iterator size hints to avoid O(N) heap allocations.
+        let mut pending = Vec::with_capacity(upper.unwrap_or(lower));
+        for event in iter {
             let offset = rational_to_frame_offset(event.part.start(), frames_per_cycle)?;
             let frame = cycle_start_frame
                 .checked_add(offset)
                 .ok_or(EngineError::FrameOverflow)?;
             pending.push(ScheduledTrigger {
                 frame,
-                duration_frames: duration_frames_for_event(&event, frames_per_cycle)?,
+                duration_frames: duration_frames_for_event(event, frames_per_cycle)?,
                 track_id,
                 trigger: event.value.clone(),
                 fallback_voice: VoiceKind::from_token(event.value.token()),
@@ -162,7 +165,7 @@ fn rational_to_frame_offset(start: &Rational, frames_per_cycle: u64) -> Result<u
 }
 
 fn duration_frames_for_event(
-    event: &Event<&SampleTrigger>,
+    event: &Event<SampleTrigger>,
     frames_per_cycle: u64,
 ) -> Result<u32, EngineError> {
     let start = rational_to_frame_offset(event.part.start(), frames_per_cycle)?;
