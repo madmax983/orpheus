@@ -123,7 +123,22 @@ pub struct TypedModule {
 }
 
 impl TypedModule {
-    pub(crate) const fn new(bindings: BTreeMap<String, Type>) -> Self {
+    /// Constructs a new `TypedModule` containing the provided type bindings.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::collections::BTreeMap;
+    /// use orpheus_lang::{Type, TypedModule};
+    ///
+    /// let mut bindings = BTreeMap::new();
+    /// bindings.insert("x".to_string(), Type::Number);
+    /// let module = TypedModule::new(bindings);
+    ///
+    /// assert!(module.contains_key("x"));
+    /// ```
+    #[must_use]
+    pub const fn new(bindings: BTreeMap<String, Type>) -> Self {
         Self { bindings }
     }
 
