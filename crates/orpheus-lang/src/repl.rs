@@ -49,10 +49,31 @@ pub fn run_stdio_with_engine_and_path(
     let stdin = io::stdin();
     let stdout = io::stdout();
     let stderr = io::stderr();
-    let mut session = ReplSession::with_engine(engine);
 
-    let mut stdout = stdout.lock();
-    let mut stderr = stderr.lock();
+    init_session_and_run_with_handles(
+        engine,
+        startup_path,
+        warning,
+        stdin.lock(),
+        stdout.lock(),
+        stderr.lock(),
+    )
+}
+
+fn init_session_and_run_with_handles<R, W, E>(
+    engine: EngineHandle,
+    startup_path: Option<&Path>,
+    warning: Option<String>,
+    reader: R,
+    mut stdout: W,
+    mut stderr: E,
+) -> io::Result<()>
+where
+    R: BufRead,
+    W: Write,
+    E: Write,
+{
+    let mut session = ReplSession::with_engine(engine);
 
     if let Some(msg) = warning {
         writeln!(stderr, "{}", format!("⚠️ {msg}").yellow().bold())?;
@@ -65,7 +86,7 @@ pub fn run_stdio_with_engine_and_path(
         }
     }
 
-    run_with_handles(stdin.lock(), stdout, stderr, &mut session)
+    run_with_handles(reader, stdout, stderr, &mut session)
 }
 
 fn run_with_handles<R, W, E>(
@@ -138,5 +159,86 @@ mod tests {
 
         let stderr_str = String::from_utf8(stderr).unwrap();
         assert!(stderr_str.contains("✗ parse error"));
+    }
+
+    #[test]
+    fn init_session_and_run_with_handles_prints_warning() {
+        let input = ":quit\n";
+        let reader = std::io::Cursor::new(input);
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        init_session_and_run_with_handles(
+            EngineHandle::stub(),
+            None,
+            Some("test warning".to_string()),
+            reader,
+            &mut stdout,
+            &mut stderr,
+        )
+        .unwrap();
+
+        let stderr_str = String::from_utf8(stderr).unwrap();
+        assert!(stderr_str.contains("⚠️ test warning"));
+    }
+
+    #[test]
+    fn init_session_and_run_with_handles_loads_file_successfully() {
+        use std::io::Write;
+
+        let dir = std::env::temp_dir();
+        let file_path = dir.join("test_startup.ode");
+        let mut file = std::fs::File::create(&file_path).unwrap();
+        writeln!(file, "a = bd").unwrap();
+
+        let input = ":quit\n";
+        let reader = std::io::Cursor::new(input);
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        init_session_and_run_with_handles(
+            EngineHandle::stub(),
+            Some(&file_path),
+            None,
+            reader,
+            &mut stdout,
+            &mut stderr,
+        )
+        .unwrap();
+
+        let stdout_str = String::from_utf8(stdout).unwrap();
+        assert!(
+            stdout_str.contains("✓ loaded")
+                || stdout_str.contains("✓ evaluated")
+                || stdout_str.contains("✓ opened"),
+            "stdout was: {}",
+            stdout_str
+        );
+    }
+
+    #[test]
+    fn init_session_and_run_with_handles_reports_file_load_error() {
+        let file_path = Path::new("/path/that/does/not/exist.ode");
+        let input = ":quit\n";
+        let reader = std::io::Cursor::new(input);
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        init_session_and_run_with_handles(
+            EngineHandle::stub(),
+            Some(file_path),
+            None,
+            reader,
+            &mut stdout,
+            &mut stderr,
+        )
+        .unwrap();
+
+        let stderr_str = String::from_utf8(stderr).unwrap();
+        assert!(
+            stderr_str.contains("✗ failed to read file") || stderr_str.contains("✗"),
+            "stderr was: {}",
+            stderr_str
+        );
     }
 }
