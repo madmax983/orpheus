@@ -1,13 +1,41 @@
 //! Abstract syntax tree nodes for the Phase 1 Orpheus parser.
 
 /// A parsed Orpheus module.
+///
+/// A module is the root unit of compilation and evaluation in Orpheus. It consists
+/// of a list of top-level statements, which are typically variable bindings or
+/// function definitions.
+///
+/// When a user types code into the REPL or loads a `.ode` file, the parser
+/// transforms that text into this AST representation before it is type-checked
+/// or evaluated.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::parse_module;
+///
+/// let module = parse_module("song = fast(2, bd sn)").unwrap();
+/// assert_eq!(module.statements.len(), 1);
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct Module {
     /// Top-level statements in source order.
     pub statements: Vec<Stmt>,
 }
 
-/// Phase 1 expression forms.
+/// Phase 1 expression forms representing all syntactical constructs in Orpheus.
+///
+/// The `Expr` enum forms the abstract syntax tree for the right-hand side of
+/// bindings and function bodies. It represents how primitive values, function
+/// calls, and structural patterns (like sequences or stacks) are constructed
+/// by the programmer.
+///
+/// # Examples
+///
+/// The expression `fast(2, bd)` is parsed into an `Expr::Call` containing an
+/// `Expr::Ident` ("fast") and two arguments: an `Expr::Number` (`2.0`) and an
+/// `Expr::Ident` ("bd").
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
     /// Sequential composition created by juxtaposition.
@@ -104,7 +132,16 @@ impl Expr {
     }
 }
 
-/// Phase 1 statements.
+/// Phase 1 statements representing top-level module declarations.
+///
+/// In Orpheus, the primary statement form is a `Binding`, which assigns a name
+/// to an evaluated pattern or creates a new reusable function.
+///
+/// # Examples
+///
+/// The Orpheus source `pattern = bd sn` parses into a single `Stmt::Binding`
+/// with the name `"pattern"` and no parameters. The source `swing amt pat = ...`
+/// parses into a `Stmt::Binding` with the name `"swing"` and parameters `["amt", "pat"]`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Stmt {
     /// A top-level binding statement.

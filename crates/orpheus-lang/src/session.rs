@@ -199,6 +199,9 @@ impl TransportView {
 impl MixerView {
     /// Returns a slice of strings summarizing the state of all active tracks.
     ///
+    /// This list is pre-formatted for display in the interactive shell (TUI)
+    /// and shows track bindings, volume levels, mute states, and active bus sends.
+    ///
     /// ## Examples
     ///
     /// ```
@@ -219,6 +222,9 @@ impl MixerView {
 
     /// Returns a slice of strings summarizing the state of all active buses.
     ///
+    /// This list is pre-formatted for display in the interactive shell (TUI)
+    /// and shows any hosted effects on the bus.
+    ///
     /// ## Examples
     ///
     /// ```
@@ -238,6 +244,9 @@ impl MixerView {
     }
 
     /// Returns `true` if there are pending routing changes queued for the next cycle boundary.
+    ///
+    /// The audio engine executes mixer commands transactionally at the start of the next cycle
+    /// to avoid audio glitches or dropouts.
     ///
     /// ## Examples
     ///
@@ -1289,6 +1298,10 @@ impl ReplSession {
     }
 
     /// Returns a summary of all active bindings and their inferred types.
+    ///
+    /// This lists all bindings in the order they were defined, returning strings like
+    /// `"drums: Pattern<Sample>"`. The interactive shell displays this output in the
+    /// bindings pane.
     ///
     /// ## Examples
     ///
@@ -2431,7 +2444,10 @@ mod tests {
         session.eval_line("drums = bd sn").unwrap();
 
         let error = session.eval_line(":midi send drums 1").unwrap_err();
-        assert!(error.contains("cannot be sent as MIDI notes") || error.contains("no MIDI output is connected"));
+        assert!(
+            error.contains("cannot be sent as MIDI notes")
+                || error.contains("no MIDI output is connected")
+        );
     }
 
     #[test]
