@@ -693,6 +693,11 @@ impl ReplSession {
                 }) {
                     crate::tracker::export_sample_pattern_to_tracker(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path.extension().is_some_and(|ext| {
+                    ext.eq_ignore_ascii_case("mid") || ext.eq_ignore_ascii_case("midi")
+                }) {
+                    crate::midi_export::export_sample_pattern_to_midi(pattern, path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
                 } else {
                     crate::export::export_sample_pattern_to_csv(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
@@ -734,6 +739,11 @@ impl ReplSession {
                     ext.eq_ignore_ascii_case("trk") || ext.eq_ignore_ascii_case("tracker")
                 }) {
                     crate::tracker::export_number_pattern_to_tracker(pattern, path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path.extension().is_some_and(|ext| {
+                    ext.eq_ignore_ascii_case("mid") || ext.eq_ignore_ascii_case("midi")
+                }) {
+                    crate::midi_export::export_number_pattern_to_midi(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 } else {
                     crate::export::export_number_pattern_to_csv(pattern, path, cycles)
@@ -2431,7 +2441,10 @@ mod tests {
         session.eval_line("drums = bd sn").unwrap();
 
         let error = session.eval_line(":midi send drums 1").unwrap_err();
-        assert!(error.contains("cannot be sent as MIDI notes") || error.contains("no MIDI output is connected"));
+        assert!(
+            error.contains("cannot be sent as MIDI notes")
+                || error.contains("no MIDI output is connected")
+        );
     }
 
     #[test]

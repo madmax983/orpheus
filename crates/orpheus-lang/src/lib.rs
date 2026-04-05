@@ -8,6 +8,7 @@ mod eval;
 pub(crate) mod export;
 pub(crate) mod html;
 mod loader;
+pub(crate) mod midi_export;
 mod midi_input;
 pub(crate) mod mixer;
 mod parser;
@@ -34,6 +35,7 @@ pub use export::{
 };
 pub use html::{export_number_pattern_to_html, export_sample_pattern_to_html};
 pub use loader::load_file_strict;
+pub use midi_export::{export_number_pattern_to_midi, export_sample_pattern_to_midi};
 pub use parser::parse_module;
 pub use repl::{run_stdio, run_stdio_with_engine, run_stdio_with_engine_and_path};
 pub use stats::{number_pattern_stats, sample_pattern_stats};
