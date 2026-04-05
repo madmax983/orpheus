@@ -41,6 +41,7 @@ pub struct TypeEnv {
 }
 
 impl TypeEnv {
+    #[allow(clippy::too_many_lines)]
     #[must_use]
     pub fn with_builtins() -> Self {
         let mut env = Self {

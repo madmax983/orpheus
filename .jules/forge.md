@@ -36,3 +36,11 @@
 **Flattening Deeply Nested AST Walkers (`match` and `if let`)**
 **Learning:** Heavy recursive tree walking (e.g. `eval.rs`) naturally clusters logic into massive, deeply nested `match` statements across AST node variants. This causes functions like `eval_explicit_expr` and `record_expr_site_salts` to grow horizontally and vertically out of control ("God Functions" and "Pyramids of Doom"), harming readability.
 **Action:** Relentlessly extract the bodies of complex match arms into specific `eval_variant` or `check_variant` helper methods. Replace `match` statements that only execute logic for one or two variants (while defaulting the rest) with `if let` guard clauses.
+
+**[God Function Refactoring - Typeify Validation]**
+**Learning:** Large functions (e.g., `validate_control_events`) consisting entirely of a `match` statement on an enum type are often a sign of a "God Function" that is taking responsibility away from the type itself.
+**Action:** Extract the match logic into a method directly on the Enum (`impl ControlPatternKind { fn validate(&self, value: f64) }`). This improves encapsulation, adheres to the "Typeify" move, and shrinks the original function to a simple iteration.
+
+**[Match Same Arms Reduction]**
+**Learning:** Repetitive match arms returning the same value clutter the code and trigger `clippy::match_same_arms`.
+**Action:** Combine identical match arms using the `|` syntax to improve conciseness and maintainability.
