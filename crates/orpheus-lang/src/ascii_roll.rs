@@ -3,7 +3,8 @@
 //! This module is used by the REPL and TUI to visualize the scheduled
 //! events of a pattern in the terminal, showing time on the x-axis.
 use std::collections::BTreeMap;
-use std::fmt::Write;
+
+use comfy_table::{Table, presets::UTF8_BORDERS_ONLY};
 
 use crate::eval::{EvalError, render_span};
 use crate::value::SamplePatternValue;
@@ -78,52 +79,23 @@ pub fn render_ascii_roll(
         }
     }
 
-    let max_label_len = lanes
-        .keys()
-        .map(std::string::String::len)
-        .max()
-        .unwrap_or(0);
-
-    let header_text = format!("Pattern Roll: {binding_name} ({cycle_count} cycles)");
-    #[allow(clippy::cast_possible_truncation)]
-    let grid_width = total_steps + (cycle_count as usize).saturating_sub(1);
-    let header_width = header_text.chars().count();
-    let row_width = max_label_len + 3 + grid_width; // label + " │ " + grid
-    let inner_width = row_width.max(header_width + 2); // ensures enough space for " header "
-
-    let mut output = String::new();
-
-    // Top border
-    writeln!(output, "┌{:─<1$}┐", "", inner_width + 2)?;
-
-    // Header
-    writeln!(output, "│ {header_text:<inner_width$} │")?;
-
-    // Separator
-    writeln!(output, "╞{:═<1$}╡", "", inner_width + 2)?;
+    let title = format!("Pattern Roll: {binding_name} ({cycle_count} cycles)");
+    let mut table = Table::new();
+    table.load_preset(UTF8_BORDERS_ONLY);
 
     for (sample, grid) in lanes {
-        write!(output, "│ {sample:>max_label_len$} │ ")?;
-
+        let mut row_output =
+            String::with_capacity(grid.len() + (cycle_count as usize).saturating_sub(1));
         for (i, &c) in grid.iter().enumerate() {
             if i > 0 && i % (steps_per_cycle as usize) == 0 {
-                output.push('│');
+                row_output.push('│');
             }
-            output.push(c);
+            row_output.push(c);
         }
-
-        // Pad right side if header is wider than the grid row
-        let padding = inner_width.saturating_sub(row_width);
-        if padding > 0 {
-            write!(output, "{: <1$}", "", padding)?;
-        }
-        output.push_str(" │\n");
+        table.add_row(vec![sample, row_output]);
     }
 
-    // Bottom border
-    writeln!(output, "└{:─<1$}┘", "", inner_width + 2)?;
-
-    Ok(output)
+    Ok(format!("{title}\n{table}"))
 }
 
 #[cfg(test)]
@@ -139,12 +111,11 @@ mod tests {
 
         let roll = render_ascii_roll("pattern", pattern, 1, 8).unwrap();
 
-        assert!(roll.contains("┌────────────────────────────────────┐"));
-        assert!(roll.contains("│ Pattern Roll: pattern (1 cycles)   │"));
-        assert!(roll.contains("╞════════════════════════════════════╡"));
-        assert!(roll.contains("│ bd │ x---....                      │"));
-        assert!(roll.contains("│ sn │ ....x---                      │"));
-        assert!(roll.contains("└────────────────────────────────────┘"));
+        assert!(roll.contains("Pattern Roll: pattern (1 cycles)"));
+        assert!(roll.contains("┌───────────────┐"));
+        assert!(roll.contains("│ bd   x---.... │"));
+        assert!(roll.contains("│ sn   ....x--- │"));
+        assert!(roll.contains("└───────────────┘"));
     }
 
     #[test]
@@ -155,11 +126,10 @@ mod tests {
 
         let roll = render_ascii_roll("pattern", pattern, 1, 8).unwrap();
 
-        assert!(roll.contains("┌────────────────────────────────────┐"));
-        assert!(roll.contains("│ Pattern Roll: pattern (1 cycles)   │"));
-        assert!(roll.contains("╞════════════════════════════════════╡"));
-        assert!(roll.contains("│ bd │ x-..x-..                      │"));
-        assert!(roll.contains("│ sn │ ..x-..x-                      │"));
-        assert!(roll.contains("└────────────────────────────────────┘"));
+        assert!(roll.contains("Pattern Roll: pattern (1 cycles)"));
+        assert!(roll.contains("┌───────────────┐"));
+        assert!(roll.contains("│ bd   x-..x-.. │"));
+        assert!(roll.contains("│ sn   ..x-..x- │"));
+        assert!(roll.contains("└───────────────┘"));
     }
 }
