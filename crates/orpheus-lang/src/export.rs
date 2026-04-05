@@ -634,6 +634,7 @@ pub fn escape_json_string(s: &str) -> String {
     escaped
 }
 
+#[allow(clippy::too_many_lines)]
 fn sample_event_json(event: &Event<crate::value::SampleEvent>) -> String {
     let mut s = String::new();
     s.push_str("    {\n");

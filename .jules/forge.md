@@ -1,38 +1,19 @@
-**[Rational to Float Conversion]**
-**Learning:** Found repetitive logic for converting a `Rational` to `f64` embedded in business logic inside `crates/orpheus-lang/src/eval.rs`, creating a "Boolean Blindness"-like clutter of casting logic.
-**Action:** Extract conversions to `impl From<&Rational> for f64` (and its owned counterpart) inside `crates/orpheus-pattern/src/rational.rs`, keeping business logic clean and typed.
+**[Refactoring Error Handling and Fallbacks]**
+**Learning:** Found multiple instances where `unwrap_or(func())` or `if let Some(x) = y { ... } else { ... }` was used, triggering `clippy::or_fun_call` and `clippy::option_if_let_else`. This creates eager evaluation of fallbacks (wasting cycles) and creates clunky, imperative conditional blocks instead of declarative chains.
+**Action:** Replace `unwrap_or(func())` with `unwrap_or_else(|| func())` to lazily evaluate the fallback. Replace `if let Some(x) = y` returning simple values with `.map_or(default, |x| ...)` or `.map_or_else(|| default(), |x| ...)`.
 
-**[Boundary overlap computation in Orpheus-lang]**
-**Learning:** Found deeply nested duplicated logic for matching overlapping span boundaries across `apply_control_pattern`, `apply_slice_pattern`, and `apply_slice_idx_pattern` causing "God Function"-like behavior.
-**Action:** Extract logic into `compute_event_fragment_boundaries` returning `Option<Vec<Rational>>` to flatten structures and remove repetitive boilerplate.
+**[Formatting Argument Inlining]**
+**Learning:** Formatting strings like `format!("{:?}", e)` triggered `clippy::uninlined_format_args`. Separating the format template from the variables requires extra mental tracking.
+**Action:** Inline arguments directly inside the format string where possible: `format!("{e:?}")`.
 
-**[Boilerplate Reduction in CSV Exporting]**
-**Learning:** Identified duplicate code logic for CSV file initialization, error handling, and event looping in `export.rs` across sample and number pattern exports.
-**Action:** Extract CSV boilerplate into a generic `export_pattern_events_to_csv` helper, removing duplication and keeping file I/O operations central.
+**[Test Assertion Idioms]**
+**Learning:** Using `if !condition { panic!("msg"); }` inside tests triggered `clippy::manual_assert`. The manual panic block adds unnecessary visual noise and indentation compared to standard macros.
+**Action:** Replace `if !condition { panic!(...) }` with `assert!(condition, ...)`.
 
-**[Boilerplate error mapping reduction]**
-**Learning:** Found repetitive logic mapping errors to `EvalError` using `.map_err(|e| EvalError::new(e.to_string()))` scattered across string formatting and file exporting operations.
-**Action:** Extract conversions to `impl From<std::io::Error> for EvalError` and `impl From<std::fmt::Error> for EvalError` inside `crates/orpheus-lang/src/eval.rs`, simplifying error handling logic and propagating errors cleanly with `?`.
+**[Flattening Match Arms]**
+**Learning:** Enums with multiple variants executing the exact same logic (returning the same value) triggered `clippy::match_same_arms`. This creates unnecessary duplication and stretches the vertical length of the function.
+**Action:** Merge identical match arms using the `|` operator (e.g. `VariantA | VariantB => value`).
 
-**[Iterator Chains over Loops]**
-**Learning:** Found several places in `crates/orpheus-lang/src/eval.rs` where manual loops `for item in items` were pushing into a mutable vector, creating boilerplate and unnecessary state mutation.
-**Action:** Replaced these loops with functional iterator chains like `.iter().map().collect()` and `.try_fold()`, which simplifies the code and is more idiomatic Rust.
-**[Boilerplate Reduction in JSON Exporting]**
-**Learning:** Identified duplicate code logic for JSON file initialization, metadata writing, and event looping in `export.rs` across sample and number pattern exports.
-**Action:** Extract JSON boilerplate into a generic `export_pattern_events_to_json` helper, removing duplication and keeping file I/O operations central.
-
-**Refactoring Negative Conditionals (`clippy::if_not_else`)**
-**Learning:** Checking a negative condition (`if !condition`) and providing an `else` branch requires more cognitive load to parse than a positive check.
-**Action:** When a negative check has an `else` branch, flip the condition and swap the block contents, or replace it with `else if` chains when possible. This is particularly prevalent in nested rendering or formatting logic.
-
-**[Encapsulating Type-Specific Operations]**
-**Learning:** Found repetitive `match` statements across `ExplicitValue::merge` and `eval_section_events` in `crates/orpheus-lang/src/eval.rs` operating manually on enum variants.
-**Action:** Encapsulate operations into helper methods (`append_unsorted`, `sort`) on the type itself. This reduces "Pyramid of Doom" nesting and adheres to the philosophy: "Types are documentation. Use them."
-
-**[Struct Extraction for Multiple Configuration Parameters]**
-**Learning:** Returning anonymous primitive tuples like `(Rational, f32, f32)` from functions (e.g., `parse_bus_delay_params`) creates "Boolean Blindness"-like ambiguity, making it easy to accidentally swap positional arguments like `feedback` and `wet` levels.
-**Action:** Apply the "Struct Extraction" pattern. Define dedicated named structs (e.g., `BusDelayParams`) and unpack the fields explicitly by name when passing them to downstream functions.
-
-**Flattening Deeply Nested AST Walkers (`match` and `if let`)**
-**Learning:** Heavy recursive tree walking (e.g. `eval.rs`) naturally clusters logic into massive, deeply nested `match` statements across AST node variants. This causes functions like `eval_explicit_expr` and `record_expr_site_salts` to grow horizontally and vertically out of control ("God Functions" and "Pyramids of Doom"), harming readability.
-**Action:** Relentlessly extract the bodies of complex match arms into specific `eval_variant` or `check_variant` helper methods. Replace `match` statements that only execute logic for one or two variants (while defaulting the rest) with `if let` guard clauses.
+**[Managing Large Configurations/Match Statements]**
+**Learning:** Some functions like `with_builtins()` and `validate_control_events` are inherently long because they define a massive configuration map or evaluate dozens of unique control parameters. Breaking them up artificially into smaller helpers actually *hurts* readability by destroying the unified, declarative layout.
+**Action:** When a long function is a giant `match` or configuration loader and cannot be logically extracted without reducing clarity, explicitly apply `#[allow(clippy::too_many_lines)]` rather than forcing an awkward split.

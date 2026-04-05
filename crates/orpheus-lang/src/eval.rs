@@ -226,14 +226,14 @@ impl ExplicitValue {
         Ok(self)
     }
 
-    fn append_unsorted(&mut self, other: Self) -> Result<(), EvalError> {
-        match (self, other) {
-            (Self::Sample(left), Self::Sample(mut right)) => {
-                left.append(&mut right);
+    fn append_unsorted(&mut self, mut other: Self) -> Result<(), EvalError> {
+        match (self, &mut other) {
+            (Self::Sample(left), Self::Sample(right)) => {
+                left.append(right);
                 Ok(())
             }
-            (Self::Number(left), Self::Number(mut right)) => {
-                left.append(&mut right);
+            (Self::Number(left), Self::Number(right)) => {
+                left.append(right);
                 Ok(())
             }
             (Self::Sample(_), Self::Number(_)) | (Self::Number(_), Self::Sample(_)) => Err(

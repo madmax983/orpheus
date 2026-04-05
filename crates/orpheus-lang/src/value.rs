@@ -2359,18 +2359,12 @@ impl GatePatternValue {
 impl GatePatternRuntime {
     fn query_open_spans(&self, span: &TimeSpan) -> Result<Vec<TimeSpan>, EvalError> {
         match self {
-            Self::Sample(pattern) => merge_open_spans(
-                pattern
-                    .try_query(span)?
-                    .into_iter()
-                    .map(|event| event.part),
-            ),
-            Self::Number(pattern) => merge_open_spans(
-                pattern
-                    .try_query(span)?
-                    .into_iter()
-                    .map(|event| event.part),
-            ),
+            Self::Sample(pattern) => {
+                merge_open_spans(pattern.try_query(span)?.into_iter().map(|event| event.part))
+            }
+            Self::Number(pattern) => {
+                merge_open_spans(pattern.try_query(span)?.into_iter().map(|event| event.part))
+            }
         }
     }
 }
@@ -2907,7 +2901,7 @@ enum ControlPatternKind {
 
 fn apply_event_fragments<'a, T, F, I>(
     source_events: &'a [Event<T>],
-    control_parts: I,
+    control_parts: &I,
     mut process_fragment: F,
 ) -> Result<Vec<Event<T>>, EvalError>
 where
@@ -2965,7 +2959,7 @@ where
 
     apply_event_fragments(
         &source_events,
-        control_events.iter().map(|e| &e.part),
+        &control_events.iter().map(|e| &e.part),
         |part, value| {
             let mut new_value = value.clone();
             for control_event in &control_events {
@@ -3034,6 +3028,7 @@ where
     )
 }
 
+#[allow(clippy::too_many_lines)]
 fn validate_control_events(
     control_events: &[Event<f64>],
     kind: ControlPatternKind,
@@ -3248,7 +3243,7 @@ where
 
     apply_event_fragments(
         &source_events,
-        start_events
+        &start_events
             .iter()
             .map(|e| &e.part)
             .chain(end_events.iter().map(|e| &e.part)),
@@ -3297,7 +3292,7 @@ where
 
     apply_event_fragments(
         &source_events,
-        control_events.iter().map(|e| &e.part),
+        &control_events.iter().map(|e| &e.part),
         |part, value| {
             let mut new_value = value.clone();
             for control_event in &control_events {
@@ -3334,7 +3329,7 @@ where
 
     apply_event_fragments(
         &source_events,
-        control_events.iter().map(|e| &e.part),
+        &control_events.iter().map(|e| &e.part),
         |part, value| {
             let mut new_value = value.clone();
             for control_event in &control_events {
@@ -3609,8 +3604,9 @@ where
         for i in (1..len).rev() {
             // LCG for next random number
             rng_state = rng_state
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            #[allow(clippy::cast_possible_truncation)]
             let j = (rng_state as usize) % (i + 1);
             if i != j {
                 // ⚡ Bolt: Swap values in-place without allocating an intermediate `Vec` or deep cloning strings.
@@ -3630,7 +3626,7 @@ where
                     let whole = if clipped_part == event.part {
                         event.whole.clone()
                     } else {
-                        Some(event.whole.unwrap_or(event.part.clone()))
+                        Some(event.whole.unwrap_or_else(|| event.part.clone()))
                     };
                     events.push(Event {
                         whole,
