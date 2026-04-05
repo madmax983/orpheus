@@ -156,9 +156,8 @@ pub fn render_routing_snapshot_to_stereo_for_test(
     let mut scheduler = Scheduler::default();
     schedule_snapshot_cycles(snapshot, cycle_count, frames_per_cycle, &mut scheduler)?;
 
-    let mut active_voices = std::iter::repeat_with(|| None)
-        .take(MAX_ACTIVE_VOICES)
-        .collect::<Vec<_>>();
+    let mut active_voices: Vec<Option<ActiveVoice>> =
+        (0..MAX_ACTIVE_VOICES).map(|_| None).collect();
     let mut track_mix_buffer = vec![(0.0_f32, 0.0_f32); snapshot.tracks().len()];
     let mut bus_mix_buffer = vec![(0.0_f32, 0.0_f32); snapshot.buses().len()];
     let mut bus_effect_states = snapshot
@@ -237,9 +236,8 @@ pub fn render_routing_snapshot_to_stem_wavs(
     let mut scheduler = Scheduler::default();
     schedule_snapshot_cycles(snapshot, cycle_count, frames_per_cycle, &mut scheduler)?;
 
-    let mut active_voices = std::iter::repeat_with(|| None)
-        .take(MAX_ACTIVE_VOICES)
-        .collect::<Vec<_>>();
+    let mut active_voices: Vec<Option<ActiveVoice>> =
+        (0..MAX_ACTIVE_VOICES).map(|_| None).collect();
     let mut track_mix_buffer = vec![(0.0_f32, 0.0_f32); snapshot.tracks().len()];
     let mut bus_mix_buffer = vec![(0.0_f32, 0.0_f32); snapshot.buses().len()];
     let mut track_stem_frame = vec![(0.0_f32, 0.0_f32); snapshot.tracks().len()];
@@ -254,16 +252,15 @@ pub fn render_routing_snapshot_to_stem_wavs(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let mut track_stems = snapshot
-        .tracks()
-        .iter()
-        .map(|_| Vec::with_capacity(total_frames_usize * usize::from(OFFLINE_CHANNELS)))
-        .collect::<Vec<_>>();
-    let mut bus_stems = snapshot
-        .buses()
-        .iter()
-        .map(|_| Vec::with_capacity(total_frames_usize * usize::from(OFFLINE_CHANNELS)))
-        .collect::<Vec<_>>();
+    let mut track_stems =
+        vec![
+            Vec::with_capacity(total_frames_usize * usize::from(OFFLINE_CHANNELS));
+            snapshot.tracks().len()
+        ];
+    let mut bus_stems = vec![
+        Vec::with_capacity(total_frames_usize * usize::from(OFFLINE_CHANNELS));
+        snapshot.buses().len()
+    ];
 
     for frame in 0..total_frames {
         activate_due_snapshot_voices(
@@ -534,9 +531,8 @@ fn render_events_to_pcm(
         }),
     )?;
 
-    let mut active_voices = std::iter::repeat_with(|| None)
-        .take(MAX_ACTIVE_VOICES)
-        .collect::<Vec<_>>();
+    let mut active_voices: Vec<Option<ActiveVoice>> =
+        (0..MAX_ACTIVE_VOICES).map(|_| None).collect();
     let mut rendered = Vec::with_capacity(total_samples);
 
     for frame in 0..total_frames {

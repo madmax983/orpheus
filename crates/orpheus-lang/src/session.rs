@@ -430,7 +430,7 @@ impl ReplSession {
     }
 
     fn render_binding(&self, args: &str) -> Result<String, String> {
-        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        let tokens: Vec<_> = args.split_whitespace().collect();
         if tokens.len() < 2 {
             return Err(render_usage().to_owned());
         }
@@ -543,7 +543,7 @@ impl ReplSession {
     }
 
     fn export_binding(&self, args: &str) -> Result<String, String> {
-        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        let tokens: Vec<_> = args.split_whitespace().collect();
         if tokens.len() < 2 {
             return Err(export_usage().to_owned());
         }
@@ -581,7 +581,7 @@ impl ReplSession {
     }
 
     fn export_stems(&self, args: &str) -> Result<String, String> {
-        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        let tokens: Vec<_> = args.split_whitespace().collect();
         if tokens.first().copied() != Some("stems") {
             return Err(export_usage().to_owned());
         }
@@ -754,7 +754,7 @@ impl ReplSession {
     }
 
     fn set_tempo(&mut self, args: &str) -> Result<String, String> {
-        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        let tokens: Vec<_> = args.split_whitespace().collect();
         if tokens.len() != 1 {
             return Err(tempo_usage().to_owned());
         }
@@ -878,7 +878,7 @@ impl ReplSession {
     }
 
     fn eval_track_command(&mut self, args: &str) -> Result<String, String> {
-        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        let tokens: Vec<_> = args.split_whitespace().collect();
         let Some(subcommand) = tokens.first().copied() else {
             return Err(track_usage().to_owned());
         };
@@ -926,7 +926,7 @@ impl ReplSession {
     }
 
     fn eval_bus_command(&mut self, args: &str) -> Result<String, String> {
-        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        let tokens: Vec<_> = args.split_whitespace().collect();
         match tokens.as_slice() {
             ["new", bus_name] => {
                 self.mixer.new_bus(bus_name)?;
@@ -957,7 +957,7 @@ impl ReplSession {
     }
 
     fn eval_send_command(&mut self, args: &str) -> Result<String, String> {
-        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        let tokens: Vec<_> = args.split_whitespace().collect();
         match tokens.as_slice() {
             [track_name, bus_name, level] => {
                 let level = level
@@ -984,7 +984,7 @@ impl ReplSession {
     }
 
     fn midi_command(&mut self, args: &str) -> Result<String, String> {
-        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        let tokens: Vec<_> = args.split_whitespace().collect();
         match tokens.as_slice() {
             ["in", "list"] => self.list_midi_inputs(),
             ["in", "connect", port @ ..] if !port.is_empty() => {
@@ -2431,7 +2431,10 @@ mod tests {
         session.eval_line("drums = bd sn").unwrap();
 
         let error = session.eval_line(":midi send drums 1").unwrap_err();
-        assert!(error.contains("cannot be sent as MIDI notes") || error.contains("no MIDI output is connected"));
+        assert!(
+            error.contains("cannot be sent as MIDI notes")
+                || error.contains("no MIDI output is connected")
+        );
     }
 
     #[test]
