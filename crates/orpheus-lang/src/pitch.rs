@@ -52,6 +52,8 @@ impl Display for PitchLiteralError {
     }
 }
 
+impl std::error::Error for PitchLiteralError {}
+
 /// Parses a named musical pitch literal into an integer MIDI offset.
 ///
 /// Converts a string like `"c4"`, `"cs4"`, `"df3"` into its corresponding
