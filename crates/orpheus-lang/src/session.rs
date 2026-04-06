@@ -2431,7 +2431,10 @@ mod tests {
         session.eval_line("drums = bd sn").unwrap();
 
         let error = session.eval_line(":midi send drums 1").unwrap_err();
-        assert!(error.contains("cannot be sent as MIDI notes") || error.contains("no MIDI output is connected"));
+        assert!(
+            error.contains("cannot be sent as MIDI notes")
+                || error.contains("no MIDI output is connected")
+        );
     }
 
     #[test]

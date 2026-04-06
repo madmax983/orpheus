@@ -4,6 +4,7 @@ pub(crate) mod ascii_roll;
 mod ast;
 mod builtins;
 mod diagnostics;
+mod error;
 mod eval;
 pub(crate) mod export;
 pub(crate) mod html;
@@ -25,6 +26,7 @@ mod value;
 pub use ascii_roll::render_ascii_roll;
 pub use ast::{Expr, Module, Stmt};
 pub use diagnostics::{LoadError, ParseError, TypeError};
+pub use error::Error;
 pub use eval::{EvalError, eval_module, render_span};
 pub use export::{
     RenderError, export_number_pattern_to_csv, export_number_pattern_to_json,

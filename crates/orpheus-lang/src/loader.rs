@@ -37,7 +37,7 @@ pub struct StrictLoadedFile {
 ///
 /// Returns [`LoadError`] when file I/O fails, an import directive is malformed,
 /// an imported name is missing, or strict-mode inference fails.
-pub fn load_file_strict(path: impl AsRef<Path>) -> Result<TypedModule, LoadError> {
+pub fn load_file_strict(path: impl AsRef<Path>) -> Result<TypedModule, crate::Error> {
     let mut visiting = BTreeSet::new();
     let loaded = load_file_strict_inner(path.as_ref(), &mut visiting)?;
     Ok(TypedModule::new(loaded.type_bindings))

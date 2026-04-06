@@ -14,9 +14,9 @@ use crate::types::{Type, TypeVarId, TypedModule};
 ///
 /// Returns [`TypeError`] when parsing fails or when type inference encounters
 /// an unresolved name or incompatible types.
-pub fn infer_module(source: &str, mode: ReplMode) -> Result<TypedModule, TypeError> {
-    let parsed = parse_module(source).map_err(TypeError::from)?;
-    Inferencer::new(mode).infer_module(&parsed)
+pub fn infer_module(source: &str, mode: ReplMode) -> Result<TypedModule, crate::Error> {
+    let parsed = parse_module(source)?;
+    Ok(Inferencer::new(mode).infer_module(&parsed)?)
 }
 
 /// Infers one source snippet against an existing binding environment.
@@ -29,14 +29,14 @@ pub fn infer_into_bindings(
     source: &str,
     mode: ReplMode,
     bindings: &mut BTreeMap<String, Type>,
-) -> Result<Option<(String, Type)>, TypeError> {
-    let parsed = parse_module(source).map_err(TypeError::from)?;
+) -> Result<Option<(String, Type)>, crate::Error> {
+    let parsed = parse_module(source)?;
     // ⚡ Bolt: Use `std::mem::take` instead of `bindings.clone()` to move the BTreeMap into the inferencer.
     // This avoids a full heap allocation and deep copy of the environment on every inference pass.
     let mut inferencer = Inferencer::with_bindings(mode, std::mem::take(bindings));
     let result = inferencer.infer_statements(&parsed.statements);
     *bindings = inferencer.user_bindings;
-    result
+    Ok(result?)
 }
 
 impl From<ParseError> for TypeError {

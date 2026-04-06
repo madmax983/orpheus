@@ -154,9 +154,9 @@ impl From<PatternError> for EvalError {
 ///
 /// Returns [`EvalError`] when parsing fails or when evaluation encounters an
 /// unsupported expression or builtin application.
-pub fn eval_module(source: &str, mode: ReplMode) -> Result<BTreeMap<String, Value>, EvalError> {
+pub fn eval_module(source: &str, mode: ReplMode) -> Result<BTreeMap<String, Value>, crate::Error> {
     let parsed = parse_module(source)?;
-    Evaluator::new(mode, &parsed).eval_module(&parsed)
+    Ok(Evaluator::new(mode, &parsed).eval_module(&parsed)?)
 }
 
 /// Evaluates a source module directly into an existing set of bindings.
@@ -185,14 +185,14 @@ pub fn eval_into_bindings(
     source: &str,
     mode: ReplMode,
     bindings: &mut BTreeMap<String, Value>,
-) -> Result<Option<(String, Value)>, EvalError> {
+) -> Result<Option<(String, Value)>, crate::Error> {
     let parsed = parse_module(source)?;
     // ⚡ Bolt: Use `std::mem::take` instead of `bindings.clone()` to move the BTreeMap into the evaluator.
     // This avoids a full heap allocation and deep copy of the environment on every REPL statement.
     let mut evaluator = Evaluator::with_bindings(mode, std::mem::take(bindings), &parsed);
     let result = evaluator.eval_statements(&parsed.statements);
     *bindings = evaluator.bindings;
-    result
+    Ok(result?)
 }
 
 struct Evaluator {

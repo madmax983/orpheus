@@ -24,10 +24,10 @@ struct SyntaxParser;
 ///
 /// Returns [`ParseError`] when the source does not match the Phase 1 grammar
 /// or when the parser encounters an internal AST construction failure.
-pub fn parse_module(source: &str) -> Result<Module, ParseError> {
+pub fn parse_module(source: &str) -> Result<Module, crate::Error> {
     let chunks = split_top_level_bindings(source);
     if chunks.is_empty() {
-        return parse_single_binding_module(source, 1);
+        return Ok(parse_single_binding_module(source, 1)?);
     }
 
     let mut statements = Vec::new();
