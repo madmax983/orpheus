@@ -123,6 +123,7 @@ pub struct TypedModule {
 }
 
 impl TypedModule {
+    #[must_use]
     pub const fn new(bindings: BTreeMap<String, Type>) -> Self {
         Self { bindings }
     }

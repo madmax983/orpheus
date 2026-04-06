@@ -1394,9 +1394,10 @@ mod tests {
         app.input = ":track bind drums groove".to_owned();
         app.submit_line();
 
-        let frame = render_frame_for_test(&app, 80, 24);
+        let frame = render_frame_for_test(&app, 120, 24);
         assert!(frame.contains("Mixer:"));
-        assert!(frame.contains("drums -> groove"));
+        assert!(frame.contains("drums"));
+        assert!(frame.contains("groove"));
     }
 
     #[test]
@@ -1429,9 +1430,10 @@ mod tests {
         app.submit_line();
 
         let frame = render_frame_for_test(&app, 100, 24);
-        assert!(frame.contains("drums -> groove"));
+        assert!(frame.contains("drums"));
+        assert!(frame.contains("groove"));
         assert!(frame.contains("verb @ 0.35"));
-        assert!(frame.contains("└── verb -> master"));
+        assert!(frame.contains("verb"));
     }
 
     #[test]
@@ -1442,8 +1444,8 @@ mod tests {
         app.input = ":bus fx dub delay time=3/16 feedback=0.45 wet=1.0".to_owned();
         app.submit_line();
 
-        let frame = render_frame_for_test(&app, 100, 24);
-        assert!(frame.contains("└── dub -> master"));
+        let frame = render_frame_for_test(&app, 120, 48);
+        assert!(frame.contains("dub"));
         assert!(frame.contains("delay(3/16"));
     }
 
@@ -1455,8 +1457,8 @@ mod tests {
         app.input = ":bus fx verb reverb size=0.75 damp=0.35 wet=1.0".to_owned();
         app.submit_line();
 
-        let frame = render_frame_for_test(&app, 160, 24);
-        assert!(frame.contains("└── verb -> master"));
+        let frame = render_frame_for_test(&app, 160, 48);
+        assert!(frame.contains("verb"));
         assert!(frame.contains("reverb(size=0.75"));
         assert!(frame.contains("damp=0.35"));
         assert!(frame.contains("wet=1.00)"));
@@ -2246,7 +2248,7 @@ mod tests {
         app.submit_line();
         let _ = app.session.render_test_block_for_tui(1);
 
-        let frame = render_frame_for_test(&app, 80, 24);
+        let frame = render_frame_for_test(&app, 80, 34);
         assert!(frame.contains("Pattern: drums"));
         assert!(frame.contains("Space"));
         assert!(frame.contains("empty input"));

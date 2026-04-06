@@ -17,10 +17,11 @@ fn test_dos_nested_parens() {
     match res {
         Ok(_) => panic!("Expected parse error due to max AST depth, but succeeded"),
         Err(e) => {
-            let msg = format!("{:?}", e);
-            if !msg.contains("maximum AST depth exceeded") {
-                panic!("Expected max AST depth error, got: {}", msg);
-            }
+            let msg = format!("{e:?}");
+            assert!(
+                msg.contains("maximum AST depth exceeded"),
+                "Expected max AST depth error, got: {msg}"
+            )
         }
     }
 }
@@ -37,10 +38,11 @@ fn test_dos_chained_pipes() {
     match res {
         Ok(_) => panic!("Expected parse error due to max AST depth, but succeeded"),
         Err(e) => {
-            let msg = format!("{:?}", e);
-            if !msg.contains("maximum AST depth exceeded") {
-                panic!("Expected max AST depth error, got: {}", msg);
-            }
+            let msg = format!("{e:?}");
+            assert!(
+                msg.contains("maximum AST depth exceeded"),
+                "Expected max AST depth error, got: {msg}"
+            )
         }
     }
 }
@@ -57,10 +59,11 @@ fn test_dos_chained_calls() {
     match res {
         Ok(_) => panic!("Expected parse error due to max AST depth, but succeeded"),
         Err(e) => {
-            let msg = format!("{:?}", e);
-            if !msg.contains("maximum AST depth exceeded") {
-                panic!("Expected max AST depth error, got: {}", msg);
-            }
+            let msg = format!("{e:?}");
+            assert!(
+                msg.contains("maximum AST depth exceeded"),
+                "Expected max AST depth error, got: {msg}"
+            )
         }
     }
 }
@@ -72,16 +75,17 @@ fn test_dos_meter_annotations() {
     for _ in 0..150 {
         payload.push_str("meter(1, 4) ");
     }
-    payload.push_str("1");
+    payload.push('1');
 
     let res = eval_module(&payload, ReplMode::Loose);
     match res {
         Ok(_) => panic!("Expected parse error due to max AST depth, but succeeded"),
         Err(e) => {
-            let msg = format!("{:?}", e);
-            if !msg.contains("maximum AST depth exceeded") {
-                panic!("Expected max AST depth error, got: {}", msg);
-            }
+            let msg = format!("{e:?}");
+            assert!(
+                msg.contains("maximum AST depth exceeded"),
+                "Expected max AST depth error, got: {msg}"
+            )
         }
     }
 }

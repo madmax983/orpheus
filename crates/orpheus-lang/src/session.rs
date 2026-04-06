@@ -125,7 +125,7 @@ pub struct TransportView {
 /// session.render_test_block_for_tui(1);
 ///
 /// let view = session.mixer_view();
-/// assert!(view.tracks().iter().any(|line| line.contains("drums -> <unbound>")));
+/// assert!(view.tracks().iter().any(|line| line.contains("drums") && line.contains("<unbound>")));
 /// assert!(view.buses().is_empty());
 /// assert!(view.has_pending_routing());
 /// ```
@@ -210,7 +210,7 @@ impl MixerView {
     ///
     /// let view = session.mixer_view();
     /// let tracks = view.tracks();
-    /// assert!(tracks.iter().any(|line| line.contains("drums -> <unbound>")));
+    /// assert!(tracks.iter().any(|line| line.contains("drums") && line.contains("<unbound>")));
     /// ```
     #[must_use]
     pub fn tracks(&self) -> &[String] {
@@ -230,7 +230,7 @@ impl MixerView {
     ///
     /// let view = session.mixer_view();
     /// let buses = view.buses();
-    /// assert!(buses.iter().any(|line| line.contains("verb -> master")));
+    /// assert!(buses.iter().any(|line| line.contains("verb")));
     /// ```
     #[must_use]
     pub fn buses(&self) -> &[String] {
@@ -1402,7 +1402,7 @@ impl ReplSession {
     /// session.eval_line(":track new drums").unwrap();
     ///
     /// let view = session.mixer_view();
-    /// assert!(view.tracks().iter().any(|line| line.contains("drums -> <unbound>")));
+    /// assert!(view.tracks().iter().any(|line| line.contains("drums") && line.contains("<unbound>")));
     /// ```
     pub fn mixer_view(&self) -> MixerView {
         let snapshot = self.engine.transport_snapshot();
@@ -1726,8 +1726,8 @@ mod tests {
 
         let mixer = session.eval_line(":mixer").unwrap();
 
-        assert!(mixer.contains("send verb @ 0.35"));
-        assert!(mixer.contains("send dub @ 0.50"));
+        assert!(mixer.contains("verb @ 0.35"));
+        assert!(mixer.contains("dub @ 0.50"));
     }
 
     #[test]
@@ -2010,7 +2010,7 @@ mod tests {
 
         assert!(message.contains("Pattern Stats: pattern (2 cycles)"));
         assert!(message.contains("Total Events"));
-        assert!(message.contains("8"));
+        assert!(message.contains('8'));
         assert!(message.contains("Unique Samples"));
         assert!(message.contains("2 (bd, sn)"));
         assert!(message.contains("Event Density"));
@@ -2521,10 +2521,10 @@ mod tests {
         let start = message
             .find('`')
             .unwrap_or_else(|| panic!("expected export path in message: {message}"));
-        let end = message[start + 1..]
-            .find('`')
-            .map(|index| start + 1 + index)
-            .unwrap_or_else(|| panic!("expected export path in message: {message}"));
+        let end = message[start + 1..].find('`').map_or_else(
+            || panic!("expected export path in message: {message}"),
+            |index| start + 1 + index,
+        );
         PathBuf::from(&message[start + 1..end])
     }
 

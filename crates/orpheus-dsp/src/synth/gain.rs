@@ -28,7 +28,7 @@ mod tests {
     #[test]
     fn gain_new_and_default_initialize_state() {
         let g1 = Gain::new();
-        let g2 = Gain::default();
+        let g2 = Gain;
         assert_eq!(g1, g2);
     }
 

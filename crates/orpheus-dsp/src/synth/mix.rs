@@ -35,7 +35,7 @@ mod tests {
     #[test]
     fn mix_new_and_default_initialize_state() {
         let m1 = Mix::new();
-        let m2 = Mix::default();
+        let m2 = Mix;
         assert_eq!(m1, m2);
     }
 

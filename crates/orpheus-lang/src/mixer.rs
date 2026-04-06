@@ -12,8 +12,8 @@
 //! - **Sends:** Connections that route a portion of a track's audio to a bus.
 
 use std::collections::BTreeMap;
-use std::fmt::Write;
 
+use comfy_table::{Table, presets::UTF8_BORDERS_ONLY};
 use orpheus_dsp::{RoutingSnapshot, SampleTrigger, TrackSource};
 use orpheus_pattern::Event;
 use orpheus_pattern::Rational;
@@ -261,11 +261,13 @@ impl MixerState {
     }
 
     pub(crate) fn render_summary(&self) -> String {
-        self.track_summary_lines()
-            .into_iter()
-            .chain(self.bus_summary_lines())
-            .collect::<Vec<_>>()
-            .join("\n")
+        let mut lines = self.track_summary_lines();
+        let bus_lines = self.bus_summary_lines();
+        if !bus_lines.is_empty() && !lines.is_empty() {
+            lines.push(String::new());
+        }
+        lines.extend(bus_lines);
+        lines.join("\n")
     }
 
     pub(crate) fn compile_snapshot(
@@ -335,76 +337,66 @@ impl MixerState {
     }
 
     pub(crate) fn track_summary_lines(&self) -> Vec<String> {
-        let mut lines = Vec::new();
+        let mut table = Table::new();
+        table.load_preset(UTF8_BORDERS_ONLY);
+        table.set_header(vec!["Track", "Source", "Level", "Muted", "Sends"]);
 
-        if self.has_explicit_bound_tracks() {
-            lines.push("Tracks:".to_owned());
-        } else if let Some(binding_name) = &self.compatibility_main_binding {
-            lines.push(format!("main -> {binding_name} (auto)"));
-        } else {
-            lines.push("main -> <unbound> (auto)".to_owned());
-        }
-
-        let track_count = self.tracks.len();
-        for (i, (track_name, track)) in self.tracks.iter().enumerate() {
-            let is_last_track = i == track_count - 1;
-            let binding_name = track.binding_name.as_deref().unwrap_or("<unbound>");
-            let track_prefix = if is_last_track {
-                "└──"
+        if !self.has_explicit_bound_tracks() {
+            if let Some(binding_name) = &self.compatibility_main_binding {
+                table.add_row(vec!["main", binding_name, "1.00", "false", ""]);
             } else {
-                "├──"
-            };
-            let mut line = format!("{track_prefix} {track_name} -> {binding_name}");
-            if track.muted {
-                line.push_str(" [muted]");
-            }
-            if (track.level - 1.0).abs() > f32::EPSILON {
-                write!(&mut line, " level {:.2}", track.level)
-                    .expect("writing to String should not fail");
-            }
-            lines.push(line);
-
-            let send_count = track.sends.len();
-            for (j, (bus_name, level)) in track.sends.iter().enumerate() {
-                let is_last_send = j == send_count - 1;
-                let track_indent = if is_last_track { "   " } else { "│  " };
-                let send_prefix = if is_last_send {
-                    "└──"
-                } else {
-                    "├──"
-                };
-                lines.push(format!(
-                    "{track_indent} {send_prefix} send {bus_name} @ {level:.2}"
-                ));
+                table.add_row(vec!["main", "<unbound>", "1.00", "false", ""]);
             }
         }
 
-        lines
+        for (track_name, track) in &self.tracks {
+            let binding_name = track.binding_name.as_deref().unwrap_or("<unbound>");
+
+            let mut sends = Vec::new();
+            for (bus_name, level) in &track.sends {
+                sends.push(format!("{bus_name} @ {level:.2}"));
+            }
+
+            table.add_row(vec![
+                track_name.clone(),
+                binding_name.to_owned(),
+                format!("{:.2}", track.level),
+                track.muted.to_string(),
+                sends.join(", "),
+            ]);
+        }
+
+        if table.row_iter().count() == 0 {
+            return Vec::new();
+        }
+
+        format!("Tracks\n{table}")
+            .lines()
+            .map(ToOwned::to_owned)
+            .collect()
     }
 
     pub(crate) fn bus_summary_lines(&self) -> Vec<String> {
-        let mut lines = Vec::new();
-        if !self.buses.is_empty() {
-            lines.push("Buses:".to_owned());
+        if self.buses.is_empty() {
+            return Vec::new();
         }
 
-        let bus_count = self.buses.len();
-        for (i, (bus_name, bus)) in self.buses.iter().enumerate() {
-            let is_last_bus = i == bus_count - 1;
-            let bus_prefix = if is_last_bus {
-                "└──"
-            } else {
-                "├──"
-            };
-            let mut line = format!("{bus_prefix} {bus_name} -> master");
-            if let Some(effect) = &bus.effect {
-                write!(&mut line, " {}", effect.summary())
-                    .expect("writing to String should not fail");
-            }
-            lines.push(line);
+        let mut table = Table::new();
+        table.load_preset(UTF8_BORDERS_ONLY);
+        table.set_header(vec!["Bus", "Effect"]);
+
+        for (bus_name, bus) in &self.buses {
+            let effect_summary = bus
+                .effect
+                .as_ref()
+                .map_or_else(String::new, MixerBusEffect::summary);
+            table.add_row(vec![bus_name.clone(), effect_summary]);
         }
 
-        lines
+        format!("Buses\n{table}")
+            .lines()
+            .map(ToOwned::to_owned)
+            .collect()
     }
 }
 
