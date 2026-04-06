@@ -400,7 +400,6 @@ impl SessionTui {
         let mut lines = self
             .transcript
             .iter()
-            .cloned()
             .flat_map(|entry| {
                 let style = if entry.starts_with("> ") {
                     Style::default().fg(Color::DarkGray)
@@ -418,8 +417,7 @@ impl SessionTui {
 
                 entry
                     .split('\n')
-                    .map(|line| Line::styled(line.to_owned(), style))
-                    .collect::<Vec<_>>()
+                    .map(move |line| Line::styled(line.to_owned(), style))
             })
             .collect::<Vec<_>>();
         let transport = self.session.transport_view();
