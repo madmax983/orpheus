@@ -725,20 +725,28 @@ fn sample_event_json(event: &Event<crate::value::SampleEvent>) -> String {
     );
     let _ = writeln!(s, "      \"slice_end\": {:.6},", event.value.slice_end());
 
-    if let Some(hpf) = event.value.hpf_cutoff_hz() {
+    append_cutoff_hz_json(
+        &mut s,
+        event.value.hpf_cutoff_hz(),
+        event.value.lpf_cutoff_hz(),
+    );
+
+    s.push_str("    }");
+    s
+}
+
+fn append_cutoff_hz_json(s: &mut String, hpf_cutoff: Option<f64>, lpf_cutoff: Option<f64>) {
+    if let Some(hpf) = hpf_cutoff {
         let _ = writeln!(s, "      \"hpf_cutoff_hz\": {hpf:.6},");
     } else {
         s.push_str("      \"hpf_cutoff_hz\": null,\n");
     }
 
-    if let Some(lpf) = event.value.lpf_cutoff_hz() {
+    if let Some(lpf) = lpf_cutoff {
         let _ = writeln!(s, "      \"lpf_cutoff_hz\": {lpf:.6}");
     } else {
         s.push_str("      \"lpf_cutoff_hz\": null\n");
     }
-
-    s.push_str("    }");
-    s
 }
 
 fn number_event_json(event: &Event<f64>) -> String {

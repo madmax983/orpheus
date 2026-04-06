@@ -2359,18 +2359,12 @@ impl GatePatternValue {
 impl GatePatternRuntime {
     fn query_open_spans(&self, span: &TimeSpan) -> Result<Vec<TimeSpan>, EvalError> {
         match self {
-            Self::Sample(pattern) => merge_open_spans(
-                pattern
-                    .try_query(span)?
-                    .into_iter()
-                    .map(|event| event.part),
-            ),
-            Self::Number(pattern) => merge_open_spans(
-                pattern
-                    .try_query(span)?
-                    .into_iter()
-                    .map(|event| event.part),
-            ),
+            Self::Sample(pattern) => {
+                merge_open_spans(pattern.try_query(span)?.into_iter().map(|event| event.part))
+            }
+            Self::Number(pattern) => {
+                merge_open_spans(pattern.try_query(span)?.into_iter().map(|event| event.part))
+            }
         }
     }
 }
@@ -2905,6 +2899,7 @@ enum ControlPatternKind {
     Transpose,
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn apply_event_fragments<'a, T, F, I>(
     source_events: &'a [Event<T>],
     control_parts: I,
@@ -3034,167 +3029,175 @@ where
     )
 }
 
-fn validate_control_events(
-    control_events: &[Event<f64>],
-    kind: ControlPatternKind,
-) -> Result<(), EvalError> {
-    for event in control_events {
-        match kind {
-            ControlPatternKind::Gain => {
-                if !event.value.is_finite() {
+impl ControlPatternKind {
+    #[allow(clippy::too_many_lines)]
+    fn validate(self, value: f64) -> Result<(), EvalError> {
+        match self {
+            Self::Gain => {
+                if !value.is_finite() {
                     return Err(EvalError::new(
                         "`gain` requires finite numeric control values",
                     ));
                 }
             }
-            ControlPatternKind::DelayMix => {
-                if !event.value.is_finite() || !(0.0..=1.0).contains(&event.value) {
+            Self::DelayMix => {
+                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
                     return Err(EvalError::new(
                         "`delay` requires finite control values within [0, 1]",
                     ));
                 }
             }
-            ControlPatternKind::DelayTime => {
-                if !event.value.is_finite() || event.value <= f64::EPSILON || event.value > 1.0 {
+            Self::DelayTime => {
+                if !value.is_finite() || value <= f64::EPSILON || value > 1.0 {
                     return Err(EvalError::new(
                         "`delay_time` requires positive finite control values within (0, 1]",
                     ));
                 }
             }
-            ControlPatternKind::DelayFeedback => {
-                if !event.value.is_finite() || !(0.0..=1.0).contains(&event.value) {
+            Self::DelayFeedback => {
+                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
                     return Err(EvalError::new(
                         "`delay_feedback` requires finite control values within [0, 1]",
                     ));
                 }
             }
-            ControlPatternKind::Hpf => {
-                if !event.value.is_finite() || event.value <= f64::EPSILON {
+            Self::Hpf => {
+                if !value.is_finite() || value <= f64::EPSILON {
                     return Err(EvalError::new(
                         "`hpf` requires positive finite control values",
                     ));
                 }
             }
-            ControlPatternKind::Lpf => {
-                if !event.value.is_finite() || event.value <= f64::EPSILON {
+            Self::Lpf => {
+                if !value.is_finite() || value <= f64::EPSILON {
                     return Err(EvalError::new(
                         "`lpf` requires positive finite control values",
                     ));
                 }
             }
-            ControlPatternKind::ReverbMix => {
-                if !event.value.is_finite() || !(0.0..=1.0).contains(&event.value) {
+            Self::ReverbMix => {
+                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
                     return Err(EvalError::new(
                         "`reverb` requires finite control values within [0, 1]",
                     ));
                 }
             }
-            ControlPatternKind::ReverbRoom => {
-                if !event.value.is_finite() || !(0.0..=1.0).contains(&event.value) {
+            Self::ReverbRoom => {
+                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
                     return Err(EvalError::new(
                         "`reverb_room` requires finite control values within [0, 1]",
                     ));
                 }
             }
-            ControlPatternKind::ReverbDamp => {
-                if !event.value.is_finite() || !(0.0..=1.0).contains(&event.value) {
+            Self::ReverbDamp => {
+                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
                     return Err(EvalError::new(
                         "`reverb_damp` requires finite control values within [0, 1]",
                     ));
                 }
             }
-            ControlPatternKind::Res => {
-                if !event.value.is_finite() || !(0.0..=1.0).contains(&event.value) {
+            Self::Res => {
+                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
                     return Err(EvalError::new(
                         "`res` requires finite control values within [0, 1]",
                     ));
                 }
             }
-            ControlPatternKind::Drive => {
-                if !event.value.is_finite() || event.value < 0.0 {
+            Self::Drive => {
+                if !value.is_finite() || value < 0.0 {
                     return Err(EvalError::new(
                         "`drive` requires finite non-negative control values",
                     ));
                 }
             }
-            ControlPatternKind::ChorusMix => {
-                if !event.value.is_finite() || !(0.0..=1.0).contains(&event.value) {
+            Self::ChorusMix => {
+                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
                     return Err(EvalError::new(
                         "`chorus` requires finite control values within [0, 1]",
                     ));
                 }
             }
-            ControlPatternKind::ChorusDepth => {
-                if !event.value.is_finite() || !(0.0..=1.0).contains(&event.value) {
+            Self::ChorusDepth => {
+                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
                     return Err(EvalError::new(
                         "`chorus_depth` requires finite control values within [0, 1]",
                     ));
                 }
             }
-            ControlPatternKind::ChorusRate => {
-                if !event.value.is_finite() || event.value <= f64::EPSILON {
+            Self::ChorusRate => {
+                if !value.is_finite() || value <= f64::EPSILON {
                     return Err(EvalError::new(
                         "`chorus_rate` requires positive finite control values",
                     ));
                 }
             }
-            ControlPatternKind::PulseWidth => {
-                if !event.value.is_finite() || !(0.0..1.0).contains(&event.value) {
+            Self::PulseWidth => {
+                if !value.is_finite() || !(0.0..1.0).contains(&value) {
                     return Err(EvalError::new(
                         "`pw` requires finite control values in the open interval (0, 1)",
                     ));
                 }
             }
-            ControlPatternKind::Pan => {
-                if !event.value.is_finite() || !(-1.0..=1.0).contains(&event.value) {
+            Self::Pan => {
+                if !value.is_finite() || !(-1.0..=1.0).contains(&value) {
                     return Err(EvalError::new(
                         "`pan` requires finite control values within [-1, 1]",
                     ));
                 }
             }
-            ControlPatternKind::CompressorMix => {
-                if !event.value.is_finite() || !(0.0..=1.0).contains(&event.value) {
+            Self::CompressorMix => {
+                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
                     return Err(EvalError::new(
                         "`compressor` requires finite control values within [0, 1]",
                     ));
                 }
             }
-            ControlPatternKind::CompressorThreshold => {
-                if !event.value.is_finite() || !(0.0..=1.0).contains(&event.value) {
+            Self::CompressorThreshold => {
+                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
                     return Err(EvalError::new(
                         "`compressor_threshold` requires finite control values within [0, 1]",
                     ));
                 }
             }
-            ControlPatternKind::CompressorRatio => {
-                if !event.value.is_finite() || event.value < 1.0 {
+            Self::CompressorRatio => {
+                if !value.is_finite() || value < 1.0 {
                     return Err(EvalError::new(
                         "`compressor_ratio` requires finite control values >= 1",
                     ));
                 }
             }
-            ControlPatternKind::Pitch => {
-                if !event.value.is_finite() {
+            Self::Pitch => {
+                if !value.is_finite() {
                     return Err(EvalError::new(
                         "`pitch` requires finite numeric control values",
                     ));
                 }
             }
-            ControlPatternKind::Rate => {
-                if !event.value.is_finite() || event.value.abs() <= f64::EPSILON {
+            Self::Rate => {
+                if !value.is_finite() || value.abs() <= f64::EPSILON {
                     return Err(EvalError::new(
                         "`rate` requires finite non-zero control values",
                     ));
                 }
             }
-            ControlPatternKind::Transpose => {
-                if !event.value.is_finite() {
+            Self::Transpose => {
+                if !value.is_finite() {
                     return Err(EvalError::new(
                         "`transpose` requires finite numeric control values",
                     ));
                 }
             }
         }
+        Ok(())
+    }
+}
+
+fn validate_control_events(
+    control_events: &[Event<f64>],
+    kind: ControlPatternKind,
+) -> Result<(), EvalError> {
+    for event in control_events {
+        kind.validate(event.value)?;
     }
 
     Ok(())
@@ -3611,6 +3614,7 @@ where
             rng_state = rng_state
                 .wrapping_mul(6364136223846793005)
                 .wrapping_add(1442695040888963407);
+            #[allow(clippy::cast_possible_truncation)]
             let j = (rng_state as usize) % (i + 1);
             if i != j {
                 // ⚡ Bolt: Swap values in-place without allocating an intermediate `Vec` or deep cloning strings.
@@ -3630,7 +3634,7 @@ where
                     let whole = if clipped_part == event.part {
                         event.whole.clone()
                     } else {
-                        Some(event.whole.unwrap_or(event.part.clone()))
+                        Some(event.whole.unwrap_or_else(|| event.part.clone()))
                     };
                     events.push(Event {
                         whole,

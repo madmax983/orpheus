@@ -226,6 +226,7 @@ impl ExplicitValue {
         Ok(self)
     }
 
+    #[allow(clippy::needless_pass_by_ref_mut)]
     fn append_unsorted(&mut self, other: Self) -> Result<(), EvalError> {
         match (self, other) {
             (Self::Sample(left), Self::Sample(mut right)) => {
