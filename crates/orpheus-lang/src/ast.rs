@@ -16,11 +16,25 @@ pub enum Expr {
     Stack(Vec<Self>),
     /// Explicit-time event stream composition created by `stream(...)`.
     Stream(Vec<Self>),
+    /// A let-bound graph block used by the pedal DSL.
+    Graph {
+        bindings: Vec<GraphBinding>,
+        result: Box<Self>,
+    },
     /// Pipe application created by `lhs |> rhs`.
     Pipe {
         /// The left-hand side expression to be piped.
         lhs: Box<Self>,
         /// The right-hand side function receiving the pipe.
+        rhs: Box<Self>,
+    },
+    /// Binary arithmetic used by graph-local control expressions.
+    Binary {
+        /// The left-hand side operand.
+        lhs: Box<Self>,
+        /// The operator between the operands.
+        op: BinaryOp,
+        /// The right-hand side operand.
         rhs: Box<Self>,
     },
     /// Function application created by `callee(...)`.
@@ -69,6 +83,26 @@ pub enum Expr {
     String(String),
 }
 
+/// A single let-bound signal inside a pedal graph.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphBinding {
+    /// The local signal name.
+    pub name: String,
+    /// The bound expression.
+    pub expr: Expr,
+}
+
+/// Arithmetic operators supported by the pedal graph surface.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BinaryOp {
+    /// Addition.
+    Add,
+    /// Multiplication.
+    Mul,
+    /// Assignment-like named argument syntax.
+    Assign,
+}
+
 impl Expr {
     fn references_ident(&self, target: &str) -> bool {
         match self {
@@ -77,7 +111,15 @@ impl Expr {
             | Self::Stream(items)
             | Self::SeqSections(items)
             | Self::Group(items) => items.iter().any(|item| item.references_ident(target)),
+            Self::Graph { bindings, result } => {
+                bindings.iter().any(|binding| {
+                    binding.name != target && binding.expr.references_ident(target)
+                }) || result.references_ident(target)
+            }
             Self::Pipe { lhs, rhs } => lhs.references_ident(target) || rhs.references_ident(target),
+            Self::Binary { lhs, rhs, .. } => {
+                lhs.references_ident(target) || rhs.references_ident(target)
+            }
             Self::Call { callee, args } => {
                 callee.references_ident(target)
                     || args.iter().any(|arg| arg.references_ident(target))

@@ -4,21 +4,30 @@ binding = { binding_head ~ padding ~ "=" ~ padding ~ pipe_expr }
 binding_head = { identifier ~ (required_padding ~ identifier)* }
 
 pipe_expr = { sequence ~ (padding ~ pipe_op ~ padding ~ pipe_target)* }
-pipe_target = { postfix }
+pipe_target = { sequence }
 
-sequence = { item ~ (required_padding ~ item)* }
-item = { postfix }
+sequence = { assign_expr ~ (required_padding ~ assign_expr)* }
 
-postfix = { primary ~ call_suffix* }
+assign_expr = { sum_expr ~ (padding ~ assign_op ~ padding ~ sum_expr)* }
+
+sum_expr = { product_expr ~ (padding ~ add_op ~ padding ~ product_expr)* }
+product_expr = { application ~ (padding ~ mul_op ~ padding ~ application)* }
+application = { primary ~ call_suffix* }
 call_suffix = { "(" ~ padding ~ call_args? ~ padding ~ ")" }
-primary = { stack | group | rest | number | string | identifier }
+primary = { graph | stack | group | rest | number | string | identifier }
 
-group = { "(" ~ padding ~ item ~ (required_padding ~ item)* ~ padding ~ ")" }
+group = { "(" ~ padding ~ sum_expr ~ (required_padding ~ sum_expr)* ~ padding ~ ")" }
 
 stack = { "stack" ~ "(" ~ padding ~ stack_layers ~ padding ~ ")" }
 stack_layers = { pipe_expr ~ (padding ~ "," ~ padding ~ pipe_expr)* }
 
 call_args = { pipe_expr ~ (padding ~ "," ~ padding ~ pipe_expr)* }
+
+graph = { "graph" ~ padding ~ "{" ~ padding ~ graph_body? ~ padding ~ "}" }
+graph_body = { graph_entry ~ (padding ~ ";" ~ padding ~ graph_entry)* }
+graph_entry = { graph_binding | graph_result }
+graph_binding = { identifier ~ padding ~ "=" ~ padding ~ pipe_expr }
+graph_result = { pipe_expr }
 
 identifier = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 number = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
@@ -27,6 +36,9 @@ string_char = { escape | !("\"" | NEWLINE) ~ ANY }
 escape = { "\\" ~ ("\"" | "\\" | "n" | "r" | "t") }
 rest = @{ "~" }
 pipe_op = _{ "|>" }
+add_op = { "+" }
+mul_op = { "*" }
+assign_op = { "=" }
 
 padding = _{ (" " | "\t" | NEWLINE)* }
 required_padding = _{ (" " | "\t" | NEWLINE)+ }
