@@ -1,4 +1,4 @@
-use orpheus_lang::{Expr, Stmt, parse_module};
+use orpheus_lang::{BinaryOp, Expr, Stmt, parse_module};
 
 fn binding_expr(source: &str) -> Expr {
     let module = parse_module(source).unwrap();
@@ -248,7 +248,7 @@ fn pedal_graph_parses_let_bound_block() {
                                         if matches!(callee.as_ref(), Expr::Ident(name) if name == "clip")
                                             && matches!(
                                                 args.as_slice(),
-                                                [Expr::Binary { lhs, rhs, .. }]
+                                                [Expr::Binary { lhs, op: BinaryOp::Assign, rhs }]
                                                     if matches!(lhs.as_ref(), Expr::Ident(name) if name == "model")
                                                         && matches!(rhs.as_ref(), Expr::Ident(name) if name == "silicon_hard")
                                             )
@@ -287,19 +287,31 @@ fn pedal_graph_parses_binary_control_expressions() {
                                     && matches!(
                                         args.as_slice(),
                                         [
-                                            Expr::Binary { lhs, rhs, .. },
+                                            Expr::Binary {
+                                                lhs,
+                                                op: BinaryOp::Add,
+                                                rhs
+                                            },
                                             Expr::Ident(name)
                                         ]
                                             if name == "dry"
                                                 && matches!(
                                                     lhs.as_ref(),
-                                                    Expr::Binary { lhs, rhs, .. }
+                                                    Expr::Binary {
+                                                        lhs,
+                                                        op: BinaryOp::Mul,
+                                                        rhs
+                                                    }
                                                         if matches!(lhs.as_ref(), Expr::Ident(name) if name == "dry")
                                                             && matches!(rhs.as_ref(), Expr::Number(value) if (*value - 0.2).abs() < f64::EPSILON)
                                                 )
                                                 && matches!(
                                                     rhs.as_ref(),
-                                                    Expr::Binary { lhs, rhs, .. }
+                                                    Expr::Binary {
+                                                        lhs,
+                                                        op: BinaryOp::Mul,
+                                                        rhs
+                                                    }
                                                         if matches!(lhs.as_ref(), Expr::Ident(name) if name == "wet")
                                                             && matches!(rhs.as_ref(), Expr::Number(value) if (*value - 0.8).abs() < f64::EPSILON)
                                                 )
@@ -316,11 +328,20 @@ fn pedal_graph_parses_binary_control_expressions() {
 #[test]
 fn pedal_graph_rejects_binding_after_result_expression() {
     let source = "drivebox = graph { wet = input ; wet |> output ; dry = input }";
-    assert_parse_error_contains(source, &["bindings must appear before the final result expression"]);
+    assert_parse_error_contains(
+        source,
+        &["bindings must appear before the final result expression"],
+    );
 }
 
 #[test]
 fn pedal_graph_requires_result_expression() {
     let source = "drivebox = graph { wet = input |> clip(model=silicon_hard) }";
     assert_parse_error_contains(source, &["graph", "result expression"]);
+}
+
+#[test]
+fn pedal_graph_rejects_general_assignment_expressions() {
+    let source = "drivebox = input = output";
+    assert!(parse_module(source).is_err());
 }

@@ -6,9 +6,7 @@ binding_head = { identifier ~ (required_padding ~ identifier)* }
 pipe_expr = { sequence ~ (padding ~ pipe_op ~ padding ~ pipe_target)* }
 pipe_target = { sequence }
 
-sequence = { assign_expr ~ (required_padding ~ assign_expr)* }
-
-assign_expr = { sum_expr ~ (padding ~ assign_op ~ padding ~ sum_expr)* }
+sequence = { sum_expr ~ (required_padding ~ sum_expr)* }
 
 sum_expr = { product_expr ~ (padding ~ add_op ~ padding ~ product_expr)* }
 product_expr = { application ~ (padding ~ mul_op ~ padding ~ application)* }
@@ -21,12 +19,14 @@ group = { "(" ~ padding ~ sum_expr ~ (required_padding ~ sum_expr)* ~ padding ~ 
 stack = { "stack" ~ "(" ~ padding ~ stack_layers ~ padding ~ ")" }
 stack_layers = { pipe_expr ~ (padding ~ "," ~ padding ~ pipe_expr)* }
 
-call_args = { pipe_expr ~ (padding ~ "," ~ padding ~ pipe_expr)* }
+call_args = { call_arg ~ (padding ~ "," ~ padding ~ call_arg)* }
+call_arg = { named_call_arg | pipe_expr }
+named_call_arg = { identifier ~ padding ~ assign_op ~ padding ~ pipe_expr }
 
 graph = { "graph" ~ padding ~ "{" ~ padding ~ graph_body? ~ padding ~ "}" }
 graph_body = { graph_entry ~ (padding ~ ";" ~ padding ~ graph_entry)* }
 graph_entry = { graph_binding | graph_result }
-graph_binding = { identifier ~ padding ~ "=" ~ padding ~ pipe_expr }
+graph_binding = { identifier ~ padding ~ assign_op ~ padding ~ pipe_expr }
 graph_result = { pipe_expr }
 
 identifier = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
@@ -38,7 +38,7 @@ rest = @{ "~" }
 pipe_op = _{ "|>" }
 add_op = { "+" }
 mul_op = { "*" }
-assign_op = { "=" }
+assign_op = _{ "=" }
 
 padding = _{ (" " | "\t" | NEWLINE)* }
 required_padding = _{ (" " | "\t" | NEWLINE)+ }
