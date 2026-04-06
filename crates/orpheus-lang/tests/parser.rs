@@ -345,3 +345,9 @@ fn pedal_graph_rejects_general_assignment_expressions() {
     let source = "drivebox = input = output";
     assert!(parse_module(source).is_err());
 }
+
+#[test]
+fn pipe_target_does_not_accept_a_sequence() {
+    let source = "drivebox = bd |> sn cp";
+    assert_parse_error_contains(source, &["expected", "EOI"]);
+}
