@@ -4,7 +4,7 @@ binding = { binding_head ~ padding ~ "=" ~ padding ~ pipe_expr }
 binding_head = { identifier ~ (required_padding ~ identifier)* }
 
 pipe_expr = { sequence ~ (padding ~ pipe_op ~ padding ~ pipe_target)* }
-pipe_target = { sequence }
+pipe_target = { application }
 
 sequence = { sum_expr ~ (required_padding ~ sum_expr)* }
 

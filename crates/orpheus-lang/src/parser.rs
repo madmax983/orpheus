@@ -270,7 +270,7 @@ fn build_sequence(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError
 }
 
 fn build_pipe_target(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
-    build_sequence(first_inner(pair, "pipe target")?, depth)
+    build_application(first_inner(pair, "pipe target")?, depth)
 }
 
 fn build_expr(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
