@@ -2766,3 +2766,22 @@ fn apply_user_function_returns_error_when_overapplied() {
         &["function expected 1 argument(s), got 2"],
     );
 }
+
+#[test]
+fn apply_builtin_function_returns_curried_function_when_underapplied() {
+    let module = eval_module("partial = fast(2)", ReplMode::Loose).unwrap();
+    let partial = module.get("partial").unwrap();
+    assert!(matches!(
+        partial,
+        Value::Function(FunctionValue::Builtin(_))
+    ));
+}
+
+#[test]
+fn apply_builtin_function_returns_error_when_overapplied() {
+    assert_eval_error_contains(
+        "err = fast(2, bd, 3)",
+        ReplMode::Loose,
+        &["`fast` expected 2 argument(s), got 3"],
+    );
+}
