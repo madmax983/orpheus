@@ -1,3 +1,18 @@
+//! Type inference engine for the Orpheus language.
+//!
+//! This module implements a Hindley-Milner type inference algorithm that traverses
+//! the Abstract Syntax Tree (AST) to deduce the types of all expressions without
+//! requiring explicit type annotations.
+//!
+//! ## Inference Modes
+//!
+//! The type inference strictness adapts to the active [`ReplMode`]:
+//! - **Loose Mode:** Used in the interactive REPL. It permits implicit coercions
+//!   (like promoting a primitive `Number` to a `Pattern<Number>`) to facilitate
+//!   rapid live-coding and experimentation.
+//! - **Strict Mode:** Used when evaluating `.ode` files. It enforces rigorous
+//!   type equality to ensure that saved compositions remain durable and reliable artifacts.
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ReplMode;

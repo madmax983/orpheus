@@ -2359,18 +2359,12 @@ impl GatePatternValue {
 impl GatePatternRuntime {
     fn query_open_spans(&self, span: &TimeSpan) -> Result<Vec<TimeSpan>, EvalError> {
         match self {
-            Self::Sample(pattern) => merge_open_spans(
-                pattern
-                    .try_query(span)?
-                    .into_iter()
-                    .map(|event| event.part),
-            ),
-            Self::Number(pattern) => merge_open_spans(
-                pattern
-                    .try_query(span)?
-                    .into_iter()
-                    .map(|event| event.part),
-            ),
+            Self::Sample(pattern) => {
+                merge_open_spans(pattern.try_query(span)?.into_iter().map(|event| event.part))
+            }
+            Self::Number(pattern) => {
+                merge_open_spans(pattern.try_query(span)?.into_iter().map(|event| event.part))
+            }
         }
     }
 }

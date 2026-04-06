@@ -1,3 +1,11 @@
+//! Schroeder reverberator implementation.
+//!
+//! This module implements a classic artificial reverberation algorithm based on
+//! Manfred Schroeder's design. It routes the incoming audio signal through a series
+//! of parallel comb filters to simulate room resonance, and then passes the mixed
+//! result through cascading allpass filters to increase echo density and diffuse
+//! the sound.
+
 use crate::routing::ReverbSpec;
 
 const LEFT_COMB_LENGTHS: [usize; 4] = [149, 211, 263, 293];

@@ -28,3 +28,7 @@
 ## 2026-03-24 - [The "Missing Link": Missing Examples in Export and Stats Functions]
 **Confusion:** Export formatting functions (e.g., `export_sample_pattern_to_svg`, `export_sample_pattern_to_html`, `export_number_pattern_to_txt`) and analysis tools (`sample_pattern_stats`) in `orpheus-lang` had no `/// ## Examples` executable blocks. This made it difficult for developers to understand how to correctly extract a pattern from an evaluation environment and interact with these APIs.
 **Clarification:** Added executable doctests to all functions in `crates/orpheus-lang/src/svg.rs`, `html.rs`, `txt.rs`, and `stats.rs` that utilize `eval_module` to parse a string, extract the pattern with `.get("...").unwrap().as_sample_pattern().unwrap()`, and pass it to the export functions, demonstrating correct instantiation and usage.
+
+## 2026-03-24 - [The "Black Box": Undocumented Signal Processing and Type Inference Modules]
+**Confusion:** Several important DSP modules (`transient.rs`, `effects/mod.rs`, `delay.rs`, `reverb.rs`) and the type inference engine (`types/infer.rs`) were acting as black boxes due to the absence of module-level (`//!`) documentation. This made it hard to understand their overall purpose in the system, such as how delay synchronizes with exact cycle times, or how Hindley-Milner handles loose/strict modes.
+**Clarification:** Added comprehensive module-level documentation to all 5 files, explaining their high-level architectural role, temporal synchronization guarantees, and inference mode mechanics.

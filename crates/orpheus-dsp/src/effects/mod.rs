@@ -1,3 +1,10 @@
+//! Lock-free audio effect implementations for the routing bus.
+//!
+//! This module houses the algorithms for global bus effects, such as Delay and Reverb.
+//! These effects run lock-free on the audio thread, synchronized exactly to the
+//! rational time cycles emitted by the pattern engine. They are driven by
+//! specifications originating from the mixer state in `orpheus-lang`.
+
 use crate::engine::EngineError;
 use crate::routing::BusEffectSpec;
 

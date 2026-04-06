@@ -1,3 +1,10 @@
+//! Transient detection and envelope following.
+//!
+//! This module provides tools for analyzing raw audio buffers to detect
+//! transients (sharp increases in volume, like drum hits). This is primarily
+//! used when a user loads an audio sample that needs to be automatically sliced
+//! into discrete, playable segments (e.g., slicing a drum loop).
+
 use std::sync::Arc;
 
 const SILENCE_FLOOR: f32 = 1.0e-4;

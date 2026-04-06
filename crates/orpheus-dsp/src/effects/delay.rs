@@ -1,3 +1,10 @@
+//! Tempo-synchronized delay effect.
+//!
+//! This module implements a stereo delay line that calculates its frame offsets
+//! exactly using `Rational` cycle times rather than generic milliseconds. This
+//! ensures that delay taps always land precisely on musical grid subdivisions
+//! without drifting.
+
 use orpheus_pattern::Rational;
 
 use crate::engine::EngineError;
