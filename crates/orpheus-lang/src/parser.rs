@@ -76,7 +76,8 @@ fn split_top_level_bindings(source: &str) -> Vec<(usize, String)> {
             current.push('\n');
         }
         current.push_str(line);
-        let (next_paren_depth, next_brace_depth) = update_nesting_depth(paren_depth, brace_depth, line);
+        let (next_paren_depth, next_brace_depth) =
+            update_nesting_depth(paren_depth, brace_depth, line);
         paren_depth = next_paren_depth;
         brace_depth = next_brace_depth;
     }
@@ -262,7 +263,7 @@ fn build_pipe_expr(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseErro
 fn build_sequence(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
     let items = pair
         .into_inner()
-        .map(|pair| build_assign_expr(pair, depth))
+        .map(|pair| build_sum_expr(pair, depth))
         .collect::<Result<Vec<_>, _>>()?;
 
     collapse_sequence(items, "sequence", depth)
@@ -282,7 +283,6 @@ fn build_expr(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
         Rule::application => build_application(pair, next_depth),
         Rule::product_expr => build_product_expr(pair, next_depth),
         Rule::sum_expr => build_sum_expr(pair, next_depth),
-        Rule::assign_expr => build_assign_expr(pair, next_depth),
         Rule::graph => build_graph(pair, next_depth),
         Rule::primary => build_expr(first_inner(pair, "primary expression")?, next_depth),
         Rule::group => build_group(pair, next_depth),
@@ -361,16 +361,12 @@ fn build_call_suffix_args(pair: Pair<'_, Rule>, depth: usize) -> Result<Vec<Expr
 
     args_pair
         .into_inner()
-        .map(|p| build_pipe_expr(p, depth))
+        .map(|pair| build_call_arg(pair, depth))
         .collect::<Result<Vec<_>, _>>()
 }
 
 fn build_sum_expr(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
     build_binary_expr(pair, BinaryRule::Add, depth)
-}
-
-fn build_assign_expr(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
-    build_binary_expr(pair, BinaryRule::Assign, depth)
 }
 
 fn build_product_expr(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
@@ -381,7 +377,6 @@ fn build_product_expr(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseE
 enum BinaryRule {
     Add,
     Mul,
-    Assign,
 }
 
 fn build_binary_expr(
@@ -395,10 +390,7 @@ fn build_binary_expr(
     let mut inner = pair.into_inner();
     let next_depth = depth + 1;
     let first = match expected_rule {
-        BinaryRule::Assign => build_sum_expr(next_pair(&mut inner, "binary lhs")?, next_depth)?,
-        BinaryRule::Add => {
-            build_product_expr(next_pair(&mut inner, "binary lhs")?, next_depth)?
-        }
+        BinaryRule::Add => build_product_expr(next_pair(&mut inner, "binary lhs")?, next_depth)?,
         BinaryRule::Mul => build_application(next_pair(&mut inner, "binary lhs")?, next_depth)?,
     };
 
@@ -413,12 +405,10 @@ fn build_binary_expr(
             .next()
             .ok_or_else(|| ParseError::new("missing binary rhs"))?;
         let rhs = match expected_rule {
-            BinaryRule::Assign => build_sum_expr(rhs_pair, current_depth)?,
             BinaryRule::Add => build_product_expr(rhs_pair, current_depth)?,
             BinaryRule::Mul => build_application(rhs_pair, current_depth)?,
         };
         let op = match (expected_rule, op_pair.as_rule()) {
-            (BinaryRule::Assign, Rule::assign_op) => BinaryOp::Assign,
             (BinaryRule::Add, Rule::add_op) => BinaryOp::Add,
             (BinaryRule::Mul, Rule::mul_op) => BinaryOp::Mul,
             _ => {
@@ -483,6 +473,31 @@ fn build_call_expr(callee: Expr, args: Vec<Expr>) -> Result<Expr, ParseError> {
     Ok(Expr::Call {
         callee: Box::new(callee),
         args,
+    })
+}
+
+fn build_call_arg(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    match pair.as_rule() {
+        Rule::call_arg => build_call_arg(first_inner(pair, "call arg")?, depth),
+        Rule::named_call_arg => build_named_call_arg(pair, depth),
+        Rule::pipe_expr => build_pipe_expr(pair, depth),
+        other => Err(ParseError::new(format!(
+            "unexpected parser rule while building call argument: {other:?}"
+        ))),
+    }
+}
+
+fn build_named_call_arg(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    let mut inner = pair.into_inner();
+    let name = next_pair(&mut inner, "named call argument name")?
+        .as_str()
+        .to_owned();
+    let value = build_pipe_expr(next_pair(&mut inner, "named call argument value")?, depth)?;
+
+    Ok(Expr::Binary {
+        lhs: Box::new(Expr::Ident(name)),
+        op: BinaryOp::Assign,
+        rhs: Box::new(value),
     })
 }
 
