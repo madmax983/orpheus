@@ -1,3 +1,9 @@
+//! Transient detection and audio slicing.
+//!
+//! This module provides tools for automatically slicing raw audio buffers (such as drum loops)
+//! by analyzing amplitude envelopes and spectral flux. These tools identify transient peaks
+//! to dynamically segment samples for slicing playback modes.
+
 use std::sync::Arc;
 
 const SILENCE_FLOOR: f32 = 1.0e-4;
@@ -6,6 +12,27 @@ const RELEASE_COEFFICIENT: f32 = 0.02;
 const THRESHOLD_MULTIPLIER: f32 = 3.0;
 const MIN_THRESHOLD: f32 = 0.005;
 
+/// Detects transient markers (slice points) in a given audio frame buffer.
+///
+/// This analyzes the amplitude envelope and spectral flux to identify sharp attacks,
+/// returning an array of normalized positions (0.0 to 1.0) where slices should occur.
+///
+/// ## Examples
+///
+/// ```rust,ignore
+/// // This function is used internally by the offline sample loader
+/// // to automatically generate slices for `SampleTrigger::slice`.
+///
+/// // Create a short impulse followed by silence
+/// let mut frames = vec![0.0; 44100];
+/// frames[100] = 1.0;
+/// frames[101] = -0.5;
+/// frames[20000] = 0.8;
+///
+/// // The offline loader calculates normalized markers internally:
+/// // let markers = detect_transient_markers(&frames, 44100);
+/// // assert!(markers.len() >= 2);
+/// ```
 #[allow(clippy::redundant_pub_crate)]
 #[allow(clippy::cast_precision_loss)]
 pub(crate) fn detect_transient_markers(frames: &[f32], sample_rate_hz: u32) -> Arc<[f64]> {

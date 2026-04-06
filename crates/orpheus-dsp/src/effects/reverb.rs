@@ -1,3 +1,9 @@
+//! Schroeder reverberator implementation.
+//!
+//! This module provides a classic Schroeder reverberator algorithm for spatial diffusion.
+//! It utilizes a network of parallel comb filters followed by series allpass filters
+//! to generate dense, lock-free artificial reverberation suitable for the DSP bus system.
+
 use crate::routing::ReverbSpec;
 
 const LEFT_COMB_LENGTHS: [usize; 4] = [149, 211, 263, 293];
@@ -7,6 +13,20 @@ const RIGHT_ALLPASS_LENGTHS: [usize; 2] = [47, 19];
 const ALLPASS_FEEDBACK: f32 = 0.5;
 const INPUT_GAIN: f32 = 0.125;
 
+/// Represents the runtime state of a Schroeder reverberator instance.
+///
+/// This struct holds the internal comb and allpass filter buffers required
+/// to calculate spatial diffusion on the audio thread.
+///
+/// ## Examples
+///
+/// ```rust,ignore
+/// // ReverbState is instantiated internally by the routing system.
+/// use orpheus_dsp::ReverbSpec;
+///
+/// let spec = ReverbSpec::new(0.8, 0.5);
+/// // The engine maps this spec to a ReverbState during graph compilation.
+/// ```
 #[derive(Debug)]
 pub struct ReverbState {
     left: ReverbChannelState,

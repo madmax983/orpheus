@@ -1,8 +1,29 @@
+//! Lock-free delay effect processing.
+//!
+//! This module provides a real-time, allocation-free delay line used by the DSP
+//! engine's bus system. It calculates exact frame buffer sizes based on rational time,
+//! ensuring delays stay perfectly synchronized with the musical cycle.
+
 use orpheus_pattern::Rational;
 
 use crate::engine::EngineError;
 use crate::routing::DelaySpec;
 
+/// Represents the runtime state of a single delay effect instance.
+///
+/// This struct holds the audio ring buffer and tracks write indices
+/// for lock-free audio thread execution.
+///
+/// ## Examples
+///
+/// ```rust,ignore
+/// // DelayState is instantiated internally by the routing system.
+/// use orpheus_dsp::DelaySpec;
+/// use orpheus_pattern::Rational;
+///
+/// let spec = DelaySpec::new(Rational::one(), 0.5, 0.5);
+/// // The engine maps this spec to a DelayState during graph compilation.
+/// ```
 #[derive(Debug)]
 pub struct DelayState {
     buffer: Vec<(f32, f32)>,
