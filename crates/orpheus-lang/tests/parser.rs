@@ -226,3 +226,101 @@ fn parses_multiple_top_level_bindings() {
         vec!["drums".to_owned(), "bass".to_owned()]
     );
 }
+
+#[test]
+fn pedal_graph_parses_let_bound_block() {
+    let source = "drivebox = graph { wet = input |> clip(model=silicon_hard) ; wet |> output }";
+    let module = parse_module(source).unwrap();
+    match &module.statements[0] {
+        Stmt::Binding { name, expr, .. } => {
+            assert_eq!(name, "drivebox");
+            match expr {
+                Expr::Graph { bindings, result } => {
+                    assert_eq!(bindings.len(), 1);
+                    assert_eq!(bindings[0].name, "wet");
+                    assert!(matches!(
+                        &bindings[0].expr,
+                        Expr::Pipe { lhs, rhs }
+                            if matches!(lhs.as_ref(), Expr::Ident(name) if name == "input")
+                                && matches!(
+                                    rhs.as_ref(),
+                                    Expr::Call { callee, args }
+                                        if matches!(callee.as_ref(), Expr::Ident(name) if name == "clip")
+                                            && matches!(
+                                                args.as_slice(),
+                                                [Expr::Binary { lhs, rhs, .. }]
+                                                    if matches!(lhs.as_ref(), Expr::Ident(name) if name == "model")
+                                                        && matches!(rhs.as_ref(), Expr::Ident(name) if name == "silicon_hard")
+                                            )
+                                )
+                    ));
+                    assert!(matches!(
+                        result.as_ref(),
+                        Expr::Pipe { lhs, rhs }
+                            if matches!(lhs.as_ref(), Expr::Ident(name) if name == "wet")
+                                && matches!(rhs.as_ref(), Expr::Ident(name) if name == "output")
+                    ));
+                }
+                other => panic!("unexpected AST: {other:#?}"),
+            }
+        }
+    }
+}
+
+#[test]
+fn pedal_graph_parses_binary_control_expressions() {
+    let source = "drivebox = graph { dry = input ; wet = input |> clip(model=silicon_hard) ; mix(dry * 0.2 + wet * 0.8, dry) |> output }";
+    let module = parse_module(source).unwrap();
+    match &module.statements[0] {
+        Stmt::Binding { expr, .. } => match expr {
+            Expr::Graph { bindings, result } => {
+                assert_eq!(bindings.len(), 2);
+                assert_eq!(bindings[0].name, "dry");
+                assert_eq!(bindings[1].name, "wet");
+                assert!(matches!(
+                    result.as_ref(),
+                    Expr::Pipe { lhs, rhs }
+                        if matches!(
+                            lhs.as_ref(),
+                            Expr::Call { callee, args }
+                                if matches!(callee.as_ref(), Expr::Ident(name) if name == "mix")
+                                    && matches!(
+                                        args.as_slice(),
+                                        [
+                                            Expr::Binary { lhs, rhs, .. },
+                                            Expr::Ident(name)
+                                        ]
+                                            if name == "dry"
+                                                && matches!(
+                                                    lhs.as_ref(),
+                                                    Expr::Binary { lhs, rhs, .. }
+                                                        if matches!(lhs.as_ref(), Expr::Ident(name) if name == "dry")
+                                                            && matches!(rhs.as_ref(), Expr::Number(value) if (*value - 0.2).abs() < f64::EPSILON)
+                                                )
+                                                && matches!(
+                                                    rhs.as_ref(),
+                                                    Expr::Binary { lhs, rhs, .. }
+                                                        if matches!(lhs.as_ref(), Expr::Ident(name) if name == "wet")
+                                                            && matches!(rhs.as_ref(), Expr::Number(value) if (*value - 0.8).abs() < f64::EPSILON)
+                                                )
+                                    )
+                        )
+                            && matches!(rhs.as_ref(), Expr::Ident(name) if name == "output")
+                ));
+            }
+            other => panic!("unexpected AST: {other:#?}"),
+        },
+    }
+}
+
+#[test]
+fn pedal_graph_rejects_binding_after_result_expression() {
+    let source = "drivebox = graph { wet = input ; wet |> output ; dry = input }";
+    assert_parse_error_contains(source, &["bindings must appear before the final result expression"]);
+}
+
+#[test]
+fn pedal_graph_requires_result_expression() {
+    let source = "drivebox = graph { wet = input |> clip(model=silicon_hard) }";
+    assert_parse_error_contains(source, &["graph", "result expression"]);
+}
