@@ -1652,4 +1652,47 @@ right = sometimes(fast(2), cp hh)";
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("function expected 1 argument(s), got 2"));
     }
+
+    #[test]
+    fn f64_to_rational_rejects_non_finite() {
+        let result = super::f64_to_rational(f64::INFINITY, "test context");
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "test context must be finite"
+        );
+    }
+
+    #[test]
+    fn f64_to_rational_rejects_large_fractional_overflow() {
+        // Will fail because parsing a long fraction scale exceeds checked_pow10 limits
+        let result = super::f64_to_rational(f64::MIN_POSITIVE, "test context");
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("exceeded the supported range")
+                || msg.contains("exceeded checked_pow10 limits")
+        );
+    }
+
+    #[test]
+    fn extract_constant_number_value_rejects_string() {
+        let value = Value::String("foo".to_string());
+        let result = super::extract_constant_number_value(value, "test context");
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "test context must resolve to a constant number"
+        );
+    }
+
+    #[test]
+    fn eval_meter_prefix_with_invalid_beats() {
+        let result = eval_module("test = meter(bd, 4, bd)", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "meter beat count must resolve to a constant number"
+        );
+    }
 }
