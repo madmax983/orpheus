@@ -5,3 +5,6 @@
 **Merge open spans via IntoIterator instead of Vec collection**
 **Learning:** Functions designed to aggregate or merge ordered sequences (like `merge_open_spans`) shouldn't force callers to `.collect()` intermediate lists. `try_query` naturally outputs ordered slices. Intermediate allocations just to satisfy `Vec<T>` function arguments inflate allocation profiles.
 **Action:** Refactor collection aggregators to accept `I: Iterator<Item = T>`, removing unnecessary `<Vec<_>>()` boundaries, providing zero-cost sequential evaluation passes without extra heap allocations on evaluation hot paths.
+**Stack Allocate Fixed-Size Collections on Hot Paths**
+**Learning:** Pre-allocating `Vec` capacity or explicitly avoiding `Vec` creation in loops and initialization allows eliminating unnecessary heap allocations entirely when the max number of elements is known at compile time and is relatively small (like `MAX_ACTIVE_VOICES = 32`).
+**Action:** Replace `Vec<Option<T>>` with `[Option<T>; MAX_SIZE]` when `MAX_SIZE` is known, avoiding heap allocations using `std::array::from_fn(|_| None)`.

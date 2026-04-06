@@ -185,7 +185,9 @@ pub enum EngineError {
 #[derive(Debug)]
 struct EngineCore {
     scheduler: Scheduler,
-    active_voices: Vec<Option<ActiveVoice>>,
+    /// Stack-allocated fixed-size array to avoid heap allocations on the audio hot-path
+    /// and during initialization, ensuring deterministic memory usage.
+    active_voices: [Option<ActiveVoice>; MAX_ACTIVE_VOICES],
     sample_bank: SampleBank,
     active_routing: RoutingSnapshot,
     pending_routing: Option<RoutingSnapshot>,
@@ -219,9 +221,7 @@ impl EngineCore {
         let bus_mix_buffer = vec![(0.0, 0.0); active_routing.buses().len()];
         Ok(Self {
             scheduler: Scheduler::default(),
-            active_voices: std::iter::repeat_with(|| None)
-                .take(MAX_ACTIVE_VOICES)
-                .collect(),
+            active_voices: std::array::from_fn(|_| None),
             sample_bank: SampleBank::load_builtin(),
             active_routing,
             pending_routing: None,
