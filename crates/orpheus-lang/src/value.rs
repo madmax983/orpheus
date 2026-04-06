@@ -2359,18 +2359,12 @@ impl GatePatternValue {
 impl GatePatternRuntime {
     fn query_open_spans(&self, span: &TimeSpan) -> Result<Vec<TimeSpan>, EvalError> {
         match self {
-            Self::Sample(pattern) => merge_open_spans(
-                pattern
-                    .try_query(span)?
-                    .into_iter()
-                    .map(|event| event.part),
-            ),
-            Self::Number(pattern) => merge_open_spans(
-                pattern
-                    .try_query(span)?
-                    .into_iter()
-                    .map(|event| event.part),
-            ),
+            Self::Sample(pattern) => {
+                merge_open_spans(pattern.try_query(span)?.into_iter().map(|event| event.part))
+            }
+            Self::Number(pattern) => {
+                merge_open_spans(pattern.try_query(span)?.into_iter().map(|event| event.part))
+            }
         }
     }
 }
@@ -3219,6 +3213,11 @@ fn whole_number_from_degree_value(value: f64) -> Result<i32, EvalError> {
 fn map_degree_to_semitones(degree: i32, collection: &PitchClassSetValue) -> Result<f64, EvalError> {
     let intervals = collection.intervals();
     let scale_len = i32::try_from(intervals.len()).unwrap_or_default();
+    if scale_len == 0 {
+        return Err(EvalError::new(
+            "`degrees` requires a non-empty pitch class set",
+        ));
+    }
     let octave = degree.div_euclid(scale_len);
     let index = usize::try_from(degree.rem_euclid(scale_len)).unwrap_or_default();
     let semitones = octave
@@ -4516,6 +4515,17 @@ mod tests {
         // C0 and C1 should likely be different permutations
         assert_ne!(c0_names, vec!["bd", "sn", "cp", "hh"]);
         assert_ne!(c0_names, c1_names);
+    }
+
+    #[test]
+    fn map_degree_to_semitones_division_by_zero_panic() {
+        let empty_set = super::PitchClassSetValue::from_slice(&[]);
+        // This will panic due to scale_len == 0 if unmitigated
+        let err = super::map_degree_to_semitones(5, &empty_set).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "`degrees` requires a non-empty pitch class set"
+        );
     }
 
     #[test]
