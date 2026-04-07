@@ -248,6 +248,54 @@ fn multiple_top_level_bindings_infer_in_order() {
 }
 
 #[test]
+fn pedal_graph_binding_infers_pedal_type() {
+    let typed = infer_module("fx = graph { level = 0.5 ; level }", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("fx"), &Type::Pedal);
+}
+
+#[test]
+fn through_applies_pedal_to_sample_pattern() {
+    let typed = infer_module(
+        "fx = graph { level = 0.5 ; level }\nlead = through(fx, bd sn)",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(typed.type_of("lead").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn pedal_value_is_not_a_number_pattern() {
+    let error = infer_module(
+        "fx = graph { level = 0.5 ; level }\nclock = rate(fx, bd sn)",
+        ReplMode::Strict,
+    )
+    .unwrap_err();
+
+    assert!(
+        error
+            .to_string()
+            .contains("type mismatch: expected Pattern<Number>, found Pedal")
+    );
+}
+
+#[test]
+fn pedal_value_is_not_a_sample_pattern() {
+    let error = infer_module(
+        "fx = graph { level = 0.5 ; level }\nlead = rate(1, fx)",
+        ReplMode::Strict,
+    )
+    .unwrap_err();
+
+    assert!(
+        error
+            .to_string()
+            .contains("type mismatch: expected Pattern<Sample>, found Pedal")
+    );
+}
+
+#[test]
 fn parameterized_binding_infers_a_curried_function_type() {
     let typed = infer_module("swing amt pat = pat |> shift(amt)", ReplMode::Strict).unwrap();
 

@@ -34,6 +34,8 @@ pub enum Type {
     Pattern(Box<Self>),
     /// A named audio file from a loaded sample bank (e.g., `"kick"`).
     Sample,
+    /// A behavior-first pedal graph value.
+    Pedal,
     /// A discrete musical pitch or frequency representation.
     Note,
     /// A generic numeric value, primarily used for DSP parameters like gain or filter cutoff.
@@ -91,6 +93,7 @@ impl Display for Type {
         match self {
             Self::Pattern(inner) => write!(formatter, "Pattern<{inner}>"),
             Self::Sample => formatter.write_str("Sample"),
+            Self::Pedal => formatter.write_str("Pedal"),
             Self::Note => formatter.write_str("Note"),
             Self::Number => formatter.write_str("Number"),
             Self::Duration => formatter.write_str("Duration"),
@@ -167,6 +170,7 @@ mod tests {
     #[test]
     fn type_display_formats_correctly() {
         assert_eq!(Type::Sample.to_string(), "Sample");
+        assert_eq!(Type::Pedal.to_string(), "Pedal");
         assert_eq!(Type::Note.to_string(), "Note");
         assert_eq!(Type::Number.to_string(), "Number");
         assert_eq!(Type::Duration.to_string(), "Duration");

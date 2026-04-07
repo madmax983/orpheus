@@ -113,6 +113,13 @@ impl TypeEnv {
                 Type::pattern(Type::Sample),
             )),
         );
+        env.insert(
+            "through",
+            TypeScheme::monomorphic(Type::curried(
+                vec![Type::Pedal, Type::pattern(Type::Sample)],
+                Type::pattern(Type::Sample),
+            )),
+        );
         env.insert("onset", sample_control_scheme());
         env.insert(
             "slice",

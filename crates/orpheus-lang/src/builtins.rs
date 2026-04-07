@@ -188,6 +188,7 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
                 | Value::PitchClassSet(_)
                 | Value::Function(_)
                 | Value::String(_) => unreachable!(),
+                Value::Pedal(_) => unreachable!(),
             })
             .collect();
         return Ok(Value::SamplePattern(SamplePatternValue::stack(patterns)));
@@ -206,6 +207,7 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
                 | Value::PitchClassSet(_)
                 | Value::Function(_)
                 | Value::String(_) => unreachable!(),
+                Value::Pedal(_) => unreachable!(),
             })
             .collect();
         return Ok(Value::NumberPattern(
@@ -507,6 +509,9 @@ fn apply_every(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::String(_) => Err(EvalError::new(
             "`every` expected a pattern as its final argument",
         )),
+        Value::Pedal(_) => Err(EvalError::new(
+            "`every` expected a pattern as its final argument",
+        )),
     }
 }
 
@@ -555,6 +560,9 @@ fn apply_when(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::String(_) => Err(EvalError::new(
             "`when` expected a pattern as its final argument",
         )),
+        Value::Pedal(_) => Err(EvalError::new(
+            "`when` expected a pattern as its final argument",
+        )),
     }
 }
 
@@ -593,6 +601,9 @@ fn apply_jux(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::String(_) => Err(EvalError::new(
             "`jux` expected a sample pattern as its final argument",
         )),
+        Value::Pedal(_) => Err(EvalError::new(
+            "`jux` expected a sample pattern as its final argument",
+        )),
     }
 }
 
@@ -622,6 +633,9 @@ fn apply_sometimes(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError>
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::String(_) => Err(EvalError::new(
+            "`sometimes` expected a pattern as its final argument",
+        )),
+        Value::Pedal(_) => Err(EvalError::new(
             "`sometimes` expected a pattern as its final argument",
         )),
     }
@@ -665,6 +679,9 @@ fn apply_within(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::String(_) => Err(EvalError::new(
             "`within` expected a pattern as its final argument",
         )),
+        Value::Pedal(_) => Err(EvalError::new(
+            "`within` expected a pattern as its final argument",
+        )),
     }
 }
 
@@ -687,6 +704,9 @@ fn apply_mask(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::String(_) => Err(EvalError::new(
+            "`mask` expected a pattern as its final argument",
+        )),
+        Value::Pedal(_) => Err(EvalError::new(
             "`mask` expected a pattern as its final argument",
         )),
     }
@@ -763,6 +783,7 @@ fn apply_roll(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::String(_) => Err(EvalError::new("`roll` requires a pattern argument")),
+        Value::Pedal(_) => Err(EvalError::new("`roll` requires a pattern argument")),
     }
 }
 
@@ -867,6 +888,9 @@ fn apply_fast(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::String(_) => Err(EvalError::new(
             "`fast` expected a pattern as its final argument",
         )),
+        Value::Pedal(_) => Err(EvalError::new(
+            "`fast` expected a pattern as its final argument",
+        )),
     }
 }
 
@@ -888,6 +912,9 @@ fn apply_slow(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::String(_) => Err(EvalError::new(
+            "`slow` expected a pattern as its final argument",
+        )),
+        Value::Pedal(_) => Err(EvalError::new(
             "`slow` expected a pattern as its final argument",
         )),
     }
@@ -913,6 +940,9 @@ fn apply_shift(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::String(_) => Err(EvalError::new(
             "`shift` expected a pattern as its final argument",
         )),
+        Value::Pedal(_) => Err(EvalError::new(
+            "`shift` expected a pattern as its final argument",
+        )),
     }
 }
 
@@ -929,6 +959,7 @@ fn apply_rev(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::String(_) => Err(EvalError::new("`rev` expected a pattern argument")),
+        Value::Pedal(_) => Err(EvalError::new("`rev` expected a pattern argument")),
     }
 }
 
@@ -1233,6 +1264,9 @@ fn apply_onset(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::String(_) => Err(EvalError::new(
             "`onset` expected a sample pattern as its final argument",
         )),
+        Value::Pedal(_) => Err(EvalError::new(
+            "`onset` expected a sample pattern as its final argument",
+        )),
     }
 }
 
@@ -1285,6 +1319,9 @@ fn apply_slice(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::String(_) => Err(EvalError::new(
             "`slice` expected a sample pattern as its final argument",
         )),
+        Value::Pedal(_) => Err(EvalError::new(
+            "`slice` expected a sample pattern as its final argument",
+        )),
     }
 }
 
@@ -1326,6 +1363,9 @@ fn apply_slice_idx(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::String(_) => Err(EvalError::new(
             "`slice_idx` expected a sample pattern as its final argument",
         )),
+        Value::Pedal(_) => Err(EvalError::new(
+            "`slice_idx` expected a sample pattern as its final argument",
+        )),
     }
 }
 
@@ -1359,6 +1399,9 @@ fn apply_sample_numeric_control(
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::String(_) => Err(EvalError::new(format!(
+            "`{builtin_name}` expected a sample pattern as its final argument"
+        ))),
+        Value::Pedal(_) => Err(EvalError::new(format!(
             "`{builtin_name}` expected a sample pattern as its final argument"
         ))),
     }
@@ -1424,7 +1467,8 @@ fn extract_unary_pattern_transform(
         | Value::NumberPattern(_)
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
-        | Value::String(_) => Err(EvalError::new(message)),
+        | Value::String(_)
+        | Value::Pedal(_) => Err(EvalError::new(message)),
     }
 }
 
@@ -1441,6 +1485,7 @@ fn extract_pattern_gate(
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(message)),
     }
 }
@@ -2221,6 +2266,9 @@ fn extract_number_pattern(
         | Value::String(_) => Err(EvalError::new(format!(
             "`{builtin_name}` requires a number pattern argument"
         ))),
+        Value::Pedal(_) => Err(EvalError::new(format!(
+            "`{builtin_name}` requires a number pattern argument"
+        ))),
     }
 }
 
@@ -2238,6 +2286,9 @@ fn extract_constant_number(value: Value, builtin_name: &str) -> Result<f64, Eval
         | Value::String(_) => Err(EvalError::new(format!(
             "`{builtin_name}` requires a constant number argument"
         ))),
+        Value::Pedal(_) => Err(EvalError::new(format!(
+            "`{builtin_name}` requires a constant number argument"
+        ))),
     }
 }
 
@@ -2249,6 +2300,9 @@ fn extract_string(value: Value, builtin_name: &str) -> Result<String, EvalError>
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_) => Err(EvalError::new(format!(
+            "`{builtin_name}` requires a string argument"
+        ))),
+        Value::Pedal(_) => Err(EvalError::new(format!(
             "`{builtin_name}` requires a string argument"
         ))),
     }
@@ -2264,6 +2318,9 @@ fn extract_arp_direction(value: &Value) -> Result<ArpDirectionValue, EvalError> 
         | Value::String(_) => Err(EvalError::new(
             "`arp` requires a direction argument like `up`, `down`, `pingpong`, or `updown`",
         )),
+        Value::Pedal(_) => Err(EvalError::new(
+            "`arp` requires a direction argument like `up`, `down`, `pingpong`, or `updown`",
+        )),
     }
 }
 
@@ -2277,6 +2334,9 @@ fn extract_pitch_class_set(value: Value) -> Result<PitchClassSetValue, EvalError
         | Value::NumberPattern(_)
         | Value::ArpDirection(_)
         | Value::Function(_) => Err(EvalError::new(
+            "`degrees` requires a pitch class set as its first argument",
+        )),
+        Value::Pedal(_) => Err(EvalError::new(
             "`degrees` requires a pitch class set as its first argument",
         )),
     }
