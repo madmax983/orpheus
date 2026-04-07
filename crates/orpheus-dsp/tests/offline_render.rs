@@ -1,12 +1,13 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use orpheus_dsp::{
-    EngineCommand, EngineHandle, RoutingSnapshot, SampleBank, SampleTrigger, TrackSource,
-    load_sample_bank_from_directory, render_events_to_file_with_bank,
-    render_routing_snapshot_to_stereo_for_test,
+    EngineCommand, EngineHandle, NodeRef, PedalNode, PedalProgram, PedalStage, RoutingSnapshot,
+    SampleBank, SampleTrigger, TrackSource, load_sample_bank_from_directory,
+    render_events_to_file_with_bank, render_routing_snapshot_to_stereo_for_test,
 };
 use orpheus_pattern::{Event, Rational, TimeSpan};
 
@@ -376,6 +377,104 @@ fn analog_offline_render_renders_non_silent_audio() {
 }
 
 #[test]
+fn sample_voice_renders_through_pedal_program() {
+    let directory = temp_directory("sample-pedal-offline");
+    fs::write(
+        directory.join("samples.ron"),
+        "(\n  tokens: {\n    \"vox_ah\": \"vox.wav\",\n  },\n)\n",
+    )
+    .unwrap();
+    write_wav(directory.join("vox.wav"), &[0.8, 0.6, 0.4, 0.2]);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+
+    let dry_snapshot = RoutingSnapshot::builder()
+        .track_with_source(
+            "vox",
+            TrackSource::SamplePattern(
+                vec![Event {
+                    whole: None,
+                    part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+                    value: SampleTrigger::named("vox_ah"),
+                }]
+                .into_boxed_slice(),
+            ),
+        )
+        .route("vox", "master")
+        .build()
+        .unwrap();
+    let wet_snapshot = RoutingSnapshot::builder()
+        .track_with_source(
+            "vox",
+            TrackSource::SamplePattern(
+                vec![Event {
+                    whole: None,
+                    part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+                    value: SampleTrigger::named("vox_ah")
+                        .with_pedal_program(level_pedal_program(0.25)),
+                }]
+                .into_boxed_slice(),
+            ),
+        )
+        .route("vox", "master")
+        .build()
+        .unwrap();
+
+    let dry =
+        render_routing_snapshot_to_stereo_for_test(&dry_snapshot, 1, 48_000.0, &bank).unwrap();
+    let wet =
+        render_routing_snapshot_to_stereo_for_test(&wet_snapshot, 1, 48_000.0, &bank).unwrap();
+
+    assert!(wet.iter().any(|sample| sample.abs() > 1.0e-4));
+    assert_ne!(dry, wet);
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn analog_voice_renders_through_pedal_program() {
+    let bank = SampleBank::load_builtin();
+    let dry_snapshot = RoutingSnapshot::builder()
+        .track_with_source(
+            "lead",
+            TrackSource::SamplePattern(
+                vec![Event {
+                    whole: None,
+                    part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+                    value: SampleTrigger::named("saw"),
+                }]
+                .into_boxed_slice(),
+            ),
+        )
+        .route("lead", "master")
+        .build()
+        .unwrap();
+    let wet_snapshot = RoutingSnapshot::builder()
+        .track_with_source(
+            "lead",
+            TrackSource::SamplePattern(
+                vec![Event {
+                    whole: None,
+                    part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+                    value: SampleTrigger::named("saw").with_pedal_program(level_pedal_program(0.1)),
+                }]
+                .into_boxed_slice(),
+            ),
+        )
+        .route("lead", "master")
+        .build()
+        .unwrap();
+
+    let dry =
+        render_routing_snapshot_to_stereo_for_test(&dry_snapshot, 1, 48_000.0, &bank).unwrap();
+    let wet =
+        render_routing_snapshot_to_stereo_for_test(&wet_snapshot, 1, 48_000.0, &bank).unwrap();
+
+    assert!(dry.iter().any(|sample| sample.abs() > 1.0e-4));
+    assert!(wet.iter().any(|sample| sample.abs() > 1.0e-4));
+    assert_ne!(dry, wet);
+}
+
+#[test]
 fn offline_render_matches_live_shared_reverb_bus() {
     let directory = temp_directory("shared-reverb-offline-parity");
     write_wav(directory.join("pulse.wav"), &[1.0, 0.0, 0.0, 0.0]);
@@ -599,6 +698,21 @@ fn temp_directory(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!("orpheus-dsp-{}-{name}", unique_temp_suffix()));
     fs::create_dir_all(&directory).unwrap();
     directory
+}
+
+fn level_pedal_program(amount: f32) -> Arc<PedalProgram> {
+    Arc::new(
+        PedalProgram::new("graph { input |> level(amount) |> output }", "level pedal").with_graph(
+            vec![
+                PedalNode::constant(amount),
+                PedalNode::stage(PedalStage::Level {
+                    input: NodeRef::Input,
+                    amount: NodeRef::node(0),
+                }),
+            ],
+            NodeRef::node(1),
+        ),
+    )
 }
 
 fn temp_wav_path() -> PathBuf {
