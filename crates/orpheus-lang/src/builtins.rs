@@ -138,6 +138,7 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "slice_idx" => Some(builtin_function_value(BuiltinKind::SliceIdx)),
         "rand" => Some(builtin_function_value(BuiltinKind::Rand)),
         "jux" => Some(builtin_function_value(BuiltinKind::Jux)),
+        "through" => Some(builtin_function_value(BuiltinKind::Through)),
         "cc" | "midi_cc" => Some(builtin_function_value(BuiltinKind::MidiCc)),
         "chaos" => Some(builtin_function_value(BuiltinKind::Chaos)),
         _ => None,
@@ -353,6 +354,7 @@ impl BuiltinKind {
             Self::SliceIdx => "slice_idx",
             Self::Rand => "rand",
             Self::Jux => "jux",
+            Self::Through => "through",
             Self::MidiCc => "midi_cc",
             Self::Chaos => "chaos",
         }
@@ -403,7 +405,9 @@ impl BuiltinKind {
             | Self::Transpose
             | Self::Onset
             | Self::Rate
-            | Self::Jux => 2,
+            | Self::Jux
+            | Self::Through => 2,
+            Self::MidiCc => 1,
             Self::Rand => 0,
         }
     }
@@ -457,6 +461,7 @@ impl BuiltinKind {
             Self::SliceIdx => apply_slice_idx(args),
             Self::Rand => apply_rand(args, function.site_salt.unwrap_or_default()),
             Self::Jux => apply_jux(args),
+            Self::Through => apply_through(args),
             Self::MidiCc => apply_midi_cc(args),
             Self::Chaos => apply_chaos(args, function.site_salt.unwrap_or_default()),
         }
@@ -478,6 +483,23 @@ fn apply_midi_cc(args: Vec<Value>) -> Result<Value, EvalError> {
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let value = midi_input::cc_normalized(controller as u8);
     Ok(Value::NumberPattern(NumberPatternValue::constant(value)))
+}
+
+fn apply_through(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    // Task 4 only validates the pedal surface; event-level attachment arrives in Task 5.
+    let _pedal = extract_pedal(
+        args.next()
+            .ok_or_else(|| EvalError::new("`through` requires a pedal argument"))?,
+        "through",
+    )?;
+    let pattern = extract_sample_pattern(
+        args.next()
+            .ok_or_else(|| EvalError::new("`through` requires a sample pattern argument"))?,
+        "through",
+    )?;
+
+    Ok(Value::SamplePattern(pattern))
 }
 
 fn apply_every(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -2268,6 +2290,41 @@ fn extract_number_pattern(
         ))),
         Value::Pedal(_) => Err(EvalError::new(format!(
             "`{builtin_name}` requires a number pattern argument"
+        ))),
+    }
+}
+
+fn extract_sample_pattern(
+    value: Value,
+    builtin_name: &str,
+) -> Result<SamplePatternValue, EvalError> {
+    match value {
+        Value::SamplePattern(pattern) => Ok(pattern),
+        Value::NumberPattern(_) => Err(EvalError::new(format!(
+            "`{builtin_name}` only applies to sample patterns"
+        ))),
+        Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new(format!(
+            "`{builtin_name}` expected a sample pattern argument"
+        ))),
+        Value::Pedal(_) => Err(EvalError::new(format!(
+            "`{builtin_name}` expected a sample pattern argument"
+        ))),
+    }
+}
+
+fn extract_pedal(value: Value, builtin_name: &str) -> Result<crate::pedal::PedalValue, EvalError> {
+    match value {
+        Value::Pedal(pedal) => Ok(pedal),
+        Value::SamplePattern(_)
+        | Value::NumberPattern(_)
+        | Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new(format!(
+            "`{builtin_name}` requires a pedal argument"
         ))),
     }
 }

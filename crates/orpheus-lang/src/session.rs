@@ -333,6 +333,13 @@ impl ReplSession {
                     self.stats_binding(args)
                 }
             }
+            "explain" => {
+                if args.is_empty() {
+                    Err(explain_usage().to_owned())
+                } else {
+                    self.explain_binding(args)
+                }
+            }
             "export" => {
                 if args.is_empty() {
                     Err(export_usage().to_owned())
@@ -504,6 +511,26 @@ impl ReplSession {
         } else {
             Err(format!("no binding named `{binding_name}`"))
         }
+    }
+
+    fn explain_binding(&self, args: &str) -> Result<String, String> {
+        let binding_name = args.trim();
+        if binding_name.is_empty() || binding_name.contains(char::is_whitespace) {
+            return Err(explain_usage().to_owned());
+        }
+
+        let value = self
+            .bindings
+            .get(binding_name)
+            .ok_or_else(|| format!("no binding named `{binding_name}`"))?;
+        let pedal = value.as_pedal().ok_or_else(|| {
+            format!(
+                "binding `{binding_name}` is a {} and is not a pedal",
+                value.kind_name()
+            )
+        })?;
+
+        Ok(pedal.explain())
     }
 
     fn export_binding(&self, args: &str) -> Result<String, String> {
@@ -1417,6 +1444,10 @@ const fn roll_usage() -> &'static str {
 
 const fn stats_usage() -> &'static str {
     "usage: :stats <binding> [cycles]"
+}
+
+const fn explain_usage() -> &'static str {
+    "usage: :explain <binding>"
 }
 
 const fn tempo_usage() -> &'static str {
@@ -2379,6 +2410,33 @@ mod tests {
         let _ = session.render_test_block_for_tui(1);
         assert_eq!(play_message, "transport playing");
         assert!(session.transport_snapshot().is_playing());
+    }
+
+    #[test]
+    fn session_explain_returns_pedal_plan() {
+        let mut session = ReplSession::new();
+        session
+            .eval_line(
+                "drivebox = graph { wet = input |> clip(model=silicon_hard); wet |> output }",
+            )
+            .unwrap();
+
+        let message = session.eval_line(":explain drivebox").unwrap();
+
+        assert!(message.contains("signal_kind=Audio"));
+        assert!(message.contains("binding wet: Audio clip(input, model=silicon_hard)"));
+        assert!(message.contains("result: Audio output(wet)"));
+    }
+
+    #[test]
+    fn session_explain_rejects_non_pedal_bindings() {
+        let mut session = ReplSession::new();
+        session.eval_line("drums = bd sn").unwrap();
+
+        let error = session.eval_line(":explain drums").unwrap_err();
+
+        assert!(error.contains("drums"));
+        assert!(error.contains("pedal"));
     }
 
     #[test]
