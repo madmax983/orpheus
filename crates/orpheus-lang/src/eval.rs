@@ -755,6 +755,9 @@ impl Evaluator {
             Value::PitchClassSet(_) => Err(EvalError::new(
                 "pitch class sets cannot be materialized into explicit-time event streams",
             )),
+            Value::Pedal(_) => Err(EvalError::new(
+                "pedal graphs cannot be materialized into explicit-time event streams",
+            )),
             Value::String(_) => Err(EvalError::new(
                 "strings cannot be materialized into explicit-time event streams",
             )),
@@ -776,6 +779,7 @@ impl Evaluator {
             | Value::NumberPattern(_)
             | Value::ArpDirection(_)
             | Value::PitchClassSet(_)
+            | Value::Pedal(_)
             | Value::String(_) => Err(EvalError::new(format!(
                 "cannot call a {}",
                 callee.kind_name()
@@ -1156,19 +1160,29 @@ fn expr_key(expr: &Expr) -> usize {
 }
 
 fn extract_constant_number_value(value: Value, context: &str) -> Result<f64, EvalError> {
-    let Value::NumberPattern(pattern) = value else {
-        return Err(EvalError::new(format!(
+    match value {
+        Value::NumberPattern(pattern) => pattern.constant_value(),
+        Value::SamplePattern(_)
+        | Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::Pedal(_)
+        | Value::String(_) => Err(EvalError::new(format!(
             "{context} must resolve to a constant number"
-        )));
-    };
-    pattern.constant_value()
+        ))),
+    }
 }
 
 fn extract_string_value(value: Value, message: &str) -> Result<String, EvalError> {
-    let Value::String(string) = value else {
-        return Err(EvalError::new(message));
-    };
-    Ok(string)
+    match value {
+        Value::String(string) => Ok(string),
+        Value::SamplePattern(_)
+        | Value::NumberPattern(_)
+        | Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::Pedal(_) => Err(EvalError::new(message)),
+    }
 }
 
 fn extract_constant_number_rational(value: Value, context: &str) -> Result<Rational, EvalError> {

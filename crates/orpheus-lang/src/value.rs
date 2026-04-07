@@ -25,6 +25,7 @@ use crate::{
     ReplMode,
     ast::Expr,
     eval::{EvalError, apply_function_value},
+    pedal::PedalValue,
 };
 
 /// Identifies which core built-in function is being represented.
@@ -271,6 +272,8 @@ pub enum Value {
     PitchClassSet(PitchClassSetValue),
     /// An executable function closure, either built-in or user-defined.
     Function(FunctionValue),
+    /// A validated pedal graph ready for later lowering.
+    Pedal(PedalValue),
     /// A primitive string value.
     String(String),
 }
@@ -294,6 +297,7 @@ impl Value {
             | Self::ArpDirection(_)
             | Self::PitchClassSet(_)
             | Self::Function(_)
+            | Self::Pedal(_)
             | Self::String(_) => None,
         }
     }
@@ -316,6 +320,7 @@ impl Value {
             | Self::ArpDirection(_)
             | Self::PitchClassSet(_)
             | Self::Function(_)
+            | Self::Pedal(_)
             | Self::String(_) => None,
         }
     }
@@ -338,6 +343,7 @@ impl Value {
             | Self::NumberPattern(_)
             | Self::ArpDirection(_)
             | Self::Function(_)
+            | Self::Pedal(_)
             | Self::String(_) => None,
         }
     }
@@ -358,6 +364,20 @@ impl Value {
             Self::ArpDirection(direction) => Some(*direction),
             Self::SamplePattern(_)
             | Self::NumberPattern(_)
+            | Self::PitchClassSet(_)
+            | Self::Function(_)
+            | Self::Pedal(_)
+            | Self::String(_) => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn as_pedal(&self) -> Option<&PedalValue> {
+        match self {
+            Self::Pedal(pedal) => Some(pedal),
+            Self::SamplePattern(_)
+            | Self::NumberPattern(_)
+            | Self::ArpDirection(_)
             | Self::PitchClassSet(_)
             | Self::Function(_)
             | Self::String(_) => None,
@@ -384,6 +404,7 @@ impl Value {
             Self::ArpDirection(_) => "arp direction",
             Self::PitchClassSet(_) => "pitch class set",
             Self::Function(_) => "function",
+            Self::Pedal(_) => "pedal",
             Self::String(_) => "string",
         }
     }
@@ -907,6 +928,7 @@ impl PatternRuntimeValue for SampleEvent {
             | Value::ArpDirection(_)
             | Value::PitchClassSet(_)
             | Value::Function(_)
+            | Value::Pedal(_)
             | Value::String(_) => Err(EvalError::new(
                 "transform returned an incompatible value; expected Pattern<Sample>",
             )),
@@ -984,6 +1006,7 @@ impl PatternRuntimeValue for f64 {
             | Value::ArpDirection(_)
             | Value::PitchClassSet(_)
             | Value::Function(_)
+            | Value::Pedal(_)
             | Value::String(_) => Err(EvalError::new(
                 "transform returned an incompatible value; expected Pattern<Number>",
             )),
