@@ -138,11 +138,12 @@ fn query_cycle_pattern<T: Clone>(
             operation: "cycle count exceeded evaluator limits",
         }
     })?;
-    let capacity = cycle_count.checked_mul(unit_events.len()).ok_or_else(|| {
-        PatternError::ArithmeticOverflow {
-            operation: "pattern capacity calculation",
-        }
-    })?;
+    let capacity =
+        cycle_count
+            .checked_mul(unit_events.len())
+            .ok_or(PatternError::ArithmeticOverflow {
+                operation: "pattern capacity calculation",
+            })?;
     // ⚡ Bolt: Pre-allocate vector using the cycle count and unit event count
     // to reduce heap reallocations during pattern querying.
     let mut events = Vec::with_capacity(capacity);
