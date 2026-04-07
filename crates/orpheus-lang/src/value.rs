@@ -3184,14 +3184,18 @@ fn whole_number_from_degree_value(value: f64) -> Result<i32, EvalError> {
 
 fn map_degree_to_semitones(degree: i32, collection: &PitchClassSetValue) -> Result<f64, EvalError> {
     let intervals = collection.intervals();
-    let scale_len = i32::try_from(intervals.len())
-        .map_err(|_| EvalError::new("`degrees` scale length exceeded the supported evaluator range"))?;
+    let scale_len = i32::try_from(intervals.len()).map_err(|_| {
+        EvalError::new("`degrees` scale length exceeded the supported evaluator range")
+    })?;
     if scale_len == 0 {
-        return Err(EvalError::new("`degrees` requires a non-empty pitch class set"));
+        return Err(EvalError::new(
+            "`degrees` requires a non-empty pitch class set",
+        ));
     }
     let octave = degree.div_euclid(scale_len);
-    let index = usize::try_from(degree.rem_euclid(scale_len))
-        .map_err(|_| EvalError::new("`degrees` scale index exceeded the supported evaluator range"))?;
+    let index = usize::try_from(degree.rem_euclid(scale_len)).map_err(|_| {
+        EvalError::new("`degrees` scale index exceeded the supported evaluator range")
+    })?;
     let semitones = octave
         .checked_mul(12)
         .and_then(|value| value.checked_add(intervals[index]))
