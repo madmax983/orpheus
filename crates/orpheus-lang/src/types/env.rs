@@ -42,6 +42,7 @@ pub struct TypeEnv {
 
 impl TypeEnv {
     #[must_use]
+    #[allow(clippy::too_many_lines)]
     pub fn with_builtins() -> Self {
         let mut env = Self {
             entries: BTreeMap::new(),
