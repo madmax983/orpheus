@@ -34,8 +34,8 @@ pub use offline::{
     render_routing_snapshot_to_stereo_for_test,
 };
 pub use pedal::{
-    ClipModel, FilterMode, NodeRef, PedalGraphProgram, PedalInstance, PedalNode, PedalNodeKind,
-    PedalStage, PreampModel, SignalKind, ToneModel,
+    ClipModel, FilterMode, NodeRef, PEDAL_CONTROL_INTERVAL_SAMPLES, PedalGraphProgram,
+    PedalInstance, PedalNode, PedalNodeKind, PedalStage, PreampModel, SignalKind, ToneModel,
 };
 pub use routing::{
     BusEffectSpec, BusId, BusView, DelaySpec, ReverbSpec, RoutingError, RoutingSnapshot,

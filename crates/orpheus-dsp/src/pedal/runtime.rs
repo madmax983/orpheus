@@ -3,8 +3,11 @@ use std::sync::Arc;
 use crate::command::PedalProgram;
 
 use super::program::{
-    ClipModel, FilterMode, NodeRef, PedalNode, PedalNodeKind, PedalStage, PreampModel, ToneModel,
+    ClipModel, FilterMode, NodeRef, PedalNode, PedalNodeKind, PedalStage, PreampModel, SignalKind,
+    ToneModel,
 };
+
+pub const PEDAL_CONTROL_INTERVAL_SAMPLES: usize = 16;
 
 #[derive(Debug)]
 pub struct PedalInstance {
@@ -12,24 +15,38 @@ pub struct PedalInstance {
     sample_rate_hz: f32,
     node_states: Vec<NodeState>,
     node_values: Vec<f32>,
+    node_target_values: Vec<f32>,
+    control_updates_each_sample: Vec<bool>,
+    control_samples_until_update: usize,
+    control_initialized: bool,
+    tail_frames: u32,
 }
 
 impl PedalInstance {
     #[must_use]
     pub fn new(program: Arc<PedalProgram>, sample_rate_hz: f32) -> Self {
         let sample_rate_hz = sanitize_sample_rate(sample_rate_hz);
-        let node_states = program
-            .graph()
+        let graph = program.graph();
+        let control_updates_each_sample = derive_control_update_modes(graph.nodes());
+        let node_states = graph
             .nodes()
             .iter()
             .map(|node| NodeState::for_node(node, sample_rate_hz))
             .collect::<Vec<_>>();
-        let node_values = vec![0.0_f32; program.graph().nodes().len()];
+        let node_len = graph.nodes().len();
+        let tail_frames = estimated_tail_frames(graph.nodes(), graph.output(), sample_rate_hz);
+        let node_values = vec![0.0_f32; node_len];
+        let node_target_values = vec![0.0_f32; node_len];
         Self {
             program,
             sample_rate_hz,
             node_states,
             node_values,
+            node_target_values,
+            control_updates_each_sample,
+            control_samples_until_update: 0,
+            control_initialized: false,
+            tail_frames,
         }
     }
 
@@ -42,6 +59,14 @@ impl PedalInstance {
             *state = NodeState::for_node(node, self.sample_rate_hz);
         }
         self.node_values.fill(0.0);
+        self.node_target_values.fill(0.0);
+        self.control_samples_until_update = 0;
+        self.control_initialized = false;
+    }
+
+    #[must_use]
+    pub const fn tail_frames(&self) -> u32 {
+        self.tail_frames
     }
 
     #[must_use]
@@ -52,17 +77,88 @@ impl PedalInstance {
         }
 
         let nodes = graph.nodes();
+        let update_control = self.control_samples_until_update == 0;
+        if update_control {
+            self.node_target_values.clone_from_slice(&self.node_values);
+            for (index, node) in nodes.iter().enumerate() {
+                if !matches!(node.signal_kind(), SignalKind::Control)
+                    || self.control_updates_each_sample[index]
+                {
+                    continue;
+                }
+
+                let target = evaluate_node(
+                    &mut self.node_states,
+                    &self.node_target_values,
+                    self.sample_rate_hz,
+                    PEDAL_CONTROL_INTERVAL_SAMPLES,
+                    index,
+                    node,
+                    input,
+                );
+                self.node_target_values[index] = target;
+                if !self.control_initialized {
+                    self.node_values[index] = target;
+                }
+            }
+            self.control_samples_until_update = PEDAL_CONTROL_INTERVAL_SAMPLES;
+        }
+
+        if self.control_initialized {
+            let smoothing = control_smoothing_coeff(self.sample_rate_hz);
+            for (index, node) in nodes.iter().enumerate() {
+                if !matches!(node.signal_kind(), SignalKind::Control)
+                    || self.control_updates_each_sample[index]
+                {
+                    continue;
+                }
+
+                self.node_values[index] = smooth_control_value(
+                    self.node_values[index],
+                    self.node_target_values[index],
+                    smoothing,
+                );
+            }
+        }
+
         for (index, node) in nodes.iter().enumerate() {
+            if !matches!(node.signal_kind(), SignalKind::Control)
+                || !self.control_updates_each_sample[index]
+            {
+                continue;
+            }
+
             let value = evaluate_node(
                 &mut self.node_states,
                 &self.node_values,
                 self.sample_rate_hz,
+                1,
+                index,
+                node,
+                input,
+            );
+            self.node_values[index] = value;
+            self.node_target_values[index] = value;
+        }
+
+        for (index, node) in nodes.iter().enumerate() {
+            if matches!(node.signal_kind(), SignalKind::Control) {
+                continue;
+            }
+            let value = evaluate_node(
+                &mut self.node_states,
+                &self.node_values,
+                self.sample_rate_hz,
+                1,
                 index,
                 node,
                 input,
             );
             self.node_values[index] = value;
         }
+
+        self.control_initialized = true;
+        self.control_samples_until_update = self.control_samples_until_update.saturating_sub(1);
 
         resolve(&self.node_values, graph.output(), input)
     }
@@ -75,10 +171,457 @@ impl PedalInstance {
     }
 }
 
+fn estimated_tail_frames(nodes: &[PedalNode], output: NodeRef, sample_rate_hz: f32) -> u32 {
+    let mut memo = vec![None; nodes.len()];
+    tail_frames_for_reference(nodes, output, sample_rate_hz, &mut memo)
+}
+
+fn tail_frames_for_reference(
+    nodes: &[PedalNode],
+    reference: NodeRef,
+    sample_rate_hz: f32,
+    memo: &mut [Option<u32>],
+) -> u32 {
+    match reference {
+        NodeRef::Input => 0,
+        NodeRef::Node(index) => {
+            if let Some(Some(cached)) = memo.get(index) {
+                return *cached;
+            }
+
+            let Some(node) = nodes.get(index) else {
+                return 0;
+            };
+            if matches!(node.signal_kind(), SignalKind::Control) {
+                if let Some(slot) = memo.get_mut(index) {
+                    *slot = Some(0);
+                }
+                return 0;
+            }
+
+            let tail = match node.kind() {
+                PedalNodeKind::Constant { .. }
+                | PedalNodeKind::Lfo { .. }
+                | PedalNodeKind::EnvFollow { .. } => 0,
+                PedalNodeKind::Add { left, right } | PedalNodeKind::Mul { left, right } => {
+                    tail_frames_for_reference(nodes, *left, sample_rate_hz, memo).max(
+                        tail_frames_for_reference(nodes, *right, sample_rate_hz, memo),
+                    )
+                }
+                PedalNodeKind::Stage(stage) => tail_frames_for_reference(
+                    nodes,
+                    stage_input_reference(stage),
+                    sample_rate_hz,
+                    memo,
+                )
+                .saturating_add(stage_own_tail_frames(nodes, stage, sample_rate_hz)),
+                PedalNodeKind::Mix { inputs } => inputs
+                    .iter()
+                    .map(|reference| {
+                        tail_frames_for_reference(nodes, *reference, sample_rate_hz, memo)
+                    })
+                    .max()
+                    .unwrap_or(0),
+                PedalNodeKind::Feedback {
+                    input,
+                    amount,
+                    delay_samples,
+                    tone_hz_bits,
+                } => tail_frames_for_reference(nodes, *input, sample_rate_hz, memo).saturating_add(
+                    feedback_own_tail_frames(
+                        nodes,
+                        *amount,
+                        *delay_samples,
+                        *tone_hz_bits,
+                        sample_rate_hz,
+                    ),
+                ),
+            };
+            if let Some(slot) = memo.get_mut(index) {
+                *slot = Some(tail);
+            }
+            tail
+        }
+    }
+}
+
+fn feedback_own_tail_frames(
+    nodes: &[PedalNode],
+    amount: NodeRef,
+    delay_samples: usize,
+    tone_hz_bits: Option<u32>,
+    sample_rate_hz: f32,
+) -> u32 {
+    let delay_samples = u32::try_from(delay_samples.max(1)).unwrap_or(u32::MAX);
+    let repeat_count = feedback_decay_repeat_count(feedback_tail_amount(nodes, amount));
+    let tone_tail = if repeat_count == 0 {
+        0
+    } else {
+        tone_hz_bits.map_or(0, |cutoff_hz| {
+            one_pole_tail_frames(sample_rate_hz, f32::from_bits(cutoff_hz))
+        })
+    };
+    delay_samples
+        .saturating_mul(repeat_count)
+        .saturating_add(tone_tail)
+}
+
+fn stage_input_reference(stage: &PedalStage) -> NodeRef {
+    match stage {
+        PedalStage::Buffer { input }
+        | PedalStage::Preamp { input, .. }
+        | PedalStage::Gain { input, .. }
+        | PedalStage::Clip { input, .. }
+        | PedalStage::Tone { input, .. }
+        | PedalStage::Filter { input, .. }
+        | PedalStage::Eq { input, .. }
+        | PedalStage::Level { input, .. }
+        | PedalStage::Sag { input, .. }
+        | PedalStage::Bias { input, .. } => *input,
+    }
+}
+
+fn stage_own_tail_frames(nodes: &[PedalNode], stage: &PedalStage, sample_rate_hz: f32) -> u32 {
+    match stage {
+        PedalStage::Tone {
+            model: ToneModel::Neutral,
+            ..
+        } => 0,
+        PedalStage::Tone { cutoff_hz, .. } | PedalStage::Filter { cutoff_hz, .. } => {
+            one_pole_tail_frames(
+                sample_rate_hz,
+                resolve_tail_cutoff_hz(nodes, *cutoff_hz).unwrap_or(20.0),
+            )
+        }
+        PedalStage::Eq { .. } => one_pole_tail_frames(sample_rate_hz, 220.0),
+        _ => 0,
+    }
+}
+
+fn feedback_tail_amount(nodes: &[PedalNode], amount: NodeRef) -> f32 {
+    if let Some(value) = control_exact_constant(nodes, amount) {
+        return value.max(0.0).clamp(0.0, 0.98);
+    }
+    let range = control_range(nodes, amount);
+    range.max.max(0.0).clamp(0.0, 0.98)
+}
+
+fn feedback_decay_repeat_count(amount: f32) -> u32 {
+    if amount <= f32::EPSILON {
+        return 0;
+    }
+
+    let repeats = (1.0e-3_f32.ln() / amount.ln()).ceil();
+    if repeats.is_finite() {
+        (repeats as u32).max(1)
+    } else {
+        u32::MAX
+    }
+}
+
+fn resolve_tail_cutoff_hz(nodes: &[PedalNode], reference: NodeRef) -> Option<f32> {
+    match reference {
+        NodeRef::Input => None,
+        NodeRef::Node(index) => nodes
+            .get(index)
+            .and_then(|node| node.kind().constant_value())
+            .map(sanitize_non_negative),
+    }
+}
+
+fn one_pole_tail_frames(sample_rate_hz: f32, cutoff_hz: f32) -> u32 {
+    let sample_rate_hz = sanitize_sample_rate(sample_rate_hz);
+    let cutoff_hz = cutoff_hz.clamp(20.0, sample_rate_hz * 0.45);
+    let per_sample_decay = (-core::f32::consts::TAU * cutoff_hz / sample_rate_hz).exp();
+    let frames = (1.0e-3_f32.ln() / per_sample_decay.ln()).ceil();
+    if frames.is_finite() {
+        (frames as u32).max(1)
+    } else {
+        u32::MAX
+    }
+}
+
+fn control_range(nodes: &[PedalNode], reference: NodeRef) -> ControlRange {
+    let mut visiting = vec![false; nodes.len()];
+    control_range_with(nodes, reference, &mut visiting)
+}
+
+fn control_exact_constant(nodes: &[PedalNode], reference: NodeRef) -> Option<f32> {
+    let mut visiting = vec![false; nodes.len()];
+    control_linear_expr_with(nodes, reference, &mut visiting)?.constant_value()
+}
+
+fn control_linear_expr_with(
+    nodes: &[PedalNode],
+    reference: NodeRef,
+    visiting: &mut [bool],
+) -> Option<LinearControlExpr> {
+    match reference {
+        NodeRef::Input => Some(LinearControlExpr::variable(NodeRef::Input)),
+        NodeRef::Node(index) => {
+            let node = nodes.get(index)?;
+            if matches!(node.signal_kind(), SignalKind::Audio) {
+                return Some(LinearControlExpr::variable(reference));
+            }
+            if visiting.get(index).copied().unwrap_or(false) {
+                return None;
+            }
+
+            visiting[index] = true;
+            let expr = match node.kind() {
+                PedalNodeKind::Constant { value_bits } => {
+                    Some(LinearControlExpr::constant(f32::from_bits(*value_bits)))
+                }
+                PedalNodeKind::Add { left, right } => Some(
+                    control_linear_expr_with(nodes, *left, visiting)?
+                        .add(control_linear_expr_with(nodes, *right, visiting)?),
+                ),
+                PedalNodeKind::Mul { left, right } => {
+                    let left_expr = control_linear_expr_with(nodes, *left, visiting)?;
+                    let right_expr = control_linear_expr_with(nodes, *right, visiting)?;
+                    if let Some(scale) = left_expr.constant_value() {
+                        Some(right_expr.scale(scale))
+                    } else if let Some(scale) = right_expr.constant_value() {
+                        Some(left_expr.scale(scale))
+                    } else {
+                        None
+                    }
+                }
+                PedalNodeKind::Lfo { .. }
+                | PedalNodeKind::EnvFollow { .. }
+                | PedalNodeKind::Stage(_)
+                | PedalNodeKind::Mix { .. }
+                | PedalNodeKind::Feedback { .. } => Some(LinearControlExpr::variable(reference)),
+            };
+            visiting[index] = false;
+            expr
+        }
+    }
+}
+
+fn control_range_with(
+    nodes: &[PedalNode],
+    reference: NodeRef,
+    visiting: &mut [bool],
+) -> ControlRange {
+    match reference {
+        NodeRef::Input => ControlRange::unbounded(),
+        NodeRef::Node(index) => {
+            let Some(node) = nodes.get(index) else {
+                return ControlRange::unbounded();
+            };
+            if visiting.get(index).copied().unwrap_or(false) {
+                return ControlRange::unbounded();
+            }
+
+            visiting[index] = true;
+            let range = match node.kind() {
+                PedalNodeKind::Constant { value_bits } => {
+                    let value = f32::from_bits(*value_bits);
+                    ControlRange::new(value, value)
+                }
+                PedalNodeKind::Lfo {
+                    depth_bits,
+                    offset_bits,
+                    ..
+                } => {
+                    let offset = f32::from_bits(*offset_bits);
+                    let depth = f32::from_bits(*depth_bits).abs();
+                    ControlRange::new(offset - depth, offset + depth)
+                }
+                PedalNodeKind::EnvFollow { input, .. } => {
+                    let source_range = control_range_with(nodes, *input, visiting);
+                    let upper = source_range.max_abs();
+                    ControlRange::new(0.0, upper)
+                }
+                PedalNodeKind::Add { left, right } => control_range_with(nodes, *left, visiting)
+                    .add(control_range_with(nodes, *right, visiting)),
+                PedalNodeKind::Mul { left, right } => control_range_with(nodes, *left, visiting)
+                    .mul(control_range_with(nodes, *right, visiting)),
+                _ => ControlRange::unbounded(),
+            };
+            visiting[index] = false;
+            range
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ControlRange {
+    min: f32,
+    max: f32,
+}
+
+impl ControlRange {
+    const fn new(min: f32, max: f32) -> Self {
+        Self { min, max }
+    }
+
+    const fn unbounded() -> Self {
+        Self::new(f32::NEG_INFINITY, f32::INFINITY)
+    }
+
+    const fn add(self, other: Self) -> Self {
+        Self::new(self.min + other.min, self.max + other.max)
+    }
+
+    fn mul(self, other: Self) -> Self {
+        let candidates = [
+            multiply_range_bound(self.min, other.min),
+            multiply_range_bound(self.min, other.max),
+            multiply_range_bound(self.max, other.min),
+            multiply_range_bound(self.max, other.max),
+        ];
+        let min = candidates
+            .into_iter()
+            .fold(f32::INFINITY, |current, value| current.min(value));
+        let max = candidates
+            .into_iter()
+            .fold(f32::NEG_INFINITY, |current, value| current.max(value));
+        Self::new(min, max)
+    }
+
+    fn max_abs(self) -> f32 {
+        if self.min.is_infinite() || self.max.is_infinite() {
+            f32::INFINITY
+        } else {
+            self.min.abs().max(self.max.abs())
+        }
+    }
+}
+
+fn multiply_range_bound(left: f32, right: f32) -> f32 {
+    if left == 0.0 || right == 0.0 {
+        return 0.0;
+    }
+    if left.is_infinite() || right.is_infinite() {
+        let sign = left.signum() * right.signum();
+        return if sign.is_sign_negative() {
+            f32::NEG_INFINITY
+        } else {
+            f32::INFINITY
+        };
+    }
+    left * right
+}
+
+#[derive(Clone, Debug)]
+struct LinearControlExpr {
+    constant: f32,
+    terms: Vec<(NodeRef, f32)>,
+}
+
+impl LinearControlExpr {
+    fn constant(value: f32) -> Self {
+        Self {
+            constant: value,
+            terms: Vec::new(),
+        }
+    }
+
+    fn variable(reference: NodeRef) -> Self {
+        Self {
+            constant: 0.0,
+            terms: vec![(reference, 1.0)],
+        }
+    }
+
+    fn add(mut self, other: Self) -> Self {
+        self.constant += other.constant;
+        for (reference, coeff) in other.terms {
+            self.add_term(reference, coeff);
+        }
+        self
+    }
+
+    fn scale(mut self, factor: f32) -> Self {
+        self.constant *= factor;
+        for (_, coeff) in &mut self.terms {
+            *coeff *= factor;
+        }
+        self.terms.retain(|(_, coeff)| coeff.abs() > 1.0e-6);
+        self
+    }
+
+    fn constant_value(&self) -> Option<f32> {
+        if self.terms.is_empty() {
+            Some(self.constant)
+        } else {
+            None
+        }
+    }
+
+    fn add_term(&mut self, reference: NodeRef, coeff: f32) {
+        if coeff.abs() <= 1.0e-6 {
+            return;
+        }
+        if let Some((_, existing)) = self
+            .terms
+            .iter_mut()
+            .find(|(existing_reference, _)| *existing_reference == reference)
+        {
+            *existing += coeff;
+            if existing.abs() <= 1.0e-6 {
+                *existing = 0.0;
+            }
+            self.terms.retain(|(_, coeff)| coeff.abs() > 1.0e-6);
+            return;
+        }
+        self.terms.push((reference, coeff));
+    }
+}
+
+fn derive_control_update_modes(nodes: &[PedalNode]) -> Vec<bool> {
+    let mut updates_each_sample = vec![false; nodes.len()];
+    for (index, node) in nodes.iter().enumerate() {
+        updates_each_sample[index] = match node.kind() {
+            PedalNodeKind::EnvFollow { .. } => true,
+            PedalNodeKind::Add { left, right } | PedalNodeKind::Mul { left, right }
+                if matches!(node.signal_kind(), SignalKind::Control) =>
+            {
+                reference_updates_each_sample(nodes, &updates_each_sample, *left)
+                    || reference_updates_each_sample(nodes, &updates_each_sample, *right)
+            }
+            _ => false,
+        };
+    }
+    updates_each_sample
+}
+
+fn reference_updates_each_sample(
+    nodes: &[PedalNode],
+    updates_each_sample: &[bool],
+    reference: NodeRef,
+) -> bool {
+    match reference {
+        NodeRef::Input => true,
+        NodeRef::Node(index) => nodes.get(index).is_some_and(|node| {
+            matches!(node.signal_kind(), SignalKind::Audio)
+                || updates_each_sample.get(index).copied().unwrap_or(false)
+        }),
+    }
+}
+
+fn control_smoothing_coeff(sample_rate_hz: f32) -> f32 {
+    let _ = sample_rate_hz;
+    1.0
+}
+
+fn smooth_control_value(current: f32, target: f32, coeff: f32) -> f32 {
+    let current = sanitize_audio(current);
+    let target = sanitize_audio(target);
+    if (target - current).abs() <= 1.0e-6 {
+        target
+    } else {
+        sanitize_audio(current + ((target - current) * coeff))
+    }
+}
+
 fn evaluate_node(
     node_states: &mut [NodeState],
     node_values: &[f32],
     sample_rate_hz: f32,
+    sample_step: usize,
     index: usize,
     node: &PedalNode,
     input: f32,
@@ -95,7 +638,8 @@ fn evaluate_node(
             };
             let value = f32::from_bits(*offset_bits) + phase.sin() * f32::from_bits(*depth_bits);
             let increment =
-                core::f32::consts::TAU * f32::from_bits(*rate_hz_bits) / sample_rate_hz.max(1.0);
+                core::f32::consts::TAU * f32::from_bits(*rate_hz_bits) * (sample_step as f32)
+                    / sample_rate_hz.max(1.0);
             *phase = (*phase + increment).rem_euclid(core::f32::consts::TAU);
             value
         }
@@ -108,8 +652,9 @@ fn evaluate_node(
             let NodeState::EnvFollow { envelope } = &mut node_states[index] else {
                 return target;
             };
-            let attack = smoothing_coeff(f32::from_bits(*attack_ms_bits), sample_rate_hz);
-            let release = smoothing_coeff(f32::from_bits(*release_ms_bits), sample_rate_hz);
+            let effective_sample_rate = sample_rate_hz / (sample_step.max(1) as f32);
+            let attack = smoothing_coeff(f32::from_bits(*attack_ms_bits), effective_sample_rate);
+            let release = smoothing_coeff(f32::from_bits(*release_ms_bits), effective_sample_rate);
             let coeff = if target > *envelope { attack } else { release };
             *envelope += (target - *envelope) * coeff;
             *envelope
@@ -206,6 +751,9 @@ fn process_stage(
             model,
         } => {
             let signal = resolve(node_values, *source, input);
+            if matches!(model, ToneModel::Neutral) {
+                return signal;
+            }
             let cutoff = resolve(node_values, *cutoff_hz, input);
             let resonance = resolve(node_values, *resonance, input);
             let NodeState::Tone {
@@ -219,7 +767,7 @@ fn process_stage(
             let high = high_pass.process_with_cutoff(signal, cutoff.max(60.0));
             let mid = signal - low - high;
             match model {
-                ToneModel::Neutral => sanitize_audio(low + mid + high),
+                ToneModel::Neutral => unreachable!("neutral tone bypasses filter state"),
                 ToneModel::MidHump => {
                     sanitize_audio(low.mul_add(0.55, mid * (1.0 + resonance * 0.9)) + high * 0.12)
                 }
@@ -341,9 +889,12 @@ impl NodeState {
         match node.kind() {
             PedalNodeKind::Lfo { .. } => Self::Lfo { phase: 0.0 },
             PedalNodeKind::EnvFollow { .. } => Self::EnvFollow { envelope: 0.0 },
-            PedalNodeKind::Stage(PedalStage::Tone { .. }) => Self::Tone {
-                low_pass: LowPassState::new(sample_rate_hz),
-                high_pass: HighPassState::new(sample_rate_hz),
+            PedalNodeKind::Stage(PedalStage::Tone { model, .. }) => match model {
+                ToneModel::Neutral => Self::None,
+                ToneModel::MidHump | ToneModel::ScoopedStack => Self::Tone {
+                    low_pass: LowPassState::new(sample_rate_hz),
+                    high_pass: HighPassState::new(sample_rate_hz),
+                },
             },
             PedalNodeKind::Stage(PedalStage::Filter { kind, .. }) => match kind {
                 FilterMode::LowPass => Self::LowPass(LowPassState::new(sample_rate_hz)),
