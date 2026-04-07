@@ -178,7 +178,11 @@ impl ActiveVoice {
         }
     }
 
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss
+    )]
     pub fn from_sample(
         track_id: TrackId,
         sample: &PlaybackSample,
@@ -367,12 +371,11 @@ impl ActiveVoice {
             return None;
         }
 
-        let mono_sample = match dry_sample {
-            Some(sample) => sample,
-            None => {
-                self.tail_frames_remaining = self.tail_frames_remaining.saturating_sub(1);
-                0.0
-            }
+        let mono_sample = if let Some(sample) = dry_sample {
+            sample
+        } else {
+            self.tail_frames_remaining = self.tail_frames_remaining.saturating_sub(1);
+            0.0
         };
         let mono_sample = self
             .pedal
