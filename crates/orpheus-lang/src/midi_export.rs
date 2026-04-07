@@ -2,8 +2,6 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
-
-
 use crate::eval::{EvalError, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue};
 

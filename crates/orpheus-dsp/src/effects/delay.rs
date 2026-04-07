@@ -163,7 +163,7 @@ mod tests {
         let spec = DelaySpec::new(Rational::new(1, 4).unwrap(), 0.5, 0.2);
         let mut state = DelayState::new(&spec, 44100).unwrap();
 
-        state.process_frame(1.0, 1.0);
+        let _ = state.process_frame(1.0, 1.0);
         state.reset();
 
         assert_eq!(state.write_index, 0);
