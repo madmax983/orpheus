@@ -3091,6 +3091,7 @@ impl ControlPatternKind {
     }
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn apply_event_fragments<'a, T, F, I>(
     source_events: &'a [Event<T>],
     control_parts: I,
@@ -3184,14 +3185,18 @@ fn whole_number_from_degree_value(value: f64) -> Result<i32, EvalError> {
 
 fn map_degree_to_semitones(degree: i32, collection: &PitchClassSetValue) -> Result<f64, EvalError> {
     let intervals = collection.intervals();
-    let scale_len = i32::try_from(intervals.len())
-        .map_err(|_| EvalError::new("`degrees` scale length exceeded the supported evaluator range"))?;
+    let scale_len = i32::try_from(intervals.len()).map_err(|_| {
+        EvalError::new("`degrees` scale length exceeded the supported evaluator range")
+    })?;
     if scale_len == 0 {
-        return Err(EvalError::new("`degrees` requires a non-empty pitch class set"));
+        return Err(EvalError::new(
+            "`degrees` requires a non-empty pitch class set",
+        ));
     }
     let octave = degree.div_euclid(scale_len);
-    let index = usize::try_from(degree.rem_euclid(scale_len))
-        .map_err(|_| EvalError::new("`degrees` scale index exceeded the supported evaluator range"))?;
+    let index = usize::try_from(degree.rem_euclid(scale_len)).map_err(|_| {
+        EvalError::new("`degrees` scale index exceeded the supported evaluator range")
+    })?;
     let semitones = octave
         .checked_mul(12)
         .and_then(|value| value.checked_add(intervals[index]))
@@ -3580,9 +3585,9 @@ where
         for i in (1..len).rev() {
             // LCG for next random number
             rng_state = rng_state
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
-            let j = (rng_state as usize) % (i + 1);
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            let j = usize::try_from(rng_state).unwrap_or(usize::MAX) % (i + 1);
             if i != j {
                 // ⚡ Bolt: Swap values in-place without allocating an intermediate `Vec` or deep cloning strings.
                 // We use `split_at_mut` to get two disjoint mutable slices, guaranteeing safety.
@@ -3601,7 +3606,7 @@ where
                     let whole = if clipped_part == event.part {
                         event.whole.clone()
                     } else {
-                        Some(event.whole.unwrap_or(event.part.clone()))
+                        Some(event.whole.unwrap_or_else(|| event.part.clone()))
                     };
                     events.push(Event {
                         whole,
