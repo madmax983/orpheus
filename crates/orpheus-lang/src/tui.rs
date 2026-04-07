@@ -459,7 +459,7 @@ impl SessionTui {
             Line::raw(
                 "Export: :export <binding> <path> [cycles] | :export stems [cycles] [--buses]",
             ),
-            Line::raw("Analyze: :roll <binding>, :stats <binding>"),
+            Line::raw("Analyze: :roll <binding>, :stats <binding>, :explain <binding>"),
             Line::raw("Help: ?"),
         ]);
         if let Some(message) = &self.status_message {
@@ -486,7 +486,7 @@ impl SessionTui {
     }
 
     const fn help_overlay_body() -> &'static str {
-        "Toggle: ?\nClose: Esc\nTransport: Space toggle, :play, :stop, :tempo <bpm>\nMixer: :track, :bus new|fx, :send, :mixer\nRender: :render <binding> <path> [cycles]\nExport: :export <binding> <path> [cycles] | :export stems [cycles] [--buses]\nAnalyze: :roll <binding> [cycles] [steps_per_cycle], :stats <binding> [cycles]\nSession: :open <path>, :quit\nBindings: PgUp/PgDn\nInput: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
+        "Toggle: ?\nClose: Esc\nTransport: Space toggle, :play, :stop, :tempo <bpm>\nMixer: :track, :bus new|fx, :send, :mixer\nRender: :render <binding> <path> [cycles]\nExport: :export <binding> <path> [cycles] | :export stems [cycles] [--buses]\nAnalyze: :roll <binding> [cycles] [steps_per_cycle], :stats <binding> [cycles], :explain <binding>\nSession: :open <path>, :quit\nBindings: PgUp/PgDn\nInput: Tab complete, Up/Down history\nCursor: Left/Right, Home/End\nDelete: Backspace, Delete, Ctrl-D\nEdit: Ctrl-A/E/K, Ctrl-U/W, Ctrl-L\nWords: Alt-B/F"
     }
 
     const fn help_overlay_footer() -> &'static str {
@@ -1973,6 +1973,7 @@ mod tests {
         assert!(overlay_frame.contains(":open <path>"));
         assert!(overlay_frame.contains(":render <binding>"));
         assert!(overlay_frame.contains(":export <binding>"));
+        assert!(overlay_frame.contains(":explain <binding>"));
         assert!(overlay_frame.contains(":track"));
         assert!(overlay_frame.contains(":mixer"));
         assert!(overlay_frame.contains("Bindings: PgUp/PgDn"));
