@@ -111,6 +111,12 @@ impl From<std::num::TryFromIntError> for EvalError {
     }
 }
 
+impl From<std::num::ParseIntError> for EvalError {
+    fn from(error: std::num::ParseIntError) -> Self {
+        Self::new(error.to_string())
+    }
+}
+
 impl From<std::io::Error> for EvalError {
     fn from(error: std::io::Error) -> Self {
         let message = match error.kind() {
