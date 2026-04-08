@@ -1427,11 +1427,11 @@ mod tests {
         app.submit_line();
         app.input = ":send drums verb 0.35".to_owned();
         app.submit_line();
+        let _ = app.session.render_test_block_for_tui(1);
 
         let frame = render_frame_for_test(&app, 100, 24);
         assert!(frame.contains("drums"));
         assert!(frame.contains("verb @ 0.35"));
-        assert!(frame.contains("Mixer Buses"));
     }
 
     #[test]

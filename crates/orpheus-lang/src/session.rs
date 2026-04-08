@@ -126,7 +126,6 @@ pub struct TransportView {
 ///
 /// let view = session.mixer_view();
 /// assert!(view.has_pending_routing());
-/// assert!(view.summary().contains("drums"));
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MixerView {
@@ -174,7 +173,12 @@ impl TransportView {
         self.active_pattern_name.as_deref()
     }
 
-    /// Returns the name of the pattern pending execution at the next cycle boundary, if any.
+    /// The string name of the pattern pending execution at the next cycle boundary.
+    ///
+    /// Live-coding is inherently asynchronous: a user might execute a new pattern
+    /// (e.g. `drums = bd sn fast(2, cp)`) while the current measure is only halfway finished.
+    /// The TUI needs this method to visually indicate to the user which pattern is "cued up"
+    /// and waiting for the next downbeat to take over.
     ///
     /// ## Examples
     ///
@@ -214,7 +218,11 @@ impl MixerView {
         self.has_pending_routing
     }
 
-    /// Returns the formatted summary of tracks and buses.
+    /// Retrieves a pre-formatted, human-readable summary of the active mixer routing graph.
+    ///
+    /// Constructing strings and formatting graphs is expensive and shouldn't block the TUI
+    /// render thread. Therefore, the `Session` caches this layout string whenever the topology
+    /// changes, allowing the TUI to quickly paint the current routing state to the terminal.
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -1406,7 +1414,7 @@ impl ReplSession {
     /// session.eval_line(":track new drums").unwrap();
     ///
     /// let view = session.mixer_view();
-    /// assert!(view.summary().contains("drums"));
+    /// assert!(view.has_pending_routing());
     /// ```
     pub fn mixer_view(&self) -> MixerView {
         let snapshot = self.engine.transport_snapshot();

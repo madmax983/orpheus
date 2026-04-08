@@ -642,13 +642,21 @@ impl RenderEngine {
         output
     }
 
-    /// Returns the active pattern name after the most recently completed cycle.
+    /// Inspects the lock-free data structures to read the active pattern name.
+    ///
+    /// This method is designed exclusively for testing the core engine logic to ensure
+    /// that pattern swaps occur atomically at exactly the right frame boundaries without
+    /// dropping the audio thread's execution cadence.
     #[must_use]
     pub fn active_pattern_name_for_test(&self) -> Option<&str> {
         self.core.active_pattern_name.as_deref()
     }
 
-    /// Returns the active routed track names in snapshot order.
+    /// Inspects the lock-free routing data to read the active track names in snapshot order.
+    ///
+    /// The mixer topology is swapped atomically at cycle boundaries. This test-only method
+    /// validates that the `OfflineRenderer` correctly digested routing commands and applied
+    /// them without tearing the dependency graph.
     #[must_use]
     pub fn active_track_names_for_test(&self) -> Vec<&str> {
         self.core
@@ -665,7 +673,11 @@ impl RenderEngine {
         self.core.frames_until_boundary()
     }
 
-    /// Returns the current cycle length in frames for test assertions.
+    /// Exposes the engine's internal continuous-time synchronization metric.
+    ///
+    /// `orpheus-dsp` achieves sample-accurate musical timing by determining exactly how many
+    /// audio frames comprise a full musical cycle. This getter ensures unit tests can verify
+    /// that tempo changes correctly modulate the `frames_per_cycle` property.
     #[must_use]
     pub const fn frames_per_cycle_for_test(&self) -> u64 {
         self.core.frames_per_cycle
@@ -817,7 +829,10 @@ impl EngineHandle {
         self.test_renderer_mut().render_test_block(frames)
     }
 
-    /// Returns the active pattern name for the embedded test renderer.
+    /// Inspects the lock-free data structures of the embedded test renderer to read the active pattern name.
+    ///
+    /// This method allows `orpheus-lang` tests to verify that `EngineHandle` commands
+    /// correctly reach and modify the underlying test renderer's state across cycle boundaries.
     ///
     /// # Panics
     ///
@@ -827,7 +842,7 @@ impl EngineHandle {
         self.test_renderer_ref().active_pattern_name_for_test()
     }
 
-    /// Returns the active routed track names for the embedded test renderer.
+    /// Inspects the embedded test renderer's lock-free routing data to read the active track names.
     ///
     /// # Panics
     ///
@@ -848,7 +863,7 @@ impl EngineHandle {
         self.test_renderer_ref().frames_until_boundary_for_test()
     }
 
-    /// Returns the current cycle length in frames for the embedded test renderer.
+    /// Exposes the embedded test renderer's internal continuous-time synchronization metric.
     ///
     /// # Panics
     ///
