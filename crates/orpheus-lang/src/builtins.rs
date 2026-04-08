@@ -364,12 +364,7 @@ impl BuiltinKind {
         match self {
             Self::Every | Self::Arp | Self::Slice | Self::SliceIdx => 3,
             Self::When | Self::Within => 4,
-            Self::PitchClassSet
-            | Self::Rev
-            | Self::Sample
-            | Self::Strum
-            | Self::Chaos
-            | Self::MidiCc => 1,
+            Self::PitchClassSet | Self::Rev | Self::Sample | Self::Strum | Self::Chaos => 1,
             Self::Sometimes
             | Self::Mask
             | Self::Roll
@@ -1005,6 +1000,7 @@ fn apply_chaos(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::String(_) => Err(EvalError::new("`chaos` expected a pattern argument")),
+        Value::Pedal(_) => Err(EvalError::new("`chaos` expected a pattern argument")),
     }
 }
 
