@@ -48,7 +48,21 @@ impl Rational {
         Self::checked_normalize(i128::from(numerator), i128::from(denominator))
     }
 
-    /// Returns the additive identity.
+    /// A rational representation of `0`, used heavily as the base offset for all timing operations.
+    ///
+    /// The start of any given cycle loop aligns mathematically to zero. By establishing a
+    /// guaranteed rational `0`, Orpheus avoids cumulative floating point timing drift when
+    /// sequences are restarted.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::Rational;
+    ///
+    /// let silence = Rational::zero();
+    /// assert_eq!(silence.numerator(), 0);
+    /// assert_eq!(silence.denominator(), 1);
+    /// ```
     #[must_use]
     pub const fn zero() -> Self {
         Self {
@@ -57,7 +71,21 @@ impl Rational {
         }
     }
 
-    /// Returns the multiplicative identity.
+    /// A rational representation of `1`, representing exactly one full musical cycle.
+    ///
+    /// Unlike seconds or milliseconds, Orpheus sequences are built on fractions of a "cycle"
+    /// (or measure). A rational `1` denotes the distance required to traverse one complete
+    /// iteration of a core pattern loop, ensuring perfect sync regardless of tempo.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::Rational;
+    ///
+    /// let one_cycle = Rational::one();
+    /// assert_eq!(one_cycle.numerator(), 1);
+    /// assert_eq!(one_cycle.denominator(), 1);
+    /// ```
     #[must_use]
     pub const fn one() -> Self {
         Self {
@@ -66,13 +94,39 @@ impl Rational {
         }
     }
 
-    /// Returns the normalized numerator.
+    /// The signed upper half of the rational fraction.
+    ///
+    /// In the context of Orpheus time, the numerator dictates how many subdivisions of
+    /// a cycle have passed. This getter ensures you can extract precise timing locations
+    /// without converting to a lossy float.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::Rational;
+    ///
+    /// let half_note = Rational::new(1, 2).unwrap();
+    /// assert_eq!(half_note.numerator(), 1);
+    /// ```
     #[must_use]
     pub const fn numerator(&self) -> i128 {
         self.numerator
     }
 
-    /// Returns the normalized denominator.
+    /// The unsigned lower half of the rational fraction.
+    ///
+    /// The denominator defines the "grid" or resolution of the current timing location
+    /// (e.g., a denominator of `4` represents a quarter note grid). Orpheus always keeps
+    /// fractions exactly reduced to prevent overflow during complex sequence manipulations.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::Rational;
+    ///
+    /// let half_note = Rational::new(1, 2).unwrap();
+    /// assert_eq!(half_note.denominator(), 2);
+    /// ```
     #[must_use]
     pub const fn denominator(&self) -> i128 {
         self.denominator

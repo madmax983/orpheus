@@ -151,7 +151,11 @@ impl TypedModule {
         self.bindings.contains_key(name)
     }
 
-    /// Returns the inferred type for a named binding.
+    /// Extracts the inferred Hindley-Milner type signature for a bound variable or function.
+    ///
+    /// Once an Orpheus expression is parsed and bound to a name in the environment, the type
+    /// inference engine calculates its principal type. This method allows the REPL or TUI to
+    /// display that type back to the user (e.g. telling them that `fast` is `Number -> Pattern -> Pattern`).
     ///
     /// # Panics
     ///

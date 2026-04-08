@@ -43,7 +43,22 @@ pub enum VoiceKind {
 }
 
 impl VoiceKind {
-    /// Returns the canonical string token for this built-in voice.
+    /// The canonical string identifier bridging the language REPL to the DSP engine.
+    ///
+    /// When users type `"bd"` or `"sn"` in the Orpheus language environment, the
+    /// evaluator embeds these strings into the resulting playback sequence. The `SampleBank`
+    /// maps these specific string tokens to this enum, enabling the audio engine to dispatch
+    /// rendering to the correct fast-path synthesizer voice without executing expensive string
+    /// comparisons on the audio thread.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::VoiceKind;
+    ///
+    /// assert_eq!(VoiceKind::KickLike.token(), "bd");
+    /// assert_eq!(VoiceKind::SnareLike.token(), "sn");
+    /// ```
     #[must_use]
     pub const fn token(self) -> &'static str {
         match self {

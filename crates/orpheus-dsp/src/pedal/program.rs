@@ -202,7 +202,7 @@ impl PedalNode {
     }
 
     #[must_use]
-    pub fn mix(inputs: Vec<NodeRef>) -> Self {
+    pub const fn mix(inputs: Vec<NodeRef>) -> Self {
         Self::new(SignalKind::Audio, PedalNodeKind::Mix { inputs })
     }
 
@@ -243,7 +243,7 @@ pub struct PedalGraphProgram {
 
 impl PedalGraphProgram {
     #[must_use]
-    pub fn new(nodes: Vec<PedalNode>, output: NodeRef) -> Self {
+    pub const fn new(nodes: Vec<PedalNode>, output: NodeRef) -> Self {
         Self { nodes, output }
     }
 
@@ -257,6 +257,7 @@ impl PedalGraphProgram {
         self.output
     }
 
+    #[allow(clippy::incompatible_msrv)]
     #[must_use]
     pub const fn is_bypass(&self) -> bool {
         self.nodes.is_empty() && matches!(self.output, NodeRef::Input)
