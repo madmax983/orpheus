@@ -689,14 +689,12 @@ fn evaluate_node(
                 return signal;
             };
             let delayed = buffer[*write_index];
-            let feedback_signal = if let Some(cutoff_hz) = tone_hz_bits {
+            let feedback_signal = tone_hz_bits.as_ref().map_or(delayed, |cutoff_hz| {
                 low_pass
                     .as_mut()
                     .expect("feedback tone filter state should exist")
                     .process_with_cutoff(delayed, f32::from_bits(*cutoff_hz))
-            } else {
-                delayed
-            };
+            });
             buffer[*write_index] = sanitize_audio(signal + (feedback_signal * amount));
             *write_index += 1;
             if *write_index >= (*delay_samples).max(1) {
