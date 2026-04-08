@@ -7,6 +7,7 @@
 use std::collections::BTreeSet;
 
 use comfy_table::{Table, presets::UTF8_BORDERS_ONLY};
+use crossterm::style::Stylize;
 
 use crate::eval::{EvalError, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue};
@@ -54,7 +55,10 @@ pub fn sample_pattern_stats(
     #[allow(clippy::cast_precision_loss)]
     let density = (total_events as f64) / (cycle_count as f64);
 
-    let title = format!("Pattern Stats: {binding_name} ({cycle_count} cycles)");
+    let title = format!("Pattern Stats: {binding_name} ({cycle_count} cycles)")
+        .cyan()
+        .bold()
+        .to_string();
     let rows = vec![
         ["Total Events".to_string(), total_events.to_string()],
         [
@@ -136,7 +140,10 @@ pub fn number_pattern_stats(
     #[allow(clippy::cast_precision_loss)]
     let density = (total_events as f64) / (cycle_count as f64);
 
-    let title = format!("Pattern Stats: {binding_name} ({cycle_count} cycles)");
+    let title = format!("Pattern Stats: {binding_name} ({cycle_count} cycles)")
+        .cyan()
+        .bold()
+        .to_string();
     let rows = vec![
         ["Total Events".to_string(), total_events.to_string()],
         ["Min Value".to_string(), format!("{min_val:.3}")],
@@ -174,13 +181,28 @@ mod tests {
         let pattern = module.get("pattern").unwrap().as_sample_pattern().unwrap();
 
         let stats = sample_pattern_stats("pattern", pattern, 2).unwrap();
-        assert!(stats.contains("Pattern Stats: pattern (2 cycles)"));
-        assert!(stats.contains("Total Events"));
-        assert!(stats.contains("8"));
-        assert!(stats.contains("Unique Samples"));
-        assert!(stats.contains("2 (bd, sn)"));
-        assert!(stats.contains("Event Density"));
-        assert!(stats.contains("4.00 events/cycle"));
+
+        let mut unstyled = String::new();
+        let mut in_escape = false;
+        for c in stats.chars() {
+            if c == '\x1b' {
+                in_escape = true;
+            } else if in_escape {
+                if c.is_ascii_alphabetic() {
+                    in_escape = false;
+                }
+            } else {
+                unstyled.push(c);
+            }
+        }
+
+        assert!(unstyled.contains("Pattern Stats: pattern (2 cycles)"));
+        assert!(unstyled.contains("Total Events"));
+        assert!(unstyled.contains("8"));
+        assert!(unstyled.contains("Unique Samples"));
+        assert!(unstyled.contains("2 (bd, sn)"));
+        assert!(unstyled.contains("Event Density"));
+        assert!(unstyled.contains("4.00 events/cycle"));
     }
 
     #[test]
@@ -190,17 +212,32 @@ mod tests {
         let pattern = module.get("pattern").unwrap().as_number_pattern().unwrap();
 
         let stats = number_pattern_stats("pattern", pattern, 1).unwrap();
-        assert!(stats.contains("Pattern Stats: pattern (1 cycles)"));
-        assert!(stats.contains("Total Events"));
-        assert!(stats.contains("3"));
-        assert!(stats.contains("Min Value"));
-        assert!(stats.contains("1.000"));
-        assert!(stats.contains("Max Value"));
-        assert!(stats.contains("3.000"));
-        assert!(stats.contains("Average Value"));
-        assert!(stats.contains("2.000"));
-        assert!(stats.contains("Event Density"));
-        assert!(stats.contains("3.00 events/cycle"));
+
+        let mut unstyled = String::new();
+        let mut in_escape = false;
+        for c in stats.chars() {
+            if c == '\x1b' {
+                in_escape = true;
+            } else if in_escape {
+                if c.is_ascii_alphabetic() {
+                    in_escape = false;
+                }
+            } else {
+                unstyled.push(c);
+            }
+        }
+
+        assert!(unstyled.contains("Pattern Stats: pattern (1 cycles)"));
+        assert!(unstyled.contains("Total Events"));
+        assert!(unstyled.contains("3"));
+        assert!(unstyled.contains("Min Value"));
+        assert!(unstyled.contains("1.000"));
+        assert!(unstyled.contains("Max Value"));
+        assert!(unstyled.contains("3.000"));
+        assert!(unstyled.contains("Average Value"));
+        assert!(unstyled.contains("2.000"));
+        assert!(unstyled.contains("Event Density"));
+        assert!(unstyled.contains("3.00 events/cycle"));
     }
 
     #[test]
