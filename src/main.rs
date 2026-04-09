@@ -17,7 +17,10 @@ use orpheus_dsp::EngineHandle;
 
 fn main() {
     if let Err(error) = run() {
-        eprintln!("{} {:#}", "✗ error:".red().bold(), error);
+        eprintln!("{} {}", "✗ error:".red().bold(), error);
+        for cause in error.chain().skip(1) {
+            eprintln!("  {} {}", "↳".cyan(), cause);
+        }
         std::process::exit(1);
     }
 }
@@ -44,11 +47,14 @@ fn run() -> anyhow::Result<()> {
 
     let (engine, _stream, warning) = match start_live_audio() {
         Ok((engine, stream)) => (engine, Some(stream), None),
-        Err(error) => (
-            EngineHandle::stub(),
-            None,
-            Some(format!("audio output disabled: {error}")),
-        ),
+        Err(error) => {
+            let mut message = format!("audio output disabled: {error}");
+            for cause in error.chain().skip(1) {
+                use std::fmt::Write;
+                let _ = write!(&mut message, "\n  ↳ {cause}");
+            }
+            (EngineHandle::stub(), None, Some(message))
+        }
     };
 
     if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
