@@ -1,3 +1,17 @@
+//! The `midi_export` module provides Standard MIDI File (SMF) export for evaluated patterns.
+//!
+//! This module allows exporting both number patterns and sample patterns to a `.mid` format.
+//! It maps number patterns to standard melodic MIDI notes on Channel 1, and sample patterns
+//! (like drums) to General MIDI percussion note numbers on Channel 10.
+//!
+//! # Concepts
+//!
+//! - **Number Patterns:** Evaluated values are converted directly into MIDI note numbers.
+//! - **Sample Patterns:** Built-in drum samples (like `bd`, `sn`) are intelligently mapped
+//!   to the appropriate General MIDI note numbers on the drum channel.
+//! - **Variable Length Quantities (VLQ):** The engine encodes tick deltas natively without
+//!   external MIDI dependencies.
+
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
@@ -88,6 +102,24 @@ fn write_midi_file(
 /// Converts the pattern into MIDI notes. The values are interpreted as MIDI note
 /// numbers (0-127). The track will use channel 1.
 ///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module};
+/// use orpheus_lang::export_number_pattern_to_midi;
+/// use std::env;
+/// use std::fs;
+///
+/// let module = eval_module("notes = 60 62 64 65", ReplMode::Loose).unwrap();
+/// let pattern = module.get("notes").unwrap().as_number_pattern().unwrap();
+///
+/// let path = env::temp_dir().join("test_export_number.mid");
+/// export_number_pattern_to_midi(pattern, &path, 2).unwrap();
+///
+/// assert!(path.exists());
+/// fs::remove_file(path).unwrap();
+/// ```
+///
 /// # Errors
 /// Returns [`EvalError`] if the export fails or if `cycle_count` is 0.
 pub fn export_number_pattern_to_midi(
@@ -135,6 +167,24 @@ pub fn export_number_pattern_to_midi(
 ///
 /// Maps generic drum sample names (e.g., `bd`, `sn`, `hh`) to General MIDI
 /// percussion note numbers on Channel 10.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module};
+/// use orpheus_lang::export_sample_pattern_to_midi;
+/// use std::env;
+/// use std::fs;
+///
+/// let module = eval_module("drums = bd sn", ReplMode::Loose).unwrap();
+/// let pattern = module.get("drums").unwrap().as_sample_pattern().unwrap();
+///
+/// let path = env::temp_dir().join("test_export_sample.mid");
+/// export_sample_pattern_to_midi(pattern, &path, 4).unwrap();
+///
+/// assert!(path.exists());
+/// fs::remove_file(path).unwrap();
+/// ```
 ///
 /// # Errors
 /// Returns [`EvalError`] if the export fails or if `cycle_count` is 0.
