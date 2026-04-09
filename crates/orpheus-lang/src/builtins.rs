@@ -364,7 +364,12 @@ impl BuiltinKind {
         match self {
             Self::Every | Self::Arp | Self::Slice | Self::SliceIdx => 3,
             Self::When | Self::Within => 4,
-            Self::PitchClassSet | Self::Rev | Self::Sample | Self::Strum | Self::Chaos => 1,
+            Self::PitchClassSet
+            | Self::Rev
+            | Self::Sample
+            | Self::Strum
+            | Self::Chaos
+            | Self::MidiCc => 1,
             Self::Sometimes
             | Self::Mask
             | Self::Roll
@@ -2461,5 +2466,60 @@ mod tests {
             err_msg.contains("maximum allowed bound of 1024"),
             "unexpected error message: {err_msg}"
         );
+    }
+
+    #[test]
+    fn chaos_rejects_invalid_types() {
+        let test_cases = vec![
+            "a = chaos(\"string\")",
+            "a = chaos(rev)",
+            "a = chaos(every)",
+        ];
+
+        for source in test_cases {
+            let result = eval_module(source, ReplMode::Loose);
+            assert!(
+                result.is_err(),
+                "expected chaos with invalid argument to be rejected: {source}"
+            );
+            let err_msg = result.unwrap_err().to_string();
+            assert!(
+                err_msg.contains("`chaos` expected a pattern argument"),
+                "unexpected error message for {source}: {err_msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn midi_cc_evaluates_and_rejects_invalid() {
+        let test_cases = vec![
+            ("a = midi_cc(1)", true),
+            ("a = cc(127)", true),
+            ("a = cc(0)", true),
+            ("a = cc(128)", false),
+            ("a = cc(-1)", false),
+            ("a = cc(1.5)", false),
+        ];
+
+        for (source, is_valid) in test_cases {
+            let result = eval_module(source, ReplMode::Loose);
+            if is_valid {
+                assert!(
+                    result.is_ok(),
+                    "expected valid midi_cc evaluation: {source}, but got {result:?}"
+                );
+            } else {
+                assert!(
+                    result.is_err(),
+                    "expected invalid midi_cc evaluation to fail: {source}"
+                );
+                let err_msg = result.unwrap_err().to_string();
+                assert!(
+                    err_msg
+                        .contains("`midi_cc` requires an integer controller index within [0, 127]"),
+                    "unexpected error message for {source}: {err_msg}"
+                );
+            }
+        }
     }
 }
