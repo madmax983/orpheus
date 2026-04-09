@@ -436,7 +436,7 @@ impl SampleTrigger {
     }
 
     #[must_use]
-    pub fn pedal_program(&self) -> Option<&Arc<PedalProgram>> {
+    pub const fn pedal_program(&self) -> Option<&Arc<PedalProgram>> {
         self.pedal_program.as_ref()
     }
 }

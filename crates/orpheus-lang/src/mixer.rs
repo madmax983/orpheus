@@ -299,7 +299,10 @@ impl MixerState {
             ]);
         }
 
-        output.push_str(&format!("{}\n", "Mixer Tracks:".cyan().bold()));
+        let _ = std::fmt::Write::write_fmt(
+            &mut output,
+            format_args!("{}\n", "Mixer Tracks:".cyan().bold()),
+        );
         output.push_str(&track_table.to_string());
 
         if !self.buses.is_empty() {
@@ -315,7 +318,10 @@ impl MixerState {
                 bus_table.add_row(vec![bus_name.to_owned(), effect]);
             }
 
-            output.push_str(&format!("\n\n{}\n", "Mixer Buses:".cyan().bold()));
+            let _ = std::fmt::Write::write_fmt(
+                &mut output,
+                format_args!("\n\n{}\n", "Mixer Buses:".cyan().bold()),
+            );
             output.push_str(&bus_table.to_string());
         }
 

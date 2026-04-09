@@ -92,12 +92,12 @@ impl ValidatedPedalNode {
     }
 
     #[must_use]
-    pub fn signal_kind(&self) -> &SignalKind {
+    pub const fn signal_kind(&self) -> &SignalKind {
         &self.signal_kind
     }
 
     #[must_use]
-    pub fn kind(&self) -> &PedalNodeKind {
+    pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
@@ -129,7 +129,7 @@ impl ValidatedPedalBinding {
     }
 
     #[must_use]
-    pub fn node(&self) -> &ValidatedPedalNode {
+    pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node
     }
 }
@@ -153,7 +153,7 @@ impl ValidatedPedalPlan {
     }
 
     #[must_use]
-    pub fn signal_kind(&self) -> &SignalKind {
+    pub const fn signal_kind(&self) -> &SignalKind {
         &self.signal_kind
     }
 
@@ -163,7 +163,7 @@ impl ValidatedPedalPlan {
     }
 
     #[must_use]
-    pub fn result(&self) -> &ValidatedPedalNode {
+    pub const fn result(&self) -> &ValidatedPedalNode {
         &self.result
     }
 
@@ -196,17 +196,17 @@ pub struct PedalValue {
 
 impl PedalValue {
     #[must_use]
-    pub fn new(graph: PedalGraph, plan: ValidatedPedalPlan) -> Self {
+    pub const fn new(graph: PedalGraph, plan: ValidatedPedalPlan) -> Self {
         Self { graph, plan }
     }
 
     #[must_use]
-    pub fn graph(&self) -> &PedalGraph {
+    pub const fn graph(&self) -> &PedalGraph {
         &self.graph
     }
 
     #[must_use]
-    pub fn plan(&self) -> &ValidatedPedalPlan {
+    pub const fn plan(&self) -> &ValidatedPedalPlan {
         &self.plan
     }
 
@@ -228,7 +228,7 @@ struct GraphCompiler<'a> {
     current_binding: Option<&'a str>,
 }
 
-impl<'a> GraphCompiler<'a> {
+impl GraphCompiler<'_> {
     fn compile_expr(
         &self,
         expr: &Expr,
@@ -325,8 +325,7 @@ impl<'a> GraphCompiler<'a> {
         };
 
         match (op, lhs.signal_kind(), rhs.signal_kind()) {
-            (BinaryOp::Add, SignalKind::Control, SignalKind::Control)
-            | (BinaryOp::Mul, SignalKind::Control, SignalKind::Control) => {
+            (BinaryOp::Add | BinaryOp::Mul, SignalKind::Control, SignalKind::Control) => {
                 Ok(ValidatedPedalNode::new(
                     SignalKind::Control,
                     PedalNodeKind::Binary,
@@ -439,11 +438,11 @@ impl<'a> GraphCompiler<'a> {
         }
 
         match name {
-            "output" => self.compile_output_stage(positional, named, allow_output),
-            "mix" => self.compile_mix_stage(positional, named),
-            "lfo" | "constant" => self.compile_control_source(name, positional, named),
-            "env_follow" => self.compile_env_follow(positional, named),
-            _ => self.compile_audio_stage(name, positional, named),
+            "output" => Self::compile_output_stage(&positional, &named, allow_output),
+            "mix" => Self::compile_mix_stage(&positional, &named),
+            "lfo" | "constant" => Self::compile_control_source(name, &positional, &named),
+            "env_follow" => Self::compile_env_follow(&positional, &named),
+            _ => Self::compile_audio_stage(name, &positional, &named),
         }
     }
 
@@ -521,13 +520,12 @@ impl<'a> GraphCompiler<'a> {
             }
         }
 
-        self.compile_feedback_stage(positional, named)
+        Self::compile_feedback_stage(&positional, &named)
     }
 
     fn compile_output_stage(
-        &self,
-        positional: Vec<ValidatedPedalNode>,
-        named: Vec<(String, ValidatedPedalNode)>,
+        positional: &[ValidatedPedalNode],
+        named: &[(String, ValidatedPedalNode)],
         allow_output: bool,
     ) -> Result<ValidatedPedalNode, EvalError> {
         if !allow_output {
@@ -554,9 +552,8 @@ impl<'a> GraphCompiler<'a> {
     }
 
     fn compile_mix_stage(
-        &self,
-        positional: Vec<ValidatedPedalNode>,
-        named: Vec<(String, ValidatedPedalNode)>,
+        positional: &[ValidatedPedalNode],
+        named: &[(String, ValidatedPedalNode)],
     ) -> Result<ValidatedPedalNode, EvalError> {
         if !named.is_empty() {
             return Err(EvalError::new(
@@ -590,9 +587,8 @@ impl<'a> GraphCompiler<'a> {
     }
 
     fn compile_feedback_stage(
-        &self,
-        positional: Vec<ValidatedPedalNode>,
-        named: Vec<(String, ValidatedPedalNode)>,
+        positional: &[ValidatedPedalNode],
+        named: &[(String, ValidatedPedalNode)],
     ) -> Result<ValidatedPedalNode, EvalError> {
         if positional.len() != 1 || positional[0].signal_kind() != &SignalKind::Audio {
             return Err(EvalError::new(
@@ -614,10 +610,9 @@ impl<'a> GraphCompiler<'a> {
     }
 
     fn compile_control_source(
-        &self,
         name: &str,
-        positional: Vec<ValidatedPedalNode>,
-        named: Vec<(String, ValidatedPedalNode)>,
+        positional: &[ValidatedPedalNode],
+        named: &[(String, ValidatedPedalNode)],
     ) -> Result<ValidatedPedalNode, EvalError> {
         if positional
             .iter()
@@ -631,14 +626,13 @@ impl<'a> GraphCompiler<'a> {
         Ok(ValidatedPedalNode::new(
             SignalKind::Control,
             PedalNodeKind::Stage,
-            format_stage_summary(name, &positional, &named),
+            format_stage_summary(name, positional, named),
         ))
     }
 
     fn compile_env_follow(
-        &self,
-        positional: Vec<ValidatedPedalNode>,
-        named: Vec<(String, ValidatedPedalNode)>,
+        positional: &[ValidatedPedalNode],
+        named: &[(String, ValidatedPedalNode)],
     ) -> Result<ValidatedPedalNode, EvalError> {
         if positional.len() != 1 || positional[0].signal_kind() != &SignalKind::Audio {
             return Err(EvalError::new(
@@ -649,15 +643,14 @@ impl<'a> GraphCompiler<'a> {
         Ok(ValidatedPedalNode::new(
             SignalKind::Control,
             PedalNodeKind::Stage,
-            format_stage_summary("env_follow", &positional, &named),
+            format_stage_summary("env_follow", positional, named),
         ))
     }
 
     fn compile_audio_stage(
-        &self,
         name: &str,
-        positional: Vec<ValidatedPedalNode>,
-        named: Vec<(String, ValidatedPedalNode)>,
+        positional: &[ValidatedPedalNode],
+        named: &[(String, ValidatedPedalNode)],
     ) -> Result<ValidatedPedalNode, EvalError> {
         let audio_inputs = positional
             .iter()
@@ -671,7 +664,7 @@ impl<'a> GraphCompiler<'a> {
             1 => Ok(ValidatedPedalNode::new(
                 SignalKind::Audio,
                 PedalNodeKind::Stage,
-                format_stage_summary(name, &positional, &named),
+                format_stage_summary(name, positional, named),
             )),
             _ => Err(EvalError::new(format!(
                 "`{name}` cannot take multiple audio inputs; use `mix(...)` for branch recombination"
@@ -700,15 +693,16 @@ fn format_stage_summary(
 fn is_selector_atom(param_name: &str, ident: &str) -> bool {
     matches!(
         (param_name, ident),
-        ("model", "silicon_hard")
-            | ("model", "silicon_soft")
-            | ("model", "germanium_soft")
-            | ("model", "red_led")
-            | ("model", "mid_hump")
-            | ("model", "jfet_clean")
-            | ("model", "opamp_tight")
-            | ("kind", "hard")
-            | ("kind", "soft")
+        (
+            "model",
+            "silicon_hard"
+                | "silicon_soft"
+                | "germanium_soft"
+                | "red_led"
+                | "mid_hump"
+                | "jfet_clean"
+                | "opamp_tight"
+        ) | ("kind", "hard" | "soft")
     )
 }
 

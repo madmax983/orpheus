@@ -659,7 +659,7 @@ impl SampleEvent {
     }
 
     #[must_use]
-    pub fn pedal_program(&self) -> Option<&Arc<orpheus_dsp::PedalProgram>> {
+    pub const fn pedal_program(&self) -> Option<&Arc<orpheus_dsp::PedalProgram>> {
         self.pedal_program.as_ref()
     }
 
