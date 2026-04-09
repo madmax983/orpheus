@@ -364,7 +364,7 @@ impl BuiltinKind {
         match self {
             Self::Every | Self::Arp | Self::Slice | Self::SliceIdx => 3,
             Self::When | Self::Within => 4,
-            Self::PitchClassSet | Self::Rev | Self::Sample | Self::Strum | Self::Chaos => 1,
+            Self::PitchClassSet | Self::Rev | Self::Sample | Self::Strum | Self::Chaos | Self::MidiCc => 1,
             Self::Sometimes
             | Self::Mask
             | Self::Roll

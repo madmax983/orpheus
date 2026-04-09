@@ -340,7 +340,7 @@ impl Inferencer {
         let vars = free_type_vars(&ty)
             .difference(&env_vars)
             .copied()
-            .collect::<Vec<_>>();
+            .collect();
         TypeScheme { vars, ty }
     }
 
