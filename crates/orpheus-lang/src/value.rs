@@ -263,6 +263,7 @@ impl PitchClassSetValue {
 /// assert!(matches!(number_pattern, Value::NumberPattern(_)));
 /// ```
 #[derive(Clone, Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum Value {
     /// A sequenced pattern of audio sample identifiers or parameters.
     SamplePattern(SamplePatternValue),
@@ -659,7 +660,7 @@ impl SampleEvent {
     }
 
     #[must_use]
-    pub fn pedal_program(&self) -> Option<&Arc<orpheus_dsp::PedalProgram>> {
+    pub const fn pedal_program(&self) -> Option<&Arc<orpheus_dsp::PedalProgram>> {
         self.pedal_program.as_ref()
     }
 

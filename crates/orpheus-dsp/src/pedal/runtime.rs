@@ -266,7 +266,7 @@ fn feedback_own_tail_frames(
         .saturating_add(tone_tail)
 }
 
-fn stage_input_reference(stage: &PedalStage) -> NodeRef {
+const fn stage_input_reference(stage: &PedalStage) -> NodeRef {
     match stage {
         PedalStage::Buffer { input }
         | PedalStage::Preamp { input, .. }
@@ -311,7 +311,8 @@ fn feedback_decay_repeat_count(amount: f32) -> u32 {
         return 0;
     }
 
-    let repeats = (1.0e-3_f32.ln() / amount.ln()).ceil();
+    let repeats = 1.0e-3_f32.log(amount).ceil();
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     if repeats.is_finite() {
         (repeats as u32).max(1)
     } else {
@@ -333,7 +334,8 @@ fn one_pole_tail_frames(sample_rate_hz: f32, cutoff_hz: f32) -> u32 {
     let sample_rate_hz = sanitize_sample_rate(sample_rate_hz);
     let cutoff_hz = cutoff_hz.clamp(20.0, sample_rate_hz * 0.45);
     let per_sample_decay = (-core::f32::consts::TAU * cutoff_hz / sample_rate_hz).exp();
-    let frames = (1.0e-3_f32.ln() / per_sample_decay.ln()).ceil();
+    let frames = 1.0e-3_f32.log(per_sample_decay).ceil();
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     if frames.is_finite() {
         (frames as u32).max(1)
     } else {
@@ -381,10 +383,10 @@ fn control_linear_expr_with(
                     let right_expr = control_linear_expr_with(nodes, *right, visiting)?;
                     if let Some(scale) = left_expr.constant_value() {
                         Some(right_expr.scale(scale))
-                    } else if let Some(scale) = right_expr.constant_value() {
-                        Some(left_expr.scale(scale))
                     } else {
-                        None
+                        right_expr
+                            .constant_value()
+                            .map(|scale| left_expr.scale(scale))
                     }
                 }
                 PedalNodeKind::Lfo { .. }
@@ -472,16 +474,12 @@ impl ControlRange {
             multiply_range_bound(self.max, other.min),
             multiply_range_bound(self.max, other.max),
         ];
-        let min = candidates
-            .into_iter()
-            .fold(f32::INFINITY, |current, value| current.min(value));
-        let max = candidates
-            .into_iter()
-            .fold(f32::NEG_INFINITY, |current, value| current.max(value));
+        let min = candidates.into_iter().fold(f32::INFINITY, f32::min);
+        let max = candidates.into_iter().fold(f32::NEG_INFINITY, f32::max);
         Self::new(min, max)
     }
 
-    fn max_abs(self) -> f32 {
+    const fn max_abs(self) -> f32 {
         if self.min.is_infinite() || self.max.is_infinite() {
             f32::INFINITY
         } else {
@@ -512,7 +510,7 @@ struct LinearControlExpr {
 }
 
 impl LinearControlExpr {
-    fn constant(value: f32) -> Self {
+    const fn constant(value: f32) -> Self {
         Self {
             constant: value,
             terms: Vec::new(),
@@ -602,7 +600,7 @@ fn reference_updates_each_sample(
     }
 }
 
-fn control_smoothing_coeff(sample_rate_hz: f32) -> f32 {
+const fn control_smoothing_coeff(sample_rate_hz: f32) -> f32 {
     let _ = sample_rate_hz;
     1.0
 }
@@ -613,7 +611,7 @@ fn smooth_control_value(current: f32, target: f32, coeff: f32) -> f32 {
     if (target - current).abs() <= 1.0e-6 {
         target
     } else {
-        sanitize_audio(current + ((target - current) * coeff))
+        sanitize_audio((target - current).mul_add(coeff, current))
     }
 }
 
@@ -637,7 +635,9 @@ fn evaluate_node(
             let NodeState::Lfo { phase } = &mut node_states[index] else {
                 return 0.0;
             };
-            let value = f32::from_bits(*offset_bits) + phase.sin() * f32::from_bits(*depth_bits);
+            let value = phase
+                .sin()
+                .mul_add(f32::from_bits(*depth_bits), f32::from_bits(*offset_bits));
             let increment =
                 core::f32::consts::TAU * f32::from_bits(*rate_hz_bits) * (sample_step as f32)
                     / sample_rate_hz.max(1.0);
@@ -1075,11 +1075,11 @@ fn sanitize_sample_rate(sample_rate_hz: f32) -> f32 {
     }
 }
 
-fn sanitize_audio(sample: f32) -> f32 {
+const fn sanitize_audio(sample: f32) -> f32 {
     if sample.is_finite() { sample } else { 0.0 }
 }
 
-fn sanitize_non_negative(value: f32) -> f32 {
+const fn sanitize_non_negative(value: f32) -> f32 {
     if value.is_finite() {
         value.max(0.0)
     } else {

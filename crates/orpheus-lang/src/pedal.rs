@@ -92,12 +92,12 @@ impl ValidatedPedalNode {
     }
 
     #[must_use]
-    pub fn signal_kind(&self) -> &SignalKind {
+    pub const fn signal_kind(&self) -> &SignalKind {
         &self.signal_kind
     }
 
     #[must_use]
-    pub fn kind(&self) -> &PedalNodeKind {
+    pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
@@ -129,7 +129,7 @@ impl ValidatedPedalBinding {
     }
 
     #[must_use]
-    pub fn node(&self) -> &ValidatedPedalNode {
+    pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node
     }
 }
@@ -153,7 +153,7 @@ impl ValidatedPedalPlan {
     }
 
     #[must_use]
-    pub fn signal_kind(&self) -> &SignalKind {
+    pub const fn signal_kind(&self) -> &SignalKind {
         &self.signal_kind
     }
 
@@ -163,7 +163,7 @@ impl ValidatedPedalPlan {
     }
 
     #[must_use]
-    pub fn result(&self) -> &ValidatedPedalNode {
+    pub const fn result(&self) -> &ValidatedPedalNode {
         &self.result
     }
 
@@ -196,17 +196,17 @@ pub struct PedalValue {
 
 impl PedalValue {
     #[must_use]
-    pub fn new(graph: PedalGraph, plan: ValidatedPedalPlan) -> Self {
+    pub const fn new(graph: PedalGraph, plan: ValidatedPedalPlan) -> Self {
         Self { graph, plan }
     }
 
     #[must_use]
-    pub fn graph(&self) -> &PedalGraph {
+    pub const fn graph(&self) -> &PedalGraph {
         &self.graph
     }
 
     #[must_use]
-    pub fn plan(&self) -> &ValidatedPedalPlan {
+    pub const fn plan(&self) -> &ValidatedPedalPlan {
         &self.plan
     }
 
@@ -228,7 +228,7 @@ struct GraphCompiler<'a> {
     current_binding: Option<&'a str>,
 }
 
-impl<'a> GraphCompiler<'a> {
+impl GraphCompiler<'_> {
     fn compile_expr(
         &self,
         expr: &Expr,
@@ -325,8 +325,7 @@ impl<'a> GraphCompiler<'a> {
         };
 
         match (op, lhs.signal_kind(), rhs.signal_kind()) {
-            (BinaryOp::Add, SignalKind::Control, SignalKind::Control)
-            | (BinaryOp::Mul, SignalKind::Control, SignalKind::Control) => {
+            (BinaryOp::Add | BinaryOp::Mul, SignalKind::Control, SignalKind::Control) => {
                 Ok(ValidatedPedalNode::new(
                     SignalKind::Control,
                     PedalNodeKind::Binary,
@@ -524,6 +523,7 @@ impl<'a> GraphCompiler<'a> {
         self.compile_feedback_stage(positional, named)
     }
 
+    #[allow(clippy::unused_self, clippy::needless_pass_by_value)]
     fn compile_output_stage(
         &self,
         positional: Vec<ValidatedPedalNode>,
@@ -553,6 +553,7 @@ impl<'a> GraphCompiler<'a> {
         ))
     }
 
+    #[allow(clippy::unused_self, clippy::needless_pass_by_value)]
     fn compile_mix_stage(
         &self,
         positional: Vec<ValidatedPedalNode>,
@@ -589,6 +590,7 @@ impl<'a> GraphCompiler<'a> {
         ))
     }
 
+    #[allow(clippy::unused_self, clippy::needless_pass_by_value)]
     fn compile_feedback_stage(
         &self,
         positional: Vec<ValidatedPedalNode>,
@@ -613,6 +615,7 @@ impl<'a> GraphCompiler<'a> {
         ))
     }
 
+    #[allow(clippy::unused_self, clippy::needless_pass_by_value)]
     fn compile_control_source(
         &self,
         name: &str,
@@ -635,6 +638,7 @@ impl<'a> GraphCompiler<'a> {
         ))
     }
 
+    #[allow(clippy::unused_self, clippy::needless_pass_by_value)]
     fn compile_env_follow(
         &self,
         positional: Vec<ValidatedPedalNode>,
@@ -653,6 +657,7 @@ impl<'a> GraphCompiler<'a> {
         ))
     }
 
+    #[allow(clippy::unused_self, clippy::needless_pass_by_value)]
     fn compile_audio_stage(
         &self,
         name: &str,
@@ -700,15 +705,16 @@ fn format_stage_summary(
 fn is_selector_atom(param_name: &str, ident: &str) -> bool {
     matches!(
         (param_name, ident),
-        ("model", "silicon_hard")
-            | ("model", "silicon_soft")
-            | ("model", "germanium_soft")
-            | ("model", "red_led")
-            | ("model", "mid_hump")
-            | ("model", "jfet_clean")
-            | ("model", "opamp_tight")
-            | ("kind", "hard")
-            | ("kind", "soft")
+        (
+            "model",
+            "silicon_hard"
+                | "silicon_soft"
+                | "germanium_soft"
+                | "red_led"
+                | "mid_hump"
+                | "jfet_clean"
+                | "opamp_tight"
+        ) | ("kind", "hard" | "soft")
     )
 }
 

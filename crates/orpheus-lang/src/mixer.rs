@@ -12,6 +12,7 @@
 //! - **Sends:** Connections that route a portion of a track's audio to a bus.
 
 use std::collections::BTreeMap;
+use std::fmt::Write;
 
 use comfy_table::{Table, presets::UTF8_BORDERS_ONLY};
 use crossterm::style::Stylize;
@@ -299,7 +300,7 @@ impl MixerState {
             ]);
         }
 
-        output.push_str(&format!("{}\n", "Mixer Tracks:".cyan().bold()));
+        let _ = writeln!(output, "{}", "Mixer Tracks:".cyan().bold());
         output.push_str(&track_table.to_string());
 
         if !self.buses.is_empty() {
@@ -315,7 +316,7 @@ impl MixerState {
                 bus_table.add_row(vec![bus_name.to_owned(), effect]);
             }
 
-            output.push_str(&format!("\n\n{}\n", "Mixer Buses:".cyan().bold()));
+            let _ = writeln!(output, "\n\n{}", "Mixer Buses:".cyan().bold());
             output.push_str(&bus_table.to_string());
         }
 

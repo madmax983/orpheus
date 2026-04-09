@@ -129,11 +129,7 @@ impl Expr {
                 }
                 result.references_ident_with_shadow(target, shadowed)
             }
-            Self::Pipe { lhs, rhs } => {
-                lhs.references_ident_with_shadow(target, shadowed)
-                    || rhs.references_ident_with_shadow(target, shadowed)
-            }
-            Self::Binary { lhs, rhs, .. } => {
+            Self::Pipe { lhs, rhs } | Self::Binary { lhs, rhs, .. } => {
                 lhs.references_ident_with_shadow(target, shadowed)
                     || rhs.references_ident_with_shadow(target, shadowed)
             }

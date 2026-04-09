@@ -132,7 +132,7 @@ pub enum PedalNodeKind {
 
 impl PedalNodeKind {
     #[must_use]
-    pub fn constant_value(&self) -> Option<f32> {
+    pub const fn constant_value(&self) -> Option<f32> {
         match self {
             Self::Constant { value_bits } => Some(f32::from_bits(*value_bits)),
             _ => None,
@@ -153,7 +153,7 @@ impl PedalNode {
     }
 
     #[must_use]
-    pub fn constant(value: f32) -> Self {
+    pub const fn constant(value: f32) -> Self {
         Self::new(
             SignalKind::Control,
             PedalNodeKind::Constant {
@@ -163,7 +163,7 @@ impl PedalNode {
     }
 
     #[must_use]
-    pub fn lfo(rate_hz: f32, depth: f32, offset: f32) -> Self {
+    pub const fn lfo(rate_hz: f32, depth: f32, offset: f32) -> Self {
         Self::new(
             SignalKind::Control,
             PedalNodeKind::Lfo {
@@ -175,7 +175,7 @@ impl PedalNode {
     }
 
     #[must_use]
-    pub fn env_follow(input: NodeRef, attack_ms: f32, release_ms: f32) -> Self {
+    pub const fn env_follow(input: NodeRef, attack_ms: f32, release_ms: f32) -> Self {
         Self::new(
             SignalKind::Control,
             PedalNodeKind::EnvFollow {
