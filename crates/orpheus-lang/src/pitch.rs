@@ -2,7 +2,7 @@
 //!
 //! This module translates human-readable musical note strings (like `"c4"`,
 //! `"fs4"`, `"bf3"`) into integer MIDI note numbers or offsets.
-use std::fmt::{self, Display, Formatter};
+use thiserror::Error;
 
 /// An error that occurs when a string fails to parse as a pitch literal.
 ///
@@ -33,7 +33,9 @@ use std::fmt::{self, Display, Formatter};
 /// let error = parse_named_pitch_literal("C4").unwrap_err();
 /// assert!(error.to_string().contains("lowercase ASCII"));
 /// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
+
+#[derive(Clone, Debug, Eq, PartialEq, Error)]
+#[error("{message}")]
 pub struct PitchLiteralError {
     message: Box<str>,
 }
@@ -45,14 +47,6 @@ impl PitchLiteralError {
         }
     }
 }
-
-impl Display for PitchLiteralError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.message)
-    }
-}
-
-impl std::error::Error for PitchLiteralError {}
 
 /// Parses a named musical pitch literal into an integer MIDI offset.
 ///

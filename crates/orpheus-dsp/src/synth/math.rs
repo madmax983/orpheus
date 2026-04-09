@@ -1,3 +1,4 @@
+#![allow(clippy::float_cmp)]
 //! Math helpers for scalar DSP primitives.
 
 /// A normalized unit-interval phase accumulator.

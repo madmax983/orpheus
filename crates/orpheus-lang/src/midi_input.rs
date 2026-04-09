@@ -1,3 +1,4 @@
+#![allow(clippy::float_cmp)]
 //! Shared MIDI input state for control and note events.
 
 use std::collections::VecDeque;

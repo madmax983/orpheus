@@ -1,3 +1,4 @@
+#![allow(clippy::large_enum_variant)]
 //! Core runtime types and evaluator representation for Orpheus.
 //!
 //! This module defines how the language interprets expressions at runtime. It
@@ -4553,11 +4554,11 @@ mod tests {
 
         // Should contain all elements
         let mut c0_sorted = c0_names.clone();
-        c0_sorted.sort();
+        c0_sorted.sort_unstable();
         assert_eq!(c0_sorted, vec!["bd", "cp", "hh", "sn"]);
 
         let mut c1_sorted = c1_names.clone();
-        c1_sorted.sort();
+        c1_sorted.sort_unstable();
         assert_eq!(c1_sorted, vec!["bd", "cp", "hh", "sn"]);
 
         // C0 and C1 should likely be different permutations

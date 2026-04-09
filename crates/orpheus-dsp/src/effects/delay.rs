@@ -1,3 +1,4 @@
+#![allow(clippy::float_cmp)]
 //! A tempo-synchronized stereo delay effect.
 //!
 //! This delay uses a pre-allocated circular buffer to store previous audio frames.

@@ -1,3 +1,6 @@
+#![allow(unreachable_patterns)]
+#![allow(clippy::large_enum_variant)]
+#![allow(clippy::match_same_arms)]
 //! The `builtins` module implements the standard library of pattern transformations and controls.
 //!
 //! This module houses the execution logic for all primitive functions available in the

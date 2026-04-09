@@ -1,3 +1,4 @@
+#![allow(clippy::format_push_string)]
 //! The `mixer` module manages the audio routing and effects state.
 //!
 //! This module acts as the bridge between the high-level pattern language

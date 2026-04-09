@@ -1,3 +1,4 @@
+#![allow(clippy::match_same_arms)]
 //! Abstract syntax tree nodes for the Phase 1 Orpheus parser.
 
 /// A parsed Orpheus module.

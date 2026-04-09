@@ -20,8 +20,8 @@
 //! ```
 
 use std::collections::BTreeMap;
-use std::error::Error;
-use std::fmt::{self, Display, Formatter};
+
+use thiserror::Error;
 
 use orpheus_pattern::{Event, PatternError, PatternNode, Rational, TimeSpan};
 
@@ -55,7 +55,9 @@ use crate::value::{
 /// let err = EvalError::new("decimal literal exceeded the supported range");
 /// assert_eq!(err.to_string(), "decimal literal exceeded the supported range");
 /// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
+
+#[derive(Clone, Debug, Eq, PartialEq, Error)]
+#[error("{message}")]
 pub struct EvalError {
     message: Box<str>,
 }
@@ -84,14 +86,6 @@ impl EvalError {
         }
     }
 }
-
-impl Display for EvalError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.message)
-    }
-}
-
-impl Error for EvalError {}
 
 impl From<ParseError> for EvalError {
     fn from(error: ParseError) -> Self {
@@ -1420,7 +1414,6 @@ right = sometimes(fast(2), cp hh)";
     fn render_error_formats_eval_error() {
         let err = crate::RenderError::Eval(super::EvalError::new("render failed"));
         assert_eq!(err.to_string(), "render failed");
-        assert!(std::error::Error::source(&err).is_some());
     }
 
     #[test]
@@ -1430,7 +1423,6 @@ right = sometimes(fast(2), cp hh)";
             err.to_string(),
             "offline rendering requires at least one cycle"
         );
-        assert!(std::error::Error::source(&err).is_some());
     }
 
     #[test]

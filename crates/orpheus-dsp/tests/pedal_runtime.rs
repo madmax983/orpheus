@@ -1,3 +1,8 @@
+#![allow(
+    clippy::suboptimal_flops,
+    clippy::cast_precision_loss,
+    clippy::needless_range_loop
+)]
 use std::sync::Arc;
 
 use orpheus_dsp::{
