@@ -364,7 +364,7 @@ impl BuiltinKind {
         match self {
             Self::Every | Self::Arp | Self::Slice | Self::SliceIdx => 3,
             Self::When | Self::Within => 4,
-            Self::PitchClassSet | Self::Rev | Self::Sample | Self::Strum | Self::Chaos => 1,
+            Self::PitchClassSet | Self::Rev | Self::Sample | Self::Strum | Self::Chaos | Self::MidiCc => 1,
             Self::Sometimes
             | Self::Mask
             | Self::Roll
@@ -1000,7 +1000,6 @@ fn apply_chaos(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
         | Value::Function(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new("`chaos` expected a pattern argument")),
-        Value::Pedal(_) => Err(EvalError::new("`chaos` expected a pattern argument")),
     }
 }
 
@@ -1276,7 +1275,7 @@ fn apply_onset(args: Vec<Value>) -> Result<Value, EvalError> {
     match pattern {
         Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match index {
             OnsetIndexControl::Constant(index) => pattern.onset(index),
-            OnsetIndexControl::Pattern(control) => pattern.onset_pattern(control),
+            OnsetIndexControl::Pattern(control) => pattern.onset_pattern(*control),
         })),
         Value::NumberPattern(_) => Err(EvalError::new("`onset` only applies to sample patterns")),
         Value::ArpDirection(_)
@@ -1373,7 +1372,7 @@ fn apply_slice_idx(args: Vec<Value>) -> Result<Value, EvalError> {
                 let (start, end) = slice_idx_bounds(index, segments)?;
                 pattern.slice(start, end)
             }
-            SliceIndexControl::Pattern(control) => pattern.slice_idx_pattern(control, segments),
+            SliceIndexControl::Pattern(control) => pattern.slice_idx_pattern(*control, segments),
         })),
         Value::NumberPattern(_) => Err(EvalError::new(
             "`slice_idx` only applies to sample patterns",
@@ -1643,12 +1642,12 @@ enum NumericControl {
 
 enum OnsetIndexControl {
     Constant(u32),
-    Pattern(NumberPatternValue),
+    Pattern(Box<NumberPatternValue>),
 }
 
 enum SliceIndexControl {
     Constant(u32),
-    Pattern(NumberPatternValue),
+    Pattern(Box<NumberPatternValue>),
 }
 
 fn extract_gain_control(value: Value) -> Result<NumericControl, EvalError> {
@@ -2073,7 +2072,7 @@ fn extract_onset_index_control(value: Value) -> Result<OnsetIndexControl, EvalEr
 
     validate_numeric_control_pattern(&pattern, "onset", validate_onset_index_control_value)?;
 
-    Ok(OnsetIndexControl::Pattern(pattern))
+    Ok(OnsetIndexControl::Pattern(Box::new(pattern)))
 }
 
 fn extract_slice_idx_control(value: Value, segments: u32) -> Result<SliceIndexControl, EvalError> {
@@ -2088,7 +2087,7 @@ fn extract_slice_idx_control(value: Value, segments: u32) -> Result<SliceIndexCo
         validate_slice_idx_control_value(value, segments)
     })?;
 
-    Ok(SliceIndexControl::Pattern(pattern))
+    Ok(SliceIndexControl::Pattern(Box::new(pattern)))
 }
 
 fn validate_numeric_control_pattern<F>(

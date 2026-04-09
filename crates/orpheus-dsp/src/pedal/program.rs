@@ -258,6 +258,7 @@ impl PedalGraphProgram {
     }
 
     #[must_use]
+    #[allow(clippy::incompatible_msrv)]
     pub const fn is_bypass(&self) -> bool {
         self.nodes.is_empty() && matches!(self.output, NodeRef::Input)
     }

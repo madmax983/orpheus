@@ -17,7 +17,12 @@ use orpheus_dsp::EngineHandle;
 
 fn main() {
     if let Err(error) = run() {
-        eprintln!("{} {:#}", "✗ error:".red().bold(), error);
+        eprintln!("{} {}", "✗ error:".red().bold(), error);
+        let mut source = error.source();
+        while let Some(cause) = source {
+            eprintln!("  {} {}", "↳".dark_grey(), cause);
+            source = cause.source();
+        }
         std::process::exit(1);
     }
 }

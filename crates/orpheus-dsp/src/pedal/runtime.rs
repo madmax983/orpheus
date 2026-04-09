@@ -381,10 +381,8 @@ fn control_linear_expr_with(
                     let right_expr = control_linear_expr_with(nodes, *right, visiting)?;
                     if let Some(scale) = left_expr.constant_value() {
                         Some(right_expr.scale(scale))
-                    } else if let Some(scale) = right_expr.constant_value() {
-                        Some(left_expr.scale(scale))
                     } else {
-                        None
+                        right_expr.constant_value().map(|scale| left_expr.scale(scale))
                     }
                 }
                 PedalNodeKind::Lfo { .. }

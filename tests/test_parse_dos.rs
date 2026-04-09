@@ -72,7 +72,7 @@ fn test_dos_meter_annotations() {
     for _ in 0..150 {
         payload.push_str("meter(1, 4) ");
     }
-    payload.push_str("1");
+    payload.push('1');
 
     let res = eval_module(&payload, ReplMode::Loose);
     match res {

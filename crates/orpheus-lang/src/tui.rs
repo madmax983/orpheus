@@ -339,7 +339,11 @@ impl SessionTui {
         self.transcript.push(format!("> {line}"));
         match self.session.eval_line(&line) {
             Ok(message) => self.transcript.push(format!("✓ {message}")),
-            Err(message) => self.transcript.push(format!("✗ {message}")),
+            Err(message) => {
+                for cause in message.lines() {
+                    self.transcript.push(format!("✗ {cause}"));
+                }
+            }
         }
     }
 
@@ -405,13 +409,13 @@ impl SessionTui {
                 let style = if entry.starts_with("> ") {
                     Style::default().fg(Color::DarkGray)
                 } else if entry.starts_with("✗ ") {
-                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+                    Style::default().fg(Color::LightRed).add_modifier(Modifier::BOLD)
                 } else if entry.starts_with("⚠️ ") {
                     Style::default()
-                        .fg(Color::Yellow)
+                        .fg(Color::LightYellow)
                         .add_modifier(Modifier::BOLD)
                 } else if entry.starts_with("✓ ") {
-                    Style::default().fg(Color::Green)
+                    Style::default().fg(Color::LightGreen)
                 } else {
                     Style::default()
                 };
@@ -426,7 +430,10 @@ impl SessionTui {
         lines.push(Line::raw(format!("> {}", self.display_input_with_cursor())));
         lines.push(Line::styled(
             self.input_hint(),
-            Style::default().fg(Color::DarkGray),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::DIM)
+                .add_modifier(Modifier::ITALIC),
         ));
         Text::from(lines)
     }
@@ -1133,8 +1140,8 @@ fn transport_status_line(
     ];
     if include_target {
         if let Some(pending_pattern_name) = view.pending_pattern_name() {
-            spans.push(Span::raw(" -> "));
-            spans.push(Span::raw(pending_pattern_name.to_owned()));
+            spans.push(Span::styled(" -> ", Style::default().fg(Color::DarkGray)));
+            spans.push(Span::styled(pending_pattern_name.to_owned(), Style::default().fg(Color::LightCyan).add_modifier(Modifier::BOLD)));
         }
     }
     Line::from(spans)
@@ -1149,7 +1156,7 @@ fn routing_status_line(mixer: &MixerView) -> Line<'static> {
                 .add_modifier(Modifier::BOLD),
         )
     } else {
-        Span::styled("live", Style::default().fg(Color::Green))
+        Span::styled("live", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))
     };
     Line::from(vec![Span::raw("Routing: "), status])
 }
@@ -1431,7 +1438,7 @@ mod tests {
         let frame = render_frame_for_test(&app, 100, 24);
         assert!(frame.contains("drums"));
         assert!(frame.contains("verb @ 0.35"));
-        assert!(frame.contains("Mixer Buses"));
+        assert!(frame.contains("Mixer Buses:"));
     }
 
     #[test]
@@ -1443,7 +1450,7 @@ mod tests {
         app.submit_line();
 
         let frame = render_frame_for_test(&app, 160, 40);
-        assert!(frame.contains("Mixer Buses"));
+        assert!(frame.contains("Mixer Buses:"));
         assert!(frame.contains("delay(3/16"));
     }
 
@@ -1456,7 +1463,7 @@ mod tests {
         app.submit_line();
 
         let frame = render_frame_for_test(&app, 160, 40);
-        assert!(frame.contains("Mixer Buses"));
+        assert!(frame.contains("Mixer Buses:"));
         assert!(frame.contains("reverb(size=0.75"));
         assert!(frame.contains("damp=0.35"));
         assert!(frame.contains("wet=1.00)"));
