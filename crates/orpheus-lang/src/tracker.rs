@@ -75,10 +75,11 @@ pub fn export_sample_pattern_to_tracker(
 
         if start_step < end_step {
             // Format sample name up to 4 chars
-            let mut formatted_name = sample.clone();
-            if formatted_name.len() > 4 {
-                formatted_name.truncate(4);
-            }
+            let formatted_name = if sample.len() > 4 {
+                sample[..4].to_string()
+            } else {
+                sample.to_string()
+            };
             grid[start_step][lane_idx] = Some(formatted_name);
             for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
                 if item[lane_idx].is_none() {
@@ -86,10 +87,11 @@ pub fn export_sample_pattern_to_tracker(
                 }
             }
         } else if start_step < total_steps && grid[start_step][lane_idx].is_none() {
-            let mut formatted_name = sample.clone();
-            if formatted_name.len() > 4 {
-                formatted_name.truncate(4);
-            }
+            let formatted_name = if sample.len() > 4 {
+                sample[..4].to_string()
+            } else {
+                sample.to_string()
+            };
             grid[start_step][lane_idx] = Some(formatted_name);
         }
     }
@@ -102,10 +104,11 @@ pub fn export_sample_pattern_to_tracker(
     // Print Header
     write!(file, " STEP | TIME  |")?;
     for sample in &sample_list {
-        let mut padded = sample.clone();
-        if padded.len() > 4 {
-            padded.truncate(4);
-        }
+        let padded = if sample.len() > 4 {
+            &sample[..4]
+        } else {
+            sample
+        };
         write!(file, " {padded:4} |")?;
     }
     writeln!(file)?;
