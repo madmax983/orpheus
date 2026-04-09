@@ -20,3 +20,7 @@
 ## 2024-10-24 - [Coverage Gap in `apply_builtin_function` Function Invocation]
 **Learning:** The evaluation pipeline code for applying arguments to standard library built-in functions lacked test coverage around function arity boundaries, specifically the error handling branch for over-application (passing more arguments than the function's arity).
 **Action:** Always verify both currying behavior and over-application failure modes for both user-defined and built-in functions. Ensure those failure cases are covered via `assert_eval_error_contains` or similar direct error assertions.
+
+## 2024-04-09 - [Test failure due to pending routing processing delay]
+**Learning:** Tests asserting against `MixerView::has_pending_routing` or similar DSP state changes after sending commands failed because the audio engine evaluates commands asynchronously and requires a manual tick to flush its queue.
+**Action:** When writing tests for `ReplSession` state changes in `orpheus-lang` (such as routing or mixer view updates), call `session.render_test_block_for_tui(1)` after evaluating a command to ensure the DSP engine processes the command queue and updates the transport snapshot before asserting on the updated state.

@@ -1412,6 +1412,7 @@ impl ReplSession {
     ///
     /// let mut session = ReplSession::with_engine(EngineHandle::stub());
     /// session.eval_line(":track new drums").unwrap();
+    /// session.render_test_block_for_tui(1);
     ///
     /// let view = session.mixer_view();
     /// assert!(view.has_pending_routing());

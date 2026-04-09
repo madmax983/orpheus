@@ -408,7 +408,6 @@ impl BuiltinKind {
             | Self::Jux
             | Self::Through => 2,
             Self::Rand => 0,
-            Self::MidiCc => 1,
         }
     }
 
