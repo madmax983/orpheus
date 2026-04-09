@@ -25,7 +25,7 @@ pub use rational::Rational;
 pub use stream::EventStream;
 pub use time::TimeSpan;
 
-use core::fmt;
+use thiserror::Error;
 
 /// Errors produced by the pattern core time model.
 ///
@@ -53,12 +53,14 @@ use core::fmt;
 ///     Err(PatternError::InvalidSpan { .. })
 /// ));
 /// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
+
+#[derive(Clone, Debug, Eq, PartialEq, Error)]
 pub enum PatternError {
     /// A rational value was constructed with a zero denominator.
     ///
     /// Orpheus uses exact rational fractions for time. If a denominator of zero is introduced,
     /// it implies a division by zero in the time domain, which is mathematically undefined.
+    #[error("rational denominator cannot be zero")]
     InvalidDenominator {
         /// The literal zero value that was passed as the denominator.
         denominator: i64,
@@ -68,6 +70,7 @@ pub enum PatternError {
     /// Because Orpheus represents time exactly using fractions (like `1/3`), performing complex
     /// transformations (like shifting and stretching) can sometimes cause the internal integer
     /// numerators and denominators to multiply beyond the capacity of a 128-bit integer.
+    #[error("{operation} exceeded the supported range")]
     ArithmeticOverflow {
         /// A string identifying the mathematical operation that failed (e.g., `"addition"`, `"normalization"`).
         operation: &'static str,
@@ -76,6 +79,7 @@ pub enum PatternError {
     ///
     /// In Orpheus, time flows strictly forward. A [`TimeSpan`] must always have a non-negative duration,
     /// meaning its start boundary cannot occur temporally after its end boundary.
+    #[error("time span start cannot exceed end")]
     InvalidSpan {
         /// The boundary where the span was requested to begin.
         start: Rational,
@@ -83,20 +87,6 @@ pub enum PatternError {
         end: Rational,
     },
 }
-
-impl fmt::Display for PatternError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InvalidDenominator { .. } => f.write_str("rational denominator cannot be zero"),
-            Self::ArithmeticOverflow { operation } => {
-                write!(f, "{operation} exceeded the supported range")
-            }
-            Self::InvalidSpan { .. } => f.write_str("time span start cannot exceed end"),
-        }
-    }
-}
-
-impl std::error::Error for PatternError {}
 
 #[cfg(test)]
 mod tests {

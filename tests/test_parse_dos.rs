@@ -1,3 +1,8 @@
+#![allow(
+    clippy::uninlined_format_args,
+    clippy::manual_assert,
+    clippy::single_char_add_str
+)]
 use orpheus_lang::ReplMode;
 use orpheus_lang::eval_module;
 

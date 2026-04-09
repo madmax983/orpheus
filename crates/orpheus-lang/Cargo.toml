@@ -16,6 +16,7 @@ orpheus-pattern.workspace = true
 pest = "2.8.6"
 pest_derive = "2.8.6"
 ratatui.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 hound.workspace = true

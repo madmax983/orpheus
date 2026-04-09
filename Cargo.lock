@@ -1124,6 +1124,7 @@ dependencies = [
  "ratatui",
  "serde_json",
  "tempfile",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -1131,6 +1132,7 @@ name = "orpheus-pattern"
 version = "0.1.0"
 dependencies = [
  "proptest",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

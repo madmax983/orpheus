@@ -1,3 +1,4 @@
+#![allow(clippy::float_cmp)]
 //! An algorithmic stereo reverberator.
 //!
 //! This reverb is constructed from parallel comb filters fed into a series of
@@ -248,7 +249,7 @@ mod tests {
         let spec = ReverbSpec::new(0.5, 0.2, 0.3);
         let mut state = ReverbState::new(&spec);
 
-        state.process_frame(1.0, 1.0);
+        let _ = state.process_frame(1.0, 1.0);
         state.reset();
 
         for comb in &state.left.combs {
@@ -274,9 +275,9 @@ mod tests {
         assert_eq!(comb.index, 1);
 
         // Advance to loop point
-        comb.process(0.0);
-        comb.process(0.0);
-        comb.process(0.0);
+        let _ = comb.process(0.0);
+        let _ = comb.process(0.0);
+        let _ = comb.process(0.0);
 
         // Frame 5 (feedback occurs)
         let out5 = comb.process(0.0);

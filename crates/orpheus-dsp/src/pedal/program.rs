@@ -1,3 +1,12 @@
+#![allow(
+    clippy::suboptimal_flops,
+    clippy::missing_const_for_fn,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::manual_map,
+    clippy::redundant_closure_for_method_calls,
+    clippy::default_constructed_unit_structs
+)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SignalKind {
     Audio,

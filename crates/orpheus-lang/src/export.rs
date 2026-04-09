@@ -4,10 +4,9 @@
 //! files (WAV), or exported as structured data formats like JSON and CSV. These
 //! formats enable interoperability with external tools, data visualization, and DAWs.
 
-use std::error::Error;
-use std::fmt::{self, Display, Formatter};
 use std::io::Write;
 use std::path::Path;
+use thiserror::Error;
 
 use orpheus_dsp::{OfflineRenderError, SampleBank, SampleTrigger, render_events_to_file_with_bank};
 use orpheus_pattern::Event;
@@ -44,42 +43,15 @@ use crate::value::{NumberPatternValue, SamplePatternValue};
 ///     RenderError::Audio(_) => unreachable!(),
 /// }
 /// ```
-#[derive(Debug)]
+
+#[derive(Debug, Error)]
 pub enum RenderError {
     /// An error occurred while evaluating the pattern events.
-    Eval(EvalError),
+    #[error(transparent)]
+    Eval(#[from] EvalError),
     /// An error occurred during the offline digital signal processing or file writing phase.
-    Audio(OfflineRenderError),
-}
-
-impl Display for RenderError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Eval(error) => Display::fmt(error, formatter),
-            Self::Audio(error) => Display::fmt(error, formatter),
-        }
-    }
-}
-
-impl Error for RenderError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::Eval(error) => Some(error),
-            Self::Audio(error) => Some(error),
-        }
-    }
-}
-
-impl From<EvalError> for RenderError {
-    fn from(error: EvalError) -> Self {
-        Self::Eval(error)
-    }
-}
-
-impl From<OfflineRenderError> for RenderError {
-    fn from(error: OfflineRenderError) -> Self {
-        Self::Audio(error)
-    }
+    #[error(transparent)]
+    Audio(#[from] OfflineRenderError),
 }
 
 /// Helper function to convert a `SampleEvent` from the evaluation phase into a

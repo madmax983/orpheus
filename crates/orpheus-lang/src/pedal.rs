@@ -1,3 +1,16 @@
+#![allow(clippy::unnested_or_patterns)]
+#![allow(clippy::elidable_lifetime_names)]
+#![allow(
+    clippy::suboptimal_flops,
+    clippy::missing_const_for_fn,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::manual_map,
+    clippy::redundant_closure_for_method_calls,
+    clippy::default_constructed_unit_structs,
+    clippy::needless_pass_by_value,
+    clippy::unused_self
+)]
 use core::fmt::{self, Display, Formatter};
 use std::collections::{BTreeMap, BTreeSet};
 

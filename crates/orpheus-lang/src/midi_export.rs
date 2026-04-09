@@ -1,3 +1,4 @@
+#![allow(clippy::unreadable_literal)]
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;

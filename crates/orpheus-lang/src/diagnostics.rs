@@ -5,8 +5,7 @@
 //! These errors are distinct from runtime evaluation errors ([`crate::EvalError`]),
 //! which only occur after successful compilation.
 
-use std::error::Error;
-use std::fmt::{self, Display, Formatter};
+use thiserror::Error;
 
 /// A parser error produced while reading Orpheus source.
 ///
@@ -29,7 +28,9 @@ use std::fmt::{self, Display, Formatter};
 /// let result = parse_module("song = fast(2, bd");
 /// assert!(result.is_err());
 /// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
+
+#[derive(Clone, Debug, Eq, PartialEq, Error)]
+#[error("{message}")]
 pub struct ParseError {
     message: Box<str>,
 }
@@ -41,14 +42,6 @@ impl ParseError {
         }
     }
 }
-
-impl Display for ParseError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.message)
-    }
-}
-
-impl Error for ParseError {}
 
 /// A type inference error produced while analyzing Orpheus source.
 ///
@@ -74,7 +67,9 @@ impl Error for ParseError {}
 /// let typed_result = infer_module(source, ReplMode::Strict);
 /// assert!(typed_result.is_err());
 /// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
+
+#[derive(Clone, Debug, Eq, PartialEq, Error)]
+#[error("{message}")]
 pub struct TypeError {
     message: Box<str>,
 }
@@ -86,14 +81,6 @@ impl TypeError {
         }
     }
 }
-
-impl Display for TypeError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.message)
-    }
-}
-
-impl Error for TypeError {}
 
 /// A file-loading error produced while resolving strict `.ode` modules.
 ///
@@ -118,7 +105,9 @@ impl Error for TypeError {}
 /// let result = load_file_strict("this_file_does_not_exist.ode");
 /// assert!(result.is_err());
 /// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
+
+#[derive(Clone, Debug, Eq, PartialEq, Error)]
+#[error("{message}")]
 pub struct LoadError {
     message: Box<str>,
 }
@@ -130,14 +119,6 @@ impl LoadError {
         }
     }
 }
-
-impl Display for LoadError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.message)
-    }
-}
-
-impl Error for LoadError {}
 
 #[cfg(test)]
 mod tests {

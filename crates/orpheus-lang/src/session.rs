@@ -1,3 +1,4 @@
+#![allow(clippy::map_unwrap_or, clippy::single_char_pattern)]
 //! The `session` module manages the interactive state of an Orpheus environment.
 //!
 //! This module forms the bridge between the textual inputs of the user (via the REPL or TUI)
