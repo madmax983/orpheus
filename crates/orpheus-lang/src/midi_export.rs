@@ -88,6 +88,23 @@ fn write_midi_file(
 /// Converts the pattern into MIDI notes. The values are interpreted as MIDI note
 /// numbers (0-127). The track will use channel 1.
 ///
+/// ## Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, export_number_pattern_to_midi};
+/// use std::fs;
+///
+/// let env = eval_module("p = 60 62 64 65", ReplMode::Loose).unwrap();
+/// let pattern = env.get("p").unwrap().as_number_pattern().unwrap();
+/// let path = std::env::temp_dir().join("numbers.mid");
+///
+/// export_number_pattern_to_midi(pattern, &path, 2).unwrap();
+///
+/// let bytes = fs::read(&path).unwrap();
+/// assert!(bytes.starts_with(b"MThd"));
+/// # let _ = fs::remove_file(path);
+/// ```
+///
 /// # Errors
 /// Returns [`EvalError`] if the export fails or if `cycle_count` is 0.
 pub fn export_number_pattern_to_midi(
@@ -135,6 +152,23 @@ pub fn export_number_pattern_to_midi(
 ///
 /// Maps generic drum sample names (e.g., `bd`, `sn`, `hh`) to General MIDI
 /// percussion note numbers on Channel 10.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, export_sample_pattern_to_midi};
+/// use std::fs;
+///
+/// let env = eval_module("p = bd sn hh cp", ReplMode::Loose).unwrap();
+/// let pattern = env.get("p").unwrap().as_sample_pattern().unwrap();
+/// let path = std::env::temp_dir().join("drums.mid");
+///
+/// export_sample_pattern_to_midi(pattern, &path, 2).unwrap();
+///
+/// let bytes = fs::read(&path).unwrap();
+/// assert!(bytes.starts_with(b"MThd"));
+/// # let _ = fs::remove_file(path);
+/// ```
 ///
 /// # Errors
 /// Returns [`EvalError`] if the export fails or if `cycle_count` is 0.
