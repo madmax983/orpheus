@@ -958,6 +958,9 @@ impl PatternRuntimeValue for SampleEvent {
     }
 
     /// ⚡ Bolt: Uses slice bounds (`&events[start_index..index]`) instead of allocating a temporary `cluster` Vec for every group of events with the same span, eliminating redundant heap allocations in the hot evaluation loop.
+    /// ⚡ Bolt: Uses slice bounds (`&events[start_index].part`) instead of cloning `TimeSpan`
+    /// for every group of events with the same span, eliminating redundant memory copying
+    /// in the hot evaluation loop.
     fn roll_events(
         mut events: Vec<Event<Self>>,
         steps: u32,
@@ -1045,9 +1048,9 @@ impl PatternRuntimeValue for f64 {
         let mut index = 0;
 
         while index < events.len() {
-            let span = events[index].part.clone();
             let start_index = index;
-            while index < events.len() && events[index].part == span {
+            let span = &events[start_index].part;
+            while index < events.len() && &events[index].part == span {
                 if !events[index].value.is_finite() {
                     return Err(EvalError::new("`roll` requires finite numeric values"));
                 }
@@ -1064,14 +1067,17 @@ impl PatternRuntimeValue for f64 {
     /// Applies a strum effect across overlapping events.
     ///
     /// ⚡ Bolt: Mutates overlapping clusters in-place, eliminating the need to allocate and copy into an intermediate `strummed` vector.
+    /// ⚡ Bolt: Uses slice bounds (`&events[start_index].part`) instead of cloning `TimeSpan`
+    /// for every group of events with the same span, eliminating redundant memory copying
+    /// in the hot evaluation loop.
     fn strum_events(mut events: Vec<Event<Self>>) -> Result<Vec<Event<Self>>, EvalError> {
         sort_events(&mut events);
         let mut index = 0;
 
         while index < events.len() {
-            let span = events[index].part.clone();
             let start_index = index;
-            while index < events.len() && events[index].part == span {
+            let span = &events[start_index].part;
+            while index < events.len() && &events[index].part == span {
                 if !events[index].value.is_finite() {
                     return Err(EvalError::new("`strum` requires finite numeric values"));
                 }
@@ -1086,6 +1092,9 @@ impl PatternRuntimeValue for f64 {
         Ok(events)
     }
 
+    /// ⚡ Bolt: Uses slice bounds (`&events[start_index].part`) instead of cloning `TimeSpan`
+    /// for every group of events with the same span, eliminating redundant memory copying
+    /// in the hot evaluation loop.
     fn arp_events(
         mut events: Vec<Event<Self>>,
         steps: u32,
@@ -1096,9 +1105,9 @@ impl PatternRuntimeValue for f64 {
         let mut index = 0;
 
         while index < events.len() {
-            let span = events[index].part.clone();
             let start_index = index;
-            while index < events.len() && events[index].part == span {
+            let span = &events[start_index].part;
+            while index < events.len() && &events[index].part == span {
                 if !events[index].value.is_finite() {
                     return Err(EvalError::new("`arp` requires finite numeric values"));
                 }
