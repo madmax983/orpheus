@@ -31,3 +31,7 @@
 ## 2026-03-24 - [The "Black Box": Missing Documentation in Effects and Type Inference]
 **Confusion:** The DSP effects modules (`crates/orpheus-dsp/src/effects/mod.rs`, `delay.rs`, `reverb.rs`), the transient detection module (`crates/orpheus-dsp/src/transient.rs`), and the type inference engine (`crates/orpheus-lang/src/types/infer.rs`) acted as black boxes due to missing module-level (`//!`) documentation. It was unclear how the DSP engine synchronized time, how reverbs were structured, or how loose vs strict mode affected type resolution.
 **Clarification:** Added module-level `//!` documentation to `infer.rs` explaining Hindley-Milner type inference and REPL modes. Added documentation to `effects/mod.rs`, `delay.rs`, and `reverb.rs` detailing lock-free parameters, rational time buffers, and comb/allpass architectures. Added documentation to `transient.rs` explaining spectral flux detection.
+
+## 2026-03-24 - [The "Black Box": Missing Documentation in midi_export]
+**Confusion:** The MIDI export module (`crates/orpheus-lang/src/midi_export.rs`) acted as a black box due to missing module-level (`//!`) documentation. It was unclear how the module converts rational time domain cycles into MIDI ticks or how number and sample patterns map to MIDI channels and notes.
+**Clarification:** Added module-level `//!` documentation explaining the conversion to MIDI ticks based on a 4/4 meter assumption and how patterns map to Channel 1 (melodic) and Channel 10 (percussion).
