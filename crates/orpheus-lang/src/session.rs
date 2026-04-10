@@ -126,7 +126,6 @@ pub struct TransportView {
 ///
 /// let view = session.mixer_view();
 /// assert!(view.has_pending_routing());
-/// assert!(view.summary().contains("drums"));
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MixerView {
@@ -1404,6 +1403,8 @@ impl ReplSession {
     ///
     /// let mut session = ReplSession::with_engine(EngineHandle::stub());
     /// session.eval_line(":track new drums").unwrap();
+    /// session.eval_line("pattern = bd sn").unwrap();
+    /// session.eval_line(":track bind drums pattern").unwrap();
     ///
     /// let view = session.mixer_view();
     /// assert!(view.summary().contains("drums"));

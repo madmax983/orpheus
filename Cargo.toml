@@ -3,6 +3,7 @@ members = [
     "crates/orpheus-dsp",
     "crates/orpheus-lang",
     "crates/orpheus-pattern",
+    "fuzz"
 ]
 resolver = "2"
 
