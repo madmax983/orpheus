@@ -1004,6 +1004,7 @@ fn apply_chaos(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new("`chaos` expected a pattern argument")),
     }
 }
@@ -2463,6 +2464,21 @@ mod tests {
         let err_msg = result_slow.unwrap_err().to_string();
         assert!(
             err_msg.contains("maximum allowed bound of 1024"),
+            "unexpected error message: {err_msg}"
+        );
+    }
+
+    #[test]
+    fn chaos_rejects_invalid_arguments() {
+        let source = "a = chaos(\"string\")";
+        let result = eval_module(source, ReplMode::Strict);
+        assert!(
+            result.is_err(),
+            "expected chaos with string argument to be rejected"
+        );
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("`chaos` expected a pattern argument"),
             "unexpected error message: {err_msg}"
         );
     }

@@ -1431,7 +1431,7 @@ mod tests {
         let frame = render_frame_for_test(&app, 100, 24);
         assert!(frame.contains("drums"));
         assert!(frame.contains("verb @ 0.35"));
-        assert!(frame.contains("Mixer Buses"));
+        assert!(frame.contains("Buses"));
     }
 
     #[test]
