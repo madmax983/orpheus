@@ -78,7 +78,7 @@ pub fn export_sample_pattern_to_tracker(
             let formatted_name = if sample.len() > 4 {
                 sample[..4].to_string()
             } else {
-                sample.to_string()
+                sample.clone()
             };
             grid[start_step][lane_idx] = Some(formatted_name);
             for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
@@ -90,7 +90,7 @@ pub fn export_sample_pattern_to_tracker(
             let formatted_name = if sample.len() > 4 {
                 sample[..4].to_string()
             } else {
-                sample.to_string()
+                sample.clone()
             };
             grid[start_step][lane_idx] = Some(formatted_name);
         }

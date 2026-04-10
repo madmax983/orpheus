@@ -144,6 +144,7 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "through" => Some(builtin_function_value(BuiltinKind::Through)),
         "cc" | "midi_cc" => Some(builtin_function_value(BuiltinKind::MidiCc)),
         "chaos" => Some(builtin_function_value(BuiltinKind::Chaos)),
+        "palindrome" => Some(builtin_function_value(BuiltinKind::Palindrome)),
         _ => None,
     }
 }
@@ -360,6 +361,7 @@ impl BuiltinKind {
             Self::Through => "through",
             Self::MidiCc => "midi_cc",
             Self::Chaos => "chaos",
+            Self::Palindrome => "palindrome",
         }
     }
 
@@ -372,6 +374,7 @@ impl BuiltinKind {
             | Self::Sample
             | Self::Strum
             | Self::Chaos
+            | Self::Palindrome
             | Self::MidiCc => 1,
             Self::Sometimes
             | Self::Mask
@@ -467,6 +470,7 @@ impl BuiltinKind {
             Self::Through => apply_through(args),
             Self::MidiCc => apply_midi_cc(args),
             Self::Chaos => apply_chaos(args, function.site_salt.unwrap_or_default()),
+            Self::Palindrome => apply_palindrome(args),
         }
     }
 }
@@ -2486,5 +2490,54 @@ mod tests {
                 );
             }
         }
+    }
+}
+
+fn apply_palindrome(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`palindrome` requires a pattern argument"))?;
+
+    let Value::Function(rev_function) = builtin_function_value(BuiltinKind::Rev) else {
+        unreachable!("BuiltinKind::Rev always returns a FunctionValue")
+    };
+
+    match pattern {
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.every(2, rev_function))),
+        Value::NumberPattern(pattern) => Ok(Value::NumberPattern(pattern.every(2, rev_function))),
+        _ => Err(EvalError::new(
+            "`palindrome` expects a sample or number pattern",
+        )),
+    }
+}
+
+#[cfg(test)]
+mod test_nova {
+    use crate::{ReplMode, eval_module};
+    use orpheus_pattern::{Rational, TimeSpan};
+
+    #[test]
+    fn test_palindrome_builtin() {
+        let source = "pat = palindrome(bd sn)";
+        let module = eval_module(source, ReplMode::Loose).unwrap();
+        let pattern = module.get("pat").unwrap().as_sample_pattern().unwrap();
+
+        // 2 cycles
+        let span = TimeSpan::new(Rational::zero(), Rational::new(2, 1).unwrap()).unwrap();
+        let events = pattern.try_query(&span).unwrap();
+
+        assert_eq!(events.len(), 4);
+        assert_eq!(events[0].value.sample(), "sn");
+        assert_eq!(events[0].part.start(), &Rational::new(0, 1).unwrap());
+
+        assert_eq!(events[1].value.sample(), "bd");
+        assert_eq!(events[1].part.start(), &Rational::new(1, 2).unwrap());
+
+        assert_eq!(events[2].value.sample(), "bd");
+        assert_eq!(events[2].part.start(), &Rational::new(1, 1).unwrap());
+
+        assert_eq!(events[3].value.sample(), "sn");
+        assert_eq!(events[3].part.start(), &Rational::new(3, 2).unwrap());
     }
 }
