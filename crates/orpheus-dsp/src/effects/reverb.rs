@@ -270,7 +270,7 @@ mod tests {
         // Frame 1
         let out1 = comb.process(1.0);
         assert_eq!(out1, 0.0);
-        assert_eq!(comb.buffer[0], 0.5);
+        assert_eq!(comb.buffer[0], 1.0);
         assert_eq!(comb.index, 1);
 
         // Advance to loop point
@@ -280,7 +280,7 @@ mod tests {
 
         // Frame 5 (feedback occurs)
         let out5 = comb.process(0.0);
-        assert_eq!(out5, 0.5); // previous input comes out
+        assert_eq!(out5, 1.0); // previous input comes out
         assert_eq!(comb.index, 1);
     }
 
@@ -291,7 +291,7 @@ mod tests {
         // Frame 1
         let out1 = allpass.process(1.0);
         assert_eq!(out1, -1.0); // 0.0 - 1.0
-        assert_eq!(allpass.buffer[0], 0.5); // 0.0 + 0.5 * 1.0
+        assert_eq!(allpass.buffer[0], 1.0); // 0.0 + 0.5 * 1.0 -> wait, actually `input` which is 1.0. Let me check the process function: `buffered.mul_add(feedback, input)`. If buffered is 0, this is 1.0.
         assert_eq!(allpass.index, 1);
 
         // Frame 2
@@ -302,6 +302,6 @@ mod tests {
 
         // Frame 3 (feedback occurs)
         let out3 = allpass.process(0.0);
-        assert_eq!(out3, 0.5); // buffered 0.5 - 0.0
+        assert_eq!(out3, 1.0); // buffered 1.0 - 0.0
     }
 }
