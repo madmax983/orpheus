@@ -1726,4 +1726,19 @@ right = sometimes(fast(2), cp hh)";
         let eval_err: crate::eval::EvalError = pat_err.into();
         assert_eq!(eval_err.to_string(), "rational denominator cannot be zero");
     }
+
+    #[test]
+    fn eval_error_from_parse_int_error() {
+        let err: Result<i32, _> = "not_a_number".parse();
+        let eval_err: super::EvalError = err.unwrap_err().into();
+        assert!(eval_err.to_string().contains("invalid digit"));
+    }
+
+    #[test]
+    fn eval_error_from_pitch_literal_error() {
+        use crate::pitch::PitchLiteralError;
+        let pitch_err = PitchLiteralError::new("invalid pitch literal".to_owned());
+        let eval_err: super::EvalError = pitch_err.into();
+        assert_eq!(eval_err.to_string(), "invalid pitch literal");
+    }
 }

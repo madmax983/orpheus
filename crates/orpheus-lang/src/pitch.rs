@@ -41,7 +41,7 @@ pub struct PitchLiteralError {
 }
 
 impl PitchLiteralError {
-    fn new(message: impl Into<Box<str>>) -> Self {
+    pub fn new(message: impl Into<Box<str>>) -> Self {
         Self {
             message: message.into(),
         }
