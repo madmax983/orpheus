@@ -2738,7 +2738,7 @@ where
             let [start, end] = window else {
                 continue;
             };
-            if start >= end {
+            if *start >= *end {
                 continue;
             }
 
@@ -3186,7 +3186,7 @@ where
             let [start, end] = window else {
                 continue;
             };
-            if start >= end {
+            if *start >= *end {
                 continue;
             }
 
@@ -4087,16 +4087,17 @@ fn spans_overlap(a: &TimeSpan, b: &TimeSpan) -> bool {
 fn compute_event_fragment_boundaries<'a, 'b, I>(
     source_span: &'a TimeSpan,
     control_parts: I,
-) -> Option<Vec<Rational>>
+) -> Option<Vec<&'a Rational>>
 where
+    'b: 'a,
     I: Iterator<Item = &'b TimeSpan>,
 {
     let (lower, upper) = control_parts.size_hint();
     let capacity_estimate = 2 + upper.unwrap_or(lower) * 2;
     // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries.
     let mut boundaries = Vec::with_capacity(capacity_estimate);
-    boundaries.push(source_span.start().clone());
-    boundaries.push(source_span.end().clone());
+    boundaries.push(source_span.start());
+    boundaries.push(source_span.end());
     let mut has_overlap = false;
 
     for control_part in control_parts {
@@ -4104,8 +4105,8 @@ where
         let end = min(control_part.end(), source_span.end());
         if start < end {
             has_overlap = true;
-            boundaries.push(start.clone());
-            boundaries.push(end.clone());
+            boundaries.push(start);
+            boundaries.push(end);
         }
     }
 
