@@ -1,0 +1,21 @@
+--- crates/orpheus-pattern/src/cycle.rs
++++ crates/orpheus-pattern/src/cycle.rs
+@@ -134,6 +134,9 @@
+             operation: "cycle count exceeded evaluator limits",
+         }
+     })?;
++    if cycle_count > 100_000 {
++        return Err(PatternError::ArithmeticOverflow { operation: "evaluation exceeded the maximum allowed event limit" });
++    }
+     let capacity =
+         cycle_count
+             .checked_mul(unit_events.len())
+             .ok_or(PatternError::ArithmeticOverflow {
+                 operation: "pattern capacity calculation",
+             })?;
++    if capacity > 100_000 {
++        return Err(PatternError::ArithmeticOverflow { operation: "evaluation exceeded the maximum allowed event limit" });
++    }
+     // ⚡ Bolt: Pre-allocate vector using the cycle count and unit event count
+     // to reduce heap reallocations during pattern querying.
+     let mut events = Vec::with_capacity(capacity);
