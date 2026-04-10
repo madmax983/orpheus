@@ -691,6 +691,12 @@ impl ReplSession {
                 }) {
                     crate::tracker::export_sample_pattern_to_tracker(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("obj"))
+                {
+                    crate::obj::export_sample_pattern_to_obj(pattern, path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
                 } else if export_path.extension().is_some_and(|ext| {
                     ext.eq_ignore_ascii_case("mid") || ext.eq_ignore_ascii_case("midi")
                 }) {
@@ -743,6 +749,12 @@ impl ReplSession {
                     ext.eq_ignore_ascii_case("trk") || ext.eq_ignore_ascii_case("tracker")
                 }) {
                     crate::tracker::export_number_pattern_to_tracker(pattern, path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("obj"))
+                {
+                    crate::obj::export_number_pattern_to_obj(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 } else if export_path.extension().is_some_and(|ext| {
                     ext.eq_ignore_ascii_case("mid") || ext.eq_ignore_ascii_case("midi")

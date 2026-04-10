@@ -11,6 +11,7 @@ mod loader;
 pub(crate) mod midi_export;
 mod midi_input;
 pub(crate) mod mixer;
+pub(crate) mod obj;
 mod parser;
 mod pedal;
 mod pitch;

@@ -1004,6 +1004,7 @@ fn apply_chaos(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new("`chaos` expected a pattern argument")),
     }
 }
