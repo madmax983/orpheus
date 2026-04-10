@@ -12,3 +12,17 @@ proptest! {
         // It should return an EvalError, not panic!
     }
 }
+
+#[test]
+fn test_havoc_every_zero_panic() {
+    let source = "notes = every 0 (fast 2) (note \"c\")";
+    let result = orpheus_lang::eval_module(source, orpheus_lang::ReplMode::Loose);
+    assert!(result.is_err(), "Expected an error for period 0, but got Ok");
+}
+
+#[test]
+fn test_havoc_when_zero_panic() {
+    let source = "notes = when 0 1 (fast 2) (note \"c\")";
+    let result = orpheus_lang::eval_module(source, orpheus_lang::ReplMode::Loose);
+    assert!(result.is_err(), "Expected an error for period 0, but got Ok");
+}
