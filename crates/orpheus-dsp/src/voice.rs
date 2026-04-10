@@ -622,7 +622,7 @@ impl InsertCompressorState {
     fn process_frame(&mut self, input_left: f32, input_right: f32) -> (f32, f32) {
         let peak = input_left.abs().max(input_right.abs());
         let smoothing = if peak > self.envelope { 0.35 } else { 0.08 };
-        self.envelope += (peak - self.envelope) * smoothing;
+        self.envelope = (peak - self.envelope).mul_add(smoothing, self.envelope);
 
         let gain = if self.envelope > self.threshold {
             let compressed = self
@@ -816,7 +816,7 @@ impl OnePoleLowPass {
     }
 
     fn process(&mut self, input: f64) -> f64 {
-        self.state += self.alpha * (input - self.state);
+        self.state = self.alpha.mul_add(input - self.state, self.state);
         self.state
     }
 }

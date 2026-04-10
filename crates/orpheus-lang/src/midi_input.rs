@@ -53,12 +53,13 @@ pub(crate) fn reset_state_for_test() {
 
 #[allow(clippy::redundant_pub_crate)]
 pub(crate) fn cc_normalized(controller: u8) -> f64 {
-    if let Some(atomic_val) = state().cc_values.get(controller as usize) {
-        let raw = atomic_val.load(Ordering::Relaxed);
-        f64::from(raw) / 127.0
-    } else {
-        0.0
-    }
+    state()
+        .cc_values
+        .get(controller as usize)
+        .map_or(0.0, |atomic_val| {
+            let raw = atomic_val.load(Ordering::Relaxed);
+            f64::from(raw) / 127.0
+        })
 }
 
 #[allow(clippy::redundant_pub_crate)]
@@ -103,11 +104,10 @@ pub(crate) fn update_from_message(message: &[u8]) {
 
 #[allow(clippy::redundant_pub_crate)]
 pub(crate) fn drain_note_events() -> Vec<MidiNoteEvent> {
-    if let Ok(mut queue) = state().note_events.lock() {
-        queue.drain(..).collect()
-    } else {
-        Vec::new()
-    }
+    state()
+        .note_events
+        .lock()
+        .map_or_else(|_| Vec::new(), |mut queue| queue.drain(..).collect())
 }
 
 #[cfg(test)]

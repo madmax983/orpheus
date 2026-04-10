@@ -1,0 +1,57 @@
+[package]
+name = "orpheus-lang-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+orpheus-dsp = { path = "../crates/orpheus-dsp" }
+
+[dependencies.orpheus-lang]
+path = "../crates/orpheus-lang"
+
+[[bin]]
+name = "fuzz_target_1"
+path = "fuzz_targets/fuzz_target_1.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_target_2"
+path = "fuzz_targets/fuzz_target_2.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_target_3"
+path = "fuzz_targets/fuzz_target_3.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_target_4"
+path = "fuzz_targets/fuzz_target_4.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
+[[bin]]
+name = "fuzz_target_5"
+path = "fuzz_targets/fuzz_target_5.rs"
+test = false
+doc = false
+bench = false
+[[bin]]
+name = "fuzz_target_6"
+path = "fuzz_targets/fuzz_target_6.rs"
+test = false
+doc = false
+bench = false

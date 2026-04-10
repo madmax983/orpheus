@@ -1007,6 +1007,7 @@ impl ReplSession {
         }
     }
 
+    #[allow(clippy::unused_self)]
     fn list_midi_inputs(&self) -> Result<String, String> {
         let midi_in = MidiInput::new("orpheus")
             .map_err(|error| format!("failed to initialize MIDI input subsystem: {error}"))?;
@@ -1044,8 +1045,7 @@ impl ReplSession {
             .find(|candidate| {
                 midi_in
                     .port_name(candidate)
-                    .map(|name| name == port_name)
-                    .unwrap_or(false)
+                    .is_ok_and(|name| name == port_name)
             })
             .ok_or_else(|| format!("no MIDI input port named `{port_name}`"))?;
         let connection = midi_in
@@ -1094,6 +1094,7 @@ impl ReplSession {
         }
     }
 
+    #[allow(clippy::unused_self)]
     fn list_midi_outputs(&self) -> Result<String, String> {
         let midi_out = MidiOutput::new("orpheus")
             .map_err(|error| format!("failed to initialize MIDI output subsystem: {error}"))?;
@@ -1130,8 +1131,7 @@ impl ReplSession {
             .find(|candidate| {
                 midi_out
                     .port_name(candidate)
-                    .map(|name| name == port_name)
-                    .unwrap_or(false)
+                    .is_ok_and(|name| name == port_name)
             })
             .ok_or_else(|| format!("no MIDI output port named `{port_name}`"))?;
         let connection = midi_out
@@ -1150,6 +1150,7 @@ impl ReplSession {
         Ok(format!("disconnected MIDI output `{port_name}`"))
     }
 
+    #[allow(clippy::needless_pass_by_ref_mut)]
     fn send_midi_binding(&mut self, binding_name: &str, channel: u8) -> Result<String, String> {
         if !(1..=16).contains(&channel) {
             return Err("MIDI channel must be an integer in [1, 16]".to_owned());
@@ -1170,6 +1171,7 @@ impl ReplSession {
 
         let mut midi_events = Vec::new();
         for event in pattern.query_unit() {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             let note = event.value.round().clamp(0.0, 127.0) as u8;
             let start = f64::from(event.part.start());
             let end = f64::from(event.part.end());
@@ -2431,7 +2433,10 @@ mod tests {
         session.eval_line("drums = bd sn").unwrap();
 
         let error = session.eval_line(":midi send drums 1").unwrap_err();
-        assert!(error.contains("cannot be sent as MIDI notes") || error.contains("no MIDI output is connected"));
+        assert!(
+            error.contains("cannot be sent as MIDI notes")
+                || error.contains("no MIDI output is connected")
+        );
     }
 
     #[test]

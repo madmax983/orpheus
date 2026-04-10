@@ -133,11 +133,9 @@ impl TypedModule {
     ///
     /// ```
     /// use std::collections::BTreeMap;
-    /// use orpheus_lang::{Type, TypedModule};
+    /// use orpheus_lang::{Type, ReplMode};
     ///
-    /// let mut bindings = BTreeMap::new();
-    /// bindings.insert("x".to_string(), Type::Number);
-    /// let module = TypedModule::new(bindings);
+    /// let module = orpheus_lang::infer_module("x = 1", ReplMode::Strict).unwrap();
     ///
     /// assert!(module.contains_key("x"));
     /// assert!(!module.contains_key("y"));
