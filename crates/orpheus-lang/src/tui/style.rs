@@ -6,14 +6,14 @@ use crate::session::{MixerView, TransportView};
 const MIN_BINDING_LEGEND_ROWS: usize = 6;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum UiTransportState {
+pub enum UiTransportState {
     Playing,
     Stopped,
     Syncing,
     Queued,
 }
 
-pub(crate) fn transport_state(view: &TransportView) -> UiTransportState {
+pub fn transport_state(view: &TransportView) -> UiTransportState {
     if view.pending_pattern_name().is_some() {
         if view.snapshot().has_pending_pattern() && view.snapshot().is_playing() {
             UiTransportState::Syncing
@@ -27,7 +27,7 @@ pub(crate) fn transport_state(view: &TransportView) -> UiTransportState {
     }
 }
 
-pub(crate) fn format_transport_status(view: &TransportView) -> &'static str {
+pub fn format_transport_status(view: &TransportView) -> &'static str {
     match transport_state(view) {
         UiTransportState::Playing => "playing",
         UiTransportState::Stopped => "stopped",
@@ -36,7 +36,7 @@ pub(crate) fn format_transport_status(view: &TransportView) -> &'static str {
     }
 }
 
-pub(crate) fn transport_status_style(view: &TransportView) -> Style {
+pub fn transport_status_style(view: &TransportView) -> Style {
     let color = match transport_state(view) {
         UiTransportState::Playing => Color::Green,
         UiTransportState::Stopped => Color::Yellow,
@@ -46,7 +46,7 @@ pub(crate) fn transport_status_style(view: &TransportView) -> Style {
     Style::default().fg(color).add_modifier(Modifier::BOLD)
 }
 
-pub(crate) fn transport_status_line(
+pub fn transport_status_line(
     prefix: &'static str,
     view: &TransportView,
     include_target: bool,
@@ -55,16 +55,14 @@ pub(crate) fn transport_status_line(
         Span::raw(prefix),
         Span::styled(format_transport_status(view), transport_status_style(view)),
     ];
-    if include_target {
-        if let Some(pending_pattern_name) = view.pending_pattern_name() {
-            spans.push(Span::raw(" -> "));
-            spans.push(Span::raw(pending_pattern_name.to_owned()));
-        }
+    if include_target && let Some(pending_pattern_name) = view.pending_pattern_name() {
+        spans.push(Span::raw(" -> "));
+        spans.push(Span::raw(pending_pattern_name.to_owned()));
     }
     Line::from(spans)
 }
 
-pub(crate) fn routing_status_line(mixer: &MixerView) -> Line<'static> {
+pub fn routing_status_line(mixer: &MixerView) -> Line<'static> {
     let status = if mixer.has_pending_routing() {
         Span::styled(
             "pending",
@@ -78,13 +76,13 @@ pub(crate) fn routing_status_line(mixer: &MixerView) -> Line<'static> {
     Line::from(vec![Span::raw("Routing: "), status])
 }
 
-pub(crate) fn live_binding_style() -> Style {
+pub fn live_binding_style() -> Style {
     Style::default()
         .fg(Color::Green)
         .add_modifier(Modifier::BOLD)
 }
 
-pub(crate) fn pending_binding_style(transport: &TransportView) -> Style {
+pub fn pending_binding_style(transport: &TransportView) -> Style {
     let color = match transport_state(transport) {
         UiTransportState::Queued => Color::Blue,
         UiTransportState::Playing | UiTransportState::Stopped | UiTransportState::Syncing => {
@@ -94,7 +92,7 @@ pub(crate) fn pending_binding_style(transport: &TransportView) -> Style {
     Style::default().fg(color).add_modifier(Modifier::BOLD)
 }
 
-pub(crate) fn binding_list_item(
+pub fn binding_list_item(
     summary: String,
     transport: &TransportView,
 ) -> ratatui::widgets::ListItem<'static> {
@@ -118,9 +116,7 @@ pub(crate) fn binding_list_item(
     ListItem::new(summary)
 }
 
-pub(crate) fn binding_legend_item(
-    transport: &TransportView,
-) -> ratatui::widgets::ListItem<'static> {
+pub fn binding_legend_item(transport: &TransportView) -> ratatui::widgets::ListItem<'static> {
     use ratatui::widgets::ListItem;
 
     ListItem::new(Line::from(vec![
@@ -132,7 +128,7 @@ pub(crate) fn binding_legend_item(
     ]))
 }
 
-pub(crate) fn should_show_binding_legend(
+pub fn should_show_binding_legend(
     bindings_height: u16,
     binding_count: usize,
     transport: &TransportView,
@@ -144,23 +140,23 @@ pub(crate) fn should_show_binding_legend(
     visible_rows >= MIN_BINDING_LEGEND_ROWS && visible_rows >= binding_count.saturating_add(2)
 }
 
-pub(crate) fn key_legend_style() -> Style {
+pub fn key_legend_style() -> Style {
     Style::default()
         .fg(Color::DarkGray)
         .add_modifier(Modifier::DIM)
 }
 
-pub(crate) fn help_overlay_border_style() -> Style {
+pub fn help_overlay_border_style() -> Style {
     Style::default()
         .fg(Color::Cyan)
         .add_modifier(Modifier::BOLD)
 }
 
-pub(crate) fn help_overlay_footer_style() -> Style {
+pub fn help_overlay_footer_style() -> Style {
     Style::default().fg(Color::Gray).add_modifier(Modifier::DIM)
 }
 
-pub(crate) fn format_cycle_position(snapshot: &orpheus_dsp::TransportSnapshot) -> String {
+pub fn format_cycle_position(snapshot: &orpheus_dsp::TransportSnapshot) -> String {
     let frames_per_cycle = snapshot.frames_per_cycle();
     if frames_per_cycle == 0 {
         return "0.000".to_owned();
@@ -173,7 +169,7 @@ pub(crate) fn format_cycle_position(snapshot: &orpheus_dsp::TransportSnapshot) -
     format!("{cycle_index}.{progress_millis:03}")
 }
 
-pub(crate) fn format_tempo_bpm(snapshot: &orpheus_dsp::TransportSnapshot) -> String {
+pub fn format_tempo_bpm(snapshot: &orpheus_dsp::TransportSnapshot) -> String {
     let tempo_bpm = snapshot.tempo_bpm();
     if tempo_bpm.fract().abs() < f32::EPSILON {
         format!("{tempo_bpm:.0}")

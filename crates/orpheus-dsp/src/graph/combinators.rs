@@ -203,14 +203,14 @@ impl Node for Spl {
 /// # Errors
 ///
 /// Returns [`GraphError::EmptySplitSource`] if `a.outputs() == 0`.
-/// Returns [`GraphError::ChannelMismatch`] if `b.inputs() % a.outputs() != 0`.
+/// Returns [`GraphError::ChannelMismatch`] if `!b.inputs().is_multiple_of(a.outputs())`.
 pub fn split(a: impl Node + 'static, b: impl Node + 'static) -> Result<Spl, GraphError> {
     let a = Box::new(a);
     let b = Box::new(b);
     if a.outputs() == 0 {
         return Err(GraphError::EmptySplitSource);
     }
-    if b.inputs() % a.outputs() != 0 {
+    if !b.inputs().is_multiple_of(a.outputs()) {
         return Err(GraphError::ChannelMismatch {
             context: "split: b.inputs() must be divisible by a.outputs()",
             left: a.outputs(),
@@ -296,14 +296,14 @@ impl Node for Mrg {
 /// # Errors
 ///
 /// Returns [`GraphError::EmptyMergeTarget`] if `b.inputs() == 0`.
-/// Returns [`GraphError::ChannelMismatch`] if `a.outputs() % b.inputs() != 0`.
+/// Returns [`GraphError::ChannelMismatch`] if `!a.outputs().is_multiple_of(b.inputs())`.
 pub fn merge(a: impl Node + 'static, b: impl Node + 'static) -> Result<Mrg, GraphError> {
     let a = Box::new(a);
     let b = Box::new(b);
     if b.inputs() == 0 {
         return Err(GraphError::EmptyMergeTarget);
     }
-    if a.outputs() % b.inputs() != 0 {
+    if !a.outputs().is_multiple_of(b.inputs()) {
         return Err(GraphError::ChannelMismatch {
             context: "merge: a.outputs() must be divisible by b.inputs()",
             left: a.outputs(),
