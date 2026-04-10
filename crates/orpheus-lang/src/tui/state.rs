@@ -5,9 +5,9 @@ use orpheus_dsp::EngineHandle;
 
 use crate::session::{MixerView, ReplSession, TransportView};
 
-pub(crate) const STATUS_TOAST_TTL: Duration = Duration::from_secs(3);
+pub const STATUS_TOAST_TTL: Duration = Duration::from_secs(3);
 
-pub(crate) const COMMAND_HINTS: [(&str, &str); 14] = [
+pub const COMMAND_HINTS: [(&str, &str); 14] = [
     (":bus", ":bus <new|fx> ..."),
     (":explain", ":explain <binding>"),
     (
@@ -28,7 +28,7 @@ pub(crate) const COMMAND_HINTS: [(&str, &str); 14] = [
 ];
 
 /// Shared application state accessible by all pane plugins via `Rc<RefCell<_>>`.
-pub(crate) struct SharedState {
+pub struct SharedState {
     pub session: ReplSession,
     pub transcript: Vec<String>,
     pub history: Vec<String>,
@@ -195,11 +195,11 @@ impl SharedState {
         self.cursor_index = next_word_boundary(&self.input, self.cursor_index);
     }
 
-    pub fn move_cursor_home(&mut self) {
+    pub const fn move_cursor_home(&mut self) {
         self.cursor_index = 0;
     }
 
-    pub fn move_cursor_end(&mut self) {
+    pub const fn move_cursor_end(&mut self) {
         self.cursor_index = self.input.len();
     }
 
@@ -321,7 +321,7 @@ fn matching_command(prefix: &str) -> Option<(&'static str, &'static str)> {
     }
 }
 
-fn previous_char_boundary(input: &str, index: usize) -> usize {
+const fn previous_char_boundary(input: &str, index: usize) -> usize {
     if index == 0 {
         return 0;
     }
@@ -332,7 +332,7 @@ fn previous_char_boundary(input: &str, index: usize) -> usize {
     cursor
 }
 
-fn next_char_boundary(input: &str, index: usize) -> usize {
+const fn next_char_boundary(input: &str, index: usize) -> usize {
     if index >= input.len() {
         return input.len();
     }

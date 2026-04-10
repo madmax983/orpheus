@@ -6,8 +6,8 @@
 //! command palette to spawn new pane types.
 
 mod plugins;
-pub(crate) mod state;
-pub(crate) mod style;
+pub mod state;
+pub mod style;
 
 use std::cell::RefCell;
 use std::io;
@@ -137,7 +137,7 @@ pub fn run_with_engine_and_path(
     result
 }
 
-fn build_runtime(shared: Rc<RefCell<SharedState>>) -> HypertileRuntime {
+fn build_runtime(shared: &Rc<RefCell<SharedState>>) -> HypertileRuntime {
     let mut runtime = HypertileRuntimeBuilder::default()
         .with_move_bindings(MoveBindings::VimAndShiftArrows)
         .with_split_behavior(SplitBehavior::PromptPalette)
@@ -150,15 +150,15 @@ fn build_runtime(shared: Rc<RefCell<SharedState>>) -> HypertileRuntime {
         .build();
 
     // Register plugin types with factories that capture shared state.
-    let s = Rc::clone(&shared);
+    let s = Rc::clone(shared);
     runtime.register_plugin_type(REPL_PLUGIN, move || ReplPlugin {
         state: Rc::clone(&s),
     });
 
-    let s = Rc::clone(&shared);
+    let s = Rc::clone(shared);
     runtime.register_plugin_type(BINDINGS_PLUGIN, move || BindingsPlugin::new(Rc::clone(&s)));
 
-    let s = Rc::clone(&shared);
+    let s = Rc::clone(shared);
     runtime.register_plugin_type(TRANSPORT_PLUGIN, move || TransportPlugin {
         state: Rc::clone(&s),
     });
@@ -191,7 +191,7 @@ fn build_runtime(shared: Rc<RefCell<SharedState>>) -> HypertileRuntime {
 }
 
 fn build_workspace(shared: Rc<RefCell<SharedState>>) -> WorkspaceRuntime {
-    WorkspaceRuntime::new(move || build_runtime(Rc::clone(&shared)))
+    WorkspaceRuntime::new(move || build_runtime(&shared))
 }
 
 fn run_event_loop<B>(
@@ -216,8 +216,7 @@ where
 
         let poll_duration = workspace
             .next_frame_in()
-            .map(|d| d.min(EVENT_POLL_INTERVAL))
-            .unwrap_or(EVENT_POLL_INTERVAL);
+            .map_or(EVENT_POLL_INTERVAL, |d| d.min(EVENT_POLL_INTERVAL));
 
         if !event::poll(poll_duration)? {
             continue;

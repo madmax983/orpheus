@@ -790,10 +790,10 @@ impl Evaluator {
         function: crate::value::BuiltinFn,
         site_salt: Option<u64>,
     ) -> crate::value::BuiltinFn {
-        if let Some(salt) = site_salt {
-            if function.site_salt.is_none() {
-                return function.with_site_salt(salt);
-            }
+        if let Some(salt) = site_salt
+            && function.site_salt.is_none()
+        {
+            return function.with_site_salt(salt);
         }
         function
     }

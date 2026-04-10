@@ -5,3 +5,7 @@
 **[Title]** Extracted God Function into Helper Functions
 **Learning:** `clippy::too_many_lines` on the `process_stage` function was caused by multiple complex stages inside a match statement.
 **Action:** Extracted `Tone`, `Filter`, and `Eq` stages into named helper functions (`process_tone_stage`, `process_filter_stage`, `process_eq_stage`) to reduce nesting and make the main function easier to read, resolving the lint.
+
+**[Title]** Fix general clippy warnings
+**Learning:** Clippy catches issues like collapsed if let chains, needless pass by value/borrowing, and redundant pub(crate).
+**Action:** Extract guard clauses and apply simple let collapsing and apply const fns.

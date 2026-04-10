@@ -130,7 +130,7 @@ impl SharedTransport {
             std::sync::atomic::fence(Ordering::Acquire);
 
             // If odd, a write is in progress. Wait for it to finish.
-            if start_epoch % 2 != 0 {
+            if !start_epoch.is_multiple_of(2) {
                 std::hint::spin_loop();
                 continue;
             }
@@ -327,7 +327,7 @@ impl EngineCore {
     }
 
     fn render_into_interleaved(&mut self, output: &mut [f32]) -> Result<(), EngineError> {
-        if output.len() % self.channels != 0 {
+        if !output.len().is_multiple_of(self.channels) {
             return Err(EngineError::MisalignedOutputBuffer);
         }
 

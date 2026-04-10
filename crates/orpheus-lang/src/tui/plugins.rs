@@ -20,7 +20,7 @@ use super::style::{
 // REPL Plugin
 // ---------------------------------------------------------------------------
 
-pub(crate) struct ReplPlugin {
+pub struct ReplPlugin {
     pub state: Rc<RefCell<SharedState>>,
 }
 
@@ -133,14 +133,14 @@ impl HypertilePlugin for ReplPlugin {
 // Bindings Plugin
 // ---------------------------------------------------------------------------
 
-pub(crate) struct BindingsPlugin {
+pub struct BindingsPlugin {
     pub state: Rc<RefCell<SharedState>>,
     scroll: Cell<usize>,
     last_height: Cell<u16>,
 }
 
 impl BindingsPlugin {
-    pub fn new(state: Rc<RefCell<SharedState>>) -> Self {
+    pub const fn new(state: Rc<RefCell<SharedState>>) -> Self {
         Self {
             state,
             scroll: Cell::new(0),
@@ -238,7 +238,7 @@ impl HypertilePlugin for BindingsPlugin {
 // Transport Plugin
 // ---------------------------------------------------------------------------
 
-pub(crate) struct TransportPlugin {
+pub struct TransportPlugin {
     pub state: Rc<RefCell<SharedState>>,
 }
 
