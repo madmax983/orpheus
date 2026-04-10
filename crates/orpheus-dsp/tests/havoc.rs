@@ -35,7 +35,7 @@ impl SharedTransportLoom {
             let start_epoch = self.publish_epoch.load(Ordering::Relaxed);
             loom::sync::atomic::fence(Ordering::Acquire);
 
-            if start_epoch % 2 != 0 {
+            if !start_epoch.is_multiple_of(2) {
                 loom::thread::yield_now();
                 continue;
             }
