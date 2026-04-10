@@ -138,7 +138,7 @@ fn query_cycle_pattern<T: Clone>(
             operation: "cycle count exceeded evaluator limits",
         }
     })?;
-    let capacity = cycle_count.checked_mul(unit_events.len()).ok_or_else(|| {
+    let capacity = cycle_count.checked_mul(unit_events.len()).ok_or({
         PatternError::ArithmeticOverflow {
             operation: "pattern capacity calculation",
         }

@@ -89,14 +89,14 @@ mod tests {
 
     #[test]
     fn should_calculate_delay_frames_correctly() {
-        let time = Rational::new(1, 2);
+        let time = Rational::new(1, 2).unwrap();
         let frames_per_cycle = 44100;
         assert_eq!(delay_frames(&time, frames_per_cycle).unwrap(), 22050);
     }
 
     #[test]
     fn should_return_error_when_time_is_zero() {
-        let time = Rational::new(0, 1);
+        let time = Rational::new(0, 1).unwrap();
         let frames_per_cycle = 44100;
         assert!(matches!(
             delay_frames(&time, frames_per_cycle),
@@ -106,7 +106,7 @@ mod tests {
 
     #[test]
     fn should_return_error_when_time_is_negative() {
-        let time = Rational::new(-1, 2);
+        let time = Rational::new(-1, 2).unwrap();
         let frames_per_cycle = 44100;
         assert!(matches!(
             delay_frames(&time, frames_per_cycle),
@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn should_initialize_delay_state_correctly() {
-        let spec = DelaySpec::new(Rational::new(1, 4), 0.5, 0.2);
+        let spec = DelaySpec::new(Rational::new(1, 4).unwrap(), 0.5, 0.2);
         let state = DelayState::new(&spec, 44100).unwrap();
         assert_eq!(state.buffer.len(), 11025);
         assert_eq!(state.write_index, 0);
@@ -127,10 +127,10 @@ mod tests {
 
     #[test]
     fn should_sync_timing_correctly() {
-        let spec1 = DelaySpec::new(Rational::new(1, 4), 0.5, 0.2);
+        let spec1 = DelaySpec::new(Rational::new(1, 4).unwrap(), 0.5, 0.2);
         let mut state = DelayState::new(&spec1, 44100).unwrap();
 
-        let spec2 = DelaySpec::new(Rational::new(1, 2), 0.7, 0.3);
+        let spec2 = DelaySpec::new(Rational::new(1, 2).unwrap(), 0.7, 0.3);
         state.sync_timing(&spec2, 44100).unwrap();
 
         assert_eq!(state.buffer.len(), 22050);
@@ -142,7 +142,7 @@ mod tests {
 
     #[test]
     fn should_process_frame_correctly() {
-        let spec = DelaySpec::new(Rational::new(1, 44100), 0.5, 1.0); // 1 frame delay
+        let spec = DelaySpec::new(Rational::new(1, 44100).unwrap(), 0.5, 1.0); // 1 frame delay
         let mut state = DelayState::new(&spec, 44100).unwrap();
 
         // Frame 1
@@ -160,10 +160,10 @@ mod tests {
 
     #[test]
     fn should_reset_state_correctly() {
-        let spec = DelaySpec::new(Rational::new(1, 4), 0.5, 0.2);
+        let spec = DelaySpec::new(Rational::new(1, 4).unwrap(), 0.5, 0.2);
         let mut state = DelayState::new(&spec, 44100).unwrap();
 
-        state.process_frame(1.0, 1.0);
+        let _ = state.process_frame(1.0, 1.0);
         state.reset();
 
         assert_eq!(state.write_index, 0);

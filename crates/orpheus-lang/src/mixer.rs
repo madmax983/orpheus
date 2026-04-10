@@ -386,7 +386,6 @@ impl MixerState {
 
         builder.build().map_err(|error| error.to_string())
     }
-
 }
 
 impl MixerBusEffect {

@@ -2,8 +2,6 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
-
-
 use crate::eval::{EvalError, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue};
 
@@ -19,7 +17,9 @@ fn write_vlq(mut val: u32, w: &mut impl Write) -> std::io::Result<()> {
     while val > 0x7F {
         val >>= 7;
         i = i.saturating_sub(1);
-        buf[i] = ((val & 0x7F) | 0x80) as u8;
+        #[allow(clippy::cast_possible_truncation)]
+        let byte = ((val & 0x7F) | 0x80) as u8;
+        buf[i] = byte;
     }
     w.write_all(&buf[i..])
 }
@@ -73,7 +73,9 @@ fn write_midi_file(
 
     file.write_all(b"MTrk")
         .map_err(|e| EvalError::new(&*e.to_string()))?;
-    file.write_all(&(track_data.len() as u32).to_be_bytes())
+    #[allow(clippy::cast_possible_truncation)]
+    let track_len = track_data.len() as u32;
+    file.write_all(&track_len.to_be_bytes())
         .map_err(|e| EvalError::new(&*e.to_string()))?;
     file.write_all(&track_data)
         .map_err(|e| EvalError::new(&*e.to_string()))?;
@@ -103,6 +105,7 @@ pub fn export_number_pattern_to_midi(
     let mut midi_events = Vec::new();
 
     for event in pattern_events {
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let note = event.value.round().clamp(0.0, 127.0) as u8;
         let start_cycle = f64::from(event.part.start());
         let end_cycle = f64::from(event.part.end());
