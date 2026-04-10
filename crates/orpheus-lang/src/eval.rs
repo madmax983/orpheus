@@ -1689,4 +1689,31 @@ right = sometimes(fast(2), cp hh)";
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("expected 2 argument(s), got 3"));
     }
+
+    #[test]
+    fn eval_error_from_conversions() {
+        let num_err: std::num::TryFromIntError = u8::try_from(256u16).unwrap_err();
+        let eval_err: crate::eval::EvalError = num_err.into();
+        assert!(eval_err.to_string().contains("out of range"));
+
+        let num_err: std::num::ParseIntError = "abc".parse::<i32>().unwrap_err();
+        let eval_err: crate::eval::EvalError = num_err.into();
+        assert!(eval_err.to_string().contains("invalid digit"));
+
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "not found");
+        let eval_err: crate::eval::EvalError = io_err.into();
+        assert_eq!(eval_err.to_string(), "file not found");
+
+        let fmt_err = std::fmt::Error;
+        let eval_err: crate::eval::EvalError = fmt_err.into();
+        assert_eq!(
+            eval_err.to_string(),
+            "an error occurred when formatting an argument"
+        );
+
+        let pat_err: orpheus_pattern::PatternError =
+            orpheus_pattern::PatternError::InvalidDenominator { denominator: 0 };
+        let eval_err: crate::eval::EvalError = pat_err.into();
+        assert_eq!(eval_err.to_string(), "rational denominator cannot be zero");
+    }
 }

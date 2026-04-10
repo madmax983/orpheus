@@ -141,7 +141,10 @@ impl CombState {
     fn process(&mut self, input: f32) -> f32 {
         let output = self.buffer[self.index];
         self.filter_store = output.mul_add(1.0 - self.damp, self.filter_store * self.damp);
-        self.buffer[self.index] = input.mul_add(self.feedback, self.filter_store);
+        #[allow(clippy::suboptimal_flops)]
+        {
+            self.buffer[self.index] = input + (self.filter_store * self.feedback);
+        }
         self.index += 1;
         if self.index == self.buffer.len() {
             self.index = 0;
@@ -176,7 +179,10 @@ impl AllpassState {
     fn process(&mut self, input: f32) -> f32 {
         let buffered = self.buffer[self.index];
         let output = buffered - input;
-        self.buffer[self.index] = input.mul_add(self.feedback, buffered);
+        #[allow(clippy::suboptimal_flops)]
+        {
+            self.buffer[self.index] = input + (buffered * self.feedback);
+        }
         self.index += 1;
         if self.index == self.buffer.len() {
             self.index = 0;
