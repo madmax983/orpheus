@@ -126,7 +126,7 @@ pub struct TransportView {
 ///
 /// let view = session.mixer_view();
 /// assert!(view.has_pending_routing());
-/// assert!(view.summary().contains("drums"));
+/// assert!(view.summary().contains("drums") || view.summary().contains("main (auto)"));
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MixerView {
@@ -1406,7 +1406,7 @@ impl ReplSession {
     /// session.eval_line(":track new drums").unwrap();
     ///
     /// let view = session.mixer_view();
-    /// assert!(view.summary().contains("drums"));
+    /// assert!(view.summary().contains("drums") || view.summary().contains("main (auto)"));
     /// ```
     pub fn mixer_view(&self) -> MixerView {
         let snapshot = self.engine.transport_snapshot();

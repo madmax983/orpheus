@@ -14,7 +14,6 @@
 use std::collections::BTreeMap;
 
 use comfy_table::{Table, presets::UTF8_BORDERS_ONLY};
-use crossterm::style::Stylize;
 use orpheus_dsp::{RoutingSnapshot, SampleTrigger, TrackSource};
 use orpheus_pattern::Event;
 use orpheus_pattern::Rational;
@@ -299,7 +298,7 @@ impl MixerState {
             ]);
         }
 
-        output.push_str(&format!("{}\n", "Mixer Tracks:".cyan().bold()));
+        output.push_str("Mixer Tracks:\n");
         output.push_str(&track_table.to_string());
 
         if !self.buses.is_empty() {
@@ -315,7 +314,7 @@ impl MixerState {
                 bus_table.add_row(vec![bus_name.to_owned(), effect]);
             }
 
-            output.push_str(&format!("\n\n{}\n", "Mixer Buses:".cyan().bold()));
+            output.push_str("\n\nMixer Buses:\n");
             output.push_str(&bus_table.to_string());
         }
 

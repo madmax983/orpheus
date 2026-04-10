@@ -445,7 +445,16 @@ impl SessionTui {
         if !mixer.summary().is_empty() && mixer.summary() != "mixer is empty" {
             lines.push(Line::raw("Mixer:"));
             for summary_line in mixer.summary().lines() {
-                lines.push(Line::raw(summary_line.to_owned()));
+                if summary_line == "Mixer Tracks:" || summary_line == "Mixer Buses:" {
+                    lines.push(Line::styled(
+                        summary_line.to_owned(),
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    ));
+                } else {
+                    lines.push(Line::raw(summary_line.to_owned()));
+                }
             }
         }
         lines.extend([
