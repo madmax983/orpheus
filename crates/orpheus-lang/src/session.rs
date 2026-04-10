@@ -848,6 +848,7 @@ impl ReplSession {
         self.mixer = MixerState::default();
         *self.pattern_display.borrow_mut() = PatternDisplayState::default();
 
+        #[allow(clippy::collapsible_if)]
         if let Some(name) = last_binding_name {
             if let Some(value) = self.bindings.get(&name).cloned() {
                 self.push_pattern_update(&name, &value)?;
@@ -1300,6 +1301,7 @@ impl ReplSession {
                     format!("failed to enqueue load pattern command for `{name}`: {error}")
                 })?;
             let mut display = self.pattern_display.borrow_mut();
+            #[allow(clippy::collapsible_if)]
             if display.active_pattern_name.is_none() && enqueue_publish != 0 {
                 if let Some(last_loaded_pattern_name) = display.last_loaded_pattern_name.clone() {
                     display.active_pattern_name = Some(last_loaded_pattern_name);
@@ -1388,6 +1390,7 @@ impl ReplSession {
                 display.pending_enqueued_after_publish = None;
             }
         } else if display.active_pattern_name.is_none() && snapshot.current_frame() != 0 {
+            #[allow(clippy::collapsible_if)]
             if let Some(last_loaded_pattern_name) = display.last_loaded_pattern_name.clone() {
                 display.active_pattern_name = Some(last_loaded_pattern_name);
             }

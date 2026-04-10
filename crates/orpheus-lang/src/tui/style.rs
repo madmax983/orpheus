@@ -6,6 +6,7 @@ use crate::session::{MixerView, TransportView};
 const MIN_BINDING_LEGEND_ROWS: usize = 6;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) enum UiTransportState {
     Playing,
     Stopped,
@@ -13,6 +14,7 @@ pub(crate) enum UiTransportState {
     Queued,
 }
 
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) fn transport_state(view: &TransportView) -> UiTransportState {
     if view.pending_pattern_name().is_some() {
         if view.snapshot().has_pending_pattern() && view.snapshot().is_playing() {
@@ -27,6 +29,7 @@ pub(crate) fn transport_state(view: &TransportView) -> UiTransportState {
     }
 }
 
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) fn format_transport_status(view: &TransportView) -> &'static str {
     match transport_state(view) {
         UiTransportState::Playing => "playing",
@@ -36,6 +39,7 @@ pub(crate) fn format_transport_status(view: &TransportView) -> &'static str {
     }
 }
 
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) fn transport_status_style(view: &TransportView) -> Style {
     let color = match transport_state(view) {
         UiTransportState::Playing => Color::Green,
@@ -46,6 +50,7 @@ pub(crate) fn transport_status_style(view: &TransportView) -> Style {
     Style::default().fg(color).add_modifier(Modifier::BOLD)
 }
 
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) fn transport_status_line(
     prefix: &'static str,
     view: &TransportView,
@@ -55,6 +60,7 @@ pub(crate) fn transport_status_line(
         Span::raw(prefix),
         Span::styled(format_transport_status(view), transport_status_style(view)),
     ];
+    #[allow(clippy::collapsible_if)]
     if include_target {
         if let Some(pending_pattern_name) = view.pending_pattern_name() {
             spans.push(Span::raw(" -> "));
@@ -64,6 +70,7 @@ pub(crate) fn transport_status_line(
     Line::from(spans)
 }
 
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) fn routing_status_line(mixer: &MixerView) -> Line<'static> {
     let status = if mixer.has_pending_routing() {
         Span::styled(
@@ -78,12 +85,14 @@ pub(crate) fn routing_status_line(mixer: &MixerView) -> Line<'static> {
     Line::from(vec![Span::raw("Routing: "), status])
 }
 
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) fn live_binding_style() -> Style {
     Style::default()
         .fg(Color::Green)
         .add_modifier(Modifier::BOLD)
 }
 
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) fn pending_binding_style(transport: &TransportView) -> Style {
     let color = match transport_state(transport) {
         UiTransportState::Queued => Color::Blue,
@@ -94,6 +103,7 @@ pub(crate) fn pending_binding_style(transport: &TransportView) -> Style {
     Style::default().fg(color).add_modifier(Modifier::BOLD)
 }
 
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) fn binding_list_item(
     summary: String,
     transport: &TransportView,
@@ -118,6 +128,7 @@ pub(crate) fn binding_list_item(
     ListItem::new(summary)
 }
 
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) fn binding_legend_item(
     transport: &TransportView,
 ) -> ratatui::widgets::ListItem<'static> {
@@ -132,6 +143,7 @@ pub(crate) fn binding_legend_item(
     ]))
 }
 
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) fn should_show_binding_legend(
     bindings_height: u16,
     binding_count: usize,
@@ -144,22 +156,26 @@ pub(crate) fn should_show_binding_legend(
     visible_rows >= MIN_BINDING_LEGEND_ROWS && visible_rows >= binding_count.saturating_add(2)
 }
 
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) fn key_legend_style() -> Style {
     Style::default()
         .fg(Color::DarkGray)
         .add_modifier(Modifier::DIM)
 }
 
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) fn help_overlay_border_style() -> Style {
     Style::default()
         .fg(Color::Cyan)
         .add_modifier(Modifier::BOLD)
 }
 
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) fn help_overlay_footer_style() -> Style {
     Style::default().fg(Color::Gray).add_modifier(Modifier::DIM)
 }
 
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) fn format_cycle_position(snapshot: &orpheus_dsp::TransportSnapshot) -> String {
     let frames_per_cycle = snapshot.frames_per_cycle();
     if frames_per_cycle == 0 {
@@ -173,6 +189,7 @@ pub(crate) fn format_cycle_position(snapshot: &orpheus_dsp::TransportSnapshot) -
     format!("{cycle_index}.{progress_millis:03}")
 }
 
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) fn format_tempo_bpm(snapshot: &orpheus_dsp::TransportSnapshot) -> String {
     let tempo_bpm = snapshot.tempo_bpm();
     if tempo_bpm.fract().abs() < f32::EPSILON {

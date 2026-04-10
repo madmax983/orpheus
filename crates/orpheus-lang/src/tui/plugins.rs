@@ -20,6 +20,7 @@ use super::style::{
 // REPL Plugin
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) struct ReplPlugin {
     pub state: Rc<RefCell<SharedState>>,
 }
@@ -133,6 +134,7 @@ impl HypertilePlugin for ReplPlugin {
 // Bindings Plugin
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) struct BindingsPlugin {
     pub state: Rc<RefCell<SharedState>>,
     scroll: Cell<usize>,
@@ -140,6 +142,7 @@ pub(crate) struct BindingsPlugin {
 }
 
 impl BindingsPlugin {
+    #[allow(clippy::missing_const_for_fn)]
     pub fn new(state: Rc<RefCell<SharedState>>) -> Self {
         Self {
             state,
@@ -238,6 +241,7 @@ impl HypertilePlugin for BindingsPlugin {
 // Transport Plugin
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) struct TransportPlugin {
     pub state: Rc<RefCell<SharedState>>,
 }

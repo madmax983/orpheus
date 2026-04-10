@@ -6,7 +6,9 @@
 //! command palette to spawn new pane types.
 
 mod plugins;
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) mod state;
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) mod style;
 
 use std::cell::RefCell;
@@ -137,6 +139,7 @@ pub fn run_with_engine_and_path(
     result
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn build_runtime(shared: Rc<RefCell<SharedState>>) -> HypertileRuntime {
     let mut runtime = HypertileRuntimeBuilder::default()
         .with_move_bindings(MoveBindings::VimAndShiftArrows)
@@ -216,8 +219,7 @@ where
 
         let poll_duration = workspace
             .next_frame_in()
-            .map(|d| d.min(EVENT_POLL_INTERVAL))
-            .unwrap_or(EVENT_POLL_INTERVAL);
+            .map_or(EVENT_POLL_INTERVAL, |d| d.min(EVENT_POLL_INTERVAL));
 
         if !event::poll(poll_duration)? {
             continue;
