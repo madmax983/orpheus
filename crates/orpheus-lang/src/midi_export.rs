@@ -1,3 +1,15 @@
+//! Export functions for rendering Orpheus patterns to standard MIDI files.
+//!
+//! This module provides functionality to convert both `NumberPatternValue` (representing
+//! pitch sequences) and `SamplePatternValue` (representing drum/sample sequences) into
+//! `.mid` files. These files can then be imported into external Digital Audio Workstations
+//! (DAWs) or other sequencers.
+//!
+//! Standard MIDI file export translates Orpheus's continuous rational time into discrete
+//! MIDI ticks based on a fixed 480 ticks-per-quarter-note resolution. Note events are
+//! sorted logically so that overlapping notes process 'Note Off' events before their
+//! corresponding 'Note On'.
+
 #![allow(clippy::unreadable_literal)]
 use std::fs::File;
 use std::io::{BufWriter, Write};

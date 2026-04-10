@@ -35,3 +35,7 @@
 ## 2026-03-24 - [The "Black Box": Missing Documentation in midi_export]
 **Confusion:** The MIDI export module (`crates/orpheus-lang/src/midi_export.rs`) acted as a black box due to missing module-level (`//!`) documentation. It was unclear how the module converts rational time domain cycles into MIDI ticks or how number and sample patterns map to MIDI channels and notes.
 **Clarification:** Added module-level `//!` documentation explaining the conversion to MIDI ticks based on a 4/4 meter assumption and how patterns map to Channel 1 (melodic) and Channel 10 (percussion).
+
+## 2026-03-24 - [The "Black Box": Missing Documentation in Pedal System]
+**Confusion:** The virtual analog pedal effects system (`crates/orpheus-dsp/src/pedal/*` and `crates/orpheus-lang/src/pedal.rs`) acted as a black box due to missing module-level (`//!`) documentation and incomplete item-level (`///`) documentation. It was unclear how declarative graphs (programs) bridge to stateful lock-free runtime execution, how control-rate sub-sampling optimized CPU, and how references into the node graph worked.
+**Clarification:** Added module-level `//!` documentation to `pedal/mod.rs`, `pedal/program.rs`, `pedal/runtime.rs`, and `crates/orpheus-lang/src/pedal.rs`. Documented `SignalKind` and `NodeRef` with concrete executable `## Examples` to illustrate how users define analog routing graphs. Added module-level `//!` to `crates/orpheus-lang/src/midi_export.rs` to explain how continuous rational time translates into discrete MIDI events.
