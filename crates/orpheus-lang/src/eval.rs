@@ -661,6 +661,13 @@ impl Evaluator {
                     .ok_or_else(|| EvalError::new("section cycle offset overflowed"))?,
                 1,
             )?;
+            if repeat == repeat_count - 1 {
+                // ⚡ Bolt: Eliminate redundant allocation on the last section cycle repeat.
+                let mut final_repeated = base;
+                final_repeated.shift(&offset)?;
+                combined.append_unsorted(final_repeated)?;
+                break;
+            }
             let mut repeated = base.clone();
             repeated.shift(&offset)?;
             combined.append_unsorted(repeated)?;
