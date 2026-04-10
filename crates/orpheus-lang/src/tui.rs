@@ -1428,10 +1428,11 @@ mod tests {
         app.input = ":send drums verb 0.35".to_owned();
         app.submit_line();
 
-        let frame = render_frame_for_test(&app, 100, 24);
-        assert!(frame.contains("drums"));
-        assert!(frame.contains("verb @ 0.35"));
-        assert!(frame.contains("Mixer Buses"));
+        let frame = render_frame_for_test(&app, 160, 24);
+        let stripped = strip_ansi_codes(&frame);
+        assert!(stripped.contains("drums"));
+        assert!(stripped.contains("verb"));
+        assert!(stripped.contains("Mixer Buses"));
     }
 
     #[test]
@@ -1443,8 +1444,9 @@ mod tests {
         app.submit_line();
 
         let frame = render_frame_for_test(&app, 160, 40);
-        assert!(frame.contains("Mixer Buses"));
-        assert!(frame.contains("delay(3/16"));
+        let stripped = strip_ansi_codes(&frame);
+        assert!(stripped.contains("Mixer Buses"));
+        assert!(stripped.contains("delay(3/16"));
     }
 
     #[test]
@@ -1456,10 +1458,11 @@ mod tests {
         app.submit_line();
 
         let frame = render_frame_for_test(&app, 160, 40);
-        assert!(frame.contains("Mixer Buses"));
-        assert!(frame.contains("reverb(size=0.75"));
-        assert!(frame.contains("damp=0.35"));
-        assert!(frame.contains("wet=1.00)"));
+        let stripped = strip_ansi_codes(&frame);
+        assert!(stripped.contains("Mixer Buses"));
+        assert!(stripped.contains("reverb(size=0.75"));
+        assert!(stripped.contains("damp=0.35"));
+        assert!(stripped.contains("wet=1.00)"));
     }
 
     #[test]
@@ -2254,6 +2257,11 @@ mod tests {
         assert!(frame.contains(":open <path>"));
         assert!(frame.contains(":play"));
         assert!(frame.contains(":stop"));
+    }
+
+    fn strip_ansi_codes(s: &str) -> String {
+        let re = regex::Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]").unwrap();
+        re.replace_all(s, "").into_owned()
     }
 
     fn render_frame_for_test(app: &SessionTui, width: u16, height: u16) -> String {

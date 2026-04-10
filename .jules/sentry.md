@@ -20,3 +20,7 @@
 ## 2024-10-24 - [Coverage Gap in `apply_builtin_function` Function Invocation]
 **Learning:** The evaluation pipeline code for applying arguments to standard library built-in functions lacked test coverage around function arity boundaries, specifically the error handling branch for over-application (passing more arguments than the function's arity).
 **Action:** Always verify both currying behavior and over-application failure modes for both user-defined and built-in functions. Ensure those failure cases are covered via `assert_eval_error_contains` or similar direct error assertions.
+## 2026-04-07 - Fixing Test Flakiness Caused by ANSI Codes
+
+**Learning:** When asserting on terminal string outputs that might contain ANSI escape codes (like colors or bold text), `contains` assertions using literal substrings can suddenly fail when the UI is styled. Additionally, doc-tests in Rust that depend on side-effects (like evaluating code and expecting output) need a complete setup state (e.g. creating bindings before expecting them in a UI dump).
+**Action:** Use a helper function `strip_ansi_codes` (or `console` tools) to strip out escape sequences before performing string assertions on frame buffers. For doctests that use multi-step operations (like assigning a track to a bus), always provide valid prerequisite bindings.

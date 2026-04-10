@@ -121,7 +121,9 @@ pub struct TransportView {
 /// use orpheus_dsp::EngineHandle;
 ///
 /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+/// session.eval_line("groove = bd sn").unwrap();
 /// session.eval_line(":track new drums").unwrap();
+/// session.eval_line(":track bind drums groove").unwrap();
 /// session.render_test_block_for_tui(1);
 ///
 /// let view = session.mixer_view();
@@ -1403,7 +1405,9 @@ impl ReplSession {
     /// use orpheus_dsp::EngineHandle;
     ///
     /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.eval_line("groove = bd sn").unwrap();
     /// session.eval_line(":track new drums").unwrap();
+    /// session.eval_line(":track bind drums groove").unwrap();
     ///
     /// let view = session.mixer_view();
     /// assert!(view.summary().contains("drums"));

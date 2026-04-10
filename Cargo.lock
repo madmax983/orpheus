@@ -1122,6 +1122,7 @@ dependencies = [
  "pest_derive",
  "proptest",
  "ratatui",
+ "regex",
  "serde_json",
  "tempfile",
 ]
