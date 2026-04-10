@@ -1,3 +1,27 @@
+//! Declarative program definitions for virtual analog pedals.
+//!
+//! A pedal program is an immutable graph of [`PedalNode`]s. It represents
+//! the static topology of an effect, which is evaluated dynamically by a
+//! `PedalInstance` at runtime.
+//!
+//! Programs consist of:
+//! - Constants and Control signals (LFOs, Envelopes).
+//! - Math operations (Add, Multiply) to mix or scale signals.
+//! - Virtual analog DSP stages ([`PedalStage`]) like distortion clipping, filtering, and preamp gain.
+//!
+//! # Examples
+//!
+//! Creating a simple clean boost pedal that multiplies the input by a constant factor:
+//!
+//! ```rust
+//! use orpheus_dsp::{PedalNode, PedalGraphProgram, NodeRef, SignalKind};
+//!
+//! let gain_node = PedalNode::constant(2.0);
+//! let multiply_node = PedalNode::mul(NodeRef::Input, NodeRef::node(0));
+//!
+//! let program = PedalGraphProgram::new(vec![gain_node, multiply_node], NodeRef::node(1));
+//! ```
+
 #![allow(
     clippy::suboptimal_flops,
     clippy::missing_const_for_fn,
@@ -7,20 +31,51 @@
     clippy::redundant_closure_for_method_calls,
     clippy::default_constructed_unit_structs
 )]
+/// Represents the rate at which a signal is evaluated within a pedal graph.
+///
+/// Nodes producing or consuming `Audio` rate signals are evaluated every single
+/// sample frame. Nodes producing or consuming `Control` rate signals (such as
+/// LFOs or Envelopes) are evaluated at a lower sub-sampled rate to save CPU.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SignalKind {
+    /// Audio-rate signals evaluated at every frame.
     Audio,
+    /// Control-rate signals evaluated at block boundaries.
     Control,
 }
 
+/// A reference to the output of another node in the pedal graph.
+///
+/// Because the graph is represented as a flat `Vec` of `PedalNode`s, a `NodeRef`
+/// is essentially an index into that list, with a special case for the overall
+/// pedal's audio input.
+///
+/// Nodes can only reference previous nodes in the list (i.e. `index < current_node_index`)
+/// to prevent cycles. The only exception is the [`PedalNodeKind::Feedback`] node,
+/// which delays a forward reference by a buffer length.
+///
+/// # Examples
+///
+/// ```rust
+/// use orpheus_dsp::NodeRef;
+///
+/// // Refers to the incoming dry signal
+/// let input_ref = NodeRef::Input;
+///
+/// // Refers to the output of the 0th node in the program's node list
+/// let node0_ref = NodeRef::node(0);
+/// ```
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum NodeRef {
+    /// Refers to the mono audio input passed into the overall pedal.
     #[default]
     Input,
+    /// Refers to the output value of the node at the specified index in the program.
     Node(usize),
 }
 
 impl NodeRef {
+    /// Convenience function for creating a `NodeRef::Node(index)`.
     #[must_use]
     pub const fn node(index: usize) -> Self {
         Self::Node(index)

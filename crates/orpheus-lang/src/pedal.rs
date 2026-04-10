@@ -1,3 +1,13 @@
+//! Language-level parsing and validation for pedal graphs.
+//!
+//! This module provides the bridge between the user's custom syntax for defining
+//! analog pedal effects (using the `Effect` language block) and the lower-level
+//! `orpheus_dsp` graph structures.
+//!
+//! It is responsible for parsing mathematical expressions, topologically sorting
+//! effect nodes, handling recursive feedback paths, and validating that nodes
+//! don't mix up control and audio rate signals incorrectly.
+
 #![allow(clippy::unnested_or_patterns)]
 #![allow(clippy::elidable_lifetime_names)]
 #![allow(

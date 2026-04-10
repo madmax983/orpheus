@@ -1,3 +1,18 @@
+//! Stateful runtime execution for virtual analog pedals.
+//!
+//! The `runtime` module takes an immutable [`PedalGraphProgram`](super::program::PedalGraphProgram)
+//! and evaluates it over time. It maintains the necessary DSP state (like filter
+//! histories, delay buffers, and phase accumulators) required by the static program
+//! nodes.
+//!
+//! # Performance
+//!
+//! To optimize CPU usage, the runtime implements **control-rate sub-sampling**.
+//! Nodes producing `Control` rate signals (like LFOs and Envelopes) are only
+//! calculated every [`PEDAL_CONTROL_INTERVAL_SAMPLES`] frames (e.g. 16 frames).
+//! Their output values are linearly interpolated for `Audio` rate nodes that
+//! consume them.
+
 #![allow(
     clippy::suboptimal_flops,
     clippy::missing_const_for_fn,
