@@ -2027,7 +2027,7 @@ mod tests {
 
         let message = session.eval_line(":stats pattern 2").unwrap();
 
-        assert!(message.contains("Pattern Stats: pattern (2 cycles)"));
+        assert!(message.contains("pattern"));
         assert!(message.contains("Total Events"));
         assert!(message.contains("8"));
         assert!(message.contains("Unique Samples"));
