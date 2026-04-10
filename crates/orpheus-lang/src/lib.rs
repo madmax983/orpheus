@@ -44,6 +44,9 @@ pub use txt::{export_number_pattern_to_txt, export_sample_pattern_to_txt};
 pub use types::{Type, TypedModule, infer_module};
 pub use value::{NumberPatternValue, SampleEvent, SamplePatternValue, Value};
 
+#[doc(hidden)]
+pub use midi_input::update_from_message as midi_input_update_from_message_for_fuzz;
+
 // Hidden re-exports keep rustdoc examples for internal helpers compiling.
 #[doc(hidden)]
 pub use builtins::{apply_builtin_function, builtin_value, is_sample_identifier, stack_values};

@@ -176,7 +176,7 @@ mod tests {
         let stats = sample_pattern_stats("pattern", pattern, 2).unwrap();
         assert!(stats.contains("Pattern Stats: pattern (2 cycles)"));
         assert!(stats.contains("Total Events"));
-        assert!(stats.contains("8"));
+        assert!(stats.contains('8'));
         assert!(stats.contains("Unique Samples"));
         assert!(stats.contains("2 (bd, sn)"));
         assert!(stats.contains("Event Density"));
@@ -192,7 +192,7 @@ mod tests {
         let stats = number_pattern_stats("pattern", pattern, 1).unwrap();
         assert!(stats.contains("Pattern Stats: pattern (1 cycles)"));
         assert!(stats.contains("Total Events"));
-        assert!(stats.contains("3"));
+        assert!(stats.contains('3'));
         assert!(stats.contains("Min Value"));
         assert!(stats.contains("1.000"));
         assert!(stats.contains("Max Value"));

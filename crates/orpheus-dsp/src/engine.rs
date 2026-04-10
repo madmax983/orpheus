@@ -547,8 +547,8 @@ impl EngineCore {
                 let bus_index = usize::try_from(send.bus_id().get())
                     .unwrap_or_else(|_| panic!("bus id did not fit in usize"));
                 let (bus_left, bus_right) = &mut self.bus_mix_buffer[bus_index];
-                *bus_left += track_left * send.level();
-                *bus_right += track_right * send.level();
+                *bus_left = track_left.mul_add(send.level(), *bus_left);
+                *bus_right = track_right.mul_add(send.level(), *bus_right);
             }
         }
 

@@ -1150,7 +1150,7 @@ impl ReplSession {
         Ok(format!("disconnected MIDI output `{port_name}`"))
     }
 
-    fn send_midi_binding(&mut self, binding_name: &str, channel: u8) -> Result<String, String> {
+    fn send_midi_binding(&self, binding_name: &str, channel: u8) -> Result<String, String> {
         if !(1..=16).contains(&channel) {
             return Err("MIDI channel must be an integer in [1, 16]".to_owned());
         }
@@ -1170,6 +1170,8 @@ impl ReplSession {
 
         let mut midi_events = Vec::new();
         for event in pattern.query_unit() {
+            #[allow(clippy::cast_possible_truncation)]
+            #[allow(clippy::cast_sign_loss)]
             let note = event.value.round().clamp(0.0, 127.0) as u8;
             let start = f64::from(event.part.start());
             let end = f64::from(event.part.end());
@@ -1999,7 +2001,7 @@ mod tests {
 
         assert!(message.contains("Pattern Stats: pattern (2 cycles)"));
         assert!(message.contains("Total Events"));
-        assert!(message.contains("8"));
+        assert!(message.contains('8'));
         assert!(message.contains("Unique Samples"));
         assert!(message.contains("2 (bd, sn)"));
         assert!(message.contains("Event Density"));
@@ -2508,9 +2510,7 @@ mod tests {
             .find('`')
             .unwrap_or_else(|| panic!("expected export path in message: {message}"));
         let end = message[start + 1..]
-            .find('`')
-            .map(|index| start + 1 + index)
-            .unwrap_or_else(|| panic!("expected export path in message: {message}"));
+            .find('`').map_or_else(|| panic!("expected export path in message: {message}"), |index| start + 1 + index);
         PathBuf::from(&message[start + 1..end])
     }
 

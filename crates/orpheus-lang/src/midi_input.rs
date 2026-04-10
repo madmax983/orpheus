@@ -62,7 +62,7 @@ pub(crate) fn cc_normalized(controller: u8) -> f64 {
 }
 
 #[allow(clippy::redundant_pub_crate)]
-pub(crate) fn update_from_message(message: &[u8]) {
+pub fn update_from_message(message: &[u8]) {
     if message.is_empty() {
         return;
     }
@@ -93,8 +93,8 @@ pub(crate) fn update_from_message(message: &[u8]) {
         0xB0 if message.len() >= 3 => {
             let controller = message[1];
             let value = message[2];
-            if controller < 128 {
-                state().cc_values[controller as usize].store(value, Ordering::Relaxed);
+            if let Some(atomic_val) = state().cc_values.get(controller as usize) {
+                atomic_val.store(value, Ordering::Relaxed);
             }
         }
         _ => {}
@@ -147,6 +147,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::float_cmp)]
     fn test_cc_normalized_out_of_bounds() {
         // Should not panic and return 0.0
         let val = cc_normalized(128);

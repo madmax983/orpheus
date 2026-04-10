@@ -3034,6 +3034,7 @@ where
     )
 }
 
+#[allow(clippy::too_many_lines)]
 fn validate_control_events(
     control_events: &[Event<f64>],
     kind: ControlPatternKind,
@@ -3611,6 +3612,7 @@ where
             rng_state = rng_state
                 .wrapping_mul(6364136223846793005)
                 .wrapping_add(1442695040888963407);
+            #[allow(clippy::cast_possible_truncation)]
             let j = (rng_state as usize) % (i + 1);
             if i != j {
                 // ⚡ Bolt: Swap values in-place without allocating an intermediate `Vec` or deep cloning strings.
@@ -3630,7 +3632,7 @@ where
                     let whole = if clipped_part == event.part {
                         event.whole.clone()
                     } else {
-                        Some(event.whole.unwrap_or(event.part.clone()))
+                        Some(event.whole.unwrap_or_else(|| event.part.clone()))
                     };
                     events.push(Event {
                         whole,
@@ -4506,11 +4508,11 @@ mod tests {
 
         // Should contain all elements
         let mut c0_sorted = c0_names.clone();
-        c0_sorted.sort();
+        c0_sorted.sort_unstable();
         assert_eq!(c0_sorted, vec!["bd", "cp", "hh", "sn"]);
 
         let mut c1_sorted = c1_names.clone();
-        c1_sorted.sort();
+        c1_sorted.sort_unstable();
         assert_eq!(c1_sorted, vec!["bd", "cp", "hh", "sn"]);
 
         // C0 and C1 should likely be different permutations
