@@ -4049,7 +4049,9 @@ fn merge_open_spans<I: Iterator<Item = TimeSpan>>(mut iter: I) -> Result<Vec<Tim
 
     // ⚡ Bolt: Pre-allocate vector using the iterator's size hint as the maximum bound
     // to reduce heap reallocations during merge operations.
-    let mut merged = Vec::with_capacity(iter.size_hint().0.saturating_add(1));
+    let (lower, upper) = iter.size_hint();
+    let capacity = upper.unwrap_or(lower).saturating_add(1);
+    let mut merged = Vec::with_capacity(capacity);
 
     for span in iter {
         if span.start() <= current.end() {

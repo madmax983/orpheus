@@ -367,12 +367,11 @@ impl ActiveVoice {
             return None;
         }
 
-        let mono_sample = match dry_sample {
-            Some(sample) => sample,
-            None => {
-                self.tail_frames_remaining = self.tail_frames_remaining.saturating_sub(1);
-                0.0
-            }
+        let mono_sample = if let Some(sample) = dry_sample {
+            sample
+        } else {
+            self.tail_frames_remaining = self.tail_frames_remaining.saturating_sub(1);
+            0.0
         };
         let mono_sample = self
             .pedal
