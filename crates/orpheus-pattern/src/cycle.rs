@@ -138,6 +138,11 @@ fn query_cycle_pattern<T: Clone>(
             operation: "cycle count exceeded evaluator limits",
         }
     })?;
+    if cycle_count > 100_000 {
+        return Err(PatternError::ArithmeticOverflow {
+            operation: "evaluation exceeded the maximum allowed event limit",
+        });
+    }
     let capacity =
         cycle_count
             .checked_mul(unit_events.len())
