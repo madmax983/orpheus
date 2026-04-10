@@ -542,10 +542,7 @@ fn build_graph(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
                                 "parse error at line {line}, col {col}: `graph` blocks may contain only one result expression"
                             )));
                         }
-                        result = Some(build_pipe_expr(
-                            first_inner(entry, "graph result")?,
-                            depth,
-                        )?);
+                        result = Some(build_pipe_expr(first_inner(entry, "graph result")?, depth)?);
                     }
                     other => {
                         return Err(ParseError::new(format!(

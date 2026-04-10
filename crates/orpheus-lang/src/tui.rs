@@ -1431,7 +1431,8 @@ mod tests {
         let frame = render_frame_for_test(&app, 100, 24);
         assert!(frame.contains("drums"));
         assert!(frame.contains("verb @ 0.35"));
-        assert!(frame.contains("Mixer Buses"));
+        assert!(frame.contains("Mixer"));
+        assert!(frame.contains("Buses:"));
     }
 
     #[test]
@@ -1443,7 +1444,8 @@ mod tests {
         app.submit_line();
 
         let frame = render_frame_for_test(&app, 160, 40);
-        assert!(frame.contains("Mixer Buses"));
+        assert!(frame.contains("Mixer"));
+        assert!(frame.contains("Buses:"));
         assert!(frame.contains("delay(3/16"));
     }
 
@@ -1456,7 +1458,8 @@ mod tests {
         app.submit_line();
 
         let frame = render_frame_for_test(&app, 160, 40);
-        assert!(frame.contains("Mixer Buses"));
+        assert!(frame.contains("Mixer"));
+        assert!(frame.contains("Buses:"));
         assert!(frame.contains("reverb(size=0.75"));
         assert!(frame.contains("damp=0.35"));
         assert!(frame.contains("wet=1.00)"));
