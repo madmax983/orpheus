@@ -1652,4 +1652,45 @@ right = sometimes(fast(2), cp hh)";
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("function expected 1 argument(s), got 2"));
     }
+
+    #[test]
+    fn eval_f64_to_rational_non_finite() {
+        let err = super::f64_to_rational(f64::INFINITY, "test").unwrap_err();
+        assert_eq!(err.to_string(), "test must be finite");
+
+        let err = super::f64_to_rational(f64::NAN, "test").unwrap_err();
+        assert_eq!(err.to_string(), "test must be finite");
+    }
+
+    #[test]
+    fn eval_f64_to_rational_negative_fraction() {
+        // Test negative decimal values to hit the negative flag correctly.
+        let val: f64 = -0.125;
+        let r = super::f64_to_rational(val, "test").unwrap();
+        // Checked normalize will reduce -125/1000 to -1/8
+        assert_eq!(r.numerator(), -1);
+        assert_eq!(r.denominator(), 8);
+    }
+
+    #[test]
+    fn eval_checked_pow10_out_of_range() {
+        // internal checked_pow10 limit
+        let err = super::checked_pow10(40).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "decimal literal exceeded the supported range"
+        );
+    }
+
+    #[test]
+    fn eval_sample_requires_string_argument() {
+        // `try_sample_node` requires exactly one argument AND that argument must be a string.
+        // If it isn't, we get a specific error before the structural evaluation falls over.
+        let result = eval_module("x = sample(1)", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "`sample` requires a string argument"
+        );
+    }
 }

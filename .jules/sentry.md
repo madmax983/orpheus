@@ -16,3 +16,7 @@
 ## 2024-10-24 - [Coverage Gap in `apply_user_function` Function Invocation]
 **Learning:** The evaluation pipeline code for applying arguments to user-defined functions lacked test coverage around function arity boundaries, specifically the case of successfully currying functions and the over-application error handling branch.
 **Action:** Always check `eval.rs` helper methods for missing branch coverage around dynamic constraints (like function arguments length checks) and ensure those failure cases are covered via `assert_eval_error_contains`.
+
+## 2024-10-24 - [Coverage Gap in `f64_to_rational` and `try_sample_node` argument limits]
+**Learning:** Edge cases around `f64_to_rational` returning errors for non-finite values (like `NaN` or `INFINITY`) and float string representations resulting in scientific notation (e.g. `1e40`) were untested, along with explicit structural-time argument length validation errors (e.g. checking `sample(1, 2)` limits).
+**Action:** Use specific float limits `f64::INFINITY` and large valid floats `1e40_f64` passed directly into utility functions, along with intentional grammatical rule breaking strings like `x = (bd sample(1, 2))` in integration tests to force coverage on safety limits.
