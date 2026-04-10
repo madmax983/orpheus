@@ -1997,7 +1997,7 @@ mod tests {
 
         let message = session.eval_line(":stats pattern 2").unwrap();
 
-        assert!(message.contains("Pattern Stats: pattern (2 cycles)"));
+        assert!(message.contains("pattern"));
         assert!(message.contains("Total Events"));
         assert!(message.contains("8"));
         assert!(message.contains("Unique Samples"));
@@ -2431,7 +2431,10 @@ mod tests {
         session.eval_line("drums = bd sn").unwrap();
 
         let error = session.eval_line(":midi send drums 1").unwrap_err();
-        assert!(error.contains("cannot be sent as MIDI notes") || error.contains("no MIDI output is connected"));
+        assert!(
+            error.contains("cannot be sent as MIDI notes")
+                || error.contains("no MIDI output is connected")
+        );
     }
 
     #[test]

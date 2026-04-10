@@ -6,7 +6,8 @@
 
 use std::collections::BTreeSet;
 
-use comfy_table::{Table, presets::UTF8_BORDERS_ONLY};
+use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
+use crossterm::style::Stylize;
 
 use crate::eval::{EvalError, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue};
@@ -54,20 +55,28 @@ pub fn sample_pattern_stats(
     #[allow(clippy::cast_precision_loss)]
     let density = (total_events as f64) / (cycle_count as f64);
 
-    let title = format!("Pattern Stats: {binding_name} ({cycle_count} cycles)");
-    let rows = vec![
-        ["Total Events".to_string(), total_events.to_string()],
-        [
-            "Unique Samples".to_string(),
-            format!("{unique_count} ({sample_list})"),
-        ],
-        [
-            "Event Density".to_string(),
-            format!("{density:.2} events/cycle"),
-        ],
-    ];
+    let title = format!(
+        "{} {binding_name} ({} cycles)",
+        "Pattern Stats:".cyan().bold(),
+        cycle_count.to_string().yellow()
+    );
+    let mut table = Table::new();
+    table.load_preset(UTF8_BORDERS_ONLY);
 
-    Ok(build_stats_table(&title, &rows))
+    table.add_row(vec![
+        Cell::new("Total Events").fg(comfy_table::Color::DarkGrey),
+        Cell::new(total_events.to_string()).fg(comfy_table::Color::Green),
+    ]);
+    table.add_row(vec![
+        Cell::new("Unique Samples").fg(comfy_table::Color::DarkGrey),
+        Cell::new(format!("{unique_count} ({sample_list})")).fg(comfy_table::Color::Yellow),
+    ]);
+    table.add_row(vec![
+        Cell::new("Event Density").fg(comfy_table::Color::DarkGrey),
+        Cell::new(format!("{density:.2} events/cycle")).fg(comfy_table::Color::Cyan),
+    ]);
+
+    Ok(format!("{title}\n{table}"))
 }
 
 /// Analyzes a number pattern's evaluated events and returns a formatted report.
@@ -136,30 +145,36 @@ pub fn number_pattern_stats(
     #[allow(clippy::cast_precision_loss)]
     let density = (total_events as f64) / (cycle_count as f64);
 
-    let title = format!("Pattern Stats: {binding_name} ({cycle_count} cycles)");
-    let rows = vec![
-        ["Total Events".to_string(), total_events.to_string()],
-        ["Min Value".to_string(), format!("{min_val:.3}")],
-        ["Max Value".to_string(), format!("{max_val:.3}")],
-        ["Average Value".to_string(), format!("{avg:.3}")],
-        [
-            "Event Density".to_string(),
-            format!("{density:.2} events/cycle"),
-        ],
-    ];
-
-    Ok(build_stats_table(&title, &rows))
-}
-
-fn build_stats_table(title: &str, rows: &[[String; 2]]) -> String {
+    let title = format!(
+        "{} {binding_name} ({} cycles)",
+        "Pattern Stats:".cyan().bold(),
+        cycle_count.to_string().yellow()
+    );
     let mut table = Table::new();
     table.load_preset(UTF8_BORDERS_ONLY);
 
-    for row in rows {
-        table.add_row(vec![&row[0], &row[1]]);
-    }
+    table.add_row(vec![
+        Cell::new("Total Events").fg(comfy_table::Color::DarkGrey),
+        Cell::new(total_events.to_string()).fg(comfy_table::Color::Green),
+    ]);
+    table.add_row(vec![
+        Cell::new("Min Value").fg(comfy_table::Color::DarkGrey),
+        Cell::new(format!("{min_val:.3}")).fg(comfy_table::Color::Yellow),
+    ]);
+    table.add_row(vec![
+        Cell::new("Max Value").fg(comfy_table::Color::DarkGrey),
+        Cell::new(format!("{max_val:.3}")).fg(comfy_table::Color::Yellow),
+    ]);
+    table.add_row(vec![
+        Cell::new("Average Value").fg(comfy_table::Color::DarkGrey),
+        Cell::new(format!("{avg:.3}")).fg(comfy_table::Color::Yellow),
+    ]);
+    table.add_row(vec![
+        Cell::new("Event Density").fg(comfy_table::Color::DarkGrey),
+        Cell::new(format!("{density:.2} events/cycle")).fg(comfy_table::Color::Cyan),
+    ]);
 
-    format!("{title}\n{table}")
+    Ok(format!("{title}\n{table}"))
 }
 
 #[cfg(test)]
@@ -174,7 +189,7 @@ mod tests {
         let pattern = module.get("pattern").unwrap().as_sample_pattern().unwrap();
 
         let stats = sample_pattern_stats("pattern", pattern, 2).unwrap();
-        assert!(stats.contains("Pattern Stats: pattern (2 cycles)"));
+        assert!(stats.contains("Pattern Stats:"));
         assert!(stats.contains("Total Events"));
         assert!(stats.contains("8"));
         assert!(stats.contains("Unique Samples"));
@@ -190,7 +205,7 @@ mod tests {
         let pattern = module.get("pattern").unwrap().as_number_pattern().unwrap();
 
         let stats = number_pattern_stats("pattern", pattern, 1).unwrap();
-        assert!(stats.contains("Pattern Stats: pattern (1 cycles)"));
+        assert!(stats.contains("Pattern Stats:"));
         assert!(stats.contains("Total Events"));
         assert!(stats.contains("3"));
         assert!(stats.contains("Min Value"));
