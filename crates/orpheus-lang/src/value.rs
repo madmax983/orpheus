@@ -86,6 +86,7 @@ pub enum BuiltinKind {
     Through,
     MidiCc,
     Chaos,
+    Palindrome,
 }
 
 /// A partially or fully applied built-in function at runtime.
