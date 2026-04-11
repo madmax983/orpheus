@@ -136,7 +136,7 @@ fn start_live_audio() -> anyhow::Result<(EngineHandle, Stream)> {
                     output.fill(0.0);
                 }
             },
-            |error| eprintln!("audio stream error: {error}"),
+            |error| eprintln!("{} {}", "✗ audio stream error:".red().bold(), error),
             None,
         )
         .context("failed to build the audio output stream")?;
