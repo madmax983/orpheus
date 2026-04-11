@@ -9,3 +9,7 @@
 ## $(date +%Y-%m-%d) - Coverage Gap in `eval.rs` Explicit-Time Parsing
 **Learning:** `stream(...)`, `seq_sections(...)`, and explicit-time boundary errors (like mixing pattern types in `seq_sections`, exceeding 1024 cycles, or passing zero bounds) completely lacked test coverage.
 **Action:** Targeted `eval_module` string compilation tests mapped to those missing lines successfully captured exact failure output strings, raising coverage by several percentage points and ensuring these edge cases cannot regress silently.
+
+## 2024-03-24 - [Coverage Gap in `value.rs` query_unit and `eval.rs` find_call_expr_site_salt]
+**Learning:** `query_unit` gracefully degrades when a pattern errors, returning an empty vector to prevent crashing the UI, but this behavior lacked a test. Furthermore, `find_call_expr_site_salt` in `eval.rs` had an unwrap that could panic without test coverage.
+**Action:** Wrote tests using invalid inputs (like `slow(0)` or missing random calls) to verify the expected graceful degradation and panic behaviors respectively.
