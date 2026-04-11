@@ -390,3 +390,166 @@ fn next_word_boundary(input: &str, index: usize) -> usize {
     }
     cursor
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_previous_char_boundary() {
+        let text = "a🚀c";
+        assert_eq!(previous_char_boundary(text, 6), 5);
+        assert_eq!(previous_char_boundary(text, 5), 1);
+        assert_eq!(previous_char_boundary(text, 1), 0);
+        assert_eq!(previous_char_boundary(text, 0), 0);
+    }
+
+    #[test]
+    fn test_next_char_boundary() {
+        let text = "a🚀c";
+        assert_eq!(next_char_boundary(text, 0), 1);
+        assert_eq!(next_char_boundary(text, 1), 5);
+        assert_eq!(next_char_boundary(text, 5), 6);
+        assert_eq!(next_char_boundary(text, 6), 6);
+    }
+
+    #[test]
+    fn test_previous_word_boundary() {
+        let text = "hello  world";
+        assert_eq!(previous_word_boundary(text, 12), 7);
+        assert_eq!(previous_word_boundary(text, 7), 0);
+        assert_eq!(previous_word_boundary(text, 0), 0);
+    }
+
+    #[test]
+    fn test_next_word_boundary() {
+        let text = "hello  world";
+        assert_eq!(next_word_boundary(text, 0), 5);
+        assert_eq!(next_word_boundary(text, 5), 12);
+        assert_eq!(next_word_boundary(text, 12), 12);
+    }
+
+    #[test]
+    fn test_shared_state_history_tracking() {
+        let engine = EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+
+        assert!(state.history.is_empty());
+
+        state.input = "test command".to_string();
+        state.recall_previous_history();
+        assert_eq!(state.input, "test command");
+
+        state.submit_line();
+        assert_eq!(state.history.len(), 1);
+        assert_eq!(state.history[0], "test command");
+        assert_eq!(state.input, "");
+
+        state.input = "another".to_string();
+        state.submit_line();
+        assert_eq!(state.history.len(), 2);
+
+        state.recall_previous_history();
+        assert_eq!(state.input, "another");
+        assert_eq!(state.history_index, Some(1));
+
+        state.recall_previous_history();
+        assert_eq!(state.input, "test command");
+        assert_eq!(state.history_index, Some(0));
+
+        state.recall_previous_history();
+        assert_eq!(state.input, "test command");
+        assert_eq!(state.history_index, Some(0));
+
+        state.recall_next_history();
+        assert_eq!(state.input, "another");
+        assert_eq!(state.history_index, Some(1));
+
+        state.recall_next_history();
+        assert_eq!(state.input, "");
+        assert_eq!(state.history_index, None);
+    }
+
+    #[test]
+    fn test_shared_state_cursor_movement() {
+        let engine = EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+
+        state.input = "hello world".to_string();
+        state.cursor_index = 11;
+
+        state.move_cursor_left();
+        assert_eq!(state.cursor_index, 10);
+
+        state.move_cursor_home();
+        assert_eq!(state.cursor_index, 0);
+
+        state.move_cursor_right();
+        assert_eq!(state.cursor_index, 1);
+
+        state.move_cursor_end();
+        assert_eq!(state.cursor_index, 11);
+
+        state.move_cursor_previous_word();
+        assert_eq!(state.cursor_index, 6);
+
+        state.move_cursor_previous_word();
+        assert_eq!(state.cursor_index, 0);
+
+        state.move_cursor_next_word();
+        assert_eq!(state.cursor_index, 5);
+
+        state.move_cursor_next_word();
+        assert_eq!(state.cursor_index, 11);
+    }
+
+    #[test]
+    fn test_shared_state_editing() {
+        let engine = EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+
+        state.input = "hello".to_string();
+        state.cursor_index = 5;
+        state.move_cursor_left();
+        state.backspace();
+        assert_eq!(state.input, "helo");
+        assert_eq!(state.cursor_index, 3);
+
+        state.move_cursor_home();
+        state.delete();
+        assert_eq!(state.input, "elo");
+        assert_eq!(state.cursor_index, 0);
+
+        state.insert_character('y');
+        assert_eq!(state.input, "yelo");
+        assert_eq!(state.cursor_index, 1);
+    }
+
+    #[test]
+    fn test_status_messages() {
+        let engine = EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+
+        assert!(state.status_message.is_none());
+
+        state.set_status_message("hello".to_string());
+        assert_eq!(state.status_message, Some("hello".to_string()));
+        assert!(state.status_expires_at.is_some());
+
+        state.clear_status_message();
+        assert!(state.status_message.is_none());
+        assert!(state.status_expires_at.is_none());
+    }
+
+    #[test]
+    fn test_toggle_help() {
+        let engine = EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+
+        assert!(!state.show_help);
+        state.toggle_help();
+        assert!(state.show_help);
+        state.toggle_help();
+        assert!(!state.show_help);
+    }
+}
