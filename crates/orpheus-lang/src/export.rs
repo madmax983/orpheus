@@ -362,6 +362,18 @@ where
 /// array. Each event uses the same timing fields as the CSV exporter plus the
 /// sample control fields available at runtime.
 ///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, export_sample_pattern_to_json};
+///
+/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+///
+/// let path = std::env::temp_dir().join("export.json");
+/// export_sample_pattern_to_json(pattern, &path, 2).unwrap();
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`EvalError`] if the cycle count is 0, if pattern querying fails, or
@@ -485,6 +497,18 @@ pub fn export_number_pattern_to_csv(
 /// The JSON document contains a top-level `kind`, `cycle_count`, and `events`
 /// array. Each event uses the same timing fields as the CSV exporter plus the
 /// numeric `value`.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, export_number_pattern_to_json};
+///
+/// let env = eval_module("x = 1 2 3", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
+///
+/// let path = std::env::temp_dir().join("export_number.json");
+/// export_number_pattern_to_json(pattern, &path, 2).unwrap();
+/// ```
 ///
 /// # Errors
 ///

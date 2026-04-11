@@ -1,6 +1,19 @@
 //! Abstract syntax tree nodes for the Phase 1 Orpheus parser.
 
 /// A parsed Orpheus module.
+///
+/// Represents the root of the abstract syntax tree after parsing.
+/// A module is a sequence of top-level binding statements.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::parse_module;
+///
+/// let source = "drums = bd sn\nfx = fast(2, drums)";
+/// let module = parse_module(source).unwrap();
+/// assert_eq!(module.statements.len(), 2);
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct Module {
     /// Top-level statements in source order.
@@ -8,6 +21,21 @@ pub struct Module {
 }
 
 /// Phase 1 expression forms.
+///
+/// Captures the raw syntactic structure of Orpheus patterns before type inference
+/// or evaluation. This includes primitives like literals and identifiers, as well
+/// as composite structures like sequences, pipes, and function calls.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{parse_module, Stmt, Expr};
+///
+/// let module = parse_module("x = 1").unwrap();
+/// if let Stmt::Binding { expr, .. } = &module.statements[0] {
+///     assert_eq!(*expr, Expr::Number(1.0));
+/// }
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
     /// Sequential composition created by juxtaposition.
