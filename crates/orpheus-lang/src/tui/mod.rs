@@ -6,8 +6,8 @@
 //! command palette to spawn new pane types.
 
 mod plugins;
-pub mod state;
-pub mod style;
+mod state;
+mod style;
 
 use std::cell::RefCell;
 use std::io;
