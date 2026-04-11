@@ -1,0 +1,33 @@
+--- crates/orpheus-lang/src/eval.rs
++++ crates/orpheus-lang/src/eval.rs
+@@ -120,6 +120,12 @@
+     }
+ }
+
++impl From<PitchLiteralError> for EvalError {
++    fn from(error: PitchLiteralError) -> Self {
++        Self::new(error.to_string())
++    }
++}
++
+ /// Evaluates bootstrap Orpheus source into runtime values.
+ ///
+ /// Given a string of Orpheus source code, this parses the text into an AST,
+@@ -742,7 +748,7 @@
+                     f64::from(semitones),
+                 )));
+             }
+-            Err(error) => return Err(EvalError::new(error.to_string())),
++            Err(error) => return Err(error.into()),
+             Ok(None) => {}
+         }
+
+@@ -856,7 +862,7 @@
+             Expr::Number(value) => Ok(Some(PatternNode::atom(*value))),
+             Expr::Ident(name) => match parse_named_pitch_literal(name) {
+                 Ok(Some(semitones)) => Ok(Some(PatternNode::atom(f64::from(semitones)))),
+-                Err(error) => Err(EvalError::new(error.to_string())),
++                Err(error) => Err(error.into()),
+                 Ok(None) => Ok(None),
+             },
+             Expr::Rest => Ok(Some(PatternNode::rest())),

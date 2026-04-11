@@ -30,7 +30,7 @@ use crate::ast::{Expr, Module, Stmt, binding_expr_self_references};
 use crate::builtins::{builtin_value, is_sample_identifier, stack_values};
 use crate::diagnostics::ParseError;
 use crate::parser::parse_module;
-use crate::pitch::parse_named_pitch_literal;
+use crate::pitch::{parse_named_pitch_literal, PitchLiteralError};
 use crate::value::{
     FunctionValue, NumberPatternValue, SampleEvent, SamplePatternValue, UserFn, Value,
 };
@@ -118,6 +118,12 @@ impl From<std::fmt::Error> for EvalError {
 
 impl From<PatternError> for EvalError {
     fn from(error: PatternError) -> Self {
+        Self::new(error.to_string())
+    }
+}
+
+impl From<PitchLiteralError> for EvalError {
+    fn from(error: PitchLiteralError) -> Self {
         Self::new(error.to_string())
     }
 }
@@ -645,7 +651,7 @@ impl Evaluator {
                 let beat_length = rational_from_parts(1, meter.beats_per_cycle)?;
                 beat_index
                     .checked_mul(&beat_length)
-                    .map_err(|error| EvalError::new(error.to_string()))
+                    .map_err(EvalError::from)
             }
             _ => extract_constant_number_rational(
                 self.eval_expr_in_meter(expr, meter)?,
@@ -741,7 +747,7 @@ impl Evaluator {
                     f64::from(semitones),
                 )));
             }
-            Err(error) => return Err(EvalError::new(error.to_string())),
+            Err(error) => return Err(error.into()),
             Ok(None) => {}
         }
 
@@ -855,7 +861,7 @@ impl Evaluator {
             Expr::Number(value) => Ok(Some(PatternNode::atom(*value))),
             Expr::Ident(name) => match parse_named_pitch_literal(name) {
                 Ok(Some(semitones)) => Ok(Some(PatternNode::atom(f64::from(semitones)))),
-                Err(error) => Err(EvalError::new(error.to_string())),
+                Err(error) => Err(error.into()),
                 Ok(None) => Ok(None),
             },
             Expr::Rest => Ok(Some(PatternNode::rest())),
@@ -1161,17 +1167,17 @@ pub fn render_span(cycle_count: u64) -> Result<TimeSpan, EvalError> {
 }
 
 fn build_span(start: Rational, end: Rational) -> Result<TimeSpan, EvalError> {
-    TimeSpan::new(start, end).map_err(|error| EvalError::new(error.to_string()))
+    TimeSpan::new(start, end).map_err(EvalError::from)
 }
 
 fn rational_add(left: &Rational, right: &Rational) -> Result<Rational, EvalError> {
     left.checked_add(right)
-        .map_err(|error| EvalError::new(error.to_string()))
+        .map_err(EvalError::from)
 }
 
 fn rational_from_parts(numerator: i128, denominator: i128) -> Result<Rational, EvalError> {
     Rational::checked_from_parts(numerator, denominator)
-        .map_err(|error| EvalError::new(error.to_string()))
+        .map_err(EvalError::from)
 }
 
 #[cfg(test)]

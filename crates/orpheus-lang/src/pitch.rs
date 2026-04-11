@@ -19,6 +19,8 @@ impl Display for PitchLiteralError {
     }
 }
 
+impl std::error::Error for PitchLiteralError {}
+
 pub fn parse_named_pitch_literal(token: &str) -> Result<Option<i32>, PitchLiteralError> {
     let mut chars = token.chars();
     let Some(first) = chars.next() else {

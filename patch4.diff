@@ -1,0 +1,11 @@
+--- crates/orpheus-lang/src/eval.rs
++++ crates/orpheus-lang/src/eval.rs
+@@ -28,7 +28,7 @@
+ use crate::builtins::{builtin_value, is_sample_identifier, stack_values};
+ use crate::diagnostics::ParseError;
+ use crate::parser::parse_module;
+-use crate::pitch::parse_named_pitch_literal;
++use crate::pitch::{parse_named_pitch_literal, PitchLiteralError};
+ use crate::value::{
+     FunctionValue, NumberPatternValue, SampleEvent, SamplePatternValue, UserFn, Value,
+ };

@@ -1,0 +1,11 @@
+--- crates/orpheus-lang/src/pitch.rs
++++ crates/orpheus-lang/src/pitch.rs
+@@ -16,6 +16,8 @@
+     }
+ }
+
++impl std::error::Error for PitchLiteralError {}
++
+ pub fn parse_named_pitch_literal(token: &str) -> Result<Option<i32>, PitchLiteralError> {
+     let mut chars = token.chars();
+     let Some(first) = chars.next() else {
