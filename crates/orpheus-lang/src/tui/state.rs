@@ -332,6 +332,178 @@ const fn previous_char_boundary(input: &str, index: usize) -> usize {
     cursor
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_find_previous_char_boundary() {
+        assert_eq!(previous_char_boundary("abc", 2), 1);
+        assert_eq!(previous_char_boundary("abc", 0), 0);
+        // "🚀" is 4 bytes: [240, 159, 154, 128]
+        assert_eq!(previous_char_boundary("a🚀c", 5), 1);
+    }
+
+    #[test]
+    fn should_find_next_char_boundary() {
+        assert_eq!(next_char_boundary("abc", 1), 2);
+        assert_eq!(next_char_boundary("abc", 3), 3);
+        assert_eq!(next_char_boundary("a🚀c", 1), 5);
+    }
+
+    #[test]
+    fn should_find_previous_word_boundary() {
+        assert_eq!(previous_word_boundary("hello world", 6), 0); // "world" -> "hello "
+        assert_eq!(previous_word_boundary("hello world", 11), 6);
+        assert_eq!(previous_word_boundary("hello  world", 12), 7);
+        assert_eq!(previous_word_boundary("  hello  ", 9), 2);
+    }
+
+    #[test]
+    fn should_find_next_word_boundary() {
+        assert_eq!(next_word_boundary("hello world", 0), 6); // start -> "world"
+        assert_eq!(next_word_boundary("hello world", 5), 6);
+        assert_eq!(next_word_boundary("hello  world", 5), 7);
+        assert_eq!(next_word_boundary("  hello  ", 0), 2); // -> "hello"
+        assert_eq!(next_word_boundary("  hello  ", 2), 9); // -> end
+    }
+
+    #[test]
+    fn should_match_commands() {
+        assert_eq!(
+            matching_command(":bus"),
+            Some((":bus", ":bus <new|fx> ..."))
+        );
+        assert_eq!(matching_command(":bu"), Some((":bus", ":bus <new|fx> ...")));
+        assert_eq!(matching_command(":e"), None); // Matches multiple: :explain, :export
+        assert_eq!(matching_command(":nonexistent"), None);
+    }
+
+    #[test]
+    fn should_edit_input() {
+        let engine = orpheus_dsp::EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+
+        assert_eq!(state.input, "");
+        assert_eq!(state.cursor_index, 0);
+
+        state.insert_character('a');
+        assert_eq!(state.input, "a");
+        assert_eq!(state.cursor_index, 1);
+
+        state.insert_character('b');
+        assert_eq!(state.input, "ab");
+        assert_eq!(state.cursor_index, 2);
+
+        state.move_cursor_left();
+        assert_eq!(state.cursor_index, 1);
+
+        state.insert_character('c');
+        assert_eq!(state.input, "acb");
+        assert_eq!(state.cursor_index, 2);
+
+        state.backspace();
+        assert_eq!(state.input, "ab");
+        assert_eq!(state.cursor_index, 1);
+
+        state.delete();
+        assert_eq!(state.input, "a");
+        assert_eq!(state.cursor_index, 1);
+    }
+
+    #[test]
+    fn should_navigate_input() {
+        let engine = orpheus_dsp::EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+
+        for c in "hello world".chars() {
+            state.insert_character(c);
+        }
+
+        assert_eq!(state.input, "hello world");
+        assert_eq!(state.cursor_index, 11);
+
+        state.move_cursor_home();
+        assert_eq!(state.cursor_index, 0);
+
+        state.move_cursor_end();
+        assert_eq!(state.cursor_index, 11);
+
+        state.move_cursor_home();
+        state.move_cursor_next_word();
+        assert_eq!(state.cursor_index, 6);
+
+        state.move_cursor_previous_word();
+        assert_eq!(state.cursor_index, 0);
+    }
+
+    #[test]
+    fn should_kill_input() {
+        let engine = orpheus_dsp::EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+
+        for c in "hello world".chars() {
+            state.insert_character(c);
+        }
+
+        state.move_cursor_left();
+        state.move_cursor_left();
+        state.move_cursor_left();
+        state.move_cursor_left();
+        state.move_cursor_left();
+        assert_eq!(state.cursor_index, 6);
+
+        state.kill_to_end();
+        assert_eq!(state.input, "hello ");
+
+        state.kill_to_start();
+        assert_eq!(state.input, "");
+        assert_eq!(state.cursor_index, 0);
+    }
+
+    #[test]
+    fn should_delete_previous_word() {
+        let engine = orpheus_dsp::EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+
+        for c in "hello world".chars() {
+            state.insert_character(c);
+        }
+
+        state.delete_previous_word();
+        assert_eq!(state.input, "hello ");
+        assert_eq!(state.cursor_index, 6);
+    }
+
+    #[test]
+    fn should_complete_input() {
+        let engine = orpheus_dsp::EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+
+        state.insert_character(':');
+        state.insert_character('q');
+        state.complete_input();
+        // Since ":quit" == ":quit" usage is command, it appends space only if it's not the same
+        // Actually state.rs line 282: `self.input = if usage == command { command.to_owned() } else { format!("{command} ") };`
+        assert_eq!(state.input, ":quit");
+
+        state.input.clear();
+        state.cursor_index = 0;
+        state.insert_character(':');
+        state.insert_character('p');
+        state.insert_character('l');
+        state.complete_input();
+        assert_eq!(state.input, ":play");
+
+        state.input.clear();
+        state.cursor_index = 0;
+        state.insert_character(':');
+        state.insert_character('b');
+        state.complete_input();
+        assert_eq!(state.input, ":bus ");
+    }
+}
+
 const fn next_char_boundary(input: &str, index: usize) -> usize {
     if index >= input.len() {
         return input.len();
@@ -370,20 +542,22 @@ fn previous_word_boundary(input: &str, index: usize) -> usize {
 
 fn next_word_boundary(input: &str, index: usize) -> usize {
     let mut cursor = index;
-    while cursor < input.len() {
-        let Some(character) = input[cursor..].chars().next() else {
-            break;
-        };
-        if !character.is_whitespace() {
-            break;
-        }
-        cursor = next_char_boundary(input, cursor);
-    }
+    // Step 1: Skip non-whitespace characters
     while cursor < input.len() {
         let Some(character) = input[cursor..].chars().next() else {
             break;
         };
         if character.is_whitespace() {
+            break;
+        }
+        cursor = next_char_boundary(input, cursor);
+    }
+    // Step 2: Skip whitespace characters to find the start of the next word
+    while cursor < input.len() {
+        let Some(character) = input[cursor..].chars().next() else {
+            break;
+        };
+        if !character.is_whitespace() {
             break;
         }
         cursor = next_char_boundary(input, cursor);

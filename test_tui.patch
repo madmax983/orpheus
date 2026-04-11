@@ -1,0 +1,92 @@
+<<<<<<< SEARCH
+fn next_word_boundary(input: &str, index: usize) -> usize {
+    let mut cursor = index;
+    while cursor < input.len() {
+        let Some(character) = input[cursor..].chars().next() else {
+            break;
+        };
+        if !character.is_whitespace() {
+            break;
+        }
+        cursor = next_char_boundary(input, cursor);
+    }
+    while cursor < input.len() {
+        let Some(character) = input[cursor..].chars().next() else {
+            break;
+        };
+        if character.is_whitespace() {
+            break;
+        }
+        cursor = next_char_boundary(input, cursor);
+    }
+    cursor
+}
+=======
+fn next_word_boundary(input: &str, index: usize) -> usize {
+    let mut cursor = index;
+    while cursor < input.len() {
+        let Some(character) = input[cursor..].chars().next() else {
+            break;
+        };
+        if !character.is_whitespace() {
+            break;
+        }
+        cursor = next_char_boundary(input, cursor);
+    }
+    while cursor < input.len() {
+        let Some(character) = input[cursor..].chars().next() else {
+            break;
+        };
+        if character.is_whitespace() {
+            break;
+        }
+        cursor = next_char_boundary(input, cursor);
+    }
+    cursor
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // We can test word boundaries directly since they don't depend on the engine.
+    #[test]
+    fn should_find_previous_char_boundary() {
+        assert_eq!(previous_char_boundary("abc", 2), 1);
+        assert_eq!(previous_char_boundary("abc", 0), 0);
+        // multi-byte characters
+        assert_eq!(previous_char_boundary("a🚀c", 5), 1);
+    }
+
+    #[test]
+    fn should_find_next_char_boundary() {
+        assert_eq!(next_char_boundary("abc", 1), 2);
+        assert_eq!(next_char_boundary("abc", 3), 3);
+        assert_eq!(next_char_boundary("a🚀c", 1), 5);
+    }
+
+    #[test]
+    fn should_find_previous_word_boundary() {
+        assert_eq!(previous_word_boundary("hello world", 6), 0); // "world" -> "hello " (before word start)
+        assert_eq!(previous_word_boundary("hello world", 11), 6); // end -> "world"
+        assert_eq!(previous_word_boundary("hello  world", 12), 7);
+        assert_eq!(previous_word_boundary("  hello  ", 9), 2);
+    }
+
+    #[test]
+    fn should_find_next_word_boundary() {
+        assert_eq!(next_word_boundary("hello world", 0), 6); // start -> "world" (after "hello ")
+        assert_eq!(next_word_boundary("hello world", 5), 6);
+        assert_eq!(next_word_boundary("hello  world", 5), 7);
+        assert_eq!(next_word_boundary("  hello  ", 0), 9);
+    }
+
+    #[test]
+    fn should_match_commands() {
+        assert_eq!(matching_command(":bus"), Some((":bus", ":bus <new|fx> ...")));
+        assert_eq!(matching_command(":bu"), Some((":bus", ":bus <new|fx> ...")));
+        assert_eq!(matching_command(":ex"), None); // Matches multiple: :explain, :export
+        assert_eq!(matching_command(":nonexistent"), None);
+    }
+}
+>>>>>>> REPLACE
