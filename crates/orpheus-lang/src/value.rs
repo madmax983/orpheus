@@ -81,6 +81,7 @@ pub enum BuiltinKind {
     Rand,
     Jux,
     MidiCc,
+    Degrade,
 }
 
 /// A partially or fully applied built-in function at runtime.
@@ -1223,6 +1224,20 @@ impl SamplePatternValue {
         }
     }
 
+    pub(crate) fn degrade_with_site_salt(
+        self,
+        probability: NumberPatternValue,
+        site_salt: u64,
+    ) -> Self {
+        Self {
+            pattern: PatternRuntime::Degrade {
+                site_salt,
+                probability: Box::new(probability),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn within(self, start: Rational, end: Rational, transform: FunctionValue) -> Self {
         Self {
             pattern: PatternRuntime::Within {
@@ -1833,6 +1848,20 @@ impl NumberPatternValue {
         }
     }
 
+    pub(crate) fn degrade_with_site_salt(
+        self,
+        probability: NumberPatternValue,
+        site_salt: u64,
+    ) -> Self {
+        Self {
+            pattern: PatternRuntime::Degrade {
+                site_salt,
+                probability: Box::new(probability),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn within(self, start: Rational, end: Rational, transform: FunctionValue) -> Self {
         Self {
             pattern: PatternRuntime::Within {
@@ -2027,6 +2056,11 @@ enum PatternRuntime<T> {
     Every {
         period: i64,
         transform: FunctionValue,
+        inner: Box<Self>,
+    },
+    Degrade {
+        site_salt: u64,
+        probability: Box<NumberPatternValue>,
         inner: Box<Self>,
     },
     When {
@@ -2352,6 +2386,11 @@ where
                 transform,
                 inner,
             } => query_sometimes(inner, transform, *site_salt, span),
+            Self::Degrade {
+                site_salt,
+                probability,
+                inner,
+            } => query_degrade(inner, probability, *site_salt, span),
             Self::Within {
                 start,
                 end,
@@ -2545,6 +2584,7 @@ where
             | Self::When { .. }
             | Self::Sometimes { .. }
             | Self::Within { .. }
+            | Self::Degrade { .. }
             | Self::Mask { .. } => unreachable!("base query variants handled in try_query"),
         }
     }
@@ -3486,6 +3526,53 @@ where
     })
 }
 
+fn query_degrade<T>(
+    inner: &PatternRuntime<T>,
+    probability: &NumberPatternValue,
+    site_salt: u64,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut events = inner.try_query(span)?;
+    let prob_events = probability.try_query(span)?;
+
+    events.retain(|event| {
+        let prob = prob_events
+            .iter()
+            .find(|p| p.part.start() <= event.part.end() && p.part.end() >= event.part.start())
+            .map(|p| p.value)
+            .unwrap_or(0.5);
+
+        let prob = prob.clamp(0.0, 1.0);
+        if prob >= 1.0 { return true; }
+        if prob <= 0.0 { return false; }
+
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let numerator = event.part.start().numerator() as u64;
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let denominator = event.part.start().denominator() as u64;
+
+        let mut state = site_salt ^ numerator.rotate_left(11) ^ denominator.rotate_left(23);
+        state = state.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        state ^= state >> 30;
+        state = state.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        state ^= state >> 27;
+        state = state.wrapping_mul(0x94D0_49BB_1331_11EB);
+        state ^= state >> 31;
+
+        let rand_val = (state as f64) / (u64::MAX as f64);
+        rand_val < prob
+    });
+
+    Ok(events)
+}
+
 fn query_transform_cycles<T, F>(
     inner: &PatternRuntime<T>,
     transform: &FunctionValue,
@@ -3703,6 +3790,7 @@ fn absolute_cycle_for_runtime<T>(
         PatternRuntime::Every { inner, .. }
         | PatternRuntime::When { inner, .. }
         | PatternRuntime::Sometimes { inner, .. }
+        | PatternRuntime::Degrade { inner, .. }
         | PatternRuntime::Within { inner, .. }
         | PatternRuntime::Mask { inner, .. }
         | PatternRuntime::Roll { inner, .. }

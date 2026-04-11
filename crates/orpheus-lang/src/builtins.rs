@@ -137,6 +137,7 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "rand" => Some(builtin_function_value(BuiltinKind::Rand)),
         "jux" => Some(builtin_function_value(BuiltinKind::Jux)),
         "cc" | "midi_cc" => Some(builtin_function_value(BuiltinKind::MidiCc)),
+        "degrade" => Some(builtin_function_value(BuiltinKind::Degrade)),
         _ => None,
     }
 }
@@ -349,6 +350,7 @@ impl BuiltinKind {
             Self::Rand => "rand",
             Self::Jux => "jux",
             Self::MidiCc => "midi_cc",
+            Self::Degrade => "degrade",
         }
     }
 
@@ -392,7 +394,8 @@ impl BuiltinKind {
             | Self::Transpose
             | Self::Onset
             | Self::Rate
-            | Self::Jux => 2,
+            | Self::Jux
+            | Self::Degrade => 2,
             Self::MidiCc => 1,
             Self::Rand => 0,
         }
@@ -448,6 +451,7 @@ impl BuiltinKind {
             Self::Rand => apply_rand(args, function.site_salt.unwrap_or_default()),
             Self::Jux => apply_jux(args),
             Self::MidiCc => apply_midi_cc(args),
+            Self::Degrade => apply_degrade(args, function.site_salt.unwrap_or_default()),
         }
     }
 }
@@ -2315,5 +2319,47 @@ mod tests {
             err_msg.contains("maximum allowed bound of 1024"),
             "unexpected error message: {err_msg}"
         );
+    }
+
+    #[test]
+    fn degrade_removes_events_based_on_probability() {
+        use orpheus_pattern::TimeSpan;
+        let module = eval_module("p = degrade(0.5, fast(10, bd))", ReplMode::Loose).unwrap();
+        let pattern = module.get("p").unwrap().as_sample_pattern().unwrap();
+        let events = pattern.try_query(&TimeSpan::unit()).unwrap();
+        assert!(!events.is_empty() && events.len() < 10);
+
+        let module2 = eval_module("p = degrade(0.0, fast(10, bd))", ReplMode::Loose).unwrap();
+        let pattern2 = module2.get("p").unwrap().as_sample_pattern().unwrap();
+        let events2 = pattern2.try_query(&TimeSpan::unit()).unwrap();
+        assert_eq!(events2.len(), 0);
+
+        let module3 = eval_module("p = degrade(1.0, fast(10, bd))", ReplMode::Loose).unwrap();
+        let pattern3 = module3.get("p").unwrap().as_sample_pattern().unwrap();
+        let events3 = pattern3.try_query(&TimeSpan::unit()).unwrap();
+        assert_eq!(events3.len(), 10);
+    }
+}
+
+fn apply_degrade(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let probability = args
+        .next()
+        .ok_or_else(|| EvalError::new("`degrade` requires a probability argument"))?;
+    let probability = extract_number_pattern(probability, "degrade")?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`degrade` requires a pattern argument"))?;
+
+    match pattern {
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(
+            pattern.degrade_with_site_salt(probability, site_salt),
+        )),
+        Value::NumberPattern(pattern) => Ok(Value::NumberPattern(
+            pattern.degrade_with_site_salt(probability, site_salt),
+        )),
+        Value::ArpDirection(_) | Value::PitchClassSet(_) | Value::Function(_) | Value::String(_) => {
+            Err(EvalError::new("`degrade` expected a pattern as its final argument"))
+        }
     }
 }

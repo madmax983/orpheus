@@ -1078,7 +1078,7 @@ impl ReplSession {
             .bindings
             .get(binding_name)
             .ok_or_else(|| format!("no binding named `{binding_name}`"))?;
-        let Value::NumberPattern(pattern) = value else {
+        let crate::Value::NumberPattern(pattern) = value else {
             return Err(format!(
                 "binding `{binding_name}` is a {} and cannot be sent as MIDI notes",
                 value.kind_name()
@@ -2290,7 +2290,7 @@ mod tests {
         let mut session = ReplSession::new();
         crate::midi_input::set_cc_value_for_test(1, 64);
         session.eval_line("control = cc(1)").unwrap();
-        let Value::NumberPattern(pattern) = session.bindings.get("control").unwrap() else {
+        let crate::Value::NumberPattern(pattern) = session.bindings.get("control").unwrap() else {
             panic!("expected number pattern");
         };
         let value = pattern.constant_value().unwrap();
