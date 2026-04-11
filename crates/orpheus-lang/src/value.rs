@@ -3197,10 +3197,14 @@ where
     F: FnMut(&TimeSpan, &T) -> Result<Option<T>, EvalError>,
     I: Iterator<Item = &'a TimeSpan> + Clone,
 {
+    // ⚡ Bolt: Pre-collect the lazy iterator into a Vec before the outer loop.
+    // This trades a single O(M) allocation to avoid O(N * M) redundant closure evaluations
+    // when the iterator is cloned and consumed repeatedly on the hot execution path.
+    let precollected_parts: Vec<&'a TimeSpan> = control_parts.collect();
     let mut composed = Vec::with_capacity(source_events.len());
     for event in source_events {
         let Some(boundaries) =
-            compute_event_fragment_boundaries(&event.part, control_parts.clone())
+            compute_event_fragment_boundaries(&event.part, precollected_parts.iter().copied())
         else {
             composed.push(event.clone());
             continue;

@@ -16,3 +16,7 @@
 **Eliminate `Rational` clones in event fragment boundaries**
 **Learning:** Returning `Vec<Rational>` from `compute_event_fragment_boundaries` caused unnecessary `.clone()` calls simply to collect temporal bounds for sorting and deduplication. By refactoring `compute_event_fragment_boundaries` to store and return `Vec<&'a Rational>`, we avoid heap allocating owned clones for bounds that might immediately be discarded after deduplication or clipped during the `apply_event_fragments` window iteration.
 **Action:** When collecting structs out of references into temporary Vecs for sorting or filtering, store `&T` instead of `.clone()`ing into `T`. Only clone or convert to owned values at the final step where the owned struct is specifically required.
+
+**Pre-collect cloned lazy iterators in hot paths**
+**Learning:** When a lazy iterator (like `iter().map(...)` or `iter().cloned()`) is passed into a nested loop that clones the iterator on every iteration of the outer loop, the inner closure logic is redundantly evaluated O(N * M) times. In heavy evaluation paths like `apply_event_fragments`, this causes severe performance overhead.
+**Action:** Pre-collect the lazy iterator into a `Vec` before the outer loop. This trades a single O(M) heap allocation to avoid O(N * M) redundant closure evaluations, optimizing the hot evaluation path significantly without changing semantics or fighting lifetimes.
