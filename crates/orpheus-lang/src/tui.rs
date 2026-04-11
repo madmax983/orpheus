@@ -1984,7 +1984,7 @@ mod tests {
         let normal_frame = render_frame_for_test(&app, 80, 28);
         assert!(!normal_frame.contains("Toggle: ?"));
         assert!(!normal_frame.contains("Words: Alt-B/F"));
-        assert!(normal_frame.contains("Help: ?"));
+        assert!(normal_frame.contains("? help"));
     }
 
     #[test]

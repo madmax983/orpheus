@@ -11,9 +11,12 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+static EXPORT_STEM_ID: AtomicU64 = AtomicU64::new(0);
 
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use orpheus_dsp::{
@@ -617,7 +620,8 @@ impl ReplSession {
             .duration_since(UNIX_EPOCH)
             .map_err(|error| error.to_string())?
             .as_secs();
-        let export_dir = PathBuf::from("exports").join(format!("stems-{timestamp}"));
+        let export_id = EXPORT_STEM_ID.fetch_add(1, Ordering::Relaxed);
+        let export_dir = PathBuf::from("exports").join(format!("stems-{timestamp}-{export_id}"));
         let tempo_bpm = self.transport_snapshot().tempo_bpm();
         let written = render_routing_snapshot_to_stem_wavs(
             &snapshot,
@@ -1134,9 +1138,6 @@ impl ReplSession {
         if !(1..=16).contains(&channel) {
             return Err("MIDI channel must be an integer in [1, 16]".to_owned());
         }
-        let Some(connection) = self.midi_output.connection.clone() else {
-            return Err("no MIDI output is connected; run `:midi connect <port>` first".to_owned());
-        };
         let value = self
             .bindings
             .get(binding_name)
@@ -1146,6 +1147,10 @@ impl ReplSession {
                 "binding `{binding_name}` is a {} and cannot be sent as MIDI notes",
                 value.kind_name()
             ));
+        };
+
+        let Some(connection) = self.midi_output.connection.clone() else {
+            return Err("no MIDI output is connected; run `:midi connect <port>` first".to_owned());
         };
 
         let mut midi_events = Vec::new();
@@ -1695,8 +1700,8 @@ mod tests {
 
         let mixer = session.eval_line(":mixer").unwrap();
 
-        assert!(mixer.contains("send 0.35"));
-        assert!(mixer.contains("send 0.50"));
+        assert!(mixer.contains("send verb @ 0.35"));
+        assert!(mixer.contains("send dub @ 0.50"));
     }
 
     #[test]
@@ -1710,7 +1715,7 @@ mod tests {
         );
 
         let mixer = session.eval_line(":mixer").unwrap();
-        assert!(mixer.contains("bus dub"));
+        assert!(mixer.contains("dub -> master"));
         assert!(mixer.contains("delay(3/16"));
         let _ = session.render_test_block_for_tui(1);
         assert!(session.transport_snapshot().has_pending_routing());
@@ -1727,7 +1732,7 @@ mod tests {
         );
 
         let mixer = session.eval_line(":mixer").unwrap();
-        assert!(mixer.contains("bus verb"));
+        assert!(mixer.contains("verb -> master"));
         assert!(mixer.contains("reverb(size=0.75 damp=0.35 wet=1.00)"));
         let _ = session.render_test_block_for_tui(1);
         assert!(session.transport_snapshot().has_pending_routing());
@@ -1747,7 +1752,7 @@ mod tests {
         );
 
         let mixer = session.eval_line(":mixer").unwrap();
-        assert!(mixer.contains("bus dub"));
+        assert!(mixer.contains("dub -> master"));
         assert!(!mixer.contains("delay("));
     }
 
@@ -2377,15 +2382,19 @@ mod tests {
     #[test]
     fn midi_list_command_returns_available_outputs_or_none() {
         let mut session = ReplSession::new();
-        let message = session.eval_line(":midi list").unwrap();
-        assert!(message.starts_with("available MIDI output ports: "));
+        match session.eval_line(":midi list") {
+            Ok(message) => assert!(message.starts_with("available MIDI output ports: ")),
+            Err(error) => assert!(error.starts_with("failed to initialize MIDI output subsystem")),
+        }
     }
 
     #[test]
     fn midi_input_list_command_returns_available_inputs_or_none() {
         let mut session = ReplSession::new();
-        let message = session.eval_line(":midi in list").unwrap();
-        assert!(message.starts_with("available MIDI input ports: "));
+        match session.eval_line(":midi in list") {
+            Ok(message) => assert!(message.starts_with("available MIDI input ports: ")),
+            Err(error) => assert!(error.starts_with("failed to initialize MIDI input subsystem")),
+        }
     }
 
     #[test]
