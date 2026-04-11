@@ -13,11 +13,10 @@ proptest! {
         source = format!("notes = {source}");
 
         let module = eval_module(&source, ReplMode::Loose);
-        if let Ok(module) = module {
-            if let Some(val) = module.get("notes") {
-                // It should return an EvalError instead of triggering an OOM abort
-                let _ = val.as_sample_pattern().unwrap().query_unit();
-            }
-        }
+        let Ok(module) = module else { return Ok(()); };
+        let Some(val) = module.get("notes") else { return Ok(()); };
+
+        // It should return an EvalError instead of triggering an OOM abort
+        let _ = val.as_sample_pattern().unwrap().query_unit();
     }
 }

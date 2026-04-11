@@ -9,3 +9,7 @@
 **[Title]** Fix general clippy warnings
 **Learning:** Clippy catches issues like collapsed if let chains, needless pass by value/borrowing, and redundant pub(crate).
 **Action:** Extract guard clauses and apply simple let collapsing and apply const fns.
+
+**[Title]** Reduced Cognitive Complexity in Test Assertions
+**Learning:** `clippy::cognitive_complexity` triggers heavily on tests that combine 20+ sequential `assert!` statements or use deep, heavily nested `matches!` assertions against complex AST structures.
+**Action:** Extract focused assertion helpers (`assert_f64_eq`, `assert_is_binary`, etc.) to flatten the assertion structure. This removes boilerplate and keeps the logical flow readable while resolving the complexity lint.

@@ -38,6 +38,50 @@ fn assert_parse_error_contains(source: &str, expected_fragments: &[&str]) {
     }
 }
 
+fn assert_is_ident(expr: &Expr, expected: &str) {
+    match expr {
+        Expr::Ident(name) => assert_eq!(name, expected),
+        _ => panic!("Expected Expr::Ident({expected}), got {expr:#?}"),
+    }
+}
+
+fn assert_is_number(expr: &Expr, expected: f64) {
+    match expr {
+        Expr::Number(value) => assert!(
+            (*value - expected).abs() < f64::EPSILON,
+            "Expected {expected}, got {value}"
+        ),
+        _ => panic!("Expected Expr::Number({expected}), got {expr:#?}"),
+    }
+}
+
+fn assert_is_pipe(expr: &Expr) -> (&Expr, &Expr) {
+    match expr {
+        Expr::Pipe { lhs, rhs } => (lhs.as_ref(), rhs.as_ref()),
+        _ => panic!("Expected Expr::Pipe, got {expr:#?}"),
+    }
+}
+
+fn assert_is_call<'a>(expr: &'a Expr, expected_callee: &str) -> &'a [Expr] {
+    match expr {
+        Expr::Call { callee, args } => {
+            assert_is_ident(callee, expected_callee);
+            args.as_slice()
+        }
+        _ => panic!("Expected Expr::Call, got {expr:#?}"),
+    }
+}
+
+fn assert_is_binary(expr: &Expr, expected_op: BinaryOp) -> (&Expr, &Expr) {
+    match expr {
+        Expr::Binary { lhs, op, rhs } => {
+            assert_eq!(*op, expected_op);
+            (lhs.as_ref(), rhs.as_ref())
+        }
+        _ => panic!("Expected Expr::Binary({expected_op:?}), got {expr:#?}"),
+    }
+}
+
 #[test]
 fn parses_juxtaposition_as_sequence() {
     let module = parse_module("drums = bd sn cp").unwrap();
@@ -238,28 +282,19 @@ fn pedal_graph_parses_let_bound_block() {
                 Expr::Graph { bindings, result } => {
                     assert_eq!(bindings.len(), 1);
                     assert_eq!(bindings[0].name, "wet");
-                    assert!(matches!(
-                        &bindings[0].expr,
-                        Expr::Pipe { lhs, rhs }
-                            if matches!(lhs.as_ref(), Expr::Ident(name) if name == "input")
-                                && matches!(
-                                    rhs.as_ref(),
-                                    Expr::Call { callee, args }
-                                        if matches!(callee.as_ref(), Expr::Ident(name) if name == "clip")
-                                            && matches!(
-                                                args.as_slice(),
-                                                [Expr::Binary { lhs, op: BinaryOp::Assign, rhs }]
-                                                    if matches!(lhs.as_ref(), Expr::Ident(name) if name == "model")
-                                                        && matches!(rhs.as_ref(), Expr::Ident(name) if name == "silicon_hard")
-                                            )
-                                )
-                    ));
-                    assert!(matches!(
-                        result.as_ref(),
-                        Expr::Pipe { lhs, rhs }
-                            if matches!(lhs.as_ref(), Expr::Ident(name) if name == "wet")
-                                && matches!(rhs.as_ref(), Expr::Ident(name) if name == "output")
-                    ));
+
+                    let (lhs, rhs) = assert_is_pipe(&bindings[0].expr);
+                    assert_is_ident(lhs, "input");
+
+                    let args = assert_is_call(rhs, "clip");
+                    assert_eq!(args.len(), 1);
+                    let (al, ar) = assert_is_binary(&args[0], BinaryOp::Assign);
+                    assert_is_ident(al, "model");
+                    assert_is_ident(ar, "silicon_hard");
+
+                    let (rl, rr) = assert_is_pipe(result.as_ref());
+                    assert_is_ident(rl, "wet");
+                    assert_is_ident(rr, "output");
                 }
                 other => panic!("unexpected AST: {other:#?}"),
             }
@@ -277,48 +312,22 @@ fn pedal_graph_parses_binary_control_expressions() {
                 assert_eq!(bindings.len(), 2);
                 assert_eq!(bindings[0].name, "dry");
                 assert_eq!(bindings[1].name, "wet");
-                assert!(matches!(
-                    result.as_ref(),
-                    Expr::Pipe { lhs, rhs }
-                        if matches!(
-                            lhs.as_ref(),
-                            Expr::Call { callee, args }
-                                if matches!(callee.as_ref(), Expr::Ident(name) if name == "mix")
-                                    && matches!(
-                                        args.as_slice(),
-                                        [
-                                            Expr::Binary {
-                                                lhs,
-                                                op: BinaryOp::Add,
-                                                rhs
-                                            },
-                                            Expr::Ident(name)
-                                        ]
-                                            if name == "dry"
-                                                && matches!(
-                                                    lhs.as_ref(),
-                                                    Expr::Binary {
-                                                        lhs,
-                                                        op: BinaryOp::Mul,
-                                                        rhs
-                                                    }
-                                                        if matches!(lhs.as_ref(), Expr::Ident(name) if name == "dry")
-                                                            && matches!(rhs.as_ref(), Expr::Number(value) if (*value - 0.2).abs() < f64::EPSILON)
-                                                )
-                                                && matches!(
-                                                    rhs.as_ref(),
-                                                    Expr::Binary {
-                                                        lhs,
-                                                        op: BinaryOp::Mul,
-                                                        rhs
-                                                    }
-                                                        if matches!(lhs.as_ref(), Expr::Ident(name) if name == "wet")
-                                                            && matches!(rhs.as_ref(), Expr::Number(value) if (*value - 0.8).abs() < f64::EPSILON)
-                                                )
-                                    )
-                        )
-                            && matches!(rhs.as_ref(), Expr::Ident(name) if name == "output")
-                ));
+
+                let (lhs, rhs) = assert_is_pipe(result.as_ref());
+                let args = assert_is_call(lhs, "mix");
+                assert_eq!(args.len(), 2);
+
+                let (add_l, add_r) = assert_is_binary(&args[0], BinaryOp::Add);
+                let (mul1_l, mul1_r) = assert_is_binary(add_l, BinaryOp::Mul);
+                assert_is_ident(mul1_l, "dry");
+                assert_is_number(mul1_r, 0.2);
+
+                let (mul2_l, mul2_r) = assert_is_binary(add_r, BinaryOp::Mul);
+                assert_is_ident(mul2_l, "wet");
+                assert_is_number(mul2_r, 0.8);
+
+                assert_is_ident(&args[1], "dry");
+                assert_is_ident(rhs, "output");
             }
             other => panic!("unexpected AST: {other:#?}"),
         },

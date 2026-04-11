@@ -520,39 +520,51 @@ mod tests {
     use super::*;
     use orpheus_pattern::TimeSpan;
 
-    #[test]
-    #[allow(clippy::float_cmp)]
-    fn sample_trigger_named_initializes_with_default_values() {
-        let trigger = SampleTrigger::named("bd");
-        assert_eq!(trigger.token(), "bd");
-        assert!((trigger.gain() - 1.0).abs() < f64::EPSILON);
-        assert_eq!(trigger.hpf_cutoff_hz(), None);
-        assert_eq!(trigger.lpf_cutoff_hz(), None);
-        assert!((trigger.resonance() - 0.2).abs() < f64::EPSILON);
-        assert!((trigger.drive() - 1.0).abs() < f64::EPSILON);
-        assert!((trigger.pulse_width() - 0.5).abs() < f64::EPSILON);
-        assert!((trigger.rate() - 1.0).abs() < f64::EPSILON);
-        assert!((trigger.delay_mix() - 0.0).abs() < f64::EPSILON);
-        assert!((trigger.delay_time() - 0.125).abs() < f64::EPSILON);
-        assert!((trigger.delay_feedback() - 0.35).abs() < f64::EPSILON);
-        assert!((trigger.reverb_mix() - 0.0).abs() < f64::EPSILON);
-        assert!((trigger.reverb_room() - 0.75).abs() < f64::EPSILON);
-        assert!((trigger.reverb_damp() - 0.35).abs() < f64::EPSILON);
-        assert!((trigger.chorus_mix() - 0.0).abs() < f64::EPSILON);
-        assert!((trigger.chorus_depth() - 0.4).abs() < f64::EPSILON);
-        assert!((trigger.chorus_rate() - 0.5).abs() < f64::EPSILON);
-        assert!((trigger.compressor_mix() - 0.0).abs() < f64::EPSILON);
-        assert!((trigger.compressor_threshold() - 0.5).abs() < f64::EPSILON);
-        assert!((trigger.compressor_ratio() - 4.0).abs() < f64::EPSILON);
-        assert_eq!(trigger.onset_index(), None);
-        assert!((trigger.slice_start() - 0.0).abs() < f64::EPSILON);
-        assert!((trigger.slice_end() - 1.0).abs() < f64::EPSILON);
-        assert!((trigger.pan() - 0.0).abs() < f64::EPSILON);
-        assert!(trigger.pedal_program().is_none());
+    #[track_caller]
+    fn assert_f64_eq(actual: f64, expected: f64) {
+        assert!(
+            (actual - expected).abs() < f64::EPSILON,
+            "Expected {expected}, got {actual}"
+        );
     }
 
     #[test]
-    #[allow(clippy::float_cmp)]
+    fn sample_trigger_named_initializes_with_default_values() {
+        let trigger = SampleTrigger::named("bd");
+        assert_eq!(trigger.token(), "bd");
+        assert_eq!(trigger.hpf_cutoff_hz(), None);
+        assert_eq!(trigger.lpf_cutoff_hz(), None);
+        assert_eq!(trigger.onset_index(), None);
+        assert!(trigger.pedal_program().is_none());
+
+        assert_f64_eq(trigger.gain(), 1.0);
+        assert_f64_eq(trigger.resonance(), 0.2);
+        assert_f64_eq(trigger.drive(), 1.0);
+        assert_f64_eq(trigger.pulse_width(), 0.5);
+        assert_f64_eq(trigger.rate(), 1.0);
+
+        assert_f64_eq(trigger.delay_mix(), 0.0);
+        assert_f64_eq(trigger.delay_time(), 0.125);
+        assert_f64_eq(trigger.delay_feedback(), 0.35);
+
+        assert_f64_eq(trigger.reverb_mix(), 0.0);
+        assert_f64_eq(trigger.reverb_room(), 0.75);
+        assert_f64_eq(trigger.reverb_damp(), 0.35);
+
+        assert_f64_eq(trigger.chorus_mix(), 0.0);
+        assert_f64_eq(trigger.chorus_depth(), 0.4);
+        assert_f64_eq(trigger.chorus_rate(), 0.5);
+
+        assert_f64_eq(trigger.compressor_mix(), 0.0);
+        assert_f64_eq(trigger.compressor_threshold(), 0.5);
+        assert_f64_eq(trigger.compressor_ratio(), 4.0);
+
+        assert_f64_eq(trigger.slice_start(), 0.0);
+        assert_f64_eq(trigger.slice_end(), 1.0);
+        assert_f64_eq(trigger.pan(), 0.0);
+    }
+
+    #[test]
     fn sample_trigger_builder_methods_update_fields() {
         let pedal_program = Arc::new(PedalProgram::new("graph { input |> output }", "result"));
         let trigger = SampleTrigger::named("sn")
@@ -581,35 +593,41 @@ mod tests {
             .with_pedal_program(pedal_program.clone());
 
         assert_eq!(trigger.token(), "sn");
-        assert!((trigger.gain() - 0.8).abs() < f64::EPSILON);
         assert_eq!(trigger.hpf_cutoff_hz(), Some(500.0));
         assert_eq!(trigger.lpf_cutoff_hz(), Some(12000.0));
-        assert!((trigger.resonance() - 0.35).abs() < f64::EPSILON);
-        assert!((trigger.drive() - 1.25).abs() < f64::EPSILON);
-        assert!((trigger.pulse_width() - 0.42).abs() < f64::EPSILON);
-        assert!((trigger.rate() - 1.5).abs() < f64::EPSILON);
-        assert!((trigger.delay_mix() - 0.3).abs() < f64::EPSILON);
-        assert!((trigger.delay_time() - 0.125).abs() < f64::EPSILON);
-        assert!((trigger.delay_feedback() - 0.45).abs() < f64::EPSILON);
-        assert!((trigger.reverb_mix() - 0.2).abs() < f64::EPSILON);
-        assert!((trigger.reverb_room() - 0.8).abs() < f64::EPSILON);
-        assert!((trigger.reverb_damp() - 0.25).abs() < f64::EPSILON);
-        assert!((trigger.chorus_mix() - 0.4).abs() < f64::EPSILON);
-        assert!((trigger.chorus_depth() - 0.7).abs() < f64::EPSILON);
-        assert!((trigger.chorus_rate() - 0.6).abs() < f64::EPSILON);
-        assert!((trigger.compressor_mix() - 0.75).abs() < f64::EPSILON);
-        assert!((trigger.compressor_threshold() - 0.3).abs() < f64::EPSILON);
-        assert!((trigger.compressor_ratio() - 6.0).abs() < f64::EPSILON);
         assert_eq!(trigger.onset_index(), Some(3));
-        assert!((trigger.slice_start() - 0.2).abs() < f64::EPSILON);
-        assert!((trigger.slice_end() - 0.8).abs() < f64::EPSILON);
-        assert!((trigger.pan() - 0.3).abs() < f64::EPSILON);
         assert!(Arc::ptr_eq(
             trigger
                 .pedal_program()
                 .expect("sample trigger should expose the pedal program"),
             &pedal_program
         ));
+
+        assert_f64_eq(trigger.gain(), 0.8);
+        assert_f64_eq(trigger.resonance(), 0.35);
+        assert_f64_eq(trigger.drive(), 1.25);
+        assert_f64_eq(trigger.pulse_width(), 0.42);
+        assert_f64_eq(trigger.rate(), 1.5);
+
+        assert_f64_eq(trigger.delay_mix(), 0.3);
+        assert_f64_eq(trigger.delay_time(), 0.125);
+        assert_f64_eq(trigger.delay_feedback(), 0.45);
+
+        assert_f64_eq(trigger.reverb_mix(), 0.2);
+        assert_f64_eq(trigger.reverb_room(), 0.8);
+        assert_f64_eq(trigger.reverb_damp(), 0.25);
+
+        assert_f64_eq(trigger.chorus_mix(), 0.4);
+        assert_f64_eq(trigger.chorus_depth(), 0.7);
+        assert_f64_eq(trigger.chorus_rate(), 0.6);
+
+        assert_f64_eq(trigger.compressor_mix(), 0.75);
+        assert_f64_eq(trigger.compressor_threshold(), 0.3);
+        assert_f64_eq(trigger.compressor_ratio(), 6.0);
+
+        assert_f64_eq(trigger.slice_start(), 0.2);
+        assert_f64_eq(trigger.slice_end(), 0.8);
+        assert_f64_eq(trigger.pan(), 0.3);
     }
 
     #[test]
