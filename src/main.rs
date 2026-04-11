@@ -1,3 +1,8 @@
+//! The `orpheus` binary is the main entry point for the Orpheus live-coding audio environment.
+//!
+//! It is responsible for parsing command-line arguments, loading configuration, starting the
+//! real-time audio thread, and launching either the interactive REPL or the full terminal UI (TUI).
+
 use std::env;
 use std::ffi::OsString;
 use std::io::IsTerminal;

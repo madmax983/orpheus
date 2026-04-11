@@ -13,22 +13,30 @@ use thiserror::Error;
 /// Decoded PCM sample data normalized to interleaved `f32` frames.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DecodedSample {
+    /// Number of audio channels (e.g., 1 for Mono, 2 for Stereo).
     pub channels: u16,
+    /// Number of audio frames per second (e.g., 44100).
     pub sample_rate_hz: u32,
+    /// Interleaved PCM audio data, normalized between `[-1.0, 1.0]`.
     pub frames: Vec<f32>,
 }
 
 /// Errors raised while decoding WAV sample assets.
 #[derive(Debug, Error)]
 pub enum SampleError {
+    /// Failed to read the audio file from disk or decode its header.
     #[error("failed to read wav file `{path}`: {source}")]
     Io {
+        /// The file path or identifier that failed to load.
         path: Box<str>,
+        /// The underlying decoding error.
         #[source]
         source: hound::Error,
     },
+    /// The audio file has an unsupported number of channels (only mono/stereo are supported).
     #[error("wav file `{0}` must contain either mono or stereo audio")]
     UnsupportedChannelCount(String),
+    /// The WAV file uses a floating-point encoding that the decoder does not support (only 32-bit float is supported).
     #[error("wav file `{0}` uses an unsupported float encoding")]
     UnsupportedFloatEncoding(String),
     /// The WAV file uses an integer encoding (bit depth) that the decoder does not support.

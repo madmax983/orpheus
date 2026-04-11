@@ -40,6 +40,7 @@ pub struct SampleTrigger {
 }
 
 impl SampleTrigger {
+    /// Creates a new sample trigger targeting the given named instrument or sample.
     #[must_use]
     pub fn named(token: impl Into<Box<str>>) -> Self {
         Self {
@@ -70,126 +71,147 @@ impl SampleTrigger {
         }
     }
 
+    /// Sets the playback gain.
     #[must_use]
     pub const fn with_gain(mut self, gain: f64) -> Self {
         self.gain = gain;
         self
     }
 
+    /// Sets the high-pass filter cutoff frequency.
     #[must_use]
     pub const fn with_hpf_cutoff_hz(mut self, cutoff_hz: f64) -> Self {
         self.hpf_cutoff_hz = Some(cutoff_hz);
         self
     }
 
+    /// Sets the low-pass filter cutoff frequency.
     #[must_use]
     pub const fn with_lpf_cutoff_hz(mut self, cutoff_hz: f64) -> Self {
         self.lpf_cutoff_hz = Some(cutoff_hz);
         self
     }
 
+    /// Sets the filter resonance `[0.0, 1.0]`.
     #[must_use]
     pub const fn with_resonance(mut self, resonance: f64) -> Self {
         self.resonance = resonance;
         self
     }
 
+    /// Sets the overdrive intensity `[0.0, 1.0]`.
     #[must_use]
     pub const fn with_drive(mut self, drive: f64) -> Self {
         self.drive = drive;
         self
     }
 
+    /// Sets the pulse-width modulation ratio `[0.0, 1.0]`.
     #[must_use]
     pub const fn with_pulse_width(mut self, pulse_width: f64) -> Self {
         self.pulse_width = pulse_width;
         self
     }
 
+    /// Sets the playback rate multiplier.
     #[must_use]
     pub const fn with_rate(mut self, rate: f64) -> Self {
         self.rate = rate;
         self
     }
 
+    /// Sets the wet mix level for the insert delay effect `[0.0, 1.0]`.
     #[must_use]
     pub const fn with_delay_mix(mut self, mix: f64) -> Self {
         self.delay_mix = mix;
         self
     }
 
+    /// Sets the time duration for the insert delay effect.
     #[must_use]
     pub const fn with_delay_time(mut self, time: f64) -> Self {
         self.delay_time = time;
         self
     }
 
+    /// Sets the feedback ratio for the insert delay effect `[0.0, 1.0]`.
     #[must_use]
     pub const fn with_delay_feedback(mut self, feedback: f64) -> Self {
         self.delay_feedback = feedback;
         self
     }
 
+    /// Sets the wet mix level for the insert reverb effect `[0.0, 1.0]`.
     #[must_use]
     pub const fn with_reverb_mix(mut self, mix: f64) -> Self {
         self.reverb_mix = mix;
         self
     }
 
+    /// Sets the room size parameter for the insert reverb effect `[0.0, 1.0]`.
     #[must_use]
     pub const fn with_reverb_room(mut self, room: f64) -> Self {
         self.reverb_room = room;
         self
     }
 
+    /// Sets the high-frequency dampening parameter for the insert reverb effect `[0.0, 1.0]`.
     #[must_use]
     pub const fn with_reverb_damp(mut self, damp: f64) -> Self {
         self.reverb_damp = damp;
         self
     }
 
+    /// Sets the wet mix level for the insert chorus effect `[0.0, 1.0]`.
     #[must_use]
     pub const fn with_chorus_mix(mut self, mix: f64) -> Self {
         self.chorus_mix = mix;
         self
     }
 
+    /// Sets the modulation depth for the insert chorus effect `[0.0, 1.0]`.
     #[must_use]
     pub const fn with_chorus_depth(mut self, depth: f64) -> Self {
         self.chorus_depth = depth;
         self
     }
 
+    /// Sets the modulation rate for the insert chorus effect.
     #[must_use]
     pub const fn with_chorus_rate(mut self, rate: f64) -> Self {
         self.chorus_rate = rate;
         self
     }
 
+    /// Sets the wet mix level for the insert compressor `[0.0, 1.0]`.
     #[must_use]
     pub const fn with_compressor_mix(mut self, mix: f64) -> Self {
         self.compressor_mix = mix;
         self
     }
 
+    /// Sets the dB threshold for the insert compressor.
     #[must_use]
     pub const fn with_compressor_threshold(mut self, threshold: f64) -> Self {
         self.compressor_threshold = threshold;
         self
     }
 
+    /// Sets the gain reduction ratio for the insert compressor.
     #[must_use]
     pub const fn with_compressor_ratio(mut self, ratio: f64) -> Self {
         self.compressor_ratio = ratio;
         self
     }
 
+    /// Sets the specific onset slice index to play.
     #[must_use]
     pub const fn with_onset(mut self, onset_index: u32) -> Self {
         self.onset_index = Some(onset_index);
         self
     }
 
+    /// Sets the normalized start and end positions `[0.0, 1.0]` for sample slicing.
     #[must_use]
     pub const fn with_slice(mut self, start: f64, end: f64) -> Self {
         self.slice_start = start;
@@ -197,127 +219,152 @@ impl SampleTrigger {
         self
     }
 
+    /// Sets the stereo pan position `[-1.0, 1.0]`.
     #[must_use]
     pub const fn with_pan(mut self, pan: f64) -> Self {
         self.pan = pan;
         self
     }
 
+    /// Returns the target instrument or sample token string.
     #[must_use]
     pub fn token(&self) -> &str {
         self.token.as_ref()
     }
 
+    /// Returns the configured playback gain.
     #[must_use]
     pub const fn gain(&self) -> f64 {
         self.gain
     }
 
+    /// Returns the high-pass filter cutoff frequency in Hz, if active.
     #[must_use]
     pub const fn hpf_cutoff_hz(&self) -> Option<f64> {
         self.hpf_cutoff_hz
     }
 
+    /// Returns the low-pass filter cutoff frequency in Hz, if active.
     #[must_use]
     pub const fn lpf_cutoff_hz(&self) -> Option<f64> {
         self.lpf_cutoff_hz
     }
 
+    /// Returns the filter resonance `[0.0, 1.0]`.
     #[must_use]
     pub const fn resonance(&self) -> f64 {
         self.resonance
     }
 
+    /// Returns the overdrive intensity `[0.0, 1.0]`.
     #[must_use]
     pub const fn drive(&self) -> f64 {
         self.drive
     }
 
+    /// Returns the pulse-width modulation ratio `[0.0, 1.0]`.
     #[must_use]
     pub const fn pulse_width(&self) -> f64 {
         self.pulse_width
     }
 
+    /// Returns the playback rate multiplier (e.g., 1.0 is normal speed).
     #[must_use]
     pub const fn rate(&self) -> f64 {
         self.rate
     }
 
+    /// Returns the wet mix level for the track's insert delay effect.
     #[must_use]
     pub const fn delay_mix(&self) -> f64 {
         self.delay_mix
     }
 
+    /// Returns the time duration for the track's insert delay effect.
     #[must_use]
     pub const fn delay_time(&self) -> f64 {
         self.delay_time
     }
 
+    /// Returns the feedback ratio for the track's insert delay effect.
     #[must_use]
     pub const fn delay_feedback(&self) -> f64 {
         self.delay_feedback
     }
 
+    /// Returns the wet mix level for the track's insert reverb effect.
     #[must_use]
     pub const fn reverb_mix(&self) -> f64 {
         self.reverb_mix
     }
 
+    /// Returns the room size parameter for the track's insert reverb effect.
     #[must_use]
     pub const fn reverb_room(&self) -> f64 {
         self.reverb_room
     }
 
+    /// Returns the high-frequency dampening parameter for the track's insert reverb effect.
     #[must_use]
     pub const fn reverb_damp(&self) -> f64 {
         self.reverb_damp
     }
 
+    /// Returns the wet mix level for the track's insert chorus effect.
     #[must_use]
     pub const fn chorus_mix(&self) -> f64 {
         self.chorus_mix
     }
 
+    /// Returns the modulation depth for the track's insert chorus effect.
     #[must_use]
     pub const fn chorus_depth(&self) -> f64 {
         self.chorus_depth
     }
 
+    /// Returns the modulation rate (LFO frequency) for the track's insert chorus effect.
     #[must_use]
     pub const fn chorus_rate(&self) -> f64 {
         self.chorus_rate
     }
 
+    /// Returns the wet mix level for the track's insert compressor.
     #[must_use]
     pub const fn compressor_mix(&self) -> f64 {
         self.compressor_mix
     }
 
+    /// Returns the dB threshold at which the compressor begins gain reduction.
     #[must_use]
     pub const fn compressor_threshold(&self) -> f64 {
         self.compressor_threshold
     }
 
+    /// Returns the ratio by which the compressor reduces gain above the threshold.
     #[must_use]
     pub const fn compressor_ratio(&self) -> f64 {
         self.compressor_ratio
     }
 
+    /// Returns the specific onset slice index to play, if provided.
     #[must_use]
     pub const fn onset_index(&self) -> Option<u32> {
         self.onset_index
     }
 
+    /// Returns the normalized starting position `[0.0, 1.0]` for sample slicing.
     #[must_use]
     pub const fn slice_start(&self) -> f64 {
         self.slice_start
     }
 
+    /// Returns the normalized ending position `[0.0, 1.0]` for sample slicing.
     #[must_use]
     pub const fn slice_end(&self) -> f64 {
         self.slice_end
     }
 
+    /// Returns the stereo pan position `[-1.0, 1.0]`.
     #[must_use]
     pub const fn pan(&self) -> f64 {
         self.pan
@@ -332,6 +379,7 @@ pub struct PatternUpdate {
 }
 
 impl PatternUpdate {
+    /// Creates a new `PatternUpdate` mapping a track name to a sequence of sample trigger events.
     #[must_use]
     pub fn new(name: impl Into<Box<str>>, events: Vec<Event<SampleTrigger>>) -> Self {
         Self {
@@ -340,16 +388,19 @@ impl PatternUpdate {
         }
     }
 
+    /// Creates an empty `PatternUpdate` that effectively clears all events for the named track.
     #[must_use]
     pub fn silent(name: impl Into<Box<str>>) -> Self {
         Self::new(name, Vec::new())
     }
 
+    /// Returns the name of the track this pattern targets.
     #[must_use]
     pub fn name(&self) -> &str {
         self.name.as_ref()
     }
 
+    /// Returns the active events scheduled for the current cycle.
     #[must_use]
     pub fn events(&self) -> &[Event<SampleTrigger>] {
         &self.events
