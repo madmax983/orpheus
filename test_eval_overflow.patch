@@ -1,0 +1,18 @@
+<<<<<<< SEARCH
+    #[test]
+    fn eval_meter_without_beat() {
+=======
+    #[test]
+    fn eval_section_events_overflow_capacity() {
+        // Test that large section repeats safely abort without a panic on memory allocation.
+        let result = crate::eval_module("x = seq_sections(section(bd, 2000))", crate::ReplMode::Loose);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "section cycle count exceeded the maximum allowed bound of 1024"
+        );
+    }
+
+    #[test]
+    fn eval_meter_without_beat() {
+>>>>>>> REPLACE

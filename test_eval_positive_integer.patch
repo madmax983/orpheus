@@ -1,0 +1,27 @@
+<<<<<<< SEARCH
+    #[test]
+    fn eval_section_events_overflow_capacity() {
+=======
+    #[test]
+    fn eval_positive_integer_out_of_range() {
+        let result = crate::eval_module("x = seq_sections(section(bd, 1000000000000000000000000000000000000000))", crate::ReplMode::Loose);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "section cycle count exceeded the supported range"
+        );
+    }
+
+    #[test]
+    fn eval_positive_integer_not_positive() {
+        let result = crate::eval_module("x = seq_sections(section(bd, -1))", crate::ReplMode::Loose);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "section cycle count must be a positive integer"
+        );
+    }
+
+    #[test]
+    fn eval_section_events_overflow_capacity() {
+>>>>>>> REPLACE

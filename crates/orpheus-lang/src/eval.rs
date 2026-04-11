@@ -1499,6 +1499,44 @@ right = sometimes(fast(2), cp hh)";
     }
 
     #[test]
+    fn eval_positive_integer_out_of_range() {
+        let result = crate::eval_module(
+            "x = seq_sections(section(bd, 1000000000000000000000000000000000000000))",
+            crate::ReplMode::Loose,
+        );
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "section cycle count exceeded the supported range"
+        );
+    }
+
+    #[test]
+    fn eval_positive_integer_not_positive() {
+        let result =
+            crate::eval_module("x = seq_sections(section(bd, -1))", crate::ReplMode::Loose);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "section cycle count must be a positive integer"
+        );
+    }
+
+    #[test]
+    fn eval_section_events_overflow_capacity() {
+        // Test that large section repeats safely abort without a panic on memory allocation.
+        let result = crate::eval_module(
+            "x = seq_sections(section(bd, 2000))",
+            crate::ReplMode::Loose,
+        );
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "section cycle count exceeded the maximum allowed bound of 1024"
+        );
+    }
+
+    #[test]
     fn eval_meter_without_beat() {
         let result = eval_module("x = beat(0)", ReplMode::Strict);
         assert!(result.is_err());

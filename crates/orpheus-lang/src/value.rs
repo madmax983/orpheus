@@ -3595,7 +3595,7 @@ where
             rng_state = rng_state
                 .wrapping_mul(6364136223846793005)
                 .wrapping_add(1442695040888963407);
-            let j = (rng_state as usize) % (i + 1);
+            let j = usize::try_from(rng_state).unwrap_or(0) % (i + 1);
             if i != j {
                 // ⚡ Bolt: Swap values in-place without allocating an intermediate `Vec` or deep cloning strings.
                 // We use `split_at_mut` to get two disjoint mutable slices, guaranteeing safety.
@@ -3614,7 +3614,7 @@ where
                     let whole = if clipped_part == event.part {
                         event.whole.clone()
                     } else {
-                        Some(event.whole.unwrap_or(event.part.clone()))
+                        Some(event.whole.unwrap_or_else(|| event.part.clone()))
                     };
                     events.push(Event {
                         whole,
