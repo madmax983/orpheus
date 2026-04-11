@@ -199,6 +199,7 @@ struct Evaluator {
     mode: ReplMode,
     bindings: BTreeMap<String, Value>,
     expr_site_salts: BTreeMap<usize, u64>,
+    depth: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -256,6 +257,7 @@ impl Evaluator {
             mode,
             bindings,
             expr_site_salts: collect_expr_site_salts(module),
+            depth: 0,
         }
     }
 
@@ -305,6 +307,10 @@ impl Evaluator {
         expr: &Expr,
         meter: Option<&MeterContext>,
     ) -> Result<Value, EvalError> {
+        if self.depth > 256 {
+            return Err(EvalError::new("maximum evaluation depth exceeded"));
+        }
+
         match expr {
             Expr::Seq(items) => self.eval_sequence(items, meter),
             Expr::Stack(layers) => self.eval_stack(layers, meter),
@@ -419,7 +425,7 @@ impl Evaluator {
             Expr::Call { callee, args } => {
                 self.eval_call_with_args(rhs, callee, args, vec![lhs_value], meter)
             }
-            _ => Self::apply_value(
+            _ => self.apply_value(
                 self.eval_expr_in_meter(rhs, meter)?,
                 vec![lhs_value],
                 self.expr_site_salt(rhs),
@@ -451,7 +457,7 @@ impl Evaluator {
             .map(|arg| self.eval_expr_in_meter(arg, meter))
             .collect::<Result<_, _>>()?;
         evaluated_args.extend(piped_args);
-        Self::apply_value(callee_value, evaluated_args, self.expr_site_salt(call_expr))
+        self.apply_value(callee_value, evaluated_args, self.expr_site_salt(call_expr))
     }
 
     fn eval_at(
@@ -707,6 +713,7 @@ impl Evaluator {
     }
 
     fn apply_value(
+        &self,
         callee: Value,
         args: Vec<Value>,
         site_salt: Option<u64>,
@@ -719,9 +726,9 @@ impl Evaluator {
                     }
                     Some(_) | None => function,
                 };
-                apply_function_value(FunctionValue::Builtin(function), args)
+                apply_function_value(FunctionValue::Builtin(function), args, self.depth)
             }
-            Value::Function(function) => apply_function_value(function, args),
+            Value::Function(function) => apply_function_value(function, args, self.depth),
             Value::SamplePattern(_)
             | Value::NumberPattern(_)
             | Value::ArpDirection(_)
@@ -894,18 +901,22 @@ impl Evaluator {
 /// if let Value::Function(func) = fast_func {
 ///     // `fast` takes 2 arguments: a rate and a pattern.
 ///     // Here we simulate applying a single argument to a curried function
-///     let curried = apply_function_value(func, vec![bd]).unwrap();
+///     let curried = apply_function_value(func, vec![bd], 0).unwrap();
 ///     assert!(matches!(curried, Value::Function(_)));
 /// }
 /// ```
-pub fn apply_function_value(function: FunctionValue, args: Vec<Value>) -> Result<Value, EvalError> {
+pub fn apply_function_value(function: FunctionValue, args: Vec<Value>, depth: usize) -> Result<Value, EvalError> {
     match function {
         FunctionValue::Builtin(function) => function.apply(args),
-        FunctionValue::User(function) => apply_user_function(function, args),
+        FunctionValue::User(function) => apply_user_function(function, args, depth),
     }
 }
 
-fn apply_user_function(mut function: UserFn, args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_user_function(mut function: UserFn, args: Vec<Value>, depth: usize) -> Result<Value, EvalError> {
+    if depth > 256 {
+        return Err(EvalError::new("maximum evaluation depth exceeded"));
+    }
+
     let remaining = function.remaining_params.len();
     let applied = args.len();
     if applied > remaining {
@@ -927,6 +938,7 @@ fn apply_user_function(mut function: UserFn, args: Vec<Value>) -> Result<Value, 
         mode: function.mode,
         bindings: function.captured_bindings,
         expr_site_salts: function.expr_site_salts,
+        depth: depth + 1,
     };
     evaluator.eval_expr(&function.body)
 }

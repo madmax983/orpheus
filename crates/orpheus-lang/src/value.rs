@@ -3260,7 +3260,7 @@ where
     T: PatternRuntimeValue,
 {
     let transformed =
-        apply_function_value(transform.clone(), vec![T::into_runtime_value(localized)])?;
+        apply_function_value(transform.clone(), vec![T::into_runtime_value(localized)], 0)?;
     T::try_from_runtime_value(transformed)
 }
 

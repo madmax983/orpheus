@@ -492,6 +492,7 @@ fn apply_jux(args: Vec<Value>) -> Result<Value, EvalError> {
             let transformed_val = apply_function_value(
                 transform_fn,
                 vec![Value::SamplePattern(pattern_val.clone())],
+                0,
             )?;
             let Value::SamplePattern(transformed_pattern_val) = transformed_val else {
                 return Err(EvalError::new(

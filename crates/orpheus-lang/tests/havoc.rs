@@ -25,3 +25,16 @@ proptest! {
         let _ = eval_module(&source, ReplMode::Loose);
     }
 }
+
+#[test]
+fn havoc_omega_combinator_stack_overflow() {
+    let source = r#"
+f x = x(x)
+a = f(f)
+"#;
+    let result = orpheus_lang::eval_module(source, orpheus_lang::ReplMode::Loose);
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        "maximum evaluation depth exceeded"
+    );
+}
