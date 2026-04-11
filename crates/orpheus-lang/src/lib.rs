@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_lines, clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::unused_self, clippy::ignored_unit_patterns, clippy::unchecked_time_subtraction, clippy::uninlined_format_args, clippy::needless_pass_by_ref_mut, clippy::option_if_let_else, clippy::must_use_candidate, clippy::match_same_arms, clippy::map_unwrap_or)]
 //! Language and REPL surface for Orpheus.
 
 pub(crate) mod ascii_roll;

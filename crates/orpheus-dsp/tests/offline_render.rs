@@ -1,3 +1,4 @@
+#![allow(clippy::needless_range_loop)]
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};

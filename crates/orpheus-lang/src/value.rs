@@ -2477,13 +2477,13 @@ where
                 apply_control_pattern(inner, control, span, ControlPatternKind::ReverbMix)
             }
             Self::ReverbRoom { room, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_reverb_room(*room)
+                *value = value.adjust_reverb_room(*room);
             }),
             Self::ReverbRoomPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::ReverbRoom)
             }
             Self::ReverbDamp { damp, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_reverb_damp(*damp)
+                *value = value.adjust_reverb_damp(*damp);
             }),
             Self::ReverbDampPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::ReverbDamp)
@@ -2513,7 +2513,7 @@ where
                 apply_control_pattern(inner, control, span, ControlPatternKind::ChorusDepth)
             }
             Self::ChorusRate { rate, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_chorus_rate(*rate)
+                *value = value.adjust_chorus_rate(*rate);
             }),
             Self::ChorusRatePattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::ChorusRate)
@@ -2566,7 +2566,7 @@ where
                 apply_control_pattern(inner, control, span, ControlPatternKind::Rate)
             }
             Self::Onset { onset_index, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_onset(*onset_index)
+                *value = value.adjust_onset(*onset_index);
             }),
             Self::OnsetPattern { control, inner } => apply_onset_pattern(inner, control, span),
             Self::Slice { start, end, inner } => apply_value_mutation(inner, span, |value| {
@@ -3593,8 +3593,8 @@ where
         for i in (1..len).rev() {
             // LCG for next random number
             rng_state = rng_state
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
             let j = (rng_state as usize) % (i + 1);
             if i != j {
                 // ⚡ Bolt: Swap values in-place without allocating an intermediate `Vec` or deep cloning strings.
@@ -3614,7 +3614,7 @@ where
                     let whole = if clipped_part == event.part {
                         event.whole.clone()
                     } else {
-                        Some(event.whole.unwrap_or(event.part.clone()))
+                        Some(event.whole.unwrap_or_else(|| event.part.clone()))
                     };
                     events.push(Event {
                         whole,
@@ -4502,11 +4502,11 @@ mod tests {
 
         // Should contain all elements
         let mut c0_sorted = c0_names.clone();
-        c0_sorted.sort();
+        c0_sorted.sort_unstable();
         assert_eq!(c0_sorted, vec!["bd", "cp", "hh", "sn"]);
 
         let mut c1_sorted = c1_names.clone();
-        c1_sorted.sort();
+        c1_sorted.sort_unstable();
         assert_eq!(c1_sorted, vec!["bd", "cp", "hh", "sn"]);
 
         // C0 and C1 should likely be different permutations

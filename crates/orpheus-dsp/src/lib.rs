@@ -1,3 +1,4 @@
+#![allow(clippy::float_cmp, clippy::default_constructed_unit_structs)]
 //! Audio engine for Orpheus.
 //!
 //! This crate provides the digital signal processing backend for rendering musical
