@@ -21,3 +21,6 @@
 **Optimize allocations in `eval_call_with_args` and iterator aggregation in `eval.rs`**
 **Learning:** `eval_pipe` unnecessarily allocated a `vec![lhs_value]` to pass as `piped_args` which then underwent `.extend()` causing potential reallocations. Also, iterator chains like `.collect::<Result<Option<Vec<_>>, _>>()` can hide intermediate allocations and make short-circuiting logic opaque.
 **Action:** Replaced `piped_args: Vec<Value>` with `piped_arg: Option<Value>` in `eval_call_with_args` and allocated the vector with exact capacity `Vec::with_capacity`. Converted `.collect()` chains to simple `for` loops with pre-allocated vectors to eliminate aggregation overhead and turbofish boilerplate.
+**[Eliminating Intermediate Allocs with Generic Iterators]**
+**Learning:** Functions that parse, filter, or bound sequence structures on hot execution paths shouldn't demand rigid slice types (like `&[&[Event<T>]]`) just to satisfy type boundaries. This forces callers to perform intermediate O(N) heap allocations (via `.collect::<Vec<_>>()`) simply to pass data into the function.
+**Action:** Always refactor helper functions (e.g. `compute_event_fragment_boundaries`) to accept generic iterators (`impl Iterator<Item = &T>`). Callers can then lazily map their source sequences (`.iter().map(...)` or `.flat_map(...)`) directly into the function for zero-cost traversal.

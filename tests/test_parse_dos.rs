@@ -1,5 +1,5 @@
-use orpheus_lang::eval_module;
 use orpheus_lang::ReplMode;
+use orpheus_lang::eval_module;
 
 #[test]
 fn test_dos_nested_parens() {
