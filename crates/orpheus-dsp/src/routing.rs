@@ -431,46 +431,133 @@ struct PendingRoute {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum RoutingError {
+    /// Two tracks or buses share the same name.
     #[error("duplicate routing name '{name}'")]
-    DuplicateName { name: Box<str> },
+    DuplicateName {
+        /// The duplicated name.
+        name: Box<str>,
+    },
+    /// A track attempts to send to the same bus multiple times.
     #[error("duplicate send from track '{track}' to bus '{bus}'")]
-    DuplicateSend { track: Box<str>, bus: Box<str> },
+    DuplicateSend {
+        /// The originating track.
+        track: Box<str>,
+        /// The destination bus.
+        bus: Box<str>,
+    },
+    /// A referenced track does not exist.
     #[error("unknown track '{name}'")]
-    UnknownTrack { name: Box<str> },
+    UnknownTrack {
+        /// The referenced track name.
+        name: Box<str>,
+    },
+    /// A referenced bus does not exist.
     #[error("unknown bus '{name}'")]
-    UnknownBus { name: Box<str> },
+    UnknownBus {
+        /// The referenced bus name.
+        name: Box<str>,
+    },
+    /// Attempted to use a reserved name like 'master'.
     #[error("reserved routing name '{name}' is not allowed")]
-    ReservedName { name: Box<str> },
+    ReservedName {
+        /// The reserved name.
+        name: Box<str>,
+    },
+    /// Send level is outside the valid range [0, 1] or is not finite.
     #[error("invalid send level {level}; expected a finite value in [0, 1]")]
-    InvalidLevel { level: f32 },
+    InvalidLevel {
+        /// The invalid level value.
+        level: f32,
+    },
+    /// Track level is less than 0 or is not finite.
     #[error("invalid track level {level}; expected a finite value >= 0")]
-    InvalidTrackLevel { level: f32 },
+    InvalidTrackLevel {
+        /// The invalid track level value.
+        level: f32,
+    },
+    /// Track pan is outside the valid range [-1, 1] or is not finite.
     #[error("invalid track pan {pan}; expected a finite value in [-1, 1]")]
-    InvalidPan { pan: f32 },
+    InvalidPan {
+        /// The invalid pan value.
+        pan: f32,
+    },
+    /// Delay feedback is outside the valid range [0, 1] or is not finite.
     #[error("invalid delay feedback {feedback}; expected a finite value in [0, 1]")]
-    InvalidDelayFeedback { feedback: f32 },
+    InvalidDelayFeedback {
+        /// The invalid feedback value.
+        feedback: f32,
+    },
+    /// Delay wet amount is outside the valid range [0, 1] or is not finite.
     #[error("invalid delay wet {wet}; expected a finite value in [0, 1]")]
-    InvalidDelayWet { wet: f32 },
+    InvalidDelayWet {
+        /// The invalid wet value.
+        wet: f32,
+    },
+    /// Delay time must be a strictly positive musical subdivision.
     #[error("invalid delay time; expected a positive musical subdivision")]
     InvalidDelayTime,
+    /// Reverb size is outside the valid range [0, 1] or is not finite.
     #[error("invalid reverb size {size}; expected a finite value in [0, 1]")]
-    InvalidReverbSize { size: f32 },
+    InvalidReverbSize {
+        /// The invalid size value.
+        size: f32,
+    },
+    /// Reverb damp is outside the valid range [0, 1] or is not finite.
     #[error("invalid reverb damp {damp}; expected a finite value in [0, 1]")]
-    InvalidReverbDamp { damp: f32 },
+    InvalidReverbDamp {
+        /// The invalid damp value.
+        damp: f32,
+    },
+    /// Reverb wet amount is outside the valid range [0, 1] or is not finite.
     #[error("invalid reverb wet {wet}; expected a finite value in [0, 1]")]
-    InvalidReverbWet { wet: f32 },
+    InvalidReverbWet {
+        /// The invalid wet value.
+        wet: f32,
+    },
+    /// A bus already hosts an effect, but another was requested.
     #[error("bus '{bus}' already hosts an effect")]
-    DuplicateBusEffect { bus: Box<str> },
+    DuplicateBusEffect {
+        /// The bus that already has an effect.
+        bus: Box<str>,
+    },
+    /// Attempted to route a track directly to a bus instead of using a send.
     #[error("track-to-bus routes must use send(...): '{from}' -> '{to}'")]
-    TrackToBusRouteRequiresSend { from: Box<str>, to: Box<str> },
+    TrackToBusRouteRequiresSend {
+        /// The originating track.
+        from: Box<str>,
+        /// The destination bus.
+        to: Box<str>,
+    },
+    /// Attempted to route a bus directly to another bus, which is unsupported.
     #[error("bus-to-bus routes are forbidden: '{from}' -> '{to}'")]
-    BusToBusRoute { from: Box<str>, to: Box<str> },
+    BusToBusRoute {
+        /// The originating bus.
+        from: Box<str>,
+        /// The destination bus.
+        to: Box<str>,
+    },
+    /// Attempted to route a bus directly to a track, which is unsupported.
     #[error("bus-to-track routes are forbidden: '{from}' -> '{to}'")]
-    BusToTrackRoute { from: Box<str>, to: Box<str> },
+    BusToTrackRoute {
+        /// The originating bus.
+        from: Box<str>,
+        /// The destination track.
+        to: Box<str>,
+    },
+    /// Attempted to route a track directly to another track, which is unsupported.
     #[error("track-to-track routes are forbidden: '{from}' -> '{to}'")]
-    TrackToTrackRoute { from: Box<str>, to: Box<str> },
+    TrackToTrackRoute {
+        /// The originating track.
+        from: Box<str>,
+        /// The destination track.
+        to: Box<str>,
+    },
+    /// The number of tracks or buses exceeded the underlying id capacity.
     #[error("{kind} count exceeds the supported id range")]
-    IdOverflow { kind: &'static str },
+    IdOverflow {
+        /// The type of element that overflowed ("track" or "bus").
+        kind: &'static str,
+    },
 }
 
 /// Immutable routing snapshot consumed by the render thread.
@@ -483,21 +570,57 @@ pub struct RoutingSnapshot {
 }
 
 impl RoutingSnapshot {
+    /// Creates a new builder for constructing a `RoutingSnapshot`.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::RoutingSnapshot;
+    /// let builder = RoutingSnapshot::builder();
+    /// ```
     #[must_use]
     pub fn builder() -> RoutingSnapshotBuilder {
         RoutingSnapshotBuilder::default()
     }
 
+    /// Returns the number of tracks in the snapshot.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::RoutingSnapshot;
+    /// let snapshot = RoutingSnapshot::builder().track("drums").build().unwrap();
+    /// assert_eq!(snapshot.track_count(), 1);
+    /// ```
     #[must_use]
     pub fn track_count(&self) -> usize {
         self.tracks.len()
     }
 
+    /// Returns the number of buses in the snapshot.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::RoutingSnapshot;
+    /// let snapshot = RoutingSnapshot::builder().bus("reverb").build().unwrap();
+    /// assert_eq!(snapshot.bus_count(), 1);
+    /// ```
     #[must_use]
     pub fn bus_count(&self) -> usize {
         self.buses.len()
     }
 
+    /// Looks up a track by name and returns a read-only view of it.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::RoutingSnapshot;
+    /// let snapshot = RoutingSnapshot::builder().track("drums").build().unwrap();
+    /// let view = snapshot.track("drums").unwrap();
+    /// assert_eq!(view.name(), "drums");
+    /// ```
     #[must_use]
     pub fn track(&self, name: &str) -> Option<TrackView<'_>> {
         self.tracks
@@ -506,6 +629,16 @@ impl RoutingSnapshot {
             .map(|state| TrackView { state })
     }
 
+    /// Looks up a bus by name and returns a read-only view of it.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::RoutingSnapshot;
+    /// let snapshot = RoutingSnapshot::builder().bus("reverb").build().unwrap();
+    /// let view = snapshot.bus("reverb").unwrap();
+    /// assert_eq!(view.name(), "reverb");
+    /// ```
     #[must_use]
     pub fn bus(&self, name: &str) -> Option<BusView<'_>> {
         self.buses
@@ -514,21 +647,25 @@ impl RoutingSnapshot {
             .map(|state| BusView { state })
     }
 
+    /// Returns a slice of IDs for all tracks that route directly to the master output.
     #[must_use]
     pub fn master_track_ids(&self) -> &[TrackId] {
         &self.master_track_ids
     }
 
+    /// Returns a slice of IDs for all buses that route directly to the master output.
     #[must_use]
     pub fn master_bus_ids(&self) -> &[BusId] {
         &self.master_bus_ids
     }
 
+    /// Returns a slice of all internal track states.
     #[must_use]
     pub fn tracks(&self) -> &[TrackState] {
         &self.tracks
     }
 
+    /// Returns a slice of all internal bus states.
     #[must_use]
     pub fn buses(&self) -> &[BusState] {
         &self.buses
@@ -546,17 +683,48 @@ pub struct RoutingSnapshotBuilder {
 }
 
 impl RoutingSnapshotBuilder {
+    /// Adds a basic track to the snapshot without a bound source.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::RoutingSnapshot;
+    /// let snapshot = RoutingSnapshot::builder().track("vocals").build().unwrap();
+    /// assert_eq!(snapshot.track_count(), 1);
+    /// ```
     #[must_use]
     pub fn track(self, name: impl Into<Box<str>>) -> Self {
         self.track_with_source(name, TrackSource::Unbound)
     }
 
+    /// Adds a track to the snapshot with a specific source.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::{RoutingSnapshot, TrackSource};
+    /// let snapshot = RoutingSnapshot::builder()
+    ///     .track_with_source("drums", TrackSource::Unbound)
+    ///     .build()
+    ///     .unwrap();
+    /// ```
     #[must_use]
     pub fn track_with_source(mut self, name: impl Into<Box<str>>, source: TrackSource) -> Self {
         self = self.track_with_source_and_mix(name, source, 1.0, 0.0, false);
         self
     }
 
+    /// Adds a track with an explicit mix configuration (level, pan, and mute state).
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::{RoutingSnapshot, TrackSource};
+    /// let snapshot = RoutingSnapshot::builder()
+    ///     .track_with_source_and_mix("bass", TrackSource::Unbound, 0.8, -0.5, false)
+    ///     .build()
+    ///     .unwrap();
+    /// ```
     #[must_use]
     pub fn track_with_source_and_mix(
         mut self,
@@ -578,6 +746,15 @@ impl RoutingSnapshotBuilder {
         self
     }
 
+    /// Adds a reserved `"main"` track that automatically routes to the master output.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::RoutingSnapshot;
+    /// let snapshot = RoutingSnapshot::builder().main_track().build().unwrap();
+    /// assert_eq!(snapshot.master_track_ids().len(), 1);
+    /// ```
     #[must_use]
     pub fn main_track(self) -> Self {
         let mut builder = self.track_with_source("main", TrackSource::Unbound);
@@ -587,12 +764,35 @@ impl RoutingSnapshotBuilder {
         builder
     }
 
+    /// Adds a return bus to the snapshot.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::RoutingSnapshot;
+    /// let snapshot = RoutingSnapshot::builder().bus("reverb").build().unwrap();
+    /// assert_eq!(snapshot.bus_count(), 1);
+    /// ```
     #[must_use]
     pub fn bus(mut self, name: impl Into<Box<str>>) -> Self {
         self.buses.push(PendingBus { name: name.into() });
         self
     }
 
+    /// Attaches a shared delay effect to a specific bus.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::Rational;
+    /// use orpheus_dsp::RoutingSnapshot;
+    /// let time = Rational::new(1, 4).unwrap(); // Quarter note
+    /// let snapshot = RoutingSnapshot::builder()
+    ///     .bus("delay")
+    ///     .bus_effect_delay("delay", time, 0.5, 0.5)
+    ///     .build()
+    ///     .unwrap();
+    /// ```
     #[must_use]
     pub fn bus_effect_delay(
         mut self,
@@ -608,6 +808,18 @@ impl RoutingSnapshotBuilder {
         self
     }
 
+    /// Attaches a shared reverb effect to a specific bus.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::RoutingSnapshot;
+    /// let snapshot = RoutingSnapshot::builder()
+    ///     .bus("verb")
+    ///     .bus_effect_reverb("verb", 0.8, 0.5, 0.3)
+    ///     .build()
+    ///     .unwrap();
+    /// ```
     #[must_use]
     pub fn bus_effect_reverb(
         mut self,
@@ -623,6 +835,19 @@ impl RoutingSnapshotBuilder {
         self
     }
 
+    /// Creates a send route from a track to a bus with a specific gain level.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::RoutingSnapshot;
+    /// let snapshot = RoutingSnapshot::builder()
+    ///     .track("vocals")
+    ///     .bus("verb")
+    ///     .send("vocals", "verb", 0.5)
+    ///     .build()
+    ///     .unwrap();
+    /// ```
     #[must_use]
     pub fn send(
         mut self,
@@ -638,6 +863,21 @@ impl RoutingSnapshotBuilder {
         self
     }
 
+    /// Routes the output of a track or bus directly to another destination (e.g., `"master"`).
+    ///
+    /// Note: Track-to-bus connections must use `send` instead.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::RoutingSnapshot;
+    /// let snapshot = RoutingSnapshot::builder()
+    ///     .track("drums")
+    ///     .route("drums", "master")
+    ///     .build()
+    ///     .unwrap();
+    /// assert_eq!(snapshot.master_track_ids().len(), 1);
+    /// ```
     #[must_use]
     pub fn route(mut self, from_name: impl Into<Box<str>>, to_name: impl Into<Box<str>>) -> Self {
         self.routes.push(PendingRoute {
