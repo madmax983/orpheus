@@ -390,3 +390,252 @@ fn next_word_boundary(input: &str, index: usize) -> usize {
     }
     cursor
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use orpheus_dsp::EngineHandle;
+
+    fn setup_state() -> SharedState {
+        SharedState::new(EngineHandle::stub())
+    }
+
+    #[test]
+    fn test_cursor_movement_left_right() {
+        let mut state = setup_state();
+        state.input = "hello".to_string();
+        state.cursor_index = 2; // "he|llo"
+
+        state.move_cursor_left();
+        assert_eq!(state.cursor_index, 1);
+
+        state.move_cursor_right();
+        assert_eq!(state.cursor_index, 2);
+
+        state.move_cursor_home();
+        assert_eq!(state.cursor_index, 0);
+
+        state.move_cursor_left();
+        assert_eq!(state.cursor_index, 0); // clamp
+
+        state.move_cursor_end();
+        assert_eq!(state.cursor_index, 5);
+
+        state.move_cursor_right();
+        assert_eq!(state.cursor_index, 5); // clamp
+    }
+
+    #[test]
+    fn test_insert_character() {
+        let mut state = setup_state();
+        state.insert_character('a');
+        assert_eq!(state.input, "a");
+        assert_eq!(state.cursor_index, 1);
+
+        state.insert_character('b');
+        assert_eq!(state.input, "ab");
+        assert_eq!(state.cursor_index, 2);
+
+        state.move_cursor_left();
+        state.insert_character('c');
+        assert_eq!(state.input, "acb");
+        assert_eq!(state.cursor_index, 2);
+    }
+
+    #[test]
+    fn test_backspace() {
+        let mut state = setup_state();
+        state.input = "hello".to_string();
+        state.cursor_index = 5;
+
+        state.backspace();
+        assert_eq!(state.input, "hell");
+        assert_eq!(state.cursor_index, 4);
+
+        state.cursor_index = 0;
+        state.backspace(); // Should not panic or change
+        assert_eq!(state.input, "hell");
+        assert_eq!(state.cursor_index, 0);
+    }
+
+    #[test]
+    fn test_delete() {
+        let mut state = setup_state();
+        state.input = "hello".to_string();
+        state.cursor_index = 0;
+
+        state.delete();
+        assert_eq!(state.input, "ello");
+        assert_eq!(state.cursor_index, 0);
+
+        state.cursor_index = 4;
+        state.delete(); // Should not panic or change
+        assert_eq!(state.input, "ello");
+        assert_eq!(state.cursor_index, 4);
+    }
+
+    #[test]
+    fn test_kill_to_end() {
+        let mut state = setup_state();
+        state.input = "hello world".to_string();
+        state.cursor_index = 5;
+
+        state.kill_to_end();
+        assert_eq!(state.input, "hello");
+        assert_eq!(state.cursor_index, 5);
+    }
+
+    #[test]
+    fn test_kill_to_start() {
+        let mut state = setup_state();
+        state.input = "hello world".to_string();
+        state.cursor_index = 6;
+
+        state.kill_to_start();
+        assert_eq!(state.input, "world");
+        assert_eq!(state.cursor_index, 0);
+    }
+
+    #[test]
+    fn test_word_boundaries() {
+        let input = "hello world  rust";
+        assert_eq!(previous_word_boundary(input, 0), 0);
+        assert_eq!(previous_word_boundary(input, 5), 0); // "hello|" -> "|hello"
+        assert_eq!(previous_word_boundary(input, 6), 0); // "hello |" -> "|hello"
+        assert_eq!(previous_word_boundary(input, 11), 6); // "hello world|" -> "hello |world"
+
+        assert_eq!(next_word_boundary(input, 0), 5); // "|hello" -> "hello|"
+        assert_eq!(next_word_boundary(input, 5), 11); // "hello|" -> "hello world|"
+        assert_eq!(next_word_boundary(input, 6), 11); // "hello |" -> "hello world|"
+        assert_eq!(next_word_boundary(input, 11), 17); // "hello world|" -> "hello world  rust|"
+        assert_eq!(next_word_boundary(input, 17), 17);
+    }
+
+    #[test]
+    fn test_move_cursor_words() {
+        let mut state = setup_state();
+        state.input = "hello world rust".to_string();
+        state.cursor_index = 0;
+
+        state.move_cursor_next_word();
+        assert_eq!(state.cursor_index, 5);
+
+        state.move_cursor_next_word();
+        assert_eq!(state.cursor_index, 11);
+
+        state.move_cursor_previous_word();
+        assert_eq!(state.cursor_index, 6);
+    }
+
+    #[test]
+    fn test_delete_previous_word() {
+        let mut state = setup_state();
+        state.input = "hello world rust".to_string();
+        state.cursor_index = 11;
+
+        state.delete_previous_word();
+        assert_eq!(state.input, "hello  rust");
+        assert_eq!(state.cursor_index, 6);
+    }
+
+    #[test]
+    fn test_history() {
+        let mut state = setup_state();
+
+        state.input = "first".to_string();
+        state.submit_line();
+        assert_eq!(state.history, vec!["first"]);
+
+        state.input = "second".to_string();
+        state.submit_line();
+        assert_eq!(state.history, vec!["first", "second"]);
+
+        state.recall_previous_history();
+        assert_eq!(state.input, "second");
+        assert_eq!(state.history_index, Some(1));
+
+        state.recall_previous_history();
+        assert_eq!(state.input, "first");
+        assert_eq!(state.history_index, Some(0));
+
+        state.recall_next_history();
+        assert_eq!(state.input, "second");
+        assert_eq!(state.history_index, Some(1));
+
+        state.recall_next_history();
+        assert_eq!(state.input, "");
+        assert_eq!(state.history_index, None);
+    }
+
+    #[test]
+    fn test_status_message() {
+        let mut state = setup_state();
+
+        state.set_status_message("hello");
+        assert_eq!(state.status_message.as_deref(), Some("hello"));
+        assert!(state.status_expires_at.is_some());
+
+        state.clear_status_message();
+        assert_eq!(state.status_message, None);
+        assert_eq!(state.status_expires_at, None);
+    }
+
+    #[test]
+    fn test_clear_status_if_expired() {
+        let mut state = setup_state();
+        state.set_status_message("test");
+        let expires_at = state.status_expires_at.unwrap();
+
+        // Not expired
+        state.clear_status_if_expired(expires_at - Duration::from_secs(1));
+        assert!(state.status_message.is_some());
+
+        // Expired
+        state.clear_status_if_expired(expires_at + Duration::from_secs(1));
+        assert!(state.status_message.is_none());
+    }
+
+    #[test]
+    fn test_toggle_help() {
+        let mut state = setup_state();
+        assert!(!state.show_help);
+
+        state.toggle_help();
+        assert!(state.show_help);
+
+        state.close_help();
+        assert!(!state.show_help);
+    }
+
+    #[test]
+    fn test_matching_command() {
+        assert_eq!(matching_command(":q"), Some((":quit", ":quit")));
+        assert_eq!(matching_command(":p"), Some((":play", ":play")));
+
+        // Ambiguous command -> None
+        assert_eq!(matching_command(":"), None);
+    }
+
+    #[test]
+    fn test_complete_input() {
+        let mut state = setup_state();
+        state.input = ":q".to_string();
+        state.cursor_index = 2;
+
+        state.complete_input();
+        assert_eq!(state.input, ":quit");
+
+        state.input = ":t".to_string();
+        state.cursor_index = 2;
+        state.complete_input(); // Could be :tempo or :track => ambiguous => no complete
+        assert_eq!(state.input, ":t");
+    }
+
+    #[test]
+    fn test_display_input_with_cursor() {
+        let mut state = setup_state();
+        state.input = "hello".to_string();
+        state.cursor_index = 2;
+        assert_eq!(state.display_input_with_cursor(), "he|llo");
+    }
+}
