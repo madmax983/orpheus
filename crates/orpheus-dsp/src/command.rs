@@ -22,6 +22,7 @@ pub struct PedalProgram {
 }
 
 impl PedalProgram {
+    /// Create a new `PedalProgram` linking the parsed source with its validation explanation.
     #[must_use]
     pub fn new(source: impl Into<Box<str>>, explain: impl Into<Box<str>>) -> Self {
         Self {
@@ -31,22 +32,35 @@ impl PedalProgram {
         }
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub fn source(&self) -> &str {
         &self.source
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub fn explain(&self) -> &str {
         &self.explain
     }
 
+    /// Inject a constructed [`PedalGraphProgram`] representing the effect's internal routing.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use orpheus_dsp::{PedalProgram, PedalNode, NodeRef};
+    ///
+    /// let program = PedalProgram::new("input |> output", "bypass")
+    ///     .with_graph(vec![], NodeRef::Input);
+    /// ```
     #[must_use]
     pub fn with_graph(mut self, nodes: Vec<crate::pedal::PedalNode>, output: NodeRef) -> Self {
         self.graph = PedalGraphProgram::new(nodes, output);
         self
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn graph(&self) -> &PedalGraphProgram {
         &self.graph
@@ -292,6 +306,7 @@ impl SampleTrigger {
         self
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub fn token(&self) -> &str {
         self.token.as_ref()
@@ -435,6 +450,7 @@ impl SampleTrigger {
         self.pan
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn pedal_program(&self) -> Option<&Arc<PedalProgram>> {
         self.pedal_program.as_ref()
@@ -465,6 +481,7 @@ impl PatternUpdate {
     }
 
     /// The string identifier bound to this pattern, usually derived from the variable name in the environment.
+    #[doc(hidden)]
     #[must_use]
     pub fn name(&self) -> &str {
         self.name.as_ref()

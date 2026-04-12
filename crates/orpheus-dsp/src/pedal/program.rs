@@ -83,118 +83,196 @@ impl NodeRef {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// The physical amplifier model simulation characteristic.
 pub enum PreampModel {
+    /// A transparent, high-headroom Field Effect Transistor (FET) stage.
     JfetClean,
+    /// A stiff, focused operational amplifier stage with aggressive bite.
     OpampTight,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// The diode clipping network used for distortion generation.
 pub enum ClipModel {
+    /// Hard, bright, and aggressive clipping characteristic of silicon diodes.
     SiliconHard,
+    /// Warm, asymmetrical, and responsive clipping characteristic of germanium diodes.
     GermaniumSoft,
+    /// Open, loud, and crunchy clipping characteristic of Light Emitting Diodes (LEDs).
     RedLed,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// The equalization topology curve.
 pub enum ToneModel {
+    /// A flat, transparent EQ response.
     Neutral,
+    /// An equalization curve that boosts midrange frequencies, typical of classic overdrives.
     MidHump,
+    /// An equalization curve that cuts midrange and boosts lows/highs, typical of high-gain amplifiers.
     ScoopedStack,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// The frequency passband behavior.
 pub enum FilterMode {
+    /// Attenuates frequencies above the cutoff.
     LowPass,
+    /// Attenuates frequencies below the cutoff.
     HighPass,
 }
 
+/// A discrete signal processing module inside a pedal graph.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PedalStage {
+    /// A transparent buffer that passes the signal through.
     Buffer {
+        /// The signal to buffer.
         input: NodeRef,
     },
+    /// An input pre-amplifier stage.
     Preamp {
+        /// The audio signal to amplify.
         input: NodeRef,
+        /// The control-rate gain scalar.
         gain: NodeRef,
+        /// The analog characteristic model to use.
         model: PreampModel,
     },
+    /// A linear gain multiplier.
     Gain {
+        /// The audio signal to amplify.
         input: NodeRef,
+        /// The control-rate gain scalar.
         amount: NodeRef,
     },
+    /// Non-linear diode clipping for distortion.
     Clip {
+        /// The audio signal to clip.
         input: NodeRef,
+        /// The control-rate drive scalar.
         drive: NodeRef,
+        /// The analog characteristic model to use.
         model: ClipModel,
     },
+    /// A specialized equalization filter.
     Tone {
+        /// The audio signal to equalize.
         input: NodeRef,
+        /// The control-rate center frequency in Hertz.
         cutoff_hz: NodeRef,
+        /// The control-rate resonance or Q factor.
         resonance: NodeRef,
+        /// The topological EQ model to use.
         model: ToneModel,
     },
+    /// A general-purpose filter.
     Filter {
+        /// The audio signal to filter.
         input: NodeRef,
+        /// The passband mode (LowPass or HighPass).
         kind: FilterMode,
+        /// The control-rate cutoff frequency in Hertz.
         cutoff_hz: NodeRef,
+        /// The control-rate resonance or Q factor.
         resonance: NodeRef,
     },
+    /// A 3-band parametric equalizer.
     Eq {
+        /// The audio signal to equalize.
         input: NodeRef,
+        /// The control-rate low-shelf gain scalar.
         low: NodeRef,
+        /// The control-rate mid-band gain scalar.
         mid: NodeRef,
+        /// The control-rate high-shelf gain scalar.
         high: NodeRef,
     },
+    /// An output volume control.
     Level {
+        /// The audio signal to scale.
         input: NodeRef,
+        /// The control-rate volume scalar.
         amount: NodeRef,
     },
+    /// Voltage sag simulation under load.
     Sag {
+        /// The audio signal to dynamically compress.
         input: NodeRef,
+        /// The control-rate sensitivity.
         amount: NodeRef,
     },
+    /// DC offset injection.
     Bias {
+        /// The audio signal to offset.
         input: NodeRef,
+        /// The control-rate DC offset amount.
         amount: NodeRef,
     },
 }
 
+/// The underlying operational logic of a PedalNode.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PedalNodeKind {
+    /// A static floating-point value.
     Constant {
+        /// The raw IEEE 754 bits of the `f32` constant.
         value_bits: u32,
     },
+    /// A Low Frequency Oscillator.
     Lfo {
+        /// The raw IEEE 754 bits of the `f32` rate in Hertz.
         rate_hz_bits: u32,
+        /// The raw IEEE 754 bits of the `f32` amplitude depth.
         depth_bits: u32,
+        /// The raw IEEE 754 bits of the `f32` DC offset.
         offset_bits: u32,
     },
+    /// An Envelope Follower.
     EnvFollow {
+        /// The audio signal to track.
         input: NodeRef,
+        /// The raw IEEE 754 bits of the `f32` attack time in milliseconds.
         attack_ms_bits: u32,
+        /// The raw IEEE 754 bits of the `f32` release time in milliseconds.
         release_ms_bits: u32,
     },
+    /// Sums two signals.
     Add {
+        /// The left operand.
         left: NodeRef,
+        /// The right operand.
         right: NodeRef,
     },
+    /// Multiplies two signals.
     Mul {
+        /// The left operand.
         left: NodeRef,
+        /// The right operand.
         right: NodeRef,
     },
+    /// Evaluates a DSP stage block.
     Stage(PedalStage),
+    /// Sums multiple inputs.
     Mix {
+        /// The list of input signals to sum.
         inputs: Vec<NodeRef>,
     },
+    /// Delay line with feedback.
     Feedback {
+        /// The audio signal to delay.
         input: NodeRef,
+        /// The control-rate feedback multiplier.
         amount: NodeRef,
+        /// The static delay time in sample frames.
         delay_samples: usize,
+        /// The raw IEEE 754 bits of the `f32` low-pass filter cutoff frequency for the feedback loop, if any.
         tone_hz_bits: Option<u32>,
     },
 }
 
 impl PedalNodeKind {
+    #[doc(hidden)]
     #[must_use]
     pub const fn constant_value(&self) -> Option<f32> {
         match self {
@@ -204,6 +282,7 @@ impl PedalNodeKind {
     }
 }
 
+/// A discrete node inside a `PedalGraphProgram`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PedalNode {
     signal_kind: SignalKind,
@@ -211,11 +290,24 @@ pub struct PedalNode {
 }
 
 impl PedalNode {
+    /// Construct a general purpose node.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use orpheus_dsp::{PedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let constant_node = PedalNode::new(
+    ///     SignalKind::Control,
+    ///     PedalNodeKind::Constant { value_bits: 2.0_f32.to_bits() }
+    /// );
+    /// ```
     #[must_use]
     pub const fn new(signal_kind: SignalKind, kind: PedalNodeKind) -> Self {
         Self { signal_kind, kind }
     }
 
+    /// Construct a control-rate constant value.
     #[must_use]
     pub const fn constant(value: f32) -> Self {
         Self::new(
@@ -226,6 +318,7 @@ impl PedalNode {
         )
     }
 
+    /// Construct a low-frequency oscillator.
     #[must_use]
     pub const fn lfo(rate_hz: f32, depth: f32, offset: f32) -> Self {
         Self::new(
@@ -238,6 +331,7 @@ impl PedalNode {
         )
     }
 
+    /// Construct an envelope tracker.
     #[must_use]
     pub const fn env_follow(input: NodeRef, attack_ms: f32, release_ms: f32) -> Self {
         Self::new(
@@ -250,26 +344,39 @@ impl PedalNode {
         )
     }
 
+    /// Construct an audio processing stage.
     #[must_use]
     pub const fn stage(stage: PedalStage) -> Self {
         Self::new(SignalKind::Audio, PedalNodeKind::Stage(stage))
     }
 
+    /// Construct a signal addition node.
     #[must_use]
     pub const fn add(signal_kind: SignalKind, left: NodeRef, right: NodeRef) -> Self {
         Self::new(signal_kind, PedalNodeKind::Add { left, right })
     }
 
+    /// Construct a signal multiplication node.
     #[must_use]
     pub const fn mul(left: NodeRef, right: NodeRef) -> Self {
         Self::new(SignalKind::Audio, PedalNodeKind::Mul { left, right })
     }
 
+    /// Construct an audio-rate mixer merging multiple inputs.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use orpheus_dsp::{PedalNode, NodeRef};
+    ///
+    /// let mixer = PedalNode::mix(vec![NodeRef::node(0), NodeRef::node(1), NodeRef::node(2)]);
+    /// ```
     #[must_use]
     pub const fn mix(inputs: Vec<NodeRef>) -> Self {
         Self::new(SignalKind::Audio, PedalNodeKind::Mix { inputs })
     }
 
+    /// Construct a feedback delay.
     #[must_use]
     pub fn feedback(
         input: NodeRef,
@@ -288,17 +395,20 @@ impl PedalNode {
         )
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn signal_kind(&self) -> SignalKind {
         self.signal_kind
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 }
 
+/// The immutable compiled program for a pedal effect.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct PedalGraphProgram {
     nodes: Vec<PedalNode>,
@@ -306,21 +416,34 @@ pub struct PedalGraphProgram {
 }
 
 impl PedalGraphProgram {
+    /// Create a pedal program.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use orpheus_dsp::{PedalGraphProgram, PedalNode, NodeRef};
+    ///
+    /// let nodes = vec![PedalNode::constant(2.0), PedalNode::mul(NodeRef::Input, NodeRef::node(0))];
+    /// let program = PedalGraphProgram::new(nodes, NodeRef::node(1));
+    /// ```
     #[must_use]
     pub const fn new(nodes: Vec<PedalNode>, output: NodeRef) -> Self {
         Self { nodes, output }
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub fn nodes(&self) -> &[PedalNode] {
         &self.nodes
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn output(&self) -> NodeRef {
         self.output
     }
 
+    #[doc(hidden)]
     #[allow(clippy::incompatible_msrv)]
     #[must_use]
     #[allow(clippy::incompatible_msrv)]
