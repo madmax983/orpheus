@@ -192,21 +192,41 @@ impl ValidatedPedalPlan {
 
     #[must_use]
     pub fn explain(&self) -> String {
-        let mut lines = vec![format!("signal_kind={}", self.signal_kind)];
+        use comfy_table::{Table, presets::UTF8_BORDERS_ONLY};
+        use crossterm::style::Stylize;
+
+        let mut title = String::new();
+        let _ = std::fmt::Write::write_fmt(&mut title, format_args!("{}", "Pedal Graph Plan:".cyan().bold()));
+
+        let mut meta_table = Table::new();
+        meta_table.load_preset(UTF8_BORDERS_ONLY);
+        meta_table.add_row(vec![
+            comfy_table::Cell::new("Signal Kind").fg(comfy_table::Color::DarkGrey),
+            comfy_table::Cell::new(self.signal_kind.to_string()).fg(comfy_table::Color::Green),
+        ]);
+
+        let mut bindings_table = Table::new();
+        bindings_table.load_preset(UTF8_BORDERS_ONLY);
+        bindings_table.set_header(vec![
+            comfy_table::Cell::new("Binding").fg(comfy_table::Color::DarkGrey),
+            comfy_table::Cell::new("Signal Kind").fg(comfy_table::Color::DarkGrey),
+            comfy_table::Cell::new("Summary").fg(comfy_table::Color::DarkGrey),
+        ]);
+
         for binding in &self.bindings {
-            lines.push(format!(
-                "binding {}: {} {}",
-                binding.name(),
-                binding.node().signal_kind(),
-                binding.node().summary()
-            ));
+            bindings_table.add_row(vec![
+                comfy_table::Cell::new(binding.name()).fg(comfy_table::Color::Yellow),
+                comfy_table::Cell::new(binding.node().signal_kind().to_string()).fg(comfy_table::Color::Cyan),
+                comfy_table::Cell::new(binding.node().summary()).fg(comfy_table::Color::White),
+            ]);
         }
-        lines.push(format!(
-            "result: {} {}",
-            self.result.signal_kind(),
-            self.result.summary()
-        ));
-        lines.join("\n")
+        bindings_table.add_row(vec![
+            comfy_table::Cell::new("result").fg(comfy_table::Color::Green),
+            comfy_table::Cell::new(self.result.signal_kind().to_string()).fg(comfy_table::Color::Cyan),
+            comfy_table::Cell::new(self.result.summary()).fg(comfy_table::Color::White),
+        ]);
+
+        format!("{title}\n{meta_table}\n{bindings_table}")
     }
 }
 

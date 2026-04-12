@@ -2437,9 +2437,12 @@ mod tests {
 
         let message = session.eval_line(":explain drivebox").unwrap();
 
-        assert!(message.contains("signal_kind=Audio"));
-        assert!(message.contains("binding wet: Audio clip(input, model=silicon_hard)"));
-        assert!(message.contains("result: Audio output(wet)"));
+        assert!(message.contains("Signal Kind"));
+        assert!(message.contains("Audio"));
+        assert!(message.contains("wet"));
+        assert!(message.contains("clip(input, model=silicon_hard)"));
+        assert!(message.contains("result"));
+        assert!(message.contains("output(wet)"));
     }
 
     #[test]

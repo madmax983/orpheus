@@ -35,6 +35,7 @@ impl SharedTransportLoom {
             let start_epoch = self.publish_epoch.load(Ordering::Relaxed);
             loom::sync::atomic::fence(Ordering::Acquire);
 
+            #[allow(clippy::manual_is_multiple_of)]
             if start_epoch % 2 != 0 {
                 loom::thread::yield_now();
                 continue;
