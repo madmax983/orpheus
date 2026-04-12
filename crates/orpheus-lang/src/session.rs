@@ -649,7 +649,126 @@ impl ReplSession {
         ))
     }
 
-    #[allow(clippy::too_many_lines)]
+    fn export_sample_pattern(
+        pattern: &crate::value::SamplePatternValue,
+        path: &str,
+        cycles: u64,
+    ) -> Result<(), String> {
+        let export_path = std::path::Path::new(path);
+        if export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
+        {
+            crate::svg::export_sample_pattern_to_svg(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        } else if export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
+        {
+            crate::html::export_sample_pattern_to_html(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        } else if export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+        {
+            crate::export::export_sample_pattern_to_json(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        } else if export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+        {
+            crate::export::export_sample_pattern_to_md(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        } else if export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("srt"))
+        {
+            crate::srt::export_sample_pattern_to_srt(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        } else if export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("txt"))
+        {
+            crate::txt::export_sample_pattern_to_txt(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        } else if export_path.extension().is_some_and(|ext| {
+            ext.eq_ignore_ascii_case("trk") || ext.eq_ignore_ascii_case("tracker")
+        }) {
+            crate::tracker::export_sample_pattern_to_tracker(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        } else if export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("mid") || ext.eq_ignore_ascii_case("midi"))
+        {
+            crate::midi_export::export_sample_pattern_to_midi(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        } else {
+            crate::export::export_sample_pattern_to_csv(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        }
+        Ok(())
+    }
+
+    fn export_number_pattern(
+        pattern: &crate::value::NumberPatternValue,
+        path: &str,
+        cycles: u64,
+    ) -> Result<(), String> {
+        let export_path = std::path::Path::new(path);
+        if export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
+        {
+            crate::svg::export_number_pattern_to_svg(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        } else if export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
+        {
+            crate::html::export_number_pattern_to_html(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        } else if export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+        {
+            crate::export::export_number_pattern_to_json(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        } else if export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+        {
+            crate::export::export_number_pattern_to_md(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        } else if export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("srt"))
+        {
+            crate::srt::export_number_pattern_to_srt(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        } else if export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("txt"))
+        {
+            crate::txt::export_number_pattern_to_txt(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        } else if export_path.extension().is_some_and(|ext| {
+            ext.eq_ignore_ascii_case("trk") || ext.eq_ignore_ascii_case("tracker")
+        }) {
+            crate::tracker::export_number_pattern_to_tracker(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        } else if export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("mid") || ext.eq_ignore_ascii_case("midi"))
+        {
+            crate::midi_export::export_number_pattern_to_midi(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        } else {
+            crate::export::export_number_pattern_to_csv(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
+        }
+        Ok(())
+    }
+
     fn export_pattern_value(
         value: &Value,
         path: &str,
@@ -657,112 +776,8 @@ impl ReplSession {
         binding_name: &str,
     ) -> Result<(), String> {
         match value {
-            Value::SamplePattern(pattern) => {
-                let export_path = std::path::Path::new(path);
-                if export_path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
-                {
-                    crate::svg::export_sample_pattern_to_svg(pattern, path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                } else if export_path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
-                {
-                    crate::html::export_sample_pattern_to_html(pattern, path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                } else if export_path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
-                {
-                    crate::export::export_sample_pattern_to_json(pattern, path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                } else if export_path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
-                {
-                    crate::export::export_sample_pattern_to_md(pattern, path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                } else if export_path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("srt"))
-                {
-                    crate::srt::export_sample_pattern_to_srt(pattern, path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                } else if export_path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("txt"))
-                {
-                    crate::txt::export_sample_pattern_to_txt(pattern, path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                } else if export_path.extension().is_some_and(|ext| {
-                    ext.eq_ignore_ascii_case("trk") || ext.eq_ignore_ascii_case("tracker")
-                }) {
-                    crate::tracker::export_sample_pattern_to_tracker(pattern, path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                } else if export_path.extension().is_some_and(|ext| {
-                    ext.eq_ignore_ascii_case("mid") || ext.eq_ignore_ascii_case("midi")
-                }) {
-                    crate::midi_export::export_sample_pattern_to_midi(pattern, path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                } else {
-                    crate::export::export_sample_pattern_to_csv(pattern, path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                }
-            }
-            Value::NumberPattern(pattern) => {
-                let export_path = std::path::Path::new(path);
-                if export_path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
-                {
-                    crate::svg::export_number_pattern_to_svg(pattern, path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                } else if export_path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
-                {
-                    crate::html::export_number_pattern_to_html(pattern, path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                } else if export_path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
-                {
-                    crate::export::export_number_pattern_to_json(pattern, path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                } else if export_path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
-                {
-                    crate::export::export_number_pattern_to_md(pattern, path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                } else if export_path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("srt"))
-                {
-                    crate::srt::export_number_pattern_to_srt(pattern, path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                } else if export_path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("txt"))
-                {
-                    crate::txt::export_number_pattern_to_txt(pattern, path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                } else if export_path.extension().is_some_and(|ext| {
-                    ext.eq_ignore_ascii_case("trk") || ext.eq_ignore_ascii_case("tracker")
-                }) {
-                    crate::tracker::export_number_pattern_to_tracker(pattern, path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                } else if export_path.extension().is_some_and(|ext| {
-                    ext.eq_ignore_ascii_case("mid") || ext.eq_ignore_ascii_case("midi")
-                }) {
-                    crate::midi_export::export_number_pattern_to_midi(pattern, path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                } else {
-                    crate::export::export_number_pattern_to_csv(pattern, path, cycles)
-                        .map_err(|error: crate::EvalError| error.to_string())?;
-                }
-            }
+            Value::SamplePattern(pattern) => Self::export_sample_pattern(pattern, path, cycles)?,
+            Value::NumberPattern(pattern) => Self::export_number_pattern(pattern, path, cycles)?,
             Value::ArpDirection(_)
             | Value::PitchClassSet(_)
             | Value::Function(_)
