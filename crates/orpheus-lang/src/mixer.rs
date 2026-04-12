@@ -14,7 +14,7 @@
 
 use std::collections::BTreeMap;
 
-use comfy_table::{Table, presets::UTF8_BORDERS_ONLY};
+use comfy_table::{Cell, Color, Table, presets::UTF8_BORDERS_ONLY};
 use crossterm::style::Stylize;
 use orpheus_dsp::{RoutingSnapshot, SampleTrigger, TrackSource};
 use orpheus_pattern::Event;
@@ -267,7 +267,13 @@ impl MixerState {
 
         let mut track_table = Table::new();
         track_table.load_preset(UTF8_BORDERS_ONLY);
-        track_table.set_header(vec!["Track", "Binding", "Level", "Muted", "Sends"]);
+        track_table.set_header(vec![
+            Cell::new("Track").fg(Color::DarkGrey),
+            Cell::new("Binding").fg(Color::DarkGrey),
+            Cell::new("Level").fg(Color::DarkGrey),
+            Cell::new("Muted").fg(Color::DarkGrey),
+            Cell::new("Sends").fg(Color::DarkGrey),
+        ]);
 
         if self.has_explicit_bound_tracks() {
             for (track_name, track) in &self.tracks {
@@ -278,12 +284,22 @@ impl MixerState {
                     .map(|(bus, level)| format!("{bus} @ {level:.2}"))
                     .collect::<Vec<_>>()
                     .join("\n");
+                let level_color = if track.level == 0.0 {
+                    Color::DarkGrey
+                } else {
+                    Color::Green
+                };
+                let muted_color = if track.muted {
+                    Color::Red
+                } else {
+                    Color::Green
+                };
                 track_table.add_row(vec![
-                    track_name.to_owned(),
-                    binding.to_owned(),
-                    format!("{:.2}", track.level),
-                    track.muted.to_string(),
-                    sends,
+                    Cell::new(track_name).fg(Color::Yellow),
+                    Cell::new(binding).fg(Color::Cyan),
+                    Cell::new(format!("{:.2}", track.level)).fg(level_color),
+                    Cell::new(track.muted.to_string()).fg(muted_color),
+                    Cell::new(sends).fg(Color::Magenta),
                 ]);
             }
         } else {
@@ -292,11 +308,11 @@ impl MixerState {
                 .as_deref()
                 .unwrap_or("<unbound>");
             track_table.add_row(vec![
-                "main (auto)".to_owned(),
-                binding.to_owned(),
-                "1.00".to_owned(),
-                "false".to_owned(),
-                String::new(),
+                Cell::new("main (auto)").fg(Color::Yellow),
+                Cell::new(binding).fg(Color::Cyan),
+                Cell::new("1.00").fg(Color::Green),
+                Cell::new("false").fg(Color::Green),
+                Cell::new(String::new()),
             ]);
         }
 
@@ -309,14 +325,20 @@ impl MixerState {
         if !self.buses.is_empty() {
             let mut bus_table = Table::new();
             bus_table.load_preset(UTF8_BORDERS_ONLY);
-            bus_table.set_header(vec!["Bus", "Effect"]);
+            bus_table.set_header(vec![
+                Cell::new("Bus").fg(Color::DarkGrey),
+                Cell::new("Effect").fg(Color::DarkGrey),
+            ]);
 
             for (bus_name, bus) in &self.buses {
                 let effect = bus
                     .effect
                     .as_ref()
                     .map_or_else(|| "none".to_owned(), MixerBusEffect::summary);
-                bus_table.add_row(vec![bus_name.to_owned(), effect]);
+                bus_table.add_row(vec![
+                    Cell::new(bus_name).fg(Color::Yellow),
+                    Cell::new(effect).fg(Color::Cyan),
+                ]);
             }
 
             let _ = std::fmt::Write::write_fmt(
