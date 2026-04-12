@@ -21,3 +21,17 @@ proptest! {
         }
     }
 }
+
+/// 👺 Havoc: Unbounded recursion tests
+#[test]
+fn test_havoc_stack_overflow_unbounded_recursion() {
+    // 🧨 The Trigger: The Omega Combinator! Evaluates to itself infinitely.
+    // 📉 The Stack Trace: We avoid a stack overflow abort by checking evaluation depth limit.
+    // 🧪 Reproduction: `cargo test test_havoc_stack_overflow_unbounded_recursion`
+    // 😈 Comment: "You didn't expect people to write functional geometry in your music DSL."
+    let source = "f x = x(x)\nomega = f(f)";
+    let result = eval_module(&source, ReplMode::Loose);
+    assert!(result.is_err());
+    let err_msg = result.unwrap_err().to_string();
+    assert!(err_msg.contains("maximum evaluation depth exceeded"));
+}

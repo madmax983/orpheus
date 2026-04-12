@@ -1000,7 +1000,29 @@ pub fn apply_function_value(function: FunctionValue, args: Vec<Value>) -> Result
     }
 }
 
+std::thread_local! {
+    static EVAL_DEPTH: std::cell::RefCell<usize> = const { std::cell::RefCell::new(0) };
+}
+
+struct DepthGuard;
+impl Drop for DepthGuard {
+    fn drop(&mut self) {
+        EVAL_DEPTH.with(|d| {
+            let mut val = d.borrow_mut();
+            *val = val.saturating_sub(1);
+        });
+    }
+}
+
 fn apply_user_function(mut function: UserFn, args: Vec<Value>) -> Result<Value, EvalError> {
+    let depth = EVAL_DEPTH.with(|d| *d.borrow());
+    if depth > 128 {
+        return Err(EvalError::new("maximum evaluation depth exceeded"));
+    }
+
+    EVAL_DEPTH.with(|d| *d.borrow_mut() = depth + 1);
+    let _guard = DepthGuard;
+
     let remaining = function.remaining_params.len();
     let applied = args.len();
     if applied > remaining {
