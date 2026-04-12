@@ -272,12 +272,14 @@ impl MixerState {
         if self.has_explicit_bound_tracks() {
             for (track_name, track) in &self.tracks {
                 let binding = track.binding_name.as_deref().unwrap_or("<unbound>");
-                let sends = track
-                    .sends
-                    .iter()
-                    .map(|(bus, level)| format!("{bus} @ {level:.2}"))
-                    .collect::<Vec<_>>()
-                    .join("\n");
+                let mut sends = String::new();
+                for (i, (bus, level)) in track.sends.iter().enumerate() {
+                    if i > 0 {
+                        sends.push('\n');
+                    }
+                    let _ =
+                        std::fmt::Write::write_fmt(&mut sends, format_args!("{bus} @ {level:.2}"));
+                }
                 track_table.add_row(vec![
                     track_name.to_owned(),
                     binding.to_owned(),
@@ -447,8 +449,7 @@ fn compile_track_source(
         events
             .into_iter()
             .map(sample_event_to_trigger_event)
-            .collect::<Vec<_>>()
-            .into_boxed_slice(),
+            .collect::<Box<[_]>>(),
     ))
 }
 
