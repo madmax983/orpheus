@@ -109,6 +109,7 @@ pub struct UserFn {
     pub(crate) body: Expr,
     pub(crate) captured_bindings: BTreeMap<String, Value>,
     pub(crate) expr_site_salts: BTreeMap<usize, u64>,
+    pub(crate) depth: usize,
 }
 
 /// A callable runtime value, either builtin or user-defined.
