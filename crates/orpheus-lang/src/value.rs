@@ -1023,6 +1023,46 @@ impl PatternRuntimeValue for SampleEvent {
     }
 }
 
+#[allow(clippy::needless_pass_by_value)]
+fn process_f64_events_in_clusters<F, R>(
+    mut events: Vec<Event<f64>>,
+    effect_name: &str,
+    mut apply_effect: F,
+) -> Result<Vec<Event<f64>>, EvalError>
+where
+    F: FnMut(&mut [Event<f64>]) -> Result<R, EvalError>,
+    R: IntoIterator<Item = Event<f64>>,
+{
+    sort_events(&mut events);
+    let mut result = Vec::with_capacity(events.len());
+    let mut index = 0;
+
+    while index < events.len() {
+        let start_index = index;
+        let span = events[start_index].part.clone();
+        while index < events.len() && events[index].part == span {
+            if !events[index].value.is_finite() {
+                return Err(EvalError::new(format!(
+                    "`{effect_name}` requires finite numeric values"
+                )));
+            }
+            index += 1;
+        }
+
+        let cluster_events = apply_effect(&mut events[start_index..index])?;
+        let cluster_events_vec: Vec<_> = cluster_events.into_iter().collect();
+        if result.len() + cluster_events_vec.len() > 100_000 {
+            return Err(EvalError::new(
+                "evaluation exceeded the maximum allowed event limit",
+            ));
+        }
+        result.extend(cluster_events_vec);
+    }
+
+    sort_events(&mut result);
+    Ok(result)
+}
+
 impl PatternRuntimeValue for f64 {
     fn into_runtime_value(pattern: PatternRuntime<Self>) -> Value {
         Value::NumberPattern(NumberPatternValue { pattern })
@@ -1047,35 +1087,8 @@ impl PatternRuntimeValue for f64 {
     }
 
     /// ⚡ Bolt: Uses slice bounds (`&events[start_index..index]`) instead of allocating a temporary `cluster` Vec for every group of events with the same span, eliminating redundant heap allocations in the hot evaluation loop.
-    fn roll_events(
-        mut events: Vec<Event<Self>>,
-        steps: u32,
-    ) -> Result<Vec<Event<Self>>, EvalError> {
-        sort_events(&mut events);
-        let mut rolled = Vec::with_capacity(events.len());
-        let mut index = 0;
-
-        while index < events.len() {
-            let start_index = index;
-            let span = &events[start_index].part;
-            while index < events.len() && &events[index].part == span {
-                if !events[index].value.is_finite() {
-                    return Err(EvalError::new("`roll` requires finite numeric values"));
-                }
-                index += 1;
-            }
-
-            let cluster_events = roll_event_cluster(&events[start_index..index], steps)?;
-            if rolled.len() + cluster_events.len() > 100_000 {
-                return Err(EvalError::new(
-                    "evaluation exceeded the maximum allowed event limit",
-                ));
-            }
-            rolled.extend(cluster_events);
-        }
-
-        sort_events(&mut rolled);
-        Ok(rolled)
+    fn roll_events(events: Vec<Event<Self>>, steps: u32) -> Result<Vec<Event<Self>>, EvalError> {
+        process_f64_events_in_clusters(events, "roll", |cluster| roll_event_cluster(cluster, steps))
     }
 
     /// Applies a strum effect across overlapping events.
@@ -1084,116 +1097,44 @@ impl PatternRuntimeValue for f64 {
     /// ⚡ Bolt: Uses slice bounds (`&events[start_index].part`) instead of cloning `TimeSpan`
     /// for every group of events with the same span, eliminating redundant memory copying
     /// in the hot evaluation loop.
-    fn strum_events(mut events: Vec<Event<Self>>) -> Result<Vec<Event<Self>>, EvalError> {
-        sort_events(&mut events);
-        let mut index = 0;
-
-        while index < events.len() {
-            let start_index = index;
-            let span = &events[start_index].part;
-            while index < events.len() && &events[index].part == span {
-                if !events[index].value.is_finite() {
-                    return Err(EvalError::new("`strum` requires finite numeric values"));
-                }
-                index += 1;
-            }
-
-            let cluster = &mut events[start_index..index];
+    fn strum_events(events: Vec<Event<Self>>) -> Result<Vec<Event<Self>>, EvalError> {
+        process_f64_events_in_clusters(events, "strum", |cluster| {
             strum_event_cluster(cluster)?;
-        }
-
-        sort_events(&mut events);
-        Ok(events)
+            Ok(cluster.to_vec())
+        })
     }
 
     /// ⚡ Bolt: Uses slice bounds (`&events[start_index].part`) instead of cloning `TimeSpan`
     /// for every group of events with the same span, eliminating redundant memory copying
     /// in the hot evaluation loop.
     fn arp_events(
-        mut events: Vec<Event<Self>>,
+        events: Vec<Event<Self>>,
         steps: u32,
         direction: ArpDirectionValue,
     ) -> Result<Vec<Event<Self>>, EvalError> {
-        sort_events(&mut events);
-        let mut arped = Vec::with_capacity(events.len() * steps as usize);
-        let mut index = 0;
-
-        while index < events.len() {
-            let start_index = index;
-            let span = &events[start_index].part;
-            while index < events.len() && &events[index].part == span {
-                if !events[index].value.is_finite() {
-                    return Err(EvalError::new("`arp` requires finite numeric values"));
-                }
-                index += 1;
-            }
-
-            let cluster = &mut events[start_index..index];
-            let cluster_events = arp_event_cluster(cluster, steps, direction)?;
-            if arped.len() + cluster_events.len() > 100_000 {
-                return Err(EvalError::new(
-                    "evaluation exceeded the maximum allowed event limit",
-                ));
-            }
-            arped.extend(cluster_events);
-        }
-
-        sort_events(&mut arped);
-        Ok(arped)
+        process_f64_events_in_clusters(events, "arp", |cluster| {
+            arp_event_cluster(cluster, steps, direction)
+        })
     }
 
     /// Applies a chord inversion effect to overlapping events.
     ///
     /// ⚡ Bolt: Modifies clusters in-place and directly returns the original `events` vector, bypassing O(N) allocation overhead for intermediate `inverted` tracking.
-    fn invert_events(
-        mut events: Vec<Event<Self>>,
-        count: u32,
-    ) -> Result<Vec<Event<Self>>, EvalError> {
-        sort_events(&mut events);
-        let mut index = 0;
-
-        while index < events.len() {
-            let span = events[index].part.clone();
-            let start_index = index;
-            while index < events.len() && events[index].part == span {
-                if !events[index].value.is_finite() {
-                    return Err(EvalError::new("`invert` requires finite numeric values"));
-                }
-                index += 1;
-            }
-
-            let cluster = &mut events[start_index..index];
+    fn invert_events(events: Vec<Event<Self>>, count: u32) -> Result<Vec<Event<Self>>, EvalError> {
+        process_f64_events_in_clusters(events, "invert", |cluster| {
             invert_event_cluster(cluster, count)?;
-        }
-
-        Ok(events)
+            Ok(cluster.to_vec())
+        })
     }
 
     /// Drops the lowest `count` voices from overlapping chords down an octave.
     ///
     /// ⚡ Bolt: Applies the pitch drop in-place over mutable subslices of `events`, completely removing the `dropped` vector allocation step from the hot path.
-    fn drop_events(
-        mut events: Vec<Event<Self>>,
-        count: u32,
-    ) -> Result<Vec<Event<Self>>, EvalError> {
-        sort_events(&mut events);
-        let mut index = 0;
-
-        while index < events.len() {
-            let span = events[index].part.clone();
-            let start_index = index;
-            while index < events.len() && events[index].part == span {
-                if !events[index].value.is_finite() {
-                    return Err(EvalError::new("`drop` requires finite numeric values"));
-                }
-                index += 1;
-            }
-
-            let cluster = &mut events[start_index..index];
+    fn drop_events(events: Vec<Event<Self>>, count: u32) -> Result<Vec<Event<Self>>, EvalError> {
+        process_f64_events_in_clusters(events, "drop", |cluster| {
             drop_event_cluster(cluster, count)?;
-        }
-
-        Ok(events)
+            Ok(cluster.to_vec())
+        })
     }
 }
 
