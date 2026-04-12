@@ -23,6 +23,8 @@ pub struct PedalProgram {
 
 impl PedalProgram {
     #[must_use]
+    /// Creates a new pedal program command definition.
+
     pub fn new(source: impl Into<Box<str>>, explain: impl Into<Box<str>>) -> Self {
         Self {
             source: source.into(),
@@ -32,22 +34,30 @@ impl PedalProgram {
     }
 
     #[must_use]
+    /// Returns the raw source code representing this pedal program.
+
     pub fn source(&self) -> &str {
         &self.source
     }
 
     #[must_use]
+    /// Returns the human-readable explanation of the pedal program's execution plan.
+
     pub fn explain(&self) -> &str {
         &self.explain
     }
 
     #[must_use]
+    /// Attaches the compiled graph nodes to this program.
+
     pub fn with_graph(mut self, nodes: Vec<crate::pedal::PedalNode>, output: NodeRef) -> Self {
         self.graph = PedalGraphProgram::new(nodes, output);
         self
     }
 
     #[must_use]
+    /// Returns the compiled, immutable pedal graph program.
+
     pub const fn graph(&self) -> &PedalGraphProgram {
         &self.graph
     }
@@ -293,6 +303,8 @@ impl SampleTrigger {
     }
 
     #[must_use]
+    /// Returns the raw string token identifying this instrument.
+
     pub fn token(&self) -> &str {
         self.token.as_ref()
     }
@@ -436,6 +448,8 @@ impl SampleTrigger {
     }
 
     #[must_use]
+    /// Returns the attached pedal program configuration, if any.
+
     pub const fn pedal_program(&self) -> Option<&Arc<PedalProgram>> {
         self.pedal_program.as_ref()
     }

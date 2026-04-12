@@ -30,7 +30,9 @@ use crate::eval::EvalError;
 /// The coarse signal domain understood by the pedal DSL.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SignalKind {
+    /// High-rate audio signal.
     Audio,
+    /// Low-rate control signal (LFOs, envelopes).
     Control,
 }
 
@@ -79,6 +81,8 @@ pub struct PedalGraph {
 
 impl PedalGraph {
     #[must_use]
+    /// Creates a new source-level pedal graph wrapper.
+
     pub fn new(source: impl Into<String>) -> Self {
         Self {
             source: source.into(),
@@ -86,11 +90,15 @@ impl PedalGraph {
     }
 
     #[must_use]
+    /// Returns the raw source code of the pedal graph.
+
     pub fn source(&self) -> &str {
         &self.source
     }
 
     #[must_use]
+    /// Formats the source code for display.
+
     pub fn format_source(&self) -> String {
         self.source.clone()
     }
@@ -115,6 +123,8 @@ impl ValidatedPedalNode {
     }
 
     #[must_use]
+    /// Returns the overall signal kind resulting from this plan.
+
     pub const fn signal_kind(&self) -> &SignalKind {
         &self.signal_kind
     }
@@ -167,6 +177,8 @@ pub struct ValidatedPedalPlan {
 
 impl ValidatedPedalPlan {
     #[must_use]
+    /// Creates a new validated pedal plan.
+
     pub fn new(bindings: Vec<ValidatedPedalBinding>, result: ValidatedPedalNode) -> Self {
         Self {
             signal_kind: result.signal_kind().clone(),
@@ -176,21 +188,29 @@ impl ValidatedPedalPlan {
     }
 
     #[must_use]
+    /// Returns the overall signal kind resulting from this plan.
+
     pub const fn signal_kind(&self) -> &SignalKind {
         &self.signal_kind
     }
 
     #[must_use]
+    /// Returns the list of validated bindings.
+
     pub fn bindings(&self) -> &[ValidatedPedalBinding] {
         &self.bindings
     }
 
     #[must_use]
+    /// Returns the final result node.
+
     pub const fn result(&self) -> &ValidatedPedalNode {
         &self.result
     }
 
     #[must_use]
+    /// Returns a human-readable explanation of the plan.
+
     pub fn explain(&self) -> String {
         let mut lines = vec![format!("signal_kind={}", self.signal_kind)];
         for binding in &self.bindings {
@@ -219,26 +239,36 @@ pub struct PedalValue {
 
 impl PedalValue {
     #[must_use]
+    /// Creates a new pedal value from a graph and its validated plan.
+
     pub const fn new(graph: PedalGraph, plan: ValidatedPedalPlan) -> Self {
         Self { graph, plan }
     }
 
     #[must_use]
+    /// Returns the uncompiled source-level graph.
+
     pub const fn graph(&self) -> &PedalGraph {
         &self.graph
     }
 
     #[must_use]
+    /// Returns the validated execution plan.
+
     pub const fn plan(&self) -> &ValidatedPedalPlan {
         &self.plan
     }
 
     #[must_use]
+    /// Formats the source code for display.
+
     pub fn format_source(&self) -> String {
         self.graph.format_source()
     }
 
     #[must_use]
+    /// Returns a human-readable explanation of the plan.
+
     pub fn explain(&self) -> String {
         self.plan.explain()
     }

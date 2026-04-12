@@ -1,6 +1,6 @@
 //! Stateful runtime execution for virtual analog pedals.
 //!
-//! The `runtime` module takes an immutable [`PedalGraphProgram`](super::program::PedalGraphProgram)
+//! The `runtime` module takes an immutable `PedalGraphProgram`(super::program::PedalGraphProgram)
 //! and evaluates it over time. It maintains the necessary DSP state (like filter
 //! histories, delay buffers, and phase accumulators) required by the static program
 //! nodes.
@@ -31,9 +31,17 @@ use super::program::{
     ToneModel,
 };
 
+/// The number of audio samples processed before control-rate nodes are evaluated.
+///
+/// Sub-sampling control nodes reduces CPU usage by evaluating LFOs, envelopes,
+/// and other control signals at a slower rate.
 pub const PEDAL_CONTROL_INTERVAL_SAMPLES: usize = 16;
 
 #[derive(Debug)]
+/// A stateful instance of a pedal graph program.
+///
+/// Evaluates an immutable `PedalGraphProgram` over time, maintaining DSP state
+/// and handling control-rate sub-sampling and interpolation.
 pub struct PedalInstance {
     program: Arc<PedalProgram>,
     sample_rate_hz: f32,
@@ -48,6 +56,8 @@ pub struct PedalInstance {
 
 impl PedalInstance {
     #[must_use]
+    /// Creates a new stateful pedal instance for the given program and sample rate.
+
     pub fn new(program: Arc<PedalProgram>, sample_rate_hz: f32) -> Self {
         let sample_rate_hz = sanitize_sample_rate(sample_rate_hz);
         let graph = program.graph();
@@ -74,6 +84,7 @@ impl PedalInstance {
         }
     }
 
+    /// Resets the internal DSP state, clearing filter histories and delay buffers.
     pub fn reset(&mut self) {
         for (state, node) in self
             .node_states
@@ -89,11 +100,16 @@ impl PedalInstance {
     }
 
     #[must_use]
+    /// Returns the estimated number of frames the pedal will output after the input stops.
+    /// This is used for rendering tails in offline processing.
+
     pub const fn tail_frames(&self) -> u32 {
         self.tail_frames
     }
 
     #[must_use]
+    /// Processes a single audio sample through the pedal graph.
+
     pub fn process_sample(&mut self, input: f32) -> f32 {
         let graph = self.program.graph();
         if graph.is_bypass() {
@@ -187,6 +203,7 @@ impl PedalInstance {
         resolve(&self.node_values, graph.output(), input)
     }
 
+    /// Processes an entire buffer of audio samples, storing the result in `output`.
     pub fn process_buffer(&mut self, input: &[f32], output: &mut [f32]) {
         for (index, out) in output.iter_mut().enumerate() {
             let input_sample = input.get(index).copied().unwrap_or_default();

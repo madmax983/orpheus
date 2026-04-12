@@ -127,6 +127,8 @@ pub struct TypedModule {
 
 impl TypedModule {
     #[must_use]
+    /// Creates a new `TypedModule` containing the inferred top-level types.
+
     pub const fn new(bindings: BTreeMap<String, Type>) -> Self {
         Self { bindings }
     }

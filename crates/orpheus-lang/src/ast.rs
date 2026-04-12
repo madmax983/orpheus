@@ -19,7 +19,9 @@ pub enum Expr {
     Stream(Vec<Self>),
     /// A let-bound graph block used by the pedal DSL.
     Graph {
+        /// The list of local let-bindings.
         bindings: Vec<GraphBinding>,
+        /// The final returned expression.
         result: Box<Self>,
     },
     /// Pipe application created by `lhs |> rhs`.

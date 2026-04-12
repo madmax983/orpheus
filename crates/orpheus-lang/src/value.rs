@@ -376,6 +376,8 @@ impl Value {
     }
 
     #[must_use]
+    /// Returns a reference to the `PedalValue` if this is a `Value::Pedal`, otherwise `None`.
+
     pub const fn as_pedal(&self) -> Option<&PedalValue> {
         match self {
             Self::Pedal(pedal) => Some(pedal),
@@ -661,6 +663,8 @@ impl SampleEvent {
     }
 
     #[must_use]
+    /// Returns an optional reference to an attached DSP pedal program.
+
     pub const fn pedal_program(&self) -> Option<&Arc<orpheus_dsp::PedalProgram>> {
         self.pedal_program.as_ref()
     }
