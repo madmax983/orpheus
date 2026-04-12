@@ -16,3 +16,7 @@
 **Eliminate `Rational` clones in event fragment boundaries**
 **Learning:** Returning `Vec<Rational>` from `compute_event_fragment_boundaries` caused unnecessary `.clone()` calls simply to collect temporal bounds for sorting and deduplication. By refactoring `compute_event_fragment_boundaries` to store and return `Vec<&'a Rational>`, we avoid heap allocating owned clones for bounds that might immediately be discarded after deduplication or clipped during the `apply_event_fragments` window iteration.
 **Action:** When collecting structs out of references into temporary Vecs for sorting or filtering, store `&T` instead of `.clone()`ing into `T`. Only clone or convert to owned values at the final step where the owned struct is specifically required.
+
+**Optimize string concatenation and set insertions for unique patterns**
+**Learning:** Using `.into_iter().collect::<Vec<_>>().join(", ")` inside functions traversing patterns (like `sample_pattern_stats`) causes multiple hidden string and vector allocations per execution. Furthermore, collecting `&str` into a set often converts values eagerly via `.to_string()` even when not strictly required.
+**Action:** Replace `join` with a pre-allocated `String::with_capacity` and sequential `push_str` calls. Prefer keeping items as `&str` in temporary collections, significantly avoiding allocations in hot paths like pattern analyzers.

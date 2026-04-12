@@ -47,11 +47,23 @@ pub fn sample_pattern_stats(
     let total_events = events.len();
     let mut samples = BTreeSet::new();
     for event in &events {
-        samples.insert(event.value.sample().to_string());
+        samples.insert(event.value.sample());
     }
 
     let unique_count = samples.len();
-    let sample_list = samples.into_iter().collect::<Vec<_>>().join(", ");
+
+    // ⚡ Bolt: We avoid a `.into_iter().collect::<Vec<_>>().join(", ")` chain here,
+    // which would allocate an intermediate `Vec` and a `String` for each element.
+    // By using a pre-allocated `String` and `push_str`, we reduce heap allocations
+    // significantly on hot execution paths and when analyzing dense patterns.
+    let mut sample_list = String::with_capacity(unique_count * 8);
+    for (i, sample) in samples.into_iter().enumerate() {
+        if i > 0 {
+            sample_list.push_str(", ");
+        }
+        sample_list.push_str(sample);
+    }
+
     #[allow(clippy::cast_precision_loss)]
     let density = (total_events as f64) / (cycle_count as f64);
 
