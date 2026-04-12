@@ -390,3 +390,121 @@ fn next_word_boundary(input: &str, index: usize) -> usize {
     }
     cursor
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use orpheus_dsp::EngineHandle;
+
+    fn setup_state() -> SharedState {
+        SharedState::new(EngineHandle::stub())
+    }
+
+    #[test]
+    fn should_insert_characters_at_cursor() {
+        let mut state = setup_state();
+        state.insert_character('a');
+        state.insert_character('b');
+        assert_eq!(state.input, "ab");
+        assert_eq!(state.cursor_index, 2);
+    }
+
+    #[test]
+    fn should_backspace_characters() {
+        let mut state = setup_state();
+        state.insert_character('a');
+        state.insert_character('b');
+        state.backspace();
+        assert_eq!(state.input, "a");
+        assert_eq!(state.cursor_index, 1);
+
+        state.move_cursor_home();
+        state.backspace();
+        assert_eq!(state.input, "a");
+        assert_eq!(state.cursor_index, 0);
+    }
+
+    #[test]
+    fn should_delete_characters() {
+        let mut state = setup_state();
+        state.insert_character('a');
+        state.insert_character('b');
+        state.move_cursor_left();
+        state.delete();
+        assert_eq!(state.input, "a");
+        assert_eq!(state.cursor_index, 1);
+
+        state.delete();
+        assert_eq!(state.input, "a");
+    }
+
+    #[test]
+    fn should_move_cursor_left_and_right() {
+        let mut state = setup_state();
+        state.input = "test".to_string();
+        state.cursor_index = 4;
+
+        state.move_cursor_left();
+        assert_eq!(state.cursor_index, 3);
+
+        state.move_cursor_right();
+        assert_eq!(state.cursor_index, 4);
+
+        state.move_cursor_right();
+        assert_eq!(state.cursor_index, 4);
+
+        state.move_cursor_home();
+        state.move_cursor_left();
+        assert_eq!(state.cursor_index, 0);
+    }
+
+    #[test]
+    fn should_move_cursor_home_and_end() {
+        let mut state = setup_state();
+        state.input = "hello".to_string();
+        state.cursor_index = 2;
+
+        state.move_cursor_home();
+        assert_eq!(state.cursor_index, 0);
+
+        state.move_cursor_end();
+        assert_eq!(state.cursor_index, 5);
+    }
+
+    #[test]
+    fn should_kill_to_end_and_start() {
+        let mut state = setup_state();
+        state.input = "hello world".to_string();
+        state.cursor_index = 5;
+
+        state.kill_to_end();
+        assert_eq!(state.input, "hello");
+        assert_eq!(state.cursor_index, 5);
+
+        state.kill_to_start();
+        assert_eq!(state.input, "");
+        assert_eq!(state.cursor_index, 0);
+    }
+
+    #[test]
+    fn should_navigate_and_delete_words() {
+        let mut state = setup_state();
+        state.input = "hello beautiful world".to_string();
+        state.cursor_index = 0;
+
+        state.move_cursor_next_word();
+        assert_eq!(state.cursor_index, 5);
+
+        state.move_cursor_next_word();
+        assert_eq!(state.cursor_index, 15);
+
+        state.move_cursor_previous_word();
+        assert_eq!(state.cursor_index, 6);
+
+        state.move_cursor_end();
+        state.delete_previous_word();
+        assert_eq!(state.input, "hello beautiful ");
+        assert_eq!(state.cursor_index, 16);
+    }
+}

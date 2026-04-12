@@ -5,3 +5,6 @@
 ## 2024-05-30 - Add EvalError From Tests
 **Learning:** Evaluated code coverage and noticed missing tests for standard `From` conversions in `EvalError`. Added explicit unit tests to ensure different underlying error types (e.g. `TryFromIntError`, `ParseIntError`, `std::io::Error`, `std::fmt::Error`, `PatternError`) correctly map to `EvalError` string representations.
 **Action:** Identify untested `From` or error mapping paths and add basic roundtrip tests to make sure error display logic isn't silently broken.
+## 2024-06-13 - [Correctness of TUI State Navigation]
+**Learning:** Found that testing TUI state logic (`SharedState`) directly using its methods is an effective way to verify cursor movements and string manipulation behavior without rendering frames or instantiating a full terminal backend. Setting up mocks for `TransportView` using `ReplSession` handles UI style testing well.
+**Action:** When testing TUI or view layer components, decouple the underlying logic from terminal drawing code and test state mutations using unit tests with mock engines. Avoid writing tests based on trial-and-error values, and ensure comments strictly reflect business logic.

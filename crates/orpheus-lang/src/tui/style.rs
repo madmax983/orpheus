@@ -177,3 +177,52 @@ pub fn format_tempo_bpm(snapshot: &orpheus_dsp::TransportSnapshot) -> String {
         format!("{tempo_bpm:.1}")
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use orpheus_dsp::EngineHandle;
+    use crate::session::ReplSession;
+
+    #[test]
+    fn should_return_correct_transport_state() {
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+        let _ = session.eval_line(":play");
+        let view = session.transport_view();
+        assert_eq!(transport_state(&view), UiTransportState::Playing);
+        assert_eq!(format_transport_status(&view), "playing");
+    }
+
+    #[test]
+    fn should_return_correct_transport_status_style() {
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+        let _ = session.eval_line(":play");
+        let playing_view = session.transport_view();
+        let style = transport_status_style(&playing_view);
+        assert_eq!(style.fg, Some(Color::Green));
+    }
+
+    #[test]
+    fn should_determine_binding_legend_visibility() {
+        let session = ReplSession::with_engine(EngineHandle::stub());
+        let view_empty = session.transport_view();
+        assert!(!should_show_binding_legend(10, 5, &view_empty));
+    }
+
+    #[test]
+    fn should_format_cycle_position() {
+        let session = ReplSession::with_engine(EngineHandle::stub());
+        let view = session.transport_view();
+        let formatted = format_cycle_position(view.snapshot());
+        assert_eq!(formatted, "0.000");
+    }
+
+    #[test]
+    fn should_format_tempo_bpm() {
+        let session = ReplSession::with_engine(EngineHandle::stub());
+        let view = session.transport_view();
+        let formatted = format_tempo_bpm(view.snapshot());
+        assert_eq!(formatted, "120");
+    }
+}
