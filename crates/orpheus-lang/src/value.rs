@@ -376,6 +376,7 @@ impl Value {
         }
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn as_pedal(&self) -> Option<&PedalValue> {
         match self {
@@ -661,6 +662,7 @@ impl SampleEvent {
         self.slice_end
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn pedal_program(&self) -> Option<&Arc<orpheus_dsp::PedalProgram>> {
         self.pedal_program.as_ref()

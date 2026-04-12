@@ -29,8 +29,11 @@ use crate::eval::EvalError;
 
 /// The coarse signal domain understood by the pedal DSL.
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Resolution constraint for graph paths.
 pub enum SignalKind {
+    /// Runs per-sample.
     Audio,
+    /// Runs per-block.
     Control,
 }
 
@@ -78,6 +81,7 @@ pub struct PedalGraph {
 }
 
 impl PedalGraph {
+    #[doc(hidden)]
     #[must_use]
     pub fn new(source: impl Into<String>) -> Self {
         Self {
@@ -85,11 +89,13 @@ impl PedalGraph {
         }
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub fn source(&self) -> &str {
         &self.source
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub fn format_source(&self) -> String {
         self.source.clone()
@@ -114,6 +120,7 @@ impl ValidatedPedalNode {
         }
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn signal_kind(&self) -> &SignalKind {
         &self.signal_kind
@@ -166,6 +173,7 @@ pub struct ValidatedPedalPlan {
 }
 
 impl ValidatedPedalPlan {
+    #[doc(hidden)]
     #[must_use]
     pub fn new(bindings: Vec<ValidatedPedalBinding>, result: ValidatedPedalNode) -> Self {
         Self {
@@ -175,21 +183,25 @@ impl ValidatedPedalPlan {
         }
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn signal_kind(&self) -> &SignalKind {
         &self.signal_kind
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub fn bindings(&self) -> &[ValidatedPedalBinding] {
         &self.bindings
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn result(&self) -> &ValidatedPedalNode {
         &self.result
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub fn explain(&self) -> String {
         let mut lines = vec![format!("signal_kind={}", self.signal_kind)];
@@ -218,26 +230,41 @@ pub struct PedalValue {
 }
 
 impl PedalValue {
+    /// Instantiate a pedal value combining AST and plan.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use orpheus_lang::pedal::{PedalGraph, ValidatedPedalPlan, PedalValue, ValidatedPedalNode, SignalKind};
+    ///
+    /// let graph = PedalGraph::new("input |> output");
+    /// let plan = ValidatedPedalPlan::new(vec![], ValidatedPedalNode::Input(SignalKind::Audio));
+    /// let value = PedalValue::new(graph, plan);
+    /// ```
     #[must_use]
     pub const fn new(graph: PedalGraph, plan: ValidatedPedalPlan) -> Self {
         Self { graph, plan }
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn graph(&self) -> &PedalGraph {
         &self.graph
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn plan(&self) -> &ValidatedPedalPlan {
         &self.plan
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub fn format_source(&self) -> String {
         self.graph.format_source()
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub fn explain(&self) -> String {
         self.plan.explain()
