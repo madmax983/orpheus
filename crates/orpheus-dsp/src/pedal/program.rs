@@ -170,7 +170,7 @@ pub enum PedalStage {
     Filter {
         /// The audio signal to filter.
         input: NodeRef,
-        /// The passband mode (LowPass or HighPass).
+        /// The passband mode (`LowPass` or `HighPass`).
         kind: FilterMode,
         /// The control-rate cutoff frequency in Hertz.
         cutoff_hz: NodeRef,
@@ -211,7 +211,7 @@ pub enum PedalStage {
     },
 }
 
-/// The underlying operational logic of a PedalNode.
+/// The underlying operational logic of a `PedalNode`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PedalNodeKind {
     /// A static floating-point value.
