@@ -3,7 +3,8 @@
 //! This module is used by the REPL and TUI to visualize the scheduled
 //! events of a pattern in the terminal, showing time on the x-axis.
 use std::collections::BTreeMap;
-use std::fmt::Write;
+
+use comfy_table::{Table, presets::UTF8_BORDERS_ONLY};
 
 use crate::eval::{EvalError, render_span};
 use crate::value::SamplePatternValue;
@@ -21,6 +22,7 @@ use crate::value::SamplePatternValue;
 ///
 /// Returns [`EvalError`] if pattern querying fails or if `cycle_count` is 0.
 pub fn render_ascii_roll(
+    binding_name: &str,
     pattern: &SamplePatternValue,
     cycle_count: u64,
     steps_per_cycle: u32,
@@ -77,26 +79,22 @@ pub fn render_ascii_roll(
         }
     }
 
-    let max_label_len = lanes
-        .keys()
-        .map(std::string::String::len)
-        .max()
-        .unwrap_or(0);
-    let mut output = String::new();
+    let title = format!("Pattern Roll: {binding_name} ({cycle_count} cycles)");
+    let mut table = Table::new();
+    table.load_preset(UTF8_BORDERS_ONLY);
 
     for (sample, grid) in lanes {
-        write!(output, "{sample:>max_label_len$} | ")?;
-
+        let mut row_string = String::new();
         for (i, &c) in grid.iter().enumerate() {
             if i > 0 && i % (steps_per_cycle as usize) == 0 {
-                output.push('|');
+                row_string.push('│');
             }
-            output.push(c);
+            row_string.push(c);
         }
-        output.push('\n');
+        table.add_row(vec![sample, row_string]);
     }
 
-    Ok(output)
+    Ok(format!("{title}\n{table}"))
 }
 
 #[cfg(test)]
@@ -110,10 +108,13 @@ mod tests {
         let module = eval_module(source, ReplMode::Loose).unwrap();
         let pattern = module.get("pattern").unwrap().as_sample_pattern().unwrap();
 
-        let roll = render_ascii_roll(pattern, 1, 8).unwrap();
+        let roll = render_ascii_roll("pattern", pattern, 1, 8).unwrap();
 
-        assert!(roll.contains("bd | x---...."));
-        assert!(roll.contains("sn | ....x---"));
+        assert!(roll.contains("Pattern Roll: pattern (1 cycles)"));
+        assert!(roll.contains("bd"));
+        assert!(roll.contains("sn"));
+        assert!(roll.contains("x---...."));
+        assert!(roll.contains("....x---"));
     }
 
     #[test]
@@ -122,9 +123,12 @@ mod tests {
         let module = eval_module(source, ReplMode::Loose).unwrap();
         let pattern = module.get("pattern").unwrap().as_sample_pattern().unwrap();
 
-        let roll = render_ascii_roll(pattern, 1, 8).unwrap();
+        let roll = render_ascii_roll("pattern", pattern, 1, 8).unwrap();
 
-        assert!(roll.contains("bd | x-..x-.."));
-        assert!(roll.contains("sn | ..x-..x-"));
+        assert!(roll.contains("Pattern Roll: pattern (1 cycles)"));
+        assert!(roll.contains("bd"));
+        assert!(roll.contains("sn"));
+        assert!(roll.contains("x-..x-.."));
+        assert!(roll.contains("..x-..x-"));
     }
 }

@@ -1,3 +1,4 @@
+#![allow(clippy::format_push_string)]
 //! The `mixer` module manages the audio routing and effects state.
 //!
 //! This module acts as the bridge between the high-level pattern language
@@ -12,13 +13,15 @@
 //! - **Sends:** Connections that route a portion of a track's audio to a bus.
 
 use std::collections::BTreeMap;
-use std::fmt::Write;
 
+use comfy_table::{Table, presets::UTF8_BORDERS_ONLY};
+use crossterm::style::Stylize;
 use orpheus_dsp::{RoutingSnapshot, SampleTrigger, TrackSource};
 use orpheus_pattern::Event;
 use orpheus_pattern::Rational;
 
 use crate::Value;
+use crate::export::sample_trigger_from_event;
 
 /// The configuration state of the audio mixer.
 ///
@@ -260,11 +263,70 @@ impl MixerState {
     }
 
     pub(crate) fn render_summary(&self) -> String {
-        self.track_summary_lines()
-            .into_iter()
-            .chain(self.bus_summary_lines())
-            .collect::<Vec<_>>()
-            .join("\n")
+        let mut output = String::new();
+
+        let mut track_table = Table::new();
+        track_table.load_preset(UTF8_BORDERS_ONLY);
+        track_table.set_header(vec!["Track", "Binding", "Level", "Muted", "Sends"]);
+
+        if self.has_explicit_bound_tracks() {
+            for (track_name, track) in &self.tracks {
+                let binding = track.binding_name.as_deref().unwrap_or("<unbound>");
+                let sends = track
+                    .sends
+                    .iter()
+                    .map(|(bus, level)| format!("{bus} @ {level:.2}"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                track_table.add_row(vec![
+                    track_name.to_owned(),
+                    binding.to_owned(),
+                    format!("{:.2}", track.level),
+                    track.muted.to_string(),
+                    sends,
+                ]);
+            }
+        } else {
+            let binding = self
+                .compatibility_main_binding
+                .as_deref()
+                .unwrap_or("<unbound>");
+            track_table.add_row(vec![
+                "main (auto)".to_owned(),
+                binding.to_owned(),
+                "1.00".to_owned(),
+                "false".to_owned(),
+                String::new(),
+            ]);
+        }
+
+        let _ = std::fmt::Write::write_fmt(
+            &mut output,
+            format_args!("{}\n", "Mixer Tracks:".cyan().bold()),
+        );
+        output.push_str(&track_table.to_string());
+
+        if !self.buses.is_empty() {
+            let mut bus_table = Table::new();
+            bus_table.load_preset(UTF8_BORDERS_ONLY);
+            bus_table.set_header(vec!["Bus", "Effect"]);
+
+            for (bus_name, bus) in &self.buses {
+                let effect = bus
+                    .effect
+                    .as_ref()
+                    .map_or_else(|| "none".to_owned(), MixerBusEffect::summary);
+                bus_table.add_row(vec![bus_name.to_owned(), effect]);
+            }
+
+            let _ = std::fmt::Write::write_fmt(
+                &mut output,
+                format_args!("\n\n{}\n", "Mixer Buses:".cyan().bold()),
+            );
+            output.push_str(&bus_table.to_string());
+        }
+
+        output
     }
 
     pub(crate) fn compile_snapshot(
@@ -332,79 +394,6 @@ impl MixerState {
 
         builder.build().map_err(|error| error.to_string())
     }
-
-    pub(crate) fn track_summary_lines(&self) -> Vec<String> {
-        let mut lines = Vec::new();
-
-        if self.has_explicit_bound_tracks() {
-            lines.push("Tracks:".to_owned());
-        } else if let Some(binding_name) = &self.compatibility_main_binding {
-            lines.push(format!("main -> {binding_name} (auto)"));
-        } else {
-            lines.push("main -> <unbound> (auto)".to_owned());
-        }
-
-        let track_count = self.tracks.len();
-        for (i, (track_name, track)) in self.tracks.iter().enumerate() {
-            let is_last_track = i == track_count - 1;
-            let binding_name = track.binding_name.as_deref().unwrap_or("<unbound>");
-            let track_prefix = if is_last_track {
-                "└──"
-            } else {
-                "├──"
-            };
-            let mut line = format!("{track_prefix} {track_name} -> {binding_name}");
-            if track.muted {
-                line.push_str(" [muted]");
-            }
-            if (track.level - 1.0).abs() > f32::EPSILON {
-                write!(&mut line, " level {:.2}", track.level)
-                    .expect("writing to String should not fail");
-            }
-            lines.push(line);
-
-            let send_count = track.sends.len();
-            for (j, (bus_name, level)) in track.sends.iter().enumerate() {
-                let is_last_send = j == send_count - 1;
-                let track_indent = if is_last_track { "   " } else { "│  " };
-                let send_prefix = if is_last_send {
-                    "└──"
-                } else {
-                    "├──"
-                };
-                lines.push(format!(
-                    "{track_indent} {send_prefix} send {bus_name} @ {level:.2}"
-                ));
-            }
-        }
-
-        lines
-    }
-
-    pub(crate) fn bus_summary_lines(&self) -> Vec<String> {
-        let mut lines = Vec::new();
-        if !self.buses.is_empty() {
-            lines.push("Buses:".to_owned());
-        }
-
-        let bus_count = self.buses.len();
-        for (i, (bus_name, bus)) in self.buses.iter().enumerate() {
-            let is_last_bus = i == bus_count - 1;
-            let bus_prefix = if is_last_bus {
-                "└──"
-            } else {
-                "├──"
-            };
-            let mut line = format!("{bus_prefix} {bus_name} -> master");
-            if let Some(effect) = &bus.effect {
-                write!(&mut line, " {}", effect.summary())
-                    .expect("writing to String should not fail");
-            }
-            lines.push(line);
-        }
-
-        lines
-    }
 }
 
 impl MixerBusEffect {
@@ -467,23 +456,7 @@ fn sample_event_to_trigger_event(event: Event<crate::SampleEvent>) -> Event<Samp
     Event {
         whole: event.whole,
         part: event.part,
-        value: {
-            let mut trigger = SampleTrigger::named(event.value.sample())
-                .with_gain(event.value.gain())
-                .with_pan(event.value.pan())
-                .with_rate(event.value.rate())
-                .with_resonance(event.value.resonance())
-                .with_drive(event.value.drive())
-                .with_pulse_width(event.value.pulse_width())
-                .with_slice(event.value.slice_start(), event.value.slice_end());
-            if let Some(cutoff_hz) = event.value.hpf_cutoff_hz() {
-                trigger = trigger.with_hpf_cutoff_hz(cutoff_hz);
-            }
-            if let Some(cutoff_hz) = event.value.lpf_cutoff_hz() {
-                trigger = trigger.with_lpf_cutoff_hz(cutoff_hz);
-            }
-            trigger
-        },
+        value: sample_trigger_from_event(&event.value),
     }
 }
 

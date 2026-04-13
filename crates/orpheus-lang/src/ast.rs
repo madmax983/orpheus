@@ -1,3 +1,4 @@
+#![allow(clippy::match_same_arms)]
 //! Abstract syntax tree nodes for the Phase 1 Orpheus parser.
 
 /// A parsed Orpheus module.
@@ -16,26 +17,57 @@ pub enum Expr {
     Stack(Vec<Self>),
     /// Explicit-time event stream composition created by `stream(...)`.
     Stream(Vec<Self>),
+    /// A let-bound graph block used by the pedal DSL.
+    Graph {
+        bindings: Vec<GraphBinding>,
+        result: Box<Self>,
+    },
     /// Pipe application created by `lhs |> rhs`.
-    Pipe { lhs: Box<Self>, rhs: Box<Self> },
+    Pipe {
+        /// The left-hand side expression to be piped.
+        lhs: Box<Self>,
+        /// The right-hand side function receiving the pipe.
+        rhs: Box<Self>,
+    },
+    /// Binary arithmetic used by graph-local control expressions.
+    Binary {
+        /// The left-hand side operand.
+        lhs: Box<Self>,
+        /// The operator between the operands.
+        op: BinaryOp,
+        /// The right-hand side operand.
+        rhs: Box<Self>,
+    },
     /// Function application created by `callee(...)`.
-    Call { callee: Box<Self>, args: Vec<Self> },
+    Call {
+        /// The function being called.
+        callee: Box<Self>,
+        /// The arguments passed to the function.
+        args: Vec<Self>,
+    },
     /// Explicit placement created by `at(time, pattern)`.
     At {
+        /// The explicit time offset.
         start: Box<Self>,
+        /// The pattern to schedule at the offset.
         pattern: Box<Self>,
     },
     /// Meter annotation created by `meter(n, d, pattern)`.
     Meter {
+        /// The number of beats per measure.
         beats: Box<Self>,
+        /// The duration of a single beat.
         unit: Box<Self>,
+        /// The pattern to apply the meter to.
         pattern: Box<Self>,
     },
     /// Beat-relative numeric literal created by `beat(...)`.
     Beat(Box<Self>),
     /// One section in a song structure created by `section(pattern, cycles)`.
     Section {
+        /// The pattern representing the musical section.
         pattern: Box<Self>,
+        /// The duration of the section in cycles.
         cycles: Box<Self>,
     },
     /// Sequential section composition created by `seq_sections(...)`.
@@ -52,36 +84,81 @@ pub enum Expr {
     String(String),
 }
 
+/// A single let-bound signal inside a pedal graph.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphBinding {
+    /// The local signal name.
+    pub name: String,
+    /// The bound expression.
+    pub expr: Expr,
+}
+
+/// Arithmetic operators supported by the pedal graph surface.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BinaryOp {
+    /// Addition.
+    Add,
+    /// Multiplication.
+    Mul,
+    /// Assignment-like named argument syntax.
+    Assign,
+}
+
 impl Expr {
     fn references_ident(&self, target: &str) -> bool {
+        self.references_ident_with_shadow(target, false)
+    }
+
+    fn references_ident_with_shadow(&self, target: &str, shadowed: bool) -> bool {
         match self {
             Self::Seq(items)
             | Self::Stack(items)
             | Self::Stream(items)
             | Self::SeqSections(items)
-            | Self::Group(items) => items.iter().any(|item| item.references_ident(target)),
-            Self::Pipe { lhs, rhs } => lhs.references_ident(target) || rhs.references_ident(target),
+            | Self::Group(items) => items
+                .iter()
+                .any(|item| item.references_ident_with_shadow(target, shadowed)),
+            Self::Graph { bindings, result } => {
+                let mut shadowed = shadowed;
+                for binding in bindings {
+                    if binding.expr.references_ident_with_shadow(target, shadowed) {
+                        return true;
+                    }
+                    if binding.name == target {
+                        shadowed = true;
+                    }
+                }
+                result.references_ident_with_shadow(target, shadowed)
+            }
+            Self::Pipe { lhs, rhs } | Self::Binary { lhs, rhs, .. } => {
+                lhs.references_ident_with_shadow(target, shadowed)
+                    || rhs.references_ident_with_shadow(target, shadowed)
+            }
             Self::Call { callee, args } => {
-                callee.references_ident(target)
-                    || args.iter().any(|arg| arg.references_ident(target))
+                callee.references_ident_with_shadow(target, shadowed)
+                    || args
+                        .iter()
+                        .any(|arg| arg.references_ident_with_shadow(target, shadowed))
             }
             Self::At { start, pattern } => {
-                start.references_ident(target) || pattern.references_ident(target)
+                start.references_ident_with_shadow(target, shadowed)
+                    || pattern.references_ident_with_shadow(target, shadowed)
             }
             Self::Meter {
                 beats,
                 unit,
                 pattern,
             } => {
-                beats.references_ident(target)
-                    || unit.references_ident(target)
-                    || pattern.references_ident(target)
+                beats.references_ident_with_shadow(target, shadowed)
+                    || unit.references_ident_with_shadow(target, shadowed)
+                    || pattern.references_ident_with_shadow(target, shadowed)
             }
-            Self::Beat(value) => value.references_ident(target),
+            Self::Beat(value) => value.references_ident_with_shadow(target, shadowed),
             Self::Section { pattern, cycles } => {
-                pattern.references_ident(target) || cycles.references_ident(target)
+                pattern.references_ident_with_shadow(target, shadowed)
+                    || cycles.references_ident_with_shadow(target, shadowed)
             }
-            Self::Ident(name) => name == target,
+            Self::Ident(name) => !shadowed && name == target,
             Self::Rest | Self::Number(_) | Self::String(_) => false,
         }
     }
@@ -92,8 +169,11 @@ impl Expr {
 pub enum Stmt {
     /// A top-level binding statement.
     Binding {
+        /// The name of the identifier being bound.
         name: String,
+        /// Optional parameter names for user-defined functions.
         params: Vec<String>,
+        /// The right-hand side expression.
         expr: Expr,
     },
 }
@@ -238,5 +318,26 @@ mod tests {
         let params = vec!["foo".to_string()];
         let expr = Expr::Ident("foo".to_string());
         assert!(!binding_expr_self_references("foo", &params, &expr));
+    }
+
+    #[test]
+    fn test_binding_expr_self_references_with_graph_shadowing() {
+        let shadowing_result = Expr::Graph {
+            bindings: vec![GraphBinding {
+                name: "foo".to_string(),
+                expr: Expr::Ident("bar".to_string()),
+            }],
+            result: Box::new(Expr::Ident("foo".to_string())),
+        };
+        assert!(!binding_expr_self_references("foo", &[], &shadowing_result));
+
+        let shadowing_rhs = Expr::Graph {
+            bindings: vec![GraphBinding {
+                name: "foo".to_string(),
+                expr: Expr::Ident("foo".to_string()),
+            }],
+            result: Box::new(Expr::Number(0.0)),
+        };
+        assert!(binding_expr_self_references("foo", &[], &shadowing_rhs));
     }
 }

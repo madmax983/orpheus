@@ -6,7 +6,7 @@
     clippy::cast_sign_loss
 )]
 
-use orpheus_dsp::graph::{
+use orpheus_dsp::{
     Node, Processor, constant, delay_line, feedback, gain_node, ladder_filter, merge, noise, par,
     passthrough, saw, seq, sine, soft_sat, split, sum,
 };

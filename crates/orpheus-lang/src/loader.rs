@@ -33,6 +33,14 @@ pub struct StrictLoadedFile {
 
 /// Loads a strict `.ode` file, resolves its imports, and infers its bindings.
 ///
+/// # Examples
+///
+/// ```no_run
+/// use orpheus_lang::load_file_strict;
+///
+/// let typed_module = load_file_strict("main.ode").unwrap();
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`LoadError`] when file I/O fails, an import directive is malformed,
@@ -60,7 +68,7 @@ pub fn load_file_strict(path: impl AsRef<Path>) -> Result<TypedModule, LoadError
 /// # Examples
 ///
 /// ```no_run
-/// use orpheus_lang::loader::load_file_runtime_strict;
+/// use orpheus_lang::load_file_runtime_strict;
 ///
 /// // This will typecheck and load `main.ode` and all its dependencies.
 /// let module = load_file_runtime_strict("main.ode").unwrap();

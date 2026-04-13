@@ -34,6 +34,8 @@ pub enum Type {
     Pattern(Box<Self>),
     /// A named audio file from a loaded sample bank (e.g., `"kick"`).
     Sample,
+    /// A behavior-first pedal graph value.
+    Pedal,
     /// A discrete musical pitch or frequency representation.
     Note,
     /// A generic numeric value, primarily used for DSP parameters like gain or filter cutoff.
@@ -58,16 +60,26 @@ pub enum Type {
 }
 
 impl Type {
+    /// Constructs a `Pattern` type wrapping the given inner type.
+    ///
+    /// This is a convenience helper to avoid manually allocating `Box::new`.
     #[must_use]
     pub fn pattern(inner: Self) -> Self {
         Self::Pattern(Box::new(inner))
     }
 
+    /// Constructs a `Function` type with the given arguments and return type.
+    ///
+    /// This is a convenience helper to avoid manually allocating `Box::new`.
     #[must_use]
     pub fn function(args: Vec<Self>, ret: Self) -> Self {
         Self::Function(args, Box::new(ret))
     }
 
+    /// Constructs a sequence of curried `Function` types.
+    ///
+    /// Transforms `(A, B) -> C` into `A -> (B -> C)`. This is necessary for
+    /// Hindley-Milner type inference which strictly evaluates unary functions.
     #[must_use]
     pub fn curried(args: Vec<Self>, ret: Self) -> Self {
         args.into_iter()
@@ -81,6 +93,7 @@ impl Display for Type {
         match self {
             Self::Pattern(inner) => write!(formatter, "Pattern<{inner}>"),
             Self::Sample => formatter.write_str("Sample"),
+            Self::Pedal => formatter.write_str("Pedal"),
             Self::Note => formatter.write_str("Note"),
             Self::Number => formatter.write_str("Number"),
             Self::Duration => formatter.write_str("Duration"),
@@ -113,16 +126,36 @@ pub struct TypedModule {
 }
 
 impl TypedModule {
-    pub(crate) const fn new(bindings: BTreeMap<String, Type>) -> Self {
+    #[must_use]
+    pub const fn new(bindings: BTreeMap<String, Type>) -> Self {
         Self { bindings }
     }
 
+    /// Checks whether a specific variable name was inferred during type checking.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::collections::BTreeMap;
+    /// use orpheus_lang::{Type, TypedModule};
+    ///
+    /// let mut bindings = BTreeMap::new();
+    /// bindings.insert("x".to_string(), Type::Number);
+    /// let module = TypedModule::new(bindings);
+    ///
+    /// assert!(module.contains_key("x"));
+    /// assert!(!module.contains_key("y"));
+    /// ```
     #[must_use]
     pub fn contains_key(&self, name: &str) -> bool {
         self.bindings.contains_key(name)
     }
 
-    /// Returns the inferred type for a named binding.
+    /// Extracts the inferred Hindley-Milner type signature for a bound variable or function.
+    ///
+    /// Once an Orpheus expression is parsed and bound to a name in the environment, the type
+    /// inference engine calculates its principal type. This method allows the REPL or TUI to
+    /// display that type back to the user (e.g. telling them that `fast` is `Number -> Pattern -> Pattern`).
     ///
     /// # Panics
     ///
@@ -142,6 +175,7 @@ mod tests {
     #[test]
     fn type_display_formats_correctly() {
         assert_eq!(Type::Sample.to_string(), "Sample");
+        assert_eq!(Type::Pedal.to_string(), "Pedal");
         assert_eq!(Type::Note.to_string(), "Note");
         assert_eq!(Type::Number.to_string(), "Number");
         assert_eq!(Type::Duration.to_string(), "Duration");

@@ -1,7 +1,20 @@
+//! Hindley-Milner type inference for the Orpheus language.
+//!
+//! This module provides the [`infer_module`] and [`infer_into_bindings`] functions,
+//! which analyze parsed Abstract Syntax Trees ([`crate::ast::Module`]) and assign
+//! concrete types to all top-level bindings.
+//!
+//! # Loose vs Strict Mode
+//! The inference engine respects the active [`ReplMode`].
+//! - In **Strict** mode, types must unify exactly, catching logic errors early in `.ode` files.
+//! - In **Loose** mode (typical for the REPL), the engine permits implicit coercions
+//!   (e.g., automatically lifting a single `Number` into a `Pattern<Number>`) to allow
+//!   for rapid live-coding iteration without excessive ceremony.
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ReplMode;
-use crate::ast::{Expr, Module, Stmt, binding_expr_self_references};
+use crate::ast::{BinaryOp, Expr, Module, Stmt, binding_expr_self_references};
 use crate::diagnostics::{ParseError, TypeError};
 use crate::parser::parse_module;
 use crate::pitch::parse_named_pitch_literal;
@@ -192,6 +205,47 @@ impl Inferencer {
             )),
             Expr::Number(_) => Ok(Type::pattern(Type::Number)),
             Expr::String(_) => Ok(Type::String),
+            Expr::Graph { .. } => Ok(Type::Pedal),
+            Expr::Binary { lhs, op, rhs } => self.infer_binary_expr(lhs, *op, rhs),
+        }
+    }
+
+    fn infer_binary_expr(
+        &mut self,
+        lhs: &Expr,
+        op: BinaryOp,
+        rhs: &Expr,
+    ) -> Result<Type, TypeError> {
+        match op {
+            BinaryOp::Add | BinaryOp::Mul => {
+                self.require_numeric_binary_operand(lhs)?;
+                self.require_numeric_binary_operand(rhs)?;
+                Ok(Type::pattern(Type::Number))
+            }
+            BinaryOp::Assign => {
+                if !matches!(lhs, Expr::Ident(_)) {
+                    return Err(TypeError::new(
+                        "named arguments require an identifier on the left-hand side",
+                    ));
+                }
+                self.infer_expr(rhs)
+            }
+        }
+    }
+
+    fn require_numeric_binary_operand(&mut self, expr: &Expr) -> Result<(), TypeError> {
+        let ty = self.infer_expr(expr)?;
+        let resolved = self.resolve(ty.clone());
+
+        match resolved {
+            Type::Pattern(inner) if inner.as_ref() == &Type::Number => Ok(()),
+            Type::Var(_) => {
+                self.unify(ty, Type::pattern(Type::Number))?;
+                Ok(())
+            }
+            other => Err(TypeError::new(format!(
+                "type mismatch: expected Number, found {other}"
+            ))),
         }
     }
 
@@ -314,6 +368,7 @@ impl Inferencer {
                 self.unify(*left_ret, *right_ret)
             }
             (Type::Sample, Type::Sample)
+            | (Type::Pedal, Type::Pedal)
             | (Type::Note, Type::Note)
             | (Type::Number, Type::Number)
             | (Type::Duration, Type::Duration)
@@ -354,6 +409,7 @@ impl Inferencer {
                 args.iter().any(|arg| self.occurs(needle, arg)) || self.occurs(needle, &ret)
             }
             Type::Sample
+            | Type::Pedal
             | Type::Note
             | Type::Number
             | Type::Duration
@@ -377,6 +433,7 @@ impl Inferencer {
                 self.resolve(*ret),
             ),
             Type::Sample => Type::Sample,
+            Type::Pedal => Type::Pedal,
             Type::Note => Type::Note,
             Type::Number => Type::Number,
             Type::Duration => Type::Duration,
@@ -428,6 +485,7 @@ fn substitute_scheme_vars(ty: &Type, replacements: &BTreeMap<TypeVarId, Type>) -
         ),
         Type::Var(var) => replacements.get(var).cloned().unwrap_or(Type::Var(*var)),
         Type::Sample => Type::Sample,
+        Type::Pedal => Type::Pedal,
         Type::Note => Type::Note,
         Type::Number => Type::Number,
         Type::Duration => Type::Duration,
@@ -451,6 +509,7 @@ fn free_type_vars(ty: &Type) -> BTreeSet<TypeVarId> {
         }
         Type::Var(var) => BTreeSet::from([*var]),
         Type::Sample
+        | Type::Pedal
         | Type::Note
         | Type::Number
         | Type::Duration

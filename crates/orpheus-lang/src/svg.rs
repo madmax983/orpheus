@@ -17,6 +17,18 @@ use crate::value::{NumberPatternValue, SamplePatternValue};
 ///
 /// This function does not panic.
 ///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, export_sample_pattern_to_svg};
+///
+/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+///
+/// let path = std::env::temp_dir().join("piano_roll.svg");
+/// export_sample_pattern_to_svg(pattern, &path, 2).unwrap();
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`EvalError`] if pattern querying fails or if the file cannot be written.
@@ -112,6 +124,18 @@ pub fn export_sample_pattern_to_svg(
 /// # Panics
 ///
 /// This function does not panic.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, export_number_pattern_to_svg};
+///
+/// let env = eval_module("x = 1 2 3", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
+///
+/// let path = std::env::temp_dir().join("automation.svg");
+/// export_number_pattern_to_svg(pattern, &path, 2).unwrap();
+/// ```
 ///
 /// # Errors
 ///

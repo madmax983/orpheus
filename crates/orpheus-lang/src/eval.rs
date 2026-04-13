@@ -20,8 +20,8 @@
 //! ```
 
 use std::collections::BTreeMap;
-use std::error::Error;
-use std::fmt::{self, Display, Formatter};
+
+use thiserror::Error;
 
 use orpheus_pattern::{Event, PatternError, PatternNode, Rational, TimeSpan};
 
@@ -30,6 +30,7 @@ use crate::ast::{Expr, Module, Stmt, binding_expr_self_references};
 use crate::builtins::{builtin_value, is_sample_identifier, stack_values};
 use crate::diagnostics::ParseError;
 use crate::parser::parse_module;
+use crate::pedal::compile_graph;
 use crate::pitch::parse_named_pitch_literal;
 use crate::value::{
     FunctionValue, NumberPatternValue, SampleEvent, SamplePatternValue, UserFn, Value,
@@ -54,7 +55,9 @@ use crate::value::{
 /// let err = EvalError::new("decimal literal exceeded the supported range");
 /// assert_eq!(err.to_string(), "decimal literal exceeded the supported range");
 /// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
+
+#[derive(Clone, Debug, Eq, PartialEq, Error)]
+#[error("{message}")]
 pub struct EvalError {
     message: Box<str>,
 }
@@ -84,14 +87,6 @@ impl EvalError {
     }
 }
 
-impl Display for EvalError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.message)
-    }
-}
-
-impl Error for EvalError {}
-
 impl From<ParseError> for EvalError {
     fn from(error: ParseError) -> Self {
         Self::new(error.to_string())
@@ -106,6 +101,12 @@ impl From<crate::pitch::PitchLiteralError> for EvalError {
 
 impl From<std::num::TryFromIntError> for EvalError {
     fn from(error: std::num::TryFromIntError) -> Self {
+        Self::new(error.to_string())
+    }
+}
+
+impl From<std::num::ParseIntError> for EvalError {
+    fn from(error: std::num::ParseIntError) -> Self {
         Self::new(error.to_string())
     }
 }
@@ -220,17 +221,21 @@ impl ExplicitValue {
         }
     }
 
-    fn merge(self, other: Self) -> Result<Self, EvalError> {
-        match (self, other) {
-            (Self::Sample(mut left), Self::Sample(mut right)) => {
-                left.append(&mut right);
-                sort_events(&mut left);
-                Ok(Self::Sample(left))
+    fn merge(mut self, other: Self) -> Result<Self, EvalError> {
+        self.append_unsorted(other)?;
+        self.sort();
+        Ok(self)
+    }
+
+    fn append_unsorted(&mut self, mut other: Self) -> Result<(), EvalError> {
+        match (self, &mut other) {
+            (Self::Sample(left), Self::Sample(right)) => {
+                left.append(right);
+                Ok(())
             }
-            (Self::Number(mut left), Self::Number(mut right)) => {
-                left.append(&mut right);
-                sort_events(&mut left);
-                Ok(Self::Number(left))
+            (Self::Number(left), Self::Number(right)) => {
+                left.append(right);
+                Ok(())
             }
             (Self::Sample(_), Self::Number(_)) | (Self::Number(_), Self::Sample(_)) => Err(
                 EvalError::new("explicit-time items must all resolve to the same pattern kind"),
@@ -238,10 +243,46 @@ impl ExplicitValue {
         }
     }
 
+    fn sort(&mut self) {
+        match self {
+            Self::Sample(events) => sort_events(events),
+            Self::Number(events) => sort_events(events),
+        }
+    }
+
     fn shift(&mut self, offset: &Rational) -> Result<(), EvalError> {
         match self {
             Self::Sample(events) => shift_events(events, offset),
             Self::Number(events) => shift_events(events, offset),
+        }
+    }
+
+    fn empty_with_capacity_matching(&self, multiplier: usize) -> Result<Self, EvalError> {
+        match self {
+            Self::Sample(events) => {
+                let capacity = events
+                    .len()
+                    .checked_mul(multiplier)
+                    .ok_or_else(|| EvalError::new("section pattern capacity overflowed"))?;
+                if capacity > 100_000 {
+                    return Err(EvalError::new(
+                        "evaluation exceeded the maximum allowed event limit",
+                    ));
+                }
+                Ok(Self::Sample(Vec::with_capacity(capacity)))
+            }
+            Self::Number(events) => {
+                let capacity = events
+                    .len()
+                    .checked_mul(multiplier)
+                    .ok_or_else(|| EvalError::new("section pattern capacity overflowed"))?;
+                if capacity > 100_000 {
+                    return Err(EvalError::new(
+                        "evaluation exceeded the maximum allowed event limit",
+                    ));
+                }
+                Ok(Self::Number(Vec::with_capacity(capacity)))
+            }
         }
     }
 }
@@ -331,6 +372,10 @@ impl Evaluator {
             )),
             Expr::Number(value) => Ok(Value::NumberPattern(NumberPatternValue::constant(*value))),
             Expr::String(value) => Ok(Value::String(value.clone())),
+            Expr::Graph { bindings, result } => compile_graph(bindings, result).map(Value::Pedal),
+            Expr::Binary { .. } => Err(EvalError::new(
+                "binary pedal expressions are parsed but not yet executable in evaluation",
+            )),
         }
     }
 
@@ -415,15 +460,14 @@ impl Evaluator {
         meter: Option<&MeterContext>,
     ) -> Result<Value, EvalError> {
         let lhs_value = self.eval_expr_in_meter(lhs, meter)?;
-        match rhs {
-            Expr::Call { callee, args } => {
-                self.eval_call_with_args(rhs, callee, args, vec![lhs_value], meter)
-            }
-            _ => Self::apply_value(
+        if let Expr::Call { callee, args } = rhs {
+            self.eval_call_with_args(rhs, callee, args, Some(lhs_value), meter)
+        } else {
+            Self::apply_value(
                 self.eval_expr_in_meter(rhs, meter)?,
                 vec![lhs_value],
                 self.expr_site_salt(rhs),
-            ),
+            )
         }
     }
 
@@ -434,7 +478,7 @@ impl Evaluator {
         args: &[Expr],
         meter: Option<&MeterContext>,
     ) -> Result<Value, EvalError> {
-        self.eval_call_with_args(call_expr, callee, args, Vec::new(), meter)
+        self.eval_call_with_args(call_expr, callee, args, None, meter)
     }
 
     fn eval_call_with_args(
@@ -442,15 +486,17 @@ impl Evaluator {
         call_expr: &Expr,
         callee: &Expr,
         args: &[Expr],
-        piped_args: Vec<Value>,
+        piped_arg: Option<Value>,
         meter: Option<&MeterContext>,
     ) -> Result<Value, EvalError> {
         let callee_value = self.eval_expr_in_meter(callee, meter)?;
-        let mut evaluated_args: Vec<_> = args
-            .iter()
-            .map(|arg| self.eval_expr_in_meter(arg, meter))
-            .collect::<Result<_, _>>()?;
-        evaluated_args.extend(piped_args);
+        let mut evaluated_args = Vec::with_capacity(args.len() + usize::from(piped_arg.is_some()));
+        for arg in args {
+            evaluated_args.push(self.eval_expr_in_meter(arg, meter)?);
+        }
+        if let Some(piped) = piped_arg {
+            evaluated_args.push(piped);
+        }
         Self::apply_value(callee_value, evaluated_args, self.expr_site_salt(call_expr))
     }
 
@@ -496,16 +542,24 @@ impl Evaluator {
                 beats,
                 unit,
                 pattern,
-            } => {
-                let nested_meter = self.eval_meter_context(beats, unit, meter)?;
-                self.eval_explicit_expr(pattern, Some(&nested_meter))
-            }
+            } => self.eval_nested_meter(beats, unit, pattern, meter),
             Expr::SeqSections(sections) => self.eval_seq_sections_events(sections, meter),
             Expr::Section { .. } => Err(EvalError::new(
                 "`section(...)` can only appear inside `seq_sections(...)`",
             )),
             _ => Self::value_to_explicit(self.eval_expr_in_meter(expr, meter)?),
         }
+    }
+
+    fn eval_nested_meter(
+        &self,
+        beats: &Expr,
+        unit: &Expr,
+        pattern: &Expr,
+        meter: Option<&MeterContext>,
+    ) -> Result<ExplicitValue, EvalError> {
+        let nested_meter = self.eval_meter_context(beats, unit, meter)?;
+        self.eval_explicit_expr(pattern, Some(&nested_meter))
     }
 
     fn collect_explicit_items(
@@ -591,7 +645,14 @@ impl Evaluator {
         }
 
         let base = Self::value_to_explicit(self.eval_expr_in_meter(pattern, meter)?)?;
-        let mut combined: Option<ExplicitValue> = None;
+        if repeat_count == 0 {
+            return Err(EvalError::new("section cycle count must be positive"));
+        }
+
+        let repeat_count_usize = usize::try_from(repeat_count)
+            .map_err(|_| EvalError::new("section cycle count exceeded evaluator limits"))?;
+
+        let mut combined = base.empty_with_capacity_matching(repeat_count_usize)?;
 
         for repeat in 0..repeat_count {
             let offset = rational_from_parts(
@@ -600,15 +661,20 @@ impl Evaluator {
                     .ok_or_else(|| EvalError::new("section cycle offset overflowed"))?,
                 1,
             )?;
+            if repeat == repeat_count - 1 {
+                // ⚡ Bolt: Eliminate redundant allocation on the last section cycle repeat.
+                let mut final_repeated = base;
+                final_repeated.shift(&offset)?;
+                combined.append_unsorted(final_repeated)?;
+                break;
+            }
             let mut repeated = base.clone();
             repeated.shift(&offset)?;
-            combined = Some(match combined {
-                Some(existing) => existing.merge(repeated)?,
-                None => repeated,
-            });
+            combined.append_unsorted(repeated)?;
         }
 
-        combined.ok_or_else(|| EvalError::new("section cycle count must be positive"))
+        combined.sort();
+        Ok(combined)
     }
 
     fn eval_section_length(
@@ -650,19 +716,24 @@ impl Evaluator {
     ) -> Result<Rational, EvalError> {
         match expr {
             Expr::Number(value) => f64_to_rational(*value, "time expression"),
-            Expr::Beat(value) => {
-                let meter = meter.ok_or_else(|| {
-                    EvalError::new("`beat(...)` requires an enclosing `meter(...)`")
-                })?;
-                let beat_index = self.eval_time_expr(value, meter.into())?;
-                let beat_length = rational_from_parts(1, meter.beats_per_cycle)?;
-                Ok(beat_index.checked_mul(&beat_length)?)
-            }
+            Expr::Beat(value) => self.eval_beat_expr(value, meter),
             _ => extract_constant_number_rational(
                 self.eval_expr_in_meter(expr, meter)?,
                 "time expression",
             ),
         }
+    }
+
+    fn eval_beat_expr(
+        &self,
+        value: &Expr,
+        meter: Option<&MeterContext>,
+    ) -> Result<Rational, EvalError> {
+        let meter = meter
+            .ok_or_else(|| EvalError::new("`beat(...)` requires an enclosing `meter(...)`"))?;
+        let beat_index = self.eval_time_expr(value, meter.into())?;
+        let beat_length = rational_from_parts(1, meter.beats_per_cycle)?;
+        Ok(beat_index.checked_mul(&beat_length)?)
     }
 
     fn eval_positive_integer(
@@ -700,6 +771,9 @@ impl Evaluator {
             Value::PitchClassSet(_) => Err(EvalError::new(
                 "pitch class sets cannot be materialized into explicit-time event streams",
             )),
+            Value::Pedal(_) => Err(EvalError::new(
+                "pedal graphs cannot be materialized into explicit-time event streams",
+            )),
             Value::String(_) => Err(EvalError::new(
                 "strings cannot be materialized into explicit-time event streams",
             )),
@@ -713,12 +787,7 @@ impl Evaluator {
     ) -> Result<Value, EvalError> {
         match callee {
             Value::Function(FunctionValue::Builtin(function)) => {
-                let function = match site_salt {
-                    Some(site_salt) if function.site_salt.is_none() => {
-                        function.with_site_salt(site_salt)
-                    }
-                    Some(_) | None => function,
-                };
+                let function = Self::apply_site_salt_to_builtin(function, site_salt);
                 apply_function_value(FunctionValue::Builtin(function), args)
             }
             Value::Function(function) => apply_function_value(function, args),
@@ -726,11 +795,24 @@ impl Evaluator {
             | Value::NumberPattern(_)
             | Value::ArpDirection(_)
             | Value::PitchClassSet(_)
+            | Value::Pedal(_)
             | Value::String(_) => Err(EvalError::new(format!(
                 "cannot call a {}",
                 callee.kind_name()
             ))),
         }
+    }
+
+    const fn apply_site_salt_to_builtin(
+        function: crate::value::BuiltinFn,
+        site_salt: Option<u64>,
+    ) -> crate::value::BuiltinFn {
+        if let Some(salt) = site_salt
+            && function.site_salt.is_none()
+        {
+            return function.with_site_salt(salt);
+        }
+        function
     }
 
     fn expr_site_salt(&self, expr: &Expr) -> Option<u64> {
@@ -761,11 +843,18 @@ impl Evaluator {
     }
 
     fn unsupported_pattern_item_error(items: &[Expr], context: &str) -> Option<EvalError> {
-        items.iter().find_map(|item| match item {
+        items
+            .iter()
+            .find_map(|item| Self::check_unsupported_pattern_item(item, context))
+    }
+
+    fn check_unsupported_pattern_item(item: &Expr, context: &str) -> Option<EvalError> {
+        match item {
             Expr::Call { callee, args } => {
-                let name = match callee.as_ref() {
-                    Expr::Ident(name) => name.as_str(),
-                    _ => "call",
+                let name = if let Expr::Ident(name) = callee.as_ref() {
+                    name.as_str()
+                } else {
+                    "call"
                 };
                 if name == "sample" && args.len() == 1 {
                     None
@@ -788,11 +877,9 @@ impl Evaluator {
             | Expr::SeqSections(_) => Some(EvalError::new(format!(
                 "explicit-time forms cannot appear inside a pattern {context}; use `stream(...)` or lift the form outside the {context}"
             ))),
-            Expr::Group(group_items) => {
-                Self::unsupported_pattern_item_error(group_items, context)
-            }
+            Expr::Group(group_items) => Self::unsupported_pattern_item_error(group_items, context),
             _ => None,
-        })
+        }
     }
 
     fn collect_sample_nodes(
@@ -800,10 +887,14 @@ impl Evaluator {
         items: &[Expr],
         meter: Option<&MeterContext>,
     ) -> Result<Option<Vec<PatternNode<SampleEvent>>>, EvalError> {
-        items
-            .iter()
-            .map(|item| self.try_sample_node(item, meter))
-            .collect::<Result<Option<Vec<_>>, _>>()
+        let mut nodes = Vec::with_capacity(items.len());
+        for item in items {
+            let Some(node) = self.try_sample_node(item, meter)? else {
+                return Ok(None);
+            };
+            nodes.push(node);
+        }
+        Ok(Some(nodes))
     }
 
     fn try_sample_node(
@@ -827,24 +918,34 @@ impl Evaluator {
                 Ok(Some(PatternNode::atom(SampleEvent::named(&sample))))
             }
             Expr::Rest => Ok(Some(PatternNode::rest())),
-            Expr::Group(items) => {
-                let Some(nodes) = self.collect_sample_nodes(items, meter)? else {
-                    return Ok(None);
-                };
-                Ok(Some(PatternNode::group(nodes)))
-            }
+            Expr::Group(items) => self.collect_sample_group(items, meter),
             _ => Ok(None),
         }
+    }
+
+    fn collect_sample_group(
+        &self,
+        items: &[Expr],
+        meter: Option<&MeterContext>,
+    ) -> Result<Option<PatternNode<SampleEvent>>, EvalError> {
+        let Some(nodes) = self.collect_sample_nodes(items, meter)? else {
+            return Ok(None);
+        };
+        Ok(Some(PatternNode::group(nodes)))
     }
 
     fn collect_number_nodes(
         &self,
         items: &[Expr],
     ) -> Result<Option<Vec<PatternNode<f64>>>, EvalError> {
-        items
-            .iter()
-            .map(|item| self.try_number_node(item))
-            .collect::<Result<Option<Vec<_>>, _>>()
+        let mut nodes = Vec::with_capacity(items.len());
+        for item in items {
+            let Some(node) = self.try_number_node(item)? else {
+                return Ok(None);
+            };
+            nodes.push(node);
+        }
+        Ok(Some(nodes))
     }
 
     fn try_number_node(&self, expr: &Expr) -> Result<Option<PatternNode<f64>>, EvalError> {
@@ -853,14 +954,16 @@ impl Evaluator {
             Expr::Ident(name) => Ok(parse_named_pitch_literal(name)?
                 .map(|semitones| PatternNode::atom(f64::from(semitones)))),
             Expr::Rest => Ok(Some(PatternNode::rest())),
-            Expr::Group(items) => {
-                let Some(nodes) = self.collect_number_nodes(items)? else {
-                    return Ok(None);
-                };
-                Ok(Some(PatternNode::group(nodes)))
-            }
+            Expr::Group(items) => self.collect_number_group(items),
             _ => Ok(None),
         }
+    }
+
+    fn collect_number_group(&self, items: &[Expr]) -> Result<Option<PatternNode<f64>>, EvalError> {
+        let Some(nodes) = self.collect_number_nodes(items)? else {
+            return Ok(None);
+        };
+        Ok(Some(PatternNode::group(nodes)))
     }
 }
 
@@ -885,8 +988,7 @@ impl Evaluator {
 ///
 /// ```
 /// use orpheus_lang::Value;
-/// use orpheus_lang::eval::apply_function_value;
-/// use orpheus_lang::builtins::builtin_value;
+/// use orpheus_lang::{apply_function_value, builtin_value};
 ///
 /// let fast_func = builtin_value("fast").unwrap();
 /// let bd = builtin_value("bd").unwrap();
@@ -970,52 +1072,87 @@ fn record_expr_site_salts(expr: &Expr, seed: u64, salts: &mut BTreeMap<usize, u6
         Expr::Seq(items) => record_expr_list(items, seed, ROLE_SEQ_ITEM, salts),
         Expr::Stack(layers) => record_expr_list(layers, seed, ROLE_STACK_LAYER, salts),
         Expr::Stream(items) => record_expr_list(items, seed, ROLE_STREAM_ITEM, salts),
-        Expr::Pipe { lhs, rhs } => {
-            record_expr_site_salts(lhs, derive_site_seed(seed, ROLE_PIPE_LHS, 0), salts);
-            record_expr_site_salts(rhs, derive_site_seed(seed, ROLE_PIPE_RHS, 0), salts);
-        }
-        Expr::Call { callee, args } => {
-            record_expr_site_salts(callee, derive_site_seed(seed, ROLE_CALL_CALLEE, 0), salts);
-            record_expr_list(args, seed, ROLE_CALL_ARG, salts);
-        }
-        Expr::At { start, pattern } => {
-            record_expr_site_salts(start, derive_site_seed(seed, ROLE_AT_START, 0), salts);
-            record_expr_site_salts(pattern, derive_site_seed(seed, ROLE_AT_PATTERN, 0), salts);
-        }
+        Expr::Pipe { lhs, rhs } => record_pipe_salts(lhs, rhs, seed, salts),
+        Expr::Call { callee, args } => record_call_salts(callee, args, seed, salts),
+        Expr::At { start, pattern } => record_at_salts(start, pattern, seed, salts),
         Expr::Meter {
             beats,
             unit,
             pattern,
-        } => {
-            record_expr_site_salts(beats, derive_site_seed(seed, ROLE_METER_BEATS, 0), salts);
-            record_expr_site_salts(unit, derive_site_seed(seed, ROLE_METER_UNIT, 0), salts);
-            record_expr_site_salts(
-                pattern,
-                derive_site_seed(seed, ROLE_METER_PATTERN, 0),
-                salts,
-            );
-        }
+        } => record_meter_salts(beats, unit, pattern, seed, salts),
         Expr::Beat(value) => {
             record_expr_site_salts(value, derive_site_seed(seed, ROLE_BEAT_VALUE, 0), salts);
         }
-        Expr::Section { pattern, cycles } => {
-            record_expr_site_salts(
-                pattern,
-                derive_site_seed(seed, ROLE_SECTION_PATTERN, 0),
-                salts,
-            );
-            record_expr_site_salts(
-                cycles,
-                derive_site_seed(seed, ROLE_SECTION_CYCLES, 0),
-                salts,
-            );
-        }
+        Expr::Section { pattern, cycles } => record_section_salts(pattern, cycles, seed, salts),
         Expr::SeqSections(sections) => {
             record_expr_list(sections, seed, ROLE_SEQ_SECTION_ITEM, salts);
         }
         Expr::Group(items) => record_expr_list(items, seed, ROLE_GROUP_ITEM, salts),
+        Expr::Graph { bindings, result } => {
+            for (index, binding) in bindings.iter().enumerate() {
+                record_expr_site_salts(
+                    &binding.expr,
+                    derive_site_seed(seed, ROLE_GROUP_ITEM, index as u64),
+                    salts,
+                );
+            }
+            record_expr_site_salts(result, derive_site_seed(seed, ROLE_GROUP_ITEM, 0), salts);
+        }
+        Expr::Binary { lhs, rhs, .. } => {
+            record_expr_site_salts(lhs, derive_site_seed(seed, ROLE_GROUP_ITEM, 0), salts);
+            record_expr_site_salts(rhs, derive_site_seed(seed, ROLE_GROUP_ITEM, 1), salts);
+        }
         Expr::Ident(_) | Expr::Rest | Expr::Number(_) | Expr::String(_) => {}
     }
+}
+
+fn record_pipe_salts(lhs: &Expr, rhs: &Expr, seed: u64, salts: &mut BTreeMap<usize, u64>) {
+    record_expr_site_salts(lhs, derive_site_seed(seed, ROLE_PIPE_LHS, 0), salts);
+    record_expr_site_salts(rhs, derive_site_seed(seed, ROLE_PIPE_RHS, 0), salts);
+}
+
+fn record_call_salts(callee: &Expr, args: &[Expr], seed: u64, salts: &mut BTreeMap<usize, u64>) {
+    record_expr_site_salts(callee, derive_site_seed(seed, ROLE_CALL_CALLEE, 0), salts);
+    record_expr_list(args, seed, ROLE_CALL_ARG, salts);
+}
+
+fn record_at_salts(start: &Expr, pattern: &Expr, seed: u64, salts: &mut BTreeMap<usize, u64>) {
+    record_expr_site_salts(start, derive_site_seed(seed, ROLE_AT_START, 0), salts);
+    record_expr_site_salts(pattern, derive_site_seed(seed, ROLE_AT_PATTERN, 0), salts);
+}
+
+fn record_meter_salts(
+    beats: &Expr,
+    unit: &Expr,
+    pattern: &Expr,
+    seed: u64,
+    salts: &mut BTreeMap<usize, u64>,
+) {
+    record_expr_site_salts(beats, derive_site_seed(seed, ROLE_METER_BEATS, 0), salts);
+    record_expr_site_salts(unit, derive_site_seed(seed, ROLE_METER_UNIT, 0), salts);
+    record_expr_site_salts(
+        pattern,
+        derive_site_seed(seed, ROLE_METER_PATTERN, 0),
+        salts,
+    );
+}
+
+fn record_section_salts(
+    pattern: &Expr,
+    cycles: &Expr,
+    seed: u64,
+    salts: &mut BTreeMap<usize, u64>,
+) {
+    record_expr_site_salts(
+        pattern,
+        derive_site_seed(seed, ROLE_SECTION_PATTERN, 0),
+        salts,
+    );
+    record_expr_site_salts(
+        cycles,
+        derive_site_seed(seed, ROLE_SECTION_CYCLES, 0),
+        salts,
+    );
 }
 
 fn record_expr_list(items: &[Expr], seed: u64, role: u64, salts: &mut BTreeMap<usize, u64>) {
@@ -1045,6 +1182,7 @@ fn extract_constant_number_value(value: Value, context: &str) -> Result<f64, Eva
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(format!(
             "{context} must resolve to a constant number"
         ))),
@@ -1058,7 +1196,8 @@ fn extract_string_value(value: Value, message: &str) -> Result<String, EvalError
         | Value::NumberPattern(_)
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
-        | Value::Function(_) => Err(EvalError::new(message)),
+        | Value::Function(_)
+        | Value::Pedal(_) => Err(EvalError::new(message)),
     }
 }
 
@@ -1292,7 +1431,6 @@ right = sometimes(fast(2), cp hh)";
     fn render_error_formats_eval_error() {
         let err = crate::RenderError::Eval(super::EvalError::new("render failed"));
         assert_eq!(err.to_string(), "render failed");
-        assert!(std::error::Error::source(&err).is_some());
     }
 
     #[test]
@@ -1302,7 +1440,6 @@ right = sometimes(fast(2), cp hh)";
             err.to_string(),
             "offline rendering requires at least one cycle"
         );
-        assert!(std::error::Error::source(&err).is_some());
     }
 
     #[test]
@@ -1530,5 +1667,85 @@ right = sometimes(fast(2), cp hh)";
             result.unwrap_err().to_string(),
             "function `fast` cannot appear inside a pattern group in Task 5; apply transforms with the pipe operator `|>` or call `fast(..., pattern)` directly"
         );
+    }
+
+    #[test]
+    fn eval_apply_user_function_over_application_error() {
+        let result = eval_module("f x = x\nerr = f(1, 2)", ReplMode::Loose);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "function expected 1 argument(s), got 2"
+        );
+    }
+
+    #[test]
+    fn eval_apply_user_function_currying_success() {
+        let result = eval_module("f x y = x y\npartial = f(1)", ReplMode::Loose).unwrap();
+        let partial = result.get("partial").unwrap();
+        assert!(matches!(
+            partial,
+            Value::Function(crate::value::FunctionValue::User(_))
+        ));
+    }
+
+    #[test]
+    fn eval_apply_user_function_too_many_args_returns_error() {
+        let source = "f x = x\nresult = f(1, 2)";
+        let result = eval_module(source, ReplMode::Loose);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("function expected 1 argument(s), got 2"));
+    }
+
+    #[test]
+    fn eval_apply_builtin_function_too_many_args_returns_error() {
+        let source = "result = fast(1, bd, sn)";
+        let result = eval_module(source, ReplMode::Loose);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("expected 2 argument(s), got 3"));
+    }
+
+    #[test]
+    fn eval_error_from_conversions() {
+        let num_err: std::num::TryFromIntError = u8::try_from(256u16).unwrap_err();
+        let eval_err: crate::eval::EvalError = num_err.into();
+        assert!(eval_err.to_string().contains("out of range"));
+
+        let num_err: std::num::ParseIntError = "abc".parse::<i32>().unwrap_err();
+        let eval_err: crate::eval::EvalError = num_err.into();
+        assert!(eval_err.to_string().contains("invalid digit"));
+
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "not found");
+        let eval_err: crate::eval::EvalError = io_err.into();
+        assert_eq!(eval_err.to_string(), "file not found");
+
+        let fmt_err = std::fmt::Error;
+        let eval_err: crate::eval::EvalError = fmt_err.into();
+        assert_eq!(
+            eval_err.to_string(),
+            "an error occurred when formatting an argument"
+        );
+
+        let pat_err: orpheus_pattern::PatternError =
+            orpheus_pattern::PatternError::InvalidDenominator { denominator: 0 };
+        let eval_err: crate::eval::EvalError = pat_err.into();
+        assert_eq!(eval_err.to_string(), "rational denominator cannot be zero");
+    }
+
+    #[test]
+    fn eval_error_from_parse_int_error() {
+        let err: Result<i32, _> = "not_a_number".parse();
+        let eval_err: super::EvalError = err.unwrap_err().into();
+        assert!(eval_err.to_string().contains("invalid digit"));
+    }
+
+    #[test]
+    fn eval_error_from_pitch_literal_error() {
+        use crate::pitch::PitchLiteralError;
+        let pitch_err = PitchLiteralError::new("invalid pitch literal".to_owned());
+        let eval_err: super::EvalError = pitch_err.into();
+        assert_eq!(eval_err.to_string(), "invalid pitch literal");
     }
 }

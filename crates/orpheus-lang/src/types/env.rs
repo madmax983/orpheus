@@ -42,6 +42,7 @@ pub struct TypeEnv {
 
 impl TypeEnv {
     #[must_use]
+    #[allow(clippy::too_many_lines)]
     pub fn with_builtins() -> Self {
         let mut env = Self {
             entries: BTreeMap::new(),
@@ -100,6 +101,7 @@ impl TypeEnv {
         }
         env.insert("jux", jux_transform_scheme());
         env.insert("rev", unary_pattern_transform_scheme(alpha));
+        env.insert("chaos", unary_pattern_transform_scheme(alpha));
         for name in [
             "gain", "hpf", "lpf", "cutoff", "res", "drive", "pw", "pan", "pitch", "rate",
         ] {
@@ -112,6 +114,14 @@ impl TypeEnv {
                 Type::pattern(Type::Sample),
             )),
         );
+        env.insert(
+            "through",
+            TypeScheme::monomorphic(Type::curried(
+                vec![Type::Pedal, Type::pattern(Type::Sample)],
+                Type::pattern(Type::Sample),
+            )),
+        );
+        env.insert("onset", sample_control_scheme());
         env.insert(
             "slice",
             TypeScheme::monomorphic(Type::curried(
@@ -138,6 +148,15 @@ impl TypeEnv {
             "rand",
             TypeScheme::monomorphic(Type::function(vec![], Type::pattern(Type::Number))),
         );
+        for name in ["cc", "midi_cc"] {
+            env.insert(
+                name,
+                TypeScheme::monomorphic(Type::curried(
+                    vec![Type::pattern(Type::Number)],
+                    Type::pattern(Type::Number),
+                )),
+            );
+        }
 
         env
     }

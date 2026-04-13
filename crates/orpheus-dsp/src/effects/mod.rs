@@ -1,3 +1,15 @@
+//! DSP implementations for stereo bus effects.
+//!
+//! This module contains the stateful implementations of global bus effects
+//! (e.g., [`DelayState`] and [`ReverbState`]) that are hosted on the master bus
+//! or auxiliary send buses.
+//!
+//! # Architecture
+//! Effects receive a stereo input frame and produce a stereo output frame.
+//! They are designed to operate lock-free on the audio thread, relying on
+//! synchronization methods (like [`BusEffectState::sync_timing`]) to receive
+//! parameter updates from the language runtime without allocating.
+
 use crate::engine::EngineError;
 use crate::routing::BusEffectSpec;
 

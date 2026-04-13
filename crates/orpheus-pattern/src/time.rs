@@ -41,7 +41,11 @@ impl TimeSpan {
         Ok(Self { start, end })
     }
 
-    /// Returns the unit cycle span `[0, 1)`.
+    /// The fundamental window of musical time, representing exactly one measure `[0, 1)`.
+    ///
+    /// In Orpheus, patterns are infinite functions of time. To render a pattern into discrete
+    /// events, we query it over a specific window. The `unit()` span is the most common query
+    /// window, asking the pattern to yield all events that occur during its first complete cycle.
     ///
     /// # Examples
     ///
@@ -60,7 +64,11 @@ impl TimeSpan {
         }
     }
 
-    /// Returns the inclusive start bound of the span.
+    /// The exact rational timeline point where this span begins (inclusive).
+    ///
+    /// When querying a pattern, this represents the start of the temporal window. When attached
+    /// to an `Event`, it denotes the exact moment the sample or note should trigger.
+    /// Because it returns a `Rational`, it avoids floating point jitter.
     ///
     /// # Examples
     ///
@@ -75,7 +83,10 @@ impl TimeSpan {
         &self.start
     }
 
-    /// Returns the exclusive end bound of the span.
+    /// The exact rational timeline point where this span concludes (exclusive).
+    ///
+    /// Spans in Orpheus are half-open (`[start, end)`). This means an event whose start matches
+    /// this end bound exactly will fall into the *next* adjacent span.
     ///
     /// # Examples
     ///

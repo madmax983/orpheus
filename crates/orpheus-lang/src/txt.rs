@@ -14,6 +14,18 @@ use crate::value::{NumberPatternValue, SamplePatternValue};
 /// Each line in the generated file represents an event with its timing
 /// and synthesized parameters.
 ///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, export_sample_pattern_to_txt};
+///
+/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+///
+/// let path = std::env::temp_dir().join("export.txt");
+/// export_sample_pattern_to_txt(pattern, &path, 2).unwrap();
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`EvalError`] if pattern querying fails or if the file cannot be written.
@@ -56,7 +68,10 @@ pub fn export_sample_pattern_to_txt(
         writeln!(
             file,
             "[{:.3} -> {:.3}] {} ({})",
-            start, end, event.value.sample(), params.join(", ")
+            start,
+            end,
+            event.value.sample(),
+            params.join(", ")
         )?;
     }
 
@@ -67,6 +82,18 @@ pub fn export_sample_pattern_to_txt(
 ///
 /// Each line in the generated file represents an event with its timing
 /// and numeric value.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, export_number_pattern_to_txt};
+///
+/// let env = eval_module("x = 1 2 3", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
+///
+/// let path = std::env::temp_dir().join("export_num.txt");
+/// export_number_pattern_to_txt(pattern, &path, 2).unwrap();
+/// ```
 ///
 /// # Errors
 ///
@@ -141,5 +168,28 @@ mod tests {
         assert!(content.contains("[0.000 -> 0.333] value: 1.000"));
         assert!(content.contains("[0.333 -> 0.667] value: 2.000"));
         assert!(content.contains("[0.667 -> 1.000] value: 3.000"));
+    }
+
+    #[test]
+    fn export_cycle_count_zero_returns_error() {
+        let module = eval_module("pat = bd sn", ReplMode::Loose).unwrap();
+        let pat = module.get("pat").unwrap().as_sample_pattern().unwrap();
+
+        assert_eq!(
+            super::export_sample_pattern_to_txt(pat, "test.txt", 0)
+                .unwrap_err()
+                .to_string(),
+            "exporting requires at least one cycle"
+        );
+
+        let module = eval_module("pat = 1 2", ReplMode::Loose).unwrap();
+        let pat = module.get("pat").unwrap().as_number_pattern().unwrap();
+
+        assert_eq!(
+            super::export_number_pattern_to_txt(pat, "test.txt", 0)
+                .unwrap_err()
+                .to_string(),
+            "exporting requires at least one cycle"
+        );
     }
 }

@@ -4,10 +4,9 @@
 //! files (WAV), or exported as structured data formats like JSON and CSV. These
 //! formats enable interoperability with external tools, data visualization, and DAWs.
 
-use std::error::Error;
-use std::fmt::{self, Display, Formatter};
 use std::io::Write;
 use std::path::Path;
+use thiserror::Error;
 
 use orpheus_dsp::{OfflineRenderError, SampleBank, SampleTrigger, render_events_to_file_with_bank};
 use orpheus_pattern::Event;
@@ -44,60 +43,52 @@ use crate::value::{NumberPatternValue, SamplePatternValue};
 ///     RenderError::Audio(_) => unreachable!(),
 /// }
 /// ```
-#[derive(Debug)]
+
+#[derive(Debug, Error)]
 pub enum RenderError {
     /// An error occurred while evaluating the pattern events.
-    Eval(EvalError),
+    #[error(transparent)]
+    Eval(#[from] EvalError),
     /// An error occurred during the offline digital signal processing or file writing phase.
-    Audio(OfflineRenderError),
-}
-
-impl Display for RenderError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Eval(error) => Display::fmt(error, formatter),
-            Self::Audio(error) => Display::fmt(error, formatter),
-        }
-    }
-}
-
-impl Error for RenderError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::Eval(error) => Some(error),
-            Self::Audio(error) => Some(error),
-        }
-    }
-}
-
-impl From<EvalError> for RenderError {
-    fn from(error: EvalError) -> Self {
-        Self::Eval(error)
-    }
-}
-
-impl From<OfflineRenderError> for RenderError {
-    fn from(error: OfflineRenderError) -> Self {
-        Self::Audio(error)
-    }
+    #[error(transparent)]
+    Audio(#[from] OfflineRenderError),
 }
 
 /// Helper function to convert a `SampleEvent` from the evaluation phase into a
 /// `SampleTrigger` for the DSP rendering phase.
-fn sample_trigger_from_event(event: &crate::value::SampleEvent) -> SampleTrigger {
+#[allow(clippy::redundant_pub_crate)]
+pub(crate) fn sample_trigger_from_event(event: &crate::value::SampleEvent) -> SampleTrigger {
     let mut trigger = SampleTrigger::named(event.sample())
         .with_gain(event.gain())
         .with_pan(event.pan())
         .with_rate(event.rate())
+        .with_delay_mix(event.delay_mix())
+        .with_delay_time(event.delay_time())
+        .with_delay_feedback(event.delay_feedback())
+        .with_reverb_mix(event.reverb_mix())
+        .with_reverb_room(event.reverb_room())
+        .with_reverb_damp(event.reverb_damp())
+        .with_chorus_mix(event.chorus_mix())
+        .with_chorus_depth(event.chorus_depth())
+        .with_chorus_rate(event.chorus_rate())
+        .with_compressor_mix(event.compressor_mix())
+        .with_compressor_threshold(event.compressor_threshold())
+        .with_compressor_ratio(event.compressor_ratio())
         .with_resonance(event.resonance())
         .with_drive(event.drive())
         .with_pulse_width(event.pulse_width())
         .with_slice(event.slice_start(), event.slice_end());
+    if let Some(onset_index) = event.onset_index() {
+        trigger = trigger.with_onset(onset_index);
+    }
     if let Some(cutoff) = event.hpf_cutoff_hz() {
         trigger = trigger.with_hpf_cutoff_hz(cutoff);
     }
     if let Some(cutoff) = event.lpf_cutoff_hz() {
         trigger = trigger.with_lpf_cutoff_hz(cutoff);
+    }
+    if let Some(pedal_program) = event.pedal_program() {
+        trigger = trigger.with_pedal_program(pedal_program.clone());
     }
     trigger
 }
@@ -129,6 +120,28 @@ pub fn render_sample_pattern_to_file(
 ) -> Result<(), RenderError> {
     let sample_bank = SampleBank::load_builtin();
     render_sample_pattern_to_file_with_bank(pattern, path, cycle_count, &sample_bank)
+}
+
+fn query_sample_pattern_events(
+    pattern: &SamplePatternValue,
+    cycle_count: u64,
+) -> Result<Vec<Event<crate::value::SampleEvent>>, EvalError> {
+    if cycle_count == 0 {
+        return Err(EvalError::new("exporting requires at least one cycle"));
+    }
+    let span = render_span(cycle_count)?;
+    pattern.try_query(&span)
+}
+
+fn query_number_pattern_events(
+    pattern: &NumberPatternValue,
+    cycle_count: u64,
+) -> Result<Vec<Event<f64>>, EvalError> {
+    if cycle_count == 0 {
+        return Err(EvalError::new("exporting requires at least one cycle"));
+    }
+    let span = render_span(cycle_count)?;
+    pattern.try_query(&span)
 }
 
 fn export_pattern_events_to_csv<T, F>(
@@ -203,12 +216,7 @@ pub fn export_sample_pattern_to_md(
     path: impl AsRef<Path>,
     cycle_count: u64,
 ) -> Result<(), EvalError> {
-    if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
-    }
-
-    let span = render_span(cycle_count)?;
-    let events = pattern.try_query(&span)?;
+    let events = query_sample_pattern_events(pattern, cycle_count)?;
 
     export_pattern_events_to_md(
         &events,
@@ -268,12 +276,7 @@ pub fn export_sample_pattern_to_csv(
     path: impl AsRef<Path>,
     cycle_count: u64,
 ) -> Result<(), EvalError> {
-    if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
-    }
-
-    let span = render_span(cycle_count)?;
-    let events = pattern.try_query(&span)?;
+    let events = query_sample_pattern_events(pattern, cycle_count)?;
 
     export_pattern_events_to_csv(
         &events,
@@ -346,6 +349,18 @@ where
 /// array. Each event uses the same timing fields as the CSV exporter plus the
 /// sample control fields available at runtime.
 ///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, export_sample_pattern_to_json};
+///
+/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+///
+/// let path = std::env::temp_dir().join("export.json");
+/// export_sample_pattern_to_json(pattern, &path, 2).unwrap();
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`EvalError`] if the cycle count is 0, if pattern querying fails, or
@@ -355,12 +370,7 @@ pub fn export_sample_pattern_to_json(
     path: impl AsRef<Path>,
     cycle_count: u64,
 ) -> Result<(), EvalError> {
-    if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
-    }
-
-    let span = render_span(cycle_count)?;
-    let events = pattern.try_query(&span)?;
+    let events = query_sample_pattern_events(pattern, cycle_count)?;
 
     export_pattern_events_to_json(&events, path, "sample", cycle_count, sample_event_json)
 }
@@ -390,12 +400,7 @@ pub fn export_number_pattern_to_md(
     path: impl AsRef<Path>,
     cycle_count: u64,
 ) -> Result<(), EvalError> {
-    if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
-    }
-
-    let span = render_span(cycle_count)?;
-    let events = pattern.try_query(&span)?;
+    let events = query_number_pattern_events(pattern, cycle_count)?;
 
     export_pattern_events_to_md(&events, path, "| start | end | value |", |file, event| {
         let start_float = f64::from(event.part.start());
@@ -434,12 +439,7 @@ pub fn export_number_pattern_to_csv(
     path: impl AsRef<Path>,
     cycle_count: u64,
 ) -> Result<(), EvalError> {
-    if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
-    }
-
-    let span = render_span(cycle_count)?;
-    let events = pattern.try_query(&span)?;
+    let events = query_number_pattern_events(pattern, cycle_count)?;
 
     export_pattern_events_to_csv(
         &events,
@@ -470,6 +470,18 @@ pub fn export_number_pattern_to_csv(
 /// array. Each event uses the same timing fields as the CSV exporter plus the
 /// numeric `value`.
 ///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, export_number_pattern_to_json};
+///
+/// let env = eval_module("x = 1 2 3", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
+///
+/// let path = std::env::temp_dir().join("export_number_pattern.json");
+/// export_number_pattern_to_json(pattern, &path, 2).unwrap();
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`EvalError`] if the cycle count is 0, if pattern querying fails, or
@@ -479,12 +491,7 @@ pub fn export_number_pattern_to_json(
     path: impl AsRef<Path>,
     cycle_count: u64,
 ) -> Result<(), EvalError> {
-    if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
-    }
-
-    let span = render_span(cycle_count)?;
-    let events = pattern.try_query(&span)?;
+    let events = query_number_pattern_events(pattern, cycle_count)?;
 
     export_pattern_events_to_json(&events, path, "number", cycle_count, number_event_json)
 }
@@ -516,12 +523,13 @@ pub fn render_sample_pattern_to_file_with_bank(
     cycle_count: u64,
     sample_bank: &SampleBank,
 ) -> Result<(), RenderError> {
-    if cycle_count == 0 {
-        return Err(EvalError::new("rendering requires at least one cycle").into());
-    }
-
-    let span = render_span(cycle_count)?;
-    let events = pattern.try_query(&span)?;
+    let events = query_sample_pattern_events(pattern, cycle_count).map_err(|e| {
+        if e.to_string().contains("exporting requires") {
+            EvalError::new("rendering requires at least one cycle").into()
+        } else {
+            RenderError::from(e)
+        }
+    })?;
     let rendered_events = events
         .into_iter()
         .map(|event| Event {
@@ -537,6 +545,18 @@ pub fn render_sample_pattern_to_file_with_bank(
 }
 
 /// Renders a sample pattern directly to a WAV file.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, render_sample_pattern_to_wav};
+///
+/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+///
+/// let path = std::env::temp_dir().join("render_direct.wav");
+/// render_sample_pattern_to_wav(pattern, &path, 2).unwrap();
+/// ```
 ///
 /// # Errors
 ///
@@ -561,13 +581,14 @@ use std::fmt::Write as _;
 /// ## Examples
 ///
 /// ```
-/// use orpheus_lang::export::escape_json_string;
+/// use orpheus_lang::escape_json_string;
 ///
 /// let raw = "hello \"world\"\nfrom \\rust\\";
 /// let escaped = escape_json_string(raw);
 ///
 /// assert_eq!(escaped, "hello \\\"world\\\"\\nfrom \\\\rust\\\\");
 /// ```
+#[must_use]
 pub fn escape_json_string(s: &str) -> String {
     let mut escaped = String::with_capacity(s.len() * 2);
     for c in s.chars() {
@@ -588,9 +609,7 @@ pub fn escape_json_string(s: &str) -> String {
     escaped
 }
 
-fn sample_event_json(event: &Event<crate::value::SampleEvent>) -> String {
-    let mut s = String::new();
-    s.push_str("    {\n");
+fn append_event_time_json<T>(s: &mut String, event: &Event<T>) {
     let _ = writeln!(
         s,
         "      \"start_num\": {},",
@@ -613,6 +632,12 @@ fn sample_event_json(event: &Event<crate::value::SampleEvent>) -> String {
         "      \"end_float\": {:.6},",
         f64::from(event.part.end())
     );
+}
+
+fn sample_event_json(event: &Event<crate::value::SampleEvent>) -> String {
+    let mut s = String::new();
+    s.push_str("    {\n");
+    append_event_time_json(&mut s, event);
     let _ = writeln!(
         s,
         "      \"sample\": \"{}\",",
@@ -621,6 +646,50 @@ fn sample_event_json(event: &Event<crate::value::SampleEvent>) -> String {
     let _ = writeln!(s, "      \"gain\": {:.6},", event.value.gain());
     let _ = writeln!(s, "      \"pan\": {:.6},", event.value.pan());
     let _ = writeln!(s, "      \"rate\": {:.6},", event.value.rate());
+    let _ = writeln!(s, "      \"delay_mix\": {:.6},", event.value.delay_mix());
+    let _ = writeln!(s, "      \"delay_time\": {:.6},", event.value.delay_time());
+    let _ = writeln!(
+        s,
+        "      \"delay_feedback\": {:.6},",
+        event.value.delay_feedback()
+    );
+    let _ = writeln!(s, "      \"reverb_mix\": {:.6},", event.value.reverb_mix());
+    let _ = writeln!(
+        s,
+        "      \"reverb_room\": {:.6},",
+        event.value.reverb_room()
+    );
+    let _ = writeln!(
+        s,
+        "      \"reverb_damp\": {:.6},",
+        event.value.reverb_damp()
+    );
+    let _ = writeln!(s, "      \"chorus_mix\": {:.6},", event.value.chorus_mix());
+    let _ = writeln!(
+        s,
+        "      \"chorus_depth\": {:.6},",
+        event.value.chorus_depth()
+    );
+    let _ = writeln!(
+        s,
+        "      \"chorus_rate\": {:.6},",
+        event.value.chorus_rate()
+    );
+    let _ = writeln!(
+        s,
+        "      \"compressor_mix\": {:.6},",
+        event.value.compressor_mix()
+    );
+    let _ = writeln!(
+        s,
+        "      \"compressor_threshold\": {:.6},",
+        event.value.compressor_threshold()
+    );
+    let _ = writeln!(
+        s,
+        "      \"compressor_ratio\": {:.6},",
+        event.value.compressor_ratio()
+    );
     let _ = writeln!(s, "      \"resonance\": {:.6},", event.value.resonance());
     let _ = writeln!(s, "      \"drive\": {:.6},", event.value.drive());
     let _ = writeln!(
@@ -654,28 +723,7 @@ fn sample_event_json(event: &Event<crate::value::SampleEvent>) -> String {
 fn number_event_json(event: &Event<f64>) -> String {
     let mut s = String::new();
     s.push_str("    {\n");
-    let _ = writeln!(
-        s,
-        "      \"start_num\": {},",
-        event.part.start().numerator()
-    );
-    let _ = writeln!(
-        s,
-        "      \"start_den\": {},",
-        event.part.start().denominator()
-    );
-    let _ = writeln!(
-        s,
-        "      \"start_float\": {:.6},",
-        f64::from(event.part.start())
-    );
-    let _ = writeln!(s, "      \"end_num\": {},", event.part.end().numerator());
-    let _ = writeln!(s, "      \"end_den\": {},", event.part.end().denominator());
-    let _ = writeln!(
-        s,
-        "      \"end_float\": {:.6},",
-        f64::from(event.part.end())
-    );
+    append_event_time_json(&mut s, event);
     let _ = writeln!(s, "      \"value\": {:.6}", event.value);
     s.push_str("    }");
     s
@@ -692,7 +740,7 @@ mod tests {
 
     use super::{
         export_number_pattern_to_json, export_number_pattern_to_md, export_sample_pattern_to_json,
-        export_sample_pattern_to_md,
+        export_sample_pattern_to_md, sample_trigger_from_event,
     };
     use crate::{ReplMode, eval_module};
 
@@ -901,6 +949,37 @@ mod tests {
         assert_json_fixture_matches(&path, "roll_progression_export.json");
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn sample_trigger_from_event_forwards_pedal_program() {
+        let module = eval_module(
+            "drivebox = graph { wet = input |> clip(model=silicon_hard); wet |> output }\n\
+             lead = through(drivebox, bd)",
+            ReplMode::Strict,
+        )
+        .unwrap();
+        let event = module
+            .get("lead")
+            .unwrap()
+            .as_sample_pattern()
+            .unwrap()
+            .query_unit()
+            .unwrap()
+            .remove(0)
+            .value;
+
+        let trigger = sample_trigger_from_event(&event);
+        let pedal_program = trigger
+            .pedal_program()
+            .expect("sample trigger should retain the pedal program");
+
+        assert!(pedal_program.source().contains("graph {"));
+        assert!(
+            pedal_program
+                .explain()
+                .contains("clip(input, model=silicon_hard)")
+        );
     }
 
     #[test]

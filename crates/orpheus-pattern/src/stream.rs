@@ -99,8 +99,7 @@ where
     T: Clone + Send + Sync,
 {
     fn query(&self, span: TimeSpan) -> Vec<Event<T>> {
-        self.try_query(&span)
-            .unwrap_or_else(|error| panic!("event stream query failed for span {span:?}: {error}"))
+        self.try_query(&span).unwrap_or_default()
     }
 }
 

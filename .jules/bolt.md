@@ -1,19 +1,22 @@
-**Vector Reuse in Grouping Loops**
-**Learning:** When grouping elements in a hot evaluation loop, allocating a new `Vec::new()` for each group causes redundant heap allocations. However, `extend(cluster.drain(..))` triggered a `clippy` lint (`clippy::extend-with-drain`). The idiomatic and performant way to transfer elements from one vector to another while retaining the capacity of the source vector for reuse is `dest_vec.append(&mut source_vec)`. This correctly avoids allocations across loop iterations.
-**Action:** When gathering items in a loop to add to a larger collection, declare `let mut cluster = Vec::new()` outside the loop, `cluster.clear()` inside the loop, and use `dest.append(&mut cluster)` to move items without dropping the allocated capacity.
+**Vec<&Rational> instead of Vec<Rational>**
+**Learning:** Returning `Vec<Rational>` to bypass the borrow checker introduces O(N) `.clone()` overhead on hot execution paths, even if the underlying `Rational` type is small.
+**Action:** Use multi-lifetime generic bounds (e.g., `'a, 'b, 'c`) on helper functions returning references to match the input iterator's lifetime and avoid falling back to owned copies. Take slices (`&[Event<T>]`) instead of owned vectors (`Vec<Event<T>>`) in callers where elements are iterated over and selectively cloned or modified, ensuring borrowed lifetimes remain valid during processing.
 
-## 2025-05-18 - Reuse event cluster buffers
-**Learning:** When grouping elements in a hot evaluation loop, allocating a new `Vec::new()` for each group causes redundant heap allocations. Hoisting the buffer allocation outside the loop and using `.clear()` reuses the capacity.
-**Action:** When gathering items in a loop to add to a larger collection or process, declare `let mut cluster = Vec::new()` outside the loop, `cluster.clear()` inside the loop, and pass a slice `&cluster` or `&mut cluster` to helper functions instead of passing by value.
+**Merge open spans via IntoIterator instead of Vec collection**
+**Learning:** Functions designed to aggregate or merge ordered sequences (like `merge_open_spans`) shouldn't force callers to `.collect()` intermediate lists. `try_query` naturally outputs ordered slices. Intermediate allocations just to satisfy `Vec<T>` function arguments inflate allocation profiles.
+**Action:** Refactor collection aggregators to accept `I: Iterator<Item = T>`, removing unnecessary `<Vec<_>>()` boundaries, providing zero-cost sequential evaluation passes without extra heap allocations on evaluation hot paths.
 
-**Remove deep clone of bindings in type inference**
-**Learning:** Found an unnecessary `BTreeMap::clone()` in `infer_into_bindings` that caused a full heap allocation and deep copy of the REPL environment on every inference pass. `inferencer.infer_statements(...)` returns a `Result`, so `?` cannot be used safely if we want to restore bindings upon error.
-**Action:** Use `std::mem::take(bindings)` to move the `BTreeMap` into the `Inferencer` without allocating. Store the result of `infer_statements` in a local variable, unconditionally restore `*bindings = inferencer.user_bindings;`, and then return the result. This optimizes the hot REPL path without losing state on syntax/type errors.
+## YYYY-MM-DD - [Optimize Event Fragment Boundary Capacity Allocation]
+**Learning:** Calling `.clone().count()` on iterators passed generically as `I: Iterator + Clone` forces an immediate O(N) evaluation simply to estimate capacity. Even when elements are references and cloning is cheap, iterating just to count introduces a measurable latency spike in deep processing pipelines like the DSP event fragments loop.
+**Action:** Default to `iter.size_hint()` (specifically `let (lower, upper) = iter.size_hint(); upper.unwrap_or(lower)`) when pre-allocating `Vec::with_capacity` based on an iterator's bounds. This provides instant O(1) allocation bounds and drops the strict requirement for the iterator to be clonable, leading to cleaner signatures and fewer allocations.
+**[Fixing Unnecessary Option Re-substitution]**
+**Learning:** `clippy::or_fun_call` catches situations where closures substitute `Option::None` but are unnecessarily instantiated. Pre-allocation and avoiding `.clone()` calls significantly impacts garbage collector pauses and allocator waits during real-time rendering.
+**Action:** Replace `ok_or_else(|| ... )` with `ok_or(...)` when the error fallback involves simple instantiations. Always run `cargo clippy --all-targets --all-features -- -D warnings` early and often.
 
-**Use `Arc<str>` instead of `Box<str>` for deep immutability on hot paths**
-**Learning:** In `orpheus-lang/src/value.rs`, the `SampleEvent` struct contained a `sample: Box<str>` field. Because pattern evaluation transforms (like `adjust_gain`, `adjust_pan`) clone the `SampleEvent` repeatedly on the hot path, `Box<str>` forces a deep memory allocation and string copy every time. By replacing `Box<str>` with `std::sync::Arc<str>`, the clone becomes a simple atomic increment. This significantly reduces heap allocations while maintaining thread safety (`Send + Sync`).
-**Action:** When a struct containing strings is cloned repeatedly but the strings are never mutated, use `std::sync::Arc<str>` (or similar interning primitives) instead of `Box<str>` or `String` to avoid costly memory allocations.
+**Eliminate `Rational` clones in event fragment boundaries**
+**Learning:** Returning `Vec<Rational>` from `compute_event_fragment_boundaries` caused unnecessary `.clone()` calls simply to collect temporal bounds for sorting and deduplication. By refactoring `compute_event_fragment_boundaries` to store and return `Vec<&'a Rational>`, we avoid heap allocating owned clones for bounds that might immediately be discarded after deduplication or clipped during the `apply_event_fragments` window iteration.
+**Action:** When collecting structs out of references into temporary Vecs for sorting or filtering, store `&T` instead of `.clone()`ing into `T`. Only clone or convert to owned values at the final step where the owned struct is specifically required.
 
-**[Drain Iterator to Avoid Clones]**
-**Learning:** Calling `.cloned()` on an iterator over strings creates heap allocations. If the strings are no longer needed in the source container (like `remaining_params`), draining the items directly (`drain(..applied)`) allows you to move ownership without deep copies.
-**Action:** Replace `iter().take(n).cloned()` with `drain(..n)` when transferring elements from a mutable vector.
+**[Optimized seq_sections allocation]**
+**Learning:** In loops that clone and modify an owned data structure repeatedly (such as applying section repeats in `seq_sections`), the final iteration typically does not need to clone the base structure if it won't be used again. Cloning on the final iteration introduces an entirely redundant heap allocation that is instantly discarded.
+**Action:** For iterative clones where the original value is no longer needed after the loop, consume the original value directly on the last iteration using an `if index == count - 1` condition or by using `IntoIterator` to avoid the final `.clone()`.

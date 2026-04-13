@@ -5,7 +5,6 @@
 //! `EngineHandle` for the front-end to control the `RenderEngine` running on the audio thread.
 
 use cpal::{BufferSize, SampleRate, StreamConfig};
-use orpheus_pattern::Event;
 use rtrb::{Consumer, Producer};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
@@ -38,41 +37,49 @@ pub struct TransportSnapshot {
 }
 
 impl TransportSnapshot {
+    /// A monotonically increasing counter representing the number of successful routing snapshot replacements.
     #[must_use]
     pub const fn publish_epoch(&self) -> u64 {
         self.publish_epoch
     }
 
+    /// The absolute count of frames processed since the audio engine started.
     #[must_use]
     pub const fn current_frame(&self) -> u64 {
         self.current_frame
     }
 
+    /// The frame index representing the boundary where the current active cycle began.
     #[must_use]
     pub const fn current_cycle_start_frame(&self) -> u64 {
         self.current_cycle_start_frame
     }
 
+    /// The length of a single musical cycle expressed in audio frames, derived from the active tempo.
     #[must_use]
     pub const fn frames_per_cycle(&self) -> u64 {
         self.frames_per_cycle
     }
 
+    /// The transport speed expressed in Beats Per Minute (BPM).
     #[must_use]
     pub const fn tempo_bpm(&self) -> f32 {
         f32::from_bits(self.tempo_bpm_bits)
     }
 
+    /// Indicates whether the transport is advancing time and triggering events (`true`) or halted (`false`).
     #[must_use]
     pub const fn is_playing(&self) -> bool {
         self.is_playing
     }
 
+    /// Indicates that a `LoadPattern` command was received but the engine is waiting for the next cycle boundary to apply it.
     #[must_use]
     pub const fn has_pending_pattern(&self) -> bool {
         self.has_pending_pattern
     }
 
+    /// Indicates that a `SwapRoutingSnapshot` command was received but the engine is waiting for the next cycle boundary to apply it.
     #[must_use]
     pub const fn has_pending_routing(&self) -> bool {
         self.has_pending_routing
@@ -123,7 +130,7 @@ impl SharedTransport {
             std::sync::atomic::fence(Ordering::Acquire);
 
             // If odd, a write is in progress. Wait for it to finish.
-            if start_epoch % 2 != 0 {
+            if !start_epoch.is_multiple_of(2) {
                 std::hint::spin_loop();
                 continue;
             }
@@ -139,8 +146,7 @@ impl SharedTransport {
                 has_pending_routing: self.has_pending_routing.load(Ordering::Relaxed),
             };
 
-            std::sync::atomic::fence(Ordering::Acquire);
-            let end_epoch = self.publish_epoch.load(Ordering::Relaxed);
+            let end_epoch = self.publish_epoch.load(Ordering::Acquire);
             // If the epoch is unchanged, we observed a consistent state.
             if start_epoch == end_epoch {
                 return snap;
@@ -152,18 +158,25 @@ impl SharedTransport {
 /// Errors raised by the minimal Orpheus audio engine.
 #[derive(Debug, Error)]
 pub enum EngineError {
+    /// The audio backend provided an invalid number of channels.
     #[error("audio output must have at least one channel")]
     InvalidChannelCount,
+    /// The lock-free queue sending commands to the audio thread is full and cannot accept more messages.
     #[error("engine command queue is full")]
     CommandQueueFull,
+    /// The requested tempo is invalid (e.g., zero, negative, or NaN).
     #[error("tempo must be a finite positive value")]
     InvalidTempo,
+    /// A timing calculation resulted in a schedule time earlier than the beginning of the cycle.
     #[error("pattern time produced a negative cycle offset")]
     NegativeCycleOffset,
+    /// A sample clock calculation overflowed a 64-bit integer, usually indicating unreachable execution time.
     #[error("sample-clock conversion overflowed the supported range")]
     FrameOverflow,
+    /// The engine was asked to play a sample or voice token that does not exist.
     #[error("unknown built-in voice token `{0}`")]
     UnknownVoice(String),
+    /// The interleaved output slice length cannot be evenly divided into frames.
     #[error("output buffer length must be a whole number of frames")]
     MisalignedOutputBuffer,
 }
@@ -205,7 +218,9 @@ impl EngineCore {
         let bus_mix_buffer = vec![(0.0, 0.0); active_routing.buses().len()];
         Ok(Self {
             scheduler: Scheduler::default(),
-            active_voices: vec![None; MAX_ACTIVE_VOICES],
+            active_voices: std::iter::repeat_with(|| None)
+                .take(MAX_ACTIVE_VOICES)
+                .collect(),
             sample_bank: SampleBank::load_builtin(),
             active_routing,
             pending_routing: None,
@@ -303,11 +318,7 @@ impl EngineCore {
                     track.id(),
                     self.current_cycle_start_frame,
                     self.frames_per_cycle,
-                    events.iter().map(|event| Event {
-                        whole: event.whole.clone(),
-                        part: event.part.clone(),
-                        value: &event.value,
-                    }),
+                    events.iter(),
                 )?;
             }
         }
@@ -316,7 +327,7 @@ impl EngineCore {
     }
 
     fn render_into_interleaved(&mut self, output: &mut [f32]) -> Result<(), EngineError> {
-        if output.len() % self.channels != 0 {
+        if !output.len().is_multiple_of(self.channels) {
             return Err(EngineError::MisalignedOutputBuffer);
         }
 
@@ -371,6 +382,7 @@ impl EngineCore {
                         trigger.track_id,
                         sample,
                         self.sample_rate,
+                        self.frames_per_cycle,
                         &resolved_trigger,
                     )
                 })
@@ -380,6 +392,7 @@ impl EngineCore {
                             trigger.track_id,
                             voice,
                             self.sample_rate,
+                            self.frames_per_cycle,
                             &trigger.trigger,
                             trigger.duration_frames,
                         )
@@ -629,13 +642,21 @@ impl RenderEngine {
         output
     }
 
-    /// Returns the active pattern name after the most recently completed cycle.
+    /// Inspects the lock-free data structures to read the active pattern name.
+    ///
+    /// This method is designed exclusively for testing the core engine logic to ensure
+    /// that pattern swaps occur atomically at exactly the right frame boundaries without
+    /// dropping the audio thread's execution cadence.
     #[must_use]
     pub fn active_pattern_name_for_test(&self) -> Option<&str> {
         self.core.active_pattern_name.as_deref()
     }
 
-    /// Returns the active routed track names in snapshot order.
+    /// Inspects the lock-free routing data to read the active track names in snapshot order.
+    ///
+    /// The mixer topology is swapped atomically at cycle boundaries. This test-only method
+    /// validates that the `OfflineRenderer` correctly digested routing commands and applied
+    /// them without tearing the dependency graph.
     #[must_use]
     pub fn active_track_names_for_test(&self) -> Vec<&str> {
         self.core
@@ -652,7 +673,11 @@ impl RenderEngine {
         self.core.frames_until_boundary()
     }
 
-    /// Returns the current cycle length in frames for test assertions.
+    /// Exposes the engine's internal continuous-time synchronization metric.
+    ///
+    /// `orpheus-dsp` achieves sample-accurate musical timing by determining exactly how many
+    /// audio frames comprise a full musical cycle. This getter ensures unit tests can verify
+    /// that tempo changes correctly modulate the `frames_per_cycle` property.
     #[must_use]
     pub const fn frames_per_cycle_for_test(&self) -> u64 {
         self.core.frames_per_cycle
@@ -804,7 +829,10 @@ impl EngineHandle {
         self.test_renderer_mut().render_test_block(frames)
     }
 
-    /// Returns the active pattern name for the embedded test renderer.
+    /// Inspects the lock-free data structures of the embedded test renderer to read the active pattern name.
+    ///
+    /// This method allows `orpheus-lang` tests to verify that `EngineHandle` commands
+    /// correctly reach and modify the underlying test renderer's state across cycle boundaries.
     ///
     /// # Panics
     ///
@@ -814,7 +842,7 @@ impl EngineHandle {
         self.test_renderer_ref().active_pattern_name_for_test()
     }
 
-    /// Returns the active routed track names for the embedded test renderer.
+    /// Inspects the embedded test renderer's lock-free routing data to read the active track names.
     ///
     /// # Panics
     ///
@@ -835,7 +863,7 @@ impl EngineHandle {
         self.test_renderer_ref().frames_until_boundary_for_test()
     }
 
-    /// Returns the current cycle length in frames for the embedded test renderer.
+    /// Exposes the embedded test renderer's internal continuous-time synchronization metric.
     ///
     /// # Panics
     ///
@@ -888,7 +916,7 @@ const fn default_stream_config() -> StreamConfig {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use orpheus_dsp::{EngineError, frames_per_cycle};
 ///
 /// let frames = frames_per_cycle(44100, 120.0).unwrap();

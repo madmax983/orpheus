@@ -2,7 +2,7 @@
 //!
 //! This module translates human-readable musical note strings (like `"c4"`,
 //! `"fs4"`, `"bf3"`) into integer MIDI note numbers or offsets.
-use std::fmt::{self, Display, Formatter};
+use thiserror::Error;
 
 /// An error that occurs when a string fails to parse as a pitch literal.
 ///
@@ -25,30 +25,26 @@ use std::fmt::{self, Display, Formatter};
 /// ```
 /// use orpheus_lang::parse_named_pitch_literal;
 ///
-/// // Invalid accidental (`#` instead of `s` for sharp)
-/// let error = parse_named_pitch_literal("c#4").unwrap_err();
-/// assert!(error.to_string().contains("invalid format"));
+/// // Missing octave after an accidental is rejected.
+/// let error = parse_named_pitch_literal("cf").unwrap_err();
+/// assert!(error.to_string().contains("missing an octave suffix"));
 ///
 /// // Uppercase notes are not supported.
 /// let error = parse_named_pitch_literal("C4").unwrap_err();
-/// assert!(error.to_string().contains("invalid format"));
+/// assert!(error.to_string().contains("lowercase ASCII"));
 /// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
+
+#[derive(Clone, Debug, Eq, PartialEq, Error)]
+#[error("{message}")]
 pub struct PitchLiteralError {
     message: Box<str>,
 }
 
 impl PitchLiteralError {
-    fn new(message: impl Into<Box<str>>) -> Self {
+    pub fn new(message: impl Into<Box<str>>) -> Self {
         Self {
             message: message.into(),
         }
-    }
-}
-
-impl Display for PitchLiteralError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.message)
     }
 }
 
@@ -74,9 +70,9 @@ impl Display for PitchLiteralError {
 /// ```
 /// use orpheus_lang::parse_named_pitch_literal;
 ///
-/// assert_eq!(parse_named_pitch_literal("c4").unwrap(), Some(0));
-/// assert_eq!(parse_named_pitch_literal("cs4").unwrap(), Some(1));
-/// assert_eq!(parse_named_pitch_literal("c5").unwrap(), Some(12));
+/// assert_eq!(parse_named_pitch_literal("c4").unwrap(), Some(60));
+/// assert_eq!(parse_named_pitch_literal("cs4").unwrap(), Some(61));
+/// assert_eq!(parse_named_pitch_literal("c5").unwrap(), Some(72));
 /// ```
 pub fn parse_named_pitch_literal(token: &str) -> Result<Option<i32>, PitchLiteralError> {
     let mut chars = token.chars();

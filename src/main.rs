@@ -1,3 +1,9 @@
+//! The root binary crate for the Orpheus live-coding audio environment.
+//!
+//! This crate parses command-line arguments, sets up the real-time audio backend using `cpal`,
+//! launches the Digital Signal Processing engine, and hands over control to the `orpheus-lang`
+//! Read-Eval-Print Loop (REPL) or Terminal User Interface (TUI).
+
 use std::env;
 use std::ffi::OsString;
 use std::io::IsTerminal;
@@ -11,11 +17,15 @@ use orpheus_dsp::EngineHandle;
 
 fn main() {
     if let Err(error) = run() {
-        eprintln!("{} {:?}", "✗ error:".red().bold(), error);
+        eprintln!("{} {}", "✗ error:".red().bold(), error);
+        for cause in error.chain().skip(1) {
+            eprintln!("  {} {}", "↳".cyan(), cause);
+        }
         std::process::exit(1);
     }
 }
 
+#[derive(Debug)]
 enum CliAction {
     Help,
     Version,
@@ -38,21 +48,20 @@ fn run() -> anyhow::Result<()> {
 
     let (engine, _stream, warning) = match start_live_audio() {
         Ok((engine, stream)) => (engine, Some(stream), None),
-        Err(error) => (
-            EngineHandle::stub(),
-            None,
-            Some(format!("audio output disabled: {error}")),
-        ),
+        Err(error) => {
+            let mut message = format!("audio output disabled: {error}");
+            for cause in error.chain().skip(1) {
+                use std::fmt::Write;
+                let _ = write!(&mut message, "\n  ↳ {cause}");
+            }
+            (EngineHandle::stub(), None, Some(message))
+        }
     };
 
     if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
-        orpheus_lang::tui::run_with_engine_and_path(engine, startup_path.as_deref(), warning)?;
+        orpheus_lang::run_with_engine_and_path(engine, startup_path.as_deref(), warning)?;
     } else {
-        orpheus_lang::repl::run_stdio_with_engine_and_path(
-            engine,
-            startup_path.as_deref(),
-            warning,
-        )?;
+        orpheus_lang::run_stdio_with_engine_and_path(engine, startup_path.as_deref(), warning)?;
     }
     Ok(())
 }
@@ -127,7 +136,7 @@ fn start_live_audio() -> anyhow::Result<(EngineHandle, Stream)> {
                     output.fill(0.0);
                 }
             },
-            |error| eprintln!("audio stream error: {error}"),
+            |error| eprintln!("{} {}", "✗ audio stream error:".red().bold(), error),
             None,
         )
         .context("failed to build the audio output stream")?;
@@ -136,4 +145,94 @@ fn start_live_audio() -> anyhow::Result<(EngineHandle, Stream)> {
         .context("failed to start the audio output stream")?;
 
     Ok((engine, stream))
+}
+
+#[cfg(test)]
+impl PartialEq for CliAction {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Help, Self::Help) | (Self::Version, Self::Version) => true,
+            (Self::Run(l0), Self::Run(r0)) => l0 == r0,
+            _ => false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsString;
+    use std::path::PathBuf;
+
+    #[test]
+    fn startup_path_from_args_handles_empty_args() {
+        let args: Vec<OsString> = vec![];
+        let action = startup_path_from_args(args).unwrap();
+        match action {
+            CliAction::Run(None) => (),
+            _ => panic!("Expected Run(None)"),
+        }
+    }
+
+    #[test]
+    fn startup_path_from_args_handles_help_flag() {
+        let args = vec![OsString::from("--help")];
+        let action = startup_path_from_args(args).unwrap();
+        match action {
+            CliAction::Help => (),
+            _ => panic!("Expected Help"),
+        }
+
+        let args = vec![OsString::from("-h")];
+        let action = startup_path_from_args(args).unwrap();
+        match action {
+            CliAction::Help => (),
+            _ => panic!("Expected Help"),
+        }
+    }
+
+    #[test]
+    fn startup_path_from_args_handles_version_flag() {
+        let args = vec![OsString::from("--version")];
+        let action = startup_path_from_args(args).unwrap();
+        match action {
+            CliAction::Version => (),
+            _ => panic!("Expected Version"),
+        }
+
+        let args = vec![OsString::from("-V")];
+        let action = startup_path_from_args(args).unwrap();
+        match action {
+            CliAction::Version => (),
+            _ => panic!("Expected Version"),
+        }
+    }
+
+    #[test]
+    fn startup_path_from_args_handles_file_path() {
+        let args = vec![OsString::from("test.ode")];
+        let action = startup_path_from_args(args).unwrap();
+        match action {
+            CliAction::Run(Some(path)) => assert_eq!(path, PathBuf::from("test.ode")),
+            _ => panic!("Expected Run(Some)"),
+        }
+    }
+
+    #[test]
+    fn startup_path_from_args_rejects_unknown_flags() {
+        let args = vec![OsString::from("--unknown")];
+        let error = startup_path_from_args(args).unwrap_err();
+        assert!(error.to_string().contains("unexpected argument"));
+    }
+
+    #[test]
+    fn startup_path_from_args_rejects_multiple_args() {
+        let args = vec![OsString::from("file1.ode"), OsString::from("file2.ode")];
+        let error = startup_path_from_args(args).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("usage: orpheus [path/to/song.ode]")
+        );
+    }
 }

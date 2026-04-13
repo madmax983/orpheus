@@ -16,6 +16,7 @@ use crate::sample::{DecodedSample, SampleError, load_wav_bytes, load_wav_for_tes
 use crate::sample_manifest::{
     SampleManifest, SampleManifestLoadError, SampleRegion, load_sample_manifest,
 };
+use crate::transient::{detect_transient_markers, rebase_transient_markers, resolve_onset_slice};
 use crate::voice::VoiceKind;
 
 const KICK_WAV: &[u8] = include_bytes!("../assets/kick.wav");
@@ -61,6 +62,39 @@ impl From<DecodedSample> for PlaybackSample {
     }
 }
 
+/// A central, in-memory repository for decoding, storing, and addressing audio samples.
+///
+/// The `SampleBank` bridges the gap between the interactive language REPL (which
+/// schedules sound using abstract string identifiers like `"bd"` or `"sn"`) and the
+/// high-performance audio synthesis thread (which requires immediately readable `f32` buffers).
+///
+/// Rather than reading from disk or decoding WAV files every time an event fires, the
+/// `SampleBank` loads the entire working set of samples into heap memory before playback
+/// starts. This ensures that the hot DSP loop never blocks on I/O.
+///
+/// # Examples
+///
+/// In a standard application boot sequence, you will typically initialize the bank
+/// with the built-in drum machine assets, and then resolve tokens to extract
+/// `PlaybackSample` instances for rendering.
+///
+/// ```
+/// use orpheus_dsp::SampleBank;
+///
+/// // Load the core library ("bd", "sn", "cp", "hh").
+/// let bank = SampleBank::load_builtin();
+///
+/// // Safely query for a resolved audio buffer.
+/// let kick_buffer = bank.get_by_token("bd").expect("bd is a guaranteed built-in");
+///
+/// // Unknown identifiers degrade gracefully to `None` so the audio thread doesn't panic.
+/// let missing = bank.get_by_token("glitch");
+/// assert!(missing.is_none());
+/// ```
+///
+/// ## Panics
+/// The `SampleBank` uses robust `BTreeMap` structures internally, but developers should
+/// guarantee that sample arrays are not mutated while the DSP loop is actively reading them.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SampleBank {
     samples: BTreeMap<Box<str>, SampleEntry>,
@@ -72,11 +106,13 @@ struct SampleEntry {
     rate: f64,
     slice_start: f64,
     slice_end: f64,
+    onset_markers: Arc<[f64]>,
 }
 
 impl SampleEntry {
-    const fn direct(sample: PlaybackSample) -> Self {
+    fn direct(sample: PlaybackSample) -> Self {
         Self {
+            onset_markers: detect_transient_markers(sample.frames(), sample.sample_rate_hz()),
             sample,
             rate: 1.0,
             slice_start: 0.0,
@@ -87,6 +123,7 @@ impl SampleEntry {
     fn compose_region(&self, region: &SampleRegion) -> Self {
         let current_range = self.slice_end - self.slice_start;
         Self {
+            onset_markers: rebase_transient_markers(&self.onset_markers, region.start, region.end),
             sample: self.sample.clone(),
             rate: self.rate * region.rate,
             slice_start: current_range.mul_add(region.start, self.slice_start),
@@ -95,29 +132,64 @@ impl SampleEntry {
     }
 
     fn compose_trigger(&self, trigger: &SampleTrigger) -> SampleTrigger {
-        let current_range = self.slice_end - self.slice_start;
+        let (slice_start, slice_end) = self.compose_slice_bounds(trigger);
         let mut composed = SampleTrigger::named(trigger.token())
             .with_gain(trigger.gain())
             .with_pan(trigger.pan())
+            .with_delay_mix(trigger.delay_mix())
+            .with_delay_time(trigger.delay_time())
+            .with_delay_feedback(trigger.delay_feedback())
+            .with_reverb_mix(trigger.reverb_mix())
+            .with_reverb_room(trigger.reverb_room())
+            .with_reverb_damp(trigger.reverb_damp())
+            .with_chorus_mix(trigger.chorus_mix())
+            .with_chorus_depth(trigger.chorus_depth())
+            .with_chorus_rate(trigger.chorus_rate())
+            .with_compressor_mix(trigger.compressor_mix())
+            .with_compressor_threshold(trigger.compressor_threshold())
+            .with_compressor_ratio(trigger.compressor_ratio())
             .with_resonance(trigger.resonance())
             .with_drive(trigger.drive())
             .with_pulse_width(trigger.pulse_width())
             .with_rate(self.rate * trigger.rate())
-            .with_slice(
-                current_range.mul_add(trigger.slice_start(), self.slice_start),
-                current_range.mul_add(trigger.slice_end(), self.slice_start),
-            );
+            .with_slice(slice_start, slice_end);
+        if let Some(onset_index) = trigger.onset_index() {
+            composed = composed.with_onset(onset_index);
+        }
         if let Some(cutoff_hz) = trigger.hpf_cutoff_hz() {
             composed = composed.with_hpf_cutoff_hz(cutoff_hz);
         }
         if let Some(cutoff_hz) = trigger.lpf_cutoff_hz() {
             composed = composed.with_lpf_cutoff_hz(cutoff_hz);
         }
+        if let Some(pedal_program) = trigger.pedal_program() {
+            composed = composed.with_pedal_program(pedal_program.clone());
+        }
         composed
+    }
+
+    fn compose_slice_bounds(&self, trigger: &SampleTrigger) -> (f64, f64) {
+        let mut base_start = self.slice_start;
+        let mut base_end = self.slice_end;
+        if let Some(onset_index) = trigger.onset_index()
+            && let Some((onset_start, onset_end)) =
+                resolve_onset_slice(&self.onset_markers, onset_index)
+        {
+            (base_start, base_end) =
+                compose_relative_slice(base_start, base_end, onset_start, onset_end);
+        }
+
+        compose_relative_slice(
+            base_start,
+            base_end,
+            trigger.slice_start(),
+            trigger.slice_end(),
+        )
     }
 }
 
 impl SampleBank {
+    /// Loads the standard built-in Drum Machine samples into the bank.
     #[must_use]
     pub fn load_builtin() -> Self {
         let mut bank = Self::default();
@@ -130,16 +202,19 @@ impl SampleBank {
         bank
     }
 
+    /// Gets the sample backing the specified built-in voice kind.
     #[must_use]
     pub fn get(&self, voice: VoiceKind) -> Option<&PlaybackSample> {
         self.get_by_token(voice.token())
     }
 
+    /// Gets a sample by its string identifier (e.g., `"bd"`, `"sn"`).
     #[must_use]
     pub fn get_by_token(&self, token: &str) -> Option<&PlaybackSample> {
         self.samples.get(token).map(|entry| &entry.sample)
     }
 
+    /// Returns a list of all currently loaded string identifiers in the bank.
     #[must_use]
     pub fn available_tokens(&self) -> Vec<String> {
         self.samples.keys().map(ToString::to_string).collect()
@@ -165,39 +240,76 @@ impl SampleBank {
 /// Errors raised while scanning a sample directory for override assets.
 #[derive(Debug, Error)]
 pub enum SampleBankError {
+    /// An I/O error occurred while reading the sample directory.
     #[error("failed to read sample directory `{path}`: {message}")]
-    DirectoryIo { path: Box<str>, message: Box<str> },
+    DirectoryIo {
+        /// The path to the sample directory.
+        path: Box<str>,
+        /// The OS-level error message.
+        message: Box<str>,
+    },
+    /// An I/O error occurred while reading the `samples.ron` manifest.
     #[error("failed to read sample manifest `{path}`: {message}")]
-    ManifestIo { path: Box<str>, message: Box<str> },
+    ManifestIo {
+        /// The path to the manifest file.
+        path: Box<str>,
+        /// The OS-level error message.
+        message: Box<str>,
+    },
+    /// The `samples.ron` manifest contained invalid syntax or values.
     #[error("failed to parse sample manifest `{path}`: {message}")]
-    ManifestParse { path: Box<str>, message: Box<str> },
+    ManifestParse {
+        /// The path to the manifest file.
+        path: Box<str>,
+        /// A description of the parsing failure.
+        message: Box<str>,
+    },
+    /// A manifest alias points to a target sample that was not found.
     #[error("sample manifest `{path}` aliases `{alias}` to unknown token `{target}`")]
     ManifestAliasTarget {
+        /// The path to the manifest file.
         path: Box<str>,
+        /// The alias name.
         alias: Box<str>,
+        /// The unresolved target.
         target: Box<str>,
     },
+    /// A manifest alias refers to itself directly or indirectly.
     #[error("sample manifest `{path}` contains an alias cycle at `{alias}` via `{target}`")]
     ManifestAliasCycle {
+        /// The path to the manifest file.
         path: Box<str>,
+        /// The alias involved in the cycle.
         alias: Box<str>,
+        /// The target leading to the cycle.
         target: Box<str>,
     },
+    /// A manifest region points to a target sample that was not found.
     #[error("sample manifest `{path}` region `{region}` targets unknown token `{target}`")]
     ManifestRegionTarget {
+        /// The path to the manifest file.
         path: Box<str>,
+        /// The region name.
         region: Box<str>,
+        /// The unresolved target.
         target: Box<str>,
     },
+    /// A manifest region refers to itself directly or indirectly.
     #[error("sample manifest `{path}` contains a region cycle at `{region}` via `{target}`")]
     ManifestRegionCycle {
+        /// The path to the manifest file.
         path: Box<str>,
+        /// The region involved in the cycle.
         region: Box<str>,
+        /// The target leading to the cycle.
         target: Box<str>,
     },
+    /// An error occurred while decoding a sample file from disk.
     #[error("failed to decode sample override `{path}`: {source}")]
     Decode {
+        /// The path to the audio file.
         path: Box<str>,
+        /// The underlying decoding error.
         #[source]
         source: SampleError,
     },
@@ -484,4 +596,17 @@ fn resolve_region_target(
 
 fn inferred_token_from_stem(stem: &str) -> String {
     stem.to_ascii_lowercase()
+}
+
+fn compose_relative_slice(
+    base_start: f64,
+    base_end: f64,
+    relative_start: f64,
+    relative_end: f64,
+) -> (f64, f64) {
+    let range = base_end - base_start;
+    (
+        range.mul_add(relative_start, base_start),
+        range.mul_add(relative_end, base_start),
+    )
 }

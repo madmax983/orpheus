@@ -1,3 +1,6 @@
+#![allow(unreachable_patterns)]
+#![allow(clippy::large_enum_variant)]
+#![allow(clippy::match_same_arms)]
 //! The `builtins` module implements the standard library of pattern transformations and controls.
 //!
 //! This module houses the execution logic for all primitive functions available in the
@@ -11,6 +14,7 @@
 use orpheus_pattern::{Rational, TimeSpan};
 
 use crate::eval::{EvalError, apply_function_value, f64_to_rational};
+use crate::midi_input;
 use crate::value::{
     ArpDirectionValue, BuiltinFn, BuiltinKind, FunctionValue, GatePatternValue, NumberPatternValue,
     PitchClassSetValue, SamplePatternValue, Value,
@@ -35,6 +39,7 @@ use crate::value::{
 /// assert!(!is_sample_identifier("fast")); // This is a function
 /// assert!(!is_sample_identifier("foo"));  // Unknown/user variable
 /// ```
+#[must_use]
 pub fn is_sample_identifier(name: &str) -> bool {
     matches!(
         name,
@@ -70,6 +75,7 @@ const fn builtin_pitch_class_set_value(value: PitchClassSetValue) -> Value {
 /// assert!(builtin_value("bd").is_some());
 /// assert!(builtin_value("unknown_user_func").is_none());
 /// ```
+#[must_use]
 pub fn builtin_value(name: &str) -> Option<Value> {
     match name {
         "bd" | "sn" | "cp" | "hh" | "saw" | "pulse" | "tri" | "noise" => {
@@ -85,6 +91,7 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "arp" => Some(builtin_function_value(BuiltinKind::Arp)),
         "up" => Some(Value::ArpDirection(ArpDirectionValue::Up)),
         "down" => Some(Value::ArpDirection(ArpDirectionValue::Down)),
+        "pingpong" | "updown" => Some(Value::ArpDirection(ArpDirectionValue::PingPong)),
         "invert" => Some(builtin_function_value(BuiltinKind::Invert)),
         "drop" => Some(builtin_function_value(BuiltinKind::Drop)),
         "chord" => Some(builtin_function_value(BuiltinKind::Chord)),
@@ -106,9 +113,21 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "shift" => Some(builtin_function_value(BuiltinKind::Shift)),
         "rev" => Some(builtin_function_value(BuiltinKind::Rev)),
         "gain" => Some(builtin_function_value(BuiltinKind::Gain)),
+        "delay" => Some(builtin_function_value(BuiltinKind::Delay)),
+        "delay_time" => Some(builtin_function_value(BuiltinKind::DelayTime)),
+        "delay_feedback" => Some(builtin_function_value(BuiltinKind::DelayFeedback)),
         "hpf" => Some(builtin_function_value(BuiltinKind::Hpf)),
         "lpf" => Some(builtin_function_value(BuiltinKind::Lpf)),
+        "reverb" => Some(builtin_function_value(BuiltinKind::Reverb)),
+        "reverb_room" => Some(builtin_function_value(BuiltinKind::ReverbRoom)),
+        "reverb_damp" => Some(builtin_function_value(BuiltinKind::ReverbDamp)),
         "cutoff" => Some(builtin_function_value(BuiltinKind::Cutoff)),
+        "chorus" => Some(builtin_function_value(BuiltinKind::Chorus)),
+        "chorus_depth" => Some(builtin_function_value(BuiltinKind::ChorusDepth)),
+        "chorus_rate" => Some(builtin_function_value(BuiltinKind::ChorusRate)),
+        "compressor" => Some(builtin_function_value(BuiltinKind::Compressor)),
+        "compressor_threshold" => Some(builtin_function_value(BuiltinKind::CompressorThreshold)),
+        "compressor_ratio" => Some(builtin_function_value(BuiltinKind::CompressorRatio)),
         "res" => Some(builtin_function_value(BuiltinKind::Res)),
         "drive" => Some(builtin_function_value(BuiltinKind::Drive)),
         "pw" => Some(builtin_function_value(BuiltinKind::Pw)),
@@ -116,11 +135,16 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "pitch" => Some(builtin_function_value(BuiltinKind::Pitch)),
         "transpose" => Some(builtin_function_value(BuiltinKind::Transpose)),
         "sample" => Some(builtin_function_value(BuiltinKind::Sample)),
+        "onset" => Some(builtin_function_value(BuiltinKind::Onset)),
         "rate" => Some(builtin_function_value(BuiltinKind::Rate)),
         "slice" => Some(builtin_function_value(BuiltinKind::Slice)),
         "slice_idx" => Some(builtin_function_value(BuiltinKind::SliceIdx)),
         "rand" => Some(builtin_function_value(BuiltinKind::Rand)),
         "jux" => Some(builtin_function_value(BuiltinKind::Jux)),
+        "through" => Some(builtin_function_value(BuiltinKind::Through)),
+        "cc" | "midi_cc" => Some(builtin_function_value(BuiltinKind::MidiCc)),
+        "chaos" => Some(builtin_function_value(BuiltinKind::Chaos)),
+        "palindrome" => Some(builtin_function_value(BuiltinKind::Palindrome)),
         _ => None,
     }
 }
@@ -142,12 +166,11 @@ pub fn builtin_value(name: &str) -> Option<Value> {
 /// # Examples
 ///
 /// ```
-/// use orpheus_lang::{Value, BuiltinKind};
-/// use orpheus_lang::builtins::stack_values;
+/// use orpheus_lang::{Value, builtin_value, stack_values};
 ///
 /// // Evaluates `stack(bd, sn)` conceptually:
-/// let bd = orpheus_lang::builtins::builtin_value("bd").unwrap();
-/// let sn = orpheus_lang::builtins::builtin_value("sn").unwrap();
+/// let bd = builtin_value("bd").unwrap();
+/// let sn = builtin_value("sn").unwrap();
 /// let stacked = stack_values(vec![bd, sn]).unwrap();
 ///
 /// assert!(matches!(stacked, Value::SamplePattern(_)));
@@ -169,7 +192,8 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
                 | Value::ArpDirection(_)
                 | Value::PitchClassSet(_)
                 | Value::Function(_)
-                | Value::String(_) => unreachable!(),
+                | Value::String(_)
+                | Value::Pedal(_) => unreachable!(),
             })
             .collect();
         return Ok(Value::SamplePattern(SamplePatternValue::stack(patterns)));
@@ -187,7 +211,8 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
                 | Value::ArpDirection(_)
                 | Value::PitchClassSet(_)
                 | Value::Function(_)
-                | Value::String(_) => unreachable!(),
+                | Value::String(_)
+                | Value::Pedal(_) => unreachable!(),
             })
             .collect();
         return Ok(Value::NumberPattern(
@@ -244,14 +269,12 @@ impl BuiltinFn {
 /// # Examples
 ///
 /// ```
-/// use orpheus_lang::{Value, NumberPatternValue};
-/// use orpheus_lang::builtins::{apply_builtin_function, builtin_value};
-/// use orpheus_pattern::PatternNode;
+/// use orpheus_lang::{FunctionValue, Value, apply_builtin_function, builtin_value};
 ///
 /// let fast_func = builtin_value("fast").unwrap();
 /// let bd = builtin_value("bd").unwrap();
 ///
-/// if let Value::Function(orpheus_lang::FunctionValue::Builtin(func)) = fast_func {
+/// if let Value::Function(FunctionValue::Builtin(func)) = fast_func {
 ///     // `fast` takes 2 arguments: a rate and a pattern.
 ///     // Applying only 1 argument (the rate) returns a new curried function.
 ///     let curried = apply_builtin_function(&func, vec![bd]).unwrap();
@@ -307,9 +330,21 @@ impl BuiltinKind {
             Self::Shift => "shift",
             Self::Rev => "rev",
             Self::Gain => "gain",
+            Self::Delay => "delay",
+            Self::DelayTime => "delay_time",
+            Self::DelayFeedback => "delay_feedback",
             Self::Hpf => "hpf",
             Self::Lpf => "lpf",
+            Self::Reverb => "reverb",
+            Self::ReverbRoom => "reverb_room",
+            Self::ReverbDamp => "reverb_damp",
             Self::Cutoff => "cutoff",
+            Self::Chorus => "chorus",
+            Self::ChorusDepth => "chorus_depth",
+            Self::ChorusRate => "chorus_rate",
+            Self::Compressor => "compressor",
+            Self::CompressorThreshold => "compressor_threshold",
+            Self::CompressorRatio => "compressor_ratio",
             Self::Res => "res",
             Self::Drive => "drive",
             Self::Pw => "pw",
@@ -317,11 +352,16 @@ impl BuiltinKind {
             Self::Pitch => "pitch",
             Self::Transpose => "transpose",
             Self::Sample => "sample",
+            Self::Onset => "onset",
             Self::Rate => "rate",
             Self::Slice => "slice",
             Self::SliceIdx => "slice_idx",
             Self::Rand => "rand",
             Self::Jux => "jux",
+            Self::Through => "through",
+            Self::MidiCc => "midi_cc",
+            Self::Chaos => "chaos",
+            Self::Palindrome => "palindrome",
         }
     }
 
@@ -329,7 +369,13 @@ impl BuiltinKind {
         match self {
             Self::Every | Self::Arp | Self::Slice | Self::SliceIdx => 3,
             Self::When | Self::Within => 4,
-            Self::PitchClassSet | Self::Rev | Self::Sample | Self::Strum => 1,
+            Self::PitchClassSet
+            | Self::Rev
+            | Self::Sample
+            | Self::Strum
+            | Self::Chaos
+            | Self::Palindrome
+            | Self::MidiCc => 1,
             Self::Sometimes
             | Self::Mask
             | Self::Roll
@@ -342,17 +388,32 @@ impl BuiltinKind {
             | Self::Slow
             | Self::Shift
             | Self::Gain
+            | Self::Delay
+            | Self::DelayTime
+            | Self::DelayFeedback
             | Self::Hpf
             | Self::Lpf
+            | Self::Reverb
+            | Self::ReverbRoom
+            | Self::ReverbDamp
             | Self::Cutoff
+            | Self::Chorus
+            | Self::ChorusDepth
+            | Self::ChorusRate
+            | Self::Compressor
+            | Self::CompressorThreshold
+            | Self::CompressorRatio
             | Self::Res
             | Self::Drive
             | Self::Pw
             | Self::Pan
             | Self::Pitch
             | Self::Transpose
+            | Self::Onset
             | Self::Rate
-            | Self::Jux => 2,
+            | Self::Jux
+            | Self::Through
+            | Self::MidiCc => 2,
             Self::Rand => 0,
         }
     }
@@ -378,9 +439,21 @@ impl BuiltinKind {
             Self::Shift => apply_shift(args),
             Self::Rev => apply_rev(args),
             Self::Gain => apply_gain(args),
+            Self::Delay => apply_delay(args),
+            Self::DelayTime => apply_delay_time(args),
+            Self::DelayFeedback => apply_delay_feedback(args),
             Self::Hpf => apply_hpf(args),
             Self::Lpf => apply_lpf(args),
+            Self::Reverb => apply_reverb(args),
+            Self::ReverbRoom => apply_reverb_room(args),
+            Self::ReverbDamp => apply_reverb_damp(args),
             Self::Cutoff => apply_cutoff(args),
+            Self::Chorus => apply_chorus(args),
+            Self::ChorusDepth => apply_chorus_depth(args),
+            Self::ChorusRate => apply_chorus_rate(args),
+            Self::Compressor => apply_compressor(args),
+            Self::CompressorThreshold => apply_compressor_threshold(args),
+            Self::CompressorRatio => apply_compressor_ratio(args),
             Self::Res => apply_res(args),
             Self::Drive => apply_drive(args),
             Self::Pw => apply_pw(args),
@@ -388,13 +461,55 @@ impl BuiltinKind {
             Self::Pitch => apply_pitch(args),
             Self::Transpose => apply_transpose(args),
             Self::Sample => apply_sample(args),
+            Self::Onset => apply_onset(args),
             Self::Rate => apply_rate(args),
             Self::Slice => apply_slice(args),
             Self::SliceIdx => apply_slice_idx(args),
             Self::Rand => apply_rand(args, function.site_salt.unwrap_or_default()),
             Self::Jux => apply_jux(args),
+            Self::Through => apply_through(args),
+            Self::MidiCc => apply_midi_cc(args),
+            Self::Chaos => apply_chaos(args, function.site_salt.unwrap_or_default()),
+            Self::Palindrome => apply_palindrome(args),
         }
     }
+}
+
+fn apply_midi_cc(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let controller = extract_constant_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`midi_cc` requires a controller argument"))?,
+        "midi_cc",
+    )?;
+    if controller.fract() != 0.0 || !(0.0..=127.0).contains(&controller) {
+        return Err(EvalError::new(
+            "`midi_cc` requires an integer controller index within [0, 127]",
+        ));
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let value = midi_input::cc_normalized(controller as u8);
+    Ok(Value::NumberPattern(NumberPatternValue::constant(value)))
+}
+
+fn apply_through(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let pedal = extract_pedal(
+        args.next()
+            .ok_or_else(|| EvalError::new("`through` requires a pedal argument"))?,
+        "through",
+    )?;
+    let pattern = extract_sample_pattern(
+        args.next()
+            .ok_or_else(|| EvalError::new("`through` requires a sample pattern argument"))?,
+        "through",
+    )?;
+    let pedal_program = std::sync::Arc::new(orpheus_dsp::PedalProgram::new(
+        pedal.format_source(),
+        pedal.explain(),
+    ));
+
+    Ok(Value::SamplePattern(pattern.through(pedal_program)))
 }
 
 fn apply_every(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -423,7 +538,8 @@ fn apply_every(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(
+        | Value::String(_)
+        | Value::Pedal(_) => Err(EvalError::new(
             "`every` expected a pattern as its final argument",
         )),
     }
@@ -471,7 +587,8 @@ fn apply_when(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(
+        | Value::String(_)
+        | Value::Pedal(_) => Err(EvalError::new(
             "`when` expected a pattern as its final argument",
         )),
     }
@@ -509,7 +626,8 @@ fn apply_jux(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(
+        | Value::String(_)
+        | Value::Pedal(_) => Err(EvalError::new(
             "`jux` expected a sample pattern as its final argument",
         )),
     }
@@ -540,7 +658,8 @@ fn apply_sometimes(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError>
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(
+        | Value::String(_)
+        | Value::Pedal(_) => Err(EvalError::new(
             "`sometimes` expected a pattern as its final argument",
         )),
     }
@@ -581,7 +700,8 @@ fn apply_within(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(
+        | Value::String(_)
+        | Value::Pedal(_) => Err(EvalError::new(
             "`within` expected a pattern as its final argument",
         )),
     }
@@ -605,7 +725,8 @@ fn apply_mask(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new(
+        | Value::String(_)
+        | Value::Pedal(_) => Err(EvalError::new(
             "`mask` expected a pattern as its final argument",
         )),
     }
@@ -681,6 +802,7 @@ fn apply_roll(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new("`roll` requires a pattern argument")),
     }
 }
@@ -783,6 +905,7 @@ fn apply_fast(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(
             "`fast` expected a pattern as its final argument",
         )),
@@ -806,6 +929,7 @@ fn apply_slow(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(
             "`slow` expected a pattern as its final argument",
         )),
@@ -829,6 +953,7 @@ fn apply_shift(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(
             "`shift` expected a pattern as its final argument",
         )),
@@ -847,7 +972,29 @@ fn apply_rev(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::String(_) => Err(EvalError::new("`rev` expected a pattern argument")),
+        | Value::String(_)
+        | Value::Pedal(_) => Err(EvalError::new("`rev` expected a pattern argument")),
+    }
+}
+
+fn apply_chaos(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
+    let pattern = args
+        .into_iter()
+        .next()
+        .ok_or_else(|| EvalError::new("`chaos` requires a pattern argument"))?;
+
+    match pattern {
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(
+            pattern.chaos_with_site_salt(site_salt),
+        )),
+        Value::NumberPattern(pattern) => Ok(Value::NumberPattern(
+            pattern.chaos_with_site_salt(site_salt),
+        )),
+        Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::Pedal(_)
+        | Value::String(_) => Err(EvalError::new("`chaos` expected a pattern argument")),
     }
 }
 
@@ -859,6 +1006,39 @@ fn apply_gain(args: Vec<Value>) -> Result<Value, EvalError> {
         extract_gain_control,
         SamplePatternValue::gain,
         SamplePatternValue::gain_pattern,
+    )
+}
+
+fn apply_delay(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "delay",
+        "mix",
+        |value| extract_unit_interval_control(value, "delay"),
+        SamplePatternValue::delay,
+        SamplePatternValue::delay_pattern,
+    )
+}
+
+fn apply_delay_time(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "delay_time",
+        "time",
+        |value| extract_delay_time_control(value, "delay_time"),
+        SamplePatternValue::delay_time,
+        SamplePatternValue::delay_time_pattern,
+    )
+}
+
+fn apply_delay_feedback(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "delay_feedback",
+        "feedback",
+        |value| extract_unit_interval_control(value, "delay_feedback"),
+        SamplePatternValue::delay_feedback,
+        SamplePatternValue::delay_feedback_pattern,
     )
 }
 
@@ -881,6 +1061,39 @@ fn apply_lpf(args: Vec<Value>) -> Result<Value, EvalError> {
         |val| extract_filter_cutoff_control(val, "lpf"),
         SamplePatternValue::lpf,
         SamplePatternValue::lpf_pattern,
+    )
+}
+
+fn apply_reverb(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "reverb",
+        "mix",
+        |value| extract_unit_interval_control(value, "reverb"),
+        SamplePatternValue::reverb,
+        SamplePatternValue::reverb_pattern,
+    )
+}
+
+fn apply_reverb_room(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "reverb_room",
+        "room",
+        |value| extract_unit_interval_control(value, "reverb_room"),
+        SamplePatternValue::reverb_room,
+        SamplePatternValue::reverb_room_pattern,
+    )
+}
+
+fn apply_reverb_damp(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "reverb_damp",
+        "damp",
+        |value| extract_unit_interval_control(value, "reverb_damp"),
+        SamplePatternValue::reverb_damp,
+        SamplePatternValue::reverb_damp_pattern,
     )
 }
 
@@ -917,6 +1130,39 @@ fn apply_drive(args: Vec<Value>) -> Result<Value, EvalError> {
     )
 }
 
+fn apply_chorus(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "chorus",
+        "mix",
+        |value| extract_unit_interval_control(value, "chorus"),
+        SamplePatternValue::chorus,
+        SamplePatternValue::chorus_pattern,
+    )
+}
+
+fn apply_chorus_depth(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "chorus_depth",
+        "depth",
+        |value| extract_unit_interval_control(value, "chorus_depth"),
+        SamplePatternValue::chorus_depth,
+        SamplePatternValue::chorus_depth_pattern,
+    )
+}
+
+fn apply_chorus_rate(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "chorus_rate",
+        "rate",
+        |value| extract_positive_finite_control(value, "chorus_rate"),
+        SamplePatternValue::chorus_rate,
+        SamplePatternValue::chorus_rate_pattern,
+    )
+}
+
 fn apply_pw(args: Vec<Value>) -> Result<Value, EvalError> {
     apply_sample_numeric_control(
         args,
@@ -936,6 +1182,39 @@ fn apply_pan(args: Vec<Value>) -> Result<Value, EvalError> {
         extract_pan_control,
         SamplePatternValue::pan,
         SamplePatternValue::pan_pattern,
+    )
+}
+
+fn apply_compressor(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "compressor",
+        "mix",
+        |value| extract_unit_interval_control(value, "compressor"),
+        SamplePatternValue::compressor,
+        SamplePatternValue::compressor_pattern,
+    )
+}
+
+fn apply_compressor_threshold(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "compressor_threshold",
+        "threshold",
+        |value| extract_unit_interval_control(value, "compressor_threshold"),
+        SamplePatternValue::compressor_threshold,
+        SamplePatternValue::compressor_threshold_pattern,
+    )
+}
+
+fn apply_compressor_ratio(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_sample_numeric_control(
+        args,
+        "compressor_ratio",
+        "ratio",
+        |value| extract_compressor_ratio_control(value, "compressor_ratio"),
+        SamplePatternValue::compressor_ratio,
+        SamplePatternValue::compressor_ratio_pattern,
     )
 }
 
@@ -976,6 +1255,32 @@ fn apply_sample(args: Vec<Value>) -> Result<Value, EvalError> {
         "sample",
     )?;
     Ok(Value::SamplePattern(SamplePatternValue::atom(&token)))
+}
+
+fn apply_onset(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let index = extract_onset_index_control(
+        args.next()
+            .ok_or_else(|| EvalError::new("`onset` requires an index argument"))?,
+    )?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`onset` requires a pattern argument"))?;
+
+    match pattern {
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match index {
+            OnsetIndexControl::Constant(index) => pattern.onset(index),
+            OnsetIndexControl::Pattern(control) => pattern.onset_pattern(*control),
+        })),
+        Value::NumberPattern(_) => Err(EvalError::new("`onset` only applies to sample patterns")),
+        Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::Pedal(_)
+        | Value::String(_) => Err(EvalError::new(
+            "`onset` expected a sample pattern as its final argument",
+        )),
+    }
 }
 
 fn apply_rate(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -1024,6 +1329,7 @@ fn apply_slice(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(
             "`slice` expected a sample pattern as its final argument",
         )),
@@ -1057,7 +1363,7 @@ fn apply_slice_idx(args: Vec<Value>) -> Result<Value, EvalError> {
                 let (start, end) = slice_idx_bounds(index, segments)?;
                 pattern.slice(start, end)
             }
-            SliceIndexControl::Pattern(control) => pattern.slice_idx_pattern(control, segments),
+            SliceIndexControl::Pattern(control) => pattern.slice_idx_pattern(*control, segments),
         })),
         Value::NumberPattern(_) => Err(EvalError::new(
             "`slice_idx` only applies to sample patterns",
@@ -1065,6 +1371,7 @@ fn apply_slice_idx(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(
             "`slice_idx` expected a sample pattern as its final argument",
         )),
@@ -1100,6 +1407,7 @@ fn apply_sample_numeric_control(
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(format!(
             "`{builtin_name}` expected a sample pattern as its final argument"
         ))),
@@ -1166,7 +1474,8 @@ fn extract_unary_pattern_transform(
         | Value::NumberPattern(_)
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
-        | Value::String(_) => Err(EvalError::new(message)),
+        | Value::String(_)
+        | Value::Pedal(_) => Err(EvalError::new(message)),
     }
 }
 
@@ -1183,6 +1492,7 @@ fn extract_pattern_gate(
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(message)),
     }
 }
@@ -1317,9 +1627,14 @@ enum NumericControl {
     Pattern(NumberPatternValue),
 }
 
+enum OnsetIndexControl {
+    Constant(u32),
+    Pattern(Box<NumberPatternValue>),
+}
+
 enum SliceIndexControl {
     Constant(u32),
-    Pattern(NumberPatternValue),
+    Pattern(Box<NumberPatternValue>),
 }
 
 fn extract_gain_control(value: Value) -> Result<NumericControl, EvalError> {
@@ -1338,6 +1653,114 @@ fn extract_gain_control(value: Value) -> Result<NumericControl, EvalError> {
             Err(EvalError::new(
                 "`gain` requires finite numeric control values",
             ))
+        }
+    })?;
+
+    Ok(NumericControl::Pattern(pattern))
+}
+
+fn extract_unit_interval_control(
+    value: Value,
+    builtin_name: &str,
+) -> Result<NumericControl, EvalError> {
+    let pattern = extract_number_pattern(value, builtin_name)?;
+    if let Ok(number) = pattern.constant_value() {
+        if !number.is_finite() || !(0.0..=1.0).contains(&number) {
+            return Err(EvalError::new(format!(
+                "`{builtin_name}` requires a finite number within [0, 1]"
+            )));
+        }
+        return Ok(NumericControl::Constant(number));
+    }
+
+    validate_numeric_control_pattern(&pattern, builtin_name, |value| {
+        if value.is_finite() && (0.0..=1.0).contains(&value) {
+            Ok(())
+        } else {
+            Err(EvalError::new(format!(
+                "`{builtin_name}` requires finite control values within [0, 1]"
+            )))
+        }
+    })?;
+
+    Ok(NumericControl::Pattern(pattern))
+}
+
+fn extract_positive_finite_control(
+    value: Value,
+    builtin_name: &str,
+) -> Result<NumericControl, EvalError> {
+    let pattern = extract_number_pattern(value, builtin_name)?;
+    if let Ok(number) = pattern.constant_value() {
+        if !number.is_finite() || number <= f64::EPSILON {
+            return Err(EvalError::new(format!(
+                "`{builtin_name}` requires a positive finite numeric value"
+            )));
+        }
+        return Ok(NumericControl::Constant(number));
+    }
+
+    validate_numeric_control_pattern(&pattern, builtin_name, |value| {
+        if value.is_finite() && value > f64::EPSILON {
+            Ok(())
+        } else {
+            Err(EvalError::new(format!(
+                "`{builtin_name}` requires positive finite control values"
+            )))
+        }
+    })?;
+
+    Ok(NumericControl::Pattern(pattern))
+}
+
+fn extract_delay_time_control(
+    value: Value,
+    builtin_name: &str,
+) -> Result<NumericControl, EvalError> {
+    let pattern = extract_number_pattern(value, builtin_name)?;
+    if let Ok(number) = pattern.constant_value() {
+        if !number.is_finite() || number <= f64::EPSILON || number > 1.0 {
+            return Err(EvalError::new(format!(
+                "`{builtin_name}` requires a positive finite numeric value within (0, 1]"
+            )));
+        }
+        return Ok(NumericControl::Constant(number));
+    }
+
+    validate_numeric_control_pattern(&pattern, builtin_name, |value| {
+        if value.is_finite() && value > f64::EPSILON && value <= 1.0 {
+            Ok(())
+        } else {
+            Err(EvalError::new(format!(
+                "`{builtin_name}` requires positive finite control values within (0, 1]"
+            )))
+        }
+    })?;
+
+    Ok(NumericControl::Pattern(pattern))
+}
+
+fn extract_compressor_ratio_control(
+    value: Value,
+    builtin_name: &str,
+) -> Result<NumericControl, EvalError> {
+    let pattern = extract_number_pattern(value, builtin_name)?;
+    if let Ok(number) = pattern.constant_value() {
+        if !number.is_finite() || number < 1.0 {
+            return Err(EvalError::new(format!(
+                "`{builtin_name}` requires a finite numeric value >= 1"
+            )));
+        }
+        return Ok(NumericControl::Constant(number));
+    }
+
+    validate_numeric_control_pattern(&pattern, builtin_name, |value| {
+        if value.is_finite() && value >= 1.0 {
+            Ok(())
+        } else {
+            Err(EvalError::new(format!(
+                "`{builtin_name}` requires finite control values >= 1"
+            )))
         }
     })?;
 
@@ -1626,6 +2049,19 @@ fn whole_number_from_pitch_class_value(value: f64) -> Result<i32, EvalError> {
         .map_err(|_| EvalError::new("`pitch_class_set` exceeded the supported evaluator range"))
 }
 
+fn extract_onset_index_control(value: Value) -> Result<OnsetIndexControl, EvalError> {
+    let pattern = extract_number_pattern(value, "onset")?;
+    if let Ok(index) = pattern.constant_value() {
+        return Ok(OnsetIndexControl::Constant(validate_onset_index_constant(
+            index,
+        )?));
+    }
+
+    validate_numeric_control_pattern(&pattern, "onset", validate_onset_index_control_value)?;
+
+    Ok(OnsetIndexControl::Pattern(Box::new(pattern)))
+}
+
 fn extract_slice_idx_control(value: Value, segments: u32) -> Result<SliceIndexControl, EvalError> {
     let pattern = extract_number_pattern(value, "slice_idx")?;
     if let Ok(index) = pattern.constant_value() {
@@ -1638,7 +2074,7 @@ fn extract_slice_idx_control(value: Value, segments: u32) -> Result<SliceIndexCo
         validate_slice_idx_control_value(value, segments)
     })?;
 
-    Ok(SliceIndexControl::Pattern(pattern))
+    Ok(SliceIndexControl::Pattern(Box::new(pattern)))
 }
 
 fn validate_numeric_control_pattern<F>(
@@ -1687,6 +2123,26 @@ fn validate_slice_idx_control_value(value: f64, segments: u32) -> Result<(), Eva
     if value >= f64::from(segments) {
         return Err(EvalError::new(
             "`slice_idx` requires control values with index < segments",
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_onset_index_constant(value: f64) -> Result<u32, EvalError> {
+    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
+        return Err(EvalError::new("`onset index` requires a whole number"));
+    }
+
+    format!("{value:.0}")
+        .parse::<u32>()
+        .map_err(|_| EvalError::new("`onset index` exceeded the supported evaluator range"))
+}
+
+fn validate_onset_index_control_value(value: f64) -> Result<(), EvalError> {
+    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
+        return Err(EvalError::new(
+            "`onset` requires whole-number control values",
         ));
     }
 
@@ -1814,8 +2270,42 @@ fn extract_number_pattern(
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(format!(
             "`{builtin_name}` requires a number pattern argument"
+        ))),
+    }
+}
+
+fn extract_sample_pattern(
+    value: Value,
+    builtin_name: &str,
+) -> Result<SamplePatternValue, EvalError> {
+    match value {
+        Value::SamplePattern(pattern) => Ok(pattern),
+        Value::NumberPattern(_) => Err(EvalError::new(format!(
+            "`{builtin_name}` only applies to sample patterns"
+        ))),
+        Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::Pedal(_)
+        | Value::String(_) => Err(EvalError::new(format!(
+            "`{builtin_name}` expected a sample pattern argument"
+        ))),
+    }
+}
+
+fn extract_pedal(value: Value, builtin_name: &str) -> Result<crate::pedal::PedalValue, EvalError> {
+    match value {
+        Value::Pedal(pedal) => Ok(pedal),
+        Value::SamplePattern(_)
+        | Value::NumberPattern(_)
+        | Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_) => Err(EvalError::new(format!(
+            "`{builtin_name}` requires a pedal argument"
         ))),
     }
 }
@@ -1831,6 +2321,7 @@ fn extract_constant_number(value: Value, builtin_name: &str) -> Result<f64, Eval
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(format!(
             "`{builtin_name}` requires a constant number argument"
         ))),
@@ -1844,6 +2335,7 @@ fn extract_string(value: Value, builtin_name: &str) -> Result<String, EvalError>
         | Value::NumberPattern(_)
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
+        | Value::Pedal(_)
         | Value::Function(_) => Err(EvalError::new(format!(
             "`{builtin_name}` requires a string argument"
         ))),
@@ -1857,8 +2349,9 @@ fn extract_arp_direction(value: &Value) -> Result<ArpDirectionValue, EvalError> 
         | Value::NumberPattern(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(
-            "`arp` requires a direction argument like `up` or `down`",
+            "`arp` requires a direction argument like `up`, `down`, `pingpong`, or `updown`",
         )),
     }
 }
@@ -1872,6 +2365,7 @@ fn extract_pitch_class_set(value: Value) -> Result<PitchClassSetValue, EvalError
         Value::SamplePattern(_)
         | Value::NumberPattern(_)
         | Value::ArpDirection(_)
+        | Value::Pedal(_)
         | Value::Function(_) => Err(EvalError::new(
             "`degrees` requires a pitch class set as its first argument",
         )),
@@ -1941,5 +2435,109 @@ mod tests {
             err_msg.contains("maximum allowed bound of 1024"),
             "unexpected error message: {err_msg}"
         );
+    }
+
+    #[test]
+    fn chaos_rejects_invalid_types() {
+        let test_cases = vec![
+            "a = chaos(\"string\")",
+            "a = chaos(rev)",
+            "a = chaos(every)",
+        ];
+
+        for source in test_cases {
+            let result = eval_module(source, ReplMode::Loose);
+            assert!(
+                result.is_err(),
+                "expected chaos with invalid argument to be rejected: {source}"
+            );
+            let err_msg = result.unwrap_err().to_string();
+            assert!(
+                err_msg.contains("`chaos` expected a pattern argument"),
+                "unexpected error message for {source}: {err_msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn midi_cc_evaluates_and_rejects_invalid() {
+        let test_cases = vec![
+            ("a = midi_cc(1)", true),
+            ("a = cc(127)", true),
+            ("a = cc(0)", true),
+            ("a = cc(128)", false),
+            ("a = cc(-1)", false),
+            ("a = cc(1.5)", false),
+        ];
+
+        for (source, is_valid) in test_cases {
+            let result = eval_module(source, ReplMode::Loose);
+            if is_valid {
+                assert!(
+                    result.is_ok(),
+                    "expected valid midi_cc evaluation: {source}, but got {result:?}"
+                );
+            } else {
+                assert!(
+                    result.is_err(),
+                    "expected invalid midi_cc evaluation to fail: {source}"
+                );
+                let err_msg = result.unwrap_err().to_string();
+                assert!(
+                    err_msg
+                        .contains("`midi_cc` requires an integer controller index within [0, 127]"),
+                    "unexpected error message for {source}: {err_msg}"
+                );
+            }
+        }
+    }
+}
+
+fn apply_palindrome(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`palindrome` requires a pattern argument"))?;
+
+    let Value::Function(rev_function) = builtin_function_value(BuiltinKind::Rev) else {
+        unreachable!("BuiltinKind::Rev always returns a FunctionValue")
+    };
+
+    match pattern {
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.every(2, rev_function))),
+        Value::NumberPattern(pattern) => Ok(Value::NumberPattern(pattern.every(2, rev_function))),
+        _ => Err(EvalError::new(
+            "`palindrome` expects a sample or number pattern",
+        )),
+    }
+}
+
+#[cfg(test)]
+mod test_nova {
+    use crate::{ReplMode, eval_module};
+    use orpheus_pattern::{Rational, TimeSpan};
+
+    #[test]
+    fn test_palindrome_builtin() {
+        let source = "pat = palindrome(bd sn)";
+        let module = eval_module(source, ReplMode::Loose).unwrap();
+        let pattern = module.get("pat").unwrap().as_sample_pattern().unwrap();
+
+        // 2 cycles
+        let span = TimeSpan::new(Rational::zero(), Rational::new(2, 1).unwrap()).unwrap();
+        let events = pattern.try_query(&span).unwrap();
+
+        assert_eq!(events.len(), 4);
+        assert_eq!(events[0].value.sample(), "sn");
+        assert_eq!(events[0].part.start(), &Rational::new(0, 1).unwrap());
+
+        assert_eq!(events[1].value.sample(), "bd");
+        assert_eq!(events[1].part.start(), &Rational::new(1, 2).unwrap());
+
+        assert_eq!(events[2].value.sample(), "bd");
+        assert_eq!(events[2].part.start(), &Rational::new(1, 1).unwrap());
+
+        assert_eq!(events[3].value.sample(), "sn");
+        assert_eq!(events[3].part.start(), &Rational::new(3, 2).unwrap());
     }
 }

@@ -1,10 +1,12 @@
 use orpheus_dsp::{
-    EngineCommand, EngineError, EngineHandle, PatternUpdate, RoutingSnapshot, SampleTrigger,
-    TrackSource, load_builtin_sample_for_test, load_sample_bank_from_directory,
+    EngineCommand, EngineError, EngineHandle, PatternUpdate, PedalProgram, RoutingSnapshot,
+    SampleTrigger, TrackSource, load_builtin_sample_for_test, load_sample_bank_from_directory,
+    render_routing_snapshot_to_stereo_for_test,
 };
 use orpheus_pattern::{Event, Rational, TimeSpan};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -96,6 +98,29 @@ fn analog_saw_token_sustains_across_its_event_span() {
         rendered[80..96]
             .iter()
             .any(|sample| sample.abs() > f32::EPSILON)
+    );
+}
+
+#[test]
+fn sample_trigger_carries_pedal_program() {
+    let pedal_program = Arc::new(PedalProgram::new(
+        "graph { wet = input |> clip(model=silicon_hard); wet |> output }",
+        "signal_kind=Audio\nbinding wet: Audio clip(input, model=silicon_hard)\nresult: Audio output(wet)",
+    ));
+    let trigger = SampleTrigger::named("bd").with_pedal_program(pedal_program.clone());
+
+    assert!(Arc::ptr_eq(
+        trigger
+            .pedal_program()
+            .expect("sample trigger should expose the pedal program"),
+        &pedal_program
+    ));
+    assert!(
+        trigger
+            .pedal_program()
+            .unwrap()
+            .explain()
+            .contains("clip(input, model=silicon_hard)")
     );
 }
 
@@ -1204,6 +1229,64 @@ fn live_engine_supports_negative_rate_reverse_playback() {
     ];
 
     assert_samples_close(&rendered, &expected);
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn live_engine_matches_offline_insert_effect_chain() {
+    let mut engine = EngineHandle::stub();
+    let directory = temp_directory("insert-effects-live-parity");
+    fs::write(
+        directory.join("samples.ron"),
+        "(\n  tokens: {\n    \"vox_ah\": \"vox.wav\",\n  },\n)\n",
+    )
+    .unwrap();
+    write_wav(directory.join("vox.wav"), &[1.0; 64]);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+    let snapshot = RoutingSnapshot::builder()
+        .track_with_source(
+            "vox",
+            TrackSource::SamplePattern(
+                vec![Event {
+                    whole: None,
+                    part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+                    value: SampleTrigger::named("vox_ah")
+                        .with_delay_mix(0.35)
+                        .with_delay_time(0.125)
+                        .with_delay_feedback(0.25)
+                        .with_reverb_mix(0.20)
+                        .with_reverb_room(0.80)
+                        .with_reverb_damp(0.30)
+                        .with_chorus_mix(0.45)
+                        .with_chorus_depth(0.60)
+                        .with_chorus_rate(0.50)
+                        .with_compressor_mix(0.75)
+                        .with_compressor_threshold(0.25)
+                        .with_compressor_ratio(4.0),
+                }]
+                .into_boxed_slice(),
+            ),
+        )
+        .route("vox", "master")
+        .build()
+        .unwrap();
+
+    let offline =
+        render_routing_snapshot_to_stereo_for_test(&snapshot, 1, 48_000.0, &bank).unwrap();
+
+    engine
+        .enqueue(EngineCommand::ReplaceSampleBank(bank))
+        .unwrap();
+    engine.enqueue(EngineCommand::SetTempo(48_000.0)).unwrap();
+    let _ = engine.render_test_block(1);
+    engine
+        .enqueue(EngineCommand::SwapRoutingSnapshot(snapshot))
+        .unwrap();
+    let _ = engine.render_test_block(engine.frames_until_boundary_for_test());
+    let live = engine.render_test_block(240);
+
+    assert_eq!(&offline[..live.len()], live.as_slice());
 
     fs::remove_dir_all(directory).unwrap();
 }

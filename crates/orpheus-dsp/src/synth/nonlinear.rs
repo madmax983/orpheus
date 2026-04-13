@@ -27,3 +27,110 @@ impl SoftSat {
         shaped.tanh()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn softsat_new_and_default_initialize_state() {
+        let s1 = SoftSat::new();
+        let s2 = SoftSat;
+        assert_eq!(s1, s2);
+    }
+
+    #[test]
+    fn softsat_reset_is_a_no_op() {
+        let mut sat = SoftSat::new();
+        sat.reset(); // Should not panic
+    }
+
+    #[test]
+    fn process_passes_zero_input_unchanged() {
+        let mut sat = SoftSat::new();
+        assert!((sat.process(0.0, 0.0) - 0.0).abs() < f32::EPSILON);
+        assert!((sat.process(0.0, 1.0) - 0.0).abs() < f32::EPSILON);
+        assert!((sat.process(0.0, 10.0) - 0.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn process_applies_soft_clipping_with_zero_drive() {
+        let mut sat = SoftSat::new();
+        // tanh(0) = 0
+        // tanh(1) = 0.76159...
+        // tanh(10) ~= 1.0
+        assert!((sat.process(0.0, 0.0) - 0.0_f32.tanh()).abs() < f32::EPSILON);
+        assert!((sat.process(1.0, 0.0) - 1.0_f32.tanh()).abs() < f32::EPSILON);
+        assert!((sat.process(-1.0, 0.0) - (-1.0_f32).tanh()).abs() < f32::EPSILON);
+
+        let saturated = sat.process(10.0, 0.0);
+        assert!(
+            saturated > 0.99 && saturated <= 1.0,
+            "Large inputs clip softly to 1.0"
+        );
+
+        let saturated_neg = sat.process(-10.0, 0.0);
+        assert!(
+            (-1.0..=-0.99).contains(&saturated_neg),
+            "Large negative inputs clip softly to -1.0"
+        );
+    }
+
+    #[test]
+    fn process_amplifies_signal_with_positive_drive_before_clipping() {
+        let mut sat = SoftSat::new();
+        // input * (1 + drive)
+        // input=1.0, drive=1.0 -> tanh(2.0)
+        assert!((sat.process(1.0, 1.0) - 2.0_f32.tanh()).abs() < f32::EPSILON);
+        // input=0.5, drive=3.0 -> tanh(0.5 * 4.0) = tanh(2.0)
+        assert!((sat.process(0.5, 3.0) - 2.0_f32.tanh()).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn process_treats_negative_drive_as_zero() {
+        let mut sat = SoftSat::new();
+        // If drive < 0, it should max to 0.0
+        // input=1.0, drive=-1.0 -> drive.max(0)=0.0 -> tanh(1.0 * 1.0)
+        assert!(
+            (sat.process(1.0, -1.0) - 1.0_f32.tanh()).abs() < f32::EPSILON,
+            "Negative drive is clamped to 0"
+        );
+        assert!(
+            (sat.process(1.0, f32::NEG_INFINITY) - 1.0_f32.tanh()).abs() < f32::EPSILON,
+            "Negative infinity drive is clamped to 0"
+        );
+    }
+
+    #[test]
+    fn process_handles_non_finite_inputs() {
+        let mut sat = SoftSat::new();
+        // Non-finite input yields 0.0 (which results in tanh(0.0) = 0.0)
+        assert!(
+            (sat.process(f32::NAN, 1.0) - 0.0).abs() < f32::EPSILON,
+            "NaN input yields 0.0"
+        );
+        assert!(
+            (sat.process(f32::INFINITY, 1.0) - 0.0).abs() < f32::EPSILON,
+            "Infinity input yields 0.0"
+        );
+        assert!(
+            (sat.process(f32::NEG_INFINITY, 1.0) - 0.0).abs() < f32::EPSILON,
+            "Neg Infinity input yields 0.0"
+        );
+    }
+
+    #[test]
+    fn process_handles_non_finite_drive() {
+        let mut sat = SoftSat::new();
+        // Non-finite drive yields 0.0
+        // input=1.0, non-finite drive -> tanh(1.0 * (1.0 + 0.0)) = tanh(1.0)
+        assert!(
+            (sat.process(1.0, f32::NAN) - 1.0_f32.tanh()).abs() < f32::EPSILON,
+            "NaN drive yields 0.0 drive"
+        );
+        assert!(
+            (sat.process(1.0, f32::INFINITY) - 1.0_f32.tanh()).abs() < f32::EPSILON,
+            "Infinity drive yields 0.0 drive"
+        );
+    }
+}

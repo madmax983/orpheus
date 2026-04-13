@@ -1,6 +1,6 @@
 //! Tests for pipe and bind helpers.
 
-use orpheus_dsp::graph::{
+use orpheus_dsp::{
     GraphError, Node, Processor, bind, constant, gain_node, ladder_filter, par, passthrough, pipe,
     saw, sine, soft_sat, sum,
 };

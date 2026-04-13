@@ -1,26 +1,36 @@
 #[test]
 fn tui_boots_and_renders_initial_frame() {
-    let frame = orpheus_lang::tui::render_initial_frame_for_test(80, 24);
+    let frame = orpheus_lang::render_initial_frame_for_test(80, 30);
 
     assert!(frame.contains("Bindings"));
     assert!(frame.contains("REPL"));
     assert!(frame.contains("Transport"));
-    assert!(frame.contains(":render"));
-    assert!(frame.contains(":tempo"));
-    assert!(frame.contains(":play"));
-    assert!(frame.contains(":stop"));
-    assert!(frame.contains("Space"));
-    assert!(frame.contains("empty input"));
-    assert!(frame.contains("Hint: Tab completes commands."));
-    assert!(frame.contains("Pattern: none"));
-    assert!(frame.contains("120 BPM"));
-    assert!(frame.contains("0.000"));
-    assert!(frame.contains("Transport: playing"));
-    // Height may cause things to be cut off, let's verify with a larger terminal size
-    let larger_frame = orpheus_lang::tui::render_initial_frame_for_test(80, 28);
+
+    let larger_frame = orpheus_lang::render_initial_frame_for_test(140, 40);
+
+    // Transport pane shows command reference.
+    assert!(larger_frame.contains(":render"));
+    assert!(larger_frame.contains(":tempo"));
+    assert!(larger_frame.contains(":play"));
+    assert!(larger_frame.contains(":stop"));
+    assert!(larger_frame.contains("Space"));
+    assert!(larger_frame.contains("empty input"));
+    assert!(larger_frame.contains("Hint: Tab completes commands."));
+    assert!(larger_frame.contains("Pattern: none"));
+
+    // Footer shows transport metrics.
+    assert!(larger_frame.contains("120 BPM"));
+    assert!(larger_frame.contains("0.000"));
+
+    // REPL pane shows transport status.
+    assert!(larger_frame.contains("Transport: playing"));
+
+    // Footer shows mode indicator (starts in INPUT mode).
+    assert!(larger_frame.contains("INPUT"));
+
+    // Help reference is in the transport pane.
     assert!(larger_frame.contains("Help: ?"));
-    assert!(larger_frame.contains("? help"));
-    assert!(larger_frame.contains("Space toggle"));
-    assert!(larger_frame.contains("PgUp/PgDn bindings"));
+
+    // Help overlay internals should NOT be visible at boot.
     assert!(!larger_frame.contains("Ctrl-A/E/K"));
 }

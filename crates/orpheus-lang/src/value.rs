@@ -1,3 +1,4 @@
+#![allow(clippy::large_enum_variant)]
 //! Core runtime types and evaluator representation for Orpheus.
 //!
 //! This module defines how the language interprets expressions at runtime. It
@@ -18,6 +19,7 @@
 use core::cmp::{max, min};
 use core::fmt;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use orpheus_pattern::{CyclePattern, Event, EventStream, PatternNode, Rational, TimeSpan};
 
@@ -25,6 +27,7 @@ use crate::{
     ReplMode,
     ast::Expr,
     eval::{EvalError, apply_function_value},
+    pedal::PedalValue,
 };
 
 /// Identifies which core built-in function is being represented.
@@ -52,9 +55,21 @@ pub enum BuiltinKind {
     Shift,
     Rev,
     Gain,
+    Delay,
+    DelayTime,
+    DelayFeedback,
     Hpf,
     Lpf,
+    Reverb,
+    ReverbRoom,
+    ReverbDamp,
     Cutoff,
+    Chorus,
+    ChorusDepth,
+    ChorusRate,
+    Compressor,
+    CompressorThreshold,
+    CompressorRatio,
     Res,
     Drive,
     Pw,
@@ -62,11 +77,16 @@ pub enum BuiltinKind {
     Pitch,
     Transpose,
     Sample,
+    Onset,
     Rate,
     Slice,
     SliceIdx,
     Rand,
     Jux,
+    Through,
+    MidiCc,
+    Chaos,
+    Palindrome,
 }
 
 /// A partially or fully applied built-in function at runtime.
@@ -94,7 +114,9 @@ pub struct UserFn {
 /// A callable runtime value, either builtin or user-defined.
 #[derive(Clone, Debug)]
 pub enum FunctionValue {
+    /// A core primitive transformation provided by the language standard library.
     Builtin(BuiltinFn),
+    /// A custom function defined by the user in the REPL or a script file.
     User(UserFn),
 }
 
@@ -110,6 +132,7 @@ pub enum GatePatternValue {
 pub enum ArpDirectionValue {
     Up,
     Down,
+    PingPong,
 }
 
 const IONIAN_INTERVALS: [i32; 7] = [0, 2, 4, 5, 7, 9, 11];
@@ -253,6 +276,8 @@ pub enum Value {
     PitchClassSet(PitchClassSetValue),
     /// An executable function closure, either built-in or user-defined.
     Function(FunctionValue),
+    /// A validated pedal graph ready for later lowering.
+    Pedal(PedalValue),
     /// A primitive string value.
     String(String),
 }
@@ -276,6 +301,7 @@ impl Value {
             | Self::ArpDirection(_)
             | Self::PitchClassSet(_)
             | Self::Function(_)
+            | Self::Pedal(_)
             | Self::String(_) => None,
         }
     }
@@ -298,10 +324,21 @@ impl Value {
             | Self::ArpDirection(_)
             | Self::PitchClassSet(_)
             | Self::Function(_)
+            | Self::Pedal(_)
             | Self::String(_) => None,
         }
     }
 
+    /// Attempts to unwrap the value into a concrete pitch class set.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::Value;
+    ///
+    /// let val = Value::String("foo".into());
+    /// assert!(val.as_pitch_class_set().is_none());
+    /// ```
     #[must_use]
     pub const fn as_pitch_class_set(&self) -> Option<&PitchClassSetValue> {
         match self {
@@ -310,16 +347,41 @@ impl Value {
             | Self::NumberPattern(_)
             | Self::ArpDirection(_)
             | Self::Function(_)
+            | Self::Pedal(_)
             | Self::String(_) => None,
         }
     }
 
+    /// Attempts to unwrap the value into a concrete arp direction.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::Value;
+    ///
+    /// let val = Value::String("foo".into());
+    /// assert!(val.as_arp_direction().is_none());
+    /// ```
     #[must_use]
     pub const fn as_arp_direction(&self) -> Option<ArpDirectionValue> {
         match self {
             Self::ArpDirection(direction) => Some(*direction),
             Self::SamplePattern(_)
             | Self::NumberPattern(_)
+            | Self::PitchClassSet(_)
+            | Self::Function(_)
+            | Self::Pedal(_)
+            | Self::String(_) => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn as_pedal(&self) -> Option<&PedalValue> {
+        match self {
+            Self::Pedal(pedal) => Some(pedal),
+            Self::SamplePattern(_)
+            | Self::NumberPattern(_)
+            | Self::ArpDirection(_)
             | Self::PitchClassSet(_)
             | Self::Function(_)
             | Self::String(_) => None,
@@ -346,6 +408,7 @@ impl Value {
             Self::ArpDirection(_) => "arp direction",
             Self::PitchClassSet(_) => "pitch class set",
             Self::Function(_) => "function",
+            Self::Pedal(_) => "pedal",
             Self::String(_) => "string",
         }
     }
@@ -404,8 +467,22 @@ pub struct SampleEvent {
     pulse_width: f64,
     pan: f64,
     rate: f64,
+    delay_mix: f64,
+    delay_time: f64,
+    delay_feedback: f64,
+    reverb_mix: f64,
+    reverb_room: f64,
+    reverb_damp: f64,
+    chorus_mix: f64,
+    chorus_depth: f64,
+    chorus_rate: f64,
+    compressor_mix: f64,
+    compressor_threshold: f64,
+    compressor_ratio: f64,
+    onset_index: Option<u32>,
     slice_start: f64,
     slice_end: f64,
+    pedal_program: Option<Arc<orpheus_dsp::PedalProgram>>,
 }
 
 impl SampleEvent {
@@ -420,8 +497,22 @@ impl SampleEvent {
             pulse_width: 0.5,
             pan: 0.0,
             rate: 1.0,
+            delay_mix: 0.0,
+            delay_time: 0.125,
+            delay_feedback: 0.35,
+            reverb_mix: 0.0,
+            reverb_room: 0.75,
+            reverb_damp: 0.35,
+            chorus_mix: 0.0,
+            chorus_depth: 0.4,
+            chorus_rate: 0.5,
+            compressor_mix: 0.0,
+            compressor_threshold: 0.5,
+            compressor_ratio: 4.0,
+            onset_index: None,
             slice_start: 0.0,
             slice_end: 1.0,
+            pedal_program: None,
         }
     }
 
@@ -479,6 +570,84 @@ impl SampleEvent {
         self.rate
     }
 
+    /// The insert delay wet mix.
+    #[must_use]
+    pub const fn delay_mix(&self) -> f64 {
+        self.delay_mix
+    }
+
+    /// The insert delay time expressed in cycle units.
+    #[must_use]
+    pub const fn delay_time(&self) -> f64 {
+        self.delay_time
+    }
+
+    /// The insert delay feedback coefficient.
+    #[must_use]
+    pub const fn delay_feedback(&self) -> f64 {
+        self.delay_feedback
+    }
+
+    /// The insert reverb wet mix.
+    #[must_use]
+    pub const fn reverb_mix(&self) -> f64 {
+        self.reverb_mix
+    }
+
+    /// The insert reverb room-size control.
+    #[must_use]
+    pub const fn reverb_room(&self) -> f64 {
+        self.reverb_room
+    }
+
+    /// The insert reverb damping control.
+    #[must_use]
+    pub const fn reverb_damp(&self) -> f64 {
+        self.reverb_damp
+    }
+
+    /// The insert chorus wet mix.
+    #[must_use]
+    pub const fn chorus_mix(&self) -> f64 {
+        self.chorus_mix
+    }
+
+    /// The insert chorus depth control.
+    #[must_use]
+    pub const fn chorus_depth(&self) -> f64 {
+        self.chorus_depth
+    }
+
+    /// The insert chorus modulation rate.
+    #[must_use]
+    pub const fn chorus_rate(&self) -> f64 {
+        self.chorus_rate
+    }
+
+    /// The insert compressor wet mix.
+    #[must_use]
+    pub const fn compressor_mix(&self) -> f64 {
+        self.compressor_mix
+    }
+
+    /// The insert compressor threshold.
+    #[must_use]
+    pub const fn compressor_threshold(&self) -> f64 {
+        self.compressor_threshold
+    }
+
+    /// The insert compressor ratio.
+    #[must_use]
+    pub const fn compressor_ratio(&self) -> f64 {
+        self.compressor_ratio
+    }
+
+    /// The transient slice index selected for later sample-bank resolution.
+    #[must_use]
+    pub const fn onset_index(&self) -> Option<u32> {
+        self.onset_index
+    }
+
     /// The normalized starting position `[0, 1]` within the raw audio sample.
     #[must_use]
     pub const fn slice_start(&self) -> f64 {
@@ -490,23 +659,51 @@ impl SampleEvent {
     pub const fn slice_end(&self) -> f64 {
         self.slice_end
     }
+
+    #[must_use]
+    pub const fn pedal_program(&self) -> Option<&Arc<orpheus_dsp::PedalProgram>> {
+        self.pedal_program.as_ref()
+    }
+
+    fn clone_with(&self, mutate: impl FnOnce(&mut Self)) -> Self {
+        let mut cloned = self.clone();
+        mutate(&mut cloned);
+        cloned
+    }
 }
 
 trait PatternValueTransform: Sized {
     fn adjust_gain(&self, factor: f64) -> Self;
+    fn adjust_delay_mix(&self, mix: f64) -> Self;
+    fn adjust_delay_time(&self, time: f64) -> Self;
+    fn adjust_delay_feedback(&self, feedback: f64) -> Self;
     fn adjust_hpf(&self, cutoff_hz: f64) -> Self;
     fn adjust_lpf(&self, cutoff_hz: f64) -> Self;
+    fn adjust_reverb_mix(&self, mix: f64) -> Self;
+    fn adjust_reverb_room(&self, room: f64) -> Self;
+    fn adjust_reverb_damp(&self, damp: f64) -> Self;
+    fn adjust_chorus_mix(&self, mix: f64) -> Self;
+    fn adjust_chorus_depth(&self, depth: f64) -> Self;
+    fn adjust_chorus_rate(&self, rate: f64) -> Self;
+    fn adjust_compressor_mix(&self, mix: f64) -> Self;
+    fn adjust_compressor_threshold(&self, threshold: f64) -> Self;
+    fn adjust_compressor_ratio(&self, ratio: f64) -> Self;
     fn adjust_resonance(&self, resonance: f64) -> Self;
     fn adjust_drive(&self, drive: f64) -> Self;
     fn adjust_pulse_width(&self, pulse_width: f64) -> Self;
     fn adjust_pan(&self, amount: f64) -> Self;
     fn adjust_rate(&self, factor: f64) -> Self;
+    fn adjust_onset(&self, onset_index: u32) -> Self;
     fn adjust_slice(&self, start: f64, end: f64) -> Self;
+    fn attach_pedal_program(&self, pedal_program: &Arc<orpheus_dsp::PedalProgram>) -> Self;
     fn map_degrees(&self, collection: &PitchClassSetValue) -> Result<Self, EvalError>;
     fn transpose_semitones(&self, semitones: f64) -> Result<Self, EvalError>;
 }
 
 trait PatternRuntimeValue: Clone + PatternValueTransform + Send + Sync + fmt::Debug + Sized {
+    fn is_finite_numeric(&self) -> bool {
+        true
+    }
     fn into_runtime_value(pattern: PatternRuntime<Self>) -> Value;
     fn try_from_runtime_value(value: Value) -> Result<PatternRuntime<Self>, EvalError>;
     fn try_from_rand(value: f64) -> Result<Self, EvalError>;
@@ -523,148 +720,100 @@ trait PatternRuntimeValue: Clone + PatternValueTransform + Send + Sync + fmt::De
 
 impl PatternValueTransform for SampleEvent {
     fn adjust_gain(&self, factor: f64) -> Self {
-        Self {
-            sample: self.sample.clone(),
-            gain: self.gain * factor,
-            hpf_cutoff_hz: self.hpf_cutoff_hz,
-            lpf_cutoff_hz: self.lpf_cutoff_hz,
-            resonance: self.resonance,
-            drive: self.drive,
-            pulse_width: self.pulse_width,
-            pan: self.pan,
-            rate: self.rate,
-            slice_start: self.slice_start,
-            slice_end: self.slice_end,
-        }
+        self.clone_with(|event| event.gain *= factor)
+    }
+
+    fn adjust_delay_mix(&self, mix: f64) -> Self {
+        self.clone_with(|event| event.delay_mix = mix)
+    }
+
+    fn adjust_delay_time(&self, time: f64) -> Self {
+        self.clone_with(|event| event.delay_time = time)
+    }
+
+    fn adjust_delay_feedback(&self, feedback: f64) -> Self {
+        self.clone_with(|event| event.delay_feedback = feedback)
     }
 
     fn adjust_hpf(&self, cutoff_hz: f64) -> Self {
-        Self {
-            sample: self.sample.clone(),
-            gain: self.gain,
-            hpf_cutoff_hz: Some(cutoff_hz),
-            lpf_cutoff_hz: self.lpf_cutoff_hz,
-            resonance: self.resonance,
-            drive: self.drive,
-            pulse_width: self.pulse_width,
-            pan: self.pan,
-            rate: self.rate,
-            slice_start: self.slice_start,
-            slice_end: self.slice_end,
-        }
+        self.clone_with(|event| event.hpf_cutoff_hz = Some(cutoff_hz))
     }
 
     fn adjust_lpf(&self, cutoff_hz: f64) -> Self {
-        Self {
-            sample: self.sample.clone(),
-            gain: self.gain,
-            hpf_cutoff_hz: self.hpf_cutoff_hz,
-            lpf_cutoff_hz: Some(cutoff_hz),
-            resonance: self.resonance,
-            drive: self.drive,
-            pulse_width: self.pulse_width,
-            pan: self.pan,
-            rate: self.rate,
-            slice_start: self.slice_start,
-            slice_end: self.slice_end,
-        }
+        self.clone_with(|event| event.lpf_cutoff_hz = Some(cutoff_hz))
+    }
+
+    fn adjust_reverb_mix(&self, mix: f64) -> Self {
+        self.clone_with(|event| event.reverb_mix = mix)
+    }
+
+    fn adjust_reverb_room(&self, room: f64) -> Self {
+        self.clone_with(|event| event.reverb_room = room)
+    }
+
+    fn adjust_reverb_damp(&self, damp: f64) -> Self {
+        self.clone_with(|event| event.reverb_damp = damp)
+    }
+
+    fn adjust_chorus_mix(&self, mix: f64) -> Self {
+        self.clone_with(|event| event.chorus_mix = mix)
+    }
+
+    fn adjust_chorus_depth(&self, depth: f64) -> Self {
+        self.clone_with(|event| event.chorus_depth = depth)
+    }
+
+    fn adjust_chorus_rate(&self, rate: f64) -> Self {
+        self.clone_with(|event| event.chorus_rate = rate)
+    }
+
+    fn adjust_compressor_mix(&self, mix: f64) -> Self {
+        self.clone_with(|event| event.compressor_mix = mix)
+    }
+
+    fn adjust_compressor_threshold(&self, threshold: f64) -> Self {
+        self.clone_with(|event| event.compressor_threshold = threshold)
+    }
+
+    fn adjust_compressor_ratio(&self, ratio: f64) -> Self {
+        self.clone_with(|event| event.compressor_ratio = ratio)
     }
 
     fn adjust_resonance(&self, resonance: f64) -> Self {
-        Self {
-            sample: self.sample.clone(),
-            gain: self.gain,
-            hpf_cutoff_hz: self.hpf_cutoff_hz,
-            lpf_cutoff_hz: self.lpf_cutoff_hz,
-            resonance,
-            drive: self.drive,
-            pulse_width: self.pulse_width,
-            pan: self.pan,
-            rate: self.rate,
-            slice_start: self.slice_start,
-            slice_end: self.slice_end,
-        }
+        self.clone_with(|event| event.resonance = resonance)
     }
 
     fn adjust_drive(&self, drive: f64) -> Self {
-        Self {
-            sample: self.sample.clone(),
-            gain: self.gain,
-            hpf_cutoff_hz: self.hpf_cutoff_hz,
-            lpf_cutoff_hz: self.lpf_cutoff_hz,
-            resonance: self.resonance,
-            drive,
-            pulse_width: self.pulse_width,
-            pan: self.pan,
-            rate: self.rate,
-            slice_start: self.slice_start,
-            slice_end: self.slice_end,
-        }
+        self.clone_with(|event| event.drive = drive)
     }
 
     fn adjust_pulse_width(&self, pulse_width: f64) -> Self {
-        Self {
-            sample: self.sample.clone(),
-            gain: self.gain,
-            hpf_cutoff_hz: self.hpf_cutoff_hz,
-            lpf_cutoff_hz: self.lpf_cutoff_hz,
-            resonance: self.resonance,
-            drive: self.drive,
-            pulse_width,
-            pan: self.pan,
-            rate: self.rate,
-            slice_start: self.slice_start,
-            slice_end: self.slice_end,
-        }
+        self.clone_with(|event| event.pulse_width = pulse_width)
     }
 
     fn adjust_pan(&self, amount: f64) -> Self {
-        Self {
-            sample: self.sample.clone(),
-            gain: self.gain,
-            hpf_cutoff_hz: self.hpf_cutoff_hz,
-            lpf_cutoff_hz: self.lpf_cutoff_hz,
-            resonance: self.resonance,
-            drive: self.drive,
-            pulse_width: self.pulse_width,
-            pan: (self.pan + amount).clamp(-1.0, 1.0),
-            rate: self.rate,
-            slice_start: self.slice_start,
-            slice_end: self.slice_end,
-        }
+        self.clone_with(|event| event.pan = (event.pan + amount).clamp(-1.0, 1.0))
     }
 
     fn adjust_rate(&self, factor: f64) -> Self {
-        Self {
-            sample: self.sample.clone(),
-            gain: self.gain,
-            hpf_cutoff_hz: self.hpf_cutoff_hz,
-            lpf_cutoff_hz: self.lpf_cutoff_hz,
-            resonance: self.resonance,
-            drive: self.drive,
-            pulse_width: self.pulse_width,
-            pan: self.pan,
-            rate: self.rate * factor,
-            slice_start: self.slice_start,
-            slice_end: self.slice_end,
-        }
+        self.clone_with(|event| event.rate *= factor)
+    }
+
+    fn adjust_onset(&self, onset_index: u32) -> Self {
+        self.clone_with(|event| event.onset_index = Some(onset_index))
     }
 
     fn adjust_slice(&self, start: f64, end: f64) -> Self {
-        let current_range = self.slice_end - self.slice_start;
-        Self {
-            sample: self.sample.clone(),
-            gain: self.gain,
-            hpf_cutoff_hz: self.hpf_cutoff_hz,
-            lpf_cutoff_hz: self.lpf_cutoff_hz,
-            resonance: self.resonance,
-            drive: self.drive,
-            pulse_width: self.pulse_width,
-            pan: self.pan,
-            rate: self.rate,
-            slice_start: current_range.mul_add(start, self.slice_start),
-            slice_end: current_range.mul_add(end, self.slice_start),
-        }
+        self.clone_with(|event| {
+            let current_start = event.slice_start;
+            let current_range = event.slice_end - current_start;
+            event.slice_start = current_range.mul_add(start, current_start);
+            event.slice_end = current_range.mul_add(end, current_start);
+        })
+    }
+
+    fn attach_pedal_program(&self, pedal_program: &Arc<orpheus_dsp::PedalProgram>) -> Self {
+        self.clone_with(|event| event.pedal_program = Some(pedal_program.clone()))
     }
 
     fn map_degrees(&self, _collection: &PitchClassSetValue) -> Result<Self, EvalError> {
@@ -685,11 +834,59 @@ impl PatternValueTransform for f64 {
         *self
     }
 
+    fn adjust_delay_mix(&self, _mix: f64) -> Self {
+        *self
+    }
+
+    fn adjust_delay_time(&self, _time: f64) -> Self {
+        *self
+    }
+
+    fn adjust_delay_feedback(&self, _feedback: f64) -> Self {
+        *self
+    }
+
     fn adjust_hpf(&self, _cutoff_hz: f64) -> Self {
         *self
     }
 
     fn adjust_lpf(&self, _cutoff_hz: f64) -> Self {
+        *self
+    }
+
+    fn adjust_reverb_mix(&self, _mix: f64) -> Self {
+        *self
+    }
+
+    fn adjust_reverb_room(&self, _room: f64) -> Self {
+        *self
+    }
+
+    fn adjust_reverb_damp(&self, _damp: f64) -> Self {
+        *self
+    }
+
+    fn adjust_chorus_mix(&self, _mix: f64) -> Self {
+        *self
+    }
+
+    fn adjust_chorus_depth(&self, _depth: f64) -> Self {
+        *self
+    }
+
+    fn adjust_chorus_rate(&self, _rate: f64) -> Self {
+        *self
+    }
+
+    fn adjust_compressor_mix(&self, _mix: f64) -> Self {
+        *self
+    }
+
+    fn adjust_compressor_threshold(&self, _threshold: f64) -> Self {
+        *self
+    }
+
+    fn adjust_compressor_ratio(&self, _ratio: f64) -> Self {
         *self
     }
 
@@ -713,7 +910,15 @@ impl PatternValueTransform for f64 {
         *self
     }
 
+    fn adjust_onset(&self, _onset_index: u32) -> Self {
+        *self
+    }
+
     fn adjust_slice(&self, _start: f64, _end: f64) -> Self {
+        *self
+    }
+
+    fn attach_pedal_program(&self, _pedal_program: &Arc<orpheus_dsp::PedalProgram>) -> Self {
         *self
     }
 
@@ -746,6 +951,7 @@ impl PatternRuntimeValue for SampleEvent {
             | Value::ArpDirection(_)
             | Value::PitchClassSet(_)
             | Value::Function(_)
+            | Value::Pedal(_)
             | Value::String(_) => Err(EvalError::new(
                 "transform returned an incompatible value; expected Pattern<Sample>",
             )),
@@ -757,6 +963,9 @@ impl PatternRuntimeValue for SampleEvent {
     }
 
     /// ⚡ Bolt: Uses slice bounds (`&events[start_index..index]`) instead of allocating a temporary `cluster` Vec for every group of events with the same span, eliminating redundant heap allocations in the hot evaluation loop.
+    /// ⚡ Bolt: Uses slice bounds (`&events[start_index].part`) instead of cloning `TimeSpan`
+    /// for every group of events with the same span, eliminating redundant memory copying
+    /// in the hot evaluation loop.
     fn roll_events(
         mut events: Vec<Event<Self>>,
         steps: u32,
@@ -772,7 +981,13 @@ impl PatternRuntimeValue for SampleEvent {
                 index += 1;
             }
 
-            rolled.extend(roll_event_cluster(&events[start_index..index], steps)?);
+            let cluster_events = roll_event_cluster(&events[start_index..index], steps)?;
+            if rolled.len() + cluster_events.len() > 100_000 {
+                return Err(EvalError::new(
+                    "evaluation exceeded the maximum allowed event limit",
+                ));
+            }
+            rolled.extend(cluster_events);
         }
 
         sort_events(&mut rolled);
@@ -812,6 +1027,9 @@ impl PatternRuntimeValue for SampleEvent {
 }
 
 impl PatternRuntimeValue for f64 {
+    fn is_finite_numeric(&self) -> bool {
+        self.is_finite()
+    }
     fn into_runtime_value(pattern: PatternRuntime<Self>) -> Value {
         Value::NumberPattern(NumberPatternValue { pattern })
     }
@@ -823,6 +1041,7 @@ impl PatternRuntimeValue for f64 {
             | Value::ArpDirection(_)
             | Value::PitchClassSet(_)
             | Value::Function(_)
+            | Value::Pedal(_)
             | Value::String(_) => Err(EvalError::new(
                 "transform returned an incompatible value; expected Pattern<Number>",
             )),
@@ -839,127 +1058,58 @@ impl PatternRuntimeValue for f64 {
         steps: u32,
     ) -> Result<Vec<Event<Self>>, EvalError> {
         sort_events(&mut events);
-        let mut rolled = Vec::with_capacity(events.len());
-        let mut index = 0;
-
-        while index < events.len() {
-            let span = events[index].part.clone();
-            let start_index = index;
-            while index < events.len() && events[index].part == span {
-                if !events[index].value.is_finite() {
-                    return Err(EvalError::new("`roll` requires finite numeric values"));
-                }
-                index += 1;
-            }
-
-            rolled.extend(roll_event_cluster(&events[start_index..index], steps)?);
-        }
-
+        let mut rolled = process_event_clusters(&events, "roll", |cluster| {
+            roll_event_cluster(cluster, steps)
+        })?;
         sort_events(&mut rolled);
         Ok(rolled)
     }
 
+    /// Applies a strum effect across overlapping events.
+    ///
+    /// ⚡ Bolt: Mutates overlapping clusters in-place, eliminating the need to allocate and copy into an intermediate `strummed` vector.
+    /// ⚡ Bolt: Uses slice bounds (`&events[start_index].part`) instead of cloning `TimeSpan`
+    /// for every group of events with the same span, eliminating redundant memory copying
+    /// in the hot evaluation loop.
     fn strum_events(mut events: Vec<Event<Self>>) -> Result<Vec<Event<Self>>, EvalError> {
+        mutate_event_clusters(&mut events, "strum", strum_event_cluster)?;
         sort_events(&mut events);
-        let mut strummed = Vec::with_capacity(events.len());
-        let mut index = 0;
-
-        while index < events.len() {
-            let span = events[index].part.clone();
-            let start_index = index;
-            while index < events.len() && events[index].part == span {
-                if !events[index].value.is_finite() {
-                    return Err(EvalError::new("`strum` requires finite numeric values"));
-                }
-                index += 1;
-            }
-
-            let cluster = &mut events[start_index..index];
-            strum_event_cluster(cluster)?;
-            strummed.extend_from_slice(cluster);
-        }
-
-        sort_events(&mut strummed);
-        Ok(strummed)
+        Ok(events)
     }
 
+    /// ⚡ Bolt: Uses slice bounds (`&events[start_index].part`) instead of cloning `TimeSpan`
+    /// for every group of events with the same span, eliminating redundant memory copying
+    /// in the hot evaluation loop.
     fn arp_events(
         mut events: Vec<Event<Self>>,
         steps: u32,
         direction: ArpDirectionValue,
     ) -> Result<Vec<Event<Self>>, EvalError> {
         sort_events(&mut events);
-        let mut arped = Vec::with_capacity(events.len() * steps as usize);
-        let mut index = 0;
-
-        while index < events.len() {
-            let span = events[index].part.clone();
-            let start_index = index;
-            while index < events.len() && events[index].part == span {
-                if !events[index].value.is_finite() {
-                    return Err(EvalError::new("`arp` requires finite numeric values"));
-                }
-                index += 1;
-            }
-
-            let cluster = &mut events[start_index..index];
-            arped.extend(arp_event_cluster(cluster, steps, direction)?);
-        }
-
+        let mut arped = process_event_clusters(&events, "arp", |cluster| {
+            let mut cluster_clone = cluster.to_vec();
+            arp_event_cluster(&mut cluster_clone, steps, direction)
+        })?;
         sort_events(&mut arped);
         Ok(arped)
     }
 
-    fn invert_events(
-        mut events: Vec<Event<Self>>,
-        count: u32,
-    ) -> Result<Vec<Event<Self>>, EvalError> {
-        sort_events(&mut events);
-        let mut inverted = Vec::with_capacity(events.len());
-        let mut index = 0;
-
-        while index < events.len() {
-            let span = events[index].part.clone();
-            let start_index = index;
-            while index < events.len() && events[index].part == span {
-                if !events[index].value.is_finite() {
-                    return Err(EvalError::new("`invert` requires finite numeric values"));
-                }
-                index += 1;
-            }
-
-            let cluster = &mut events[start_index..index];
-            invert_event_cluster(cluster, count)?;
-            inverted.extend_from_slice(cluster);
-        }
-
-        Ok(inverted)
+    /// Applies a chord inversion effect to overlapping events.
+    ///
+    /// ⚡ Bolt: Modifies clusters in-place and directly returns the original `events` vector, bypassing O(N) allocation overhead for intermediate `inverted` tracking.
+    fn invert_events(mut events: Vec<Event<Self>>, count: u32) -> Result<Vec<Event<Self>>, EvalError> {
+        mutate_event_clusters(&mut events, "invert", |cluster| {
+            invert_event_cluster(cluster, count)
+        })?;
+        Ok(events)
     }
 
-    fn drop_events(
-        mut events: Vec<Event<Self>>,
-        count: u32,
-    ) -> Result<Vec<Event<Self>>, EvalError> {
-        sort_events(&mut events);
-        let mut dropped = Vec::with_capacity(events.len());
-        let mut index = 0;
-
-        while index < events.len() {
-            let span = events[index].part.clone();
-            let start_index = index;
-            while index < events.len() && events[index].part == span {
-                if !events[index].value.is_finite() {
-                    return Err(EvalError::new("`drop` requires finite numeric values"));
-                }
-                index += 1;
-            }
-
-            let cluster = &mut events[start_index..index];
-            drop_event_cluster(cluster, count)?;
-            dropped.extend_from_slice(cluster);
-        }
-
-        Ok(dropped)
+    /// Drops the lowest `count` voices from overlapping chords down an octave.
+    ///
+    /// ⚡ Bolt: Applies the pitch drop in-place over mutable subslices of `events`, completely removing the `dropped` vector allocation step from the hot path.
+    fn drop_events(mut events: Vec<Event<Self>>, count: u32) -> Result<Vec<Event<Self>>, EvalError> {
+        mutate_event_clusters(&mut events, "drop", |cluster| drop_event_cluster(cluster, count))?;
+        Ok(events)
     }
 }
 
@@ -1049,6 +1199,15 @@ impl SamplePatternValue {
         Self {
             pattern: PatternRuntime::Fast {
                 factor,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn chaos_with_site_salt(self, site_salt: u64) -> Self {
+        Self {
+            pattern: PatternRuntime::Chaos {
+                site_salt,
                 inner: Box::new(self.pattern),
             },
         }
@@ -1158,6 +1317,60 @@ impl SamplePatternValue {
         }
     }
 
+    pub(crate) fn delay(self, mix: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::Delay {
+                mix,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn delay_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::DelayPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn delay_time(self, time: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::DelayTime {
+                time,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn delay_time_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::DelayTimePattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn delay_feedback(self, feedback: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::DelayFeedback {
+                feedback,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn delay_feedback_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::DelayFeedbackPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn hpf(self, cutoff_hz: f64) -> Self {
         Self {
             pattern: PatternRuntime::Hpf {
@@ -1188,6 +1401,60 @@ impl SamplePatternValue {
     pub(crate) fn lpf_pattern(self, control: NumberPatternValue) -> Self {
         Self {
             pattern: PatternRuntime::LpfPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn reverb(self, mix: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::Reverb {
+                mix,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn reverb_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::ReverbPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn reverb_room(self, room: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::ReverbRoom {
+                room,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn reverb_room_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::ReverbRoomPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn reverb_damp(self, damp: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::ReverbDamp {
+                damp,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn reverb_damp_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::ReverbDampPattern {
                 control: Box::new(control.pattern),
                 inner: Box::new(self.pattern),
             },
@@ -1238,6 +1505,60 @@ impl SamplePatternValue {
         }
     }
 
+    pub(crate) fn chorus(self, mix: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::Chorus {
+                mix,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn chorus_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::ChorusPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn chorus_depth(self, depth: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::ChorusDepth {
+                depth,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn chorus_depth_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::ChorusDepthPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn chorus_rate(self, rate: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::ChorusRate {
+                rate,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn chorus_rate_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::ChorusRatePattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn pulse_width(self, pulse_width: f64) -> Self {
         Self {
             pattern: PatternRuntime::PulseWidth {
@@ -1268,6 +1589,60 @@ impl SamplePatternValue {
     pub(crate) fn pan_pattern(self, control: NumberPatternValue) -> Self {
         Self {
             pattern: PatternRuntime::PanPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn compressor(self, mix: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::Compressor {
+                mix,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn compressor_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::CompressorPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn compressor_threshold(self, threshold: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::CompressorThreshold {
+                threshold,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn compressor_threshold_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::CompressorThresholdPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn compressor_ratio(self, ratio: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::CompressorRatio {
+                ratio,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn compressor_ratio_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::CompressorRatioPattern {
                 control: Box::new(control.pattern),
                 inner: Box::new(self.pattern),
             },
@@ -1310,6 +1685,24 @@ impl SamplePatternValue {
         }
     }
 
+    pub(crate) fn onset(self, onset_index: u32) -> Self {
+        Self {
+            pattern: PatternRuntime::Onset {
+                onset_index,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn onset_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::OnsetPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn slice(self, start: f64, end: f64) -> Self {
         Self {
             pattern: PatternRuntime::Slice {
@@ -1339,6 +1732,15 @@ impl SamplePatternValue {
             pattern: PatternRuntime::SliceIdxPattern {
                 control: Box::new(control.pattern),
                 segments,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn through(self, pedal_program: Arc<orpheus_dsp::PedalProgram>) -> Self {
+        Self {
+            pattern: PatternRuntime::Pedal {
+                pedal_program,
                 inner: Box::new(self.pattern),
             },
         }
@@ -1590,13 +1992,17 @@ impl NumberPatternValue {
         }
     }
 
+    pub(crate) fn chaos_with_site_salt(self, site_salt: u64) -> Self {
+        Self {
+            pattern: PatternRuntime::Chaos {
+                site_salt,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     /// Queries the pattern over the default unit cycle `[0, 1)`.
     ///
-    /// # Panics
-    ///
-    /// Panics if an internal runtime transform produces an invalid span or
-    /// overflows the evaluator's bounded rational arithmetic. For a fallible
-    /// variant, use [`NumberPatternValue::try_query_unit`].
     #[must_use]
     pub fn query_unit(&self) -> Vec<Event<f64>> {
         self.try_query_unit().unwrap_or_else(|_err| {
@@ -1730,11 +2136,39 @@ enum PatternRuntime<T> {
     Rev {
         inner: Box<Self>,
     },
+    Chaos {
+        site_salt: u64,
+        inner: Box<Self>,
+    },
     Gain {
         factor: f64,
         inner: Box<Self>,
     },
     GainPattern {
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
+    Delay {
+        mix: f64,
+        inner: Box<Self>,
+    },
+    DelayPattern {
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
+    DelayTime {
+        time: f64,
+        inner: Box<Self>,
+    },
+    DelayTimePattern {
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
+    DelayFeedback {
+        feedback: f64,
+        inner: Box<Self>,
+    },
+    DelayFeedbackPattern {
         control: Box<PatternRuntime<f64>>,
         inner: Box<Self>,
     },
@@ -1754,6 +2188,30 @@ enum PatternRuntime<T> {
         control: Box<PatternRuntime<f64>>,
         inner: Box<Self>,
     },
+    Reverb {
+        mix: f64,
+        inner: Box<Self>,
+    },
+    ReverbPattern {
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
+    ReverbRoom {
+        room: f64,
+        inner: Box<Self>,
+    },
+    ReverbRoomPattern {
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
+    ReverbDamp {
+        damp: f64,
+        inner: Box<Self>,
+    },
+    ReverbDampPattern {
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
     Res {
         resonance: f64,
         inner: Box<Self>,
@@ -1767,6 +2225,30 @@ enum PatternRuntime<T> {
         inner: Box<Self>,
     },
     DrivePattern {
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
+    Chorus {
+        mix: f64,
+        inner: Box<Self>,
+    },
+    ChorusPattern {
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
+    ChorusDepth {
+        depth: f64,
+        inner: Box<Self>,
+    },
+    ChorusDepthPattern {
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
+    ChorusRate {
+        rate: f64,
+        inner: Box<Self>,
+    },
+    ChorusRatePattern {
         control: Box<PatternRuntime<f64>>,
         inner: Box<Self>,
     },
@@ -1786,6 +2268,30 @@ enum PatternRuntime<T> {
         control: Box<PatternRuntime<f64>>,
         inner: Box<Self>,
     },
+    Compressor {
+        mix: f64,
+        inner: Box<Self>,
+    },
+    CompressorPattern {
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
+    CompressorThreshold {
+        threshold: f64,
+        inner: Box<Self>,
+    },
+    CompressorThresholdPattern {
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
+    CompressorRatio {
+        ratio: f64,
+        inner: Box<Self>,
+    },
+    CompressorRatioPattern {
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
     Pitch {
         semitones: f64,
         inner: Box<Self>,
@@ -1802,6 +2308,14 @@ enum PatternRuntime<T> {
         control: Box<PatternRuntime<f64>>,
         inner: Box<Self>,
     },
+    Onset {
+        onset_index: u32,
+        inner: Box<Self>,
+    },
+    OnsetPattern {
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
     Slice {
         start: f64,
         end: f64,
@@ -1815,6 +2329,10 @@ enum PatternRuntime<T> {
     SliceIdxPattern {
         control: Box<PatternRuntime<f64>>,
         segments: u32,
+        inner: Box<Self>,
+    },
+    Pedal {
+        pedal_program: Arc<orpheus_dsp::PedalProgram>,
         inner: Box<Self>,
     },
     Rand {
@@ -1839,19 +2357,14 @@ impl GatePatternValue {
 
 impl GatePatternRuntime {
     fn query_open_spans(&self, span: &TimeSpan) -> Result<Vec<TimeSpan>, EvalError> {
-        let spans = match self {
-            Self::Sample(pattern) => pattern
-                .try_query(span)?
-                .into_iter()
-                .map(|event| event.part)
-                .collect(),
-            Self::Number(pattern) => pattern
-                .try_query(span)?
-                .into_iter()
-                .map(|event| event.part)
-                .collect(),
-        };
-        merge_open_spans(spans)
+        match self {
+            Self::Sample(pattern) => {
+                merge_open_spans(pattern.try_query(span)?.into_iter().map(|event| event.part))
+            }
+            Self::Number(pattern) => {
+                merge_open_spans(pattern.try_query(span)?.into_iter().map(|event| event.part))
+            }
+        }
     }
 }
 
@@ -1888,6 +2401,7 @@ where
                 inner,
             } => query_within(inner, start, end, transform, span),
             Self::Mask { gate, inner } => query_mask(inner, gate, span),
+            Self::Chaos { site_salt, inner } => query_chaos(inner, *site_salt, span),
             _ => self.try_query_transform(span),
         }
     }
@@ -1923,6 +2437,24 @@ where
             Self::GainPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Gain)
             }
+            Self::Delay { mix, inner } => {
+                apply_value_mutation(inner, span, |value| *value = value.adjust_delay_mix(*mix))
+            }
+            Self::DelayPattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::DelayMix)
+            }
+            Self::DelayTime { time, inner } => {
+                apply_value_mutation(inner, span, |value| *value = value.adjust_delay_time(*time))
+            }
+            Self::DelayTimePattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::DelayTime)
+            }
+            Self::DelayFeedback { feedback, inner } => apply_value_mutation(inner, span, |value| {
+                *value = value.adjust_delay_feedback(*feedback);
+            }),
+            Self::DelayFeedbackPattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::DelayFeedback)
+            }
             Self::Hpf { cutoff_hz, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_hpf(*cutoff_hz);
             }),
@@ -1934,6 +2466,24 @@ where
             }),
             Self::LpfPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Lpf)
+            }
+            Self::Reverb { mix, inner } => {
+                apply_value_mutation(inner, span, |value| *value = value.adjust_reverb_mix(*mix))
+            }
+            Self::ReverbPattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::ReverbMix)
+            }
+            Self::ReverbRoom { room, inner } => apply_value_mutation(inner, span, |value| {
+                *value = value.adjust_reverb_room(*room);
+            }),
+            Self::ReverbRoomPattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::ReverbRoom)
+            }
+            Self::ReverbDamp { damp, inner } => apply_value_mutation(inner, span, |value| {
+                *value = value.adjust_reverb_damp(*damp);
+            }),
+            Self::ReverbDampPattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::ReverbDamp)
             }
             Self::Res { resonance, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_resonance(*resonance);
@@ -1947,6 +2497,24 @@ where
             Self::DrivePattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Drive)
             }
+            Self::Chorus { mix, inner } => {
+                apply_value_mutation(inner, span, |value| *value = value.adjust_chorus_mix(*mix))
+            }
+            Self::ChorusPattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::ChorusMix)
+            }
+            Self::ChorusDepth { depth, inner } => apply_value_mutation(inner, span, |value| {
+                *value = value.adjust_chorus_depth(*depth);
+            }),
+            Self::ChorusDepthPattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::ChorusDepth)
+            }
+            Self::ChorusRate { rate, inner } => apply_value_mutation(inner, span, |value| {
+                *value = value.adjust_chorus_rate(*rate);
+            }),
+            Self::ChorusRatePattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::ChorusRate)
+            }
             Self::PulseWidth { pulse_width, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_pulse_width(*pulse_width);
             }),
@@ -1958,6 +2526,29 @@ where
             }
             Self::PanPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Pan)
+            }
+            Self::Compressor { mix, inner } => apply_value_mutation(inner, span, |value| {
+                *value = value.adjust_compressor_mix(*mix);
+            }),
+            Self::CompressorPattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::CompressorMix)
+            }
+            Self::CompressorThreshold { threshold, inner } => {
+                apply_value_mutation(inner, span, |value| {
+                    *value = value.adjust_compressor_threshold(*threshold);
+                })
+            }
+            Self::CompressorThresholdPattern { control, inner } => apply_control_pattern(
+                inner,
+                control,
+                span,
+                ControlPatternKind::CompressorThreshold,
+            ),
+            Self::CompressorRatio { ratio, inner } => apply_value_mutation(inner, span, |value| {
+                *value = value.adjust_compressor_ratio(*ratio);
+            }),
+            Self::CompressorRatioPattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::CompressorRatio)
             }
             Self::Pitch { semitones, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_rate(semitones_to_rate_multiplier(*semitones));
@@ -1971,6 +2562,10 @@ where
             Self::RatePattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Rate)
             }
+            Self::Onset { onset_index, inner } => apply_value_mutation(inner, span, |value| {
+                *value = value.adjust_onset(*onset_index);
+            }),
+            Self::OnsetPattern { control, inner } => apply_onset_pattern(inner, control, span),
             Self::Slice { start, end, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_slice(*start, *end);
             }),
@@ -1984,6 +2579,12 @@ where
                 segments,
                 inner,
             } => apply_slice_idx_pattern(inner, control, *segments, span),
+            Self::Pedal {
+                pedal_program,
+                inner,
+            } => apply_value_mutation(inner, span, |value| {
+                *value = value.attach_pedal_program(pedal_program);
+            }),
             Self::Rand { site_salt } => query_rand(*site_salt, span),
             Self::Cycle(_)
             | Self::Stream(_)
@@ -1993,7 +2594,8 @@ where
             | Self::When { .. }
             | Self::Sometimes { .. }
             | Self::Within { .. }
-            | Self::Mask { .. } => unreachable!("base query variants handled in try_query"),
+            | Self::Mask { .. }
+            | Self::Chaos { .. } => unreachable!("base query variants handled in try_query"),
         }
     }
 }
@@ -2038,7 +2640,13 @@ where
     // We assume a modest default capacity proportional to the number of layers.
     let mut events = Vec::with_capacity(layers.len() * 4);
     for layer in layers {
-        events.extend(layer.try_query(span)?);
+        let layer_events = layer.try_query(span)?;
+        if events.len() + layer_events.len() > 100_000 {
+            return Err(EvalError::new(
+                "evaluation exceeded the maximum allowed event limit",
+            ));
+        }
+        events.extend(layer_events);
     }
     sort_events(&mut events);
     Ok(events)
@@ -2058,34 +2666,26 @@ where
         return Ok(Vec::new());
     }
 
-    let gate_events = gate_spans
-        .into_iter()
-        .map(|part| Event {
-            whole: None,
-            part,
-            value: 1.0,
-        })
-        .collect::<Vec<_>>();
     let mut masked = Vec::with_capacity(source_events.len());
 
-    for event in source_events {
-        let Some(boundaries) = compute_event_fragment_boundaries(&event.part, &[&gate_events[..]])
+    for event in &source_events {
+        let Some(boundaries) = compute_event_fragment_boundaries(&event.part, gate_spans.iter())
         else {
             continue;
         };
 
         for window in boundaries.windows(2) {
-            let &[start, end] = window else {
+            let [start, end] = window else {
                 continue;
             };
-            if start >= end {
+            if *start >= *end {
                 continue;
             }
 
-            let part = build_span(start.clone(), end.clone())?;
-            if gate_events
+            let part = build_span((*start).clone(), (*end).clone())?;
+            if gate_spans
                 .iter()
-                .any(|gate_event| spans_overlap(&gate_event.part, &part))
+                .any(|gate_span| spans_overlap(gate_span, &part))
             {
                 masked.push(Event {
                     whole: None,
@@ -2227,7 +2827,9 @@ fn arp_event_cluster(
         &rational_reciprocal(&rational_from_parts(step_count, 1)?)?,
     )?;
     let len = cluster.len();
-    let mut arped = Vec::with_capacity(usize::try_from(steps).unwrap_or(cluster.len()));
+    let capacity = usize::try_from(steps)
+        .map_err(|_| EvalError::new("`arp` exceeded the supported evaluator range"))?;
+    let mut arped = Vec::with_capacity(capacity);
 
     for index in 0..steps {
         let offset_index = i64::from(index);
@@ -2240,6 +2842,21 @@ fn arp_event_cluster(
         let selected = match direction {
             ArpDirectionValue::Up => slot,
             ArpDirectionValue::Down => len - 1 - slot,
+            ArpDirectionValue::PingPong => {
+                if len <= 1 {
+                    0
+                } else {
+                    let cycle_len = len * 2 - 2;
+                    let cycle_slot = usize::try_from(index).map_err(|_| {
+                        EvalError::new("`arp` exceeded the supported evaluator range")
+                    })? % cycle_len;
+                    if cycle_slot < len {
+                        cycle_slot
+                    } else {
+                        cycle_len - cycle_slot
+                    }
+                }
+            }
         };
         arped.push(Event {
             whole: None,
@@ -2269,46 +2886,317 @@ fn drop_event_cluster(cluster: &mut [Event<f64>], count: u32) -> Result<(), Eval
     Ok(())
 }
 
+fn process_event_clusters<T, F, R>(
+    events: &[Event<T>],
+    context: &str,
+    mut process_cluster: F,
+) -> Result<Vec<R>, EvalError>
+where
+    T: PatternRuntimeValue,
+    F: FnMut(&[Event<T>]) -> Result<Vec<R>, EvalError>,
+{
+    let mut result = Vec::with_capacity(events.len());
+    let mut index = 0;
+
+    while index < events.len() {
+        let start_index = index;
+        let span = &events[start_index].part;
+        while index < events.len() && &events[index].part == span {
+            if !events[index].value.is_finite_numeric() {
+                return Err(EvalError::new(format!(
+                    "`{context}` requires finite numeric values"
+                )));
+            }
+            index += 1;
+        }
+
+        let cluster_result = process_cluster(&events[start_index..index])?;
+        if result.len() + cluster_result.len() > 100_000 {
+            return Err(EvalError::new(
+                "evaluation exceeded the maximum allowed event limit",
+            ));
+        }
+        result.extend(cluster_result);
+    }
+
+    Ok(result)
+}
+
+fn mutate_event_clusters<T, F>(
+    events: &mut [Event<T>],
+    context: &str,
+    mut mutate_cluster: F,
+) -> Result<(), EvalError>
+where
+    T: PatternRuntimeValue,
+    F: FnMut(&mut [Event<T>]) -> Result<(), EvalError>,
+{
+    sort_events(events);
+    let mut index = 0;
+
+    while index < events.len() {
+        let start_index = index;
+        let span = &events[start_index].part;
+        while index < events.len() && &events[index].part == span {
+            if !events[index].value.is_finite_numeric() {
+                return Err(EvalError::new(format!(
+                    "`{context}` requires finite numeric values"
+                )));
+            }
+            index += 1;
+        }
+
+        mutate_cluster(&mut events[start_index..index])?;
+    }
+
+    Ok(())
+}
+
 #[derive(Clone, Copy, Debug)]
 enum ControlPatternKind {
     Gain,
+    DelayMix,
+    DelayTime,
+    DelayFeedback,
     Hpf,
     Lpf,
+    ReverbMix,
+    ReverbRoom,
+    ReverbDamp,
     Res,
     Drive,
+    ChorusMix,
+    ChorusDepth,
+    ChorusRate,
     PulseWidth,
     Pan,
+    CompressorMix,
+    CompressorThreshold,
+    CompressorRatio,
     Pitch,
     Rate,
     Transpose,
 }
 
-fn apply_event_fragments<T, F>(
-    source_events: Vec<Event<T>>,
-    control_event_lists: &[&[Event<f64>]],
+impl ControlPatternKind {
+    fn apply<T: PatternRuntimeValue>(self, value: &T, control_val: f64) -> Result<T, EvalError> {
+        match self {
+            Self::Gain => Ok(value.adjust_gain(control_val)),
+            Self::DelayMix => Ok(value.adjust_delay_mix(control_val)),
+            Self::DelayTime => Ok(value.adjust_delay_time(control_val)),
+            Self::DelayFeedback => Ok(value.adjust_delay_feedback(control_val)),
+            Self::Hpf => Ok(value.adjust_hpf(control_val)),
+            Self::Lpf => Ok(value.adjust_lpf(control_val)),
+            Self::ReverbMix => Ok(value.adjust_reverb_mix(control_val)),
+            Self::ReverbRoom => Ok(value.adjust_reverb_room(control_val)),
+            Self::ReverbDamp => Ok(value.adjust_reverb_damp(control_val)),
+            Self::Res => Ok(value.adjust_resonance(control_val)),
+            Self::Drive => Ok(value.adjust_drive(control_val)),
+            Self::ChorusMix => Ok(value.adjust_chorus_mix(control_val)),
+            Self::ChorusDepth => Ok(value.adjust_chorus_depth(control_val)),
+            Self::ChorusRate => Ok(value.adjust_chorus_rate(control_val)),
+            Self::PulseWidth => Ok(value.adjust_pulse_width(control_val)),
+            Self::Pan => Ok(value.adjust_pan(control_val)),
+            Self::CompressorMix => Ok(value.adjust_compressor_mix(control_val)),
+            Self::CompressorThreshold => Ok(value.adjust_compressor_threshold(control_val)),
+            Self::CompressorRatio => Ok(value.adjust_compressor_ratio(control_val)),
+            Self::Pitch => Ok(value.adjust_rate(semitones_to_rate_multiplier(control_val))),
+            Self::Rate => Ok(value.adjust_rate(control_val)),
+            Self::Transpose => value.transpose_semitones(control_val),
+        }
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn validate(self, value: f64) -> Result<(), EvalError> {
+        match self {
+            Self::Gain => {
+                if !value.is_finite() {
+                    return Err(EvalError::new(
+                        "`gain` requires finite numeric control values",
+                    ));
+                }
+            }
+            Self::DelayMix => {
+                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+                    return Err(EvalError::new(
+                        "`delay` requires finite control values within [0, 1]",
+                    ));
+                }
+            }
+            Self::DelayTime => {
+                if !value.is_finite() || value <= f64::EPSILON || value > 1.0 {
+                    return Err(EvalError::new(
+                        "`delay_time` requires positive finite control values within (0, 1]",
+                    ));
+                }
+            }
+            Self::DelayFeedback => {
+                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+                    return Err(EvalError::new(
+                        "`delay_feedback` requires finite control values within [0, 1]",
+                    ));
+                }
+            }
+            Self::Hpf => {
+                if !value.is_finite() || value <= f64::EPSILON {
+                    return Err(EvalError::new(
+                        "`hpf` requires positive finite control values",
+                    ));
+                }
+            }
+            Self::Lpf => {
+                if !value.is_finite() || value <= f64::EPSILON {
+                    return Err(EvalError::new(
+                        "`lpf` requires positive finite control values",
+                    ));
+                }
+            }
+            Self::ReverbMix => {
+                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+                    return Err(EvalError::new(
+                        "`reverb` requires finite control values within [0, 1]",
+                    ));
+                }
+            }
+            Self::ReverbRoom => {
+                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+                    return Err(EvalError::new(
+                        "`reverb_room` requires finite control values within [0, 1]",
+                    ));
+                }
+            }
+            Self::ReverbDamp => {
+                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+                    return Err(EvalError::new(
+                        "`reverb_damp` requires finite control values within [0, 1]",
+                    ));
+                }
+            }
+            Self::Res => {
+                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+                    return Err(EvalError::new(
+                        "`res` requires finite control values within [0, 1]",
+                    ));
+                }
+            }
+            Self::Drive => {
+                if !value.is_finite() || value < 0.0 {
+                    return Err(EvalError::new(
+                        "`drive` requires finite non-negative control values",
+                    ));
+                }
+            }
+            Self::ChorusMix => {
+                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+                    return Err(EvalError::new(
+                        "`chorus` requires finite control values within [0, 1]",
+                    ));
+                }
+            }
+            Self::ChorusDepth => {
+                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+                    return Err(EvalError::new(
+                        "`chorus_depth` requires finite control values within [0, 1]",
+                    ));
+                }
+            }
+            Self::ChorusRate => {
+                if !value.is_finite() || value <= f64::EPSILON {
+                    return Err(EvalError::new(
+                        "`chorus_rate` requires positive finite control values",
+                    ));
+                }
+            }
+            Self::PulseWidth => {
+                if !value.is_finite() || !(0.0..1.0).contains(&value) {
+                    return Err(EvalError::new(
+                        "`pw` requires finite control values in the open interval (0, 1)",
+                    ));
+                }
+            }
+            Self::Pan => {
+                if !value.is_finite() || !(-1.0..=1.0).contains(&value) {
+                    return Err(EvalError::new(
+                        "`pan` requires finite control values within [-1, 1]",
+                    ));
+                }
+            }
+            Self::CompressorMix => {
+                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+                    return Err(EvalError::new(
+                        "`compressor` requires finite control values within [0, 1]",
+                    ));
+                }
+            }
+            Self::CompressorThreshold => {
+                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+                    return Err(EvalError::new(
+                        "`compressor_threshold` requires finite control values within [0, 1]",
+                    ));
+                }
+            }
+            Self::CompressorRatio => {
+                if !value.is_finite() || value < 1.0 {
+                    return Err(EvalError::new(
+                        "`compressor_ratio` requires finite control values >= 1",
+                    ));
+                }
+            }
+            Self::Pitch => {
+                if !value.is_finite() {
+                    return Err(EvalError::new(
+                        "`pitch` requires finite numeric control values",
+                    ));
+                }
+            }
+            Self::Rate => {
+                if !value.is_finite() || value.abs() <= f64::EPSILON {
+                    return Err(EvalError::new(
+                        "`rate` requires finite non-zero control values",
+                    ));
+                }
+            }
+            Self::Transpose => {
+                if !value.is_finite() {
+                    return Err(EvalError::new(
+                        "`transpose` requires finite numeric control values",
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+#[allow(clippy::needless_pass_by_value)]
+fn apply_event_fragments<'a, T, F, I>(
+    source_events: &'a [Event<T>],
+    control_parts: I,
     mut process_fragment: F,
 ) -> Result<Vec<Event<T>>, EvalError>
 where
     T: PatternRuntimeValue,
     F: FnMut(&TimeSpan, &T) -> Result<Option<T>, EvalError>,
+    I: Iterator<Item = &'a TimeSpan> + Clone,
 {
     let mut composed = Vec::with_capacity(source_events.len());
     for event in source_events {
-        let Some(boundaries) = compute_event_fragment_boundaries(&event.part, control_event_lists)
+        let Some(boundaries) =
+            compute_event_fragment_boundaries(&event.part, control_parts.clone())
         else {
-            composed.push(event);
+            composed.push(event.clone());
             continue;
         };
 
         for window in boundaries.windows(2) {
-            let &[start, end] = window else {
+            let [start, end] = window else {
                 continue;
             };
-            if start >= end {
+            if *start >= *end {
                 continue;
             }
 
-            let part = build_span(start.clone(), end.clone())?;
+            let part = build_span((*start).clone(), (*end).clone())?;
             if let Some(value) = process_fragment(&part, &event.value)? {
                 composed.push(Event {
                     whole: None,
@@ -2334,119 +3222,26 @@ where
 {
     let source_events = inner.try_query(span)?;
     let control_events = control.try_query(span)?;
-    validate_control_events(&control_events, kind)?;
+    for event in &control_events {
+        kind.validate(event.value)?;
+    }
     if control_events.is_empty() {
         return Ok(source_events);
     }
 
-    apply_event_fragments(source_events, &[&control_events[..]], |part, value| {
-        let mut new_value = value.clone();
-        for control_event in &control_events {
-            if spans_overlap(&control_event.part, part) {
-                new_value = match kind {
-                    ControlPatternKind::Gain => Ok(new_value.adjust_gain(control_event.value)),
-                    ControlPatternKind::Hpf => Ok(new_value.adjust_hpf(control_event.value)),
-                    ControlPatternKind::Lpf => Ok(new_value.adjust_lpf(control_event.value)),
-                    ControlPatternKind::Res => Ok(new_value.adjust_resonance(control_event.value)),
-                    ControlPatternKind::Drive => Ok(new_value.adjust_drive(control_event.value)),
-                    ControlPatternKind::PulseWidth => {
-                        Ok(new_value.adjust_pulse_width(control_event.value))
-                    }
-                    ControlPatternKind::Pan => Ok(new_value.adjust_pan(control_event.value)),
-                    ControlPatternKind::Pitch => Ok(
-                        new_value.adjust_rate(semitones_to_rate_multiplier(control_event.value))
-                    ),
-                    ControlPatternKind::Rate => Ok(new_value.adjust_rate(control_event.value)),
-                    ControlPatternKind::Transpose => {
-                        new_value.transpose_semitones(control_event.value)
-                    }
-                }?;
-            }
-        }
-        Ok(Some(new_value))
-    })
-}
-
-fn validate_control_events(
-    control_events: &[Event<f64>],
-    kind: ControlPatternKind,
-) -> Result<(), EvalError> {
-    for event in control_events {
-        match kind {
-            ControlPatternKind::Gain => {
-                if !event.value.is_finite() {
-                    return Err(EvalError::new(
-                        "`gain` requires finite numeric control values",
-                    ));
+    apply_event_fragments(
+        &source_events,
+        control_events.iter().map(|e| &e.part),
+        |part, value| {
+            let mut new_value = value.clone();
+            for control_event in &control_events {
+                if spans_overlap(&control_event.part, part) {
+                    new_value = kind.apply(&new_value, control_event.value)?;
                 }
             }
-            ControlPatternKind::Hpf => {
-                if !event.value.is_finite() || event.value <= f64::EPSILON {
-                    return Err(EvalError::new(
-                        "`hpf` requires positive finite control values",
-                    ));
-                }
-            }
-            ControlPatternKind::Lpf => {
-                if !event.value.is_finite() || event.value <= f64::EPSILON {
-                    return Err(EvalError::new(
-                        "`lpf` requires positive finite control values",
-                    ));
-                }
-            }
-            ControlPatternKind::Res => {
-                if !event.value.is_finite() || !(0.0..=1.0).contains(&event.value) {
-                    return Err(EvalError::new(
-                        "`res` requires finite control values within [0, 1]",
-                    ));
-                }
-            }
-            ControlPatternKind::Drive => {
-                if !event.value.is_finite() || event.value < 0.0 {
-                    return Err(EvalError::new(
-                        "`drive` requires finite non-negative control values",
-                    ));
-                }
-            }
-            ControlPatternKind::PulseWidth => {
-                if !event.value.is_finite() || !(0.0..1.0).contains(&event.value) {
-                    return Err(EvalError::new(
-                        "`pw` requires finite control values in the open interval (0, 1)",
-                    ));
-                }
-            }
-            ControlPatternKind::Pan => {
-                if !event.value.is_finite() || !(-1.0..=1.0).contains(&event.value) {
-                    return Err(EvalError::new(
-                        "`pan` requires finite control values within [-1, 1]",
-                    ));
-                }
-            }
-            ControlPatternKind::Pitch => {
-                if !event.value.is_finite() {
-                    return Err(EvalError::new(
-                        "`pitch` requires finite numeric control values",
-                    ));
-                }
-            }
-            ControlPatternKind::Rate => {
-                if !event.value.is_finite() || event.value.abs() <= f64::EPSILON {
-                    return Err(EvalError::new(
-                        "`rate` requires finite non-zero control values",
-                    ));
-                }
-            }
-            ControlPatternKind::Transpose => {
-                if !event.value.is_finite() {
-                    return Err(EvalError::new(
-                        "`transpose` requires finite numeric control values",
-                    ));
-                }
-            }
-        }
-    }
-
-    Ok(())
+            Ok(Some(new_value))
+        },
+    )
 }
 
 fn semitones_to_rate_multiplier(semitones: f64) -> f64 {
@@ -2467,9 +3262,18 @@ fn whole_number_from_degree_value(value: f64) -> Result<i32, EvalError> {
 
 fn map_degree_to_semitones(degree: i32, collection: &PitchClassSetValue) -> Result<f64, EvalError> {
     let intervals = collection.intervals();
-    let scale_len = i32::try_from(intervals.len()).unwrap_or_default();
+    let scale_len = i32::try_from(intervals.len()).map_err(|_| {
+        EvalError::new("`degrees` scale length exceeded the supported evaluator range")
+    })?;
+    if scale_len == 0 {
+        return Err(EvalError::new(
+            "`degrees` requires a non-empty pitch class set",
+        ));
+    }
     let octave = degree.div_euclid(scale_len);
-    let index = usize::try_from(degree.rem_euclid(scale_len)).unwrap_or_default();
+    let index = usize::try_from(degree.rem_euclid(scale_len)).map_err(|_| {
+        EvalError::new("`degrees` scale index exceeded the supported evaluator range")
+    })?;
     let semitones = octave
         .checked_mul(12)
         .and_then(|value| value.checked_add(intervals[index]))
@@ -2496,8 +3300,11 @@ where
     }
 
     apply_event_fragments(
-        source_events,
-        &[&start_events[..], &end_events[..]],
+        &source_events,
+        start_events
+            .iter()
+            .map(|e| &e.part)
+            .chain(end_events.iter().map(|e| &e.part)),
         |part, value| {
             let mut relative_start = 0.0;
             let mut relative_end = 1.0;
@@ -2541,22 +3348,57 @@ where
         return Ok(source_events);
     }
 
-    apply_event_fragments(source_events, &[&control_events[..]], |part, value| {
-        let mut new_value = value.clone();
-        for control_event in &control_events {
-            if spans_overlap(&control_event.part, part) {
-                let index = whole_number_from_slice_idx_value(control_event.value)?;
-                let slice_start = f64::from(index) / f64::from(segments);
-                let slice_end = f64::from(index.checked_add(1).ok_or_else(|| {
-                    EvalError::new(
-                        "`slice_idx` control index exceeded the supported evaluator range",
-                    )
-                })?) / f64::from(segments);
-                new_value = new_value.adjust_slice(slice_start, slice_end);
+    apply_event_fragments(
+        &source_events,
+        control_events.iter().map(|e| &e.part),
+        |part, value| {
+            let mut new_value = value.clone();
+            for control_event in &control_events {
+                if spans_overlap(&control_event.part, part) {
+                    let index = whole_number_from_slice_idx_value(control_event.value)?;
+                    let slice_start = f64::from(index) / f64::from(segments);
+                    let slice_end = f64::from(index.checked_add(1).ok_or_else(|| {
+                        EvalError::new(
+                            "`slice_idx` control index exceeded the supported evaluator range",
+                        )
+                    })?) / f64::from(segments);
+                    new_value = new_value.adjust_slice(slice_start, slice_end);
+                }
             }
-        }
-        Ok(Some(new_value))
-    })
+            Ok(Some(new_value))
+        },
+    )
+}
+
+fn apply_onset_pattern<T>(
+    inner: &PatternRuntime<T>,
+    control: &PatternRuntime<f64>,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    let source_events = inner.try_query(span)?;
+    let control_events = control.try_query(span)?;
+    validate_onset_control_events(&control_events)?;
+    if control_events.is_empty() {
+        return Ok(source_events);
+    }
+
+    apply_event_fragments(
+        &source_events,
+        control_events.iter().map(|e| &e.part),
+        |part, value| {
+            let mut new_value = value.clone();
+            for control_event in &control_events {
+                if spans_overlap(&control_event.part, part) {
+                    new_value =
+                        new_value.adjust_onset(whole_number_from_onset_value(control_event.value)?);
+                }
+            }
+            Ok(Some(new_value))
+        },
+    )
 }
 
 fn validate_slice_endpoint_events(
@@ -2590,6 +3432,14 @@ fn validate_slice_idx_control_events(
     Ok(())
 }
 
+fn validate_onset_control_events(control_events: &[Event<f64>]) -> Result<(), EvalError> {
+    for event in control_events {
+        whole_number_from_onset_value(event.value)?;
+    }
+
+    Ok(())
+}
+
 fn whole_number_from_slice_idx_value(value: f64) -> Result<u32, EvalError> {
     if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
         return Err(EvalError::new(
@@ -2600,6 +3450,18 @@ fn whole_number_from_slice_idx_value(value: f64) -> Result<u32, EvalError> {
     format!("{value:.0}").parse::<u32>().map_err(|_| {
         EvalError::new("`slice_idx` control value exceeded the supported evaluator range")
     })
+}
+
+fn whole_number_from_onset_value(value: f64) -> Result<u32, EvalError> {
+    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
+        return Err(EvalError::new(
+            "`onset` requires whole-number control values",
+        ));
+    }
+
+    format!("{value:.0}")
+        .parse::<u32>()
+        .map_err(|_| EvalError::new("`onset` control value exceeded the supported evaluator range"))
 }
 
 fn query_rand<T>(site_salt: u64, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError>
@@ -2675,6 +3537,11 @@ where
         let local_query = translate_span(&query_slice, &local_offset)?;
         let mut cycle_events = stream.try_query(&local_query)?;
         shift_events(&mut cycle_events, &cycle_offset)?;
+        if events.len() + cycle_events.len() > 100_000 {
+            return Err(EvalError::new(
+                "evaluation exceeded the maximum allowed event limit",
+            ));
+        }
         events.extend(cycle_events);
     }
 
@@ -2740,6 +3607,103 @@ where
     })
 }
 
+fn query_chaos<T>(
+    inner: &PatternRuntime<T>,
+    site_salt: u64,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut events = Vec::with_capacity(8);
+    let start_cycle = floor_rational(span.start());
+    let end_cycle = ceil_rational(span.end());
+
+    for cycle in start_cycle..end_cycle {
+        let cycle_span = cycle_span(cycle)?;
+        let Some(query_slice) = clip_span(&cycle_span, span)? else {
+            continue;
+        };
+
+        // Query the underlying events for this whole cycle to shuffle them accurately
+        let mut cycle_events = inner.try_query(&cycle_span)?;
+        if cycle_events.is_empty() {
+            continue;
+        }
+
+        // Shuffle using a deterministic RNG seeded by site_salt and cycle index
+        let [
+            b0,
+            b1,
+            b2,
+            b3,
+            b4,
+            b5,
+            b6,
+            b7,
+            b8,
+            b9,
+            b10,
+            b11,
+            b12,
+            b13,
+            b14,
+            b15,
+        ] = cycle.to_le_bytes();
+        let lower = u64::from_le_bytes([b0, b1, b2, b3, b4, b5, b6, b7]);
+        let upper = u64::from_le_bytes([b8, b9, b10, b11, b12, b13, b14, b15]);
+        let mut state = lower ^ upper.rotate_left(32) ^ site_salt.rotate_left(17);
+        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        state = (state ^ (state >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        state = (state ^ (state >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        state ^= state >> 31;
+
+        let mut rng_state = state;
+        let len = cycle_events.len();
+        for i in (1..len).rev() {
+            // LCG for next random number
+            rng_state = rng_state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            let j = usize::try_from(rng_state).unwrap_or(usize::MAX) % (i + 1);
+            if i != j {
+                // ⚡ Bolt: Swap values in-place without allocating an intermediate `Vec` or deep cloning strings.
+                // We use `split_at_mut` to get two disjoint mutable slices, guaranteeing safety.
+                let (left, right) = cycle_events.split_at_mut(i.max(j));
+                std::mem::swap(&mut left[i.min(j)].value, &mut right[0].value);
+            }
+        }
+
+        // Apply shuffled values back to the original timing structure and clip to the query slice
+
+        for event in cycle_events {
+            if spans_overlap(&event.part, &query_slice) {
+                // If it partially overlaps, we need to clip it
+                if let Some(clipped_part) = clip_span(&event.part, &query_slice)? {
+                    // Update the `whole` span if it was clipped, or preserve it
+                    let whole = if clipped_part == event.part {
+                        event.whole.clone()
+                    } else {
+                        Some(event.whole.unwrap_or_else(|| event.part.clone()))
+                    };
+                    events.push(Event {
+                        whole,
+                        part: clipped_part,
+                        value: event.value,
+                    });
+                }
+            }
+        }
+    }
+
+    sort_events(&mut events);
+    Ok(events)
+}
+
 fn query_transform_cycles<T, F>(
     inner: &PatternRuntime<T>,
     transform: &FunctionValue,
@@ -2770,9 +3734,20 @@ where
             let mut transformed_events =
                 apply_unary_transform(transform, localized)?.try_query(&local_query)?;
             shift_events(&mut transformed_events, &cycle_offset)?;
+            if events.len() + transformed_events.len() > 100_000 {
+                return Err(EvalError::new(
+                    "evaluation exceeded the maximum allowed event limit",
+                ));
+            }
             events.extend(transformed_events);
         } else {
-            events.extend(inner.try_query(&query_slice)?);
+            let slice_events = inner.try_query(&query_slice)?;
+            if events.len() + slice_events.len() > 100_000 {
+                return Err(EvalError::new(
+                    "evaluation exceeded the maximum allowed event limit",
+                ));
+            }
+            events.extend(slice_events);
         }
     }
 
@@ -2805,14 +3780,26 @@ where
         };
         let window_span = within_window_span(cycle, start, end)?;
         let Some(window_query) = clip_span(&window_span, &query_slice)? else {
-            events.extend(inner.try_query(&query_slice)?);
+            let slice_events = inner.try_query(&query_slice)?;
+            if events.len() + slice_events.len() > 100_000 {
+                return Err(EvalError::new(
+                    "evaluation exceeded the maximum allowed event limit",
+                ));
+            }
+            events.extend(slice_events);
             continue;
         };
 
         if let Some(before_window) =
             clip_between(&query_slice, cycle_span.start(), window_span.start())?
         {
-            events.extend(inner.try_query(&before_window)?);
+            let slice_events = inner.try_query(&before_window)?;
+            if events.len() + slice_events.len() > 100_000 {
+                return Err(EvalError::new(
+                    "evaluation exceeded the maximum allowed event limit",
+                ));
+            }
+            events.extend(slice_events);
         }
 
         let absolute_cycle = absolute_cycle_for_runtime(inner, cycle)?;
@@ -2821,11 +3808,22 @@ where
         let mut transformed_events =
             apply_unary_transform(transform, localized)?.try_query(&local_query)?;
         restore_window_localized_events(&mut transformed_events, &window_span)?;
+        if events.len() + transformed_events.len() > 100_000 {
+            return Err(EvalError::new(
+                "evaluation exceeded the maximum allowed event limit",
+            ));
+        }
         events.extend(transformed_events);
 
         if let Some(after_window) = clip_between(&query_slice, window_span.end(), cycle_span.end())?
         {
-            events.extend(inner.try_query(&after_window)?);
+            let slice_events = inner.try_query(&after_window)?;
+            if events.len() + slice_events.len() > 100_000 {
+                return Err(EvalError::new(
+                    "evaluation exceeded the maximum allowed event limit",
+                ));
+            }
+            events.extend(slice_events);
         }
     }
 
@@ -2888,6 +3886,11 @@ where
             if let Some(whole) = event.whole.take() {
                 event.whole = Some(mirror_span_in_cycle(&whole, cycle)?);
             }
+        }
+        if events.len() + mirrored_events.len() > 100_000 {
+            return Err(EvalError::new(
+                "evaluation exceeded the maximum allowed event limit",
+            ));
         }
         events.extend(mirrored_events);
     }
@@ -2959,6 +3962,7 @@ fn absolute_cycle_for_runtime<T>(
         | PatternRuntime::Sometimes { inner, .. }
         | PatternRuntime::Within { inner, .. }
         | PatternRuntime::Mask { inner, .. }
+        | PatternRuntime::Chaos { inner, .. }
         | PatternRuntime::Roll { inner, .. }
         | PatternRuntime::Strum { inner }
         | PatternRuntime::Arp { inner, .. }
@@ -2973,25 +3977,52 @@ fn absolute_cycle_for_runtime<T>(
         | PatternRuntime::Rev { inner }
         | PatternRuntime::Gain { inner, .. }
         | PatternRuntime::GainPattern { inner, .. }
+        | PatternRuntime::Delay { inner, .. }
+        | PatternRuntime::DelayPattern { inner, .. }
+        | PatternRuntime::DelayTime { inner, .. }
+        | PatternRuntime::DelayTimePattern { inner, .. }
+        | PatternRuntime::DelayFeedback { inner, .. }
+        | PatternRuntime::DelayFeedbackPattern { inner, .. }
         | PatternRuntime::Hpf { inner, .. }
         | PatternRuntime::HpfPattern { inner, .. }
         | PatternRuntime::Lpf { inner, .. }
         | PatternRuntime::LpfPattern { inner, .. }
+        | PatternRuntime::Reverb { inner, .. }
+        | PatternRuntime::ReverbPattern { inner, .. }
+        | PatternRuntime::ReverbRoom { inner, .. }
+        | PatternRuntime::ReverbRoomPattern { inner, .. }
+        | PatternRuntime::ReverbDamp { inner, .. }
+        | PatternRuntime::ReverbDampPattern { inner, .. }
         | PatternRuntime::Res { inner, .. }
         | PatternRuntime::ResPattern { inner, .. }
         | PatternRuntime::Drive { inner, .. }
         | PatternRuntime::DrivePattern { inner, .. }
+        | PatternRuntime::Chorus { inner, .. }
+        | PatternRuntime::ChorusPattern { inner, .. }
+        | PatternRuntime::ChorusDepth { inner, .. }
+        | PatternRuntime::ChorusDepthPattern { inner, .. }
+        | PatternRuntime::ChorusRate { inner, .. }
+        | PatternRuntime::ChorusRatePattern { inner, .. }
         | PatternRuntime::PulseWidth { inner, .. }
         | PatternRuntime::PulseWidthPattern { inner, .. }
         | PatternRuntime::Pan { inner, .. }
         | PatternRuntime::PanPattern { inner, .. }
+        | PatternRuntime::Compressor { inner, .. }
+        | PatternRuntime::CompressorPattern { inner, .. }
+        | PatternRuntime::CompressorThreshold { inner, .. }
+        | PatternRuntime::CompressorThresholdPattern { inner, .. }
+        | PatternRuntime::CompressorRatio { inner, .. }
+        | PatternRuntime::CompressorRatioPattern { inner, .. }
         | PatternRuntime::Pitch { inner, .. }
         | PatternRuntime::PitchPattern { inner, .. }
         | PatternRuntime::Rate { inner, .. }
         | PatternRuntime::RatePattern { inner, .. }
+        | PatternRuntime::Onset { inner, .. }
+        | PatternRuntime::OnsetPattern { inner, .. }
         | PatternRuntime::Slice { inner, .. }
         | PatternRuntime::SlicePattern { inner, .. }
-        | PatternRuntime::SliceIdxPattern { inner, .. } => absolute_cycle_for_runtime(inner, cycle),
+        | PatternRuntime::SliceIdxPattern { inner, .. }
+        | PatternRuntime::Pedal { inner, .. } => absolute_cycle_for_runtime(inner, cycle),
         PatternRuntime::Stack(layers) => layers
             .first()
             .map_or(Ok(cycle), |layer| absolute_cycle_for_runtime(layer, cycle)),
@@ -3072,23 +4103,14 @@ fn clip_span(span: &TimeSpan, query: &TimeSpan) -> Result<Option<TimeSpan>, Eval
     build_span(start.clone(), end.clone()).map(Some)
 }
 
-fn merge_open_spans(mut spans: Vec<TimeSpan>) -> Result<Vec<TimeSpan>, EvalError> {
-    if spans.is_empty() {
-        return Ok(spans);
-    }
+fn merge_open_spans<I: Iterator<Item = TimeSpan>>(mut iter: I) -> Result<Vec<TimeSpan>, EvalError> {
+    let Some(mut current) = iter.next() else {
+        return Ok(Vec::new());
+    };
 
-    spans.sort_by(|left, right| {
-        left.start()
-            .cmp(right.start())
-            .then(left.end().cmp(right.end()))
-    });
-
-    // ⚡ Bolt: Pre-allocate vector using the initial span count as the maximum bound
+    // ⚡ Bolt: Pre-allocate vector using the iterator's size hint as the maximum bound
     // to reduce heap reallocations during merge operations.
-    let capacity = spans.len();
-    let mut iter = spans.into_iter();
-    let mut current = iter.next().expect("non-empty after early return");
-    let mut merged = Vec::with_capacity(capacity);
+    let mut merged = Vec::with_capacity(iter.size_hint().0.saturating_add(1));
 
     for span in iter {
         if span.start() <= current.end() {
@@ -3112,30 +4134,29 @@ fn spans_overlap(a: &TimeSpan, b: &TimeSpan) -> bool {
     max(a.start(), b.start()) < min(a.end(), b.end())
 }
 
-fn compute_event_fragment_boundaries<'a>(
+fn compute_event_fragment_boundaries<'a, 'b, I>(
     source_span: &'a TimeSpan,
-    control_event_lists: &[&'a [Event<f64>]],
-) -> Option<Vec<&'a Rational>> {
-    let capacity_estimate = 2 + control_event_lists
-        .iter()
-        .map(|list| list.len())
-        .sum::<usize>()
-        * 2;
+    control_parts: I,
+) -> Option<Vec<&'a Rational>>
+where
+    'b: 'a,
+    I: Iterator<Item = &'b TimeSpan>,
+{
+    let (lower, upper) = control_parts.size_hint();
+    let capacity_estimate = 2 + upper.unwrap_or(lower) * 2;
     // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries.
     let mut boundaries = Vec::with_capacity(capacity_estimate);
     boundaries.push(source_span.start());
     boundaries.push(source_span.end());
     let mut has_overlap = false;
 
-    for control_events in control_event_lists {
-        for control_event in *control_events {
-            let start = max(control_event.part.start(), source_span.start());
-            let end = min(control_event.part.end(), source_span.end());
-            if start < end {
-                has_overlap = true;
-                boundaries.push(start);
-                boundaries.push(end);
-            }
+    for control_part in control_parts {
+        let start = max(control_part.start(), source_span.start());
+        let end = min(control_part.end(), source_span.end());
+        if start < end {
+            has_overlap = true;
+            boundaries.push(start);
+            boundaries.push(end);
         }
     }
 
@@ -3364,6 +4385,30 @@ mod tests {
     }
 
     #[test]
+    fn number_pattern_query_unit_degrades_gracefully_on_overflow() {
+        // Create an invalid Rational state that guarantees an arithmetic overflow during querying.
+        // `query_unit()` checks bounded spans over `[0, 1)`. If we shift a pattern by an offset
+        // whose parts cause `Rational::checked_add` to fail when it evaluates, we get an EvalError.
+        // The maximum possible rational before bounds failure involves i128::MAX.
+        let base = NumberPatternValue::constant(1.0);
+        let max_rational = Rational::checked_from_parts(i128::MAX, 1).unwrap();
+
+        // We nest shifts so that they compound inside `try_query_unit`
+        let pattern = base.shift(max_rational.clone()).shift(max_rational);
+
+        assert!(
+            pattern.try_query_unit().is_err(),
+            "Expected try_query_unit to fail with bounded arithmetic overflow"
+        );
+
+        let query_events = pattern.query_unit();
+        assert!(
+            query_events.is_empty(),
+            "query_unit should degrade to an empty vector on error"
+        );
+    }
+
+    #[test]
     fn cycle_span_supports_indices_above_i64_range() {
         let start_cycle = i128::from(i64::MAX) + 1;
         let span = cycle_span(start_cycle).unwrap();
@@ -3537,6 +4582,40 @@ mod tests {
         let mut events = cluster.clone();
         let events = arp_event_cluster(&mut events, 5, ArpDirectionValue::Up).unwrap();
         assert_eq!(events, cluster);
+    }
+
+    #[test]
+    fn chaos_shuffles_events_deterministically() {
+        let source = "a = chaos(bd sn cp hh)";
+        let module = crate::eval_module(source, crate::ReplMode::Loose).unwrap();
+        let pattern = module.get("a").unwrap().as_sample_pattern().unwrap();
+
+        let span = TimeSpan::new(Rational::zero(), Rational::new(2, 1).unwrap()).unwrap();
+        let events = pattern.try_query(&span).unwrap();
+
+        assert_eq!(events.len(), 8); // 4 events per cycle
+
+        let c0_names: Vec<_> = events[0..4].iter().map(|e| e.value.sample()).collect();
+        let c1_names: Vec<_> = events[4..8].iter().map(|e| e.value.sample()).collect();
+
+        // Timing should be intact
+        assert_eq!(events[0].part.start(), &Rational::zero());
+        assert_eq!(events[0].part.end(), &Rational::new(1, 4).unwrap());
+        assert_eq!(events[4].part.start(), &Rational::one());
+        assert_eq!(events[4].part.end(), &Rational::new(5, 4).unwrap());
+
+        // Should contain all elements
+        let mut c0_sorted = c0_names.clone();
+        c0_sorted.sort_unstable();
+        assert_eq!(c0_sorted, vec!["bd", "cp", "hh", "sn"]);
+
+        let mut c1_sorted = c1_names.clone();
+        c1_sorted.sort_unstable();
+        assert_eq!(c1_sorted, vec!["bd", "cp", "hh", "sn"]);
+
+        // C0 and C1 should likely be different permutations
+        assert_ne!(c0_names, vec!["bd", "sn", "cp", "hh"]);
+        assert_ne!(c0_names, c1_names);
     }
 
     #[test]

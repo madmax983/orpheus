@@ -25,32 +25,68 @@ pub use rational::Rational;
 pub use stream::EventStream;
 pub use time::TimeSpan;
 
-use core::fmt;
+use thiserror::Error;
 
 /// Errors produced by the pattern core time model.
-#[derive(Clone, Debug, Eq, PartialEq)]
+///
+/// These errors occur when the internal mathematical invariants of Orpheus's continuous
+/// time system are violated. Time in Orpheus is absolute, exact, and represented by rational
+/// numbers; therefore, operations that would result in undefined math (like dividing by zero
+/// or creating impossible spans of time) are trapped here.
+///
+/// ## Examples
+///
+/// Pattern errors are typically encountered when constructing invalid time values manually,
+/// and they can be matched to provide helpful feedback to users constructing custom patterns.
+///
+/// ```
+/// use orpheus_pattern::{PatternError, Rational, TimeSpan};
+///
+/// // Attempting to create a time span that flows backward in time:
+/// let start = Rational::new(2, 1).unwrap();
+/// let end = Rational::one();
+///
+/// let result = TimeSpan::new(start.clone(), end.clone());
+///
+/// assert!(matches!(
+///     result,
+///     Err(PatternError::InvalidSpan { .. })
+/// ));
+/// ```
+
+#[derive(Clone, Debug, Eq, PartialEq, Error)]
 pub enum PatternError {
     /// A rational value was constructed with a zero denominator.
-    InvalidDenominator { denominator: i64 },
+    ///
+    /// Orpheus uses exact rational fractions for time. If a denominator of zero is introduced,
+    /// it implies a division by zero in the time domain, which is mathematically undefined.
+    #[error("rational denominator cannot be zero")]
+    InvalidDenominator {
+        /// The literal zero value that was passed as the denominator.
+        denominator: i64,
+    },
     /// A checked rational operation exceeded the supported integer range.
-    ArithmeticOverflow { operation: &'static str },
+    ///
+    /// Because Orpheus represents time exactly using fractions (like `1/3`), performing complex
+    /// transformations (like shifting and stretching) can sometimes cause the internal integer
+    /// numerators and denominators to multiply beyond the capacity of a 128-bit integer.
+    #[error("{operation} exceeded the supported range")]
+    ArithmeticOverflow {
+        /// A string identifying the mathematical operation that failed (e.g., `"addition"`, `"normalization"`).
+        operation: &'static str,
+    },
     /// A span was constructed with its start after its end.
-    InvalidSpan { start: Rational, end: Rational },
+    ///
+    /// In Orpheus, time flows strictly forward. A [`TimeSpan`] must always have a non-negative duration,
+    /// meaning its start boundary cannot occur temporally after its end boundary.
+    #[error("time span start cannot exceed end")]
+    InvalidSpan {
+        /// The boundary where the span was requested to begin.
+        start: Rational,
+        /// The boundary where the span was requested to conclude.
+        end: Rational,
+    },
 }
-
-impl fmt::Display for PatternError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InvalidDenominator { .. } => f.write_str("rational denominator cannot be zero"),
-            Self::ArithmeticOverflow { operation } => {
-                write!(f, "{operation} exceeded the supported range")
-            }
-            Self::InvalidSpan { .. } => f.write_str("time span start cannot exceed end"),
-        }
-    }
-}
-
-impl std::error::Error for PatternError {}
 
 #[cfg(test)]
 mod tests {

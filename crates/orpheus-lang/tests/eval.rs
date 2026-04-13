@@ -1,7 +1,7 @@
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use orpheus_lang::{ReplMode, Value, eval_module, export_sample_pattern_to_json};
+use orpheus_lang::{FunctionValue, ReplMode, Value, eval_module, export_sample_pattern_to_json};
 use orpheus_pattern::{Rational, TimeSpan};
 use serde_json::Value as JsonValue;
 
@@ -350,6 +350,166 @@ fn parameterized_binding_can_be_used_from_pipe() {
         .unwrap();
 
     assert_eq!(direct_events, piped_events);
+}
+
+#[test]
+fn pedal_graph_binding_evaluates_to_pedal_value() {
+    let module = eval_module(
+        "fx = graph { wet = input |> clip(model=silicon_hard); wet |> output }",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    let pedal = module
+        .get("fx")
+        .unwrap()
+        .as_pedal()
+        .expect("expected pedal value");
+
+    assert!(pedal.format_source().contains("clip(model=silicon_hard)"));
+}
+
+#[test]
+fn pedal_graph_rejects_unbound_local_signal() {
+    assert_eval_error_contains(
+        "fx = graph { wet = dry |> output; wet |> output }",
+        ReplMode::Strict,
+        &["dry", "unbound local signal"],
+    );
+}
+
+#[test]
+fn pedal_graph_rejects_unbound_named_parameter_identifier() {
+    assert_eval_error_contains(
+        "fx = graph { wet = input |> clip(model=ghost); wet |> output }",
+        ReplMode::Strict,
+        &["ghost", "unbound local signal"],
+    );
+}
+
+#[test]
+fn pedal_graph_rejects_implicit_cycle() {
+    assert_eval_error_contains(
+        "fx = graph { wet = wet |> gain(0.5); wet |> output }",
+        ReplMode::Strict,
+        &["wet", "implicit cycle", "feedback"],
+    );
+}
+
+#[test]
+fn pedal_graph_accepts_explicit_feedback_node() {
+    let module = eval_module(
+        "fx = graph { wet = feedback(wet |> gain(0.5)); wet |> output }",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert!(matches!(module.get("fx"), Some(Value::Pedal(_))));
+}
+
+#[test]
+fn pedal_graph_rejects_output_misuse() {
+    assert_eval_error_contains(
+        "fx = graph { wet = output(input); wet |> output }",
+        ReplMode::Strict,
+        &["output", "final pipe target"],
+    );
+}
+
+#[test]
+fn through_direct_call_wraps_sample_pattern() {
+    let module = eval_module(
+        "drivebox = graph { wet = input |> clip(model=silicon_hard); wet |> output }\n\
+         lead = through(drivebox, saw)",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(sample_names(module.get("lead").unwrap()), ["saw"]);
+}
+
+#[test]
+fn through_pipe_form_matches_direct_call() {
+    let direct = eval_module(
+        "drivebox = graph { wet = input |> clip(model=silicon_hard); wet |> output }\n\
+         lead = through(drivebox, saw)",
+        ReplMode::Strict,
+    )
+    .unwrap();
+    let piped = eval_module(
+        "drivebox = graph { wet = input |> clip(model=silicon_hard); wet |> output }\n\
+         lead = saw |> through(drivebox)",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(
+        direct
+            .get("lead")
+            .unwrap()
+            .as_sample_pattern()
+            .unwrap()
+            .query_unit()
+            .unwrap(),
+        piped
+            .get("lead")
+            .unwrap()
+            .as_sample_pattern()
+            .unwrap()
+            .query_unit()
+            .unwrap(),
+    );
+}
+
+#[test]
+fn through_rejects_non_sample_targets() {
+    assert_eval_error_contains(
+        "drivebox = graph { wet = input |> clip(model=silicon_hard); wet |> output }\n\
+         bad = through(drivebox, 1.0)",
+        ReplMode::Strict,
+        &["through", "sample pattern"],
+    );
+}
+
+#[test]
+fn through_preserves_sample_pattern_type_and_attaches_pedal() {
+    let module = eval_module(
+        "drivebox = graph { wet = input |> clip(model=silicon_hard); wet |> output }\n\
+         lead = through(drivebox, bd sn)",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    let pattern = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .expect("through should keep a sample pattern");
+    let events = pattern.query_unit().unwrap();
+
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event.value.sample())
+            .collect::<Vec<_>>(),
+        vec!["bd", "sn"]
+    );
+
+    let first_program = events[0]
+        .value
+        .pedal_program()
+        .expect("first event should carry a pedal program");
+    let second_program = events[1]
+        .value
+        .pedal_program()
+        .expect("second event should carry a pedal program");
+
+    assert!(std::sync::Arc::ptr_eq(first_program, second_program));
+    assert!(
+        first_program
+            .explain()
+            .contains("clip(input, model=silicon_hard)")
+    );
 }
 
 #[test]
@@ -1541,6 +1701,42 @@ fn arp_wraps_downward_across_equal_fifths() {
 }
 
 #[test]
+fn arp_bounces_pingpong_across_equal_fifths() {
+    let module = eval_module("lead = arp(5, pingpong, chord(c4, 0 4 7))", ReplMode::Loose).unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![60.0, 64.0, 67.0, 64.0, 60.0]
+    );
+}
+
+#[test]
+fn arp_bounces_pingpong_across_seven_notes() {
+    let module = eval_module(
+        "lead = arp(7, updown, chord(c4, 0 4 7 11))",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(
+        events.iter().map(|event| event.value).collect::<Vec<_>>(),
+        vec![60.0, 64.0, 67.0, 71.0, 67.0, 64.0, 60.0]
+    );
+}
+
+#[test]
 fn arp_applies_per_exact_span_cluster() {
     let module = eval_module("line = arp(4, up, chord(c4 e4, 0 7))", ReplMode::Loose).unwrap();
     let events = module
@@ -2311,6 +2507,94 @@ fn pattern_valued_gain_controls_repeat_under_fast() {
 }
 
 #[test]
+fn insert_effect_builtins_update_sample_event_params_and_export() {
+    let module = eval_module(
+        r#"lead = sample("vox_ah")
+            |> delay(0.40)
+            |> delay_time(0.125)
+            |> delay_feedback(0.60)
+            |> reverb(0.30)
+            |> reverb_room(0.85)
+            |> reverb_damp(0.25)
+            |> chorus(0.20)
+            |> chorus_depth(0.45)
+            |> chorus_rate(0.35)
+            |> compressor(0.70)
+            |> compressor_threshold(0.30)
+            |> compressor_ratio(4)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = exported_sample_events(module.get("lead").unwrap(), 1);
+
+    assert_eq!(events.len(), 1);
+    let event = &events[0];
+    assert_eq!(event["sample"].as_str().unwrap(), "vox_ah");
+    assert!((event["delay_mix"].as_f64().unwrap() - 0.40).abs() < f64::EPSILON);
+    assert!((event["delay_time"].as_f64().unwrap() - 0.125).abs() < f64::EPSILON);
+    assert!((event["delay_feedback"].as_f64().unwrap() - 0.60).abs() < f64::EPSILON);
+    assert!((event["reverb_mix"].as_f64().unwrap() - 0.30).abs() < f64::EPSILON);
+    assert!((event["reverb_room"].as_f64().unwrap() - 0.85).abs() < f64::EPSILON);
+    assert!((event["reverb_damp"].as_f64().unwrap() - 0.25).abs() < f64::EPSILON);
+    assert!((event["chorus_mix"].as_f64().unwrap() - 0.20).abs() < f64::EPSILON);
+    assert!((event["chorus_depth"].as_f64().unwrap() - 0.45).abs() < f64::EPSILON);
+    assert!((event["chorus_rate"].as_f64().unwrap() - 0.35).abs() < f64::EPSILON);
+    assert!((event["compressor_mix"].as_f64().unwrap() - 0.70).abs() < f64::EPSILON);
+    assert!((event["compressor_threshold"].as_f64().unwrap() - 0.30).abs() < f64::EPSILON);
+    assert!((event["compressor_ratio"].as_f64().unwrap() - 4.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn pattern_valued_insert_effect_controls_split_sample_events() {
+    let module = eval_module(
+        r#"lead = sample("vox_ah")
+            |> delay(0.20 0.80)
+            |> reverb_room(0.30 0.90)
+            |> compressor_ratio(2 6)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 2).unwrap());
+    assert!((events[0].value.delay_mix() - 0.20).abs() < f64::EPSILON);
+    assert!((events[0].value.reverb_room() - 0.30).abs() < f64::EPSILON);
+    assert!((events[0].value.compressor_ratio() - 2.0).abs() < f64::EPSILON);
+    assert_eq!(events[1].part.start(), &Rational::new(1, 2).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::one());
+    assert!((events[1].value.delay_mix() - 0.80).abs() < f64::EPSILON);
+    assert!((events[1].value.reverb_room() - 0.90).abs() < f64::EPSILON);
+    assert!((events[1].value.compressor_ratio() - 6.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn insert_effect_builtins_reject_invalid_values() {
+    assert_eval_error_contains(
+        r#"lead = sample("vox_ah") |> delay_feedback(1.5)"#,
+        ReplMode::Loose,
+        &["`delay_feedback`", "[0, 1]"],
+    );
+    assert_eval_error_contains(
+        r#"lead = sample("vox_ah") |> delay_time(0)"#,
+        ReplMode::Loose,
+        &["`delay_time`", "positive finite"],
+    );
+    assert_eval_error_contains(
+        r#"lead = sample("vox_ah") |> compressor_ratio(0.5)"#,
+        ReplMode::Loose,
+        &["`compressor_ratio`", ">= 1"],
+    );
+}
+
+#[test]
 fn pan_accepts_pattern_valued_controls_and_composes_with_existing_pan() {
     let module = eval_module(
         r#"lead = sample("vox_ah") |> pan(-0.25) |> pan(0.5 -0.5)"#,
@@ -2431,6 +2715,47 @@ fn pattern_valued_slice_idx_repeats_under_fast() {
 }
 
 #[test]
+fn onset_builtin_marks_sample_events_for_transient_lookup() {
+    let module = eval_module(r#"lead = sample("amen") |> onset(2)"#, ReplMode::Loose).unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].value.sample(), "amen");
+    assert_eq!(events[0].value.onset_index(), Some(2));
+    assert!((events[0].value.slice_start() - 0.0).abs() < f64::EPSILON);
+    assert!((events[0].value.slice_end() - 1.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn onset_accepts_pattern_valued_indices_and_splits_sample_events() {
+    let module = eval_module(r#"lead = sample("amen") |> onset(0 2 1)"#, ReplMode::Loose).unwrap();
+    let events = module
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(events.len(), 3);
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(events[0].part.end(), &Rational::new(1, 3).unwrap());
+    assert_eq!(events[0].value.onset_index(), Some(0));
+    assert_eq!(events[1].part.start(), &Rational::new(1, 3).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::new(2, 3).unwrap());
+    assert_eq!(events[1].value.onset_index(), Some(2));
+    assert_eq!(events[2].part.start(), &Rational::new(2, 3).unwrap());
+    assert_eq!(events[2].part.end(), &Rational::one());
+    assert_eq!(events[2].value.onset_index(), Some(1));
+}
+
+#[test]
 fn evaluating_multiple_top_level_bindings_reuses_prior_definitions() {
     let module = eval_module("verse = bd sn\nsong = fast(2, verse)", ReplMode::Loose).unwrap();
 
@@ -2518,6 +2843,20 @@ fn slice_idx_rejects_non_integer_arguments() {
 }
 
 #[test]
+fn onset_rejects_non_integer_arguments() {
+    assert_eval_error_contains(
+        r#"lead = sample("amen") |> onset(1.5)"#,
+        ReplMode::Loose,
+        &["`onset index` requires a whole number"],
+    );
+    assert_eval_error_contains(
+        r#"lead = sample("amen") |> onset(0 1.5)"#,
+        ReplMode::Loose,
+        &["`onset` requires whole-number control values"],
+    );
+}
+
+#[test]
 fn slice_rejects_pattern_controls_with_start_not_before_end() {
     assert_eval_error_contains(
         r#"lead = sample("amen") |> slice(0.5 0.75, 0.5 1)"#,
@@ -2570,4 +2909,39 @@ fn rand_builtin_generates_deterministic_random_numbers() {
     assert!((0.0..=1.0).contains(&v1));
     assert!((0.0..=1.0).contains(&v2));
     assert!((v1 - v2).abs() > f64::EPSILON);
+}
+
+#[test]
+fn apply_user_function_curries_arguments_when_partially_applied() {
+    let module = eval_module("f x y = x y\npartial = f(1)", ReplMode::Loose).unwrap();
+    let partial = module.get("partial").unwrap();
+    assert!(matches!(partial, Value::Function(FunctionValue::User(_))));
+}
+
+#[test]
+fn apply_user_function_returns_error_when_overapplied() {
+    assert_eval_error_contains(
+        "f x = x\nerr = f(1, 2)",
+        ReplMode::Loose,
+        &["function expected 1 argument(s), got 2"],
+    );
+}
+
+#[test]
+fn apply_builtin_function_returns_curried_function_when_underapplied() {
+    let module = eval_module("partial = fast(2)", ReplMode::Loose).unwrap();
+    let partial = module.get("partial").unwrap();
+    assert!(matches!(
+        partial,
+        Value::Function(FunctionValue::Builtin(_))
+    ));
+}
+
+#[test]
+fn apply_builtin_function_returns_error_when_overapplied() {
+    assert_eval_error_contains(
+        "err = fast(2, bd, 3)",
+        ReplMode::Loose,
+        &["`fast` expected 2 argument(s), got 3"],
+    );
 }

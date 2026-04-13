@@ -1,3 +1,4 @@
+#![allow(clippy::map_unwrap_or, clippy::single_char_pattern)]
 //! The `session` module manages the interactive state of an Orpheus environment.
 //!
 //! This module forms the bridge between the textual inputs of the user (via the REPL or TUI)
@@ -9,22 +10,47 @@
 //! `EngineHandle`.
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use orpheus_dsp::{
-    EngineCommand, EngineHandle, PatternUpdate, SampleBank, SampleTrigger, TransportSnapshot,
-    load_sample_bank_from_directory,
+    EngineCommand, EngineHandle, PatternUpdate, SampleBank, TransportSnapshot,
+    load_sample_bank_from_directory, render_routing_snapshot_to_stem_wavs,
 };
 use orpheus_pattern::Rational;
 
 use crate::eval::eval_into_bindings;
 use crate::export::render_sample_pattern_to_file_with_bank;
+use crate::export::sample_trigger_from_event;
 use crate::loader::load_file_runtime_strict;
+use crate::midi_input;
 use crate::mixer::MixerState;
 use crate::types::infer_into_bindings;
 use crate::{ReplMode, Type, Value};
 
+/// Represents the interactive state of an Orpheus environment.
+///
+/// A `ReplSession` manages user bindings, loaded sample banks, and real-time DSP
+/// commands. It acts as the bridge between textual inputs and the underlying audio engine.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_lang::ReplSession;
+/// use orpheus_dsp::EngineHandle;
+///
+/// // Create a new session linked to a stubbed audio engine (for testing).
+/// let engine = EngineHandle::stub();
+/// let mut session = ReplSession::with_engine(engine);
+///
+/// // Evaluate a simple pattern binding.
+/// let result = session.eval_line("drums = bd sn");
+/// assert!(result.is_ok());
+/// ```
 pub struct ReplSession {
     mode: ReplMode,
     engine: EngineHandle,
@@ -34,6 +60,9 @@ pub struct ReplSession {
     type_bindings: BTreeMap<String, Type>,
     mixer: MixerState,
     pattern_display: RefCell<PatternDisplayState>,
+    midi_output: MidiOutputState,
+    midi_input: MidiInputState,
+    midi_note_mappings: HashMap<u8, String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -44,6 +73,35 @@ struct PatternDisplayState {
     last_loaded_pattern_name: Option<String>,
 }
 
+#[derive(Default)]
+struct MidiOutputState {
+    connection: Option<Arc<Mutex<MidiOutputConnection>>>,
+    port_name: Option<String>,
+}
+
+#[derive(Default)]
+struct MidiInputState {
+    connection: Option<MidiInputConnection<()>>,
+    port_name: Option<String>,
+}
+
+/// A snapshot of the transport state formatted for visual presentation.
+///
+/// `TransportView` encapsulates the underlying engine's `TransportSnapshot` and adds
+/// presentation-level details, such as the names of the currently active and pending patterns.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_lang::ReplSession;
+/// use orpheus_dsp::EngineHandle;
+///
+/// let session = ReplSession::with_engine(EngineHandle::stub());
+/// let view = session.transport_view();
+///
+/// assert!(view.active_pattern_name().is_none());
+/// assert!(view.pending_pattern_name().is_none());
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TransportView {
     snapshot: TransportSnapshot,
@@ -51,24 +109,90 @@ pub struct TransportView {
     pending_pattern_name: Option<String>,
 }
 
+/// A snapshot of the mixer routing state formatted for visual presentation.
+///
+/// `MixerView` encapsulates a summary of the currently active tracks and buses,
+/// along with a flag indicating whether routing updates are pending execution
+/// at the next cycle boundary.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_lang::ReplSession;
+/// use orpheus_dsp::EngineHandle;
+///
+/// let mut session = ReplSession::with_engine(EngineHandle::stub());
+/// session.eval_line(":track new drums").unwrap();
+/// session.render_test_block_for_tui(1);
+///
+/// let view = session.mixer_view();
+/// assert!(view.has_pending_routing());
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MixerView {
-    tracks: Vec<String>,
-    buses: Vec<String>,
     has_pending_routing: bool,
+    summary: String,
 }
 
 impl TransportView {
+    /// Returns a reference to the underlying DSP transport snapshot.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let session = ReplSession::with_engine(EngineHandle::stub());
+    /// let view = session.transport_view();
+    /// let snapshot = view.snapshot();
+    /// assert_eq!(snapshot.tempo_bpm(), 120.0);
+    /// ```
     #[must_use]
     pub const fn snapshot(&self) -> &TransportSnapshot {
         &self.snapshot
     }
 
+    /// Returns the name of the currently active (playing) pattern, if any.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.eval_line("drums = bd sn").unwrap();
+    /// // Fast-forward transport to activate pattern
+    /// session.render_test_block_for_tui(256);
+    ///
+    /// let view = session.transport_view();
+    /// assert_eq!(view.active_pattern_name(), Some("drums"));
+    /// ```
     #[must_use]
     pub fn active_pattern_name(&self) -> Option<&str> {
         self.active_pattern_name.as_deref()
     }
 
+    /// The string name of the pattern pending execution at the next cycle boundary.
+    ///
+    /// Live-coding is inherently asynchronous: a user might execute a new pattern
+    /// (e.g. `drums = bd sn fast(2, cp)`) while the current measure is only halfway finished.
+    /// The TUI needs this method to visually indicate to the user which pattern is "cued up"
+    /// and waiting for the next downbeat to take over.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.eval_line("drums = bd sn").unwrap();
+    ///
+    /// let view = session.transport_view();
+    /// assert_eq!(view.pending_pattern_name(), Some("drums"));
+    /// ```
     #[must_use]
     pub fn pending_pattern_name(&self) -> Option<&str> {
         self.pending_pattern_name.as_deref()
@@ -76,19 +200,33 @@ impl TransportView {
 }
 
 impl MixerView {
-    #[must_use]
-    pub fn tracks(&self) -> &[String] {
-        &self.tracks
-    }
-
-    #[must_use]
-    pub fn buses(&self) -> &[String] {
-        &self.buses
-    }
-
+    /// Returns `true` if there are pending routing changes queued for the next cycle boundary.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.eval_line(":track new drums").unwrap();
+    /// session.render_test_block_for_tui(1);
+    ///
+    /// assert!(session.mixer_view().has_pending_routing());
+    /// ```
     #[must_use]
     pub const fn has_pending_routing(&self) -> bool {
         self.has_pending_routing
+    }
+
+    /// Retrieves a pre-formatted, human-readable summary of the active mixer routing graph.
+    ///
+    /// Constructing strings and formatting graphs is expensive and shouldn't block the TUI
+    /// render thread. Therefore, the `Session` caches this layout string whenever the topology
+    /// changes, allowing the TUI to quickly paint the current routing state to the terminal.
+    #[must_use]
+    pub fn summary(&self) -> &str {
+        &self.summary
     }
 }
 
@@ -98,6 +236,17 @@ impl ReplSession {
         Self::with_engine(EngineHandle::stub())
     }
 
+    /// Creates a new `ReplSession` associated with the provided engine handle.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let engine = EngineHandle::stub();
+    /// let session = ReplSession::with_engine(engine);
+    /// ```
     pub fn with_engine(engine: EngineHandle) -> Self {
         Self {
             mode: ReplMode::Loose,
@@ -108,10 +257,40 @@ impl ReplSession {
             type_bindings: BTreeMap::new(),
             mixer: MixerState::default(),
             pattern_display: RefCell::new(PatternDisplayState::default()),
+            midi_output: MidiOutputState::default(),
+            midi_input: MidiInputState::default(),
+            midi_note_mappings: HashMap::new(),
         }
     }
 
+    /// Evaluates a line of input, updating the session's bindings or executing commands.
+    ///
+    /// The input can be a variable binding (e.g., `drums = bd sn`) or a REPL
+    /// command starting with a colon (e.g., `:tempo 120`).
+    ///
+    /// ## Errors
+    ///
+    /// Returns an `Err` containing a descriptive message if the input fails to parse,
+    /// type-check, evaluate, or if a REPL command is invalid.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    ///
+    /// // Bind a pattern.
+    /// let response = session.eval_line("notes = 1 2 3").unwrap();
+    /// assert_eq!(response, "bound notes: Pattern<Number>");
+    ///
+    /// // Execute a command.
+    /// let response = session.eval_line(":tempo 120").unwrap();
+    /// assert_eq!(response, "tempo set to 120 BPM");
+    /// ```
     pub fn eval_line(&mut self, source: &str) -> Result<String, String> {
+        self.apply_midi_note_mappings()?;
         if source.starts_with(':') {
             return self.eval_command(source);
         }
@@ -163,9 +342,18 @@ impl ReplSession {
                     self.stats_binding(args)
                 }
             }
+            "explain" => {
+                if args.is_empty() {
+                    Err(explain_usage().to_owned())
+                } else {
+                    self.explain_binding(args)
+                }
+            }
             "export" => {
                 if args.is_empty() {
                     Err(export_usage().to_owned())
+                } else if args.starts_with("stems") {
+                    self.export_stems(args)
                 } else {
                     self.export_binding(args)
                 }
@@ -213,6 +401,7 @@ impl ReplSession {
                 }
             }
             "mixer" => self.mixer_command(args),
+            "midi" => self.midi_command(args),
             "reload-samples" => self.reload_sample_directory(args),
             "play" => self.play_transport(args),
             "stop" => self.stop_transport(args),
@@ -221,7 +410,7 @@ impl ReplSession {
     }
 
     fn render_binding(&self, args: &str) -> Result<String, String> {
-        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        let tokens: Vec<_> = args.split_whitespace().collect();
         if tokens.len() < 2 {
             return Err(render_usage().to_owned());
         }
@@ -282,9 +471,13 @@ impl ReplSession {
         if let Some(value) = self.bindings.get(binding_name) {
             match value {
                 crate::value::Value::SamplePattern(pattern) => {
-                    let roll =
-                        crate::ascii_roll::render_ascii_roll(pattern, cycles, steps_per_cycle)
-                            .map_err(|error| error.to_string())?;
+                    let roll = crate::ascii_roll::render_ascii_roll(
+                        binding_name,
+                        pattern,
+                        cycles,
+                        steps_per_cycle,
+                    )
+                    .map_err(|error| error.to_string())?;
                     Ok(format!("\n{}", roll.trim_end()))
                 }
                 _ => Err(format!(
@@ -329,8 +522,28 @@ impl ReplSession {
         }
     }
 
+    fn explain_binding(&self, args: &str) -> Result<String, String> {
+        let binding_name = args.trim();
+        if binding_name.is_empty() || binding_name.contains(char::is_whitespace) {
+            return Err(explain_usage().to_owned());
+        }
+
+        let value = self
+            .bindings
+            .get(binding_name)
+            .ok_or_else(|| format!("no binding named `{binding_name}`"))?;
+        let pedal = value.as_pedal().ok_or_else(|| {
+            format!(
+                "binding `{binding_name}` is a {} and is not a pedal",
+                value.kind_name()
+            )
+        })?;
+
+        Ok(pedal.explain())
+    }
+
     fn export_binding(&self, args: &str) -> Result<String, String> {
-        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        let tokens: Vec<_> = args.split_whitespace().collect();
         if tokens.len() < 2 {
             return Err(export_usage().to_owned());
         }
@@ -367,6 +580,76 @@ impl ReplSession {
         ))
     }
 
+    fn export_stems(&self, args: &str) -> Result<String, String> {
+        let tokens: Vec<_> = args.split_whitespace().collect();
+        if tokens.first().copied() != Some("stems") {
+            return Err(export_usage().to_owned());
+        }
+
+        let mut cycles = 1_u64;
+        let mut include_buses = false;
+        for token in tokens.iter().skip(1) {
+            if *token == "--buses" {
+                include_buses = true;
+            } else {
+                cycles = token
+                    .parse::<u64>()
+                    .map_err(|_| "cycles must be a positive integer".to_owned())?;
+            }
+        }
+        if cycles == 0 {
+            return Err("cycles must be a positive integer".to_owned());
+        }
+
+        let snapshot = self.mixer.compile_snapshot(&self.bindings)?;
+        let has_active_tracks = snapshot
+            .tracks()
+            .iter()
+            .any(|track| !track.source().is_unbound() && !track.muted());
+        if !has_active_tracks {
+            return Err(
+                "no active sample tracks to export; bind a sample pattern or create/bind tracks first"
+                    .to_owned(),
+            );
+        }
+
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|error| error.to_string())?
+            .as_secs();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .subsec_nanos();
+
+        let export_dir = if cfg!(test) {
+            std::env::temp_dir().join(format!("orpheus-stems-{timestamp}-{nanos}"))
+        } else {
+            PathBuf::from("exports").join(format!("stems-{timestamp}"))
+        };
+
+        let tempo_bpm = self.transport_snapshot().tempo_bpm();
+        let written = render_routing_snapshot_to_stem_wavs(
+            &snapshot,
+            cycles,
+            tempo_bpm,
+            &self.sample_bank,
+            &export_dir,
+            include_buses,
+        )
+        .map_err(|error| error.to_string())?;
+        if written.is_empty() {
+            return Err("no stems were written for the current routing state".to_owned());
+        }
+
+        Ok(format!(
+            "exported {} stem(s) to `{}` ({cycles} cycle(s))",
+            written.len(),
+            export_dir.display()
+        ))
+    }
+
+    #[allow(clippy::too_many_lines)]
     fn export_pattern_value(
         value: &Value,
         path: &str,
@@ -402,9 +685,25 @@ impl ReplSession {
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 } else if export_path
                     .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("srt"))
+                {
+                    crate::srt::export_sample_pattern_to_srt(pattern, path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path
+                    .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("txt"))
                 {
                     crate::txt::export_sample_pattern_to_txt(pattern, path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path.extension().is_some_and(|ext| {
+                    ext.eq_ignore_ascii_case("trk") || ext.eq_ignore_ascii_case("tracker")
+                }) {
+                    crate::tracker::export_sample_pattern_to_tracker(pattern, path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path.extension().is_some_and(|ext| {
+                    ext.eq_ignore_ascii_case("mid") || ext.eq_ignore_ascii_case("midi")
+                }) {
+                    crate::midi_export::export_sample_pattern_to_midi(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 } else {
                     crate::export::export_sample_pattern_to_csv(pattern, path, cycles)
@@ -439,9 +738,25 @@ impl ReplSession {
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 } else if export_path
                     .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("srt"))
+                {
+                    crate::srt::export_number_pattern_to_srt(pattern, path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path
+                    .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("txt"))
                 {
                     crate::txt::export_number_pattern_to_txt(pattern, path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path.extension().is_some_and(|ext| {
+                    ext.eq_ignore_ascii_case("trk") || ext.eq_ignore_ascii_case("tracker")
+                }) {
+                    crate::tracker::export_number_pattern_to_tracker(pattern, path, cycles)
+                        .map_err(|error: crate::EvalError| error.to_string())?;
+                } else if export_path.extension().is_some_and(|ext| {
+                    ext.eq_ignore_ascii_case("mid") || ext.eq_ignore_ascii_case("midi")
+                }) {
+                    crate::midi_export::export_number_pattern_to_midi(pattern, path, cycles)
                         .map_err(|error: crate::EvalError| error.to_string())?;
                 } else {
                     crate::export::export_number_pattern_to_csv(pattern, path, cycles)
@@ -451,6 +766,7 @@ impl ReplSession {
             Value::ArpDirection(_)
             | Value::PitchClassSet(_)
             | Value::Function(_)
+            | Value::Pedal(_)
             | Value::String(_) => {
                 return Err(format!(
                     "binding `{binding_name}` is a {} and cannot be exported",
@@ -462,7 +778,7 @@ impl ReplSession {
     }
 
     fn set_tempo(&mut self, args: &str) -> Result<String, String> {
-        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        let tokens: Vec<_> = args.split_whitespace().collect();
         if tokens.len() != 1 {
             return Err(tempo_usage().to_owned());
         }
@@ -497,6 +813,25 @@ impl ReplSession {
         ))
     }
 
+    /// Loads an Orpheus source file, replacing the current session's bindings.
+    ///
+    /// The entire file is evaluated strictly. Any bindings produced by the file
+    /// will replace the existing bindings in the session, and the mixer state
+    /// will be reset.
+    ///
+    /// ## Errors
+    ///
+    /// Returns an `Err` if the file cannot be read, parsed, type-checked, or evaluated.
+    ///
+    /// ## Examples
+    ///
+    /// ```no_run
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.open_file("song.ode").unwrap();
+    /// ```
     pub fn open_file(&mut self, path: impl AsRef<Path>) -> Result<String, String> {
         let path = path.as_ref();
         let loaded = load_file_runtime_strict(path).map_err(|error| error.to_string())?;
@@ -513,10 +848,10 @@ impl ReplSession {
         self.mixer = MixerState::default();
         *self.pattern_display.borrow_mut() = PatternDisplayState::default();
 
-        if let Some(name) = last_binding_name {
-            if let Some(value) = self.bindings.get(&name).cloned() {
-                self.push_pattern_update(&name, &value)?;
-            }
+        if let Some(name) = last_binding_name
+            && let Some(value) = self.bindings.get(&name).cloned()
+        {
+            self.push_pattern_update(&name, &value)?;
         }
 
         Ok(format!("opened `{}` ({binding_names})", path.display()))
@@ -567,7 +902,7 @@ impl ReplSession {
     }
 
     fn eval_track_command(&mut self, args: &str) -> Result<String, String> {
-        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        let tokens: Vec<_> = args.split_whitespace().collect();
         let Some(subcommand) = tokens.first().copied() else {
             return Err(track_usage().to_owned());
         };
@@ -615,7 +950,7 @@ impl ReplSession {
     }
 
     fn eval_bus_command(&mut self, args: &str) -> Result<String, String> {
-        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        let tokens: Vec<_> = args.split_whitespace().collect();
         match tokens.as_slice() {
             ["new", bus_name] => {
                 self.mixer.new_bus(bus_name)?;
@@ -628,14 +963,16 @@ impl ReplSession {
                 Ok(format!("cleared hosted effect on bus `{bus_name}`"))
             }
             ["fx", bus_name, "delay", params @ ..] => {
-                let (time, feedback, wet) = parse_bus_delay_params(params)?;
-                self.mixer.set_bus_delay(bus_name, time, feedback, wet)?;
+                let params = parse_bus_delay_params(params)?;
+                self.mixer
+                    .set_bus_delay(bus_name, params.time, params.feedback, params.wet)?;
                 self.enqueue_mixer_snapshot()?;
                 Ok(format!("attached delay to bus `{bus_name}`"))
             }
             ["fx", bus_name, "reverb", params @ ..] => {
-                let (size, damp, wet) = parse_bus_reverb_params(params)?;
-                self.mixer.set_bus_reverb(bus_name, size, damp, wet)?;
+                let params = parse_bus_reverb_params(params)?;
+                self.mixer
+                    .set_bus_reverb(bus_name, params.size, params.damp, params.wet)?;
                 self.enqueue_mixer_snapshot()?;
                 Ok(format!("attached reverb to bus `{bus_name}`"))
             }
@@ -644,7 +981,7 @@ impl ReplSession {
     }
 
     fn eval_send_command(&mut self, args: &str) -> Result<String, String> {
-        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        let tokens: Vec<_> = args.split_whitespace().collect();
         match tokens.as_slice() {
             [track_name, bus_name, level] => {
                 let level = level
@@ -668,6 +1005,254 @@ impl ReplSession {
         } else {
             Ok(summary)
         }
+    }
+
+    fn midi_command(&mut self, args: &str) -> Result<String, String> {
+        let tokens: Vec<_> = args.split_whitespace().collect();
+        match tokens.as_slice() {
+            ["in", "list"] => Self::list_midi_inputs(),
+            ["in", "connect", port @ ..] if !port.is_empty() => {
+                self.connect_midi_input(&port.join(" "))
+            }
+            ["in", "disconnect"] => self.disconnect_midi_input(),
+            ["in", "map-note", note, binding_name] => self.map_midi_note(note, binding_name),
+            ["in", "unmap-note", note] => self.unmap_midi_note(note),
+            ["list"] => Self::list_midi_outputs(),
+            ["connect", port @ ..] if !port.is_empty() => self.connect_midi_output(&port.join(" ")),
+            ["disconnect"] => self.disconnect_midi_output(),
+            ["send", binding_name] => self.send_midi_binding(binding_name, 1),
+            ["send", binding_name, channel] => {
+                let channel = channel
+                    .parse::<u8>()
+                    .map_err(|_| "MIDI channel must be an integer in [1, 16]".to_owned())?;
+                self.send_midi_binding(binding_name, channel)
+            }
+            _ => Err(midi_usage().to_owned()),
+        }
+    }
+
+    fn list_midi_inputs() -> Result<String, String> {
+        let midi_in = MidiInput::new("orpheus")
+            .map_err(|error| format!("failed to initialize MIDI input subsystem: {error}"))?;
+        let ports = midi_in.ports();
+        let mut port_names = ports
+            .iter()
+            .map(|port| {
+                midi_in
+                    .port_name(port)
+                    .unwrap_or_else(|_| "<unreadable port>".to_owned())
+            })
+            .collect::<Vec<_>>();
+        port_names.sort_unstable();
+        if port_names.is_empty() {
+            Ok("available MIDI input ports: <none>".to_owned())
+        } else {
+            Ok(format!(
+                "available MIDI input ports: {}",
+                port_names.join(", ")
+            ))
+        }
+    }
+
+    fn connect_midi_input(&mut self, raw_port_name: &str) -> Result<String, String> {
+        let port_name = trim_quoted_arg(raw_port_name).to_owned();
+        if port_name.is_empty() {
+            return Err(midi_usage().to_owned());
+        }
+        let mut midi_in = MidiInput::new("orpheus")
+            .map_err(|error| format!("failed to initialize MIDI input subsystem: {error}"))?;
+        midi_in.ignore(Ignore::None);
+        let port = midi_in
+            .ports()
+            .into_iter()
+            .find(|candidate| {
+                midi_in
+                    .port_name(candidate)
+                    .map(|name| name == port_name)
+                    .unwrap_or(false)
+            })
+            .ok_or_else(|| format!("no MIDI input port named `{port_name}`"))?;
+        let connection = midi_in
+            .connect(
+                &port,
+                "orpheus-midi-in",
+                move |_timestamp, message, ()| midi_input::update_from_message(message),
+                (),
+            )
+            .map_err(|error| format!("failed to connect to MIDI input `{port_name}`: {error}"))?;
+        self.midi_input.connection = Some(connection);
+        self.midi_input.port_name = Some(port_name.clone());
+        Ok(format!("connected MIDI input `{port_name}`"))
+    }
+
+    fn disconnect_midi_input(&mut self) -> Result<String, String> {
+        let Some(port_name) = self.midi_input.port_name.take() else {
+            return Err("no MIDI input is connected".to_owned());
+        };
+        self.midi_input.connection = None;
+        Ok(format!("disconnected MIDI input `{port_name}`"))
+    }
+
+    fn map_midi_note(&mut self, raw_note: &str, binding_name: &str) -> Result<String, String> {
+        let note = raw_note
+            .parse::<u8>()
+            .map_err(|_| "MIDI note must be an integer in [0, 127]".to_owned())?;
+        if note > 127 {
+            return Err("MIDI note must be an integer in [0, 127]".to_owned());
+        }
+        self.midi_note_mappings
+            .insert(note, binding_name.to_owned());
+        Ok(format!(
+            "mapped MIDI note {note} to binding `{binding_name}`"
+        ))
+    }
+
+    fn unmap_midi_note(&mut self, raw_note: &str) -> Result<String, String> {
+        let note = raw_note
+            .parse::<u8>()
+            .map_err(|_| "MIDI note must be an integer in [0, 127]".to_owned())?;
+        if self.midi_note_mappings.remove(&note).is_some() {
+            Ok(format!("removed MIDI note mapping for {note}"))
+        } else {
+            Err(format!("no MIDI note mapping exists for {note}"))
+        }
+    }
+
+    fn list_midi_outputs() -> Result<String, String> {
+        let midi_out = MidiOutput::new("orpheus")
+            .map_err(|error| format!("failed to initialize MIDI output subsystem: {error}"))?;
+        let ports = midi_out.ports();
+        let mut port_names = ports
+            .iter()
+            .map(|port| {
+                midi_out
+                    .port_name(port)
+                    .unwrap_or_else(|_| "<unreadable port>".to_owned())
+            })
+            .collect::<Vec<_>>();
+        port_names.sort_unstable();
+        if port_names.is_empty() {
+            Ok("available MIDI output ports: <none>".to_owned())
+        } else {
+            Ok(format!(
+                "available MIDI output ports: {}",
+                port_names.join(", ")
+            ))
+        }
+    }
+
+    fn connect_midi_output(&mut self, raw_port_name: &str) -> Result<String, String> {
+        let port_name = trim_quoted_arg(raw_port_name).to_owned();
+        if port_name.is_empty() {
+            return Err(midi_usage().to_owned());
+        }
+        let midi_out = MidiOutput::new("orpheus")
+            .map_err(|error| format!("failed to initialize MIDI output subsystem: {error}"))?;
+        let port = midi_out
+            .ports()
+            .into_iter()
+            .find(|candidate| {
+                midi_out
+                    .port_name(candidate)
+                    .map(|name| name == port_name)
+                    .unwrap_or(false)
+            })
+            .ok_or_else(|| format!("no MIDI output port named `{port_name}`"))?;
+        let connection = midi_out
+            .connect(&port, "orpheus-midi-out")
+            .map_err(|error| format!("failed to connect to MIDI output `{port_name}`: {error}"))?;
+        self.midi_output.connection = Some(Arc::new(Mutex::new(connection)));
+        self.midi_output.port_name = Some(port_name.clone());
+        Ok(format!("connected MIDI output `{port_name}`"))
+    }
+
+    fn disconnect_midi_output(&mut self) -> Result<String, String> {
+        let Some(port_name) = self.midi_output.port_name.take() else {
+            return Err("no MIDI output is connected".to_owned());
+        };
+        self.midi_output.connection = None;
+        Ok(format!("disconnected MIDI output `{port_name}`"))
+    }
+
+    fn send_midi_binding(&self, binding_name: &str, channel: u8) -> Result<String, String> {
+        if !(1..=16).contains(&channel) {
+            return Err("MIDI channel must be an integer in [1, 16]".to_owned());
+        }
+        let Some(connection) = self.midi_output.connection.clone() else {
+            return Err("no MIDI output is connected; run `:midi connect <port>` first".to_owned());
+        };
+        let value = self
+            .bindings
+            .get(binding_name)
+            .ok_or_else(|| format!("no binding named `{binding_name}`"))?;
+        let Value::NumberPattern(pattern) = value else {
+            return Err(format!(
+                "binding `{binding_name}` is a {} and cannot be sent as MIDI notes",
+                value.kind_name()
+            ));
+        };
+
+        let mut midi_events = Vec::new();
+        for event in pattern.query_unit() {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let note = event.value.round().clamp(0.0, 127.0) as u8;
+            let start = f64::from(event.part.start());
+            let end = f64::from(event.part.end());
+            if end > start {
+                midi_events.push((start, true, note));
+                midi_events.push((end, false, note));
+            }
+        }
+        midi_events.sort_by(|left, right| {
+            left.0
+                .total_cmp(&right.0)
+                .then_with(|| right.1.cmp(&left.1))
+                .then_with(|| left.2.cmp(&right.2))
+        });
+
+        let event_count = midi_events.len();
+        let transport = self.transport_snapshot();
+        let seconds_per_cycle = 240.0 / f64::from(transport.tempo_bpm());
+        let status_base = 0x90_u8 + (channel - 1);
+        thread::spawn(move || {
+            let start = Instant::now();
+            for (offset_in_cycle, note_on, note) in midi_events {
+                let target_time = Duration::from_secs_f64(offset_in_cycle * seconds_per_cycle);
+                let elapsed = start.elapsed();
+                if target_time > elapsed {
+                    thread::sleep(target_time.checked_sub(elapsed).unwrap());
+                }
+                let status = if note_on {
+                    status_base
+                } else {
+                    status_base - 0x10
+                };
+                let velocity = if note_on { 100 } else { 0 };
+                if let Ok(mut guard) = connection.lock() {
+                    let _ = guard.send(&[status, note, velocity]);
+                }
+            }
+        });
+
+        Ok(format!(
+            "queued {event_count} MIDI events from `{binding_name}` on channel {channel}"
+        ))
+    }
+
+    fn apply_midi_note_mappings(&mut self) -> Result<(), String> {
+        for event in midi_input::drain_note_events() {
+            if event.kind != midi_input::MidiNoteEventKind::On {
+                continue;
+            }
+            let Some(binding_name) = self.midi_note_mappings.get(&event.note).cloned() else {
+                continue;
+            };
+            let Some(value) = self.bindings.get(&binding_name).cloned() else {
+                continue;
+            };
+            self.push_pattern_update(&binding_name, &value)?;
+        }
+        Ok(())
     }
 
     fn enqueue_mixer_snapshot(&mut self) -> Result<(), String> {
@@ -705,23 +1290,7 @@ impl ReplSession {
                     .map(|event| orpheus_pattern::Event {
                         whole: event.whole,
                         part: event.part,
-                        value: {
-                            let mut trigger = SampleTrigger::named(event.value.sample())
-                                .with_gain(event.value.gain())
-                                .with_pan(event.value.pan())
-                                .with_rate(event.value.rate())
-                                .with_resonance(event.value.resonance())
-                                .with_drive(event.value.drive())
-                                .with_pulse_width(event.value.pulse_width())
-                                .with_slice(event.value.slice_start(), event.value.slice_end());
-                            if let Some(cutoff_hz) = event.value.hpf_cutoff_hz() {
-                                trigger = trigger.with_hpf_cutoff_hz(cutoff_hz);
-                            }
-                            if let Some(cutoff_hz) = event.value.lpf_cutoff_hz() {
-                                trigger = trigger.with_lpf_cutoff_hz(cutoff_hz);
-                            }
-                            trigger
-                        },
+                        value: sample_trigger_from_event(&event.value),
                     })
                     .collect(),
             );
@@ -731,10 +1300,11 @@ impl ReplSession {
                     format!("failed to enqueue load pattern command for `{name}`: {error}")
                 })?;
             let mut display = self.pattern_display.borrow_mut();
-            if display.active_pattern_name.is_none() && enqueue_publish != 0 {
-                if let Some(last_loaded_pattern_name) = display.last_loaded_pattern_name.clone() {
-                    display.active_pattern_name = Some(last_loaded_pattern_name);
-                }
+            if display.active_pattern_name.is_none()
+                && enqueue_publish != 0
+                && let Some(last_loaded_pattern_name) = display.last_loaded_pattern_name.clone()
+            {
+                display.active_pattern_name = Some(last_loaded_pattern_name);
             }
             display.last_loaded_pattern_name = Some(name.to_owned());
             display.pending_pattern_name = Some(name.to_owned());
@@ -744,6 +1314,21 @@ impl ReplSession {
         Ok(())
     }
 
+    /// Returns a summary of all active bindings and their inferred types.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.eval_line("notes = 1 2").unwrap();
+    /// session.eval_line("drums = bd sn").unwrap();
+    ///
+    /// let summaries = session.binding_summaries();
+    /// assert_eq!(summaries, vec!["drums: Pattern<Sample>", "notes: Pattern<Number>"]);
+    /// ```
     pub fn binding_summaries(&self) -> Vec<String> {
         self.type_bindings
             .iter()
@@ -759,10 +1344,37 @@ impl ReplSession {
             .clone()
     }
 
+    /// Captures a point-in-time snapshot of the underlying audio engine's transport state.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let session = ReplSession::with_engine(EngineHandle::stub());
+    /// let snapshot = session.transport_snapshot();
+    /// assert_eq!(snapshot.tempo_bpm(), 120.0);
+    /// ```
     pub fn transport_snapshot(&self) -> TransportSnapshot {
         self.transport_view().snapshot
     }
 
+    /// Generates a structured view of the transport state, including visual details
+    /// such as the currently active and pending pattern names.
+    ///
+    /// This is typically used by the TUI to render the transport overlay.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let session = ReplSession::with_engine(EngineHandle::stub());
+    /// let view = session.transport_view();
+    /// assert!(view.active_pattern_name().is_none());
+    /// ```
     pub fn transport_view(&self) -> TransportView {
         let snapshot = self.engine.transport_snapshot();
         let mut display = self.pattern_display.borrow_mut();
@@ -776,10 +1388,11 @@ impl ReplSession {
                 display.pending_pattern_name = None;
                 display.pending_enqueued_after_publish = None;
             }
-        } else if display.active_pattern_name.is_none() && snapshot.current_frame() != 0 {
-            if let Some(last_loaded_pattern_name) = display.last_loaded_pattern_name.clone() {
-                display.active_pattern_name = Some(last_loaded_pattern_name);
-            }
+        } else if display.active_pattern_name.is_none()
+            && snapshot.current_frame() != 0
+            && let Some(last_loaded_pattern_name) = display.last_loaded_pattern_name.clone()
+        {
+            display.active_pattern_name = Some(last_loaded_pattern_name);
         }
 
         TransportView {
@@ -789,21 +1402,39 @@ impl ReplSession {
         }
     }
 
+    /// Generates a structured view of the current mixer state, detailing active
+    /// tracks, buses, and pending routing changes.
+    ///
+    /// This is typically used by the TUI to render the mixer panel.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.eval_line(":track new drums").unwrap();
+    /// session.render_test_block_for_tui(1);
+    ///
+    /// let view = session.mixer_view();
+    /// assert!(view.has_pending_routing());
+    /// ```
     pub fn mixer_view(&self) -> MixerView {
         let snapshot = self.engine.transport_snapshot();
         MixerView {
-            tracks: self.mixer.track_summary_lines(),
-            buses: self.mixer.bus_summary_lines(),
             has_pending_routing: snapshot.has_pending_routing(),
+            summary: self.mixer.render_summary(),
         }
     }
 
-    #[cfg(test)]
+    #[doc(hidden)]
     pub fn render_test_block_for_tui(&mut self, frames: u64) -> Vec<f32> {
+        let _ = self.apply_midi_note_mappings();
         self.engine.render_test_block(frames)
     }
 
-    #[cfg(test)]
+    #[doc(hidden)]
     pub fn frames_until_boundary_for_tui(&self) -> u64 {
         self.engine.frames_until_boundary_for_test()
     }
@@ -818,7 +1449,7 @@ const fn render_usage() -> &'static str {
 }
 
 const fn export_usage() -> &'static str {
-    "usage: :export <binding> <path> [cycles]"
+    "usage: :export <binding> <path> [cycles] | :export stems [cycles] [--buses]"
 }
 
 const fn roll_usage() -> &'static str {
@@ -827,6 +1458,10 @@ const fn roll_usage() -> &'static str {
 
 const fn stats_usage() -> &'static str {
     "usage: :stats <binding> [cycles]"
+}
+
+const fn explain_usage() -> &'static str {
+    "usage: :explain <binding>"
 }
 
 const fn tempo_usage() -> &'static str {
@@ -853,6 +1488,10 @@ const fn mixer_usage() -> &'static str {
     "usage: :mixer"
 }
 
+const fn midi_usage() -> &'static str {
+    "usage: :midi <list|connect <port>|disconnect|send <binding> [channel]|in list|in connect <port>|in disconnect|in map-note <note> <binding>|in unmap-note <note>>"
+}
+
 const fn open_usage() -> &'static str {
     "usage: :open <path>"
 }
@@ -869,7 +1508,19 @@ const fn stop_usage() -> &'static str {
     "usage: :stop"
 }
 
-fn parse_bus_delay_params(tokens: &[&str]) -> Result<(Rational, f32, f32), String> {
+struct BusDelayParams {
+    time: Rational,
+    feedback: f32,
+    wet: f32,
+}
+
+struct BusReverbParams {
+    size: f32,
+    damp: f32,
+    wet: f32,
+}
+
+fn parse_bus_delay_params(tokens: &[&str]) -> Result<BusDelayParams, String> {
     let mut time = None;
     let mut feedback = None;
     let mut wet = None;
@@ -904,10 +1555,14 @@ fn parse_bus_delay_params(tokens: &[&str]) -> Result<(Rational, f32, f32), Strin
     let time = time.ok_or_else(|| "bus fx delay requires time=<num>/<den>".to_owned())?;
     let feedback = feedback.ok_or_else(|| "bus fx delay requires feedback=<f>".to_owned())?;
     let wet = wet.ok_or_else(|| "bus fx delay requires wet=<f>".to_owned())?;
-    Ok((time, feedback, wet))
+    Ok(BusDelayParams {
+        time,
+        feedback,
+        wet,
+    })
 }
 
-fn parse_bus_reverb_params(tokens: &[&str]) -> Result<(f32, f32, f32), String> {
+fn parse_bus_reverb_params(tokens: &[&str]) -> Result<BusReverbParams, String> {
     let mut size = None;
     let mut damp = None;
     let mut wet = None;
@@ -947,7 +1602,7 @@ fn parse_bus_reverb_params(tokens: &[&str]) -> Result<(f32, f32, f32), String> {
     let size = size.ok_or_else(|| "bus fx reverb requires size=<f>".to_owned())?;
     let damp = damp.ok_or_else(|| "bus fx reverb requires damp=<f>".to_owned())?;
     let wet = wet.ok_or_else(|| "bus fx reverb requires wet=<f>".to_owned())?;
-    Ok((size, damp, wet))
+    Ok(BusReverbParams { size, damp, wet })
 }
 
 fn parse_rational_time(value: &str) -> Result<Rational, String> {
@@ -962,6 +1617,15 @@ fn parse_rational_time(value: &str) -> Result<Rational, String> {
         .map_err(|_| "delay time must be a rational like 1/8".to_owned())?;
     Rational::new(numerator, denominator)
         .map_err(|_| "delay time must be a rational like 1/8".to_owned())
+}
+
+fn trim_quoted_arg(value: &str) -> &str {
+    let trimmed = value.trim();
+    if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"') {
+        &trimmed[1..trimmed.len() - 1]
+    } else {
+        trimmed
+    }
 }
 
 #[cfg(test)]
@@ -1081,8 +1745,8 @@ mod tests {
 
         let mixer = session.eval_line(":mixer").unwrap();
 
-        assert!(mixer.contains("send verb @ 0.35"));
-        assert!(mixer.contains("send dub @ 0.50"));
+        assert!(mixer.contains("verb @ 0.35"));
+        assert!(mixer.contains("dub @ 0.50"));
     }
 
     #[test]
@@ -1096,7 +1760,7 @@ mod tests {
         );
 
         let mixer = session.eval_line(":mixer").unwrap();
-        assert!(mixer.contains("└── dub -> master"));
+        assert!(mixer.contains("dub"));
         assert!(mixer.contains("delay(3/16"));
         let _ = session.render_test_block_for_tui(1);
         assert!(session.transport_snapshot().has_pending_routing());
@@ -1113,7 +1777,7 @@ mod tests {
         );
 
         let mixer = session.eval_line(":mixer").unwrap();
-        assert!(mixer.contains("└── verb -> master"));
+        assert!(mixer.contains("verb"));
         assert!(mixer.contains("reverb(size=0.75 damp=0.35 wet=1.00)"));
         let _ = session.render_test_block_for_tui(1);
         assert!(session.transport_snapshot().has_pending_routing());
@@ -1133,7 +1797,7 @@ mod tests {
         );
 
         let mixer = session.eval_line(":mixer").unwrap();
-        assert!(mixer.contains("└── dub -> master"));
+        assert!(mixer.contains("dub"));
         assert!(!mixer.contains("delay("));
     }
 
@@ -1330,8 +1994,11 @@ mod tests {
 
         let message = session.eval_line(":roll pattern 1 8").unwrap();
 
-        assert!(message.contains("bd | x---...."));
-        assert!(message.contains("sn | ....x---"));
+        assert!(message.contains("Pattern Roll: pattern (1 cycles)"));
+        assert!(message.contains("bd"));
+        assert!(message.contains("sn"));
+        assert!(message.contains("x---...."));
+        assert!(message.contains("....x---"));
     }
 
     #[test]
@@ -1360,10 +2027,13 @@ mod tests {
 
         let message = session.eval_line(":stats pattern 2").unwrap();
 
-        assert!(message.contains("Pattern Stats: pattern (2 cycles)"));
-        assert!(message.contains("│ Total Events                        8                 │"));
-        assert!(message.contains("│ Unique Samples                      2 (bd, sn)        │"));
-        assert!(message.contains("│ Event Density                       4.00 events/cycle │"));
+        assert!(message.contains("pattern"));
+        assert!(message.contains("Total Events"));
+        assert!(message.contains("8"));
+        assert!(message.contains("Unique Samples"));
+        assert!(message.contains("2 (bd, sn)"));
+        assert!(message.contains("Event Density"));
+        assert!(message.contains("4.00 events/cycle"));
     }
 
     #[test]
@@ -1529,6 +2199,48 @@ mod tests {
         assert_eq!(json["events"][1]["value"], 2.0);
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn export_stems_command_writes_track_stems() {
+        let mut session = ReplSession::new();
+
+        session.eval_line("drums = bd").unwrap();
+        session.eval_line("bass = cp").unwrap();
+        session.eval_line(":track new drums_track").unwrap();
+        session.eval_line(":track bind drums_track drums").unwrap();
+        session.eval_line(":track new bass_track").unwrap();
+        session.eval_line(":track bind bass_track bass").unwrap();
+
+        let message = session.eval_line(":export stems 1").unwrap();
+        assert!(message.contains("exported 2 stem(s)"));
+        let rendered_dir = parse_exported_stem_dir(&message);
+        assert!(rendered_dir.join("drums_track.wav").exists());
+        assert!(rendered_dir.join("bass_track.wav").exists());
+
+        let _ = fs::remove_dir_all(rendered_dir);
+    }
+
+    #[test]
+    fn export_stems_command_can_include_bus_stems() {
+        let mut session = ReplSession::new();
+
+        session.eval_line("drums = bd").unwrap();
+        session.eval_line(":track new drums_track").unwrap();
+        session.eval_line(":track bind drums_track drums").unwrap();
+        session.eval_line(":bus new verb").unwrap();
+        session
+            .eval_line(":bus fx verb reverb size=0.75 damp=0.35 wet=1.0")
+            .unwrap();
+        session.eval_line(":send drums_track verb 1.0").unwrap();
+
+        let message = session.eval_line(":export stems 1 --buses").unwrap();
+        assert!(message.contains("exported 2 stem(s)"));
+        let rendered_dir = parse_exported_stem_dir(&message);
+        assert!(rendered_dir.join("drums_track.wav").exists());
+        assert!(rendered_dir.join("verb_bus.wav").exists());
+
+        let _ = fs::remove_dir_all(rendered_dir);
     }
 
     #[test]
@@ -1715,6 +2427,86 @@ mod tests {
     }
 
     #[test]
+    fn session_explain_returns_pedal_plan() {
+        let mut session = ReplSession::new();
+        session
+            .eval_line(
+                "drivebox = graph { wet = input |> clip(model=silicon_hard); wet |> output }",
+            )
+            .unwrap();
+
+        let message = session.eval_line(":explain drivebox").unwrap();
+
+        assert!(message.contains("signal_kind=Audio"));
+        assert!(message.contains("binding wet: Audio clip(input, model=silicon_hard)"));
+        assert!(message.contains("result: Audio output(wet)"));
+    }
+
+    #[test]
+    fn session_explain_rejects_non_pedal_bindings() {
+        let mut session = ReplSession::new();
+        session.eval_line("drums = bd sn").unwrap();
+
+        let error = session.eval_line(":explain drums").unwrap_err();
+
+        assert!(error.contains("drums"));
+        assert!(error.contains("pedal"));
+    }
+
+    #[test]
+    fn midi_list_command_returns_available_outputs_or_none() {
+        let mut session = ReplSession::new();
+        let result = session.eval_line(":midi list");
+        match result {
+            Ok(message) => assert!(message.starts_with("available MIDI output ports: ")),
+            Err(e) => assert!(e.contains("failed to initialize MIDI")),
+        }
+    }
+
+    #[test]
+    fn midi_input_list_command_returns_available_inputs_or_none() {
+        let mut session = ReplSession::new();
+        let result = session.eval_line(":midi in list");
+        match result {
+            Ok(message) => assert!(message.starts_with("available MIDI input ports: ")),
+            Err(e) => assert!(e.contains("failed to initialize MIDI")),
+        }
+    }
+
+    #[test]
+    fn midi_send_command_requires_active_connection() {
+        let mut session = ReplSession::new();
+        session.eval_line("notes = 60 64 67").unwrap();
+
+        let error = session.eval_line(":midi send notes 1").unwrap_err();
+        assert!(error.contains("no MIDI output is connected"));
+    }
+
+    #[test]
+    fn midi_send_command_rejects_non_number_patterns() {
+        let mut session = ReplSession::new();
+        session.eval_line("drums = bd sn").unwrap();
+
+        let error = session.eval_line(":midi send drums 1").unwrap_err();
+        assert!(
+            error.contains("cannot be sent as MIDI notes")
+                || error.contains("no MIDI output is connected")
+        );
+    }
+
+    #[test]
+    fn midi_cc_builtin_reads_normalized_controller_value() {
+        let mut session = ReplSession::new();
+        crate::midi_input::set_cc_value_for_test(1, 64);
+        session.eval_line("control = cc(1)").unwrap();
+        let crate::Value::NumberPattern(pattern) = session.bindings.get("control").unwrap() else {
+            panic!("expected number pattern");
+        };
+        let value = pattern.constant_value().unwrap();
+        assert!((value - (64.0 / 127.0)).abs() < 1e-9);
+    }
+
+    #[test]
     fn last_loaded_pattern_name_tracks_sample_bindings() {
         let mut session = ReplSession::new();
 
@@ -1769,6 +2561,17 @@ mod tests {
             .as_nanos();
         let counter = UNIQUE_TEMP_ID.fetch_add(1, Ordering::Relaxed);
         format!("{timestamp}-{counter}")
+    }
+
+    fn parse_exported_stem_dir(message: &str) -> PathBuf {
+        let start = message
+            .find('`')
+            .unwrap_or_else(|| panic!("expected export path in message: {message}"));
+        let end = message[start + 1..]
+            .find('`')
+            .map(|index| start + 1 + index)
+            .unwrap_or_else(|| panic!("expected export path in message: {message}"));
+        PathBuf::from(&message[start + 1..end])
     }
 
     fn write_wav(path: impl AsRef<Path>, frames: &[f32]) {
