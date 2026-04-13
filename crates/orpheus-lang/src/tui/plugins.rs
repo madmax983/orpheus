@@ -248,21 +248,37 @@ impl HypertilePlugin for TransportPlugin {
         let transport = state.transport_view();
         let mixer = state.mixer_view();
 
-        let mut lines = vec![Line::raw(format!(
-            "Pattern: {}",
-            transport.active_pattern_name().unwrap_or("none")
-        ))];
+        let mut lines = vec![Line::from(vec![
+            Span::raw("Pattern: "),
+            Span::styled(
+                transport.active_pattern_name().unwrap_or("none"),
+                crate::tui::style::live_binding_style(),
+            ),
+        ])];
         if let Some(pending_pattern_name) = transport.pending_pattern_name() {
-            lines.push(Line::raw(format!("Next: {pending_pattern_name}")));
+            lines.push(Line::from(vec![
+                Span::raw("Next: "),
+                Span::styled(
+                    pending_pattern_name.to_owned(),
+                    crate::tui::style::pending_binding_style(&transport),
+                ),
+            ]));
         }
         lines.push(routing_status_line(&mixer));
         if !mixer.summary().is_empty() && mixer.summary() != "mixer is empty" {
-            lines.push(Line::raw("Mixer:"));
+            lines.push(Line::from(vec![Span::styled(
+                "Mixer:",
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::BOLD),
+            )]));
             for summary_line in mixer.summary().lines() {
                 lines.push(Line::raw(summary_line.to_owned()));
             }
         }
-        let key_style = Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD);
+        let key_style = Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD);
         let desc_style = Style::default().fg(Color::DarkGray);
 
         lines.push(Line::from(vec![
@@ -291,10 +307,7 @@ impl HypertilePlugin for TransportPlugin {
         ]));
         lines.push(Line::from(vec![
             Span::styled("Export", key_style),
-            Span::styled(
-                ": :export <bind> <path> [cyc] | stems",
-                desc_style,
-            ),
+            Span::styled(": :export <bind> <path> [cyc] | stems", desc_style),
         ]));
         lines.push(Line::from(vec![
             Span::styled("Analyze", key_style),
