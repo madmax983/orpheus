@@ -91,7 +91,10 @@ pub fn render_ascii_roll(
             }
             row_string.push(c);
         }
-        table.add_row(vec![sample, row_string]);
+        table.add_row(vec![
+            comfy_table::Cell::new(sample).fg(comfy_table::Color::Yellow),
+            comfy_table::Cell::new(row_string).fg(comfy_table::Color::Cyan),
+        ]);
     }
 
     Ok(format!("{title}\n{table}"))

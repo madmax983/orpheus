@@ -51,7 +51,7 @@ fn run() -> anyhow::Result<()> {
             let mut message = format!("audio output disabled: {error}");
             for cause in error.chain().skip(1) {
                 use std::fmt::Write;
-                let _ = write!(&mut message, "\n  ↳ {cause}");
+                let _ = write!(&mut message, "\n  {} {cause}", "↳".cyan());
             }
             (EngineHandle::stub(), None, Some(message))
         }

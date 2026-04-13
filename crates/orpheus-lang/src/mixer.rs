@@ -267,7 +267,13 @@ impl MixerState {
 
         let mut track_table = Table::new();
         track_table.load_preset(UTF8_BORDERS_ONLY);
-        track_table.set_header(vec!["Track", "Binding", "Level", "Muted", "Sends"]);
+        track_table.set_header(vec![
+            comfy_table::Cell::new("Track").fg(comfy_table::Color::Cyan),
+            comfy_table::Cell::new("Binding").fg(comfy_table::Color::Cyan),
+            comfy_table::Cell::new("Level").fg(comfy_table::Color::Cyan),
+            comfy_table::Cell::new("Muted").fg(comfy_table::Color::Cyan),
+            comfy_table::Cell::new("Sends").fg(comfy_table::Color::Cyan),
+        ]);
 
         if self.has_explicit_bound_tracks() {
             for (track_name, track) in &self.tracks {
@@ -279,11 +285,12 @@ impl MixerState {
                     .collect::<Vec<_>>()
                     .join("\n");
                 track_table.add_row(vec![
-                    track_name.to_owned(),
-                    binding.to_owned(),
-                    format!("{:.2}", track.level),
-                    track.muted.to_string(),
-                    sends,
+                    comfy_table::Cell::new(track_name.to_owned()).fg(comfy_table::Color::White),
+                    comfy_table::Cell::new(binding.to_owned()).fg(comfy_table::Color::Green),
+                    comfy_table::Cell::new(format!("{:.2}", track.level))
+                        .fg(comfy_table::Color::Yellow),
+                    comfy_table::Cell::new(track.muted.to_string()).fg(comfy_table::Color::Red),
+                    comfy_table::Cell::new(sends).fg(comfy_table::Color::DarkGrey),
                 ]);
             }
         } else {
@@ -292,11 +299,11 @@ impl MixerState {
                 .as_deref()
                 .unwrap_or("<unbound>");
             track_table.add_row(vec![
-                "main (auto)".to_owned(),
-                binding.to_owned(),
-                "1.00".to_owned(),
-                "false".to_owned(),
-                String::new(),
+                comfy_table::Cell::new("main (auto)".to_owned()).fg(comfy_table::Color::White),
+                comfy_table::Cell::new(binding.to_owned()).fg(comfy_table::Color::Green),
+                comfy_table::Cell::new("1.00".to_owned()).fg(comfy_table::Color::Yellow),
+                comfy_table::Cell::new("false".to_owned()).fg(comfy_table::Color::Red),
+                comfy_table::Cell::new(String::new()).fg(comfy_table::Color::DarkGrey),
             ]);
         }
 
@@ -309,14 +316,20 @@ impl MixerState {
         if !self.buses.is_empty() {
             let mut bus_table = Table::new();
             bus_table.load_preset(UTF8_BORDERS_ONLY);
-            bus_table.set_header(vec!["Bus", "Effect"]);
+            bus_table.set_header(vec![
+                comfy_table::Cell::new("Bus").fg(comfy_table::Color::Cyan),
+                comfy_table::Cell::new("Effect").fg(comfy_table::Color::Cyan),
+            ]);
 
             for (bus_name, bus) in &self.buses {
                 let effect = bus
                     .effect
                     .as_ref()
                     .map_or_else(|| "none".to_owned(), MixerBusEffect::summary);
-                bus_table.add_row(vec![bus_name.to_owned(), effect]);
+                bus_table.add_row(vec![
+                    comfy_table::Cell::new(bus_name.to_owned()).fg(comfy_table::Color::White),
+                    comfy_table::Cell::new(effect).fg(comfy_table::Color::Green),
+                ]);
             }
 
             let _ = std::fmt::Write::write_fmt(
