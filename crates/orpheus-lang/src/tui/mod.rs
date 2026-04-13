@@ -52,44 +52,90 @@ const MEDIUM_HELP_FOOTER: &str = "Esc close   ?   Ctrl-C";
 const COMPACT_HELP_FOOTER: &str = "Esc ? Ctrl-C";
 const MIN_HELP_FOOTER: &str = "Esc ?";
 
+fn help_key_line(
+    key: &'static str,
+    desc: &'static str,
+    key_style: Style,
+    desc_style: Style,
+) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(key, key_style),
+        Span::styled(format!(": {desc}"), desc_style),
+    ])
+}
+
 fn help_overlay_body() -> Vec<Line<'static>> {
     use ratatui::style::Modifier;
 
-    let header_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
-    let key_style = Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD);
+    let header_style = Style::default()
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
+    let key_style = Style::default()
+        .fg(Color::Cyan)
+        .add_modifier(Modifier::BOLD);
     let desc_style = Style::default().fg(Color::DarkGray);
 
-    vec![
-        Line::from(vec![Span::styled("Toggle", key_style), Span::styled(": ?", desc_style)]),
-        Line::from(vec![Span::styled("Close", key_style), Span::styled(": Esc", desc_style)]),
+    let mut lines = vec![
+        help_key_line("Toggle", "?", key_style, desc_style),
+        help_key_line("Close", "Esc", key_style, desc_style),
         Line::raw(""),
         Line::styled("Layout mode (Esc from input):", header_style),
-        Line::from(vec![Span::styled("  hjkl / arrows", key_style), Span::styled(": focus pane", desc_style)]),
-        Line::from(vec![Span::styled("  s / v", key_style), Span::styled(": split horizontal / vertical", desc_style)]),
-        Line::from(vec![Span::styled("  d", key_style), Span::styled(": close pane", desc_style)]),
-        Line::from(vec![Span::styled("  [ / ]", key_style), Span::styled(": resize pane", desc_style)]),
-        Line::from(vec![Span::styled("  p", key_style), Span::styled(": command palette", desc_style)]),
-        Line::from(vec![Span::styled("  i / Enter", key_style), Span::styled(": enter input mode", desc_style)]),
-        Line::from(vec![Span::styled("  HJKL / Shift+arrows", key_style), Span::styled(": move pane", desc_style)]),
-        Line::from(vec![Span::styled("  Tab / Shift+Tab", key_style), Span::styled(": cycle focus", desc_style)]),
-        Line::from(vec![Span::styled("  Ctrl+t/w", key_style), Span::styled(": new/close tab", desc_style)]),
-        Line::from(vec![Span::styled("  Ctrl+n/p", key_style), Span::styled(": next/prev tab", desc_style)]),
-        Line::raw(""),
-        Line::styled("Input mode (i or Enter):", header_style),
-        Line::from(vec![Span::styled("  Type", key_style), Span::styled(": evaluate expressions", desc_style)]),
-        Line::from(vec![Span::styled("  Tab", key_style), Span::styled(": complete commands", desc_style)]),
-        Line::from(vec![Span::styled("  Up/Down", key_style), Span::styled(": history recall", desc_style)]),
-        Line::from(vec![Span::styled("  Space", key_style), Span::styled(": toggle transport (empty input)", desc_style)]),
-        Line::from(vec![Span::styled("  Ctrl-A/E/K/U/W/L", key_style), Span::styled(": emacs editing", desc_style)]),
-        Line::from(vec![Span::styled("  Alt-B/F", key_style), Span::styled(": word navigation", desc_style)]),
-        Line::from(vec![Span::styled("  Esc", key_style), Span::styled(": back to layout mode", desc_style)]),
-        Line::raw(""),
-        Line::styled("Commands:", header_style),
-        Line::from(vec![Span::styled("  :play / :stop / :tempo <bpm>", key_style)]),
-        Line::from(vec![Span::styled("  :track / :bus new|fx / :send / :mixer", key_style)]),
-        Line::from(vec![Span::styled("  :render / :export / :roll / :stats / :explain", key_style)]),
-        Line::from(vec![Span::styled("  :open <path>   :quit", key_style)]),
-    ]
+    ];
+
+    let layout_keys = [
+        ("  hjkl / arrows", "focus pane"),
+        ("  s / v", "split horizontal / vertical"),
+        ("  d", "close pane"),
+        ("  [ / ]", "resize pane"),
+        ("  p", "command palette"),
+        ("  i / Enter", "enter input mode"),
+        ("  HJKL / Shift+arrows", "move pane"),
+        ("  Tab / Shift+Tab", "cycle focus"),
+        ("  Ctrl+t/w", "new/close tab"),
+        ("  Ctrl+n/p", "next/prev tab"),
+    ];
+
+    for (k, d) in layout_keys {
+        lines.push(help_key_line(k, d, key_style, desc_style));
+    }
+
+    lines.push(Line::raw(""));
+    lines.push(Line::styled("Input mode (i or Enter):", header_style));
+
+    let input_keys = [
+        ("  Type", "evaluate expressions"),
+        ("  Tab", "complete commands"),
+        ("  Up/Down", "history recall"),
+        ("  Space", "toggle transport (empty input)"),
+        ("  Ctrl-A/E/K/U/W/L", "emacs editing"),
+        ("  Alt-B/F", "word navigation"),
+        ("  Esc", "back to layout mode"),
+    ];
+
+    for (k, d) in input_keys {
+        lines.push(help_key_line(k, d, key_style, desc_style));
+    }
+
+    lines.push(Line::raw(""));
+    lines.push(Line::styled("Commands:", header_style));
+    lines.push(Line::from(vec![Span::styled(
+        "  :play / :stop / :tempo <bpm>",
+        key_style,
+    )]));
+    lines.push(Line::from(vec![Span::styled(
+        "  :track / :bus new|fx / :send / :mixer",
+        key_style,
+    )]));
+    lines.push(Line::from(vec![Span::styled(
+        "  :render / :export / :roll / :stats / :explain",
+        key_style,
+    )]));
+    lines.push(Line::from(vec![Span::styled(
+        "  :open <path>   :quit",
+        key_style,
+    )]));
+
+    lines
 }
 
 /// `PaneId` for the initial 3-pane layout.

@@ -262,7 +262,9 @@ impl HypertilePlugin for TransportPlugin {
                 lines.push(Line::raw(summary_line.to_owned()));
             }
         }
-        let key_style = Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD);
+        let key_style = Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD);
         let desc_style = Style::default().fg(Color::DarkGray);
 
         lines.push(Line::from(vec![
@@ -291,10 +293,7 @@ impl HypertilePlugin for TransportPlugin {
         ]));
         lines.push(Line::from(vec![
             Span::styled("Export", key_style),
-            Span::styled(
-                ": :export <bind> <path> [cyc] | stems",
-                desc_style,
-            ),
+            Span::styled(": :export <bind> <path> [cyc] | stems", desc_style),
         ]));
         lines.push(Line::from(vec![
             Span::styled("Analyze", key_style),
