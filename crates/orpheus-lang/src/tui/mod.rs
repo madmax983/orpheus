@@ -52,36 +52,45 @@ const MEDIUM_HELP_FOOTER: &str = "Esc close   ?   Ctrl-C";
 const COMPACT_HELP_FOOTER: &str = "Esc ? Ctrl-C";
 const MIN_HELP_FOOTER: &str = "Esc ?";
 
-const HELP_OVERLAY_BODY: &str = "\
-Toggle: ?
-Close: Esc
+fn help_overlay_body() -> Vec<Line<'static>> {
+    use ratatui::style::Modifier;
 
-Layout mode (Esc from input):
-  hjkl / arrows: focus pane
-  s / v: split horizontal / vertical
-  d: close pane
-  [ / ]: resize pane
-  p: command palette
-  i / Enter: enter input mode
-  HJKL / Shift+arrows: move pane
-  Tab / Shift+Tab: cycle focus
-  Ctrl+t: new tab   Ctrl+w: close tab
-  Ctrl+n/p: next/prev tab
+    let header_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+    let key_style = Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD);
+    let desc_style = Style::default().fg(Color::DarkGray);
 
-Input mode (i or Enter):
-  Type to evaluate expressions
-  Tab: complete commands
-  Up/Down: history recall
-  Space (empty input): toggle transport
-  Ctrl-A/E/K/U/W/L: emacs editing
-  Alt-B/F: word navigation
-  Esc: back to layout mode
-
-Commands:
-  :play / :stop / :tempo <bpm>
-  :track / :bus new|fx / :send / :mixer
-  :render / :export / :roll / :stats / :explain
-  :open <path>   :quit";
+    vec![
+        Line::from(vec![Span::styled("Toggle", key_style), Span::styled(": ?", desc_style)]),
+        Line::from(vec![Span::styled("Close", key_style), Span::styled(": Esc", desc_style)]),
+        Line::raw(""),
+        Line::styled("Layout mode (Esc from input):", header_style),
+        Line::from(vec![Span::styled("  hjkl / arrows", key_style), Span::styled(": focus pane", desc_style)]),
+        Line::from(vec![Span::styled("  s / v", key_style), Span::styled(": split horizontal / vertical", desc_style)]),
+        Line::from(vec![Span::styled("  d", key_style), Span::styled(": close pane", desc_style)]),
+        Line::from(vec![Span::styled("  [ / ]", key_style), Span::styled(": resize pane", desc_style)]),
+        Line::from(vec![Span::styled("  p", key_style), Span::styled(": command palette", desc_style)]),
+        Line::from(vec![Span::styled("  i / Enter", key_style), Span::styled(": enter input mode", desc_style)]),
+        Line::from(vec![Span::styled("  HJKL / Shift+arrows", key_style), Span::styled(": move pane", desc_style)]),
+        Line::from(vec![Span::styled("  Tab / Shift+Tab", key_style), Span::styled(": cycle focus", desc_style)]),
+        Line::from(vec![Span::styled("  Ctrl+t/w", key_style), Span::styled(": new/close tab", desc_style)]),
+        Line::from(vec![Span::styled("  Ctrl+n/p", key_style), Span::styled(": next/prev tab", desc_style)]),
+        Line::raw(""),
+        Line::styled("Input mode (i or Enter):", header_style),
+        Line::from(vec![Span::styled("  Type", key_style), Span::styled(": evaluate expressions", desc_style)]),
+        Line::from(vec![Span::styled("  Tab", key_style), Span::styled(": complete commands", desc_style)]),
+        Line::from(vec![Span::styled("  Up/Down", key_style), Span::styled(": history recall", desc_style)]),
+        Line::from(vec![Span::styled("  Space", key_style), Span::styled(": toggle transport (empty input)", desc_style)]),
+        Line::from(vec![Span::styled("  Ctrl-A/E/K/U/W/L", key_style), Span::styled(": emacs editing", desc_style)]),
+        Line::from(vec![Span::styled("  Alt-B/F", key_style), Span::styled(": word navigation", desc_style)]),
+        Line::from(vec![Span::styled("  Esc", key_style), Span::styled(": back to layout mode", desc_style)]),
+        Line::raw(""),
+        Line::styled("Commands:", header_style),
+        Line::from(vec![Span::styled("  :play / :stop / :tempo <bpm>", key_style)]),
+        Line::from(vec![Span::styled("  :track / :bus new|fx / :send / :mixer", key_style)]),
+        Line::from(vec![Span::styled("  :render / :export / :roll / :stats / :explain", key_style)]),
+        Line::from(vec![Span::styled("  :open <path>   :quit", key_style)]),
+    ]
+}
 
 /// `PaneId` for the initial 3-pane layout.
 const REPL_PANE: PaneId = PaneId::ROOT;
@@ -399,7 +408,7 @@ fn render_help_overlay(frame: &mut Frame<'_>) {
         .areas(inner);
     frame.render_widget(block.style(Style::default().bg(Color::Black)), overlay_area);
     frame.render_widget(
-        Paragraph::new(HELP_OVERLAY_BODY)
+        Paragraph::new(help_overlay_body())
             .style(Style::default().bg(Color::Black))
             .wrap(Wrap { trim: false }),
         body_area,
