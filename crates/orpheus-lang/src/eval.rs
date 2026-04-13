@@ -36,6 +36,13 @@ use crate::value::{
     FunctionValue, NumberPatternValue, SampleEvent, SamplePatternValue, UserFn, Value,
 };
 
+use std::cell::Cell;
+
+thread_local! {
+    /// Tracks the current evaluation depth to prevent stack overflows from unbounded recursion.
+    static EVAL_DEPTH: Cell<usize> = const { Cell::new(0) };
+}
+
 /// Runtime evaluation error for bootstrap Orpheus modules.
 ///
 /// `EvalError` occurs when an expression fails to evaluate at runtime.
@@ -1017,6 +1024,23 @@ fn apply_user_function(mut function: UserFn, args: Vec<Value>) -> Result<Value, 
     if !function.remaining_params.is_empty() {
         return Ok(Value::Function(FunctionValue::User(function)));
     }
+
+    let current_depth = EVAL_DEPTH.get();
+    if current_depth > 128 {
+        return Err(EvalError::new("maximum evaluation depth exceeded"));
+    }
+
+    #[allow(clippy::items_after_statements)]
+    struct DepthGuard;
+    #[allow(clippy::items_after_statements)]
+    impl Drop for DepthGuard {
+        fn drop(&mut self) {
+            EVAL_DEPTH.set(EVAL_DEPTH.get() - 1);
+        }
+    }
+
+    EVAL_DEPTH.set(current_depth + 1);
+    let _guard = DepthGuard;
 
     let evaluator = Evaluator {
         mode: function.mode,
