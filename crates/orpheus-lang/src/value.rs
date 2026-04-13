@@ -2490,7 +2490,6 @@ where
         }
     }
 
-    #[allow(clippy::too_many_lines)]
     fn try_query_transform(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
         match self {
             Self::Roll { steps, inner } => T::roll_events(inner.try_query(span)?, *steps),
@@ -2505,16 +2504,24 @@ where
             Self::Degrees { collection, inner } => {
                 apply_value_transform(inner, span, |value| value.map_degrees(collection))
             }
+            Self::Fast { factor, inner } => query_fast(inner, *factor, span),
+            Self::Slow { factor, inner } => query_slow(inner, *factor, span),
+            Self::Shift { offset, inner } => query_shift(inner, offset, span),
+            Self::Rev { inner } => query_rev(inner, span),
+            Self::Rand { site_salt } => query_rand(*site_salt, span),
+            _ => self.try_query_effect(span),
+        }
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn try_query_effect(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
+        match self {
             Self::Transpose { semitones, inner } => {
                 apply_value_transform(inner, span, |value| value.transpose_semitones(*semitones))
             }
             Self::TransposePattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Transpose)
             }
-            Self::Fast { factor, inner } => query_fast(inner, *factor, span),
-            Self::Slow { factor, inner } => query_slow(inner, *factor, span),
-            Self::Shift { offset, inner } => query_shift(inner, offset, span),
-            Self::Rev { inner } => query_rev(inner, span),
             Self::Gain { factor, inner } => {
                 apply_value_mutation(inner, span, |value| *value = value.adjust_gain(*factor))
             }
@@ -2669,7 +2676,6 @@ where
             } => apply_value_mutation(inner, span, |value| {
                 *value = value.attach_pedal_program(pedal_program);
             }),
-            Self::Rand { site_salt } => query_rand(*site_salt, span),
             Self::Cycle(_)
             | Self::Stream(_)
             | Self::ExplicitCycle { .. }
@@ -2679,7 +2685,20 @@ where
             | Self::Sometimes { .. }
             | Self::Within { .. }
             | Self::Mask { .. }
-            | Self::Chaos { .. } => unreachable!("base query variants handled in try_query"),
+            | Self::Chaos { .. }
+            | Self::Roll { .. }
+            | Self::Strum { .. }
+            | Self::Arp { .. }
+            | Self::Invert { .. }
+            | Self::Drop { .. }
+            | Self::Degrees { .. }
+            | Self::Fast { .. }
+            | Self::Slow { .. }
+            | Self::Shift { .. }
+            | Self::Rev { .. }
+            | Self::Rand { .. } => {
+                unreachable!("base query variants handled in try_query or try_query_transform")
+            }
         }
     }
 }
