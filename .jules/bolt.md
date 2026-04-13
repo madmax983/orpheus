@@ -20,3 +20,6 @@
 **Pre-collect cloned lazy iterators in hot paths**
 **Learning:** When a lazy iterator (like `iter().map(...)` or `iter().cloned()`) is passed into a nested loop that clones the iterator on every iteration of the outer loop, the inner closure logic is redundantly evaluated O(N * M) times. In heavy evaluation paths like `apply_event_fragments`, this causes severe performance overhead.
 **Action:** Pre-collect the lazy iterator into a `Vec` before the outer loop. This trades a single O(M) heap allocation to avoid O(N * M) redundant closure evaluations, optimizing the hot evaluation path significantly without changing semantics or fighting lifetimes.
+**[Optimized seq_sections allocation]**
+**Learning:** In loops that clone and modify an owned data structure repeatedly (such as applying section repeats in `seq_sections`), the final iteration typically does not need to clone the base structure if it won't be used again. Cloning on the final iteration introduces an entirely redundant heap allocation that is instantly discarded.
+**Action:** For iterative clones where the original value is no longer needed after the loop, consume the original value directly on the last iteration using an `if index == count - 1` condition or by using `IntoIterator` to avoid the final `.clone()`.
