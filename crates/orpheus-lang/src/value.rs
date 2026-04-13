@@ -109,6 +109,7 @@ pub struct UserFn {
     pub(crate) body: Expr,
     pub(crate) captured_bindings: BTreeMap<String, Value>,
     pub(crate) expr_site_salts: BTreeMap<usize, u64>,
+    pub(crate) depth: usize,
 }
 
 /// A callable runtime value, either builtin or user-defined.
@@ -375,6 +376,7 @@ impl Value {
         }
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn as_pedal(&self) -> Option<&PedalValue> {
         match self {
@@ -660,6 +662,7 @@ impl SampleEvent {
         self.slice_end
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn pedal_program(&self) -> Option<&Arc<orpheus_dsp::PedalProgram>> {
         self.pedal_program.as_ref()
@@ -701,6 +704,9 @@ trait PatternValueTransform: Sized {
 }
 
 trait PatternRuntimeValue: Clone + PatternValueTransform + Send + Sync + fmt::Debug + Sized {
+    fn is_finite_numeric(&self) -> bool {
+        true
+    }
     fn into_runtime_value(pattern: PatternRuntime<Self>) -> Value;
     fn try_from_runtime_value(value: Value) -> Result<PatternRuntime<Self>, EvalError>;
     fn try_from_rand(value: f64) -> Result<Self, EvalError>;
@@ -1024,6 +1030,9 @@ impl PatternRuntimeValue for SampleEvent {
 }
 
 impl PatternRuntimeValue for f64 {
+    fn is_finite_numeric(&self) -> bool {
+        self.is_finite()
+    }
     fn into_runtime_value(pattern: PatternRuntime<Self>) -> Value {
         Value::NumberPattern(NumberPatternValue { pattern })
     }
@@ -1052,28 +1061,9 @@ impl PatternRuntimeValue for f64 {
         steps: u32,
     ) -> Result<Vec<Event<Self>>, EvalError> {
         sort_events(&mut events);
-        let mut rolled = Vec::with_capacity(events.len());
-        let mut index = 0;
-
-        while index < events.len() {
-            let start_index = index;
-            let span = &events[start_index].part;
-            while index < events.len() && &events[index].part == span {
-                if !events[index].value.is_finite() {
-                    return Err(EvalError::new("`roll` requires finite numeric values"));
-                }
-                index += 1;
-            }
-
-            let cluster_events = roll_event_cluster(&events[start_index..index], steps)?;
-            if rolled.len() + cluster_events.len() > 100_000 {
-                return Err(EvalError::new(
-                    "evaluation exceeded the maximum allowed event limit",
-                ));
-            }
-            rolled.extend(cluster_events);
-        }
-
+        let mut rolled = process_event_clusters(&events, "roll", |cluster| {
+            roll_event_cluster(cluster, steps)
+        })?;
         sort_events(&mut rolled);
         Ok(rolled)
     }
@@ -1085,23 +1075,7 @@ impl PatternRuntimeValue for f64 {
     /// for every group of events with the same span, eliminating redundant memory copying
     /// in the hot evaluation loop.
     fn strum_events(mut events: Vec<Event<Self>>) -> Result<Vec<Event<Self>>, EvalError> {
-        sort_events(&mut events);
-        let mut index = 0;
-
-        while index < events.len() {
-            let start_index = index;
-            let span = &events[start_index].part;
-            while index < events.len() && &events[index].part == span {
-                if !events[index].value.is_finite() {
-                    return Err(EvalError::new("`strum` requires finite numeric values"));
-                }
-                index += 1;
-            }
-
-            let cluster = &mut events[start_index..index];
-            strum_event_cluster(cluster)?;
-        }
-
+        mutate_event_clusters(&mut events, "strum", strum_event_cluster)?;
         sort_events(&mut events);
         Ok(events)
     }
@@ -1115,29 +1089,10 @@ impl PatternRuntimeValue for f64 {
         direction: ArpDirectionValue,
     ) -> Result<Vec<Event<Self>>, EvalError> {
         sort_events(&mut events);
-        let mut arped = Vec::with_capacity(events.len() * steps as usize);
-        let mut index = 0;
-
-        while index < events.len() {
-            let start_index = index;
-            let span = &events[start_index].part;
-            while index < events.len() && &events[index].part == span {
-                if !events[index].value.is_finite() {
-                    return Err(EvalError::new("`arp` requires finite numeric values"));
-                }
-                index += 1;
-            }
-
-            let cluster = &mut events[start_index..index];
-            let cluster_events = arp_event_cluster(cluster, steps, direction)?;
-            if arped.len() + cluster_events.len() > 100_000 {
-                return Err(EvalError::new(
-                    "evaluation exceeded the maximum allowed event limit",
-                ));
-            }
-            arped.extend(cluster_events);
-        }
-
+        let mut arped = process_event_clusters(&events, "arp", |cluster| {
+            let mut cluster_clone = cluster.to_vec();
+            arp_event_cluster(&mut cluster_clone, steps, direction)
+        })?;
         sort_events(&mut arped);
         Ok(arped)
     }
@@ -1145,54 +1100,18 @@ impl PatternRuntimeValue for f64 {
     /// Applies a chord inversion effect to overlapping events.
     ///
     /// ⚡ Bolt: Modifies clusters in-place and directly returns the original `events` vector, bypassing O(N) allocation overhead for intermediate `inverted` tracking.
-    fn invert_events(
-        mut events: Vec<Event<Self>>,
-        count: u32,
-    ) -> Result<Vec<Event<Self>>, EvalError> {
-        sort_events(&mut events);
-        let mut index = 0;
-
-        while index < events.len() {
-            let span = events[index].part.clone();
-            let start_index = index;
-            while index < events.len() && events[index].part == span {
-                if !events[index].value.is_finite() {
-                    return Err(EvalError::new("`invert` requires finite numeric values"));
-                }
-                index += 1;
-            }
-
-            let cluster = &mut events[start_index..index];
-            invert_event_cluster(cluster, count)?;
-        }
-
+    fn invert_events(mut events: Vec<Event<Self>>, count: u32) -> Result<Vec<Event<Self>>, EvalError> {
+        mutate_event_clusters(&mut events, "invert", |cluster| {
+            invert_event_cluster(cluster, count)
+        })?;
         Ok(events)
     }
 
     /// Drops the lowest `count` voices from overlapping chords down an octave.
     ///
     /// ⚡ Bolt: Applies the pitch drop in-place over mutable subslices of `events`, completely removing the `dropped` vector allocation step from the hot path.
-    fn drop_events(
-        mut events: Vec<Event<Self>>,
-        count: u32,
-    ) -> Result<Vec<Event<Self>>, EvalError> {
-        sort_events(&mut events);
-        let mut index = 0;
-
-        while index < events.len() {
-            let span = events[index].part.clone();
-            let start_index = index;
-            while index < events.len() && events[index].part == span {
-                if !events[index].value.is_finite() {
-                    return Err(EvalError::new("`drop` requires finite numeric values"));
-                }
-                index += 1;
-            }
-
-            let cluster = &mut events[start_index..index];
-            drop_event_cluster(cluster, count)?;
-        }
-
+    fn drop_events(mut events: Vec<Event<Self>>, count: u32) -> Result<Vec<Event<Self>>, EvalError> {
+        mutate_event_clusters(&mut events, "drop", |cluster| drop_event_cluster(cluster, count))?;
         Ok(events)
     }
 }
@@ -2967,6 +2886,72 @@ fn drop_event_cluster(cluster: &mut [Event<f64>], count: u32) -> Result<(), Eval
         return Err(EvalError::new("`drop` produced a non-finite numeric value"));
     }
     cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
+    Ok(())
+}
+
+fn process_event_clusters<T, F, R>(
+    events: &[Event<T>],
+    context: &str,
+    mut process_cluster: F,
+) -> Result<Vec<R>, EvalError>
+where
+    T: PatternRuntimeValue,
+    F: FnMut(&[Event<T>]) -> Result<Vec<R>, EvalError>,
+{
+    let mut result = Vec::with_capacity(events.len());
+    let mut index = 0;
+
+    while index < events.len() {
+        let start_index = index;
+        let span = &events[start_index].part;
+        while index < events.len() && &events[index].part == span {
+            if !events[index].value.is_finite_numeric() {
+                return Err(EvalError::new(format!(
+                    "`{context}` requires finite numeric values"
+                )));
+            }
+            index += 1;
+        }
+
+        let cluster_result = process_cluster(&events[start_index..index])?;
+        if result.len() + cluster_result.len() > 100_000 {
+            return Err(EvalError::new(
+                "evaluation exceeded the maximum allowed event limit",
+            ));
+        }
+        result.extend(cluster_result);
+    }
+
+    Ok(result)
+}
+
+fn mutate_event_clusters<T, F>(
+    events: &mut [Event<T>],
+    context: &str,
+    mut mutate_cluster: F,
+) -> Result<(), EvalError>
+where
+    T: PatternRuntimeValue,
+    F: FnMut(&mut [Event<T>]) -> Result<(), EvalError>,
+{
+    sort_events(events);
+    let mut index = 0;
+
+    while index < events.len() {
+        let start_index = index;
+        let span = &events[start_index].part;
+        while index < events.len() && &events[index].part == span {
+            if !events[index].value.is_finite_numeric() {
+                return Err(EvalError::new(format!(
+                    "`{context}` requires finite numeric values"
+                )));
+            }
+            index += 1;
+        }
+
+        mutate_cluster(&mut events[start_index..index])?;
+    }
+
     Ok(())
 }
 

@@ -1,0 +1,887 @@
+warning: missing documentation for an associated function
+  --> crates/orpheus-dsp/src/command.rs:26:5
+   |
+26 |     pub fn new(source: impl Into<Box<str>>, explain: impl Into<Box<str>>) -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: requested on the command line with `-W missing-docs`
+
+warning: missing documentation for a method
+  --> crates/orpheus-dsp/src/command.rs:35:5
+   |
+35 |     pub fn source(&self) -> &str {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+  --> crates/orpheus-dsp/src/command.rs:40:5
+   |
+40 |     pub fn explain(&self) -> &str {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+  --> crates/orpheus-dsp/src/command.rs:45:5
+   |
+45 |     pub fn with_graph(mut self, nodes: Vec<crate::pedal::PedalNode>, output: NodeRef) -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+  --> crates/orpheus-dsp/src/command.rs:51:5
+   |
+51 |     pub const fn graph(&self) -> &PedalGraphProgram {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates/orpheus-dsp/src/command.rs:296:5
+    |
+296 |     pub fn token(&self) -> &str {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates/orpheus-dsp/src/command.rs:439:5
+    |
+439 |     pub const fn pedal_program(&self) -> Option<&Arc<PedalProgram>> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an enum
+  --> crates/orpheus-dsp/src/pedal/program.rs:86:1
+   |
+86 | pub enum PreampModel {
+   | ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> crates/orpheus-dsp/src/pedal/program.rs:87:5
+   |
+87 |     JfetClean,
+   |     ^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> crates/orpheus-dsp/src/pedal/program.rs:88:5
+   |
+88 |     OpampTight,
+   |     ^^^^^^^^^^
+
+warning: missing documentation for an enum
+  --> crates/orpheus-dsp/src/pedal/program.rs:92:1
+   |
+92 | pub enum ClipModel {
+   | ^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> crates/orpheus-dsp/src/pedal/program.rs:93:5
+   |
+93 |     SiliconHard,
+   |     ^^^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> crates/orpheus-dsp/src/pedal/program.rs:94:5
+   |
+94 |     GermaniumSoft,
+   |     ^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> crates/orpheus-dsp/src/pedal/program.rs:95:5
+   |
+95 |     RedLed,
+   |     ^^^^^^
+
+warning: missing documentation for an enum
+  --> crates/orpheus-dsp/src/pedal/program.rs:99:1
+   |
+99 | pub enum ToneModel {
+   | ^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+   --> crates/orpheus-dsp/src/pedal/program.rs:100:5
+    |
+100 |     Neutral,
+    |     ^^^^^^^
+
+warning: missing documentation for a variant
+   --> crates/orpheus-dsp/src/pedal/program.rs:101:5
+    |
+101 |     MidHump,
+    |     ^^^^^^^
+
+warning: missing documentation for a variant
+   --> crates/orpheus-dsp/src/pedal/program.rs:102:5
+    |
+102 |     ScoopedStack,
+    |     ^^^^^^^^^^^^
+
+warning: missing documentation for an enum
+   --> crates/orpheus-dsp/src/pedal/program.rs:106:1
+    |
+106 | pub enum FilterMode {
+    | ^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+   --> crates/orpheus-dsp/src/pedal/program.rs:107:5
+    |
+107 |     LowPass,
+    |     ^^^^^^^
+
+warning: missing documentation for a variant
+   --> crates/orpheus-dsp/src/pedal/program.rs:108:5
+    |
+108 |     HighPass,
+    |     ^^^^^^^^
+
+warning: missing documentation for an enum
+   --> crates/orpheus-dsp/src/pedal/program.rs:112:1
+    |
+112 | pub enum PedalStage {
+    | ^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+   --> crates/orpheus-dsp/src/pedal/program.rs:113:5
+    |
+113 |     Buffer {
+    |     ^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:114:9
+    |
+114 |         input: NodeRef,
+    |         ^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+   --> crates/orpheus-dsp/src/pedal/program.rs:116:5
+    |
+116 |     Preamp {
+    |     ^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:117:9
+    |
+117 |         input: NodeRef,
+    |         ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:118:9
+    |
+118 |         gain: NodeRef,
+    |         ^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:119:9
+    |
+119 |         model: PreampModel,
+    |         ^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+   --> crates/orpheus-dsp/src/pedal/program.rs:121:5
+    |
+121 |     Gain {
+    |     ^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:122:9
+    |
+122 |         input: NodeRef,
+    |         ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:123:9
+    |
+123 |         amount: NodeRef,
+    |         ^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+   --> crates/orpheus-dsp/src/pedal/program.rs:125:5
+    |
+125 |     Clip {
+    |     ^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:126:9
+    |
+126 |         input: NodeRef,
+    |         ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:127:9
+    |
+127 |         drive: NodeRef,
+    |         ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:128:9
+    |
+128 |         model: ClipModel,
+    |         ^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+   --> crates/orpheus-dsp/src/pedal/program.rs:130:5
+    |
+130 |     Tone {
+    |     ^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:131:9
+    |
+131 |         input: NodeRef,
+    |         ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:132:9
+    |
+132 |         cutoff_hz: NodeRef,
+    |         ^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:133:9
+    |
+133 |         resonance: NodeRef,
+    |         ^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:134:9
+    |
+134 |         model: ToneModel,
+    |         ^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+   --> crates/orpheus-dsp/src/pedal/program.rs:136:5
+    |
+136 |     Filter {
+    |     ^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:137:9
+    |
+137 |         input: NodeRef,
+    |         ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:138:9
+    |
+138 |         kind: FilterMode,
+    |         ^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:139:9
+    |
+139 |         cutoff_hz: NodeRef,
+    |         ^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:140:9
+    |
+140 |         resonance: NodeRef,
+    |         ^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+   --> crates/orpheus-dsp/src/pedal/program.rs:142:5
+    |
+142 |     Eq {
+    |     ^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:143:9
+    |
+143 |         input: NodeRef,
+    |         ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:144:9
+    |
+144 |         low: NodeRef,
+    |         ^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:145:9
+    |
+145 |         mid: NodeRef,
+    |         ^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:146:9
+    |
+146 |         high: NodeRef,
+    |         ^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+   --> crates/orpheus-dsp/src/pedal/program.rs:148:5
+    |
+148 |     Level {
+    |     ^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:149:9
+    |
+149 |         input: NodeRef,
+    |         ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:150:9
+    |
+150 |         amount: NodeRef,
+    |         ^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+   --> crates/orpheus-dsp/src/pedal/program.rs:152:5
+    |
+152 |     Sag {
+    |     ^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:153:9
+    |
+153 |         input: NodeRef,
+    |         ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:154:9
+    |
+154 |         amount: NodeRef,
+    |         ^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+   --> crates/orpheus-dsp/src/pedal/program.rs:156:5
+    |
+156 |     Bias {
+    |     ^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:157:9
+    |
+157 |         input: NodeRef,
+    |         ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:158:9
+    |
+158 |         amount: NodeRef,
+    |         ^^^^^^^^^^^^^^^
+
+warning: missing documentation for an enum
+   --> crates/orpheus-dsp/src/pedal/program.rs:163:1
+    |
+163 | pub enum PedalNodeKind {
+    | ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+   --> crates/orpheus-dsp/src/pedal/program.rs:164:5
+    |
+164 |     Constant {
+    |     ^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:165:9
+    |
+165 |         value_bits: u32,
+    |         ^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+   --> crates/orpheus-dsp/src/pedal/program.rs:167:5
+    |
+167 |     Lfo {
+    |     ^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:168:9
+    |
+168 |         rate_hz_bits: u32,
+    |         ^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:169:9
+    |
+169 |         depth_bits: u32,
+    |         ^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:170:9
+    |
+170 |         offset_bits: u32,
+    |         ^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+   --> crates/orpheus-dsp/src/pedal/program.rs:172:5
+    |
+172 |     EnvFollow {
+    |     ^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:173:9
+    |
+173 |         input: NodeRef,
+    |         ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:174:9
+    |
+174 |         attack_ms_bits: u32,
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:175:9
+    |
+175 |         release_ms_bits: u32,
+    |         ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+   --> crates/orpheus-dsp/src/pedal/program.rs:177:5
+    |
+177 |     Add {
+    |     ^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:178:9
+    |
+178 |         left: NodeRef,
+    |         ^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:179:9
+    |
+179 |         right: NodeRef,
+    |         ^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+   --> crates/orpheus-dsp/src/pedal/program.rs:181:5
+    |
+181 |     Mul {
+    |     ^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:182:9
+    |
+182 |         left: NodeRef,
+    |         ^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:183:9
+    |
+183 |         right: NodeRef,
+    |         ^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+   --> crates/orpheus-dsp/src/pedal/program.rs:185:5
+    |
+185 |     Stage(PedalStage),
+    |     ^^^^^
+
+warning: missing documentation for a variant
+   --> crates/orpheus-dsp/src/pedal/program.rs:186:5
+    |
+186 |     Mix {
+    |     ^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:187:9
+    |
+187 |         inputs: Vec<NodeRef>,
+    |         ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+   --> crates/orpheus-dsp/src/pedal/program.rs:189:5
+    |
+189 |     Feedback {
+    |     ^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:190:9
+    |
+190 |         input: NodeRef,
+    |         ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:191:9
+    |
+191 |         amount: NodeRef,
+    |         ^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:192:9
+    |
+192 |         delay_samples: usize,
+    |         ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/orpheus-dsp/src/pedal/program.rs:193:9
+    |
+193 |         tone_hz_bits: Option<u32>,
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates/orpheus-dsp/src/pedal/program.rs:199:5
+    |
+199 |     pub const fn constant_value(&self) -> Option<f32> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct
+   --> crates/orpheus-dsp/src/pedal/program.rs:208:1
+    |
+208 | pub struct PedalNode {
+    | ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+   --> crates/orpheus-dsp/src/pedal/program.rs:215:5
+    |
+215 |     pub const fn new(signal_kind: SignalKind, kind: PedalNodeKind) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+   --> crates/orpheus-dsp/src/pedal/program.rs:220:5
+    |
+220 |     pub const fn constant(value: f32) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+   --> crates/orpheus-dsp/src/pedal/program.rs:230:5
+    |
+230 |     pub const fn lfo(rate_hz: f32, depth: f32, offset: f32) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+   --> crates/orpheus-dsp/src/pedal/program.rs:242:5
+    |
+242 |     pub const fn env_follow(input: NodeRef, attack_ms: f32, release_ms: f32) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+   --> crates/orpheus-dsp/src/pedal/program.rs:254:5
+    |
+254 |     pub const fn stage(stage: PedalStage) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+   --> crates/orpheus-dsp/src/pedal/program.rs:259:5
+    |
+259 |     pub const fn add(signal_kind: SignalKind, left: NodeRef, right: NodeRef) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+   --> crates/orpheus-dsp/src/pedal/program.rs:264:5
+    |
+264 |     pub const fn mul(left: NodeRef, right: NodeRef) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+   --> crates/orpheus-dsp/src/pedal/program.rs:269:5
+    |
+269 |     pub const fn mix(inputs: Vec<NodeRef>) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+   --> crates/orpheus-dsp/src/pedal/program.rs:274:5
+    |
+274 | /     pub fn feedback(
+275 | |         input: NodeRef,
+276 | |         amount: NodeRef,
+277 | |         delay_samples: usize,
+278 | |         tone_hz: Option<f32>,
+279 | |     ) -> Self {
+    | |_____________^
+
+warning: missing documentation for a method
+   --> crates/orpheus-dsp/src/pedal/program.rs:292:5
+    |
+292 |     pub const fn signal_kind(&self) -> SignalKind {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates/orpheus-dsp/src/pedal/program.rs:297:5
+    |
+297 |     pub const fn kind(&self) -> &PedalNodeKind {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct
+   --> crates/orpheus-dsp/src/pedal/program.rs:303:1
+    |
+303 | pub struct PedalGraphProgram {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+   --> crates/orpheus-dsp/src/pedal/program.rs:310:5
+    |
+310 |     pub const fn new(nodes: Vec<PedalNode>, output: NodeRef) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates/orpheus-dsp/src/pedal/program.rs:315:5
+    |
+315 |     pub fn nodes(&self) -> &[PedalNode] {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates/orpheus-dsp/src/pedal/program.rs:320:5
+    |
+320 |     pub const fn output(&self) -> NodeRef {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates/orpheus-dsp/src/pedal/program.rs:327:5
+    |
+327 |     pub const fn is_bypass(&self) -> bool {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a constant
+  --> crates/orpheus-dsp/src/pedal/runtime.rs:34:1
+   |
+34 | pub const PEDAL_CONTROL_INTERVAL_SAMPLES: usize = 16;
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct
+  --> crates/orpheus-dsp/src/pedal/runtime.rs:37:1
+   |
+37 | pub struct PedalInstance {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+  --> crates/orpheus-dsp/src/pedal/runtime.rs:51:5
+   |
+51 |     pub fn new(program: Arc<PedalProgram>, sample_rate_hz: f32) -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+  --> crates/orpheus-dsp/src/pedal/runtime.rs:77:5
+   |
+77 |     pub fn reset(&mut self) {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+  --> crates/orpheus-dsp/src/pedal/runtime.rs:92:5
+   |
+92 |     pub const fn tail_frames(&self) -> u32 {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+  --> crates/orpheus-dsp/src/pedal/runtime.rs:97:5
+   |
+97 |     pub fn process_sample(&mut self, input: f32) -> f32 {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates/orpheus-dsp/src/pedal/runtime.rs:190:5
+    |
+190 |     pub fn process_buffer(&mut self, input: &[f32], output: &mut [f32]) {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `orpheus-dsp` (lib) generated 109 warnings
+warning: missing documentation for a struct field
+  --> crates/orpheus-lang/src/ast.rs:22:9
+   |
+22 |         bindings: Vec<GraphBinding>,
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: requested on the command line with `-W missing-docs`
+
+warning: missing documentation for a struct field
+  --> crates/orpheus-lang/src/ast.rs:23:9
+   |
+23 |         result: Box<Self>,
+   |         ^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> crates/orpheus-lang/src/pedal.rs:33:5
+   |
+33 |     Audio,
+   |     ^^^^^
+
+warning: missing documentation for a variant
+  --> crates/orpheus-lang/src/pedal.rs:34:5
+   |
+34 |     Control,
+   |     ^^^^^^^
+
+warning: missing documentation for an associated function
+  --> crates/orpheus-lang/src/pedal.rs:82:5
+   |
+82 |     pub fn new(source: impl Into<String>) -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+  --> crates/orpheus-lang/src/pedal.rs:89:5
+   |
+89 |     pub fn source(&self) -> &str {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+  --> crates/orpheus-lang/src/pedal.rs:94:5
+   |
+94 |     pub fn format_source(&self) -> String {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+   --> crates/orpheus-lang/src/pedal.rs:170:5
+    |
+170 |     pub fn new(bindings: Vec<ValidatedPedalBinding>, result: ValidatedPedalNode) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates/orpheus-lang/src/pedal.rs:179:5
+    |
+179 |     pub const fn signal_kind(&self) -> &SignalKind {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates/orpheus-lang/src/pedal.rs:184:5
+    |
+184 |     pub fn bindings(&self) -> &[ValidatedPedalBinding] {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates/orpheus-lang/src/pedal.rs:189:5
+    |
+189 |     pub const fn result(&self) -> &ValidatedPedalNode {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates/orpheus-lang/src/pedal.rs:194:5
+    |
+194 |     pub fn explain(&self) -> String {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+   --> crates/orpheus-lang/src/pedal.rs:222:5
+    |
+222 |     pub const fn new(graph: PedalGraph, plan: ValidatedPedalPlan) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates/orpheus-lang/src/pedal.rs:227:5
+    |
+227 |     pub const fn graph(&self) -> &PedalGraph {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates/orpheus-lang/src/pedal.rs:232:5
+    |
+232 |     pub const fn plan(&self) -> &ValidatedPedalPlan {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates/orpheus-lang/src/pedal.rs:237:5
+    |
+237 |     pub fn format_source(&self) -> String {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates/orpheus-lang/src/pedal.rs:242:5
+    |
+242 |     pub fn explain(&self) -> String {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+   --> crates/orpheus-lang/src/types/mod.rs:130:5
+    |
+130 |     pub const fn new(bindings: BTreeMap<String, Type>) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates/orpheus-lang/src/value.rs:379:5
+    |
+379 |     pub const fn as_pedal(&self) -> Option<&PedalValue> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates/orpheus-lang/src/value.rs:664:5
+    |
+664 |     pub const fn pedal_program(&self) -> Option<&Arc<orpheus_dsp::PedalProgram>> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `orpheus-lang` (lib) generated 20 warnings
+warning: missing documentation for the crate
+  --> tests/test_parse_dos.rs:1:1
+   |
+ 1 | / #![allow(
+ 2 | |     clippy::uninlined_format_args,
+ 3 | |     clippy::manual_assert,
+ 4 | |     clippy::single_char_add_str
+...  |
+96 | | }
+   | |_^
+   |
+   = note: requested on the command line with `-W missing-docs`
+
+warning: missing documentation for the crate
+  --> tests/render_smoke.rs:1:1
+   |
+ 1 | / use std::fs;
+ 2 | | use std::path::PathBuf;
+ 3 | | use std::sync::atomic::{AtomicU64, Ordering};
+ 4 | | use std::time::{SystemTime, UNIX_EPOCH};
+...  |
+62 | |     let _ = fs::remove_file(path);
+63 | | }
+   | |_^
+   |
+   = note: requested on the command line with `-W missing-docs`
+
+warning: missing documentation for the crate
+  --> tests/workspace_smoke.rs:1:1
+   |
+ 1 | / use orpheus_dsp::EngineHandle;
+ 2 | | use orpheus_lang::ReplMode;
+ 3 | | use orpheus_pattern::TimeSpan;
+...  |
+12 | |     assert_eq!(span.start_numer(), 0);
+13 | | }
+   | |_^
+   |
+   = note: requested on the command line with `-W missing-docs`
+
+warning: missing documentation for the crate
+   --> tests/repl_smoke.rs:1:1
+    |
+  1 | / use assert_cmd::cargo::cargo_bin_cmd;
+  2 | | use predicates::str::contains;
+  3 | | use std::fs;
+  4 | | use std::path::PathBuf;
+...   |
+159 | |     let _ = fs::remove_dir_all(directory);
+160 | | }
+    | |_^
+    |
+    = note: requested on the command line with `-W missing-docs`
+
+warning: `orpheus` (test "test_parse_dos") generated 1 warning
+warning: `orpheus` (test "render_smoke") generated 1 warning
+warning: `orpheus` (test "workspace_smoke") generated 1 warning
+warning: `orpheus` (test "repl_smoke") generated 1 warning
+warning: missing documentation for the crate
+  --> tests/ode_smoke.rs:1:1
+   |
+ 1 | / use std::path::PathBuf;
+ 2 | |
+ 3 | | use orpheus_lang::load_file_strict;
+...  |
+16 | |     assert!(module.contains_key("song"));
+17 | | }
+   | |_^
+   |
+   = note: requested on the command line with `-W missing-docs`
+
+warning: missing documentation for the crate
+  --> tests/tui_smoke.rs:1:1
+   |
+ 1 | / #[test]
+ 2 | | fn tui_boots_and_renders_initial_frame() {
+ 3 | |     let frame = orpheus_lang::render_initial_frame_for_test(80, 30);
+...  |
+35 | |     assert!(!larger_frame.contains("Ctrl-A/E/K"));
+36 | | }
+   | |_^
+   |
+   = note: requested on the command line with `-W missing-docs`
+
+warning: missing documentation for the crate
+  --> tests/startup_preload.rs:1:1
+   |
+ 1 | / use std::fs;
+ 2 | | use std::path::PathBuf;
+ 3 | | use std::sync::atomic::{AtomicU64, Ordering};
+ 4 | | use std::time::{SystemTime, UNIX_EPOCH};
+...  |
+74 | |     format!("{timestamp}-{counter}")
+75 | | }
+   | |_^
+   |
+   = note: requested on the command line with `-W missing-docs`
+
+warning: `orpheus` (test "ode_smoke") generated 1 warning
+warning: `orpheus` (test "tui_smoke") generated 1 warning
+warning: `orpheus` (test "startup_preload") generated 1 warning
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.26s

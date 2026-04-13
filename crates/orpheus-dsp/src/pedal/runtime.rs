@@ -31,8 +31,10 @@ use super::program::{
     ToneModel,
 };
 
+/// Number of audio samples per control block evaluation.
 pub const PEDAL_CONTROL_INTERVAL_SAMPLES: usize = 16;
 
+/// Stateful runtime executing a `PedalGraphProgram`.
 #[derive(Debug)]
 pub struct PedalInstance {
     program: Arc<PedalProgram>,
@@ -47,6 +49,17 @@ pub struct PedalInstance {
 }
 
 impl PedalInstance {
+    /// Create a new execution environment.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use orpheus_dsp::{PedalInstance, PedalProgram};
+    /// use std::sync::Arc;
+    ///
+    /// let program = Arc::new(PedalProgram::new("input |> output", "bypass"));
+    /// let mut instance = PedalInstance::new(program, 44100.0);
+    /// ```
     #[must_use]
     pub fn new(program: Arc<PedalProgram>, sample_rate_hz: f32) -> Self {
         let sample_rate_hz = sanitize_sample_rate(sample_rate_hz);
@@ -74,6 +87,7 @@ impl PedalInstance {
         }
     }
 
+    #[doc(hidden)]
     pub fn reset(&mut self) {
         for (state, node) in self
             .node_states
@@ -88,11 +102,24 @@ impl PedalInstance {
         self.control_initialized = false;
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn tail_frames(&self) -> u32 {
         self.tail_frames
     }
 
+    /// Evaluate a single audio frame.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use orpheus_dsp::{PedalInstance, PedalProgram};
+    /// use std::sync::Arc;
+    ///
+    /// let program = Arc::new(PedalProgram::new("input |> output", "bypass"));
+    /// let mut instance = PedalInstance::new(program, 44100.0);
+    /// let output = instance.process_sample(0.5);
+    /// ```
     #[must_use]
     pub fn process_sample(&mut self, input: f32) -> f32 {
         let graph = self.program.graph();
@@ -187,6 +214,7 @@ impl PedalInstance {
         resolve(&self.node_values, graph.output(), input)
     }
 
+    /// Evaluate an entire block of audio.
     pub fn process_buffer(&mut self, input: &[f32], output: &mut [f32]) {
         for (index, out) in output.iter_mut().enumerate() {
             let input_sample = input.get(index).copied().unwrap_or_default();

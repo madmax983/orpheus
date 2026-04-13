@@ -1,0 +1,7 @@
+    Checking orpheus-dsp v0.1.0 (/app/crates/orpheus-dsp)
+ Documenting orpheus-dsp v0.1.0 (/app/crates/orpheus-dsp)
+    Checking orpheus-lang v0.1.0 (/app/crates/orpheus-lang)
+ Documenting orpheus-lang v0.1.0 (/app/crates/orpheus-lang)
+ Documenting orpheus v0.1.0 (/app)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.70s
+   Generated /app/target/doc/orpheus/index.html and 3 other files

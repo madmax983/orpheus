@@ -22,6 +22,7 @@ pub struct PedalProgram {
 }
 
 impl PedalProgram {
+    /// Create a new `PedalProgram` linking the parsed source with its validation explanation.
     #[must_use]
     pub fn new(source: impl Into<Box<str>>, explain: impl Into<Box<str>>) -> Self {
         Self {
@@ -31,22 +32,35 @@ impl PedalProgram {
         }
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub fn source(&self) -> &str {
         &self.source
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub fn explain(&self) -> &str {
         &self.explain
     }
 
+    /// Inject a constructed [`PedalGraphProgram`] representing the effect's internal routing.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use orpheus_dsp::{PedalProgram, PedalNode, NodeRef};
+    ///
+    /// let program = PedalProgram::new("input |> output", "bypass")
+    ///     .with_graph(vec![], NodeRef::Input);
+    /// ```
     #[must_use]
     pub fn with_graph(mut self, nodes: Vec<crate::pedal::PedalNode>, output: NodeRef) -> Self {
         self.graph = PedalGraphProgram::new(nodes, output);
         self
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn graph(&self) -> &PedalGraphProgram {
         &self.graph
@@ -292,6 +306,7 @@ impl SampleTrigger {
         self
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub fn token(&self) -> &str {
         self.token.as_ref()
@@ -435,6 +450,7 @@ impl SampleTrigger {
         self.pan
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn pedal_program(&self) -> Option<&Arc<PedalProgram>> {
         self.pedal_program.as_ref()
@@ -465,6 +481,7 @@ impl PatternUpdate {
     }
 
     /// The string identifier bound to this pattern, usually derived from the variable name in the environment.
+    #[doc(hidden)]
     #[must_use]
     pub fn name(&self) -> &str {
         self.name.as_ref()
@@ -520,18 +537,26 @@ mod tests {
     use super::*;
     use orpheus_pattern::TimeSpan;
 
-    #[test]
-    #[allow(clippy::float_cmp)]
-    fn sample_trigger_named_initializes_with_default_values() {
-        let trigger = SampleTrigger::named("bd");
+    fn assert_trigger_core_defaults(trigger: &SampleTrigger) {
         assert_eq!(trigger.token(), "bd");
         assert!((trigger.gain() - 1.0).abs() < f64::EPSILON);
+        assert!((trigger.pan() - 0.0).abs() < f64::EPSILON);
+        assert!((trigger.rate() - 1.0).abs() < f64::EPSILON);
+        assert_eq!(trigger.onset_index(), None);
+        assert!((trigger.slice_start() - 0.0).abs() < f64::EPSILON);
+        assert!((trigger.slice_end() - 1.0).abs() < f64::EPSILON);
+        assert!(trigger.pedal_program().is_none());
+    }
+
+    fn assert_trigger_filter_defaults(trigger: &SampleTrigger) {
         assert_eq!(trigger.hpf_cutoff_hz(), None);
         assert_eq!(trigger.lpf_cutoff_hz(), None);
         assert!((trigger.resonance() - 0.2).abs() < f64::EPSILON);
         assert!((trigger.drive() - 1.0).abs() < f64::EPSILON);
         assert!((trigger.pulse_width() - 0.5).abs() < f64::EPSILON);
-        assert!((trigger.rate() - 1.0).abs() < f64::EPSILON);
+    }
+
+    fn assert_trigger_fx_defaults(trigger: &SampleTrigger) {
         assert!((trigger.delay_mix() - 0.0).abs() < f64::EPSILON);
         assert!((trigger.delay_time() - 0.125).abs() < f64::EPSILON);
         assert!((trigger.delay_feedback() - 0.35).abs() < f64::EPSILON);
@@ -544,11 +569,54 @@ mod tests {
         assert!((trigger.compressor_mix() - 0.0).abs() < f64::EPSILON);
         assert!((trigger.compressor_threshold() - 0.5).abs() < f64::EPSILON);
         assert!((trigger.compressor_ratio() - 4.0).abs() < f64::EPSILON);
-        assert_eq!(trigger.onset_index(), None);
-        assert!((trigger.slice_start() - 0.0).abs() < f64::EPSILON);
-        assert!((trigger.slice_end() - 1.0).abs() < f64::EPSILON);
-        assert!((trigger.pan() - 0.0).abs() < f64::EPSILON);
-        assert!(trigger.pedal_program().is_none());
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn sample_trigger_named_initializes_with_default_values() {
+        let trigger = SampleTrigger::named("bd");
+        assert_trigger_core_defaults(&trigger);
+        assert_trigger_filter_defaults(&trigger);
+        assert_trigger_fx_defaults(&trigger);
+    }
+
+    fn assert_trigger_core_updates(trigger: &SampleTrigger, pedal_program: &Arc<PedalProgram>) {
+        assert_eq!(trigger.token(), "sn");
+        assert!((trigger.gain() - 0.8).abs() < f64::EPSILON);
+        assert!((trigger.pan() - 0.3).abs() < f64::EPSILON);
+        assert!((trigger.rate() - 1.5).abs() < f64::EPSILON);
+        assert_eq!(trigger.onset_index(), Some(3));
+        assert!((trigger.slice_start() - 0.2).abs() < f64::EPSILON);
+        assert!((trigger.slice_end() - 0.8).abs() < f64::EPSILON);
+        assert!(Arc::ptr_eq(
+            trigger
+                .pedal_program()
+                .expect("sample trigger should expose the pedal program"),
+            pedal_program
+        ));
+    }
+
+    fn assert_trigger_filter_updates(trigger: &SampleTrigger) {
+        assert_eq!(trigger.hpf_cutoff_hz(), Some(500.0));
+        assert_eq!(trigger.lpf_cutoff_hz(), Some(12000.0));
+        assert!((trigger.resonance() - 0.35).abs() < f64::EPSILON);
+        assert!((trigger.drive() - 1.25).abs() < f64::EPSILON);
+        assert!((trigger.pulse_width() - 0.42).abs() < f64::EPSILON);
+    }
+
+    fn assert_trigger_fx_updates(trigger: &SampleTrigger) {
+        assert!((trigger.delay_mix() - 0.3).abs() < f64::EPSILON);
+        assert!((trigger.delay_time() - 0.125).abs() < f64::EPSILON);
+        assert!((trigger.delay_feedback() - 0.45).abs() < f64::EPSILON);
+        assert!((trigger.reverb_mix() - 0.2).abs() < f64::EPSILON);
+        assert!((trigger.reverb_room() - 0.8).abs() < f64::EPSILON);
+        assert!((trigger.reverb_damp() - 0.25).abs() < f64::EPSILON);
+        assert!((trigger.chorus_mix() - 0.4).abs() < f64::EPSILON);
+        assert!((trigger.chorus_depth() - 0.7).abs() < f64::EPSILON);
+        assert!((trigger.chorus_rate() - 0.6).abs() < f64::EPSILON);
+        assert!((trigger.compressor_mix() - 0.75).abs() < f64::EPSILON);
+        assert!((trigger.compressor_threshold() - 0.3).abs() < f64::EPSILON);
+        assert!((trigger.compressor_ratio() - 6.0).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -580,36 +648,9 @@ mod tests {
             .with_pan(0.3)
             .with_pedal_program(pedal_program.clone());
 
-        assert_eq!(trigger.token(), "sn");
-        assert!((trigger.gain() - 0.8).abs() < f64::EPSILON);
-        assert_eq!(trigger.hpf_cutoff_hz(), Some(500.0));
-        assert_eq!(trigger.lpf_cutoff_hz(), Some(12000.0));
-        assert!((trigger.resonance() - 0.35).abs() < f64::EPSILON);
-        assert!((trigger.drive() - 1.25).abs() < f64::EPSILON);
-        assert!((trigger.pulse_width() - 0.42).abs() < f64::EPSILON);
-        assert!((trigger.rate() - 1.5).abs() < f64::EPSILON);
-        assert!((trigger.delay_mix() - 0.3).abs() < f64::EPSILON);
-        assert!((trigger.delay_time() - 0.125).abs() < f64::EPSILON);
-        assert!((trigger.delay_feedback() - 0.45).abs() < f64::EPSILON);
-        assert!((trigger.reverb_mix() - 0.2).abs() < f64::EPSILON);
-        assert!((trigger.reverb_room() - 0.8).abs() < f64::EPSILON);
-        assert!((trigger.reverb_damp() - 0.25).abs() < f64::EPSILON);
-        assert!((trigger.chorus_mix() - 0.4).abs() < f64::EPSILON);
-        assert!((trigger.chorus_depth() - 0.7).abs() < f64::EPSILON);
-        assert!((trigger.chorus_rate() - 0.6).abs() < f64::EPSILON);
-        assert!((trigger.compressor_mix() - 0.75).abs() < f64::EPSILON);
-        assert!((trigger.compressor_threshold() - 0.3).abs() < f64::EPSILON);
-        assert!((trigger.compressor_ratio() - 6.0).abs() < f64::EPSILON);
-        assert_eq!(trigger.onset_index(), Some(3));
-        assert!((trigger.slice_start() - 0.2).abs() < f64::EPSILON);
-        assert!((trigger.slice_end() - 0.8).abs() < f64::EPSILON);
-        assert!((trigger.pan() - 0.3).abs() < f64::EPSILON);
-        assert!(Arc::ptr_eq(
-            trigger
-                .pedal_program()
-                .expect("sample trigger should expose the pedal program"),
-            &pedal_program
-        ));
+        assert_trigger_core_updates(&trigger, &pedal_program);
+        assert_trigger_filter_updates(&trigger);
+        assert_trigger_fx_updates(&trigger);
     }
 
     #[test]
