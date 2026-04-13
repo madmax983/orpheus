@@ -16,3 +16,7 @@
 **Eliminate `Rational` clones in event fragment boundaries**
 **Learning:** Returning `Vec<Rational>` from `compute_event_fragment_boundaries` caused unnecessary `.clone()` calls simply to collect temporal bounds for sorting and deduplication. By refactoring `compute_event_fragment_boundaries` to store and return `Vec<&'a Rational>`, we avoid heap allocating owned clones for bounds that might immediately be discarded after deduplication or clipped during the `apply_event_fragments` window iteration.
 **Action:** When collecting structs out of references into temporary Vecs for sorting or filtering, store `&T` instead of `.clone()`ing into `T`. Only clone or convert to owned values at the final step where the owned struct is specifically required.
+
+**[Optimized seq_sections allocation]**
+**Learning:** In loops that clone and modify an owned data structure repeatedly (such as applying section repeats in `seq_sections`), the final iteration typically does not need to clone the base structure if it won't be used again. Cloning on the final iteration introduces an entirely redundant heap allocation that is instantly discarded.
+**Action:** For iterative clones where the original value is no longer needed after the loop, consume the original value directly on the last iteration using an `if index == count - 1` condition or by using `IntoIterator` to avoid the final `.clone()`.

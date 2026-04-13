@@ -200,6 +200,7 @@ struct Evaluator {
     mode: ReplMode,
     bindings: BTreeMap<String, Value>,
     expr_site_salts: BTreeMap<usize, u64>,
+    depth: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -297,6 +298,7 @@ impl Evaluator {
             mode,
             bindings,
             expr_site_salts: collect_expr_site_salts(module),
+            depth: 0,
         }
     }
 
@@ -329,6 +331,7 @@ impl Evaluator {
                             body: expr.clone(),
                             captured_bindings: self.bindings.clone(),
                             expr_site_salts: self.expr_site_salts.clone(),
+                            depth: self.depth,
                         }))
                     };
                     self.bindings.insert(name.clone(), value.clone());
@@ -463,7 +466,7 @@ impl Evaluator {
         if let Expr::Call { callee, args } = rhs {
             self.eval_call_with_args(rhs, callee, args, Some(lhs_value), meter)
         } else {
-            Self::apply_value(
+            self.apply_value(
                 self.eval_expr_in_meter(rhs, meter)?,
                 vec![lhs_value],
                 self.expr_site_salt(rhs),
@@ -497,7 +500,7 @@ impl Evaluator {
         if let Some(piped) = piped_arg {
             evaluated_args.push(piped);
         }
-        Self::apply_value(callee_value, evaluated_args, self.expr_site_salt(call_expr))
+        self.apply_value(callee_value, evaluated_args, self.expr_site_salt(call_expr))
     }
 
     fn eval_at(
@@ -661,6 +664,13 @@ impl Evaluator {
                     .ok_or_else(|| EvalError::new("section cycle offset overflowed"))?,
                 1,
             )?;
+            if repeat == repeat_count - 1 {
+                // ⚡ Bolt: Eliminate redundant allocation on the last section cycle repeat.
+                let mut final_repeated = base;
+                final_repeated.shift(&offset)?;
+                combined.append_unsorted(final_repeated)?;
+                break;
+            }
             let mut repeated = base.clone();
             repeated.shift(&offset)?;
             combined.append_unsorted(repeated)?;
@@ -774,6 +784,7 @@ impl Evaluator {
     }
 
     fn apply_value(
+        &self,
         callee: Value,
         args: Vec<Value>,
         site_salt: Option<u64>,
@@ -783,7 +794,12 @@ impl Evaluator {
                 let function = Self::apply_site_salt_to_builtin(function, site_salt);
                 apply_function_value(FunctionValue::Builtin(function), args)
             }
-            Value::Function(function) => apply_function_value(function, args),
+            Value::Function(mut function) => {
+                if let FunctionValue::User(ref mut user_fn) = function {
+                    user_fn.depth = self.depth;
+                }
+                apply_function_value(function, args)
+            }
             Value::SamplePattern(_)
             | Value::NumberPattern(_)
             | Value::ArpDirection(_)
@@ -1001,6 +1017,9 @@ pub fn apply_function_value(function: FunctionValue, args: Vec<Value>) -> Result
 }
 
 fn apply_user_function(mut function: UserFn, args: Vec<Value>) -> Result<Value, EvalError> {
+    if function.depth > 200 {
+        return Err(EvalError::new("evaluation recursion limit exceeded"));
+    }
     let remaining = function.remaining_params.len();
     let applied = args.len();
     if applied > remaining {
@@ -1022,6 +1041,7 @@ fn apply_user_function(mut function: UserFn, args: Vec<Value>) -> Result<Value, 
         mode: function.mode,
         bindings: function.captured_bindings,
         expr_site_salts: function.expr_site_salts,
+        depth: function.depth + 1,
     };
     evaluator.eval_expr(&function.body)
 }
@@ -1725,5 +1745,20 @@ right = sometimes(fast(2), cp hh)";
             orpheus_pattern::PatternError::InvalidDenominator { denominator: 0 };
         let eval_err: crate::eval::EvalError = pat_err.into();
         assert_eq!(eval_err.to_string(), "rational denominator cannot be zero");
+    }
+
+    #[test]
+    fn eval_error_from_parse_int_error() {
+        let err: Result<i32, _> = "not_a_number".parse();
+        let eval_err: super::EvalError = err.unwrap_err().into();
+        assert!(eval_err.to_string().contains("invalid digit"));
+    }
+
+    #[test]
+    fn eval_error_from_pitch_literal_error() {
+        use crate::pitch::PitchLiteralError;
+        let pitch_err = PitchLiteralError::new("invalid pitch literal".to_owned());
+        let eval_err: super::EvalError = pitch_err.into();
+        assert_eq!(eval_err.to_string(), "invalid pitch literal");
     }
 }
