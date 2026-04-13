@@ -660,6 +660,12 @@ impl SampleEvent {
         self.slice_end
     }
 
+    /// Extracts the compiled `PedalProgram` attached to this scheduled sample event.
+    ///
+    /// In Orpheus, DSP effects are modeled as first-class values in the AST but execute as compiled
+    /// lock-free states inside `PedalInstance` on the audio thread. This method retrieves the
+    /// compiled, static `PedalProgram` metadata that the scheduler needs to instantiate an effect
+    /// chain exactly at the moment this sample triggers.
     #[must_use]
     pub const fn pedal_program(&self) -> Option<&Arc<orpheus_dsp::PedalProgram>> {
         self.pedal_program.as_ref()

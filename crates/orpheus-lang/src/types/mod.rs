@@ -126,6 +126,12 @@ pub struct TypedModule {
 }
 
 impl TypedModule {
+    /// Commits a map of newly inferred types into an immutable type-checking result.
+    ///
+    /// This structure holds the verified types of all parsed statements in a module.
+    /// It exists as a distinct container so that the REPL can quickly look up the type
+    /// of a newly evaluated variable before actually executing its dataflow logic,
+    /// preventing audio-thread panics caused by mismatching signals.
     #[must_use]
     pub const fn new(bindings: BTreeMap<String, Type>) -> Self {
         Self { bindings }

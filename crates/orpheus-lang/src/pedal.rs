@@ -28,9 +28,33 @@ use crate::ast::{BinaryOp, Expr, GraphBinding};
 use crate::eval::EvalError;
 
 /// The coarse signal domain understood by the pedal DSL.
+///
+/// Orpheus distinguishes between control-rate and audio-rate execution. This exists
+/// because running every node at the audio sample rate (e.g. 48,000 Hz) would waste
+/// significant CPU on signals like LFOs or Envelopes that change slowly.
+///
+/// A node typed as `Control` is evaluated only once every `PEDAL_CONTROL_INTERVAL_SAMPLES`
+/// (typically 16 or 32 frames), and its values are linearly interpolated. A node typed
+/// as `Audio` is evaluated exactly once per sample.
+///
+/// The pedal compiler validates that an audio-rate signal is never accidentally fed into
+/// a control-rate parameter without a decimation stage (which is currently unsupported).
+///
+/// ## Examples
+///
+/// Evaluating a simple LFO yields a `Control` rate expression:
+///
+/// ```
+/// # use orpheus_lang::{eval_module, ReplMode, Value};
+/// # let bindings = eval_module("my_lfo = Effect { result: lfo(1.0, 0.5, 0.5) }", ReplMode::Strict).unwrap();
+/// # let effect = bindings.get("my_lfo").unwrap().as_pedal().unwrap();
+/// # assert_eq!(*effect.plan().signal_kind(), orpheus_lang::pedal::SignalKind::Control);
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SignalKind {
+    /// Fast audio signals (computed at 48kHz, or the exact audio device frequency).
     Audio,
+    /// Slow control signals (computed once every 16 samples to optimize DSP overhead).
     Control,
 }
 
@@ -78,6 +102,11 @@ pub struct PedalGraph {
 }
 
 impl PedalGraph {
+    /// Creates a raw unparsed reference to a Pedal DSL string block.
+    ///
+    /// This structure holds the literal source text that the user typed. It exists
+    /// to provide rich diagnostics when parsing fails inside a pedal graph block,
+    /// and to support saving/formatting the program later without losing comments.
     #[must_use]
     pub fn new(source: impl Into<String>) -> Self {
         Self {
@@ -85,11 +114,13 @@ impl PedalGraph {
         }
     }
 
+    /// Extracts the original source code text of the user's pedal graph.
     #[must_use]
     pub fn source(&self) -> &str {
         &self.source
     }
 
+    /// Reconstructs the pedal block into a printable formatted string.
     #[must_use]
     pub fn format_source(&self) -> String {
         self.source.clone()
@@ -218,26 +249,36 @@ pub struct PedalValue {
 }
 
 impl PedalValue {
+    /// Binds together the user's raw source code with the validated execution instructions.
+    ///
+    /// `PedalValue` exists as a standalone type to enable runtime introspection. When an Orpheus
+    /// developer evaluates an effect, they want to inspect the plan *before* it runs. Keeping
+    /// the source graph attached allows the REPL to trace runtime DSP errors back to the
+    /// exact line of code that generated the faulty node.
     #[must_use]
     pub const fn new(graph: PedalGraph, plan: ValidatedPedalPlan) -> Self {
         Self { graph, plan }
     }
 
+    /// Accesses the underlying source code representation.
     #[must_use]
     pub const fn graph(&self) -> &PedalGraph {
         &self.graph
     }
 
+    /// Accesses the compiled operations list ready for the audio thread.
     #[must_use]
     pub const fn plan(&self) -> &ValidatedPedalPlan {
         &self.plan
     }
 
+    /// Formats the original user source into a printable snippet.
     #[must_use]
     pub fn format_source(&self) -> String {
         self.graph.format_source()
     }
 
+    /// Dumps the underlying node graph execution steps for REPL debugging.
     #[must_use]
     pub fn explain(&self) -> String {
         self.plan.explain()

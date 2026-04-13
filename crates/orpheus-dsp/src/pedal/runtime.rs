@@ -31,8 +31,20 @@ use super::program::{
     ToneModel,
 };
 
+/// How many frames tick by before `Control` nodes recompute their next target value.
+///
+/// Running sub-sampled control nodes (LFOs/Envelopes) every 16 frames provides a massive
+/// DSP overhead reduction while still maintaining 3kHz update resolution (at 48kHz). This
+/// keeps parameter sweeps perfectly smooth without zipper noise.
 pub const PEDAL_CONTROL_INTERVAL_SAMPLES: usize = 16;
 
+/// A live, stateful DSP runtime engine for an individual virtual analog effect.
+///
+/// While `PedalGraphProgram` is purely static metadata, a `PedalInstance` is what actually
+/// allocates heap memory for lock-free ring buffers, tracks IIR filter phases, and interpolates
+/// control signals on the audio thread.
+///
+/// For performance, it flattens the node graph into parallel vectors of states and outputs.
 #[derive(Debug)]
 pub struct PedalInstance {
     program: Arc<PedalProgram>,
@@ -47,6 +59,11 @@ pub struct PedalInstance {
 }
 
 impl PedalInstance {
+    /// Boots up a new instance, aggressively pre-allocating all memory required by the graph.
+    ///
+    /// The constructor parses the node list, identifying which nodes need to allocate phase
+    /// accumulators or delay lines, and measures the expected reverb/delay tails to tell
+    /// the main `Scheduler` how long to keep the effect alive after the input decays.
     #[must_use]
     pub fn new(program: Arc<PedalProgram>, sample_rate_hz: f32) -> Self {
         let sample_rate_hz = sanitize_sample_rate(sample_rate_hz);
@@ -74,6 +91,10 @@ impl PedalInstance {
         }
     }
 
+    /// Wipes all resonant filter states and clears delay lines without dropping memory.
+    ///
+    /// This allows a single instance to be recycled across different sample hits without
+    /// previous feedback bleeding into the new transient.
     pub fn reset(&mut self) {
         for (state, node) in self
             .node_states
@@ -88,11 +109,21 @@ impl PedalInstance {
         self.control_initialized = false;
     }
 
+    /// Identifies the "ringing" duration a delay or filter adds to a sample.
+    ///
+    /// For a simple distortion this might be zero. But a 500ms delay with 60% feedback
+    /// could ring out for several seconds. The scheduler uses this to know when it can
+    /// finally reap the instance.
     #[must_use]
     pub const fn tail_frames(&self) -> u32 {
         self.tail_frames
     }
 
+    /// Executes the entire flat evaluation graph against a single frame of incoming audio.
+    ///
+    /// Every node processes in sequence. Control-rate nodes are either skipped (if we
+    /// aren't on a block boundary) or re-interpolated, while Audio-rate nodes execute
+    /// non-linear math every single call. Returns the final node's output value.
     #[must_use]
     pub fn process_sample(&mut self, input: f32) -> f32 {
         let graph = self.program.graph();
@@ -187,6 +218,10 @@ impl PedalInstance {
         resolve(&self.node_values, graph.output(), input)
     }
 
+    /// Overwrites an entire output buffer array with the evaluated sequence.
+    ///
+    /// Provides a tight loop around `process_sample` for offline rendering or
+    /// fixed-block ASIO/CoreAudio drivers.
     pub fn process_buffer(&mut self, input: &[f32], output: &mut [f32]) {
         for (index, out) in output.iter_mut().enumerate() {
             let input_sample = input.get(index).copied().unwrap_or_default();

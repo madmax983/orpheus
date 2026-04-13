@@ -22,6 +22,11 @@ pub struct PedalProgram {
 }
 
 impl PedalProgram {
+    /// Binds an immutable block of user DSL source code with its debugger string representation.
+    ///
+    /// This wrapper exists to safely ferry a completely evaluated AST block from the parsing
+    /// UI thread into the real-time audio thread. The `PedalProgram` allocates no resources
+    /// itself, serving purely as a template that a `PedalInstance` later clones to set up DSP states.
     #[must_use]
     pub fn new(source: impl Into<Box<str>>, explain: impl Into<Box<str>>) -> Self {
         Self {
@@ -31,22 +36,39 @@ impl PedalProgram {
         }
     }
 
+    /// Accesses the raw text that the user wrote to define this effect block.
+    ///
+    /// It ensures that error traces or visualizations in the TUI reflect the original
+    /// Orpheus text precisely, rather than generic AST structures.
     #[must_use]
     pub fn source(&self) -> &str {
         &self.source
     }
 
+    /// Exposes a flat string mapping out the execution flow of the internal nodes.
+    ///
+    /// Used by the REPL's `explain("my_pedal")` command to show developers how their
+    /// syntax tree routed analog stages internally.
     #[must_use]
     pub fn explain(&self) -> &str {
         &self.explain
     }
 
+    /// Consumes the wrapper to inject a compiled list of operations.
+    ///
+    /// A pedal program fundamentally must know what nodes compute its output. The `with_graph`
+    /// builder pattern attaches the resolved `PedalNode` array containing the static constants,
+    /// LFO rates, or distortion stages.
     #[must_use]
     pub fn with_graph(mut self, nodes: Vec<crate::pedal::PedalNode>, output: NodeRef) -> Self {
         self.graph = PedalGraphProgram::new(nodes, output);
         self
     }
 
+    /// Retrieves the lock-free evaluation graph template.
+    ///
+    /// This graph provides the audio thread with the exact blueprint of node connections
+    /// so it can spin up stateful delays and filters in a new `PedalInstance`.
     #[must_use]
     pub const fn graph(&self) -> &PedalGraphProgram {
         &self.graph
@@ -292,6 +314,11 @@ impl SampleTrigger {
         self
     }
 
+    /// Inspects the original string label dictating which audio sample file to trigger.
+    ///
+    /// The `token` string maps directly to a loaded file path in the `SampleBank`. Because it
+    /// must be checked on the audio thread upon triggering, it is held internally as a
+    /// boxed string reference to minimize real-time allocation overhead.
     #[must_use]
     pub fn token(&self) -> &str {
         self.token.as_ref()
@@ -435,6 +462,11 @@ impl SampleTrigger {
         self.pan
     }
 
+    /// Exposes an optional block of declarative DSP code bound to this trigger event.
+    ///
+    /// When the scheduler hits an event carrying a `pedal_program`, it dynamically instantiates
+    /// a new virtual analog pedal graph configured by the user, runs the sample through it,
+    /// and disposes of the DSP state once the tail frames ring out.
     #[must_use]
     pub const fn pedal_program(&self) -> Option<&Arc<PedalProgram>> {
         self.pedal_program.as_ref()

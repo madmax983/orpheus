@@ -18,8 +18,23 @@ pub enum Expr {
     /// Explicit-time event stream composition created by `stream(...)`.
     Stream(Vec<Self>),
     /// A let-bound graph block used by the pedal DSL.
+    ///
+    /// This expression evaluates a sequence of intermediate signals before returning
+    /// a final result. The graph guarantees acyclic dependencies (except for explicit
+    /// delay feedback nodes) and is compiled into a static `orpheus_dsp::PedalProgram`
+    /// before runtime execution on the audio thread.
     Graph {
+        /// The sequence of intermediate variable assignments.
+        ///
+        /// In Orpheus, graph bindings are evaluated strictly in declaration order.
+        /// A later binding can reference an earlier one, but backward references
+        /// generate a compile-time error to enforce a directed acyclic topology.
         bindings: Vec<GraphBinding>,
+
+        /// The terminal expression of the block.
+        ///
+        /// This expression yields the final audio signal routed to the pedal's output.
+        /// It acts as the sink for the entire dataflow graph defined in `bindings`.
         result: Box<Self>,
     },
     /// Pipe application created by `lhs |> rhs`.
