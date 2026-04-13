@@ -1,3 +1,8 @@
+//! Smoke tests for offline stem rendering.
+//!
+//! This suite verifies that Orpheus can evaluate a song script and export
+//! the resulting sample pattern into an audio file (such as WAV or FLAC),
+//! ensuring correct file headers and non-empty audio data.
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};

@@ -41,6 +41,20 @@ pub struct PitchLiteralError {
 }
 
 impl PitchLiteralError {
+    /// Constructs a new [`PitchLiteralError`] with the provided message.
+    ///
+    /// # Parameters
+    /// - `message`: A descriptive message explaining why the pitch parsing failed.
+    ///   Can be any type that converts into a `Box<str>` (like a `String` or `&str`).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::PitchLiteralError;
+    ///
+    /// let error = PitchLiteralError::new("invalid pitch syntax");
+    /// assert_eq!(error.to_string(), "invalid pitch syntax");
+    /// ```
     pub fn new(message: impl Into<Box<str>>) -> Self {
         Self {
             message: message.into(),

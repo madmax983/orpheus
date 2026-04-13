@@ -1100,7 +1100,10 @@ impl PatternRuntimeValue for f64 {
     /// Applies a chord inversion effect to overlapping events.
     ///
     /// ⚡ Bolt: Modifies clusters in-place and directly returns the original `events` vector, bypassing O(N) allocation overhead for intermediate `inverted` tracking.
-    fn invert_events(mut events: Vec<Event<Self>>, count: u32) -> Result<Vec<Event<Self>>, EvalError> {
+    fn invert_events(
+        mut events: Vec<Event<Self>>,
+        count: u32,
+    ) -> Result<Vec<Event<Self>>, EvalError> {
         mutate_event_clusters(&mut events, "invert", |cluster| {
             invert_event_cluster(cluster, count)
         })?;
@@ -1110,8 +1113,13 @@ impl PatternRuntimeValue for f64 {
     /// Drops the lowest `count` voices from overlapping chords down an octave.
     ///
     /// ⚡ Bolt: Applies the pitch drop in-place over mutable subslices of `events`, completely removing the `dropped` vector allocation step from the hot path.
-    fn drop_events(mut events: Vec<Event<Self>>, count: u32) -> Result<Vec<Event<Self>>, EvalError> {
-        mutate_event_clusters(&mut events, "drop", |cluster| drop_event_cluster(cluster, count))?;
+    fn drop_events(
+        mut events: Vec<Event<Self>>,
+        count: u32,
+    ) -> Result<Vec<Event<Self>>, EvalError> {
+        mutate_event_clusters(&mut events, "drop", |cluster| {
+            drop_event_cluster(cluster, count)
+        })?;
         Ok(events)
     }
 }

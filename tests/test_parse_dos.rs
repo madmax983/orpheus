@@ -1,3 +1,9 @@
+//! Tests for denial-of-service (`DoS`) protections during parsing.
+//!
+//! This suite ensures that maliciously or deeply nested inputs (like excessive parentheses,
+//! chained pipes, or extreme sequences) do not cause a stack overflow in the parser. The
+//! recursive descent parser is expected to explicitly enforce a maximum AST depth and return
+//! an error rather than aborting the process.
 #![allow(
     clippy::uninlined_format_args,
     clippy::manual_assert,

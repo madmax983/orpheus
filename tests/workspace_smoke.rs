@@ -1,3 +1,8 @@
+//! General smoke tests for the Orpheus workspace.
+//!
+//! This suite ensures that the top-level crates (`orpheus-lang`, `orpheus-dsp`, `orpheus-pattern`)
+//! can be correctly linked and that basic bootstrap types like `EngineHandle` and `ReplMode`
+//! are available and functional in a testing environment without panicking.
 use orpheus_dsp::EngineHandle;
 use orpheus_lang::ReplMode;
 use orpheus_pattern::TimeSpan;
