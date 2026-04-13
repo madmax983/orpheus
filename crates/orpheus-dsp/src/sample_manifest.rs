@@ -6,6 +6,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
+use thiserror::Error;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SampleManifest {
@@ -22,37 +23,12 @@ pub struct SampleRegion {
     pub rate: f64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum SampleManifestLoadError {
+    #[error("failed to read sample manifest `{path}`: {message}")]
     Io { path: Box<str>, message: Box<str> },
+    #[error("failed to parse sample manifest `{path}`: {message}")]
     Parse { path: Box<str>, message: Box<str> },
-}
-
-impl std::fmt::Display for SampleManifestLoadError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Io { path, message } => {
-                write!(
-                    formatter,
-                    "failed to read sample manifest `{path}`: {message}"
-                )
-            }
-            Self::Parse { path, message } => {
-                write!(
-                    formatter,
-                    "failed to parse sample manifest `{path}`: {message}"
-                )
-            }
-        }
-    }
-}
-
-impl std::error::Error for SampleManifestLoadError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Io { .. } | Self::Parse { .. } => None,
-        }
-    }
 }
 
 /// Loads a sample manifest file from the specified path, parsing its mappings

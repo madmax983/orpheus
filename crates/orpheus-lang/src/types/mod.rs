@@ -126,6 +126,7 @@ pub struct TypedModule {
 }
 
 impl TypedModule {
+    /// Inject raw bindings into a constructed environment.
     #[must_use]
     pub const fn new(bindings: BTreeMap<String, Type>) -> Self {
         Self { bindings }

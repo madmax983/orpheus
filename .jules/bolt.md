@@ -19,3 +19,7 @@
 **[Optimizing String Concatenation & Allocation]**
 **Learning:** Collecting iterators into intermediate `Vec<_>` for joining, and calling `.to_string()` on temporary references during `BTreeSet` insertion causes unnecessary heap allocations. Using string slices (`&str`) to track uniqueness and manually pre-allocating the total capacity with `String::with_capacity` provides a much cleaner, allocation-free abstraction.
 **Action:** Always favor using borrowed `&str` inside temporary collections, and replace `.collect::<Vec<_>>().join(...)` with a manual string builder loop when pre-allocating is possible based on exact length calculation.
+
+**[Optimized seq_sections allocation]**
+**Learning:** In loops that clone and modify an owned data structure repeatedly (such as applying section repeats in `seq_sections`), the final iteration typically does not need to clone the base structure if it won't be used again. Cloning on the final iteration introduces an entirely redundant heap allocation that is instantly discarded.
+**Action:** For iterative clones where the original value is no longer needed after the loop, consume the original value directly on the last iteration using an `if index == count - 1` condition or by using `IntoIterator` to avoid the final `.clone()`.
