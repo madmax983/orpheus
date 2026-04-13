@@ -47,11 +47,23 @@ pub fn sample_pattern_stats(
     let total_events = events.len();
     let mut samples = BTreeSet::new();
     for event in &events {
-        samples.insert(event.value.sample().to_string());
+        samples.insert(event.value.sample());
     }
 
     let unique_count = samples.len();
-    let sample_list = samples.into_iter().collect::<Vec<_>>().join(", ");
+    // ⚡ Bolt: By pre-allocating a single `String` buffer and iteratively pushing `&str` references,
+    // we completely eliminate the intermediate `Vec` allocation required by `.collect::<Vec<_>>().join(", ")`.
+    // We also avoid `.to_string()` clones for every unique sample by storing `&str` references in the `BTreeSet`.
+    let mut sample_list = String::with_capacity(unique_count * 8);
+    let mut first = true;
+    for sample in samples {
+        if !first {
+            sample_list.push_str(", ");
+        }
+        sample_list.push_str(sample);
+        first = false;
+    }
+
     #[allow(clippy::cast_precision_loss)]
     let density = (total_events as f64) / (cycle_count as f64);
 
