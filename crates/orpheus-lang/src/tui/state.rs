@@ -390,3 +390,225 @@ fn next_word_boundary(input: &str, index: usize) -> usize {
     }
     cursor
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_insert_character_at_cursor_and_advance() {
+        let engine = EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+        state.insert_character('a');
+        assert_eq!(state.input, "a");
+        assert_eq!(state.cursor_index, 1);
+        state.insert_character('b');
+        assert_eq!(state.input, "ab");
+        assert_eq!(state.cursor_index, 2);
+        state.cursor_index = 1;
+        state.insert_character('c');
+        assert_eq!(state.input, "acb");
+        assert_eq!(state.cursor_index, 2);
+    }
+
+    #[test]
+    fn should_remove_previous_character_and_retreat_cursor() {
+        let engine = EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+        state.input = "abc".to_owned();
+        state.cursor_index = 3;
+        state.backspace();
+        assert_eq!(state.input, "ab");
+        assert_eq!(state.cursor_index, 2);
+        state.cursor_index = 1;
+        state.backspace();
+        assert_eq!(state.input, "b");
+        assert_eq!(state.cursor_index, 0);
+        state.backspace();
+        assert_eq!(state.input, "b");
+        assert_eq!(state.cursor_index, 0);
+    }
+
+    #[test]
+    fn should_remove_next_character_without_moving_cursor() {
+        let engine = EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+        state.input = "abc".to_owned();
+        state.cursor_index = 0;
+        state.delete();
+        assert_eq!(state.input, "bc");
+        assert_eq!(state.cursor_index, 0);
+        state.cursor_index = 1;
+        state.delete();
+        assert_eq!(state.input, "b");
+        assert_eq!(state.cursor_index, 1);
+        state.delete();
+        assert_eq!(state.input, "b");
+        assert_eq!(state.cursor_index, 1);
+    }
+
+    #[test]
+    fn should_move_cursor_left_and_right_within_bounds() {
+        let engine = EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+        state.input = "abc".to_owned();
+        state.cursor_index = 2;
+        state.move_cursor_left();
+        assert_eq!(state.cursor_index, 1);
+        state.move_cursor_left();
+        assert_eq!(state.cursor_index, 0);
+        state.move_cursor_left();
+        assert_eq!(state.cursor_index, 0);
+
+        state.move_cursor_right();
+        assert_eq!(state.cursor_index, 1);
+        state.move_cursor_right();
+        assert_eq!(state.cursor_index, 2);
+        state.move_cursor_right();
+        assert_eq!(state.cursor_index, 3);
+        state.move_cursor_right();
+        assert_eq!(state.cursor_index, 3);
+    }
+
+    #[test]
+    fn should_move_cursor_to_start_and_end_of_input() {
+        let engine = EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+        state.input = "abc".to_owned();
+        state.cursor_index = 2;
+        state.move_cursor_home();
+        assert_eq!(state.cursor_index, 0);
+        state.move_cursor_end();
+        assert_eq!(state.cursor_index, 3);
+    }
+
+    #[test]
+    fn should_truncate_input_to_end_or_start_from_cursor() {
+        let engine = EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+        state.input = "abc".to_owned();
+        state.cursor_index = 2;
+        state.kill_to_end();
+        assert_eq!(state.input, "ab");
+
+        state.input = "abc".to_owned();
+        state.cursor_index = 1;
+        state.kill_to_start();
+        assert_eq!(state.input, "bc");
+        assert_eq!(state.cursor_index, 0);
+    }
+
+    #[test]
+    fn should_delete_word_before_cursor() {
+        let engine = EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+        state.input = "hello world test".to_owned();
+        state.cursor_index = 11;
+        state.delete_previous_word();
+        assert_eq!(state.input, "hello  test");
+        assert_eq!(state.cursor_index, 6);
+        state.delete_previous_word();
+        assert_eq!(state.input, " test");
+        assert_eq!(state.cursor_index, 0);
+    }
+
+    #[test]
+    fn should_navigate_history_back_and_forth() {
+        let engine = EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+        state.history = vec!["one".to_owned(), "two".to_owned()];
+        state.recall_previous_history();
+        assert_eq!(state.input, "two");
+        assert_eq!(state.history_index, Some(1));
+
+        state.recall_previous_history();
+        assert_eq!(state.input, "one");
+        assert_eq!(state.history_index, Some(0));
+
+        state.recall_previous_history(); // cannot go back further
+        assert_eq!(state.input, "one");
+        assert_eq!(state.history_index, Some(0));
+
+        state.recall_next_history();
+        assert_eq!(state.input, "two");
+        assert_eq!(state.history_index, Some(1));
+
+        state.recall_next_history(); // beyond end
+        assert_eq!(state.input, "");
+        assert_eq!(state.history_index, None);
+    }
+
+    #[test]
+    fn should_complete_known_commands_with_tab() {
+        let engine = EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+        state.input = ":p".to_owned();
+        state.complete_input();
+        assert_eq!(state.input, ":play"); // Assuming :play is the match
+
+        state.input = ":pl".to_owned();
+        state.complete_input();
+        assert_eq!(state.input, ":play");
+
+        state.input = ":t".to_owned();
+        state.complete_input(); // Could be :track or :tempo, no completion
+        assert_eq!(state.input, ":t");
+
+        state.input = ":te".to_owned();
+        state.complete_input();
+        assert_eq!(state.input, ":tempo ");
+    }
+
+    #[test]
+    fn should_find_start_of_previous_word() {
+        assert_eq!(previous_word_boundary("hello world", 11), 6);
+        assert_eq!(previous_word_boundary("hello world", 5), 0);
+        assert_eq!(previous_word_boundary("hello  world", 12), 7);
+        assert_eq!(previous_word_boundary("  hello  ", 9), 2);
+        assert_eq!(previous_word_boundary("a b c", 5), 4);
+    }
+
+    #[test]
+    fn should_find_correct_char_boundaries_with_unicode() {
+        let text = "a🚀b"; // 🚀 is 4 bytes
+        assert_eq!(text.len(), 6);
+        assert_eq!(next_char_boundary(text, 0), 1);
+        assert_eq!(next_char_boundary(text, 1), 5);
+        assert_eq!(next_char_boundary(text, 5), 6);
+        assert_eq!(next_char_boundary(text, 6), 6);
+
+        assert_eq!(previous_char_boundary(text, 6), 5);
+        assert_eq!(previous_char_boundary(text, 5), 1);
+        assert_eq!(previous_char_boundary(text, 1), 0);
+        assert_eq!(previous_char_boundary(text, 0), 0);
+    }
+
+    #[test]
+    fn should_find_start_of_next_word() {
+        assert_eq!(next_word_boundary("hello world", 0), 5); // Stops before whitespace
+        assert_eq!(next_word_boundary("hello world", 5), 11); // Skips whitespace to end of next word
+        assert_eq!(next_word_boundary("hello  world", 0), 5);
+        assert_eq!(next_word_boundary("  hello  ", 0), 7); // skips the first spaces, ends at hello end
+        assert_eq!(next_word_boundary("a b c", 0), 1);
+    }
+
+    #[test]
+    fn should_move_cursor_to_previous_and_next_word_boundaries() {
+        let engine = EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+        state.input = "hello world".to_owned();
+        state.cursor_index = 0;
+
+        state.move_cursor_next_word();
+        assert_eq!(state.cursor_index, 5);
+
+        state.move_cursor_next_word();
+        assert_eq!(state.cursor_index, 11);
+
+        state.move_cursor_previous_word();
+        assert_eq!(state.cursor_index, 6);
+
+        state.move_cursor_previous_word();
+        assert_eq!(state.cursor_index, 0);
+    }
+}

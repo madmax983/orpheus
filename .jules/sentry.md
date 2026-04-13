@@ -5,3 +5,6 @@
 ## 2024-05-30 - Add EvalError From Tests
 **Learning:** Evaluated code coverage and noticed missing tests for standard `From` conversions in `EvalError`. Added explicit unit tests to ensure different underlying error types (e.g. `TryFromIntError`, `ParseIntError`, `std::io::Error`, `std::fmt::Error`, `PatternError`) correctly map to `EvalError` string representations.
 **Action:** Identify untested `From` or error mapping paths and add basic roundtrip tests to make sure error display logic isn't silently broken.
+## 2024-05-18 - TUI state unit testing
+**Learning:** TUI state actions can be isolated and tested purely with mock terminal interactions to avoid rendering complexities. Word boundaries need careful handling of whitespace.
+**Action:** When testing TUI applications, separate state management and action handling into pure functions without rendering dependencies.
