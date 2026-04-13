@@ -17,6 +17,11 @@ use crate::value::{NumberPatternValue, SamplePatternValue};
 /// The report contains the total number of events, unique samples triggered,
 /// and the event density (events per cycle).
 ///
+/// ⚡ Bolt optimization: This function has been optimized to collect unique samples
+/// using references (`&str`) instead of creating a `String` per event, and uses
+/// pre-allocation with `String::with_capacity` to prevent unnecessary heap allocations
+/// when joining the sample string list.
+///
 /// # Examples
 ///
 /// ```
@@ -47,11 +52,23 @@ pub fn sample_pattern_stats(
     let total_events = events.len();
     let mut samples = BTreeSet::new();
     for event in &events {
-        samples.insert(event.value.sample().to_string());
+        samples.insert(event.value.sample());
     }
 
     let unique_count = samples.len();
-    let sample_list = samples.into_iter().collect::<Vec<_>>().join(", ");
+
+    let mut capacity = 0;
+    for s in &samples {
+        capacity += s.len();
+    }
+    capacity += samples.len().saturating_sub(1) * 2;
+    let mut sample_list = String::with_capacity(capacity);
+    for (i, sample) in samples.into_iter().enumerate() {
+        if i > 0 {
+            sample_list.push_str(", ");
+        }
+        sample_list.push_str(sample);
+    }
     #[allow(clippy::cast_precision_loss)]
     let density = (total_events as f64) / (cycle_count as f64);
 
