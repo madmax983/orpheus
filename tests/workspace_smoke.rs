@@ -1,3 +1,5 @@
+//! Tests that the workspace crates can be linked and accessed correctly.
+
 use orpheus_dsp::EngineHandle;
 use orpheus_lang::ReplMode;
 use orpheus_pattern::TimeSpan;

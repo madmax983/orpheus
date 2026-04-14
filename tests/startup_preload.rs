@@ -1,3 +1,5 @@
+//! Tests the ability to preload ODE files and evaluate them during REPL startup.
+
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};

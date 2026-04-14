@@ -1,3 +1,5 @@
+//! Tests loading and compiling standard `.ode` script files.
+
 use std::path::PathBuf;
 
 use orpheus_lang::load_file_strict;

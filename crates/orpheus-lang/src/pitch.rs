@@ -41,6 +41,19 @@ pub struct PitchLiteralError {
 }
 
 impl PitchLiteralError {
+    /// Creates a new `PitchLiteralError` from an error message.
+    ///
+    /// # Parameters
+    /// - `message`: The error message describing the invalid format or syntax.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pitch::PitchLiteralError;
+    ///
+    /// let error = PitchLiteralError::new("missing an octave suffix");
+    /// assert_eq!(error.to_string(), "missing an octave suffix");
+    /// ```
     pub fn new(message: impl Into<Box<str>>) -> Self {
         Self {
             message: message.into(),

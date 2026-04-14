@@ -1,3 +1,5 @@
+//! Integration tests for the REPL (Read-Eval-Print Loop) environment.
+
 use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::str::contains;
 use std::fs;

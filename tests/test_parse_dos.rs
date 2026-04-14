@@ -1,3 +1,6 @@
+//! Tests the language parser's resilience against Denial of Service (`DoS`)
+//! attacks, such as deeply nested expressions causing stack overflows.
+
 #![allow(
     clippy::uninlined_format_args,
     clippy::manual_assert,
