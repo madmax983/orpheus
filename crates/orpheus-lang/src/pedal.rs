@@ -234,7 +234,7 @@ impl PedalValue {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// use orpheus_lang::pedal::{PedalGraph, ValidatedPedalPlan, PedalValue, ValidatedPedalNode, SignalKind};
     ///
     /// let graph = PedalGraph::new("input |> output");

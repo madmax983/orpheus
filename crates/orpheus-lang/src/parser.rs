@@ -244,6 +244,9 @@ fn build_binding(pair: Pair<'_, Rule>, depth: usize) -> Result<Stmt, ParseError>
 }
 
 fn build_pipe_expr(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("maximum AST depth exceeded"));
+    }
     let mut inner = pair.into_inner();
     let first = build_sequence(next_pair(&mut inner, "pipe lhs")?, depth)?;
 
@@ -261,15 +264,26 @@ fn build_pipe_expr(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseErro
 }
 
 fn build_sequence(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("maximum AST depth exceeded"));
+    }
     let items = pair
         .into_inner()
         .map(|pair| build_sum_expr(pair, depth))
         .collect::<Result<Vec<_>, _>>()?;
 
+    // Check if the sequence length itself exceeds the max AST depth to prevent linear DOS.
+    if items.len() > MAX_AST_DEPTH {
+        return Err(ParseError::new("maximum sequence length exceeded"));
+    }
+
     collapse_sequence(items, "sequence", depth)
 }
 
 fn build_pipe_target(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("maximum AST depth exceeded"));
+    }
     build_application(first_inner(pair, "pipe target")?, depth)
 }
 
@@ -326,6 +340,9 @@ fn build_binding_head(pair: Pair<'_, Rule>) -> Result<(String, Vec<String>), Par
 }
 
 fn build_stack(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("maximum AST depth exceeded"));
+    }
     let layers_pair = next_pair(&mut pair.into_inner(), "stack layers")?;
     let layers = layers_pair
         .into_inner()
@@ -336,6 +353,9 @@ fn build_stack(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
 }
 
 fn build_application(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("maximum AST depth exceeded"));
+    }
     let mut inner = pair.into_inner();
     let first = next_pair(&mut inner, "application callee")?;
     let mut expr = build_expr(first, depth)?;
@@ -366,10 +386,16 @@ fn build_call_suffix_args(pair: Pair<'_, Rule>, depth: usize) -> Result<Vec<Expr
 }
 
 fn build_sum_expr(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("maximum AST depth exceeded"));
+    }
     build_binary_expr(pair, BinaryRule::Add, depth)
 }
 
 fn build_product_expr(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("maximum AST depth exceeded"));
+    }
     build_binary_expr(pair, BinaryRule::Mul, depth)
 }
 
@@ -477,6 +503,9 @@ fn build_call_expr(callee: Expr, args: Vec<Expr>) -> Result<Expr, ParseError> {
 }
 
 fn build_call_arg(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("maximum AST depth exceeded"));
+    }
     match pair.as_rule() {
         Rule::call_arg => build_call_arg(first_inner(pair, "call arg")?, depth),
         Rule::named_call_arg => build_named_call_arg(pair, depth),
@@ -488,6 +517,9 @@ fn build_call_arg(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError
 }
 
 fn build_named_call_arg(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("maximum AST depth exceeded"));
+    }
     let mut inner = pair.into_inner();
     let name = next_pair(&mut inner, "named call argument name")?
         .as_str()
@@ -502,6 +534,9 @@ fn build_named_call_arg(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, Pars
 }
 
 fn build_group(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("maximum AST depth exceeded"));
+    }
     let items = pair
         .into_inner()
         .map(|pair| build_sum_expr(pair, depth))
@@ -636,6 +671,9 @@ fn collapse_sequence(
     context: &'static str,
     depth: usize,
 ) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("maximum AST depth exceeded"));
+    }
     if let Some(expr) = collapse_meter_annotation(&items, depth)? {
         return Ok(expr);
     }
