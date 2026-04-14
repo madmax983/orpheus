@@ -41,6 +41,20 @@ pub struct PitchLiteralError {
 }
 
 impl PitchLiteralError {
+    /// Constructs a new [`PitchLiteralError`] from an underlying message.
+    ///
+    /// The message is stored internally as a `Box<str>` to minimize heap allocations
+    /// while maintaining the flexibility to construct dynamic error strings
+    /// (e.g. including the exact token that failed to parse).
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::PitchLiteralError;
+    ///
+    /// let error = PitchLiteralError::new("the pitch is too high!");
+    /// assert_eq!(error.to_string(), "the pitch is too high!");
+    /// ```
     pub fn new(message: impl Into<Box<str>>) -> Self {
         Self {
             message: message.into(),
