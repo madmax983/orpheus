@@ -47,11 +47,23 @@ pub fn sample_pattern_stats(
     let total_events = events.len();
     let mut samples = BTreeSet::new();
     for event in &events {
-        samples.insert(event.value.sample().to_string());
+        samples.insert(event.value.sample());
     }
 
     let unique_count = samples.len();
-    let sample_list = samples.into_iter().collect::<Vec<_>>().join(", ");
+
+    // ⚡ Bolt: Estimate string capacity to avoid reallocation.
+    // Minimum 2 chars per sample + 2 chars for ", "
+    let estimated_capacity = unique_count * 4;
+    let mut sample_list = String::with_capacity(estimated_capacity);
+    let mut is_first = true;
+    for sample in samples {
+        if !is_first {
+            sample_list.push_str(", ");
+        }
+        sample_list.push_str(sample);
+        is_first = false;
+    }
     #[allow(clippy::cast_precision_loss)]
     let density = (total_events as f64) / (cycle_count as f64);
 
