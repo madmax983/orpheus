@@ -177,3 +177,20 @@ pub fn format_tempo_bpm(snapshot: &orpheus_dsp::TransportSnapshot) -> String {
         format!("{tempo_bpm:.1}")
     }
 }
+
+pub fn strip_ansi(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut in_escape = false;
+    for c in text.chars() {
+        if c == '\x1b' {
+            in_escape = true;
+        } else if in_escape {
+            if c.is_ascii_alphabetic() {
+                in_escape = false;
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}

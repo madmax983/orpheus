@@ -13,7 +13,7 @@ use ratatui_hypertile_extras::HypertilePlugin;
 use super::state::SharedState;
 use super::style::{
     binding_legend_item, binding_list_item, routing_status_line, should_show_binding_legend,
-    transport_status_line,
+    strip_ansi, transport_status_line,
 };
 
 // ---------------------------------------------------------------------------
@@ -259,10 +259,12 @@ impl HypertilePlugin for TransportPlugin {
         if !mixer.summary().is_empty() && mixer.summary() != "mixer is empty" {
             lines.push(Line::raw("Mixer:"));
             for summary_line in mixer.summary().lines() {
-                lines.push(Line::raw(summary_line.to_owned()));
+                lines.push(Line::raw(strip_ansi(summary_line)));
             }
         }
-        let key_style = Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD);
+        let key_style = Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD);
         let desc_style = Style::default().fg(Color::DarkGray);
 
         lines.push(Line::from(vec![
@@ -291,10 +293,7 @@ impl HypertilePlugin for TransportPlugin {
         ]));
         lines.push(Line::from(vec![
             Span::styled("Export", key_style),
-            Span::styled(
-                ": :export <bind> <path> [cyc] | stems",
-                desc_style,
-            ),
+            Span::styled(": :export <bind> <path> [cyc] | stems", desc_style),
         ]));
         lines.push(Line::from(vec![
             Span::styled("Analyze", key_style),
