@@ -13,3 +13,9 @@
 **Extracted Nested Assertions to Helper Functions**
 **Learning:** `clippy::cognitive_complexity` on test functions is often triggered by deeply nested `match` statements or macro calls (`assert!(matches!(...))`) used to validate complex AST structures or deeply initialized configurations.
 **Action:** When I encounter `cognitive_complexity` in a test validating a large object tree (like an AST or a large configuration struct), I will extract the nested match logic into focused assertion helpers (e.g., `assert_is_ident`, `assert_is_pipe`) or group the assertions logically into smaller helper functions (`assert_core_defaults`, `assert_fx_defaults`) to flatten the main test function.
+**[Title]** Extracted Repeated Hash Logic into a  helper
+**Learning:** Boilerplate manual bitwise hashing loops repeatedly pasted into evaluation handlers like `query_chaos` and `sometimes_applies_on_cycle` make functions longer than necessary and risk introducing mismatch bugs.
+**Action:** Extracted the `site_salt` and `cycle` bitwise hashing generation logic into a `pub const fn hash_cycle_salt` helper inside `value.rs`.
+**[Title]** Extracted Repeated Hash Logic into a `const fn` helper
+**Learning:** Boilerplate manual bitwise hashing loops repeatedly pasted into evaluation handlers like `query_chaos` and `sometimes_applies_on_cycle` make functions longer than necessary and risk introducing mismatch bugs.
+**Action:** Extracted the `site_salt` and `cycle` bitwise hashing generation logic into a `pub const fn hash_cycle_salt` helper inside `value.rs`.

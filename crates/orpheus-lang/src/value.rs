@@ -1100,7 +1100,10 @@ impl PatternRuntimeValue for f64 {
     /// Applies a chord inversion effect to overlapping events.
     ///
     /// ⚡ Bolt: Modifies clusters in-place and directly returns the original `events` vector, bypassing O(N) allocation overhead for intermediate `inverted` tracking.
-    fn invert_events(mut events: Vec<Event<Self>>, count: u32) -> Result<Vec<Event<Self>>, EvalError> {
+    fn invert_events(
+        mut events: Vec<Event<Self>>,
+        count: u32,
+    ) -> Result<Vec<Event<Self>>, EvalError> {
         mutate_event_clusters(&mut events, "invert", |cluster| {
             invert_event_cluster(cluster, count)
         })?;
@@ -1110,8 +1113,13 @@ impl PatternRuntimeValue for f64 {
     /// Drops the lowest `count` voices from overlapping chords down an octave.
     ///
     /// ⚡ Bolt: Applies the pitch drop in-place over mutable subslices of `events`, completely removing the `dropped` vector allocation step from the hot path.
-    fn drop_events(mut events: Vec<Event<Self>>, count: u32) -> Result<Vec<Event<Self>>, EvalError> {
-        mutate_event_clusters(&mut events, "drop", |cluster| drop_event_cluster(cluster, count))?;
+    fn drop_events(
+        mut events: Vec<Event<Self>>,
+        count: u32,
+    ) -> Result<Vec<Event<Self>>, EvalError> {
+        mutate_event_clusters(&mut events, "drop", |cluster| {
+            drop_event_cluster(cluster, count)
+        })?;
         Ok(events)
     }
 }
@@ -3713,33 +3721,7 @@ where
         }
 
         // Shuffle using a deterministic RNG seeded by site_salt and cycle index
-        let [
-            b0,
-            b1,
-            b2,
-            b3,
-            b4,
-            b5,
-            b6,
-            b7,
-            b8,
-            b9,
-            b10,
-            b11,
-            b12,
-            b13,
-            b14,
-            b15,
-        ] = cycle.to_le_bytes();
-        let lower = u64::from_le_bytes([b0, b1, b2, b3, b4, b5, b6, b7]);
-        let upper = u64::from_le_bytes([b8, b9, b10, b11, b12, b13, b14, b15]);
-        let mut state = lower ^ upper.rotate_left(32) ^ site_salt.rotate_left(17);
-        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        state = (state ^ (state >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        state = (state ^ (state >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        state ^= state >> 31;
-
-        let mut rng_state = state;
+        let mut rng_state = hash_cycle_salt(cycle, site_salt);
         let len = cycle_events.len();
         for i in (1..len).rev() {
             // LCG for next random number
@@ -4372,6 +4354,11 @@ where
 /// multiple usages of `sometimes` do not synchronize their coin flips.
 #[doc(hidden)]
 pub const fn sometimes_applies_on_cycle(cycle: i128, site_salt: u64) -> bool {
+    let state = hash_cycle_salt(cycle, site_salt);
+    (state & 1) != 0
+}
+
+pub const fn hash_cycle_salt(cycle: i128, site_salt: u64) -> u64 {
     let [
         b0,
         b1,
@@ -4397,7 +4384,7 @@ pub const fn sometimes_applies_on_cycle(cycle: i128, site_salt: u64) -> bool {
     state = (state ^ (state >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
     state = (state ^ (state >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
     state ^= state >> 31;
-    (state & 1) != 0
+    state
 }
 
 const fn floor_rational(value: &Rational) -> i128 {
