@@ -638,71 +638,33 @@ fn sample_event_json(event: &Event<crate::value::SampleEvent>) -> String {
     let mut s = String::new();
     s.push_str("    {\n");
     append_event_time_json(&mut s, event);
-    let _ = writeln!(
+
+    let sample = escape_json_string(event.value.sample());
+    let gain = event.value.gain();
+    let pan = event.value.pan();
+    let rate = event.value.rate();
+    let delay_mix = event.value.delay_mix();
+    let delay_time = event.value.delay_time();
+    let delay_feedback = event.value.delay_feedback();
+    let reverb_mix = event.value.reverb_mix();
+    let reverb_room = event.value.reverb_room();
+    let reverb_damp = event.value.reverb_damp();
+    let chorus_mix = event.value.chorus_mix();
+    let chorus_depth = event.value.chorus_depth();
+    let chorus_rate = event.value.chorus_rate();
+    let compressor_mix = event.value.compressor_mix();
+    let compressor_threshold = event.value.compressor_threshold();
+    let compressor_ratio = event.value.compressor_ratio();
+    let resonance = event.value.resonance();
+    let drive = event.value.drive();
+    let pulse_width = event.value.pulse_width();
+    let slice_start = event.value.slice_start();
+    let slice_end = event.value.slice_end();
+
+    let _ = write!(
         s,
-        "      \"sample\": \"{}\",",
-        escape_json_string(event.value.sample())
+        "      \"sample\": \"{sample}\",\n      \"gain\": {gain:.6},\n      \"pan\": {pan:.6},\n      \"rate\": {rate:.6},\n      \"delay_mix\": {delay_mix:.6},\n      \"delay_time\": {delay_time:.6},\n      \"delay_feedback\": {delay_feedback:.6},\n      \"reverb_mix\": {reverb_mix:.6},\n      \"reverb_room\": {reverb_room:.6},\n      \"reverb_damp\": {reverb_damp:.6},\n      \"chorus_mix\": {chorus_mix:.6},\n      \"chorus_depth\": {chorus_depth:.6},\n      \"chorus_rate\": {chorus_rate:.6},\n      \"compressor_mix\": {compressor_mix:.6},\n      \"compressor_threshold\": {compressor_threshold:.6},\n      \"compressor_ratio\": {compressor_ratio:.6},\n      \"resonance\": {resonance:.6},\n      \"drive\": {drive:.6},\n      \"pulse_width\": {pulse_width:.6},\n      \"slice_start\": {slice_start:.6},\n      \"slice_end\": {slice_end:.6},\n"
     );
-    let _ = writeln!(s, "      \"gain\": {:.6},", event.value.gain());
-    let _ = writeln!(s, "      \"pan\": {:.6},", event.value.pan());
-    let _ = writeln!(s, "      \"rate\": {:.6},", event.value.rate());
-    let _ = writeln!(s, "      \"delay_mix\": {:.6},", event.value.delay_mix());
-    let _ = writeln!(s, "      \"delay_time\": {:.6},", event.value.delay_time());
-    let _ = writeln!(
-        s,
-        "      \"delay_feedback\": {:.6},",
-        event.value.delay_feedback()
-    );
-    let _ = writeln!(s, "      \"reverb_mix\": {:.6},", event.value.reverb_mix());
-    let _ = writeln!(
-        s,
-        "      \"reverb_room\": {:.6},",
-        event.value.reverb_room()
-    );
-    let _ = writeln!(
-        s,
-        "      \"reverb_damp\": {:.6},",
-        event.value.reverb_damp()
-    );
-    let _ = writeln!(s, "      \"chorus_mix\": {:.6},", event.value.chorus_mix());
-    let _ = writeln!(
-        s,
-        "      \"chorus_depth\": {:.6},",
-        event.value.chorus_depth()
-    );
-    let _ = writeln!(
-        s,
-        "      \"chorus_rate\": {:.6},",
-        event.value.chorus_rate()
-    );
-    let _ = writeln!(
-        s,
-        "      \"compressor_mix\": {:.6},",
-        event.value.compressor_mix()
-    );
-    let _ = writeln!(
-        s,
-        "      \"compressor_threshold\": {:.6},",
-        event.value.compressor_threshold()
-    );
-    let _ = writeln!(
-        s,
-        "      \"compressor_ratio\": {:.6},",
-        event.value.compressor_ratio()
-    );
-    let _ = writeln!(s, "      \"resonance\": {:.6},", event.value.resonance());
-    let _ = writeln!(s, "      \"drive\": {:.6},", event.value.drive());
-    let _ = writeln!(
-        s,
-        "      \"pulse_width\": {:.6},",
-        event.value.pulse_width()
-    );
-    let _ = writeln!(
-        s,
-        "      \"slice_start\": {:.6},",
-        event.value.slice_start()
-    );
-    let _ = writeln!(s, "      \"slice_end\": {:.6},", event.value.slice_end());
 
     if let Some(hpf) = event.value.hpf_cutoff_hz() {
         let _ = writeln!(s, "      \"hpf_cutoff_hz\": {hpf:.6},");

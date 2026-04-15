@@ -42,25 +42,13 @@ pub struct TypeEnv {
 
 impl TypeEnv {
     #[must_use]
-    #[allow(clippy::too_many_lines)]
     pub fn with_builtins() -> Self {
         let mut env = Self {
             entries: BTreeMap::new(),
         };
-        env.insert("bd", TypeScheme::monomorphic(Type::pattern(Type::Sample)));
-        env.insert("sn", TypeScheme::monomorphic(Type::pattern(Type::Sample)));
-        env.insert("cp", TypeScheme::monomorphic(Type::pattern(Type::Sample)));
-        env.insert("hh", TypeScheme::monomorphic(Type::pattern(Type::Sample)));
-        env.insert("saw", TypeScheme::monomorphic(Type::pattern(Type::Sample)));
-        env.insert(
-            "pulse",
-            TypeScheme::monomorphic(Type::pattern(Type::Sample)),
-        );
-        env.insert("tri", TypeScheme::monomorphic(Type::pattern(Type::Sample)));
-        env.insert(
-            "noise",
-            TypeScheme::monomorphic(Type::pattern(Type::Sample)),
-        );
+        for name in ["bd", "sn", "cp", "hh", "saw", "pulse", "tri", "noise"] {
+            env.insert(name, TypeScheme::monomorphic(Type::pattern(Type::Sample)));
+        }
 
         let alpha = TypeVarId::new(0);
         for name in ["fast", "slow", "shift"] {
@@ -76,9 +64,11 @@ impl TypeEnv {
         env.insert("arp", arp_scheme());
         env.insert("up", TypeScheme::monomorphic(Type::ArpDirection));
         env.insert("down", TypeScheme::monomorphic(Type::ArpDirection));
-        env.insert("invert", number_pattern_control_scheme());
-        env.insert("drop", number_pattern_control_scheme());
-        env.insert("chord", number_pattern_control_scheme());
+
+        for name in ["invert", "drop", "chord", "transpose"] {
+            env.insert(name, number_pattern_control_scheme());
+        }
+
         env.insert("euclid", euclid_scheme());
         env.insert(
             "pitch_class_set",
@@ -88,7 +78,7 @@ impl TypeEnv {
             )),
         );
         env.insert("degrees", degrees_scheme());
-        env.insert("transpose", number_pattern_control_scheme());
+
         for name in [
             "ionian",
             "dorian",
@@ -103,7 +93,7 @@ impl TypeEnv {
         env.insert("rev", unary_pattern_transform_scheme(alpha));
         env.insert("chaos", unary_pattern_transform_scheme(alpha));
         for name in [
-            "gain", "hpf", "lpf", "cutoff", "res", "drive", "pw", "pan", "pitch", "rate",
+            "gain", "hpf", "lpf", "cutoff", "res", "drive", "pw", "pan", "pitch", "rate", "onset",
         ] {
             env.insert(name, sample_control_scheme());
         }
@@ -121,29 +111,21 @@ impl TypeEnv {
                 Type::pattern(Type::Sample),
             )),
         );
-        env.insert("onset", sample_control_scheme());
-        env.insert(
-            "slice",
-            TypeScheme::monomorphic(Type::curried(
-                vec![
-                    Type::pattern(Type::Number),
-                    Type::pattern(Type::Number),
+
+        for name in ["slice", "slice_idx"] {
+            env.insert(
+                name,
+                TypeScheme::monomorphic(Type::curried(
+                    vec![
+                        Type::pattern(Type::Number),
+                        Type::pattern(Type::Number),
+                        Type::pattern(Type::Sample),
+                    ],
                     Type::pattern(Type::Sample),
-                ],
-                Type::pattern(Type::Sample),
-            )),
-        );
-        env.insert(
-            "slice_idx",
-            TypeScheme::monomorphic(Type::curried(
-                vec![
-                    Type::pattern(Type::Number),
-                    Type::pattern(Type::Number),
-                    Type::pattern(Type::Sample),
-                ],
-                Type::pattern(Type::Sample),
-            )),
-        );
+                )),
+            );
+        }
+
         env.insert(
             "rand",
             TypeScheme::monomorphic(Type::function(vec![], Type::pattern(Type::Number))),
