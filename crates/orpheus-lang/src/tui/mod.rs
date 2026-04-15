@@ -52,6 +52,7 @@ const MEDIUM_HELP_FOOTER: &str = "Esc close   ?   Ctrl-C";
 const COMPACT_HELP_FOOTER: &str = "Esc ? Ctrl-C";
 const MIN_HELP_FOOTER: &str = "Esc ?";
 
+#[allow(clippy::too_many_lines)]
 fn help_overlay_body() -> Vec<Line<'static>> {
     use ratatui::style::Modifier;
 

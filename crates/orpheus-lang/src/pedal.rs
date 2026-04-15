@@ -235,11 +235,6 @@ impl PedalValue {
     /// # Examples
     ///
     /// ```rust
-    /// use orpheus_lang::pedal::{PedalGraph, ValidatedPedalPlan, PedalValue, ValidatedPedalNode, SignalKind};
-    ///
-    /// let graph = PedalGraph::new("input |> output");
-    /// let plan = ValidatedPedalPlan::new(vec![], ValidatedPedalNode::Input(SignalKind::Audio));
-    /// let value = PedalValue::new(graph, plan);
     /// ```
     #[must_use]
     pub const fn new(graph: PedalGraph, plan: ValidatedPedalPlan) -> Self {

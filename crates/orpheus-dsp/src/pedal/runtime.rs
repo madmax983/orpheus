@@ -718,7 +718,15 @@ fn evaluate_node(
         PedalNodeKind::Mul { left, right } => {
             sanitize_audio(resolve(node_values, *left, input) * resolve(node_values, *right, input))
         }
-        PedalNodeKind::Stage(stage) => process_stage(node_states, node_values, index, stage, input),
+        PedalNodeKind::Stage(stage) => {
+            let mut ctx = StageContext {
+                node_states,
+                node_values,
+                index,
+                input,
+            };
+            stage.process(&mut ctx)
+        }
         PedalNodeKind::Mix { inputs } => sanitize_audio(
             inputs
                 .iter()
@@ -765,114 +773,94 @@ struct StageContext<'a> {
     input: f32,
 }
 
-#[allow(clippy::too_many_lines)]
-fn process_stage(
-    node_states: &mut [NodeState],
-    node_values: &[f32],
-    index: usize,
-    stage: &PedalStage,
-    input: f32,
-) -> f32 {
-    match stage {
-        PedalStage::Buffer { input: source } => resolve(node_values, *source, input),
-        PedalStage::Gain {
-            input: source,
-            amount,
+impl PedalStage {
+    fn process(&self, ctx: &mut StageContext) -> f32 {
+        match self {
+            Self::Buffer { input: source } => resolve(ctx.node_values, *source, ctx.input),
+            Self::Gain {
+                input: source,
+                amount,
+            }
+            | Self::Level {
+                input: source,
+                amount,
+            } => sanitize_audio(
+                resolve(ctx.node_values, *source, ctx.input) * resolve(ctx.node_values, *amount, ctx.input),
+            ),
+            Self::Preamp {
+                input: source,
+                gain,
+                model,
+            } => preamp_sample(
+                resolve(ctx.node_values, *source, ctx.input),
+                resolve(ctx.node_values, *gain, ctx.input),
+                *model,
+            ),
+            Self::Clip {
+                input: source,
+                drive,
+                model,
+            } => clip_sample(
+                resolve(ctx.node_values, *source, ctx.input),
+                resolve(ctx.node_values, *drive, ctx.input),
+                *model,
+            ),
+            Self::Tone {
+                input: source,
+                cutoff_hz,
+                resonance,
+                model,
+            } => process_tone_stage(
+                ctx,
+                *source,
+                *cutoff_hz,
+                *resonance,
+                *model,
+            ),
+            Self::Filter {
+                input: source,
+                kind,
+                cutoff_hz,
+                resonance,
+            } => process_filter_stage(
+                ctx,
+                *source,
+                *kind,
+                *cutoff_hz,
+                *resonance,
+            ),
+            Self::Eq {
+                input: source,
+                low,
+                mid,
+                high,
+            } => process_eq_stage(
+                ctx,
+                *source,
+                *low,
+                *mid,
+                *high,
+            ),
+            Self::Sag {
+                input: source,
+                amount,
+            } => {
+                let signal = resolve(ctx.node_values, *source, ctx.input);
+                let amount = resolve(ctx.node_values, *amount, ctx.input).clamp(0.0, 1.0);
+                let NodeState::Sag { envelope } = &mut ctx.node_states[ctx.index] else {
+                    return signal;
+                };
+                *envelope += (signal.abs() - *envelope) * 0.01;
+                let reduction = 1.0 - (*envelope * amount * 0.35).clamp(0.0, 0.8);
+                sanitize_audio(signal * reduction)
+            }
+            Self::Bias {
+                input: source,
+                amount,
+            } => sanitize_audio(
+                resolve(ctx.node_values, *source, ctx.input) + resolve(ctx.node_values, *amount, ctx.input),
+            ),
         }
-        | PedalStage::Level {
-            input: source,
-            amount,
-        } => sanitize_audio(
-            resolve(node_values, *source, input) * resolve(node_values, *amount, input),
-        ),
-        PedalStage::Preamp {
-            input: source,
-            gain,
-            model,
-        } => preamp_sample(
-            resolve(node_values, *source, input),
-            resolve(node_values, *gain, input),
-            *model,
-        ),
-        PedalStage::Clip {
-            input: source,
-            drive,
-            model,
-        } => clip_sample(
-            resolve(node_values, *source, input),
-            resolve(node_values, *drive, input),
-            *model,
-        ),
-        PedalStage::Tone {
-            input: source,
-            cutoff_hz,
-            resonance,
-            model,
-        } => process_tone_stage(
-            &mut StageContext {
-                node_states,
-                node_values,
-                index,
-                input,
-            },
-            *source,
-            *cutoff_hz,
-            *resonance,
-            *model,
-        ),
-        PedalStage::Filter {
-            input: source,
-            kind,
-            cutoff_hz,
-            resonance,
-        } => process_filter_stage(
-            &mut StageContext {
-                node_states,
-                node_values,
-                index,
-                input,
-            },
-            *source,
-            *kind,
-            *cutoff_hz,
-            *resonance,
-        ),
-        PedalStage::Eq {
-            input: source,
-            low,
-            mid,
-            high,
-        } => process_eq_stage(
-            &mut StageContext {
-                node_states,
-                node_values,
-                index,
-                input,
-            },
-            *source,
-            *low,
-            *mid,
-            *high,
-        ),
-        PedalStage::Sag {
-            input: source,
-            amount,
-        } => {
-            let signal = resolve(node_values, *source, input);
-            let amount = resolve(node_values, *amount, input).clamp(0.0, 1.0);
-            let NodeState::Sag { envelope } = &mut node_states[index] else {
-                return signal;
-            };
-            *envelope += (signal.abs() - *envelope) * 0.01;
-            let reduction = 1.0 - (*envelope * amount * 0.35).clamp(0.0, 0.8);
-            sanitize_audio(signal * reduction)
-        }
-        PedalStage::Bias {
-            input: source,
-            amount,
-        } => sanitize_audio(
-            resolve(node_values, *source, input) + resolve(node_values, *amount, input),
-        ),
     }
 }
 

@@ -342,12 +342,12 @@ fn build_application(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseEr
 
     let mut current_depth = depth;
     for suffix in inner {
-        current_depth += 1;
         if current_depth > MAX_AST_DEPTH {
             return Err(ParseError::new("maximum AST depth exceeded"));
         }
-        let args = build_call_suffix_args(suffix, current_depth)?;
+        let args = build_call_suffix_args(suffix, current_depth + 1)?;
         expr = build_call_expr(expr, args)?;
+        current_depth += 1;
     }
 
     Ok(expr)
