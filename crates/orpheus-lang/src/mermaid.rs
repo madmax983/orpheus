@@ -1,3 +1,7 @@
+//! The `mermaid` module provides export functionality for Mermaid charts.
+//!
+//! This allows visualizing evaluated pattern timelines (such as drum sequences
+//! or synth part activations) as Gantt charts natively rendered by Mermaid.js.
 use std::io::Write;
 use std::path::Path;
 
@@ -48,13 +52,17 @@ pub fn export_sample_pattern_to_mermaid_gantt(
 
     let mut sections: std::collections::BTreeMap<&str, Vec<_>> = std::collections::BTreeMap::new();
     for event in &events {
-        sections.entry(event.value.sample()).or_default().push(event);
+        sections
+            .entry(event.value.sample())
+            .or_default()
+            .push(event);
     }
 
     for (sample, sample_events) in sections {
         writeln!(file, "    section {sample}")?;
         for event in sample_events {
-            let start_ms = (f64::from(event.part.start()) * seconds_per_cycle * 1000.0).round() as u64;
+            let start_ms =
+                (f64::from(event.part.start()) * seconds_per_cycle * 1000.0).round() as u64;
             let end_ms = (f64::from(event.part.end()) * seconds_per_cycle * 1000.0).round() as u64;
 
             // Mermaid requires unique IDs or just task name and length

@@ -41,6 +41,16 @@ pub struct PitchLiteralError {
 }
 
 impl PitchLiteralError {
+    /// Constructs a new `PitchLiteralError` from the provided message string.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::PitchLiteralError;
+    ///
+    /// let error = PitchLiteralError::new("invalid note parsing");
+    /// assert_eq!(error.to_string(), "invalid note parsing");
+    /// ```
     pub fn new(message: impl Into<Box<str>>) -> Self {
         Self {
             message: message.into(),
