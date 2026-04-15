@@ -5,7 +5,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::prelude::Widget;
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Text};
+use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Wrap};
 use ratatui_hypertile::{EventOutcome, HypertileEvent, KeyCode, Modifiers};
 use ratatui_hypertile_extras::HypertilePlugin;
@@ -248,34 +248,75 @@ impl HypertilePlugin for TransportPlugin {
         let transport = state.transport_view();
         let mixer = state.mixer_view();
 
-        let mut lines = vec![Line::raw(format!(
-            "Pattern: {}",
-            transport.active_pattern_name().unwrap_or("none")
-        ))];
+        let mut lines = vec![Line::from(vec![
+            Span::raw("Pattern: "),
+            Span::styled(
+                transport.active_pattern_name().unwrap_or("none"),
+                crate::tui::style::live_binding_style(),
+            ),
+        ])];
         if let Some(pending_pattern_name) = transport.pending_pattern_name() {
-            lines.push(Line::raw(format!("Next: {pending_pattern_name}")));
+            lines.push(Line::from(vec![
+                Span::raw("Next: "),
+                Span::styled(
+                    pending_pattern_name.to_owned(),
+                    crate::tui::style::pending_binding_style(&transport),
+                ),
+            ]));
         }
         lines.push(routing_status_line(&mixer));
         if !mixer.summary().is_empty() && mixer.summary() != "mixer is empty" {
-            lines.push(Line::raw("Mixer:"));
+            lines.push(Line::from(vec![Span::styled(
+                "Mixer:",
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::BOLD),
+            )]));
             for summary_line in mixer.summary().lines() {
                 lines.push(Line::raw(summary_line.to_owned()));
             }
         }
-        lines.extend([
-            Line::raw("Space: toggle"),
-            Line::raw("empty input only"),
-            Line::raw("Open: :open <path>"),
-            Line::raw("Transport: :play / :stop"),
-            Line::raw("Mixer: :track / :bus new|fx / :send / :mixer"),
-            Line::raw("Set: :tempo <bpm>"),
-            Line::raw("Render: :render <binding> <path> [cycles]"),
-            Line::raw(
-                "Export: :export <binding> <path> [cycles] | :export stems [cycles] [--buses]",
-            ),
-            Line::raw("Analyze: :roll <binding>, :stats <binding>, :explain <binding>"),
-            Line::raw("Help: ?"),
-        ]);
+        let key_style = Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD);
+        let desc_style = Style::default().fg(Color::DarkGray);
+
+        lines.push(Line::from(vec![
+            Span::styled("Space", key_style),
+            Span::styled(": toggle (empty input)", desc_style),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Open", key_style),
+            Span::styled(": :open <path>", desc_style),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Transport", key_style),
+            Span::styled(": :play / :stop", desc_style),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Mixer", key_style),
+            Span::styled(": :track / :bus new|fx / :send / :mixer", desc_style),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Set", key_style),
+            Span::styled(": :tempo <bpm>", desc_style),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Render", key_style),
+            Span::styled(": :render <binding> <path> [cyc]", desc_style),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Export", key_style),
+            Span::styled(": :export <bind> <path> [cyc] | stems", desc_style),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Analyze", key_style),
+            Span::styled(": :roll / :stats / :explain", desc_style),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Help", key_style),
+            Span::styled(": ?", desc_style),
+        ]));
         if let Some(message) = &state.status_message {
             if message.contains("error")
                 || message.contains("failed")

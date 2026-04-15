@@ -6,8 +6,8 @@
 //! command palette to spawn new pane types.
 
 mod plugins;
-pub mod state;
-pub mod style;
+mod state;
+mod style;
 
 use std::cell::RefCell;
 use std::io;
@@ -52,36 +52,91 @@ const MEDIUM_HELP_FOOTER: &str = "Esc close   ?   Ctrl-C";
 const COMPACT_HELP_FOOTER: &str = "Esc ? Ctrl-C";
 const MIN_HELP_FOOTER: &str = "Esc ?";
 
-const HELP_OVERLAY_BODY: &str = "\
-Toggle: ?
-Close: Esc
+fn help_key_line(
+    key: &'static str,
+    desc: &'static str,
+    key_style: Style,
+    desc_style: Style,
+) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(key, key_style),
+        Span::styled(format!(": {desc}"), desc_style),
+    ])
+}
 
-Layout mode (Esc from input):
-  hjkl / arrows: focus pane
-  s / v: split horizontal / vertical
-  d: close pane
-  [ / ]: resize pane
-  p: command palette
-  i / Enter: enter input mode
-  HJKL / Shift+arrows: move pane
-  Tab / Shift+Tab: cycle focus
-  Ctrl+t: new tab   Ctrl+w: close tab
-  Ctrl+n/p: next/prev tab
+fn help_overlay_body() -> Vec<Line<'static>> {
+    use ratatui::style::Modifier;
 
-Input mode (i or Enter):
-  Type to evaluate expressions
-  Tab: complete commands
-  Up/Down: history recall
-  Space (empty input): toggle transport
-  Ctrl-A/E/K/U/W/L: emacs editing
-  Alt-B/F: word navigation
-  Esc: back to layout mode
+    let header_style = Style::default()
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
+    let key_style = Style::default()
+        .fg(Color::Cyan)
+        .add_modifier(Modifier::BOLD);
+    let desc_style = Style::default().fg(Color::DarkGray);
 
-Commands:
-  :play / :stop / :tempo <bpm>
-  :track / :bus new|fx / :send / :mixer
-  :render / :export / :roll / :stats / :explain
-  :open <path>   :quit";
+    let mut lines = vec![
+        help_key_line("Toggle", "?", key_style, desc_style),
+        help_key_line("Close", "Esc", key_style, desc_style),
+        Line::raw(""),
+        Line::styled("Layout mode (Esc from input):", header_style),
+    ];
+
+    let layout_keys = [
+        ("  hjkl / arrows", "focus pane"),
+        ("  s / v", "split horizontal / vertical"),
+        ("  d", "close pane"),
+        ("  [ / ]", "resize pane"),
+        ("  p", "command palette"),
+        ("  i / Enter", "enter input mode"),
+        ("  HJKL / Shift+arrows", "move pane"),
+        ("  Tab / Shift+Tab", "cycle focus"),
+        ("  Ctrl+t/w", "new/close tab"),
+        ("  Ctrl+n/p", "next/prev tab"),
+    ];
+
+    for (k, d) in layout_keys {
+        lines.push(help_key_line(k, d, key_style, desc_style));
+    }
+
+    lines.push(Line::raw(""));
+    lines.push(Line::styled("Input mode (i or Enter):", header_style));
+
+    let input_keys = [
+        ("  Type", "evaluate expressions"),
+        ("  Tab", "complete commands"),
+        ("  Up/Down", "history recall"),
+        ("  Space", "toggle transport (empty input)"),
+        ("  Ctrl-A/E/K/U/W/L", "emacs editing"),
+        ("  Alt-B/F", "word navigation"),
+        ("  Esc", "back to layout mode"),
+    ];
+
+    for (k, d) in input_keys {
+        lines.push(help_key_line(k, d, key_style, desc_style));
+    }
+
+    lines.push(Line::raw(""));
+    lines.push(Line::styled("Commands:", header_style));
+    lines.push(Line::from(vec![Span::styled(
+        "  :play / :stop / :tempo <bpm>",
+        key_style,
+    )]));
+    lines.push(Line::from(vec![Span::styled(
+        "  :track / :bus new|fx / :send / :mixer",
+        key_style,
+    )]));
+    lines.push(Line::from(vec![Span::styled(
+        "  :render / :export / :roll / :stats / :explain",
+        key_style,
+    )]));
+    lines.push(Line::from(vec![Span::styled(
+        "  :open <path>   :quit",
+        key_style,
+    )]));
+
+    lines
+}
 
 /// `PaneId` for the initial 3-pane layout.
 const REPL_PANE: PaneId = PaneId::ROOT;
@@ -399,7 +454,7 @@ fn render_help_overlay(frame: &mut Frame<'_>) {
         .areas(inner);
     frame.render_widget(block.style(Style::default().bg(Color::Black)), overlay_area);
     frame.render_widget(
-        Paragraph::new(HELP_OVERLAY_BODY)
+        Paragraph::new(help_overlay_body())
             .style(Style::default().bg(Color::Black))
             .wrap(Wrap { trim: false }),
         body_area,
