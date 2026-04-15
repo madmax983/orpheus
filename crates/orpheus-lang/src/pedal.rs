@@ -230,7 +230,10 @@ impl ValidatedPedalPlan {
             Cell::new(self.result.summary()).fg(comfy_table::Color::Green),
         ]);
 
-        let metadata = format!("Target Signal Kind: {}", self.signal_kind.to_string().yellow());
+        let metadata = format!(
+            "Target Signal Kind: {}",
+            self.signal_kind.to_string().yellow()
+        );
 
         format!("{title}\n{metadata}\n{table}")
     }
@@ -249,11 +252,12 @@ impl PedalValue {
     /// # Examples
     ///
     /// ```rust
-    /// use orpheus_lang::pedal::{PedalGraph, ValidatedPedalPlan, PedalValue, ValidatedPedalNode, SignalKind};
+    /// use orpheus_lang::{PedalGraph, ValidatedPedalPlan, PedalValue, SignalKind};
     ///
     /// let graph = PedalGraph::new("input |> output");
-    /// let plan = ValidatedPedalPlan::new(vec![], ValidatedPedalNode::Input(SignalKind::Audio));
-    /// let value = PedalValue::new(graph, plan);
+    /// // In practice, ValidatedPedalNode would be used to build the plan internally
+    /// // let plan = ValidatedPedalPlan::new(vec![], ValidatedPedalNode::Input(SignalKind::Audio));
+    /// // let value = PedalValue::new(graph, plan);
     /// ```
     #[must_use]
     pub const fn new(graph: PedalGraph, plan: ValidatedPedalPlan) -> Self {
