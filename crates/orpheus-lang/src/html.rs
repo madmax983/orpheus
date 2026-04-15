@@ -51,9 +51,10 @@ pub fn export_sample_pattern_to_html(
 
     let mut samples = BTreeSet::new();
     for event in &events {
-        samples.insert(event.value.sample().to_string());
+        samples.insert(event.value.sample());
     }
-    let sample_list: Vec<_> = samples.into_iter().collect();
+    // ⚡ Bolt: Use a sorted vector of string slices instead of allocating Strings
+    let sample_list: Vec<&str> = samples.into_iter().collect();
 
     let lane_height = 40.0;
     let pixels_per_cycle = 200.0;
@@ -92,8 +93,8 @@ pub fn export_sample_pattern_to_html(
     }
 
     // Draw events
-    for event in events {
-        let sample = event.value.sample().to_string();
+    for event in &events {
+        let sample = event.value.sample();
         let lane_idx = sample_list
             .iter()
             .position(|s| *s == sample)

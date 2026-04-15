@@ -20,3 +20,6 @@
 **[Optimized seq_sections allocation]**
 **Learning:** In loops that clone and modify an owned data structure repeatedly (such as applying section repeats in `seq_sections`), the final iteration typically does not need to clone the base structure if it won't be used again. Cloning on the final iteration introduces an entirely redundant heap allocation that is instantly discarded.
 **Action:** For iterative clones where the original value is no longer needed after the loop, consume the original value directly on the last iteration using an `if index == count - 1` condition or by using `IntoIterator` to avoid the final `.clone()`.
+**Removed intermediate String allocations in sample\_list collection**
+**Learning:** Calling `.collect::<Vec<_>>().join(", ")` on an iterator of strings requires allocating an intermediate vector, and calling `.to_string()` on each element individually forces a heap allocation per loop.
+**Action:** Replace `.to_string()` with collecting lightweight string slices (`&str`), and replace intermediate collections with direct sequential string building using `String::with_capacity()` and `.push_str()`, avoiding redundant memory allocations inside tight iteration loops.

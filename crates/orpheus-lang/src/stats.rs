@@ -47,11 +47,20 @@ pub fn sample_pattern_stats(
     let total_events = events.len();
     let mut samples = BTreeSet::new();
     for event in &events {
-        samples.insert(event.value.sample().to_string());
+        samples.insert(event.value.sample());
     }
 
     let unique_count = samples.len();
-    let sample_list = samples.into_iter().collect::<Vec<_>>().join(", ");
+
+    // ⚡ Bolt: Construct comma-separated string directly without intermediate Vec allocation.
+    let mut sample_list = String::with_capacity(unique_count * 8);
+    for (i, sample) in samples.iter().enumerate() {
+        if i > 0 {
+            sample_list.push_str(", ");
+        }
+        sample_list.push_str(sample);
+    }
+
     #[allow(clippy::cast_precision_loss)]
     let density = (total_events as f64) / (cycle_count as f64);
 
@@ -236,5 +245,28 @@ mod tests {
 
         let error = number_pattern_stats("pattern", pattern, 0).unwrap_err();
         assert_eq!(error.to_string(), "stats requires at least one cycle");
+    }
+
+    #[test]
+    fn stats_generates_correct_output_for_empty_sample_pattern() {
+        let source = "pattern = mask(~ ~ ~, bd)";
+        let module = eval_module(source, ReplMode::Loose).unwrap();
+        let pattern = module.get("pattern").unwrap().as_sample_pattern().unwrap();
+
+        let stats = sample_pattern_stats("pattern", pattern, 2).unwrap();
+        assert!(stats.contains("Total Events"));
+        assert!(stats.contains("Unique Samples"));
+        assert!(stats.contains("0 ()"));
+    }
+
+    #[test]
+    fn stats_generates_correct_output_for_many_samples() {
+        let source = "pattern = bd sn hh cp bd";
+        let module = eval_module(source, ReplMode::Loose).unwrap();
+        let pattern = module.get("pattern").unwrap().as_sample_pattern().unwrap();
+
+        let stats = sample_pattern_stats("pattern", pattern, 1).unwrap();
+        assert!(stats.contains("Unique Samples"));
+        assert!(stats.contains("4 (bd, cp, hh, sn)"));
     }
 }
