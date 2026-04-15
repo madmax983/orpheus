@@ -93,6 +93,18 @@ impl From<ParseError> for EvalError {
     }
 }
 
+impl From<crate::diagnostics::TypeError> for EvalError {
+    fn from(error: crate::diagnostics::TypeError) -> Self {
+        Self::new(error.to_string())
+    }
+}
+
+impl From<crate::diagnostics::LoadError> for EvalError {
+    fn from(error: crate::diagnostics::LoadError) -> Self {
+        Self::new(error.to_string())
+    }
+}
+
 impl From<crate::pitch::PitchLiteralError> for EvalError {
     fn from(error: crate::pitch::PitchLiteralError) -> Self {
         Self::new(error.to_string())
@@ -1760,5 +1772,21 @@ right = sometimes(fast(2), cp hh)";
         let pitch_err = PitchLiteralError::new("invalid pitch literal".to_owned());
         let eval_err: super::EvalError = pitch_err.into();
         assert_eq!(eval_err.to_string(), "invalid pitch literal");
+    }
+
+    #[test]
+    fn eval_error_from_type_error() {
+        use crate::diagnostics::TypeError;
+        let type_err = TypeError::new("type error".to_owned());
+        let eval_err: super::EvalError = type_err.into();
+        assert_eq!(eval_err.to_string(), "type error");
+    }
+
+    #[test]
+    fn eval_error_from_load_error() {
+        use crate::diagnostics::LoadError;
+        let load_err = LoadError::new("load error".to_owned());
+        let eval_err: super::EvalError = load_err.into();
+        assert_eq!(eval_err.to_string(), "load error");
     }
 }

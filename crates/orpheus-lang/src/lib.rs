@@ -39,7 +39,9 @@ pub use html::{export_number_pattern_to_html, export_sample_pattern_to_html};
 pub use loader::load_file_strict;
 pub use midi_export::{export_number_pattern_to_midi, export_sample_pattern_to_midi};
 pub use parser::parse_module;
-pub use pedal::{PedalGraph, PedalValue, SignalKind, ValidatedPedalPlan};
+pub use pedal::{
+    PedalGraph, PedalNodeKind, PedalValue, SignalKind, ValidatedPedalNode, ValidatedPedalPlan,
+};
 pub use repl::{run_stdio, run_stdio_with_engine, run_stdio_with_engine_and_path};
 pub use srt::{export_number_pattern_to_srt, export_sample_pattern_to_srt};
 pub use stats::{number_pattern_stats, sample_pattern_stats};
