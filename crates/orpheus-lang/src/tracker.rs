@@ -45,9 +45,10 @@ pub fn export_sample_pattern_to_tracker(
 
     let mut samples = BTreeSet::new();
     for event in &events {
-        samples.insert(event.value.sample().to_string());
+        samples.insert(event.value.sample());
     }
-    let sample_list: Vec<_> = samples.into_iter().collect();
+    // ⚡ Bolt: Use a sorted vector of string slices instead of allocating Strings
+    let sample_list: Vec<&str> = samples.into_iter().collect();
 
     // Resolution: 16 steps per cycle
     let steps_per_cycle = 16_u32;
