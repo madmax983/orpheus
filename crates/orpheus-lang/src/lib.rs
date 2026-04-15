@@ -12,7 +12,7 @@ pub(crate) mod midi_export;
 mod midi_input;
 pub(crate) mod mixer;
 mod parser;
-mod pedal;
+pub mod pedal;
 mod pitch;
 mod repl;
 pub(crate) mod session;

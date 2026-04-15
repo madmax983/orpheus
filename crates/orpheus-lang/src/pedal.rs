@@ -230,7 +230,10 @@ impl ValidatedPedalPlan {
             Cell::new(self.result.summary()).fg(comfy_table::Color::Green),
         ]);
 
-        let metadata = format!("Target Signal Kind: {}", self.signal_kind.to_string().yellow());
+        let metadata = format!(
+            "Target Signal Kind: {}",
+            self.signal_kind.to_string().yellow()
+        );
 
         format!("{title}\n{metadata}\n{table}")
     }
@@ -252,7 +255,7 @@ impl PedalValue {
     /// use orpheus_lang::pedal::{PedalGraph, ValidatedPedalPlan, PedalValue, ValidatedPedalNode, SignalKind};
     ///
     /// let graph = PedalGraph::new("input |> output");
-    /// let plan = ValidatedPedalPlan::new(vec![], ValidatedPedalNode::Input(SignalKind::Audio));
+    /// let plan = ValidatedPedalPlan::new(vec![], ValidatedPedalNode::new(SignalKind::Audio, orpheus_lang::pedal::PedalNodeKind::Input, ""));
     /// let value = PedalValue::new(graph, plan);
     /// ```
     #[must_use]
