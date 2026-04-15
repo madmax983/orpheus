@@ -24,6 +24,9 @@
 use core::fmt::{self, Display, Formatter};
 use std::collections::{BTreeMap, BTreeSet};
 
+use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
+use crossterm::style::Stylize;
+
 use crate::ast::{BinaryOp, Expr, GraphBinding};
 use crate::eval::EvalError;
 
@@ -204,21 +207,32 @@ impl ValidatedPedalPlan {
     #[doc(hidden)]
     #[must_use]
     pub fn explain(&self) -> String {
-        let mut lines = vec![format!("signal_kind={}", self.signal_kind)];
+        let title = format!("{}", "Pedal Graph Plan:".cyan().bold());
+        let mut table = Table::new();
+        table.load_preset(UTF8_BORDERS_ONLY);
+        table.set_header(vec![
+            Cell::new("Binding").fg(comfy_table::Color::DarkGrey),
+            Cell::new("Kind").fg(comfy_table::Color::DarkGrey),
+            Cell::new("Node").fg(comfy_table::Color::DarkGrey),
+        ]);
+
         for binding in &self.bindings {
-            lines.push(format!(
-                "binding {}: {} {}",
-                binding.name(),
-                binding.node().signal_kind(),
-                binding.node().summary()
-            ));
+            table.add_row(vec![
+                Cell::new(binding.name()).fg(comfy_table::Color::Cyan),
+                Cell::new(binding.node().signal_kind().to_string()).fg(comfy_table::Color::Yellow),
+                Cell::new(binding.node().summary()).fg(comfy_table::Color::Green),
+            ]);
         }
-        lines.push(format!(
-            "result: {} {}",
-            self.result.signal_kind(),
-            self.result.summary()
-        ));
-        lines.join("\n")
+
+        table.add_row(vec![
+            Cell::new("=> result").fg(comfy_table::Color::Magenta),
+            Cell::new(self.result.signal_kind().to_string()).fg(comfy_table::Color::Yellow),
+            Cell::new(self.result.summary()).fg(comfy_table::Color::Green),
+        ]);
+
+        let metadata = format!("Target Signal Kind: {}", self.signal_kind.to_string().yellow());
+
+        format!("{title}\n{metadata}\n{table}")
     }
 }
 
