@@ -1,3 +1,7 @@
+//! The `mermaid` module provides export functionality for Mermaid charts.
+//!
+//! This allows visualizing evaluated pattern timelines (such as drum sequences
+//! or synth part activations) as Gantt charts natively rendered by Mermaid.js.
 use std::io::Write;
 use std::path::Path;
 
