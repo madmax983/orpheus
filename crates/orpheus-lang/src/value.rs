@@ -2351,6 +2351,86 @@ enum PatternRuntime<T> {
     },
 }
 
+impl<T> PatternRuntime<T> {
+    fn absolute_cycle(&self, cycle: i128) -> Result<i128, EvalError> {
+        match self {
+            Self::ExplicitCycle { origin_cycle, .. } => origin_cycle
+                .checked_add(cycle)
+                .ok_or_else(|| EvalError::new("cycle index overflowed while localizing a pattern")),
+            Self::Stack(layers) => layers
+                .first()
+                .map_or(Ok(cycle), |layer| layer.absolute_cycle(cycle)),
+            Self::Cycle(_) | Self::Stream(_) | Self::Rand { .. } => Ok(cycle),
+            Self::Every { inner, .. }
+            | Self::When { inner, .. }
+            | Self::Sometimes { inner, .. }
+            | Self::Within { inner, .. }
+            | Self::Mask { inner, .. }
+            | Self::Chaos { inner, .. }
+            | Self::Roll { inner, .. }
+            | Self::Strum { inner }
+            | Self::Arp { inner, .. }
+            | Self::Invert { inner, .. }
+            | Self::Drop { inner, .. }
+            | Self::Degrees { inner, .. }
+            | Self::Transpose { inner, .. }
+            | Self::TransposePattern { inner, .. }
+            | Self::Fast { inner, .. }
+            | Self::Slow { inner, .. }
+            | Self::Shift { inner, .. }
+            | Self::Rev { inner }
+            | Self::Gain { inner, .. }
+            | Self::GainPattern { inner, .. }
+            | Self::Delay { inner, .. }
+            | Self::DelayPattern { inner, .. }
+            | Self::DelayTime { inner, .. }
+            | Self::DelayTimePattern { inner, .. }
+            | Self::DelayFeedback { inner, .. }
+            | Self::DelayFeedbackPattern { inner, .. }
+            | Self::Hpf { inner, .. }
+            | Self::HpfPattern { inner, .. }
+            | Self::Lpf { inner, .. }
+            | Self::LpfPattern { inner, .. }
+            | Self::Reverb { inner, .. }
+            | Self::ReverbPattern { inner, .. }
+            | Self::ReverbRoom { inner, .. }
+            | Self::ReverbRoomPattern { inner, .. }
+            | Self::ReverbDamp { inner, .. }
+            | Self::ReverbDampPattern { inner, .. }
+            | Self::Res { inner, .. }
+            | Self::ResPattern { inner, .. }
+            | Self::Drive { inner, .. }
+            | Self::DrivePattern { inner, .. }
+            | Self::Chorus { inner, .. }
+            | Self::ChorusPattern { inner, .. }
+            | Self::ChorusDepth { inner, .. }
+            | Self::ChorusDepthPattern { inner, .. }
+            | Self::ChorusRate { inner, .. }
+            | Self::ChorusRatePattern { inner, .. }
+            | Self::PulseWidth { inner, .. }
+            | Self::PulseWidthPattern { inner, .. }
+            | Self::Pan { inner, .. }
+            | Self::PanPattern { inner, .. }
+            | Self::Compressor { inner, .. }
+            | Self::CompressorPattern { inner, .. }
+            | Self::CompressorThreshold { inner, .. }
+            | Self::CompressorThresholdPattern { inner, .. }
+            | Self::CompressorRatio { inner, .. }
+            | Self::CompressorRatioPattern { inner, .. }
+            | Self::Pitch { inner, .. }
+            | Self::PitchPattern { inner, .. }
+            | Self::Rate { inner, .. }
+            | Self::RatePattern { inner, .. }
+            | Self::Onset { inner, .. }
+            | Self::OnsetPattern { inner, .. }
+            | Self::Slice { inner, .. }
+            | Self::SlicePattern { inner, .. }
+            | Self::SliceIdxPattern { inner, .. }
+            | Self::Pedal { inner, .. } => inner.absolute_cycle(cycle),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 enum GatePatternRuntime {
     Sample(Box<PatternRuntime<SampleEvent>>),
@@ -3721,33 +3801,7 @@ where
         }
 
         // Shuffle using a deterministic RNG seeded by site_salt and cycle index
-        let [
-            b0,
-            b1,
-            b2,
-            b3,
-            b4,
-            b5,
-            b6,
-            b7,
-            b8,
-            b9,
-            b10,
-            b11,
-            b12,
-            b13,
-            b14,
-            b15,
-        ] = cycle.to_le_bytes();
-        let lower = u64::from_le_bytes([b0, b1, b2, b3, b4, b5, b6, b7]);
-        let upper = u64::from_le_bytes([b8, b9, b10, b11, b12, b13, b14, b15]);
-        let mut state = lower ^ upper.rotate_left(32) ^ site_salt.rotate_left(17);
-        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        state = (state ^ (state >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        state = (state ^ (state >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        state ^= state >> 31;
-
-        let mut rng_state = state;
+        let mut rng_state = deterministic_prng(site_salt, cycle);
         let len = cycle_events.len();
         for i in (1..len).rev() {
             // LCG for next random number
@@ -3810,7 +3864,7 @@ where
             continue;
         };
 
-        let absolute_cycle = absolute_cycle_for_runtime(inner, cycle)?;
+        let absolute_cycle = inner.absolute_cycle(cycle)?;
         if should_transform(absolute_cycle) {
             let cycle_offset = rational_from_parts(cycle, 1)?;
             let local_offset = rational_sub(&Rational::zero(), &cycle_offset)?;
@@ -3887,7 +3941,7 @@ where
             events.extend(slice_events);
         }
 
-        let absolute_cycle = absolute_cycle_for_runtime(inner, cycle)?;
+        let absolute_cycle = inner.absolute_cycle(cycle)?;
         let localized = localize_window_runtime(inner, &window_span, absolute_cycle)?;
         let local_query = localize_span_to_window(&window_query, &window_span)?;
         let mut transformed_events =
@@ -4032,89 +4086,6 @@ where
         origin_cycle,
         stream: EventStream::new(localized_events),
     })
-}
-
-fn absolute_cycle_for_runtime<T>(
-    runtime: &PatternRuntime<T>,
-    cycle: i128,
-) -> Result<i128, EvalError> {
-    match runtime {
-        PatternRuntime::ExplicitCycle { origin_cycle, .. } => origin_cycle
-            .checked_add(cycle)
-            .ok_or_else(|| EvalError::new("cycle index overflowed while localizing a pattern")),
-        PatternRuntime::Every { inner, .. }
-        | PatternRuntime::When { inner, .. }
-        | PatternRuntime::Sometimes { inner, .. }
-        | PatternRuntime::Within { inner, .. }
-        | PatternRuntime::Mask { inner, .. }
-        | PatternRuntime::Chaos { inner, .. }
-        | PatternRuntime::Roll { inner, .. }
-        | PatternRuntime::Strum { inner }
-        | PatternRuntime::Arp { inner, .. }
-        | PatternRuntime::Invert { inner, .. }
-        | PatternRuntime::Drop { inner, .. }
-        | PatternRuntime::Degrees { inner, .. }
-        | PatternRuntime::Transpose { inner, .. }
-        | PatternRuntime::TransposePattern { inner, .. }
-        | PatternRuntime::Fast { inner, .. }
-        | PatternRuntime::Slow { inner, .. }
-        | PatternRuntime::Shift { inner, .. }
-        | PatternRuntime::Rev { inner }
-        | PatternRuntime::Gain { inner, .. }
-        | PatternRuntime::GainPattern { inner, .. }
-        | PatternRuntime::Delay { inner, .. }
-        | PatternRuntime::DelayPattern { inner, .. }
-        | PatternRuntime::DelayTime { inner, .. }
-        | PatternRuntime::DelayTimePattern { inner, .. }
-        | PatternRuntime::DelayFeedback { inner, .. }
-        | PatternRuntime::DelayFeedbackPattern { inner, .. }
-        | PatternRuntime::Hpf { inner, .. }
-        | PatternRuntime::HpfPattern { inner, .. }
-        | PatternRuntime::Lpf { inner, .. }
-        | PatternRuntime::LpfPattern { inner, .. }
-        | PatternRuntime::Reverb { inner, .. }
-        | PatternRuntime::ReverbPattern { inner, .. }
-        | PatternRuntime::ReverbRoom { inner, .. }
-        | PatternRuntime::ReverbRoomPattern { inner, .. }
-        | PatternRuntime::ReverbDamp { inner, .. }
-        | PatternRuntime::ReverbDampPattern { inner, .. }
-        | PatternRuntime::Res { inner, .. }
-        | PatternRuntime::ResPattern { inner, .. }
-        | PatternRuntime::Drive { inner, .. }
-        | PatternRuntime::DrivePattern { inner, .. }
-        | PatternRuntime::Chorus { inner, .. }
-        | PatternRuntime::ChorusPattern { inner, .. }
-        | PatternRuntime::ChorusDepth { inner, .. }
-        | PatternRuntime::ChorusDepthPattern { inner, .. }
-        | PatternRuntime::ChorusRate { inner, .. }
-        | PatternRuntime::ChorusRatePattern { inner, .. }
-        | PatternRuntime::PulseWidth { inner, .. }
-        | PatternRuntime::PulseWidthPattern { inner, .. }
-        | PatternRuntime::Pan { inner, .. }
-        | PatternRuntime::PanPattern { inner, .. }
-        | PatternRuntime::Compressor { inner, .. }
-        | PatternRuntime::CompressorPattern { inner, .. }
-        | PatternRuntime::CompressorThreshold { inner, .. }
-        | PatternRuntime::CompressorThresholdPattern { inner, .. }
-        | PatternRuntime::CompressorRatio { inner, .. }
-        | PatternRuntime::CompressorRatioPattern { inner, .. }
-        | PatternRuntime::Pitch { inner, .. }
-        | PatternRuntime::PitchPattern { inner, .. }
-        | PatternRuntime::Rate { inner, .. }
-        | PatternRuntime::RatePattern { inner, .. }
-        | PatternRuntime::Onset { inner, .. }
-        | PatternRuntime::OnsetPattern { inner, .. }
-        | PatternRuntime::Slice { inner, .. }
-        | PatternRuntime::SlicePattern { inner, .. }
-        | PatternRuntime::SliceIdxPattern { inner, .. }
-        | PatternRuntime::Pedal { inner, .. } => absolute_cycle_for_runtime(inner, cycle),
-        PatternRuntime::Stack(layers) => layers
-            .first()
-            .map_or(Ok(cycle), |layer| absolute_cycle_for_runtime(layer, cycle)),
-        PatternRuntime::Cycle(_) | PatternRuntime::Stream(_) | PatternRuntime::Rand { .. } => {
-            Ok(cycle)
-        }
-    }
 }
 
 fn rescale_events<T>(
@@ -4380,6 +4351,10 @@ where
 /// multiple usages of `sometimes` do not synchronize their coin flips.
 #[doc(hidden)]
 pub const fn sometimes_applies_on_cycle(cycle: i128, site_salt: u64) -> bool {
+    (deterministic_prng(site_salt, cycle) & 1) != 0
+}
+
+const fn deterministic_prng(site_salt: u64, cycle: i128) -> u64 {
     let [
         b0,
         b1,
@@ -4405,7 +4380,7 @@ pub const fn sometimes_applies_on_cycle(cycle: i128, site_salt: u64) -> bool {
     state = (state ^ (state >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
     state = (state ^ (state >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
     state ^= state >> 31;
-    (state & 1) != 0
+    state
 }
 
 const fn floor_rational(value: &Rational) -> i128 {

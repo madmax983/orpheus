@@ -13,3 +13,6 @@
 **Extracted Nested Assertions to Helper Functions**
 **Learning:** `clippy::cognitive_complexity` on test functions is often triggered by deeply nested `match` statements or macro calls (`assert!(matches!(...))`) used to validate complex AST structures or deeply initialized configurations.
 **Action:** When I encounter `cognitive_complexity` in a test validating a large object tree (like an AST or a large configuration struct), I will extract the nested match logic into focused assertion helpers (e.g., `assert_is_ident`, `assert_is_pipe`) or group the assertions logically into smaller helper functions (`assert_core_defaults`, `assert_fx_defaults`) to flatten the main test function.
+**Extracted Match Blocks and God Functions to Struct Methods**
+**Learning:** `clippy::too_many_lines` on functions dominated by repeated `writeln!` statements or similar string construction patterns can be condensed using a single large formatted `write!` string to reduce length and overhead.
+**Action:** Combine repeated sequential write calls into single format strings where possible.

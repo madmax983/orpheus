@@ -230,7 +230,10 @@ impl ValidatedPedalPlan {
             Cell::new(self.result.summary()).fg(comfy_table::Color::Green),
         ]);
 
-        let metadata = format!("Target Signal Kind: {}", self.signal_kind.to_string().yellow());
+        let metadata = format!(
+            "Target Signal Kind: {}",
+            self.signal_kind.to_string().yellow()
+        );
 
         format!("{title}\n{metadata}\n{table}")
     }
