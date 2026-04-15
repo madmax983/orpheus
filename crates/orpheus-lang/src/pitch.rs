@@ -41,6 +41,20 @@ pub struct PitchLiteralError {
 }
 
 impl PitchLiteralError {
+    /// Constructs an error indicating a failure to parse a musical pitch literal.
+    ///
+    /// This is used internally by the parser when an invalid token is encountered
+    /// during pitch class extraction (e.g., when a user types a nonexistent note like `H4` or `#A`).
+    /// By capturing the exact string that failed, the caller can provide contextual
+    /// feedback pinpointing the exact location in the source code where the syntax error occurred.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use orpheus_lang::pitch::PitchLiteralError;
+    ///
+    /// let error = PitchLiteralError::new("expected a valid octave number, found 'Q'");
+    /// ```
     pub fn new(message: impl Into<Box<str>>) -> Self {
         Self {
             message: message.into(),
