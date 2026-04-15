@@ -1254,7 +1254,10 @@ pub fn f64_to_rational(value: f64, context: &str) -> Result<Rational, EvalError>
 
     let (numerator, denominator) = if let Some((whole, fractional)) = digits.split_once('.') {
         let scale = checked_pow10(fractional.len())?;
-        let combined = format!("{whole}{fractional}");
+        // ⚡ Bolt: Avoid intermediate format string allocations by using String::with_capacity directly.
+        let mut combined = String::with_capacity(whole.len() + fractional.len());
+        combined.push_str(whole);
+        combined.push_str(fractional);
         let numerator = combined
             .parse::<i128>()
             .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?;

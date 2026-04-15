@@ -51,7 +51,14 @@ pub fn sample_pattern_stats(
     }
 
     let unique_count = samples.len();
-    let sample_list = samples.into_iter().collect::<Vec<_>>().join(", ");
+    // ⚡ Bolt: Avoid intermediate `Vec` allocation and `join` overhead by building the string sequentially.
+    let mut sample_list = String::new();
+    for (i, sample) in samples.into_iter().enumerate() {
+        if i > 0 {
+            sample_list.push_str(", ");
+        }
+        sample_list.push_str(&sample);
+    }
     #[allow(clippy::cast_precision_loss)]
     let density = (total_events as f64) / (cycle_count as f64);
 

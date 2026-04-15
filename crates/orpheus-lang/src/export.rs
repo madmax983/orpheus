@@ -177,11 +177,12 @@ where
     let mut file = std::fs::File::create(path)?;
     writeln!(file, "{header}")?;
     // Add Markdown table separator
-    let separators = header
-        .split('|')
-        .map(|s| if s.is_empty() { "" } else { "---" })
-        .collect::<Vec<_>>()
-        .join("|");
+    // ⚡ Bolt: Avoid intermediate `Vec` allocation and `join` overhead when building the table separator.
+    let mut separators = String::with_capacity(header.len());
+    for (i, s) in header.split('|').enumerate() {
+        if i > 0 { separators.push('|'); }
+        if !s.is_empty() { separators.push_str("---"); }
+    }
     writeln!(file, "{separators}")?;
 
     for event in events {
