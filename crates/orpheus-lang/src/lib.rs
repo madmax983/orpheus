@@ -77,3 +77,6 @@ pub enum ReplMode {
     /// Uses strict type behavior intended for durable artifacts.
     Strict,
 }
+
+pub mod mermaid;
+pub use mermaid::export_sample_pattern_to_mermaid_gantt;
