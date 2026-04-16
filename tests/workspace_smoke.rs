@@ -1,3 +1,4 @@
+//! Smoke tests for workspace integration.
 use orpheus_dsp::EngineHandle;
 use orpheus_lang::ReplMode;
 use orpheus_pattern::TimeSpan;

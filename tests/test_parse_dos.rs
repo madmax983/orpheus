@@ -1,3 +1,4 @@
+//! DOS parsing tests.
 #![allow(
     clippy::uninlined_format_args,
     clippy::manual_assert,

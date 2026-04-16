@@ -1,3 +1,4 @@
+//! Smoke tests for loading Orpheus modules (.ode files).
 use std::path::PathBuf;
 
 use orpheus_lang::load_file_strict;

@@ -1,3 +1,4 @@
+//! Smoke tests for the Terminal User Interface.
 #[test]
 fn tui_boots_and_renders_initial_frame() {
     let frame = orpheus_lang::render_initial_frame_for_test(80, 30);

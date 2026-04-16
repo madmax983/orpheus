@@ -1,3 +1,4 @@
+//! Smoke tests for the REPL binary.
 use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::str::contains;
 use std::fs;
