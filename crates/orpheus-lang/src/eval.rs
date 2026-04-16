@@ -93,6 +93,18 @@ impl From<ParseError> for EvalError {
     }
 }
 
+impl From<crate::diagnostics::TypeError> for EvalError {
+    fn from(error: crate::diagnostics::TypeError) -> Self {
+        Self::new(error.to_string())
+    }
+}
+
+impl From<crate::diagnostics::LoadError> for EvalError {
+    fn from(error: crate::diagnostics::LoadError) -> Self {
+        Self::new(error.to_string())
+    }
+}
+
 impl From<crate::pitch::PitchLiteralError> for EvalError {
     fn from(error: crate::pitch::PitchLiteralError) -> Self {
         Self::new(error.to_string())

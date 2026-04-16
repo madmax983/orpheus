@@ -520,24 +520,88 @@ impl SampleEvent {
     }
 
     /// The string identifier of the raw audio sample.
+    ///
+    /// This is typically the name of a `.wav` file mapped in an active `SampleBank`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::Value;
+    /// use orpheus_lang::eval_module;
+    /// use orpheus_lang::ReplMode;
+    ///
+    /// let env = eval_module("s = bd", ReplMode::Strict).unwrap();
+    /// let val = env.get("s").unwrap();
+    /// let pat = val.as_sample_pattern().unwrap();
+    /// let events = pat.query_unit().unwrap();
+    /// assert_eq!(events[0].value.sample(), "bd");
+    /// ```
     #[must_use]
     pub fn sample(&self) -> &str {
         self.sample.as_ref()
     }
 
     /// The amplitude multiplier applied to this event.
+    ///
+    /// By default, events have a gain of `1.0`. Value `0.0` is completely silent.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::Value;
+    /// use orpheus_lang::eval_module;
+    /// use orpheus_lang::ReplMode;
+    ///
+    /// let env = eval_module("s = bd |> gain(0.5)", ReplMode::Strict).unwrap();
+    /// let val = env.get("s").unwrap();
+    /// let pat = val.as_sample_pattern().unwrap();
+    /// let events = pat.query_unit().unwrap();
+    /// assert_eq!(events[0].value.gain(), 0.5);
+    /// ```
     #[must_use]
     pub const fn gain(&self) -> f64 {
         self.gain
     }
 
     /// The high-pass filter cutoff frequency in Hertz, if one is active.
+    ///
+    /// Frequencies below this threshold will be attenuated during DSP playback.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::Value;
+    /// use orpheus_lang::eval_module;
+    /// use orpheus_lang::ReplMode;
+    ///
+    /// let env = eval_module("s = bd |> hpf(400.0)", ReplMode::Strict).unwrap();
+    /// let val = env.get("s").unwrap();
+    /// let pat = val.as_sample_pattern().unwrap();
+    /// let events = pat.query_unit().unwrap();
+    /// assert_eq!(events[0].value.hpf_cutoff_hz(), Some(400.0));
+    /// ```
     #[must_use]
     pub const fn hpf_cutoff_hz(&self) -> Option<f64> {
         self.hpf_cutoff_hz
     }
 
     /// The low-pass filter cutoff frequency in Hertz, if one is active.
+    ///
+    /// Frequencies above this threshold will be attenuated during DSP playback.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::Value;
+    /// use orpheus_lang::eval_module;
+    /// use orpheus_lang::ReplMode;
+    ///
+    /// let env = eval_module("s = bd |> lpf(200.0)", ReplMode::Strict).unwrap();
+    /// let val = env.get("s").unwrap();
+    /// let pat = val.as_sample_pattern().unwrap();
+    /// let events = pat.query_unit().unwrap();
+    /// assert_eq!(events[0].value.lpf_cutoff_hz(), Some(200.0));
+    /// ```
     #[must_use]
     pub const fn lpf_cutoff_hz(&self) -> Option<f64> {
         self.lpf_cutoff_hz
