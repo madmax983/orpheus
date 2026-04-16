@@ -48,6 +48,7 @@ pub enum BuiltinKind {
     Drop,
     Chord,
     Euclid,
+    Wolfram,
     PitchClassSet,
     Degrees,
     Fast,
