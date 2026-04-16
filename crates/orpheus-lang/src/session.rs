@@ -320,92 +320,45 @@ impl ReplSession {
             .split_once(char::is_whitespace)
             .map_or((command, ""), |(name, args)| (name, args.trim()));
 
+        self.dispatch_command(name, args)
+    }
+
+    fn dispatch_command(&mut self, name: &str, args: &str) -> Result<String, String> {
         match name {
-            "render" => {
-                if args.is_empty() {
-                    Err(render_usage().to_owned())
+            "render" => Self::require_args(args, render_usage, |a| self.render_binding(a)),
+            "roll" => Self::require_args(args, roll_usage, |a| self.roll_binding(a)),
+            "stats" => Self::require_args(args, stats_usage, |a| self.stats_binding(a)),
+            "explain" => Self::require_args(args, explain_usage, |a| self.explain_binding(a)),
+            "export" => Self::require_args(args, export_usage, |a| {
+                if a.starts_with("stems") {
+                    self.export_stems(a)
                 } else {
-                    self.render_binding(args)
+                    self.export_binding(a)
                 }
-            }
-            "roll" => {
-                if args.is_empty() {
-                    Err(roll_usage().to_owned())
-                } else {
-                    self.roll_binding(args)
-                }
-            }
-            "stats" => {
-                if args.is_empty() {
-                    Err(stats_usage().to_owned())
-                } else {
-                    self.stats_binding(args)
-                }
-            }
-            "explain" => {
-                if args.is_empty() {
-                    Err(explain_usage().to_owned())
-                } else {
-                    self.explain_binding(args)
-                }
-            }
-            "export" => {
-                if args.is_empty() {
-                    Err(export_usage().to_owned())
-                } else if args.starts_with("stems") {
-                    self.export_stems(args)
-                } else {
-                    self.export_binding(args)
-                }
-            }
-            "tempo" => {
-                if args.is_empty() {
-                    Err(tempo_usage().to_owned())
-                } else {
-                    self.set_tempo(args)
-                }
-            }
-            "samples" => {
-                if args.is_empty() {
-                    Err(samples_usage().to_owned())
-                } else {
-                    self.load_sample_directory(args)
-                }
-            }
-            "open" => {
-                if args.is_empty() {
-                    Err(open_usage().to_owned())
-                } else {
-                    self.open_file(args)
-                }
-            }
-            "track" => {
-                if args.is_empty() {
-                    Err(track_usage().to_owned())
-                } else {
-                    self.eval_track_command(args)
-                }
-            }
-            "bus" => {
-                if args.is_empty() {
-                    Err(bus_usage().to_owned())
-                } else {
-                    self.eval_bus_command(args)
-                }
-            }
-            "send" => {
-                if args.is_empty() {
-                    Err(send_usage().to_owned())
-                } else {
-                    self.eval_send_command(args)
-                }
-            }
+            }),
+            "tempo" => Self::require_args(args, tempo_usage, |a| self.set_tempo(a)),
+            "samples" => Self::require_args(args, samples_usage, |a| self.load_sample_directory(a)),
+            "open" => Self::require_args(args, open_usage, |a| self.open_file(a)),
+            "track" => Self::require_args(args, track_usage, |a| self.eval_track_command(a)),
+            "bus" => Self::require_args(args, bus_usage, |a| self.eval_bus_command(a)),
+            "send" => Self::require_args(args, send_usage, |a| self.eval_send_command(a)),
             "mixer" => self.mixer_command(args),
             "midi" => self.midi_command(args),
             "reload-samples" => self.reload_sample_directory(args),
             "play" => self.play_transport(args),
             "stop" => self.stop_transport(args),
             other => Err(format!("unknown REPL command `:{other}`")),
+        }
+    }
+
+    fn require_args<F>(args: &str, usage_fn: fn() -> &'static str, f: F) -> Result<String, String>
+    where
+        F: FnOnce(&str) -> Result<String, String>,
+    {
+        if args.is_empty() {
+            Err(usage_fn().to_owned())
+        } else {
+            f(args)
         }
     }
 

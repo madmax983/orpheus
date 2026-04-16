@@ -77,6 +77,22 @@ const fn builtin_pitch_class_set_value(value: PitchClassSetValue) -> Value {
 /// ```
 #[must_use]
 pub fn builtin_value(name: &str) -> Option<Value> {
+    if let Some(val) = lookup_sample_or_pattern(name) {
+        return Some(val);
+    }
+    if let Some(val) = lookup_effect(name) {
+        return Some(val);
+    }
+    if let Some(val) = lookup_arpeggiator(name) {
+        return Some(val);
+    }
+    if let Some(val) = lookup_scale(name) {
+        return Some(val);
+    }
+    lookup_utility(name)
+}
+
+fn lookup_sample_or_pattern(name: &str) -> Option<Value> {
     match name {
         "bd" | "sn" | "cp" | "hh" | "saw" | "pulse" | "tri" | "noise" => {
             Some(Value::SamplePattern(SamplePatternValue::atom(name)))
@@ -86,8 +102,48 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "sometimes" => Some(builtin_function_value(BuiltinKind::Sometimes)),
         "within" => Some(builtin_function_value(BuiltinKind::Within)),
         "mask" => Some(builtin_function_value(BuiltinKind::Mask)),
-        "strum" => Some(builtin_function_value(BuiltinKind::Strum)),
         "roll" => Some(builtin_function_value(BuiltinKind::Roll)),
+        "fast" => Some(builtin_function_value(BuiltinKind::Fast)),
+        "slow" => Some(builtin_function_value(BuiltinKind::Slow)),
+        "shift" => Some(builtin_function_value(BuiltinKind::Shift)),
+        "rev" => Some(builtin_function_value(BuiltinKind::Rev)),
+        "jux" => Some(builtin_function_value(BuiltinKind::Jux)),
+        "chaos" => Some(builtin_function_value(BuiltinKind::Chaos)),
+        "palindrome" => Some(builtin_function_value(BuiltinKind::Palindrome)),
+        "euclid" => Some(builtin_function_value(BuiltinKind::Euclid)),
+        _ => None,
+    }
+}
+
+fn lookup_effect(name: &str) -> Option<Value> {
+    match name {
+        "gain" => Some(builtin_function_value(BuiltinKind::Gain)),
+        "delay" => Some(builtin_function_value(BuiltinKind::Delay)),
+        "delay_time" => Some(builtin_function_value(BuiltinKind::DelayTime)),
+        "delay_feedback" => Some(builtin_function_value(BuiltinKind::DelayFeedback)),
+        "hpf" => Some(builtin_function_value(BuiltinKind::Hpf)),
+        "lpf" => Some(builtin_function_value(BuiltinKind::Lpf)),
+        "cutoff" => Some(builtin_function_value(BuiltinKind::Cutoff)),
+        "reverb" => Some(builtin_function_value(BuiltinKind::Reverb)),
+        "reverb_room" => Some(builtin_function_value(BuiltinKind::ReverbRoom)),
+        "reverb_damp" => Some(builtin_function_value(BuiltinKind::ReverbDamp)),
+        "res" => Some(builtin_function_value(BuiltinKind::Res)),
+        "drive" => Some(builtin_function_value(BuiltinKind::Drive)),
+        "chorus" => Some(builtin_function_value(BuiltinKind::Chorus)),
+        "chorus_depth" => Some(builtin_function_value(BuiltinKind::ChorusDepth)),
+        "chorus_rate" => Some(builtin_function_value(BuiltinKind::ChorusRate)),
+        "pw" => Some(builtin_function_value(BuiltinKind::Pw)),
+        "pan" => Some(builtin_function_value(BuiltinKind::Pan)),
+        "compressor" => Some(builtin_function_value(BuiltinKind::Compressor)),
+        "compressor_threshold" => Some(builtin_function_value(BuiltinKind::CompressorThreshold)),
+        "compressor_ratio" => Some(builtin_function_value(BuiltinKind::CompressorRatio)),
+        _ => None,
+    }
+}
+
+fn lookup_arpeggiator(name: &str) -> Option<Value> {
+    match name {
+        "strum" => Some(builtin_function_value(BuiltinKind::Strum)),
         "arp" => Some(builtin_function_value(BuiltinKind::Arp)),
         "up" => Some(Value::ArpDirection(ArpDirectionValue::Up)),
         "down" => Some(Value::ArpDirection(ArpDirectionValue::Down)),
@@ -95,56 +151,36 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "invert" => Some(builtin_function_value(BuiltinKind::Invert)),
         "drop" => Some(builtin_function_value(BuiltinKind::Drop)),
         "chord" => Some(builtin_function_value(BuiltinKind::Chord)),
-        "euclid" => Some(builtin_function_value(BuiltinKind::Euclid)),
+        _ => None,
+    }
+}
+
+fn lookup_scale(name: &str) -> Option<Value> {
+    match name {
         "pitch_class_set" => Some(builtin_function_value(BuiltinKind::PitchClassSet)),
         "degrees" => Some(builtin_function_value(BuiltinKind::Degrees)),
         "ionian" => Some(builtin_pitch_class_set_value(PitchClassSetValue::ionian())),
         "dorian" => Some(builtin_pitch_class_set_value(PitchClassSetValue::dorian())),
         "phrygian" => Some(builtin_pitch_class_set_value(PitchClassSetValue::phrygian())),
-        "mixolydian" => Some(builtin_pitch_class_set_value(
-            PitchClassSetValue::mixolydian(),
-        )),
+        "mixolydian" => Some(builtin_pitch_class_set_value(PitchClassSetValue::mixolydian())),
         "aeolian" => Some(builtin_pitch_class_set_value(PitchClassSetValue::aeolian())),
-        "minor_pentatonic" => Some(builtin_pitch_class_set_value(
-            PitchClassSetValue::minor_pentatonic(),
-        )),
-        "fast" => Some(builtin_function_value(BuiltinKind::Fast)),
-        "slow" => Some(builtin_function_value(BuiltinKind::Slow)),
-        "shift" => Some(builtin_function_value(BuiltinKind::Shift)),
-        "rev" => Some(builtin_function_value(BuiltinKind::Rev)),
-        "gain" => Some(builtin_function_value(BuiltinKind::Gain)),
-        "delay" => Some(builtin_function_value(BuiltinKind::Delay)),
-        "delay_time" => Some(builtin_function_value(BuiltinKind::DelayTime)),
-        "delay_feedback" => Some(builtin_function_value(BuiltinKind::DelayFeedback)),
-        "hpf" => Some(builtin_function_value(BuiltinKind::Hpf)),
-        "lpf" => Some(builtin_function_value(BuiltinKind::Lpf)),
-        "reverb" => Some(builtin_function_value(BuiltinKind::Reverb)),
-        "reverb_room" => Some(builtin_function_value(BuiltinKind::ReverbRoom)),
-        "reverb_damp" => Some(builtin_function_value(BuiltinKind::ReverbDamp)),
-        "cutoff" => Some(builtin_function_value(BuiltinKind::Cutoff)),
-        "chorus" => Some(builtin_function_value(BuiltinKind::Chorus)),
-        "chorus_depth" => Some(builtin_function_value(BuiltinKind::ChorusDepth)),
-        "chorus_rate" => Some(builtin_function_value(BuiltinKind::ChorusRate)),
-        "compressor" => Some(builtin_function_value(BuiltinKind::Compressor)),
-        "compressor_threshold" => Some(builtin_function_value(BuiltinKind::CompressorThreshold)),
-        "compressor_ratio" => Some(builtin_function_value(BuiltinKind::CompressorRatio)),
-        "res" => Some(builtin_function_value(BuiltinKind::Res)),
-        "drive" => Some(builtin_function_value(BuiltinKind::Drive)),
-        "pw" => Some(builtin_function_value(BuiltinKind::Pw)),
-        "pan" => Some(builtin_function_value(BuiltinKind::Pan)),
+        "minor_pentatonic" => Some(builtin_pitch_class_set_value(PitchClassSetValue::minor_pentatonic())),
+        _ => None,
+    }
+}
+
+fn lookup_utility(name: &str) -> Option<Value> {
+    match name {
         "pitch" => Some(builtin_function_value(BuiltinKind::Pitch)),
         "transpose" => Some(builtin_function_value(BuiltinKind::Transpose)),
-        "sample" => Some(builtin_function_value(BuiltinKind::Sample)),
-        "onset" => Some(builtin_function_value(BuiltinKind::Onset)),
         "rate" => Some(builtin_function_value(BuiltinKind::Rate)),
+        "onset" => Some(builtin_function_value(BuiltinKind::Onset)),
+        "sample" => Some(builtin_function_value(BuiltinKind::Sample)),
+        "through" => Some(builtin_function_value(BuiltinKind::Through)),
         "slice" => Some(builtin_function_value(BuiltinKind::Slice)),
         "slice_idx" => Some(builtin_function_value(BuiltinKind::SliceIdx)),
         "rand" => Some(builtin_function_value(BuiltinKind::Rand)),
-        "jux" => Some(builtin_function_value(BuiltinKind::Jux)),
-        "through" => Some(builtin_function_value(BuiltinKind::Through)),
         "cc" | "midi_cc" => Some(builtin_function_value(BuiltinKind::MidiCc)),
-        "chaos" => Some(builtin_function_value(BuiltinKind::Chaos)),
-        "palindrome" => Some(builtin_function_value(BuiltinKind::Palindrome)),
         _ => None,
     }
 }

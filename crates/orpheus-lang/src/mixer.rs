@@ -265,6 +265,26 @@ impl MixerState {
     pub(crate) fn render_summary(&self) -> String {
         let mut output = String::new();
 
+        let track_table = self.build_track_summary_table();
+        let _ = std::fmt::Write::write_fmt(
+            &mut output,
+            format_args!("{}\n", "Mixer Tracks:".cyan().bold()),
+        );
+        output.push_str(&track_table.to_string());
+
+        if !self.buses.is_empty() {
+            let bus_table = self.build_bus_summary_table();
+            let _ = std::fmt::Write::write_fmt(
+                &mut output,
+                format_args!("\n\n{}\n", "Mixer Buses:".cyan().bold()),
+            );
+            output.push_str(&bus_table.to_string());
+        }
+
+        output
+    }
+
+    fn build_track_summary_table(&self) -> Table {
         let mut track_table = Table::new();
         track_table.load_preset(UTF8_BORDERS_ONLY);
         track_table.set_header(vec![
@@ -310,40 +330,28 @@ impl MixerState {
                 Cell::new(String::new()).fg(comfy_table::Color::DarkGrey),
             ]);
         }
+        track_table
+    }
 
-        let _ = std::fmt::Write::write_fmt(
-            &mut output,
-            format_args!("{}\n", "Mixer Tracks:".cyan().bold()),
-        );
-        output.push_str(&track_table.to_string());
+    fn build_bus_summary_table(&self) -> Table {
+        let mut bus_table = Table::new();
+        bus_table.load_preset(UTF8_BORDERS_ONLY);
+        bus_table.set_header(vec![
+            Cell::new("Bus").fg(comfy_table::Color::DarkGrey),
+            Cell::new("Effect").fg(comfy_table::Color::DarkGrey),
+        ]);
 
-        if !self.buses.is_empty() {
-            let mut bus_table = Table::new();
-            bus_table.load_preset(UTF8_BORDERS_ONLY);
-            bus_table.set_header(vec![
-                Cell::new("Bus").fg(comfy_table::Color::DarkGrey),
-                Cell::new("Effect").fg(comfy_table::Color::DarkGrey),
+        for (bus_name, bus) in &self.buses {
+            let effect = bus
+                .effect
+                .as_ref()
+                .map_or_else(|| "none".to_owned(), MixerBusEffect::summary);
+            bus_table.add_row(vec![
+                Cell::new(bus_name).fg(comfy_table::Color::Cyan),
+                Cell::new(effect).fg(comfy_table::Color::Green),
             ]);
-
-            for (bus_name, bus) in &self.buses {
-                let effect = bus
-                    .effect
-                    .as_ref()
-                    .map_or_else(|| "none".to_owned(), MixerBusEffect::summary);
-                bus_table.add_row(vec![
-                    Cell::new(bus_name).fg(comfy_table::Color::Cyan),
-                    Cell::new(effect).fg(comfy_table::Color::Green),
-                ]);
-            }
-
-            let _ = std::fmt::Write::write_fmt(
-                &mut output,
-                format_args!("\n\n{}\n", "Mixer Buses:".cyan().bold()),
-            );
-            output.push_str(&bus_table.to_string());
         }
-
-        output
+        bus_table
     }
 
     pub(crate) fn compile_snapshot(

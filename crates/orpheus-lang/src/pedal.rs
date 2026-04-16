@@ -784,97 +784,101 @@ fn format_graph_source(bindings: &[GraphBinding], result: &Expr) -> String {
 }
 
 fn format_expr_source(expr: &Expr) -> String {
+    let mut buffer = String::new();
+    format_expr_into_buffer(expr, &mut buffer);
+    buffer
+}
+
+fn format_expr_into_buffer(expr: &Expr, buffer: &mut String) {
     match expr {
-        Expr::Seq(items) => items
-            .iter()
-            .map(format_expr_source)
-            .collect::<Vec<_>>()
-            .join(" "),
-        Expr::Stack(items) => format!(
-            "stack({})",
-            items
-                .iter()
-                .map(format_expr_source)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-        Expr::Stream(items) => format!(
-            "stream({})",
-            items
-                .iter()
-                .map(format_expr_source)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-        Expr::Graph { bindings, result } => format_graph_source(bindings, result),
+        Expr::Seq(items) => format_list_into_buffer(items, " ", buffer),
+        Expr::Stack(items) => format_call_into_buffer("stack", items, buffer),
+        Expr::Stream(items) => format_call_into_buffer("stream", items, buffer),
+        Expr::Graph { bindings, result } => {
+            use std::fmt::Write;
+            write!(buffer, "{}", format_graph_source(bindings, result)).unwrap();
+        }
         Expr::Pipe { lhs, rhs } => {
-            format!("{} |> {}", format_expr_source(lhs), format_expr_source(rhs))
+            format_expr_into_buffer(lhs, buffer);
+            buffer.push_str(" |> ");
+            format_expr_into_buffer(rhs, buffer);
         }
         Expr::Binary { lhs, op, rhs } => {
-            let symbol = match op {
+            format_expr_into_buffer(lhs, buffer);
+            buffer.push_str(match op {
                 BinaryOp::Add => " + ",
                 BinaryOp::Mul => " * ",
                 BinaryOp::Assign => "=",
-            };
-            format!(
-                "{}{}{}",
-                format_expr_source(lhs),
-                symbol,
-                format_expr_source(rhs)
-            )
+            });
+            format_expr_into_buffer(rhs, buffer);
         }
-        Expr::Call { callee, args } => format!(
-            "{}({})",
-            format_expr_source(callee),
-            args.iter()
-                .map(format_expr_source)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
+        Expr::Call { callee, args } => {
+            format_expr_into_buffer(callee, buffer);
+            buffer.push('(');
+            format_list_into_buffer(args, ", ", buffer);
+            buffer.push(')');
+        }
         Expr::At { start, pattern } => {
-            format!(
-                "at({}, {})",
-                format_expr_source(start),
-                format_expr_source(pattern)
-            )
+            buffer.push_str("at(");
+            format_expr_into_buffer(start, buffer);
+            buffer.push_str(", ");
+            format_expr_into_buffer(pattern, buffer);
+            buffer.push(')');
         }
-        Expr::Meter {
-            beats,
-            unit,
-            pattern,
-        } => format!(
-            "meter({}, {}, {})",
-            format_expr_source(beats),
-            format_expr_source(unit),
-            format_expr_source(pattern)
-        ),
-        Expr::Beat(value) => format!("beat({})", format_expr_source(value)),
-        Expr::Section { pattern, cycles } => format!(
-            "section({}, {})",
-            format_expr_source(pattern),
-            format_expr_source(cycles)
-        ),
-        Expr::SeqSections(items) => format!(
-            "seq_sections({})",
-            items
-                .iter()
-                .map(format_expr_source)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-        Expr::Group(items) => format!(
-            "({})",
-            items
-                .iter()
-                .map(format_expr_source)
-                .collect::<Vec<_>>()
-                .join(" ")
-        ),
-        Expr::Ident(name) => name.clone(),
-        Expr::Rest => "~".to_owned(),
-        Expr::Number(value) => value.to_string(),
-        Expr::String(value) => format!("{value:?}"),
+        Expr::Meter { beats, unit, pattern } => {
+            buffer.push_str("meter(");
+            format_expr_into_buffer(beats, buffer);
+            buffer.push_str(", ");
+            format_expr_into_buffer(unit, buffer);
+            buffer.push_str(", ");
+            format_expr_into_buffer(pattern, buffer);
+            buffer.push(')');
+        }
+        Expr::Beat(value) => {
+            buffer.push_str("beat(");
+            format_expr_into_buffer(value, buffer);
+            buffer.push(')');
+        }
+        Expr::Section { pattern, cycles } => {
+            buffer.push_str("section(");
+            format_expr_into_buffer(pattern, buffer);
+            buffer.push_str(", ");
+            format_expr_into_buffer(cycles, buffer);
+            buffer.push(')');
+        }
+        Expr::SeqSections(items) => format_call_into_buffer("seq_sections", items, buffer),
+        Expr::Group(items) => {
+            buffer.push('(');
+            format_list_into_buffer(items, " ", buffer);
+            buffer.push(')');
+        }
+        Expr::Ident(name) => buffer.push_str(name),
+        Expr::Rest => buffer.push('~'),
+        Expr::Number(value) => {
+            use std::fmt::Write;
+            write!(buffer, "{value}").unwrap();
+        }
+        Expr::String(value) => {
+            use std::fmt::Write;
+            write!(buffer, "{value:?}").unwrap();
+        }
     }
+}
+
+fn format_list_into_buffer(items: &[Expr], sep: &str, buffer: &mut String) {
+    for (i, item) in items.iter().enumerate() {
+        if i > 0 {
+            buffer.push_str(sep);
+        }
+        format_expr_into_buffer(item, buffer);
+    }
+}
+
+fn format_call_into_buffer(name: &str, args: &[Expr], buffer: &mut String) {
+    buffer.push_str(name);
+    buffer.push('(');
+    format_list_into_buffer(args, ", ", buffer);
+    buffer.push(')');
 }
 
 /// Compiles a source-level pedal graph into a validated plan.

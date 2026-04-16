@@ -242,16 +242,16 @@ pub struct TransportPlugin {
     pub state: Rc<RefCell<SharedState>>,
 }
 
-impl HypertilePlugin for TransportPlugin {
-    fn render(&self, area: Rect, buf: &mut Buffer, is_focused: bool) {
-        let state = self.state.borrow();
-        let transport = state.transport_view();
-        let mixer = state.mixer_view();
-
+impl TransportPlugin {
+    fn build_transport_lines<'a>(
+        transport: &'a crate::session::TransportView,
+        mixer: &'a crate::session::MixerView,
+        status_message: Option<&'a String>,
+    ) -> Vec<Line<'a>> {
         let mut lines = vec![Line::from(vec![
             Span::raw("Pattern: "),
             Span::styled(
-                transport.active_pattern_name().unwrap_or("none"),
+                transport.active_pattern_name().unwrap_or("none").to_string(),
                 crate::tui::style::live_binding_style(),
             ),
         ])];
@@ -260,11 +260,11 @@ impl HypertilePlugin for TransportPlugin {
                 Span::raw("Next: "),
                 Span::styled(
                     pending_pattern_name.to_owned(),
-                    crate::tui::style::pending_binding_style(&transport),
+                    crate::tui::style::pending_binding_style(transport),
                 ),
             ]));
         }
-        lines.push(routing_status_line(&mixer));
+        lines.push(routing_status_line(mixer));
         if !mixer.summary().is_empty() && mixer.summary() != "mixer is empty" {
             lines.push(Line::from(vec![Span::styled(
                 "Mixer:",
@@ -276,67 +276,64 @@ impl HypertilePlugin for TransportPlugin {
                 lines.push(Line::raw(summary_line.to_owned()));
             }
         }
+
+        lines.extend(Self::build_help_lines());
+
+        if let Some(message) = status_message {
+            lines.push(Self::build_status_line(message));
+        }
+        lines.push(Line::raw("Quit: Esc or :quit"));
+
+        lines
+    }
+
+    fn build_help_lines<'a>() -> Vec<Line<'a>> {
         let key_style = Style::default()
             .fg(Color::Cyan)
             .add_modifier(Modifier::BOLD);
         let desc_style = Style::default().fg(Color::DarkGray);
 
-        lines.push(Line::from(vec![
-            Span::styled("Space", key_style),
-            Span::styled(": toggle (empty input)", desc_style),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Open", key_style),
-            Span::styled(": :open <path>", desc_style),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Transport", key_style),
-            Span::styled(": :play / :stop", desc_style),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Mixer", key_style),
-            Span::styled(": :track / :bus new|fx / :send / :mixer", desc_style),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Set", key_style),
-            Span::styled(": :tempo <bpm>", desc_style),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Render", key_style),
-            Span::styled(": :render <binding> <path> [cyc]", desc_style),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Export", key_style),
-            Span::styled(": :export <bind> <path> [cyc] | stems", desc_style),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Analyze", key_style),
-            Span::styled(": :roll / :stats / :explain", desc_style),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Help", key_style),
-            Span::styled(": ?", desc_style),
-        ]));
-        if let Some(message) = &state.status_message {
-            if message.contains("error")
-                || message.contains("failed")
-                || message.contains("unknown")
-                || message.contains("usage:")
-            {
-                lines.push(Line::styled(
-                    format!("Note: \u{2717} {message}"),
-                    Style::default()
-                        .fg(Color::LightRed)
-                        .add_modifier(Modifier::BOLD),
-                ));
-            } else {
-                lines.push(Line::styled(
-                    format!("Note: \u{2713} {message}"),
-                    Style::default().fg(Color::LightGreen),
-                ));
-            }
+        vec![
+            Line::from(vec![Span::styled("Space", key_style), Span::styled(": toggle (empty input)", desc_style)]),
+            Line::from(vec![Span::styled("Open", key_style), Span::styled(": :open <path>", desc_style)]),
+            Line::from(vec![Span::styled("Transport", key_style), Span::styled(": :play / :stop", desc_style)]),
+            Line::from(vec![Span::styled("Mixer", key_style), Span::styled(": :track / :bus new|fx / :send / :mixer", desc_style)]),
+            Line::from(vec![Span::styled("Set", key_style), Span::styled(": :tempo <bpm>", desc_style)]),
+            Line::from(vec![Span::styled("Render", key_style), Span::styled(": :render <binding> <path> [cyc]", desc_style)]),
+            Line::from(vec![Span::styled("Export", key_style), Span::styled(": :export <bind> <path> [cyc] | stems", desc_style)]),
+            Line::from(vec![Span::styled("Analyze", key_style), Span::styled(": :roll / :stats / :explain", desc_style)]),
+            Line::from(vec![Span::styled("Help", key_style), Span::styled(": ?", desc_style)]),
+        ]
+    }
+
+    fn build_status_line(message: &str) -> Line<'static> {
+        if message.contains("error")
+            || message.contains("failed")
+            || message.contains("unknown")
+            || message.contains("usage:")
+        {
+            Line::styled(
+                format!("Note: \u{2717} {message}"),
+                Style::default()
+                    .fg(Color::LightRed)
+                    .add_modifier(Modifier::BOLD),
+            )
+        } else {
+            Line::styled(
+                format!("Note: \u{2713} {message}"),
+                Style::default().fg(Color::LightGreen),
+            )
         }
-        lines.push(Line::raw("Quit: Esc or :quit"));
+    }
+}
+
+impl HypertilePlugin for TransportPlugin {
+    fn render(&self, area: Rect, buf: &mut Buffer, is_focused: bool) {
+        let state = self.state.borrow();
+        let transport = state.transport_view();
+        let mixer = state.mixer_view();
+
+        let lines = Self::build_transport_lines(&transport, &mixer, state.status_message.as_ref());
 
         let mut block = Block::default().title("Transport").borders(Borders::ALL);
         if is_focused {

@@ -16,3 +16,9 @@
 **Extracted Match Blocks and God Functions to Struct Methods**
 **Learning:** `clippy::too_many_lines` on functions dominated by repeated `writeln!` statements or similar string construction patterns can be condensed using a single large formatted `write!` string to reduce length and overhead.
 **Action:** Combine repeated sequential write calls into single format strings where possible.
+**Extracted Builtin Values into Categorical Lookups**
+**Learning:** Extremely large `match` expressions (like the 60+ arm match in `builtin_value`) become God Functions and trigger `clippy::too_many_lines`.
+**Action:** When a function consists of a massive match mapping strings to enum variants, split the match arms into logical, categorical helper functions (e.g., `lookup_effect`, `lookup_scale`) and chain them.
+**Extracted Match Blocks to Guard Methods**
+**Learning:** Functions that match over 60+ variants where most arms return the exact same recursive value (like `absolute_cycle` matching `inner.absolute_cycle`) cause visual noise and `clippy::too_many_lines`.
+**Action:** Extract the common logic by creating a dedicated `inner()` or `inner_pattern()` helper method that returns an `Option<&Self>` for all variants containing an inner value. Then use an early-return guard clause (`if let Some(inner) = self.inner_pattern() { return inner.absolute_cycle() }`) to eliminate dozens of repeated match arms.

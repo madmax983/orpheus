@@ -2352,15 +2352,8 @@ enum PatternRuntime<T> {
 }
 
 impl<T> PatternRuntime<T> {
-    fn absolute_cycle(&self, cycle: i128) -> Result<i128, EvalError> {
+    fn inner_pattern(&self) -> Option<&Self> {
         match self {
-            Self::ExplicitCycle { origin_cycle, .. } => origin_cycle
-                .checked_add(cycle)
-                .ok_or_else(|| EvalError::new("cycle index overflowed while localizing a pattern")),
-            Self::Stack(layers) => layers
-                .first()
-                .map_or(Ok(cycle), |layer| layer.absolute_cycle(cycle)),
-            Self::Cycle(_) | Self::Stream(_) | Self::Rand { .. } => Ok(cycle),
             Self::Every { inner, .. }
             | Self::When { inner, .. }
             | Self::Sometimes { inner, .. }
@@ -2426,7 +2419,25 @@ impl<T> PatternRuntime<T> {
             | Self::Slice { inner, .. }
             | Self::SlicePattern { inner, .. }
             | Self::SliceIdxPattern { inner, .. }
-            | Self::Pedal { inner, .. } => inner.absolute_cycle(cycle),
+            | Self::Pedal { inner, .. } => Some(inner),
+            _ => None,
+        }
+    }
+
+    fn absolute_cycle(&self, cycle: i128) -> Result<i128, EvalError> {
+        if let Some(inner) = self.inner_pattern() {
+            return inner.absolute_cycle(cycle);
+        }
+
+        match self {
+            Self::ExplicitCycle { origin_cycle, .. } => origin_cycle
+                .checked_add(cycle)
+                .ok_or_else(|| EvalError::new("cycle index overflowed while localizing a pattern")),
+            Self::Stack(layers) => layers
+                .first()
+                .map_or(Ok(cycle), |layer| layer.absolute_cycle(cycle)),
+            Self::Cycle(_) | Self::Stream(_) | Self::Rand { .. } => Ok(cycle),
+            _ => unreachable!(),
         }
     }
 }

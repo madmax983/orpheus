@@ -79,9 +79,22 @@ fn help_overlay_body() -> Vec<Line<'static>> {
         help_key_line("Toggle", "?", key_style, desc_style),
         help_key_line("Close", "Esc", key_style, desc_style),
         Line::raw(""),
-        Line::styled("Layout mode (Esc from input):", header_style),
     ];
 
+    append_layout_keys(&mut lines, header_style, key_style, desc_style);
+    append_input_keys(&mut lines, header_style, key_style, desc_style);
+    append_command_keys(&mut lines, header_style, key_style);
+
+    lines
+}
+
+fn append_layout_keys(
+    lines: &mut Vec<Line<'static>>,
+    header_style: Style,
+    key_style: Style,
+    desc_style: Style,
+) {
+    lines.push(Line::styled("Layout mode (Esc from input):", header_style));
     let layout_keys = [
         ("  hjkl / arrows", "focus pane"),
         ("  s / v", "split horizontal / vertical"),
@@ -98,10 +111,16 @@ fn help_overlay_body() -> Vec<Line<'static>> {
     for (k, d) in layout_keys {
         lines.push(help_key_line(k, d, key_style, desc_style));
     }
+}
 
+fn append_input_keys(
+    lines: &mut Vec<Line<'static>>,
+    header_style: Style,
+    key_style: Style,
+    desc_style: Style,
+) {
     lines.push(Line::raw(""));
     lines.push(Line::styled("Input mode (i or Enter):", header_style));
-
     let input_keys = [
         ("  Type", "evaluate expressions"),
         ("  Tab", "complete commands"),
@@ -115,7 +134,13 @@ fn help_overlay_body() -> Vec<Line<'static>> {
     for (k, d) in input_keys {
         lines.push(help_key_line(k, d, key_style, desc_style));
     }
+}
 
+fn append_command_keys(
+    lines: &mut Vec<Line<'static>>,
+    header_style: Style,
+    key_style: Style,
+) {
     lines.push(Line::raw(""));
     lines.push(Line::styled("Commands:", header_style));
     lines.push(Line::from(vec![Span::styled(
@@ -134,8 +159,6 @@ fn help_overlay_body() -> Vec<Line<'static>> {
         "  :open <path>   :quit",
         key_style,
     )]));
-
-    lines
 }
 
 /// `PaneId` for the initial 3-pane layout.
