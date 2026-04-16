@@ -23,6 +23,7 @@
 )]
 use core::fmt::{self, Display, Formatter};
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Write;
 
 use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
 use crossterm::style::Stylize;
@@ -746,16 +747,26 @@ fn format_stage_summary(
     positional: &[ValidatedPedalNode],
     named: &[(String, ValidatedPedalNode)],
 ) -> String {
-    let mut rendered = positional
-        .iter()
-        .map(|node| node.summary().to_owned())
-        .collect::<Vec<_>>();
-    rendered.extend(
-        named
-            .iter()
-            .map(|(param, node)| format!("{param}={}", node.summary())),
-    );
-    format!("{name}({})", rendered.join(", "))
+    let mut out = String::with_capacity(128);
+    out.push_str(name);
+    out.push('(');
+    let mut first = true;
+    for node in positional {
+        if !first {
+            out.push_str(", ");
+        }
+        first = false;
+        out.push_str(node.summary());
+    }
+    for (param, node) in named {
+        if !first {
+            out.push_str(", ");
+        }
+        first = false;
+        write!(out, "{}={}", param, node.summary()).unwrap();
+    }
+    out.push(')');
+    out
 }
 
 fn is_selector_atom(param_name: &str, ident: &str) -> bool {
@@ -775,40 +786,70 @@ fn is_selector_atom(param_name: &str, ident: &str) -> bool {
 }
 
 fn format_graph_source(bindings: &[GraphBinding], result: &Expr) -> String {
-    let mut entries = bindings
-        .iter()
-        .map(|binding| format!("{} = {}", binding.name, format_expr_source(&binding.expr)))
-        .collect::<Vec<_>>();
-    entries.push(format_expr_source(result));
-    format!("graph {{ {} }}", entries.join(" ; "))
+    let mut out = String::with_capacity(256);
+    out.push_str("graph { ");
+    let mut first = true;
+    for binding in bindings {
+        if !first {
+            out.push_str(" ; ");
+        }
+        first = false;
+        write!(out, "{} = ", binding.name).unwrap();
+        write_expr_source(&binding.expr, &mut out);
+    }
+    if !first {
+        out.push_str(" ; ");
+    }
+    write_expr_source(result, &mut out);
+    out.push_str(" }");
+    out
 }
 
+#[allow(dead_code)]
 fn format_expr_source(expr: &Expr) -> String {
+    let mut out = String::with_capacity(128);
+    write_expr_source(expr, &mut out);
+    out
+}
+
+#[allow(clippy::too_many_lines)]
+fn write_expr_source(expr: &Expr, out: &mut String) {
     match expr {
-        Expr::Seq(items) => items
-            .iter()
-            .map(format_expr_source)
-            .collect::<Vec<_>>()
-            .join(" "),
-        Expr::Stack(items) => format!(
-            "stack({})",
-            items
-                .iter()
-                .map(format_expr_source)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-        Expr::Stream(items) => format!(
-            "stream({})",
-            items
-                .iter()
-                .map(format_expr_source)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-        Expr::Graph { bindings, result } => format_graph_source(bindings, result),
+        Expr::Seq(items) => {
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push(' ');
+                }
+                write_expr_source(item, out);
+            }
+        }
+        Expr::Stack(items) => {
+            out.push_str("stack(");
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                write_expr_source(item, out);
+            }
+            out.push(')');
+        }
+        Expr::Stream(items) => {
+            out.push_str("stream(");
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                write_expr_source(item, out);
+            }
+            out.push(')');
+        }
+        Expr::Graph { bindings, result } => {
+            out.push_str(&format_graph_source(bindings, result));
+        }
         Expr::Pipe { lhs, rhs } => {
-            format!("{} |> {}", format_expr_source(lhs), format_expr_source(rhs))
+            write_expr_source(lhs, out);
+            out.push_str(" |> ");
+            write_expr_source(rhs, out);
         }
         Expr::Binary { lhs, op, rhs } => {
             let symbol = match op {
@@ -816,64 +857,77 @@ fn format_expr_source(expr: &Expr) -> String {
                 BinaryOp::Mul => " * ",
                 BinaryOp::Assign => "=",
             };
-            format!(
-                "{}{}{}",
-                format_expr_source(lhs),
-                symbol,
-                format_expr_source(rhs)
-            )
+            write_expr_source(lhs, out);
+            out.push_str(symbol);
+            write_expr_source(rhs, out);
         }
-        Expr::Call { callee, args } => format!(
-            "{}({})",
-            format_expr_source(callee),
-            args.iter()
-                .map(format_expr_source)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
+        Expr::Call { callee, args } => {
+            write_expr_source(callee, out);
+            out.push('(');
+            for (i, arg) in args.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                write_expr_source(arg, out);
+            }
+            out.push(')');
+        }
         Expr::At { start, pattern } => {
-            format!(
-                "at({}, {})",
-                format_expr_source(start),
-                format_expr_source(pattern)
-            )
+            out.push_str("at(");
+            write_expr_source(start, out);
+            out.push_str(", ");
+            write_expr_source(pattern, out);
+            out.push(')');
         }
         Expr::Meter {
             beats,
             unit,
             pattern,
-        } => format!(
-            "meter({}, {}, {})",
-            format_expr_source(beats),
-            format_expr_source(unit),
-            format_expr_source(pattern)
-        ),
-        Expr::Beat(value) => format!("beat({})", format_expr_source(value)),
-        Expr::Section { pattern, cycles } => format!(
-            "section({}, {})",
-            format_expr_source(pattern),
-            format_expr_source(cycles)
-        ),
-        Expr::SeqSections(items) => format!(
-            "seq_sections({})",
-            items
-                .iter()
-                .map(format_expr_source)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-        Expr::Group(items) => format!(
-            "({})",
-            items
-                .iter()
-                .map(format_expr_source)
-                .collect::<Vec<_>>()
-                .join(" ")
-        ),
-        Expr::Ident(name) => name.clone(),
-        Expr::Rest => "~".to_owned(),
-        Expr::Number(value) => value.to_string(),
-        Expr::String(value) => format!("{value:?}"),
+        } => {
+            out.push_str("meter(");
+            write_expr_source(beats, out);
+            out.push_str(", ");
+            write_expr_source(unit, out);
+            out.push_str(", ");
+            write_expr_source(pattern, out);
+            out.push(')');
+        }
+        Expr::Beat(value) => {
+            out.push_str("beat(");
+            write_expr_source(value, out);
+            out.push(')');
+        }
+        Expr::Section { pattern, cycles } => {
+            out.push_str("section(");
+            write_expr_source(pattern, out);
+            out.push_str(", ");
+            write_expr_source(cycles, out);
+            out.push(')');
+        }
+        Expr::SeqSections(items) => {
+            out.push_str("seq_sections(");
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                write_expr_source(item, out);
+            }
+            out.push(')');
+        }
+        Expr::Group(items) => {
+            out.push('(');
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push(' ');
+                }
+                write_expr_source(item, out);
+            }
+            out.push(')');
+        }
+        Expr::Ident(name) => out.push_str(name),
+        Expr::Rest => out.push('~'),
+        Expr::Number(value) => write!(out, "{value}").unwrap(),
+        Expr::String(value) => write!(out, "{value:?}").unwrap(),
     }
 }
 

@@ -23,3 +23,6 @@
 **Removed intermediate String allocations in sample\_list collection**
 **Learning:** Calling `.collect::<Vec<_>>().join(", ")` on an iterator of strings requires allocating an intermediate vector, and calling `.to_string()` on each element individually forces a heap allocation per loop.
 **Action:** Replace `.to_string()` with collecting lightweight string slices (`&str`), and replace intermediate collections with direct sequential string building using `String::with_capacity()` and `.push_str()`, avoiding redundant memory allocations inside tight iteration loops.
+**Refactor AST Formatting to Eliminate Intermediate Allocations**
+**Learning:** Formatting highly nested ASTs via `.map(format_expr_source).collect::<Vec<_>>().join(", ")` can allocate hundreds of temporary Strings and Vectors per expression tree, particularly when generating display strings for REPL output or Graph summaries.
+**Action:** Always prefer accepting a `&mut String` buffer parameter in recursive display/formatting methods, using `push_str()` or `write!()` macros to write directly to a single pre-allocated root buffer.
