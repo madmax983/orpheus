@@ -23,3 +23,6 @@
 **Removed intermediate String allocations in sample\_list collection**
 **Learning:** Calling `.collect::<Vec<_>>().join(", ")` on an iterator of strings requires allocating an intermediate vector, and calling `.to_string()` on each element individually forces a heap allocation per loop.
 **Action:** Replace `.to_string()` with collecting lightweight string slices (`&str`), and replace intermediate collections with direct sequential string building using `String::with_capacity()` and `.push_str()`, avoiding redundant memory allocations inside tight iteration loops.
+**[Optimizing AST Stringification]**
+**Learning:** `items.iter().map(...).collect::<Vec<_>>().join(", ")` is highly inefficient for formatting AST structures because it allocates an intermediate vector and multiple small strings per layer of the tree.
+**Action:** Use a recursive `format_into(&Expr, &mut String)` pattern where a single `String::with_capacity(...)` is allocated at the root, and all nested elements `push_str` or `write!` into it. This fundamentally transforms AST serialization into a zero-cost abstraction over the heap.
