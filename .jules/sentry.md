@@ -8,3 +8,6 @@
 ## 2024-06-25 - Improve TUI State test coverage
 **Learning:** Found significant coverage gaps in the `tui::state` module tracking cursor movements, user interactions, and history state (was ~51%). Adding targeted unit tests increased coverage to ~78%. Helper functions for moving forward and backward over character boundaries and words in Unicode strings can be tested purely with mock terminal interactions on `SharedState`.
 **Action:** Keep targeting frontend application states like TUI when writing tests as they often contain easily isolated logical pure state updates that developers forget to verify manually.
+## 2026-04-16 - [Testing TUI style pure functions without full engine]
+**Learning:** Testing pure TUI formatting functions (like `transport_status_line`) can often be accomplished efficiently by constructing a real `ReplSession` with a stubbed `EngineHandle`, and simulating state transitions via `eval_line()` rather than directly mocking the underlying state structs.
+**Action:** Use `ReplSession::with_engine(EngineHandle::stub())` and `session.eval_line()` to generate complex UI state views (like `TransportView`, `MixerView`) for unit testing TUI layout elements without needing complex mocks.
