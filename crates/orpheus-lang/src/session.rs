@@ -1232,10 +1232,14 @@ impl ReplSession {
         thread::spawn(move || {
             let start = Instant::now();
             for (offset_in_cycle, note_on, note) in midi_events {
-                let target_time = Duration::from_secs_f64(offset_in_cycle * seconds_per_cycle);
+                let target_time = Duration::from_secs_f64(f64::max(0.0, offset_in_cycle * seconds_per_cycle));
                 let elapsed = start.elapsed();
                 if target_time > elapsed {
-                    thread::sleep(target_time.checked_sub(elapsed).unwrap());
+                    if let Some(sleep_time) = target_time.checked_sub(elapsed) {
+                        thread::sleep(sleep_time);
+                    } else {
+                        thread::sleep(Duration::from_millis(1));
+                    }
                 }
                 let status = if note_on {
                     status_base
