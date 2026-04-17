@@ -16,3 +16,4 @@
 **Extracted Match Blocks and God Functions to Struct Methods**
 **Learning:** `clippy::too_many_lines` on functions dominated by repeated `writeln!` statements or similar string construction patterns can be condensed using a single large formatted `write!` string to reduce length and overhead.
 **Action:** Combine repeated sequential write calls into single format strings where possible.
+**[Title]** Consolidated Context Instantiation to Fix too_many_lines\n**Learning:** `clippy::too_many_lines` in large match statements can often be reduced by hoisting repeated struct instantiation out of the match arms.\n**Action:** When I encounter `too_many_lines` on a function with a large match block where arms repeatedly construct the same context object, I will instantiate a single mutable context variable before the `match` and pass a mutable reference to it instead.
