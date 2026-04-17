@@ -273,7 +273,7 @@ impl HypertilePlugin for TransportPlugin {
                     .add_modifier(Modifier::BOLD),
             )]));
             for summary_line in mixer.summary().lines() {
-                lines.push(Line::raw(summary_line.to_owned()));
+                lines.push(Line::raw(strip_ansi(summary_line)));
             }
         }
         let key_style = Style::default()
@@ -348,4 +348,21 @@ impl HypertilePlugin for TransportPlugin {
             .wrap(Wrap { trim: false })
             .render(area, buf);
     }
+}
+
+fn strip_ansi(s: &str) -> String {
+    let mut stripped = String::with_capacity(s.len());
+    let mut in_ansi = false;
+    for c in s.chars() {
+        if c == '\x1b' {
+            in_ansi = true;
+        } else if in_ansi {
+            if c.is_ascii_alphabetic() {
+                in_ansi = false;
+            }
+        } else {
+            stripped.push(c);
+        }
+    }
+    stripped
 }
