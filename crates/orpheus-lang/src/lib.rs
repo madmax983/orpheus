@@ -11,6 +11,7 @@ mod loader;
 pub(crate) mod midi_export;
 mod midi_input;
 pub(crate) mod mixer;
+pub mod number_roll;
 mod parser;
 mod pedal;
 mod pitch;
@@ -38,6 +39,7 @@ pub use export::{
 pub use html::{export_number_pattern_to_html, export_sample_pattern_to_html};
 pub use loader::load_file_strict;
 pub use midi_export::{export_number_pattern_to_midi, export_sample_pattern_to_midi};
+pub use number_roll::render_ascii_number_roll;
 pub use parser::parse_module;
 pub use pedal::{PedalGraph, PedalValue, SignalKind, ValidatedPedalPlan};
 pub use repl::{run_stdio, run_stdio_with_engine, run_stdio_with_engine_and_path};
