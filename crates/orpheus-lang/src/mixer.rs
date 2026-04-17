@@ -262,7 +262,14 @@ impl MixerState {
         Ok(())
     }
 
+    /// ⚡ Bolt: Eliminate intermediate heap allocations during mixer string concatenation.
+    /// Previously, mapping over the tracks and `.collect::<Vec<_>>().join("\n")` created
+    /// temporary Strings and a Vec for every track on every TUI frame render.
+    /// Pre-allocating a single `String` buffer and using `std::fmt::Write`
+    /// avoids these allocations entirely.
     pub(crate) fn render_summary(&self) -> String {
+        use std::fmt::Write;
+
         let mut output = String::new();
 
         let mut track_table = Table::new();
@@ -278,12 +285,16 @@ impl MixerState {
         if self.has_explicit_bound_tracks() {
             for (track_name, track) in &self.tracks {
                 let binding = track.binding_name.as_deref().unwrap_or("<unbound>");
-                let sends = track
-                    .sends
-                    .iter()
-                    .map(|(bus, level)| format!("{bus} @ {level:.2}"))
-                    .collect::<Vec<_>>()
-                    .join("\n");
+
+                // ⚡ Bolt: Use `std::fmt::Write` to append directly to the string instead of creating
+                // temporary strings via `format!` and joining them via a temporary Vec.
+                let mut sends = String::with_capacity(track.sends.len() * 16);
+                for (i, (bus, level)) in track.sends.iter().enumerate() {
+                    if i > 0 {
+                        sends.push('\n');
+                    }
+                    write!(&mut sends, "{bus} @ {level:.2}").expect("Writing to a String should never fail");
+                }
                 let muted_color = if track.muted {
                     comfy_table::Color::Red
                 } else {

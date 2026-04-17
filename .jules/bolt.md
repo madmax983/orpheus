@@ -23,3 +23,9 @@
 **Removed intermediate String allocations in sample\_list collection**
 **Learning:** Calling `.collect::<Vec<_>>().join(", ")` on an iterator of strings requires allocating an intermediate vector, and calling `.to_string()` on each element individually forces a heap allocation per loop.
 **Action:** Replace `.to_string()` with collecting lightweight string slices (`&str`), and replace intermediate collections with direct sequential string building using `String::with_capacity()` and `.push_str()`, avoiding redundant memory allocations inside tight iteration loops.
+## 2025-04-17 - Optimize MixerState string allocation
+**Learning:** Adding a  statement in the middle of a function body triggers . Placing a doc comment () on a  statement inside a function body triggers ; use a standard  comment instead.
+**Action:** Always group  items at the top of their enclosing scope, and use  for internal function logic comments.
+## 2025-04-17 - Optimize MixerState string allocation
+**Learning:** Adding a `use` statement in the middle of a function body triggers `clippy::items_after_statements`. Placing a doc comment (`///`) on a `let` statement inside a function body triggers `clippy::unused_doc_comments`; use a standard `//` comment instead.
+**Action:** Always group `use` items at the top of their enclosing scope, and use `//` for internal function logic comments.
