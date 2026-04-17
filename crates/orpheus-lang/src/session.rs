@@ -1352,6 +1352,7 @@ impl ReplSession {
     }
 
     #[cfg(test)]
+    #[doc(hidden)]
     pub fn last_loaded_pattern_name(&self) -> Option<String> {
         self.pattern_display
             .borrow()
