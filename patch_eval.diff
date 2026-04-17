@@ -1,0 +1,42 @@
+--- crates/orpheus-lang/src/eval.rs
++++ crates/orpheus-lang/src/eval.rs
+@@ -92,6 +92,18 @@
+         Self::new(error.to_string())
+     }
+ }
++
++impl From<crate::diagnostics::TypeError> for EvalError {
++    fn from(err: crate::diagnostics::TypeError) -> Self {
++        Self::new(err.to_string())
++    }
++}
++
++impl From<crate::diagnostics::LoadError> for EvalError {
++    fn from(err: crate::diagnostics::LoadError) -> Self {
++        Self::new(err.to_string())
++    }
++}
+
+ impl From<crate::pitch::PitchLiteralError> for EvalError {
+     fn from(error: crate::pitch::PitchLiteralError) -> Self {
+@@ -1765,6 +1777,20 @@
+         let eval_err: super::EvalError = err.unwrap_err().into();
+         assert!(eval_err.to_string().contains("invalid digit"));
+     }
++
++    #[test]
++    fn eval_error_from_type_error() {
++        let err = crate::diagnostics::TypeError::new("type mismatch");
++        let eval_err: super::EvalError = err.into();
++        assert_eq!(eval_err.to_string(), "type mismatch");
++    }
++
++    #[test]
++    fn eval_error_from_load_error() {
++        let err = crate::diagnostics::LoadError::new("file not found");
++        let eval_err: super::EvalError = err.into();
++        assert_eq!(eval_err.to_string(), "file not found");
++    }
+
+     #[test]
+     fn eval_error_from_pitch_literal_error() {

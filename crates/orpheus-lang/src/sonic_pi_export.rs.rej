@@ -1,0 +1,32 @@
+--- sonic_pi_export.rs
++++ sonic_pi_export.rs
+@@ -62,9 +62,13 @@
+     path: impl AsRef<Path>,
+     cycle_count: u64,
+ ) -> Result<(), EvalError> {
++    if cycle_count == 0 {
++        return Err(EvalError::new("exporting requires at least one cycle"));
++    }
++
+     let span = render_span(cycle_count)?;
+     let mut events = pattern.try_query(&span)?;
+-    events.sort_by(|a, b| a.part.start().cmp(&b.part.start()));
++    events.sort_by(|a, b| a.part.start().cmp(b.part.start()));
+
+     let path = path.as_ref();
+     let mut file = std::fs::File::create(path).map_err(|e| EvalError::new(e.to_string()))?;
+@@ -136,9 +140,13 @@
+     path: impl AsRef<Path>,
+     cycle_count: u64,
+ ) -> Result<(), EvalError> {
++    if cycle_count == 0 {
++        return Err(EvalError::new("exporting requires at least one cycle"));
++    }
++
+     let span = render_span(cycle_count)?;
+     let mut events = pattern.try_query(&span)?;
+-    events.sort_by(|a, b| a.part.start().cmp(&b.part.start()));
++    events.sort_by(|a, b| a.part.start().cmp(b.part.start()));
+
+     let path = path.as_ref();
+     let mut file = std::fs::File::create(path).map_err(|e| EvalError::new(e.to_string()))?;

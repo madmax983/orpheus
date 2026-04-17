@@ -1,0 +1,63 @@
+--- crates/orpheus-lang/src/sonic_pi_export.rs
++++ crates/orpheus-lang/src/sonic_pi_export.rs
+@@ -62,9 +62,13 @@
+     path: impl AsRef<Path>,
+     cycle_count: u64,
+ ) -> Result<(), EvalError> {
++    if cycle_count == 0 {
++        return Err(EvalError::new("exporting requires at least one cycle"));
++    }
++
+     let span = render_span(cycle_count)?;
+     let mut events = pattern.try_query(&span)?;
+-    events.sort_by(|a, b| a.part.start().cmp(&b.part.start()));
++    events.sort_by(|a, b| a.part.start().cmp(b.part.start()));
+
+     let path = path.as_ref();
+     let mut file = std::fs::File::create(path).map_err(|e| EvalError::new(e.to_string()))?;
+@@ -136,9 +140,13 @@
+     path: impl AsRef<Path>,
+     cycle_count: u64,
+ ) -> Result<(), EvalError> {
++    if cycle_count == 0 {
++        return Err(EvalError::new("exporting requires at least one cycle"));
++    }
++
+     let span = render_span(cycle_count)?;
+     let mut events = pattern.try_query(&span)?;
+-    events.sort_by(|a, b| a.part.start().cmp(&b.part.start()));
++    events.sort_by(|a, b| a.part.start().cmp(b.part.start()));
+
+     let path = path.as_ref();
+     let mut file = std::fs::File::create(path).map_err(|e| EvalError::new(e.to_string()))?;
+@@ -214,6 +222,30 @@
+         assert!(content.contains("sample :bd_haus"));
+         assert!(content.contains("sample :sn_dolf"));
+     }
++
++    #[test]
++    fn sonic_pi_exporter_returns_error_on_zero_cycles_sample() {
++        let source = "pattern = bd sn";
++        let module = eval_module(source, ReplMode::Loose).unwrap();
++        let pattern = module.get("pattern").unwrap().as_sample_pattern().unwrap();
++        let path = std::env::temp_dir().join(format!("test_sample_output_zero_{}.rb", unique_temp_suffix()));
++
++        let result = export_sample_pattern_to_sonic_pi(pattern, &path, 0);
++        assert!(result.is_err());
++        assert_eq!(result.unwrap_err().to_string(), "exporting requires at least one cycle");
++    }
++
++    #[test]
++    fn sonic_pi_exporter_returns_error_on_zero_cycles_number() {
++        let source = "pattern = 60 62 64";
++        let module = eval_module(source, ReplMode::Loose).unwrap();
++        let pattern = module.get("pattern").unwrap().as_number_pattern().unwrap();
++        let path = std::env::temp_dir().join(format!("test_number_output_zero_{}.rb", unique_temp_suffix()));
++
++        let result = export_number_pattern_to_sonic_pi(pattern, &path, 0);
++        assert!(result.is_err());
++        assert_eq!(result.unwrap_err().to_string(), "exporting requires at least one cycle");
++    }
+
+     #[test]
+     fn sonic_pi_exporter_generates_number_pattern() {
