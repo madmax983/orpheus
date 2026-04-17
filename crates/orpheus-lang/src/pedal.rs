@@ -640,17 +640,22 @@ impl GraphCompiler<'_> {
             ));
         }
 
+        let mut summary = String::with_capacity(32);
+        summary.push_str("mix(");
+        let mut first = true;
+        for node in positional {
+            if !first {
+                summary.push_str(", ");
+            }
+            summary.push_str(node.summary());
+            first = false;
+        }
+        summary.push(')');
+
         Ok(ValidatedPedalNode::new(
             SignalKind::Audio,
             PedalNodeKind::Mix,
-            format!(
-                "mix({})",
-                positional
-                    .iter()
-                    .map(ValidatedPedalNode::summary)
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
+            summary,
         ))
     }
 
@@ -664,16 +669,21 @@ impl GraphCompiler<'_> {
             ));
         }
 
-        let mut rendered = vec![positional[0].summary().to_owned()];
-        rendered.extend(
-            named
-                .iter()
-                .map(|(name, node)| format!("{name}={}", node.summary())),
-        );
+        let mut summary = String::with_capacity(32);
+        summary.push_str("feedback(");
+        summary.push_str(positional[0].summary());
+        for (name, node) in named {
+            summary.push_str(", ");
+            summary.push_str(name);
+            summary.push('=');
+            summary.push_str(node.summary());
+        }
+        summary.push(')');
+
         Ok(ValidatedPedalNode::new(
             SignalKind::Audio,
             PedalNodeKind::Feedback,
-            format!("feedback({})", rendered.join(", ")),
+            summary,
         ))
     }
 
@@ -746,16 +756,28 @@ fn format_stage_summary(
     positional: &[ValidatedPedalNode],
     named: &[(String, ValidatedPedalNode)],
 ) -> String {
-    let mut rendered = positional
-        .iter()
-        .map(|node| node.summary().to_owned())
-        .collect::<Vec<_>>();
-    rendered.extend(
-        named
-            .iter()
-            .map(|(param, node)| format!("{param}={}", node.summary())),
-    );
-    format!("{name}({})", rendered.join(", "))
+    let mut summary = String::with_capacity(32);
+    summary.push_str(name);
+    summary.push('(');
+    let mut first = true;
+    for node in positional {
+        if !first {
+            summary.push_str(", ");
+        }
+        summary.push_str(node.summary());
+        first = false;
+    }
+    for (param, node) in named {
+        if !first {
+            summary.push_str(", ");
+        }
+        summary.push_str(param);
+        summary.push('=');
+        summary.push_str(node.summary());
+        first = false;
+    }
+    summary.push(')');
+    summary
 }
 
 fn is_selector_atom(param_name: &str, ident: &str) -> bool {
@@ -774,106 +796,157 @@ fn is_selector_atom(param_name: &str, ident: &str) -> bool {
     )
 }
 
-fn format_graph_source(bindings: &[GraphBinding], result: &Expr) -> String {
-    let mut entries = bindings
-        .iter()
-        .map(|binding| format!("{} = {}", binding.name, format_expr_source(&binding.expr)))
-        .collect::<Vec<_>>();
-    entries.push(format_expr_source(result));
-    format!("graph {{ {} }}", entries.join(" ; "))
+fn format_graph_source_into(bindings: &[GraphBinding], result: &Expr, buf: &mut String) {
+    buf.push_str("graph { ");
+    let mut first = true;
+    for binding in bindings {
+        if !first {
+            buf.push_str(" ; ");
+        }
+        buf.push_str(&binding.name);
+        buf.push_str(" = ");
+        format_expr_source_into(&binding.expr, buf);
+        first = false;
+    }
+    if !first {
+        buf.push_str(" ; ");
+    }
+    format_expr_source_into(result, buf);
+    buf.push_str(" }");
 }
 
-fn format_expr_source(expr: &Expr) -> String {
+#[allow(clippy::too_many_lines)]
+fn format_expr_source_into(expr: &Expr, buf: &mut String) {
     match expr {
-        Expr::Seq(items) => items
-            .iter()
-            .map(format_expr_source)
-            .collect::<Vec<_>>()
-            .join(" "),
-        Expr::Stack(items) => format!(
-            "stack({})",
-            items
-                .iter()
-                .map(format_expr_source)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-        Expr::Stream(items) => format!(
-            "stream({})",
-            items
-                .iter()
-                .map(format_expr_source)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-        Expr::Graph { bindings, result } => format_graph_source(bindings, result),
+        Expr::Seq(items) => {
+            let mut first = true;
+            for item in items {
+                if !first {
+                    buf.push(' ');
+                }
+                format_expr_source_into(item, buf);
+                first = false;
+            }
+        }
+        Expr::Stack(items) => {
+            buf.push_str("stack(");
+            let mut first = true;
+            for item in items {
+                if !first {
+                    buf.push_str(", ");
+                }
+                format_expr_source_into(item, buf);
+                first = false;
+            }
+            buf.push(')');
+        }
+        Expr::Stream(items) => {
+            buf.push_str("stream(");
+            let mut first = true;
+            for item in items {
+                if !first {
+                    buf.push_str(", ");
+                }
+                format_expr_source_into(item, buf);
+                first = false;
+            }
+            buf.push(')');
+        }
+        Expr::Graph { bindings, result } => format_graph_source_into(bindings, result, buf),
         Expr::Pipe { lhs, rhs } => {
-            format!("{} |> {}", format_expr_source(lhs), format_expr_source(rhs))
+            format_expr_source_into(lhs, buf);
+            buf.push_str(" |> ");
+            format_expr_source_into(rhs, buf);
         }
         Expr::Binary { lhs, op, rhs } => {
+            format_expr_source_into(lhs, buf);
             let symbol = match op {
                 BinaryOp::Add => " + ",
                 BinaryOp::Mul => " * ",
                 BinaryOp::Assign => "=",
             };
-            format!(
-                "{}{}{}",
-                format_expr_source(lhs),
-                symbol,
-                format_expr_source(rhs)
-            )
+            buf.push_str(symbol);
+            format_expr_source_into(rhs, buf);
         }
-        Expr::Call { callee, args } => format!(
-            "{}({})",
-            format_expr_source(callee),
-            args.iter()
-                .map(format_expr_source)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
+        Expr::Call { callee, args } => {
+            format_expr_source_into(callee, buf);
+            buf.push('(');
+            let mut first = true;
+            for arg in args {
+                if !first {
+                    buf.push_str(", ");
+                }
+                format_expr_source_into(arg, buf);
+                first = false;
+            }
+            buf.push(')');
+        }
         Expr::At { start, pattern } => {
-            format!(
-                "at({}, {})",
-                format_expr_source(start),
-                format_expr_source(pattern)
-            )
+            buf.push_str("at(");
+            format_expr_source_into(start, buf);
+            buf.push_str(", ");
+            format_expr_source_into(pattern, buf);
+            buf.push(')');
         }
         Expr::Meter {
             beats,
             unit,
             pattern,
-        } => format!(
-            "meter({}, {}, {})",
-            format_expr_source(beats),
-            format_expr_source(unit),
-            format_expr_source(pattern)
-        ),
-        Expr::Beat(value) => format!("beat({})", format_expr_source(value)),
-        Expr::Section { pattern, cycles } => format!(
-            "section({}, {})",
-            format_expr_source(pattern),
-            format_expr_source(cycles)
-        ),
-        Expr::SeqSections(items) => format!(
-            "seq_sections({})",
-            items
-                .iter()
-                .map(format_expr_source)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-        Expr::Group(items) => format!(
-            "({})",
-            items
-                .iter()
-                .map(format_expr_source)
-                .collect::<Vec<_>>()
-                .join(" ")
-        ),
-        Expr::Ident(name) => name.clone(),
-        Expr::Rest => "~".to_owned(),
-        Expr::Number(value) => value.to_string(),
-        Expr::String(value) => format!("{value:?}"),
+        } => {
+            buf.push_str("meter(");
+            format_expr_source_into(beats, buf);
+            buf.push_str(", ");
+            format_expr_source_into(unit, buf);
+            buf.push_str(", ");
+            format_expr_source_into(pattern, buf);
+            buf.push(')');
+        }
+        Expr::Beat(value) => {
+            buf.push_str("beat(");
+            format_expr_source_into(value, buf);
+            buf.push(')');
+        }
+        Expr::Section { pattern, cycles } => {
+            buf.push_str("section(");
+            format_expr_source_into(pattern, buf);
+            buf.push_str(", ");
+            format_expr_source_into(cycles, buf);
+            buf.push(')');
+        }
+        Expr::SeqSections(items) => {
+            buf.push_str("seq_sections(");
+            let mut first = true;
+            for item in items {
+                if !first {
+                    buf.push_str(", ");
+                }
+                format_expr_source_into(item, buf);
+                first = false;
+            }
+            buf.push(')');
+        }
+        Expr::Group(items) => {
+            buf.push('(');
+            let mut first = true;
+            for item in items {
+                if !first {
+                    buf.push(' ');
+                }
+                format_expr_source_into(item, buf);
+                first = false;
+            }
+            buf.push(')');
+        }
+        Expr::Ident(name) => buf.push_str(name),
+        Expr::Rest => buf.push('~'),
+        Expr::Number(value) => {
+            use std::fmt::Write;
+            let _ = write!(buf, "{value}");
+        }
+        Expr::String(value) => {
+            use std::fmt::Write;
+            let _ = write!(buf, "{value:?}");
+        }
     }
 }
 
@@ -918,7 +991,9 @@ pub fn compile_graph(
         ));
     }
 
-    let graph = PedalGraph::new(format_graph_source(bindings, result_expr));
+    let mut graph_src = String::with_capacity(128);
+    format_graph_source_into(bindings, result_expr, &mut graph_src);
+    let graph = PedalGraph::new(graph_src);
     let plan = ValidatedPedalPlan::new(compiled_bindings, result);
     Ok(PedalValue::new(graph, plan))
 }

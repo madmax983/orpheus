@@ -4,3 +4,7 @@
 **[Enforce Private TUI Internal Modules]
 **Tangle:** The `state` and `style` modules in `orpheus-lang/src/tui/mod.rs` were declared as `pub mod`, leaking the internal TUI implementation details.
 **Blueprint:** Removed the `pub` visibility modifier from these modules in `tui/mod.rs`, converting them to `mod state;` and `mod style;`. This enforces strong module boundaries and prevents leaky abstractions.
+
+**[Enforce Private Mermaid Module]
+**Tangle:** The `mermaid` module in `orpheus-lang/src/lib.rs` was declared as `pub mod`, leaking the internal implementation details of the Mermaid export module.
+**Blueprint:** Changed `pub mod mermaid;` to `pub(crate) mod mermaid;` in `crates/orpheus-lang/src/lib.rs`. This enforces strong module boundaries by keeping the module internal while the intended public API (`export_sample_pattern_to_mermaid_gantt`) is explicitly exposed via `pub use`.

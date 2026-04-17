@@ -96,6 +96,7 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "drop" => Some(builtin_function_value(BuiltinKind::Drop)),
         "chord" => Some(builtin_function_value(BuiltinKind::Chord)),
         "euclid" => Some(builtin_function_value(BuiltinKind::Euclid)),
+        "wolfram" => Some(builtin_function_value(BuiltinKind::Wolfram)),
         "pitch_class_set" => Some(builtin_function_value(BuiltinKind::PitchClassSet)),
         "degrees" => Some(builtin_function_value(BuiltinKind::Degrees)),
         "ionian" => Some(builtin_pitch_class_set_value(PitchClassSetValue::ionian())),
@@ -323,6 +324,7 @@ impl BuiltinKind {
             Self::Drop => "drop",
             Self::Chord => "chord",
             Self::Euclid => "euclid",
+            Self::Wolfram => "wolfram",
             Self::PitchClassSet => "pitch_class_set",
             Self::Degrees => "degrees",
             Self::Fast => "fast",
@@ -383,6 +385,7 @@ impl BuiltinKind {
             | Self::Drop
             | Self::Chord
             | Self::Euclid
+            | Self::Wolfram
             | Self::Degrees
             | Self::Fast
             | Self::Slow
@@ -432,6 +435,7 @@ impl BuiltinKind {
             Self::Drop => apply_drop(args),
             Self::Chord => apply_chord(args),
             Self::Euclid => apply_euclid(args),
+            Self::Wolfram => apply_wolfram(args),
             Self::PitchClassSet => apply_pitch_class_set(args),
             Self::Degrees => apply_degrees(args),
             Self::Fast => apply_fast(args),
@@ -2539,5 +2543,75 @@ mod test_nova {
 
         assert_eq!(events[3].value.sample(), "sn");
         assert_eq!(events[3].part.start(), &Rational::new(3, 2).unwrap());
+    }
+}
+
+fn apply_wolfram(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let rule = extract_whole_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`wolfram` requires a rule argument"))?,
+        "`wolfram` rule",
+        false,
+    )?;
+    let steps = extract_whole_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`wolfram` requires a steps argument"))?,
+        "`wolfram` steps",
+        true,
+    )?;
+    #[allow(clippy::cast_possible_truncation)]
+    let rule_num = rule as u8;
+    let mut current_state = vec![false; steps as usize];
+    if steps > 0 {
+        current_state[steps as usize / 2] = true; // center pixel
+    }
+
+    let mut nodes = Vec::new();
+    for _ in 0..steps {
+        // Record current state
+        for cell in &current_state {
+            if *cell {
+                nodes.push(orpheus_pattern::PatternNode::atom(1.0));
+            } else {
+                nodes.push(orpheus_pattern::PatternNode::rest());
+            }
+        }
+
+        // Calculate next state
+        let mut next_state = vec![false; steps as usize];
+        for i in 0..steps as usize {
+            let left = if i == 0 { false } else { current_state[i - 1] };
+            let center = current_state[i];
+            let right = if i == steps as usize - 1 {
+                false
+            } else {
+                current_state[i + 1]
+            };
+
+            let neighborhood = (u8::from(left) << 2) | (u8::from(center) << 1) | u8::from(right);
+            next_state[i] = (rule_num & (1 << neighborhood)) != 0;
+        }
+        current_state = next_state;
+    }
+
+    Ok(Value::NumberPattern(NumberPatternValue::from_nodes(nodes)))
+}
+
+#[cfg(test)]
+mod wolfram_tests {
+    use crate::{ReplMode, eval_module};
+    use orpheus_pattern::Rational;
+
+    #[test]
+    fn test_wolfram_rule_30() {
+        let source = "w = wolfram(30, 3)";
+        let result = eval_module(source, ReplMode::Loose).unwrap();
+        let pattern = result.get("w").unwrap().as_number_pattern().unwrap();
+
+        let span = orpheus_pattern::TimeSpan::new(Rational::zero(), Rational::one()).unwrap();
+        let events = pattern.try_query(&span).unwrap();
+
+        assert_eq!(events.len(), 5);
     }
 }

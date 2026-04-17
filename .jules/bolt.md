@@ -29,3 +29,6 @@
 ## 2025-04-17 - Optimize MixerState string allocation
 **Learning:** Adding a `use` statement in the middle of a function body triggers `clippy::items_after_statements`. Placing a doc comment (`///`) on a `let` statement inside a function body triggers `clippy::unused_doc_comments`; use a standard `//` comment instead.
 **Action:** Always group `use` items at the top of their enclosing scope, and use `//` for internal function logic comments.
+**[Optimizing AST Stringification]**
+**Learning:** `items.iter().map(...).collect::<Vec<_>>().join(", ")` is highly inefficient for formatting AST structures because it allocates an intermediate vector and multiple small strings per layer of the tree.
+**Action:** Use a recursive `format_into(&Expr, &mut String)` pattern where a single `String::with_capacity(...)` is allocated at the root, and all nested elements `push_str` or `write!` into it. This fundamentally transforms AST serialization into a zero-cost abstraction over the heap.

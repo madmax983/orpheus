@@ -16,3 +16,7 @@
 **Extracted Match Blocks and God Functions to Struct Methods**
 **Learning:** `clippy::too_many_lines` on functions dominated by repeated `writeln!` statements or similar string construction patterns can be condensed using a single large formatted `write!` string to reduce length and overhead.
 **Action:** Combine repeated sequential write calls into single format strings where possible.
+
+**Refactoring unstable `let_chains`**
+**Learning:** `clippy::collapsible_if` or compiler errors regarding the unstable `let_chains` feature (`if let Some(x) = y && condition`) should not be resolved using nested `if` statements with `#[allow(clippy::collapsible_if)]`. This creates unnecessary nesting and introduces artificial suppressions that go against the "Nesting is the mind-killer" philosophy.
+**Action:** Use `Option::is_some_and` (e.g., `if y.is_some_and(|val| condition)`) instead to maintain a clean, flat structure.
