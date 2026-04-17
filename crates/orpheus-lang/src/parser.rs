@@ -20,6 +20,16 @@ struct SyntaxParser;
 /// line starts while the parser is not nested inside parentheses, then each
 /// binding body is parsed with the Phase 1 expression grammar.
 ///
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::parse_module;
+///
+/// let module = parse_module("x = bd sn").unwrap();
+/// assert_eq!(module.statements.len(), 1);
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`ParseError`] when the source does not match the Phase 1 grammar

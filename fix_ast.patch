@@ -1,0 +1,11 @@
+--- crates/orpheus-lang/src/ast.rs
++++ crates/orpheus-lang/src/ast.rs
+@@ -191,7 +191,7 @@
+ /// - `params`: The list of parameters bound by the function (to check for shadowing).
+ /// - `expr`: The body expression of the binding.
+ ///
+-/// # Return
++/// # Returns
+ /// `true` if the identifier is referenced in the expression body and is not shadowed
+ /// by a parameter. `false` otherwise.
+ pub fn binding_expr_self_references(name: &str, params: &[String], expr: &Expr) -> bool {
