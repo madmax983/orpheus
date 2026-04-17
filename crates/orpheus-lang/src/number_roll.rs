@@ -19,6 +19,19 @@ use crate::value::NumberPatternValue;
 ///
 /// This function does not panic.
 ///
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{eval_module, ReplMode, render_ascii_number_roll};
+///
+/// let env = eval_module("x = 1 2", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
+///
+/// let roll = render_ascii_number_roll("x", pattern, 1, 4).unwrap();
+/// assert!(roll.contains("1.0"));
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`EvalError`] if pattern querying fails or if `cycle_count` is 0.

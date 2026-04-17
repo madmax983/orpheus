@@ -4,3 +4,6 @@
 ## 2024-05-19 - [Missing Doctests and Conversion Documentations]
 **Confusion:** The core runtime value type `SampleEvent` lacked executable doctests, leaving users to guess the default behaviors of parameters like `gain()`, `hpf_cutoff_hz()`, and `lpf_cutoff_hz()`. Additionally, tests for converting structural error types (`LoadError`, `TypeError`) into `EvalError` were missing.
 **Clarification:** Added comprehensive `///` doctests using `Value::as_sample_pattern()` querying examples to clearly demonstrate how `SampleEvent` data is extracted and modified in the engine. Wrote missing `.to_string()` unit tests in `crates/orpheus-lang/src/eval.rs` to verify that `EvalError::from` propagating works smoothly without dropping information.
+## 2026-04-17 - [Missing Error Example Documentations]
+**Confusion:** Several functions returning `Result` types lacked `## Examples` in their documentation, which violates the `# Examples` rule.
+**Clarification:** Added executable doctests as `## Examples` for functions across `orpheus-lang` including `parse_module`, `infer_module`, `render_ascii_roll`, and `render_ascii_number_roll` to demonstrate successful execution flows and clarify return types.

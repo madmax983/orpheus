@@ -18,6 +18,19 @@ use crate::value::SamplePatternValue;
 ///
 /// This function does not panic.
 ///
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{eval_module, ReplMode, render_ascii_roll};
+///
+/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+///
+/// let roll = render_ascii_roll("x", pattern, 1, 4).unwrap();
+/// assert!(roll.contains("bd"));
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`EvalError`] if pattern querying fails or if `cycle_count` is 0.
