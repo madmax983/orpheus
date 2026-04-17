@@ -78,5 +78,5 @@ pub enum ReplMode {
     Strict,
 }
 
-pub mod mermaid;
+mod mermaid;
 pub use mermaid::export_sample_pattern_to_mermaid_gantt;
