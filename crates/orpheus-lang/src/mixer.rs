@@ -16,6 +16,10 @@ use std::collections::BTreeMap;
 
 use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
 use crossterm::style::Stylize;
+
+use ratatui::style::{Color as TuiColor, Modifier as TuiModifier, Style as TuiStyle};
+use ratatui::text::{Line, Span};
+
 use orpheus_dsp::{RoutingSnapshot, SampleTrigger, TrackSource};
 use orpheus_pattern::Event;
 use orpheus_pattern::Rational;
@@ -260,6 +264,135 @@ impl MixerState {
             .ok_or_else(|| format!("no track named `{track_name}`"))?;
         track.sends.insert(bus_name.to_owned(), level);
         Ok(())
+    }
+
+    #[allow(clippy::too_many_lines)]
+    pub(crate) fn render_tui_summary(&self) -> Vec<Line<'static>> {
+        let mut lines = Vec::new();
+
+        let header_style = TuiStyle::default().fg(TuiColor::DarkGray);
+        let track_style = TuiStyle::default().fg(TuiColor::Cyan);
+        let binding_style = TuiStyle::default().fg(TuiColor::Yellow);
+        let level_style = TuiStyle::default().fg(TuiColor::Green);
+
+        lines.push(Line::from(vec![Span::styled(
+            "Mixer Tracks:",
+            track_style.add_modifier(TuiModifier::BOLD),
+        )]));
+
+        let mut track_rows = Vec::new();
+        track_rows.push(vec![
+            Span::styled("Track", header_style),
+            Span::styled("Binding", header_style),
+            Span::styled("Level", header_style),
+            Span::styled("Muted", header_style),
+            Span::styled("Sends", header_style),
+        ]);
+
+        if self.has_explicit_bound_tracks() {
+            for (track_name, track) in &self.tracks {
+                let binding = track.binding_name.as_deref().unwrap_or("<unbound>");
+                let sends = track
+                    .sends
+                    .iter()
+                    .map(|(bus, level)| format!("{bus} @ {level:.2}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let muted_color = if track.muted {
+                    TuiColor::Red
+                } else {
+                    TuiColor::DarkGray
+                };
+
+                track_rows.push(vec![
+                    Span::styled(track_name.to_owned(), track_style),
+                    Span::styled(binding.to_owned(), binding_style),
+                    Span::styled(format!("{:.2}", track.level), level_style),
+                    Span::styled(track.muted.to_string(), TuiStyle::default().fg(muted_color)),
+                    Span::styled(sends, header_style),
+                ]);
+            }
+        } else {
+            let binding = self
+                .compatibility_main_binding
+                .as_deref()
+                .unwrap_or("<unbound>");
+            track_rows.push(vec![
+                Span::styled("main (auto)".to_owned(), track_style),
+                Span::styled(binding.to_owned(), binding_style),
+                Span::styled("1.00".to_owned(), level_style),
+                Span::styled("false".to_owned(), header_style),
+                Span::styled(String::new(), header_style),
+            ]);
+        }
+
+        // Calculate column widths
+        let mut col_widths = [0; 5];
+        for row in &track_rows {
+            for (i, col) in row.iter().enumerate() {
+                col_widths[i] = col_widths[i].max(col.content.len());
+            }
+        }
+
+        for row in track_rows {
+            let mut spans = Vec::new();
+            for (i, col) in row.into_iter().enumerate() {
+                let padding = col_widths[i].saturating_sub(col.content.len());
+                let padded_content = format!("{}{}", col.content, " ".repeat(padding));
+                spans.push(Span::styled(padded_content, col.style));
+                if i < 4 {
+                    spans.push(Span::raw(" │ "));
+                }
+            }
+            lines.push(Line::from(spans));
+        }
+
+        if !self.buses.is_empty() {
+            lines.push(Line::from(vec![Span::raw("")]));
+            lines.push(Line::from(vec![Span::styled(
+                "Mixer Buses:",
+                track_style.add_modifier(TuiModifier::BOLD),
+            )]));
+
+            let mut bus_rows = Vec::new();
+            bus_rows.push(vec![
+                Span::styled("Bus", header_style),
+                Span::styled("Effect", header_style),
+            ]);
+
+            for (bus_name, bus) in &self.buses {
+                let effect = bus
+                    .effect
+                    .as_ref()
+                    .map_or_else(|| "none".to_owned(), MixerBusEffect::summary);
+                bus_rows.push(vec![
+                    Span::styled(bus_name.to_owned(), track_style),
+                    Span::styled(effect, level_style),
+                ]);
+            }
+
+            let mut bus_col_widths = [0; 2];
+            for row in &bus_rows {
+                for (i, col) in row.iter().enumerate() {
+                    bus_col_widths[i] = bus_col_widths[i].max(col.content.len());
+                }
+            }
+
+            for row in bus_rows {
+                let mut spans = Vec::new();
+                for (i, col) in row.into_iter().enumerate() {
+                    let padding = bus_col_widths[i].saturating_sub(col.content.len());
+                    let padded_content = format!("{}{}", col.content, " ".repeat(padding));
+                    spans.push(Span::styled(padded_content, col.style));
+                    if i < 1 {
+                        spans.push(Span::raw(" │ "));
+                    }
+                }
+                lines.push(Line::from(spans));
+            }
+        }
+
+        lines
     }
 
     pub(crate) fn render_summary(&self) -> String {

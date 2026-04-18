@@ -9,6 +9,7 @@
 //! typed Orpheus [`Value`]s and interfaces directly with the `orpheus_dsp` layer via an
 //! `EngineHandle`.
 
+use ratatui::text::Line;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -132,6 +133,7 @@ pub struct TransportView {
 pub struct MixerView {
     has_pending_routing: bool,
     summary: String,
+    tui_summary: Vec<Line<'static>>,
 }
 
 impl TransportView {
@@ -227,6 +229,11 @@ impl MixerView {
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
+    }
+
+    #[must_use]
+    pub fn tui_summary(&self) -> &[Line<'static>] {
+        &self.tui_summary
     }
 }
 
@@ -1445,6 +1452,7 @@ impl ReplSession {
         MixerView {
             has_pending_routing: snapshot.has_pending_routing(),
             summary: self.mixer.render_summary(),
+            tui_summary: self.mixer.render_tui_summary(),
         }
     }
 
