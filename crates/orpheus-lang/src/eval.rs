@@ -256,6 +256,36 @@ impl ExplicitValue {
         }
     }
 
+    fn append_unsorted_shifted(&mut self, base: &Self, offset: &Rational) -> Result<(), EvalError> {
+        match (self, base) {
+            (Self::Sample(combined), Self::Sample(base_events)) => {
+                for event in base_events {
+                    let mut new_event = event.clone();
+                    new_event.part = shift_span(&new_event.part, offset)?;
+                    if let Some(whole) = new_event.whole.take() {
+                        new_event.whole = Some(shift_span(&whole, offset)?);
+                    }
+                    combined.push(new_event);
+                }
+                Ok(())
+            }
+            (Self::Number(combined), Self::Number(base_events)) => {
+                for event in base_events {
+                    let mut new_event = event.clone();
+                    new_event.part = shift_span(&new_event.part, offset)?;
+                    if let Some(whole) = new_event.whole.take() {
+                        new_event.whole = Some(shift_span(&whole, offset)?);
+                    }
+                    combined.push(new_event);
+                }
+                Ok(())
+            }
+            (Self::Sample(_), Self::Number(_)) | (Self::Number(_), Self::Sample(_)) => Err(
+                EvalError::new("explicit-time items must all resolve to the same pattern kind"),
+            ),
+        }
+    }
+
     fn sort(&mut self) {
         match self {
             Self::Sample(events) => sort_events(events),
@@ -386,7 +416,7 @@ impl Evaluator {
                 "rest markers can only appear inside pattern sequences",
             )),
             Expr::Number(value) => Ok(Value::NumberPattern(NumberPatternValue::constant(*value))),
-            Expr::String(value) => Ok(Value::String(value.clone())),
+            Expr::String(value) => Ok(Value::String(value.clone().into())),
             Expr::Graph { bindings, result } => compile_graph(bindings, result).map(Value::Pedal),
             Expr::Binary { .. } => Err(EvalError::new(
                 "binary pedal expressions are parsed but not yet executable in evaluation",
@@ -683,9 +713,7 @@ impl Evaluator {
                 combined.append_unsorted(final_repeated)?;
                 break;
             }
-            let mut repeated = base.clone();
-            repeated.shift(&offset)?;
-            combined.append_unsorted(repeated)?;
+            combined.append_unsorted_shifted(&base, &offset)?;
         }
 
         combined.sort();
@@ -1216,7 +1244,7 @@ fn extract_constant_number_value(value: Value, context: &str) -> Result<f64, Eva
 
 fn extract_string_value(value: Value, message: &str) -> Result<String, EvalError> {
     match value {
-        Value::String(string) => Ok(string),
+        Value::String(string) => Ok(string.to_string()),
         Value::SamplePattern(_)
         | Value::NumberPattern(_)
         | Value::ArpDirection(_)
