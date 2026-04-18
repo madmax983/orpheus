@@ -1,5 +1,0 @@
-    Checking orpheus-pattern v0.1.0 (/app/crates/orpheus-pattern)
-    Checking orpheus-dsp v0.1.0 (/app/crates/orpheus-dsp)
-    Checking orpheus-lang v0.1.0 (/app/crates/orpheus-lang)
-    Checking orpheus v0.1.0 (/app)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 7.35s

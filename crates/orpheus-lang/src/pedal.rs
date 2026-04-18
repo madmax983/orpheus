@@ -815,41 +815,30 @@ fn format_graph_source_into(bindings: &[GraphBinding], result: &Expr, buf: &mut 
     buf.push_str(" }");
 }
 
-#[allow(clippy::too_many_lines)]
+fn format_separated_exprs_into(items: &[Expr], separator: &str, buf: &mut String) {
+    let mut first = true;
+    for item in items {
+        if !first {
+            buf.push_str(separator);
+        }
+        format_expr_source_into(item, buf);
+        first = false;
+    }
+}
+
 fn format_expr_source_into(expr: &Expr, buf: &mut String) {
     match expr {
         Expr::Seq(items) => {
-            let mut first = true;
-            for item in items {
-                if !first {
-                    buf.push(' ');
-                }
-                format_expr_source_into(item, buf);
-                first = false;
-            }
+            format_separated_exprs_into(items, " ", buf);
         }
         Expr::Stack(items) => {
             buf.push_str("stack(");
-            let mut first = true;
-            for item in items {
-                if !first {
-                    buf.push_str(", ");
-                }
-                format_expr_source_into(item, buf);
-                first = false;
-            }
+            format_separated_exprs_into(items, ", ", buf);
             buf.push(')');
         }
         Expr::Stream(items) => {
             buf.push_str("stream(");
-            let mut first = true;
-            for item in items {
-                if !first {
-                    buf.push_str(", ");
-                }
-                format_expr_source_into(item, buf);
-                first = false;
-            }
+            format_separated_exprs_into(items, ", ", buf);
             buf.push(')');
         }
         Expr::Graph { bindings, result } => format_graph_source_into(bindings, result, buf),
@@ -871,14 +860,7 @@ fn format_expr_source_into(expr: &Expr, buf: &mut String) {
         Expr::Call { callee, args } => {
             format_expr_source_into(callee, buf);
             buf.push('(');
-            let mut first = true;
-            for arg in args {
-                if !first {
-                    buf.push_str(", ");
-                }
-                format_expr_source_into(arg, buf);
-                first = false;
-            }
+            format_separated_exprs_into(args, ", ", buf);
             buf.push(')');
         }
         Expr::At { start, pattern } => {
@@ -915,26 +897,12 @@ fn format_expr_source_into(expr: &Expr, buf: &mut String) {
         }
         Expr::SeqSections(items) => {
             buf.push_str("seq_sections(");
-            let mut first = true;
-            for item in items {
-                if !first {
-                    buf.push_str(", ");
-                }
-                format_expr_source_into(item, buf);
-                first = false;
-            }
+            format_separated_exprs_into(items, ", ", buf);
             buf.push(')');
         }
         Expr::Group(items) => {
             buf.push('(');
-            let mut first = true;
-            for item in items {
-                if !first {
-                    buf.push(' ');
-                }
-                format_expr_source_into(item, buf);
-                first = false;
-            }
+            format_separated_exprs_into(items, " ", buf);
             buf.push(')');
         }
         Expr::Ident(name) => buf.push_str(name),

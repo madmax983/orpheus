@@ -1,5 +1,5 @@
-use orpheus_lang::ReplSession;
 use orpheus_dsp::EngineHandle;
+use orpheus_lang::ReplSession;
 
 /// 👺 Havoc: Tests that evaluating a negative time offset does not crash
 /// the spawned background thread for sending MIDI events with a negative duration.
