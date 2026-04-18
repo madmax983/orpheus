@@ -541,3 +541,15 @@ fn free_type_vars(ty: &Type) -> BTreeSet<TypeVarId> {
         | Type::Unit => BTreeSet::new(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagnostics::ParseError;
+    #[test]
+    fn test_type_error_from_parse_error() {
+        let parse_err = ParseError::new("mock parse error");
+        let type_err: TypeError = parse_err.into();
+        assert!(type_err.to_string().contains("mock parse error"));
+    }
+}

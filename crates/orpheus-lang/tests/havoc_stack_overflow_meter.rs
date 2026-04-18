@@ -12,6 +12,10 @@ fn test_havoc_stack_overflow_meter_eval() {
     let result = eval_module(&source, ReplMode::Loose);
     // Either parse error or eval error, but not an abort
     if let Err(e) = result {
-        assert!(e.to_string().contains("exceeded") || e.to_string().contains("limit"), "Unexpected error: {}", e);
+        assert!(
+            e.to_string().contains("exceeded") || e.to_string().contains("limit"),
+            "Unexpected error: {}",
+            e
+        );
     }
 }
