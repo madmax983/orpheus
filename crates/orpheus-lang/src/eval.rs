@@ -212,7 +212,7 @@ struct Evaluator {
     mode: ReplMode,
     bindings: BTreeMap<String, Value>,
     expr_site_salts: BTreeMap<usize, u64>,
-    depth: usize,
+    depth: std::cell::Cell<usize>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -340,7 +340,7 @@ impl Evaluator {
             mode,
             bindings,
             expr_site_salts: collect_expr_site_salts(module),
-            depth: 0,
+            depth: std::cell::Cell::new(0),
         }
     }
 
@@ -373,7 +373,7 @@ impl Evaluator {
                             body: expr.clone(),
                             captured_bindings: self.bindings.clone(),
                             expr_site_salts: self.expr_site_salts.clone(),
-                            depth: self.depth,
+                            depth: self.depth.get(),
                         }))
                     };
                     self.bindings.insert(name.clone(), value.clone());
@@ -387,6 +387,19 @@ impl Evaluator {
     }
 
     fn eval_expr_in_meter(
+        &self,
+        expr: &Expr,
+        meter: Option<&MeterContext>,
+    ) -> Result<Value, EvalError> {
+        if self.depth.get() > 200 {
+            return Err(EvalError::new("evaluation recursion limit exceeded"));
+        }
+        self.depth.set(self.depth.get() + 1);
+        let result = self.eval_expr_in_meter_impl(expr, meter);
+        self.depth.set(self.depth.get() - 1);
+        result
+    }
+    fn eval_expr_in_meter_impl(
         &self,
         expr: &Expr,
         meter: Option<&MeterContext>,
@@ -836,7 +849,7 @@ impl Evaluator {
             }
             Value::Function(mut function) => {
                 if let FunctionValue::User(ref mut user_fn) = function {
-                    user_fn.depth = self.depth;
+                    user_fn.depth = self.depth.get();
                 }
                 apply_function_value(function, args)
             }
@@ -1081,7 +1094,7 @@ fn apply_user_function(mut function: UserFn, args: Vec<Value>) -> Result<Value, 
         mode: function.mode,
         bindings: function.captured_bindings,
         expr_site_salts: function.expr_site_salts,
-        depth: function.depth + 1,
+        depth: std::cell::Cell::new(function.depth + 1),
     };
     evaluator.eval_expr(&function.body)
 }
