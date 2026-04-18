@@ -231,6 +231,26 @@ impl MixerView {
         &self.summary
     }
 
+    /// Returns the pre-rendered, colorized UI lines of the session's active bindings and graph.
+    ///
+    /// While [`summary`] returns a raw text representation, `tui_summary` provides the fully
+    /// styled and laid-out equivalent for direct rendering in a `ratatui` interface. This avoids
+    /// re-parsing and styling the text on every draw tick.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use ratatui::text::Line;
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.eval_line("notes = 60 64 67");
+    ///
+    /// // The lines are pre-rendered and styled with ANSI colors
+    /// let lines: &[Line<'static>] = session.tui_summary();
+    /// assert!(!lines.is_empty());
+    /// ```
     #[must_use]
     pub fn tui_summary(&self) -> &[Line<'static>] {
         &self.tui_summary
