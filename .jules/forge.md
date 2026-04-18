@@ -20,3 +20,7 @@
 **Refactoring unstable `let_chains`**
 **Learning:** `clippy::collapsible_if` or compiler errors regarding the unstable `let_chains` feature (`if let Some(x) = y && condition`) should not be resolved using nested `if` statements with `#[allow(clippy::collapsible_if)]`. This creates unnecessary nesting and introduces artificial suppressions that go against the "Nesting is the mind-killer" philosophy.
 **Action:** Use `Option::is_some_and` (e.g., `if y.is_some_and(|val| condition)`) instead to maintain a clean, flat structure.
+
+**Extracting Match Contexts with Borrow Checking**
+**Learning:** When refactoring large `match` expressions to fix `clippy::too_many_lines`, do not consolidate context structs that contain mutable references (e.g., `&mut [T]`) before the `match` statement. Eager instantiation moves the references, causing borrow checker 'moved value' errors on branches that do not use the context struct but try to access the underlying references directly.
+**Action:** Instantiate context structs locally within the specific match arms that actually require them, or re-apply `#[allow(clippy::too_many_lines)]` if safe extraction is not possible without significant refactoring.

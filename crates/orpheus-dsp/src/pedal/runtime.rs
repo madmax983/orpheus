@@ -858,16 +858,16 @@ impl PedalStage {
             Self::Sag {
                 input: source,
                 amount,
-            } => {
-                let signal = resolve(node_values, *source, input);
-                let amount = resolve(node_values, *amount, input).clamp(0.0, 1.0);
-                let NodeState::Sag { envelope } = &mut node_states[index] else {
-                    return signal;
-                };
-                *envelope += (signal.abs() - *envelope) * 0.01;
-                let reduction = 1.0 - (*envelope * amount * 0.35).clamp(0.0, 0.8);
-                sanitize_audio(signal * reduction)
-            }
+            } => process_sag_stage(
+                &mut StageContext {
+                    node_states,
+                    node_values,
+                    index,
+                    input,
+                },
+                *source,
+                *amount,
+            ),
             Self::Bias {
                 input: source,
                 amount,
@@ -939,6 +939,17 @@ fn process_filter_stage(
             high_pass.process_with_cutoff(resonant_input, cutoff)
         }
     }
+}
+
+fn process_sag_stage(ctx: &mut StageContext, source: NodeRef, amount: NodeRef) -> f32 {
+    let signal = resolve(ctx.node_values, source, ctx.input);
+    let amount = resolve(ctx.node_values, amount, ctx.input).clamp(0.0, 1.0);
+    let NodeState::Sag { envelope } = &mut ctx.node_states[ctx.index] else {
+        return signal;
+    };
+    *envelope += (signal.abs() - *envelope) * 0.01;
+    let reduction = 1.0 - (*envelope * amount * 0.35).clamp(0.0, 0.8);
+    sanitize_audio(signal * reduction)
 }
 
 fn process_eq_stage(
