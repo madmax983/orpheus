@@ -73,15 +73,15 @@ pub fn sample_pattern_stats(
     table.load_preset(UTF8_BORDERS_ONLY);
 
     table.add_row(vec![
-        Cell::new("Total Events").fg(comfy_table::Color::DarkGrey),
+        Cell::new("Total Events").fg(comfy_table::Color::White).add_attribute(comfy_table::Attribute::Bold),
         Cell::new(total_events.to_string()).fg(comfy_table::Color::Green),
     ]);
     table.add_row(vec![
-        Cell::new("Unique Samples").fg(comfy_table::Color::DarkGrey),
+        Cell::new("Unique Samples").fg(comfy_table::Color::White).add_attribute(comfy_table::Attribute::Bold),
         Cell::new(format!("{unique_count} ({sample_list})")).fg(comfy_table::Color::Yellow),
     ]);
     table.add_row(vec![
-        Cell::new("Event Density").fg(comfy_table::Color::DarkGrey),
+        Cell::new("Event Density").fg(comfy_table::Color::White).add_attribute(comfy_table::Attribute::Bold),
         Cell::new(format!("{density:.2} events/cycle")).fg(comfy_table::Color::Cyan),
     ]);
 
@@ -163,23 +163,23 @@ pub fn number_pattern_stats(
     table.load_preset(UTF8_BORDERS_ONLY);
 
     table.add_row(vec![
-        Cell::new("Total Events").fg(comfy_table::Color::DarkGrey),
+        Cell::new("Total Events").fg(comfy_table::Color::White).add_attribute(comfy_table::Attribute::Bold),
         Cell::new(total_events.to_string()).fg(comfy_table::Color::Green),
     ]);
     table.add_row(vec![
-        Cell::new("Min Value").fg(comfy_table::Color::DarkGrey),
+        Cell::new("Min Value").fg(comfy_table::Color::White).add_attribute(comfy_table::Attribute::Bold),
         Cell::new(format!("{min_val:.3}")).fg(comfy_table::Color::Yellow),
     ]);
     table.add_row(vec![
-        Cell::new("Max Value").fg(comfy_table::Color::DarkGrey),
+        Cell::new("Max Value").fg(comfy_table::Color::White).add_attribute(comfy_table::Attribute::Bold),
         Cell::new(format!("{max_val:.3}")).fg(comfy_table::Color::Yellow),
     ]);
     table.add_row(vec![
-        Cell::new("Average Value").fg(comfy_table::Color::DarkGrey),
+        Cell::new("Average Value").fg(comfy_table::Color::White).add_attribute(comfy_table::Attribute::Bold),
         Cell::new(format!("{avg:.3}")).fg(comfy_table::Color::Yellow),
     ]);
     table.add_row(vec![
-        Cell::new("Event Density").fg(comfy_table::Color::DarkGrey),
+        Cell::new("Event Density").fg(comfy_table::Color::White).add_attribute(comfy_table::Attribute::Bold),
         Cell::new(format!("{density:.2} events/cycle")).fg(comfy_table::Color::Cyan),
     ]);
 
