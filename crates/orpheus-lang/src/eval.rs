@@ -1552,6 +1552,20 @@ right = sometimes(fast(2), cp hh)";
     }
 
     #[test]
+    fn eval_error_from_type_error() {
+        let type_err = crate::diagnostics::TypeError::new("mock type error");
+        let err: super::EvalError = type_err.into();
+        assert_eq!(err.to_string(), "mock type error");
+    }
+
+    #[test]
+    fn eval_error_from_load_error() {
+        let load_err = crate::diagnostics::LoadError::new("mock load error");
+        let err: super::EvalError = load_err.into();
+        assert_eq!(err.to_string(), "mock load error");
+    }
+
+    #[test]
     fn eval_error_from_pattern_error() {
         use orpheus_pattern::PatternError;
         let pattern_err = PatternError::InvalidDenominator { denominator: 0 };

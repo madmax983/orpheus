@@ -14,3 +14,6 @@
 ## 2026-04-16 - Add format_cycle_position test
 **Learning:** Found format_cycle_position in tui/style.rs was completely untested.
 **Action:** Add unit test for formatting the cycle position.
+## 2024-06-25 - Add Error From Tests
+**Learning:** Evaluated code coverage and noticed missing tests for `From` conversions to `EvalError` for `TypeError` and `LoadError`. Also missing tests for `From` conversions to `TypeError` for `ParseError`.
+**Action:** Identify untested `From` or error mapping paths and add basic roundtrip tests to make sure error display logic isn't silently broken.
