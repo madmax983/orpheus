@@ -281,7 +281,7 @@ pub enum Value {
     /// A validated pedal graph ready for later lowering.
     Pedal(PedalValue),
     /// A primitive string value.
-    String(String),
+    String(std::sync::Arc<str>),
 }
 
 impl Value {

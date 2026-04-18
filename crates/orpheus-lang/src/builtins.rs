@@ -2334,7 +2334,7 @@ fn extract_constant_number(value: Value, builtin_name: &str) -> Result<f64, Eval
 
 fn extract_string(value: Value, builtin_name: &str) -> Result<String, EvalError> {
     match value {
-        Value::String(string) => Ok(string),
+        Value::String(string) => Ok(string.to_string()),
         Value::SamplePattern(_)
         | Value::NumberPattern(_)
         | Value::ArpDirection(_)
