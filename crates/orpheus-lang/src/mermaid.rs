@@ -14,13 +14,9 @@ use crate::value::SamplePatternValue;
 ///
 /// ```
 /// use orpheus_lang::{ReplMode, eval_module};
-/// use orpheus_lang::mermaid::export_sample_pattern_to_mermaid_gantt;
 ///
 /// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
 /// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
-///
-/// let path = std::env::temp_dir().join("piano_roll.mermaid");
-/// export_sample_pattern_to_mermaid_gantt(pattern, &path, 2).unwrap();
 /// ```
 ///
 /// # Errors

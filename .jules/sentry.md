@@ -11,3 +11,7 @@
 ## 2026-04-16 - [Testing TUI style pure functions without full engine]
 **Learning:** Testing pure TUI formatting functions (like `transport_status_line`) can often be accomplished efficiently by constructing a real `ReplSession` with a stubbed `EngineHandle`, and simulating state transitions via `eval_line()` rather than directly mocking the underlying state structs.
 **Action:** Use `ReplSession::with_engine(EngineHandle::stub())` and `session.eval_line()` to generate complex UI state views (like `TransportView`, `MixerView`) for unit testing TUI layout elements without needing complex mocks.
+## 2024-04-18 - TUI state testing
+
+**Learning:** Testing pure TUI formatting functions (`transport_status_line`, `format_cycle_position`, etc.) can often be accomplished efficiently by constructing a real `ReplSession` with a stubbed `EngineHandle`, and simulating state transitions via `session.eval_line(":stop")` or time progression via `session.render_test_block_for_tui(frames)` rather than directly mocking the underlying state structs.
+**Action:** Use this to cover format functions in `crates/orpheus-lang/src/tui/style.rs` (or other formatting modules).

@@ -177,3 +177,112 @@ pub fn format_tempo_bpm(snapshot: &orpheus_dsp::TransportSnapshot) -> String {
         format!("{tempo_bpm:.1}")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::session::ReplSession;
+    use orpheus_dsp::EngineHandle;
+
+    #[test]
+    fn test_format_cycle_position_and_tempo() {
+        let session = ReplSession::with_engine(EngineHandle::stub());
+        let view = session.transport_view();
+        let snapshot = view.snapshot();
+
+        let cycle_pos = format_cycle_position(snapshot);
+        assert_eq!(cycle_pos, "0.000");
+
+        let tempo = format_tempo_bpm(snapshot);
+        assert_eq!(tempo, "120");
+    }
+
+    #[test]
+    fn test_transport_status_formatting() {
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+
+        // Stop engine
+        session.eval_line(":stop").unwrap();
+        session.render_test_block_for_tui(1);
+        let view = session.transport_view();
+
+        assert_eq!(transport_state(&view), UiTransportState::Stopped);
+        assert_eq!(format_transport_status(&view), "stopped");
+
+        let style = transport_status_style(&view);
+        assert_eq!(style.fg, Some(Color::Yellow));
+
+        // Start engine
+        session.eval_line(":play").unwrap();
+        session.render_test_block_for_tui(1);
+        let view2 = session.transport_view();
+        assert_eq!(transport_state(&view2), UiTransportState::Playing);
+        assert_eq!(format_transport_status(&view2), "playing");
+
+        let style2 = transport_status_style(&view2);
+        assert_eq!(style2.fg, Some(Color::Green));
+    }
+
+    #[test]
+    fn test_routing_status_line() {
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+
+        // By default, no pending routing.
+        let mixer_view = session.mixer_view();
+        let line = routing_status_line(&mixer_view);
+        assert_eq!(line.spans[1].content, "live");
+
+        // Apply routing change.
+        session.eval_line(":track new test").unwrap();
+        session.render_test_block_for_tui(1); // Advance time for engine to pick up routing change.
+        let mixer_view_pending = session.mixer_view();
+        let pending_line = routing_status_line(&mixer_view_pending);
+        assert_eq!(pending_line.spans[1].content, "pending");
+    }
+
+    #[test]
+    fn test_binding_legend_visibility() {
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+
+        let view = session.transport_view();
+        // Should be false when no active or pending patterns
+        assert!(!should_show_binding_legend(10, 2, &view));
+
+        session.eval_line("pat = bd sn").unwrap();
+        let view_with_binding = session.transport_view();
+
+        // Enough space (10 rows for 1 binding + legend = > 6 rows total and enough room)
+        assert!(should_show_binding_legend(10, 1, &view_with_binding));
+
+        // Not enough space (only 3 visible rows)
+        assert!(!should_show_binding_legend(5, 1, &view_with_binding));
+    }
+
+    #[test]
+    fn test_binding_list_item_styling() {
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+
+        // Initially, no patterns
+        let view = session.transport_view();
+        let item = binding_list_item("other: bd".to_owned(), &view);
+        assert!(format!("{item:?}").contains("other: bd"));
+
+        // Add pending pattern
+        session.eval_line("pat = bd sn").unwrap();
+        let view_pending = session.transport_view();
+
+        let item_pending = binding_list_item("pat: bd sn".to_owned(), &view_pending);
+        // It should have [next] prefix
+        assert!(format!("{item_pending:?}").contains("[next]"));
+        assert!(format!("{item_pending:?}").contains("pat: bd sn"));
+
+        // Advance time so it becomes active
+        session.render_test_block_for_tui(session.frames_until_boundary_for_tui() + 1);
+        let view_active = session.transport_view();
+
+        let item_active = binding_list_item("pat: bd sn".to_owned(), &view_active);
+        // It should have [live] prefix
+        assert!(format!("{item_active:?}").contains("[live]"));
+        assert!(format!("{item_active:?}").contains("pat: bd sn"));
+    }
+}
