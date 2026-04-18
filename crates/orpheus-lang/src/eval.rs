@@ -208,6 +208,11 @@ pub fn eval_into_bindings(
     result
 }
 
+/// The internal state context for evaluating an AST into runtime values.
+///
+/// The `Evaluator` tracks the current evaluation mode, bindings, and execution depth.
+/// It traverses the AST, resolving variable references and function calls, and generates
+/// the final values representing patterns or other primitives.
 struct Evaluator {
     mode: ReplMode,
     bindings: BTreeMap<String, Value>,
@@ -215,11 +220,19 @@ struct Evaluator {
     depth: usize,
 }
 
+/// Tracks the active meter (time signature) during AST evaluation.
+///
+/// This allows relative temporal expressions like `beat(2)` to be resolved into
+/// absolute `Rational` time offsets based on the `beats_per_cycle` context.
 #[derive(Clone, Copy, Debug)]
 struct MeterContext {
     beats_per_cycle: i128,
 }
 
+/// Represents a fully evaluated, explicit-time stream of audio or numerical events.
+///
+/// While `Value` is often an implicitly infinite, lazy pattern, `ExplicitValue` is the
+/// materialized result of evaluating an explicit stream (`stream(...)`) or an `at(...)` expression.
 #[derive(Clone, Debug)]
 enum ExplicitValue {
     Sample(Vec<Event<SampleEvent>>),

@@ -4,3 +4,6 @@
 ## 2024-05-19 - [Missing Doctests and Conversion Documentations]
 **Confusion:** The core runtime value type `SampleEvent` lacked executable doctests, leaving users to guess the default behaviors of parameters like `gain()`, `hpf_cutoff_hz()`, and `lpf_cutoff_hz()`. Additionally, tests for converting structural error types (`LoadError`, `TypeError`) into `EvalError` were missing.
 **Clarification:** Added comprehensive `///` doctests using `Value::as_sample_pattern()` querying examples to clearly demonstrate how `SampleEvent` data is extracted and modified in the engine. Wrote missing `.to_string()` unit tests in `crates/orpheus-lang/src/eval.rs` to verify that `EvalError::from` propagating works smoothly without dropping information.
+## 2025-04-18 - [Add ExplicitValue and Evaluator struct docs]
+**Confusion:** The `Evaluator` and `ExplicitValue` structs in `eval.rs` were undocumented internal items doing heavy lifting, but lacking module-level context on what they actually manage and track during AST evaluation into `Value`s. `MeterContext` was also missing docs on what role it plays.
+**Clarification:** Added explicit documentation comments on `Evaluator` (tracking context for evaluating AST into runtime values), `ExplicitValue` (materialized stream), and `MeterContext` (tracks active time signature).
