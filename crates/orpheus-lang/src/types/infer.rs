@@ -30,7 +30,7 @@ use crate::types::{Type, TypeVarId, TypedModule};
 /// use orpheus_lang::{infer_module, ReplMode};
 ///
 /// let typed = infer_module("x = bd sn", ReplMode::Loose).unwrap();
-/// assert!(typed.bindings.contains_key("x"));
+/// assert!(typed.contains_key("x"));
 /// ```
 ///
 /// # Errors
