@@ -11,3 +11,6 @@
 ## 2026-04-16 - [Testing TUI style pure functions without full engine]
 **Learning:** Testing pure TUI formatting functions (like `transport_status_line`) can often be accomplished efficiently by constructing a real `ReplSession` with a stubbed `EngineHandle`, and simulating state transitions via `eval_line()` rather than directly mocking the underlying state structs.
 **Action:** Use `ReplSession::with_engine(EngineHandle::stub())` and `session.eval_line()` to generate complex UI state views (like `TransportView`, `MixerView`) for unit testing TUI layout elements without needing complex mocks.
+## 2026-04-16 - Add format_cycle_position test
+**Learning:** Found format_cycle_position in tui/style.rs was completely untested.
+**Action:** Add unit test for formatting the cycle position.

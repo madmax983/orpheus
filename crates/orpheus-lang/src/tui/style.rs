@@ -177,3 +177,24 @@ pub fn format_tempo_bpm(snapshot: &orpheus_dsp::TransportSnapshot) -> String {
         format!("{tempo_bpm:.1}")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::session::ReplSession;
+    use orpheus_dsp::EngineHandle;
+
+    #[test]
+    fn should_format_cycle_position_and_tempo() {
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+
+        let snapshot = session.transport_snapshot();
+        assert_eq!(format_cycle_position(&snapshot), "0.000");
+        assert_eq!(format_tempo_bpm(&snapshot), "120");
+
+        // Advance 1.5 cycles at 120 BPM (96000 frames per cycle at 48kHz)
+        session.render_test_block_for_tui(96000 + 48000);
+        let snapshot = session.transport_snapshot();
+        assert_eq!(format_cycle_position(&snapshot), "1.500");
+    }
+}
