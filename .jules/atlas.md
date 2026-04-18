@@ -8,3 +8,6 @@
 **[Enforce Private Mermaid Module]
 **Tangle:** The `mermaid` module in `orpheus-lang/src/lib.rs` was declared as `pub mod`, leaking the internal implementation details of the Mermaid export module.
 **Blueprint:** Changed `pub mod mermaid;` to `pub(crate) mod mermaid;` in `crates/orpheus-lang/src/lib.rs`. This enforces strong module boundaries by keeping the module internal while the intended public API (`export_sample_pattern_to_mermaid_gantt`) is explicitly exposed via `pub use`.
+**[Enforce Private Number Roll Module]
+**Tangle:** The `number_roll` module in `orpheus-lang/src/lib.rs` was declared as `pub mod`, leaking the internal implementation details.
+**Blueprint:** Changed `pub mod number_roll;` to `pub(crate) mod number_roll;` in `crates/orpheus-lang/src/lib.rs`. This enforces strong module boundaries by keeping the module internal while the intended public API (`render_ascii_number_roll`) is explicitly exposed via `pub use`.
