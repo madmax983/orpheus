@@ -14,8 +14,7 @@ fn test_havoc_stack_overflow_meter_eval() {
     if let Err(e) = result {
         assert!(
             e.to_string().contains("exceeded") || e.to_string().contains("limit"),
-            "Unexpected error: {}",
-            e
+            "Unexpected error: {e}"
         );
     }
 }
