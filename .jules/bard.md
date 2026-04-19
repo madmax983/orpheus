@@ -7,3 +7,6 @@
 ## 2026-04-17 - [Missing Error Example Documentations]
 **Confusion:** Several functions returning `Result` types lacked `## Examples` in their documentation, which violates the `# Examples` rule.
 **Clarification:** Added executable doctests as `## Examples` for functions across `orpheus-lang` including `parse_module`, `infer_module`, `render_ascii_roll`, and `render_ascii_number_roll` to demonstrate successful execution flows and clarify return types.
+## 2024-05-19 - [Missing Value Runtime Documentation]
+**Confusion:** The core runtime pattern evaluation methods (`query_unit`, `try_query`, and `try_query_unit`) on `SamplePatternValue` and `NumberPatternValue` in `value.rs` lacked executable doctests and narrative documentation explaining how the runtime evaluates these structures across time, causing users to misunderstand how patterns are materialized.
+**Clarification:** Added comprehensive `///` narrative documentation explaining the delayed computation model and `## Examples` doctest blocks illustrating successful materialization of `Event` sequences across arbitrary or default unit time spans.
