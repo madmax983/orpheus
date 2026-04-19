@@ -3493,6 +3493,7 @@ fn whole_number_from_degree_value(value: f64) -> Result<i32, EvalError> {
             "`degrees` degree exceeded the supported evaluator range",
         ))
     } else {
+        #[allow(clippy::cast_possible_truncation)]
         Ok(rounded as i32)
     }
 }

@@ -2554,11 +2554,11 @@ mod test_nova {
         // A -> AB -> ABA -> ABAAB
         // A=0, B=1, A=0, A=0, B=1
         assert_eq!(events.len(), 5);
-        assert_eq!(events[0].value, 0.0);
-        assert_eq!(events[1].value, 1.0);
-        assert_eq!(events[2].value, 0.0);
-        assert_eq!(events[3].value, 0.0);
-        assert_eq!(events[4].value, 1.0);
+        assert!((events[0].value - 0.0).abs() < f64::EPSILON);
+        assert!((events[1].value - 1.0).abs() < f64::EPSILON);
+        assert!((events[2].value - 0.0).abs() < f64::EPSILON);
+        assert!((events[3].value - 0.0).abs() < f64::EPSILON);
+        assert!((events[4].value - 1.0).abs() < f64::EPSILON);
     }
 
     #[test]
