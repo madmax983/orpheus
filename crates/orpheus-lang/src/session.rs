@@ -231,6 +231,25 @@ impl MixerView {
         &self.summary
     }
 
+    /// Retrieves the cached, pre-formatted terminal UI text representation of the mixer layout.
+    ///
+    /// This method is crucial for TUI performance. Instead of allocating and styling Ratatui `Line`
+    /// objects on every 60fps render tick, the `Session` generates and caches this summary only
+    /// when the underlying DSP topology actually changes. The TUI simply renders this slice directly.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let session = ReplSession::with_engine(EngineHandle::stub());
+    /// let view = session.mixer_view();
+    ///
+    /// // The summary is a slice of styled terminal lines ready for rendering.
+    /// let summary_lines = view.tui_summary();
+    /// assert!(!summary_lines.is_empty());
+    /// ```
     #[must_use]
     pub fn tui_summary(&self) -> &[Line<'static>] {
         &self.tui_summary
