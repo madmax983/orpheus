@@ -197,4 +197,53 @@ mod tests {
         let snapshot = session.transport_snapshot();
         assert_eq!(format_cycle_position(&snapshot), "1.500");
     }
+
+    #[test]
+    fn should_return_correct_transport_state() {
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+
+        // Stop the engine and render to ensure the state applies
+        session.eval_line(":stop").unwrap();
+        session.render_test_block_for_tui(1);
+
+        // Initially stopped
+        let view = session.transport_view();
+        assert_eq!(transport_state(&view), UiTransportState::Stopped);
+        assert_eq!(format_transport_status(&view), "stopped");
+        assert_eq!(
+            transport_status_style(&view),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
+        );
+
+        // Start playing
+        session.eval_line(":play").unwrap();
+        session.render_test_block_for_tui(1);
+        let view = session.transport_view();
+        assert_eq!(transport_state(&view), UiTransportState::Playing);
+        assert_eq!(format_transport_status(&view), "playing");
+        assert_eq!(
+            transport_status_style(&view),
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD)
+        );
+
+        // Enqueue a pattern, which puts us in Queued/Syncing state.
+        // `pending_pattern_name()` will only be set if `session.eval_line` sets it on `pattern_display`.
+        session.eval_line("p = bd").unwrap();
+        let view = session.transport_view();
+
+        // `has_pending_pattern` is false because we haven't reached a boundary / engine hasn't seen the queue yet.
+        // But `pending_pattern_name` is Some("p"). So it resolves to `UiTransportState::Queued`
+        assert_eq!(transport_state(&view), UiTransportState::Queued);
+        assert_eq!(format_transport_status(&view), "queued");
+        assert_eq!(
+            transport_status_style(&view),
+            Style::default()
+                .fg(Color::Blue)
+                .add_modifier(Modifier::BOLD)
+        );
+    }
 }
