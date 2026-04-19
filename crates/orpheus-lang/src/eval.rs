@@ -1828,4 +1828,56 @@ right = sometimes(fast(2), cp hh)";
         let eval_err: super::EvalError = pitch_err.into();
         assert_eq!(eval_err.to_string(), "invalid pitch literal");
     }
+
+    #[test]
+    fn f64_to_rational_returns_error_on_infinite_float() {
+        let err = super::f64_to_rational(f64::INFINITY, "test context").unwrap_err();
+        assert!(err.to_string().contains("must be finite"));
+        let err2 = super::f64_to_rational(f64::NEG_INFINITY, "test context").unwrap_err();
+        assert!(err2.to_string().contains("must be finite"));
+    }
+
+    #[test]
+    fn f64_to_rational_returns_error_on_nan_float() {
+        let err = super::f64_to_rational(f64::NAN, "test context").unwrap_err();
+        assert!(err.to_string().contains("must be finite"));
+    }
+
+    #[test]
+    fn f64_to_rational_returns_error_on_exceeding_decimal_range_from_large_exponent() {
+        // Rust's `to_string()` for `f64` expands large values (e.g. 1e100) out completely.
+        // This causes `checked_pow10` or string length to exceed the supported precision range
+        // or trigger an overflow, verifying the `checked_pow10` fallback error.
+        let err = super::f64_to_rational(1.0e100, "test context").unwrap_err();
+        assert!(err.to_string().contains("exceeded the supported range"));
+    }
+
+    #[test]
+    fn f64_to_rational_handles_fractional_floats() {
+        let r = super::f64_to_rational(0.123456789, "test").unwrap();
+        assert_eq!(r.numerator(), 123456789);
+        assert_eq!(r.denominator(), 1000000000);
+    }
+
+    #[test]
+    fn f64_to_rational_handles_negative_floats() {
+        let r = super::f64_to_rational(-1.25, "test").unwrap();
+        assert_eq!(r.numerator(), -5);
+        assert_eq!(r.denominator(), 4);
+
+        let r2 = super::f64_to_rational(-0.75, "test").unwrap();
+        assert_eq!(r2.numerator(), -3);
+        assert_eq!(r2.denominator(), 4);
+    }
+
+    #[test]
+    fn f64_to_rational_handles_floats_without_fraction() {
+        let r = super::f64_to_rational(42.0, "test").unwrap();
+        assert_eq!(r.numerator(), 42);
+        assert_eq!(r.denominator(), 1);
+
+        let r2 = super::f64_to_rational(-7.0, "test").unwrap();
+        assert_eq!(r2.numerator(), -7);
+        assert_eq!(r2.denominator(), 1);
+    }
 }
