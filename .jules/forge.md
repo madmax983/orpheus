@@ -32,3 +32,7 @@
 **[Avoid Splitting Config Structs]**
 **Learning:** When trying to resolve `too_many_lines`, avoid destroying existing `Context` or configuration structs into many individual parameters, as this actively violates idiomatic parameter grouping rules and can cause `too_many_arguments` clippy warnings.
 **Action:** When a function takes a Context struct, leave it intact. Look for other opportunities to shorten the function, such as extracting logical blocks out of the main function entirely, while still passing the Context struct to the new helpers.
+
+**Extracting TUI Component Rendering**
+**Learning:** `clippy::too_many_lines` on UI rendering functions (like those creating Ratatui layouts) is often caused by inlining the setup, layout, and rendering of multiple distinct sections (e.g., tracks and buses) into a single function block.
+**Action:** Extract the rendering logic for distinct visual components into separate helper methods that accept a mutable reference to the line buffer (`&mut Vec<Line<'static>>`) and the necessary styling contexts. This flattens the main orchestrator function and groups related UI logic without changing the rendered output.

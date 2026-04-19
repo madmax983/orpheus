@@ -266,7 +266,6 @@ impl MixerState {
         Ok(())
     }
 
-    #[allow(clippy::too_many_lines)]
     pub(crate) fn render_tui_summary(&self) -> Vec<Line<'static>> {
         let mut lines = Vec::new();
 
@@ -275,6 +274,29 @@ impl MixerState {
         let binding_style = TuiStyle::default().fg(TuiColor::Yellow);
         let level_style = TuiStyle::default().fg(TuiColor::Green);
 
+        self.render_tui_tracks_table(
+            &mut lines,
+            header_style,
+            track_style,
+            binding_style,
+            level_style,
+        );
+
+        if !self.buses.is_empty() {
+            self.render_tui_buses_table(&mut lines, header_style, track_style, level_style);
+        }
+
+        lines
+    }
+
+    fn render_tui_tracks_table(
+        &self,
+        lines: &mut Vec<Line<'static>>,
+        header_style: TuiStyle,
+        track_style: TuiStyle,
+        binding_style: TuiStyle,
+        level_style: TuiStyle,
+    ) {
         lines.push(Line::from(vec![Span::styled(
             "Mixer Tracks:",
             track_style.add_modifier(TuiModifier::BOLD),
@@ -326,7 +348,6 @@ impl MixerState {
             ]);
         }
 
-        // Calculate column widths
         let mut col_widths = [0; 5];
         for row in &track_rows {
             for (i, col) in row.iter().enumerate() {
@@ -346,53 +367,57 @@ impl MixerState {
             }
             lines.push(Line::from(spans));
         }
+    }
 
-        if !self.buses.is_empty() {
-            lines.push(Line::from(vec![Span::raw("")]));
-            lines.push(Line::from(vec![Span::styled(
-                "Mixer Buses:",
-                track_style.add_modifier(TuiModifier::BOLD),
-            )]));
+    fn render_tui_buses_table(
+        &self,
+        lines: &mut Vec<Line<'static>>,
+        header_style: TuiStyle,
+        track_style: TuiStyle,
+        level_style: TuiStyle,
+    ) {
+        lines.push(Line::from(vec![Span::raw("")]));
+        lines.push(Line::from(vec![Span::styled(
+            "Mixer Buses:",
+            track_style.add_modifier(TuiModifier::BOLD),
+        )]));
 
-            let mut bus_rows = Vec::new();
+        let mut bus_rows = Vec::new();
+        bus_rows.push(vec![
+            Span::styled("Bus", header_style),
+            Span::styled("Effect", header_style),
+        ]);
+
+        for (bus_name, bus) in &self.buses {
+            let effect = bus
+                .effect
+                .as_ref()
+                .map_or_else(|| "none".to_owned(), MixerBusEffect::summary);
             bus_rows.push(vec![
-                Span::styled("Bus", header_style),
-                Span::styled("Effect", header_style),
+                Span::styled(bus_name.to_owned(), track_style),
+                Span::styled(effect, level_style),
             ]);
+        }
 
-            for (bus_name, bus) in &self.buses {
-                let effect = bus
-                    .effect
-                    .as_ref()
-                    .map_or_else(|| "none".to_owned(), MixerBusEffect::summary);
-                bus_rows.push(vec![
-                    Span::styled(bus_name.to_owned(), track_style),
-                    Span::styled(effect, level_style),
-                ]);
-            }
-
-            let mut bus_col_widths = [0; 2];
-            for row in &bus_rows {
-                for (i, col) in row.iter().enumerate() {
-                    bus_col_widths[i] = bus_col_widths[i].max(col.content.len());
-                }
-            }
-
-            for row in bus_rows {
-                let mut spans = Vec::new();
-                for (i, col) in row.into_iter().enumerate() {
-                    let padding = bus_col_widths[i].saturating_sub(col.content.len());
-                    let padded_content = format!("{}{}", col.content, " ".repeat(padding));
-                    spans.push(Span::styled(padded_content, col.style));
-                    if i < 1 {
-                        spans.push(Span::raw(" │ "));
-                    }
-                }
-                lines.push(Line::from(spans));
+        let mut bus_col_widths = [0; 2];
+        for row in &bus_rows {
+            for (i, col) in row.iter().enumerate() {
+                bus_col_widths[i] = bus_col_widths[i].max(col.content.len());
             }
         }
 
-        lines
+        for row in bus_rows {
+            let mut spans = Vec::new();
+            for (i, col) in row.into_iter().enumerate() {
+                let padding = bus_col_widths[i].saturating_sub(col.content.len());
+                let padded_content = format!("{}{}", col.content, " ".repeat(padding));
+                spans.push(Span::styled(padded_content, col.style));
+                if i < 1 {
+                    spans.push(Span::raw(" │ "));
+                }
+            }
+            lines.push(Line::from(spans));
+        }
     }
 
     pub(crate) fn render_summary(&self) -> String {
