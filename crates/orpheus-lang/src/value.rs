@@ -1831,10 +1831,28 @@ impl SamplePatternValue {
 
     /// Queries the pattern over the default unit cycle `[0, 1)`.
     ///
+    /// This is the primary way the runtime extracts discrete audio events from a delayed
+    /// pattern computation for a single cycle. It evaluates all transformations and returns
+    /// the materialized `SampleEvent`s.
+    ///
     /// # Errors
     ///
     /// Returns an error if an internal runtime transform produces an invalid
     /// span or overflows the evaluator's bounded rational arithmetic.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{eval_module, ReplMode};
+    ///
+    /// // Evaluate a simple sequence
+    /// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+    /// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+    ///
+    /// // Querying the unit cycle yields 2 events
+    /// let events = pattern.query_unit().unwrap();
+    /// assert_eq!(events.len(), 2);
+    /// ```
     #[must_use = "query_unit() returns a Result; ignoring it may drop query errors"]
     pub fn query_unit(&self) -> Result<Vec<Event<SampleEvent>>, EvalError> {
         self.try_query(&TimeSpan::unit())
@@ -2080,6 +2098,23 @@ impl NumberPatternValue {
 
     /// Queries the pattern over the default unit cycle `[0, 1)`.
     ///
+    /// This method performs the delayed evaluation of the number sequence for
+    /// a single cycle, returning materialized values. If evaluation fails due to
+    /// an invalid transform or overflow, it gracefully degrades by returning an
+    /// empty sequence instead of crashing.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{eval_module, ReplMode};
+    ///
+    /// let env = eval_module("x = 1 2 3", ReplMode::Loose).unwrap();
+    /// let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
+    ///
+    /// let events = pattern.query_unit();
+    /// assert_eq!(events.len(), 3);
+    /// assert_eq!(events[0].value, 1.0);
+    /// ```
     #[must_use]
     pub fn query_unit(&self) -> Vec<Event<f64>> {
         self.try_query_unit().unwrap_or_else(|_err| {
@@ -2091,11 +2126,25 @@ impl NumberPatternValue {
     /// Fallible variant of [`NumberPatternValue::query_unit`].
     ///
     /// Queries the pattern over the default unit cycle `[0, 1)`.
+    /// Use this when you need to explicitly handle evaluation failures
+    /// rather than silently ignoring them.
     ///
     /// # Errors
     ///
     /// Returns an error if an internal runtime transform produces an invalid
     /// span or overflows the evaluator's bounded rational arithmetic.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{eval_module, ReplMode};
+    ///
+    /// let env = eval_module("x = 1 2", ReplMode::Loose).unwrap();
+    /// let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
+    ///
+    /// let events = pattern.try_query_unit().unwrap();
+    /// assert_eq!(events.len(), 2);
+    /// ```
     pub fn try_query_unit(&self) -> Result<Vec<Event<f64>>, EvalError> {
         self.try_query(&TimeSpan::unit())
     }
@@ -2112,8 +2161,28 @@ impl NumberPatternValue {
         }
     }
 
+    /// Evaluates the pattern over an arbitrary rational time span.
+    ///
+    /// This allows querying sequences across multiple cycles or fraction of a cycle.
+    ///
     /// # Errors
-    /// Returns `EvalError` if querying fails.
+    /// Returns `EvalError` if querying fails due to invalid arithmetic limits.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{eval_module, ReplMode, render_span};
+    ///
+    /// let env = eval_module("x = 1 2", ReplMode::Loose).unwrap();
+    /// let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
+    ///
+    /// // Query the first 4 cycles
+    /// let span = render_span(4).unwrap();
+    /// let events = pattern.try_query(&span).unwrap();
+    ///
+    /// // 2 events per cycle * 4 cycles = 8 events
+    /// assert_eq!(events.len(), 8);
+    /// ```
     pub fn try_query(&self, span: &TimeSpan) -> Result<Vec<Event<f64>>, EvalError> {
         self.pattern.try_query(span)
     }
@@ -3493,7 +3562,9 @@ fn whole_number_from_degree_value(value: f64) -> Result<i32, EvalError> {
             "`degrees` degree exceeded the supported evaluator range",
         ))
     } else {
-        Ok(rounded as i32)
+        #[allow(clippy::cast_possible_truncation)]
+        let degree = rounded as i32;
+        Ok(degree)
     }
 }
 
