@@ -248,7 +248,8 @@ impl MixerView {
     /// session.eval_line("notes = 60 64 67");
     ///
     /// // The lines are pre-rendered and styled with ANSI colors
-    /// let lines: &[Line<'static>] = session.tui_summary();
+    /// let mixer = session.mixer_view();
+    /// let lines: &[Line<'static>] = mixer.tui_summary();
     /// assert!(!lines.is_empty());
     /// ```
     #[must_use]
