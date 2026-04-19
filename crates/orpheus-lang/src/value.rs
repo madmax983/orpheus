@@ -3486,9 +3486,15 @@ fn whole_number_from_degree_value(value: f64) -> Result<i32, EvalError> {
         ));
     }
 
-    format!("{value:.0}")
-        .parse::<i32>()
-        .map_err(|_| EvalError::new("`degrees` degree exceeded the supported evaluator range"))
+    #[allow(clippy::cast_possible_truncation)]
+    let rounded = value.round();
+    if rounded < f64::from(i32::MIN) || rounded > f64::from(i32::MAX) {
+        Err(EvalError::new(
+            "`degrees` degree exceeded the supported evaluator range",
+        ))
+    } else {
+        Ok(rounded as i32)
+    }
 }
 
 fn map_degree_to_semitones(degree: i32, collection: &PitchClassSetValue) -> Result<f64, EvalError> {
