@@ -24,3 +24,11 @@
 **Extracting Match Contexts with Borrow Checking**
 **Learning:** When refactoring large `match` expressions to fix `clippy::too_many_lines`, do not consolidate context structs that contain mutable references (e.g., `&mut [T]`) before the `match` statement. Eager instantiation moves the references, causing borrow checker 'moved value' errors on branches that do not use the context struct but try to access the underlying references directly.
 **Action:** Instantiate context structs locally within the specific match arms that actually require them, or re-apply `#[allow(clippy::too_many_lines)]` if safe extraction is not possible without significant refactoring.
+
+**[Refactor `builtin_value` String Match]**
+**Learning:** Extracting monolithic `match` statements over string literals into categorical helpers and sequencing them via `.or_else()` provides a clean, safe, and readable refactor that maintains zero logic changes and is very easy to read, without triggering clippy.
+**Action:** Use `.or_else()` chaining when breaking up massive lookup matches into multiple logical helpers.
+
+**[Avoid Splitting Config Structs]**
+**Learning:** When trying to resolve `too_many_lines`, avoid destroying existing `Context` or configuration structs into many individual parameters, as this actively violates idiomatic parameter grouping rules and can cause `too_many_arguments` clippy warnings.
+**Action:** When a function takes a Context struct, leave it intact. Look for other opportunities to shorten the function, such as extracting logical blocks out of the main function entirely, while still passing the Context struct to the new helpers.

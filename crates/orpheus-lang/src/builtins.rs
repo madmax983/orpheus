@@ -77,6 +77,12 @@ const fn builtin_pitch_class_set_value(value: PitchClassSetValue) -> Value {
 /// ```
 #[must_use]
 pub fn builtin_value(name: &str) -> Option<Value> {
+    lookup_pattern_transform(name)
+        .or_else(|| lookup_scale(name))
+        .or_else(|| lookup_effect(name))
+}
+
+fn lookup_pattern_transform(name: &str) -> Option<Value> {
     match name {
         "bd" | "sn" | "cp" | "hh" | "saw" | "pulse" | "tri" | "noise" => {
             Some(Value::SamplePattern(SamplePatternValue::atom(name)))
@@ -99,6 +105,12 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "wolfram" => Some(builtin_function_value(BuiltinKind::Wolfram)),
         "pitch_class_set" => Some(builtin_function_value(BuiltinKind::PitchClassSet)),
         "degrees" => Some(builtin_function_value(BuiltinKind::Degrees)),
+        _ => None,
+    }
+}
+
+fn lookup_scale(name: &str) -> Option<Value> {
+    match name {
         "ionian" => Some(builtin_pitch_class_set_value(PitchClassSetValue::ionian())),
         "dorian" => Some(builtin_pitch_class_set_value(PitchClassSetValue::dorian())),
         "phrygian" => Some(builtin_pitch_class_set_value(PitchClassSetValue::phrygian())),
@@ -109,6 +121,12 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "minor_pentatonic" => Some(builtin_pitch_class_set_value(
             PitchClassSetValue::minor_pentatonic(),
         )),
+        _ => None,
+    }
+}
+
+fn lookup_effect(name: &str) -> Option<Value> {
+    match name {
         "fast" => Some(builtin_function_value(BuiltinKind::Fast)),
         "slow" => Some(builtin_function_value(BuiltinKind::Slow)),
         "shift" => Some(builtin_function_value(BuiltinKind::Shift)),
