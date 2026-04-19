@@ -30,7 +30,7 @@ use crate::types::{Type, TypeVarId, TypedModule};
 /// use orpheus_lang::{infer_module, ReplMode};
 ///
 /// let typed = infer_module("x = bd sn", ReplMode::Loose).unwrap();
-/// assert!(typed.bindings.contains_key("x"));
+/// assert!(typed.contains_key("x"));
 /// ```
 ///
 /// # Errors
@@ -49,10 +49,10 @@ pub fn infer_module(source: &str, mode: ReplMode) -> Result<TypedModule, TypeErr
 ///
 /// ```
 /// use std::collections::BTreeMap;
-/// use orpheus_lang::{infer_into_bindings, ReplMode};
+/// use orpheus_lang::{eval_into_bindings, ReplMode};
 ///
 /// let mut env = BTreeMap::new();
-/// infer_into_bindings("x = bd sn", ReplMode::Loose, &mut env).unwrap();
+/// eval_into_bindings("x = bd sn", ReplMode::Loose, &mut env).unwrap();
 /// assert!(env.contains_key("x"));
 /// ```
 ///

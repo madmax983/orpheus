@@ -53,10 +53,15 @@ impl HypertilePlugin for ReplPlugin {
 
         let transport = state.transport_view();
         lines.push(transport_status_line("Transport: ", &transport, true));
-        lines.push(Line::raw(format!(
-            "> {}",
-            state.display_input_with_cursor()
-        )));
+        lines.push(Line::from(vec![
+            Span::styled(
+                "> ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(state.display_input_with_cursor()),
+        ]));
         lines.push(Line::styled(
             state.input_hint(),
             Style::default().fg(Color::DarkGray),
@@ -331,7 +336,10 @@ impl HypertilePlugin for TransportPlugin {
                 ));
             }
         }
-        lines.push(Line::raw("Quit: Esc or :quit"));
+        lines.push(Line::from(vec![
+            Span::styled("Quit", key_style),
+            Span::styled(": Esc or :quit", desc_style),
+        ]));
 
         let mut block = Block::default().title("Transport").borders(Borders::ALL);
         if is_focused {
