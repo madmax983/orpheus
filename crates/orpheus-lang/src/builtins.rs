@@ -96,6 +96,7 @@ pub fn builtin_value(name: &str) -> Option<Value> {
         "drop" => Some(builtin_function_value(BuiltinKind::Drop)),
         "chord" => Some(builtin_function_value(BuiltinKind::Chord)),
         "euclid" => Some(builtin_function_value(BuiltinKind::Euclid)),
+        "lsystem" => Some(builtin_function_value(BuiltinKind::Lsystem)),
         "wolfram" => Some(builtin_function_value(BuiltinKind::Wolfram)),
         "pitch_class_set" => Some(builtin_function_value(BuiltinKind::PitchClassSet)),
         "degrees" => Some(builtin_function_value(BuiltinKind::Degrees)),
@@ -324,6 +325,7 @@ impl BuiltinKind {
             Self::Drop => "drop",
             Self::Chord => "chord",
             Self::Euclid => "euclid",
+            Self::Lsystem => "lsystem",
             Self::Wolfram => "wolfram",
             Self::PitchClassSet => "pitch_class_set",
             Self::Degrees => "degrees",
@@ -369,7 +371,7 @@ impl BuiltinKind {
 
     const fn arity(self) -> usize {
         match self {
-            Self::Every | Self::Arp | Self::Slice | Self::SliceIdx => 3,
+            Self::Every | Self::Arp | Self::Slice | Self::SliceIdx | Self::Lsystem => 3,
             Self::When | Self::Within => 4,
             Self::PitchClassSet
             | Self::Rev
@@ -435,6 +437,7 @@ impl BuiltinKind {
             Self::Drop => apply_drop(args),
             Self::Chord => apply_chord(args),
             Self::Euclid => apply_euclid(args),
+            Self::Lsystem => apply_lsystem(args),
             Self::Wolfram => apply_wolfram(args),
             Self::PitchClassSet => apply_pitch_class_set(args),
             Self::Degrees => apply_degrees(args),
@@ -2522,6 +2525,25 @@ mod test_nova {
     use orpheus_pattern::{Rational, TimeSpan};
 
     #[test]
+    fn test_lsystem_builtin() {
+        let source = "pat = lsystem(\"A\", 3, \"A:AB,B:A\")";
+        let module = eval_module(source, ReplMode::Loose).unwrap();
+        let pattern = module.get("pat").unwrap().as_number_pattern().unwrap();
+
+        let span = TimeSpan::new(Rational::zero(), Rational::one()).unwrap();
+        let events = pattern.try_query(&span).unwrap();
+
+        // A -> AB -> ABA -> ABAAB
+        // A=0, B=1, A=0, A=0, B=1
+        assert_eq!(events.len(), 5);
+        assert_eq!(events[0].value, 0.0);
+        assert_eq!(events[1].value, 1.0);
+        assert_eq!(events[2].value, 0.0);
+        assert_eq!(events[3].value, 0.0);
+        assert_eq!(events[4].value, 1.0);
+    }
+
+    #[test]
     fn test_palindrome_builtin() {
         let source = "pat = palindrome(bd sn)";
         let module = eval_module(source, ReplMode::Loose).unwrap();
@@ -2614,4 +2636,74 @@ mod wolfram_tests {
 
         assert_eq!(events.len(), 5);
     }
+}
+
+fn apply_lsystem(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let axiom = extract_string(
+        args.next()
+            .ok_or_else(|| EvalError::new("`lsystem` requires an axiom argument"))?,
+        "`lsystem` axiom",
+    )?;
+    let iterations = extract_whole_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`lsystem` requires an iterations argument"))?,
+        "`lsystem` iterations",
+        false,
+    )?;
+    let rules_str = extract_string(
+        args.next()
+            .ok_or_else(|| EvalError::new("`lsystem` requires a rules argument"))?,
+        "`lsystem` rules",
+    )?;
+
+    // Parse rules: "A:AB,B:A"
+    let mut rules = std::collections::HashMap::new();
+    for rule in rules_str.split(',') {
+        let parts: Vec<&str> = rule.split(':').collect();
+        if parts.len() == 2 {
+            let key = parts[0].trim().chars().next().ok_or_else(|| {
+                EvalError::new("`lsystem` rules must have a single character key")
+            })?;
+            rules.insert(key, parts[1].trim().to_string());
+        } else if !rule.trim().is_empty() {
+            return Err(EvalError::new(
+                "`lsystem` rules must be formatted as 'A:AB,B:A'",
+            ));
+        }
+    }
+
+    let mut current = axiom;
+    for _ in 0..iterations {
+        let mut next = String::new();
+        for c in current.chars() {
+            if let Some(replacement) = rules.get(&c) {
+                next.push_str(replacement);
+            } else {
+                next.push(c);
+            }
+        }
+        current = next;
+    }
+
+    // Convert to nodes. A=0, B=1, C=2, etc. ~ or _ = rest.
+    let mut nodes = Vec::new();
+    for c in current.chars() {
+        if c == '~' || c == '_' {
+            nodes.push(orpheus_pattern::PatternNode::rest());
+        } else if c.is_ascii_alphabetic() {
+            let val = if c.is_ascii_uppercase() {
+                c as u8 - b'A'
+            } else {
+                c as u8 - b'a'
+            };
+            nodes.push(orpheus_pattern::PatternNode::atom(f64::from(val)));
+        } else if let Some(digit) = c.to_digit(10) {
+            nodes.push(orpheus_pattern::PatternNode::atom(f64::from(digit)));
+        } else {
+            nodes.push(orpheus_pattern::PatternNode::rest());
+        }
+    }
+
+    Ok(Value::NumberPattern(NumberPatternValue::from_nodes(nodes)))
 }
