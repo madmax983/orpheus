@@ -36,3 +36,7 @@
 **Extracting TUI Component Rendering**
 **Learning:** `clippy::too_many_lines` on UI rendering functions (like those creating Ratatui layouts) is often caused by inlining the setup, layout, and rendering of multiple distinct sections (e.g., tracks and buses) into a single function block.
 **Action:** Extract the rendering logic for distinct visual components into separate helper methods that accept a mutable reference to the line buffer (`&mut Vec<Line<'static>>`) and the necessary styling contexts. This flattens the main orchestrator function and groups related UI logic without changing the rendered output.
+
+**Redundant pub(crate)**
+**Learning:** `clippy::redundant_pub_crate` warns about `pub(crate)` items inside private modules. Since the module itself is private to the crate, making the item `pub(crate)` is functionally equivalent to making it `pub`, but `pub` is more idiomatic and cleaner.
+**Action:** When working in private modules, use `pub` instead of `pub(crate)` for items intended to be accessible throughout the crate. Avoid suppressing the warning with `#[allow(clippy::redundant_pub_crate)]`.
