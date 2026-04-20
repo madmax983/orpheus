@@ -57,9 +57,30 @@ use crate::value::{
 /// ```
 
 #[derive(Clone, Debug, Eq, PartialEq, Error)]
-#[error("{message}")]
-pub struct EvalError {
-    message: Box<str>,
+pub enum EvalError {
+    #[error("{message}")]
+    Message { message: Box<str> },
+
+    #[error(transparent)]
+    Parse(#[from] ParseError),
+
+    #[error(transparent)]
+    Type(#[from] crate::diagnostics::TypeError),
+
+    #[error(transparent)]
+    Load(#[from] crate::diagnostics::LoadError),
+
+    #[error(transparent)]
+    Pitch(#[from] crate::pitch::PitchLiteralError),
+
+    #[error(transparent)]
+    TryFromInt(#[from] std::num::TryFromIntError),
+
+    #[error(transparent)]
+    ParseInt(#[from] std::num::ParseIntError),
+
+    #[error(transparent)]
+    Pattern(#[from] PatternError),
 }
 
 impl EvalError {
@@ -81,45 +102,9 @@ impl EvalError {
     /// assert_eq!(err.to_string(), "division by zero");
     /// ```
     pub fn new(message: impl Into<Box<str>>) -> Self {
-        Self {
+        Self::Message {
             message: message.into(),
         }
-    }
-}
-
-impl From<ParseError> for EvalError {
-    fn from(error: ParseError) -> Self {
-        Self::new(error.to_string())
-    }
-}
-
-impl From<crate::diagnostics::TypeError> for EvalError {
-    fn from(error: crate::diagnostics::TypeError) -> Self {
-        Self::new(error.to_string())
-    }
-}
-
-impl From<crate::diagnostics::LoadError> for EvalError {
-    fn from(error: crate::diagnostics::LoadError) -> Self {
-        Self::new(error.to_string())
-    }
-}
-
-impl From<crate::pitch::PitchLiteralError> for EvalError {
-    fn from(error: crate::pitch::PitchLiteralError) -> Self {
-        Self::new(error.to_string())
-    }
-}
-
-impl From<std::num::TryFromIntError> for EvalError {
-    fn from(error: std::num::TryFromIntError) -> Self {
-        Self::new(error.to_string())
-    }
-}
-
-impl From<std::num::ParseIntError> for EvalError {
-    fn from(error: std::num::ParseIntError) -> Self {
-        Self::new(error.to_string())
     }
 }
 
@@ -136,12 +121,6 @@ impl From<std::io::Error> for EvalError {
 
 impl From<std::fmt::Error> for EvalError {
     fn from(error: std::fmt::Error) -> Self {
-        Self::new(error.to_string())
-    }
-}
-
-impl From<PatternError> for EvalError {
-    fn from(error: PatternError) -> Self {
         Self::new(error.to_string())
     }
 }

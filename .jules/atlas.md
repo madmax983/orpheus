@@ -12,3 +12,7 @@
 **[Enforce Private Number Roll Module]
 **Tangle:** The `number_roll` module in `orpheus-lang/src/lib.rs` was declared as `pub mod`, leaking the internal implementation details of the ASCII number roll module.
 **Blueprint:** Changed `pub mod number_roll;` to `pub(crate) mod number_roll;` in `crates/orpheus-lang/src/lib.rs`. This enforces strong module boundaries by keeping the module internal while the intended public API (`render_ascii_number_roll`) is explicitly exposed via `pub use`.
+
+**[Standardize EvalError type]
+**Tangle:** Manual implementation of `From` for cloneable error types in `EvalError` inside `crates/orpheus-lang/src/eval.rs`, causing boilerplate and losing inner type structure.
+**Blueprint:** Converted `EvalError` from a flat struct to an enum using the `thiserror` crate's `#[from]` attribute for cloneable types, standardizing error boundaries.
