@@ -58,27 +58,56 @@ use crate::value::{
 
 #[derive(Clone, Debug, Eq, PartialEq, Error)]
 pub enum EvalError {
+    /// An arbitrary runtime error message string.
+    ///
+    /// This is a fallback variant for dynamically generated evaluation errors
+    /// (e.g. division by zero, capacity overflows) that don't fit into a specific domain type.
     #[error("{message}")]
-    Message { message: Box<str> },
+    Message {
+        /// The textual description of the error.
+        message: Box<str>,
+    },
 
+    /// An error that occurred while parsing a dynamic evaluation string.
+    ///
+    /// This happens when source code provided to [`eval_module`] contains syntax errors.
     #[error(transparent)]
     Parse(#[from] ParseError),
 
+    /// A type checking error during expression evaluation or function application.
+    ///
+    /// This occurs when an expression tries to apply a function to an invalid
+    /// variable type (e.g., trying to shift a `Value::Function`).
     #[error(transparent)]
     Type(#[from] crate::diagnostics::TypeError),
 
+    /// An error encountered when loading an external resource.
+    ///
+    /// This is typically emitted when parsing a file or a sample directory fails.
     #[error(transparent)]
     Load(#[from] crate::diagnostics::LoadError),
 
+    /// An error parsing a named pitch literal into semitones.
+    ///
+    /// This happens if an identifier resolves to an invalid note name (like `C#99`).
     #[error(transparent)]
     Pitch(#[from] crate::pitch::PitchLiteralError),
 
+    /// A downcasting bounds error for integer representations.
+    ///
+    /// Occurs when explicitly converting numbers like cycle repeats or bounds
+    /// into usize or u64 and the value is out of range.
     #[error(transparent)]
     TryFromInt(#[from] std::num::TryFromIntError),
 
+    /// An error parsing a string into an integer.
     #[error(transparent)]
     ParseInt(#[from] std::num::ParseIntError),
 
+    /// An underlying temporal error from pattern operations.
+    ///
+    /// Examples include attempting a rational division by zero or invalid shifts
+    /// in explicit-time streams.
     #[error(transparent)]
     Pattern(#[from] PatternError),
 }
