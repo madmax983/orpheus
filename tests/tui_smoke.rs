@@ -30,7 +30,7 @@ fn tui_boots_and_renders_initial_frame() {
     assert!(larger_frame.contains("INPUT"));
 
     // Help reference is in the transport pane.
-    assert!(larger_frame.contains("Help: ?"));
+    assert!(larger_frame.contains("Help      : ?"));
 
     // Help overlay internals should NOT be visible at boot.
     assert!(!larger_frame.contains("Ctrl-A/E/K"));
