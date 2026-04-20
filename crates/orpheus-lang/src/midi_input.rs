@@ -6,19 +6,19 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[allow(clippy::redundant_pub_crate)]
-pub(crate) enum MidiNoteEventKind {
+
+pub enum MidiNoteEventKind {
     On,
     Off,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[allow(clippy::redundant_pub_crate)]
-pub(crate) struct MidiNoteEvent {
-    pub(crate) note: u8,
-    pub(crate) velocity: u8,
-    pub(crate) channel: u8,
-    pub(crate) kind: MidiNoteEventKind,
+
+pub struct MidiNoteEvent {
+    pub note: u8,
+    pub velocity: u8,
+    pub channel: u8,
+    pub kind: MidiNoteEventKind,
 }
 
 struct MidiInputSharedState {
@@ -41,8 +41,8 @@ fn state() -> &'static MidiInputSharedState {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_pub_crate)]
-pub(crate) fn reset_state_for_test() {
+
+pub fn reset_state_for_test() {
     // Cannot easily reset OnceLock, but we can clear the internal data
     if let Ok(mut queue) = state().note_events.lock() {
         queue.clear();
@@ -52,8 +52,7 @@ pub(crate) fn reset_state_for_test() {
     }
 }
 
-#[allow(clippy::redundant_pub_crate)]
-pub(crate) fn cc_normalized(controller: u8) -> f64 {
+pub fn cc_normalized(controller: u8) -> f64 {
     state()
         .cc_values
         .get(controller as usize)
@@ -63,8 +62,7 @@ pub(crate) fn cc_normalized(controller: u8) -> f64 {
         })
 }
 
-#[allow(clippy::redundant_pub_crate)]
-pub(crate) fn update_from_message(message: &[u8]) {
+pub fn update_from_message(message: &[u8]) {
     if message.is_empty() {
         return;
     }
@@ -103,8 +101,7 @@ pub(crate) fn update_from_message(message: &[u8]) {
     }
 }
 
-#[allow(clippy::redundant_pub_crate)]
-pub(crate) fn drain_note_events() -> Vec<MidiNoteEvent> {
+pub fn drain_note_events() -> Vec<MidiNoteEvent> {
     state()
         .note_events
         .lock()
@@ -112,8 +109,8 @@ pub(crate) fn drain_note_events() -> Vec<MidiNoteEvent> {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_pub_crate)]
-pub(crate) fn set_cc_value_for_test(controller: u8, value: u8) {
+
+pub fn set_cc_value_for_test(controller: u8, value: u8) {
     if let Some(atomic_val) = state().cc_values.get(controller as usize) {
         atomic_val.store(value, Ordering::Relaxed);
     }
