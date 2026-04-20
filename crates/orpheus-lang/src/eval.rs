@@ -1854,9 +1854,9 @@ right = sometimes(fast(2), cp hh)";
 
     #[test]
     fn f64_to_rational_handles_fractional_floats() {
-        let r = super::f64_to_rational(0.123456789, "test").unwrap();
-        assert_eq!(r.numerator(), 123456789);
-        assert_eq!(r.denominator(), 1000000000);
+        let r = super::f64_to_rational(0.123_456_789, "test").unwrap();
+        assert_eq!(r.numerator(), 123_456_789);
+        assert_eq!(r.denominator(), 1_000_000_000);
     }
 
     #[test]
