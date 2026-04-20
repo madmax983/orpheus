@@ -281,63 +281,50 @@ impl HypertilePlugin for TransportPlugin {
             .add_modifier(Modifier::BOLD);
         let desc_style = Style::default().fg(Color::DarkGray);
 
-        lines.push(Line::from(vec![
-            Span::styled("Space", key_style),
-            Span::styled(": toggle (empty input)", desc_style),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Open", key_style),
-            Span::styled(": :open <path>", desc_style),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Transport", key_style),
-            Span::styled(": :play / :stop", desc_style),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Mixer", key_style),
-            Span::styled(": :track / :bus new|fx / :send / :mixer", desc_style),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Set", key_style),
-            Span::styled(": :tempo <bpm>", desc_style),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Render", key_style),
-            Span::styled(": :render <binding> <path> [cyc]", desc_style),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Export", key_style),
-            Span::styled(": :export <bind> <path> [cyc] | stems", desc_style),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Analyze", key_style),
-            Span::styled(": :roll / :stats / :explain", desc_style),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Help", key_style),
-            Span::styled(": ?", desc_style),
-        ]));
+        let legend = [
+            ("Space", "toggle (empty input)"),
+            ("Open", ":open <path>"),
+            ("Transport", ":play / :stop"),
+            ("Mixer", ":track / :bus new|fx / :send / :mixer"),
+            ("Set", ":tempo <bpm>"),
+            ("Render", ":render <binding> <path> [cyc]"),
+            ("Export", ":export <bind> <path> [cyc] | stems"),
+            ("Analyze", ":roll / :stats / :explain"),
+            ("Help", "?"),
+        ];
+
+        for (key, desc) in legend {
+            lines.push(Line::from(vec![
+                Span::styled(format!("{key:<9} "), key_style),
+                Span::styled(format!(": {desc}"), desc_style),
+            ]));
+        }
         if let Some(message) = &state.status_message {
+            lines.push(Line::raw(""));
             if message.contains("error")
                 || message.contains("failed")
                 || message.contains("unknown")
                 || message.contains("usage:")
             {
                 lines.push(Line::styled(
-                    format!("Note: \u{2717} {message}"),
+                    format!(" Note: \u{2717} {message} "),
                     Style::default()
-                        .fg(Color::LightRed)
+                        .bg(Color::Red)
+                        .fg(Color::White)
                         .add_modifier(Modifier::BOLD),
                 ));
             } else {
                 lines.push(Line::styled(
-                    format!("Note: \u{2713} {message}"),
-                    Style::default().fg(Color::LightGreen),
+                    format!(" Note: \u{2713} {message} "),
+                    Style::default()
+                        .bg(Color::Green)
+                        .fg(Color::Black)
+                        .add_modifier(Modifier::BOLD),
                 ));
             }
         }
         lines.push(Line::from(vec![
-            Span::styled("Quit", key_style),
+            Span::styled(format!("{:<9} ", "Quit"), key_style),
             Span::styled(": Esc or :quit", desc_style),
         ]));
 
