@@ -9,7 +9,9 @@ use core::cmp::Ordering;
 use crate::{PatternError, Rational};
 
 /// Half-open time span in exact rational time: `[start, end)`.
-#[derive(Clone, Debug, Eq, PartialEq)]
+///
+/// ⚡ Bolt: Derived `Copy` to avoid heap allocation and `.clone()` overhead on hot paths.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TimeSpan {
     start: Rational,
     end: Rational,

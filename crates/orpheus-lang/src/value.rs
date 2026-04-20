@@ -1044,7 +1044,7 @@ impl PatternRuntimeValue for SampleEvent {
         let mut index = 0;
 
         while index < events.len() {
-            let span = events[index].part.clone();
+            let span = events[index].part;
             let start_index = index;
             while index < events.len() && events[index].part == span {
                 index += 1;
@@ -2911,7 +2911,7 @@ where
                 continue;
             }
 
-            let part = build_span((*start).clone(), (*end).clone())?;
+            let part = build_span(**start, **end)?;
             if gate_spans
                 .iter()
                 .any(|gate_span| spans_overlap(gate_span, &part))
@@ -2960,7 +2960,7 @@ fn roll_event_cluster<T: Clone>(
         ));
     }
 
-    let span = cluster[0].part.clone();
+    let span = cluster[0].part;
     let width = window_width(&span)?;
     if width == Rational::zero() || steps == 1 {
         return Ok(cluster.to_vec());
@@ -2988,7 +2988,7 @@ fn roll_event_cluster<T: Clone>(
         for event in cluster {
             rolled.push(Event {
                 whole: None,
-                part: part.clone(),
+                part,
                 value: event.value.clone(),
             });
         }
@@ -3003,7 +3003,7 @@ fn strum_event_cluster(cluster: &mut [Event<f64>]) -> Result<(), EvalError> {
     }
 
     cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
-    let span = cluster[0].part.clone();
+    let span = cluster[0].part;
     let width = window_width(&span)?;
     if width == Rational::zero() {
         return Ok(());
@@ -3044,7 +3044,7 @@ fn arp_event_cluster(
     }
 
     cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
-    let span = cluster[0].part.clone();
+    let span = cluster[0].part;
     let width = window_width(&span)?;
     if width == Rational::zero() {
         return Ok(cluster.to_vec());
@@ -3496,7 +3496,7 @@ where
                 continue;
             }
 
-            let part = build_span((*start).clone(), (*end).clone())?;
+            let part = build_span(**start, **end)?;
             if let Some(value) = process_fragment(&part, &event.value)? {
                 composed.push(Event {
                     whole: None,
@@ -3799,7 +3799,7 @@ where
 
     Ok(vec![Event {
         whole: None,
-        part: span.clone(),
+        part: *span,
         value: t_val,
     }])
 }
@@ -3968,9 +3968,9 @@ where
                 if let Some(clipped_part) = clip_span(&event.part, &query_slice)? {
                     // Update the `whole` span if it was clipped, or preserve it
                     let whole = if clipped_part == event.part {
-                        event.whole.clone()
+                        event.whole
                     } else {
-                        Some(event.whole.unwrap_or_else(|| event.part.clone()))
+                        Some(event.whole.unwrap_or(event.part))
                     };
                     events.push(Event {
                         whole,
@@ -4213,7 +4213,7 @@ fn localize_window_runtime<T>(
 where
     T: PatternRuntimeValue,
 {
-    let window_start = window_span.start().clone();
+    let window_start = *window_span.start();
     let width = window_width(window_span)?;
     let normalize_factor = rational_reciprocal(&width)?;
     let local_offset = rational_sub(&Rational::zero(), &window_start)?;
@@ -4299,7 +4299,7 @@ fn clip_span(span: &TimeSpan, query: &TimeSpan) -> Result<Option<TimeSpan>, Eval
         return Ok(None);
     }
 
-    build_span(start.clone(), end.clone()).map(Some)
+    build_span(*start, *end).map(Some)
 }
 
 fn merge_open_spans<I: Iterator<Item = TimeSpan>>(mut iter: I) -> Result<Vec<TimeSpan>, EvalError> {
@@ -4314,11 +4314,11 @@ fn merge_open_spans<I: Iterator<Item = TimeSpan>>(mut iter: I) -> Result<Vec<Tim
     for span in iter {
         if span.start() <= current.end() {
             let merged_end = if span.end() > current.end() {
-                span.end().clone()
+                *span.end()
             } else {
-                current.end().clone()
+                *current.end()
             };
-            current = build_span(current.start().clone(), merged_end)?;
+            current = build_span(*current.start(), merged_end)?;
         } else {
             merged.push(current);
             current = span;
@@ -4397,7 +4397,7 @@ fn clip_between(
     if start >= end {
         return Ok(None);
     }
-    clip_span(&build_span(start.clone(), end.clone())?, query)
+    clip_span(&build_span(*start, *end)?, query)
 }
 
 fn within_window_span(
@@ -4597,7 +4597,7 @@ mod tests {
         let max_rational = Rational::checked_from_parts(i128::MAX, 1).unwrap();
 
         // We nest shifts so that they compound inside `try_query_unit`
-        let pattern = base.shift(max_rational.clone()).shift(max_rational);
+        let pattern = base.shift(max_rational).shift(max_rational);
 
         assert!(
             pattern.try_query_unit().is_err(),
@@ -4746,11 +4746,11 @@ mod tests {
     #[test]
     fn strum_leaves_zero_width_number_clusters_unchanged() {
         let zero = Rational::new(1, 2).unwrap();
-        let span = TimeSpan::new(zero.clone(), zero).unwrap();
+        let span = TimeSpan::new(zero, zero).unwrap();
         let cluster = vec![
             Event {
                 whole: None,
-                part: span.clone(),
+                part: span,
                 value: 60.0,
             },
             Event {
@@ -4768,11 +4768,11 @@ mod tests {
     #[test]
     fn arp_leaves_zero_width_number_clusters_unchanged() {
         let zero = Rational::new(1, 2).unwrap();
-        let span = TimeSpan::new(zero.clone(), zero).unwrap();
+        let span = TimeSpan::new(zero, zero).unwrap();
         let cluster = vec![
             Event {
                 whole: None,
-                part: span.clone(),
+                part: span,
                 value: 60.0,
             },
             Event {
@@ -4828,7 +4828,7 @@ mod tests {
         let cluster = vec![
             Event {
                 whole: None,
-                part: span.clone(),
+                part: *span,
                 value: SampleEvent::named("sn"),
             },
             Event {

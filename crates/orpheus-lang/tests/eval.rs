@@ -891,7 +891,7 @@ fn euclid_generates_five_open_steps_in_eight() {
     assert_eq!(
         events
             .iter()
-            .map(|event| (event.part.start().clone(), event.part.end().clone()))
+            .map(|event| (*event.part.start(), *event.part.end()))
             .collect::<Vec<_>>(),
         vec![
             (Rational::zero(), Rational::new(1, 8).unwrap()),
@@ -1932,8 +1932,8 @@ fn roll_applies_per_exact_span_cluster() {
             .iter()
             .map(|event| (
                 event.value.sample().to_owned(),
-                event.part.start().clone(),
-                event.part.end().clone()
+                *event.part.start(),
+                *event.part.end()
             ))
             .collect::<Vec<_>>(),
         vec![
