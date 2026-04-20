@@ -14,7 +14,10 @@ use crate::{Event, PatternError, Rational, TimeSpan};
 /// map exact, rational time intervals to events. Patterns are evaluated by
 /// querying them over a half-open window of time called a [`TimeSpan`].
 pub trait Pattern<T>: Send + Sync {
-    /// Returns the events whose spans intersect the half-open window `span`.
+    /// Queries the pattern over a given window of time.
+    ///
+    /// The runtime invokes this method to "materialize" the declarative pattern graph
+    /// into a concrete sequence of events that overlap the requested temporal bounds.
     ///
     /// # Examples
     ///

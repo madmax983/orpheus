@@ -202,19 +202,47 @@ impl SampleBank {
         bank
     }
 
-    /// Gets the sample backing the specified built-in voice kind.
+    /// Resolves a strongly-typed built-in voice kind to its loaded audio buffer in memory.
+    ///
+    /// This provides the fastest, allocation-free path for the audio thread to locate drum
+    /// sample data during playback.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::{SampleBank, VoiceKind};
+    ///
+    /// let bank = SampleBank::load_builtin();
+    /// assert!(bank.get(VoiceKind::KickLike).is_some());
+    /// ```
     #[must_use]
     pub fn get(&self, voice: VoiceKind) -> Option<&PlaybackSample> {
         self.get_by_token(voice.token())
     }
 
-    /// Gets a sample by its string identifier (e.g., `"bd"`, `"sn"`).
+    /// Resolves a string identifier to its loaded audio buffer in memory.
+    ///
+    /// This allows dynamic lookups for custom sample names loaded via a manifest
+    /// (e.g., `"my_synth_C4"`).
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::SampleBank;
+    ///
+    /// let bank = SampleBank::load_builtin();
+    /// assert!(bank.get_by_token("sn").is_some());
+    /// assert!(bank.get_by_token("nonexistent").is_none());
+    /// ```
     #[must_use]
     pub fn get_by_token(&self, token: &str) -> Option<&PlaybackSample> {
         self.samples.get(token).map(|entry| &entry.sample)
     }
 
-    /// Returns a list of all currently loaded string identifiers in the bank.
+    /// Exposes a list of all currently loaded string identifiers in the bank.
+    ///
+    /// This is primarily used by the language REPL layer to provide auto-completion
+    /// suggestions or validation error messages containing available sample names.
     #[must_use]
     pub fn available_tokens(&self) -> Vec<String> {
         self.samples.keys().map(ToString::to_string).collect()

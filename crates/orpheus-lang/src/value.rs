@@ -392,9 +392,11 @@ impl Value {
         }
     }
 
-    /// Returns a human-readable description of this value's underlying type.
+    /// Extracts a human-readable description of this value's underlying type.
     ///
-    /// This is used heavily in runtime type mismatch error messages.
+    /// This string maps the internal enum variant (like `SamplePattern`) to its lowercase
+    /// noun equivalent (like `"sample pattern"`), which is heavily used when formatting friendly
+    /// runtime type mismatch error messages to the user.
     ///
     /// # Examples
     ///
