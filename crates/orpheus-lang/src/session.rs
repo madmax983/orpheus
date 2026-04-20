@@ -137,7 +137,11 @@ pub struct MixerView {
 }
 
 impl TransportView {
-    /// Returns a reference to the underlying DSP transport snapshot.
+    /// Exposes a reference to the underlying DSP transport snapshot.
+    ///
+    /// This state is snapshotted from the audio thread and is safe for the
+    /// REPL UI to read without acquiring locks, allowing it to render the
+    /// current playhead position without interrupting audio generation.
     ///
     /// ## Examples
     ///
@@ -155,7 +159,11 @@ impl TransportView {
         &self.snapshot
     }
 
-    /// Returns the name of the currently active (playing) pattern, if any.
+    /// Retrieves the string name of the currently active (playing) pattern, if any.
+    ///
+    /// This provides visual feedback to the user about which binding is currently
+    /// driving the audio engine, allowing them to verify that their intended
+    /// code is live.
     ///
     /// ## Examples
     ///
@@ -202,7 +210,11 @@ impl TransportView {
 }
 
 impl MixerView {
-    /// Returns `true` if there are pending routing changes queued for the next cycle boundary.
+    /// Indicates whether there are uncommitted routing changes waiting to be applied at the next cycle boundary.
+    ///
+    /// Live-coding is inherently asynchronous. When a user executes a mixer command
+    /// (e.g. `:track new drums`), the change doesn't happen instantly; it is scheduled for the next
+    /// downbeat. This flag allows the TUI to visually highlight pending mixer topologies.
     ///
     /// ## Examples
     ///
@@ -231,11 +243,11 @@ impl MixerView {
         &self.summary
     }
 
-    /// Returns the pre-rendered, colorized UI lines of the session's active bindings and graph.
+    /// Exposes the pre-rendered, colorized UI lines of the session's active bindings and graph.
     ///
-    /// While [`MixerView::summary`] returns a raw text representation, `tui_summary` provides the fully
+    /// While [`MixerView::summary`] exposes a raw text representation, `tui_summary` provides the fully
     /// styled and laid-out equivalent for direct rendering in a `ratatui` interface. This avoids
-    /// re-parsing and styling the text on every draw tick.
+    /// re-parsing and styling the text on every draw tick, keeping the UI thread responsive.
     ///
     /// ## Examples
     ///
@@ -1362,7 +1374,11 @@ impl ReplSession {
         Ok(())
     }
 
-    /// Returns a summary of all active bindings and their inferred types.
+    /// Compiles a summary of all active bindings and their inferred types.
+    ///
+    /// This is used heavily by the `:env` REPL command and the live TUI dashboard to
+    /// provide a clear inventory of all currently evaluated user variables, allowing them
+    /// to inspect the global state without needing to remember what they typed.
     ///
     /// ## Examples
     ///

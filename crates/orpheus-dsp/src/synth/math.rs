@@ -20,7 +20,11 @@ impl PhaseAccumulator {
         Self { phase: 0.0 }
     }
 
-    /// Returns the current wrapped phase in `[0.0, 1.0)`.
+    /// Exposes the current wrapped phase position.
+    ///
+    /// The phase is always normalized to the range `[0.0, 1.0)`, representing the
+    /// current normalized progress through a single cycle of the waveform.
+    ///
     #[must_use]
     pub const fn phase(&self) -> f32 {
         self.phase

@@ -120,7 +120,10 @@ impl TimeSpan {
         self.start() == self.end()
     }
 
-    /// Returns the normalized numerator of the span start.
+    /// Extracts the unreduced numerator of the span's start time.
+    ///
+    /// This provides a quick scalar identifier often used by renderers (like ASCII or SVG grids)
+    /// to determine block offsets when the grid resolution exactly matches the span denominator.
     ///
     /// # Examples
     ///
