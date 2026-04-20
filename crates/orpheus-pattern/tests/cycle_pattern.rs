@@ -54,7 +54,7 @@ fn cycle_pattern_clips_whole_spans_to_query_window() {
     let pattern = CyclePattern::from_nodes(vec![PatternNode::atom("bd"), PatternNode::atom("sn")]);
     let span = TimeSpan::new(Rational::new(1, 4).unwrap(), Rational::new(3, 4).unwrap()).unwrap();
 
-    let events = pattern.query(span.clone());
+    let events = pattern.query(span);
 
     assert_eq!(events.len(), 2);
     assert_eq!(
@@ -111,7 +111,7 @@ proptest! {
         let end = start.checked_add(&width).unwrap();
         let span = TimeSpan::new(start, end).unwrap();
 
-        for event in pattern.query(span.clone()) {
+        for event in pattern.query(span) {
             prop_assert!(event.part.start() >= span.start());
             prop_assert!(event.part.end() <= span.end());
         }

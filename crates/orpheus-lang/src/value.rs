@@ -4826,7 +4826,7 @@ mod tests {
     #[test]
     fn roll_leaves_zero_width_clusters_unchanged() {
         let zero = Rational::new(1, 2).unwrap();
-        let span = TimeSpan::new(zero.clone(), zero).unwrap();
+        let span = TimeSpan::new(zero, zero).unwrap();
         let cluster = vec![
             Event {
                 whole: None,

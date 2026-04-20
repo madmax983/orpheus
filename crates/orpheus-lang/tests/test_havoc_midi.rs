@@ -18,3 +18,20 @@ fn test_havoc_midi_send_negative_offset() {
     // Since it's hard to mock a MIDI connection in CI, we just make sure the `max(0.0)` logic is there.
     let _ = session.eval_line(":midi send notes 1");
 }
+
+/// 👺 Havoc: Tests that an extremely large offset (or infinity) caused by
+/// near-zero tempo does not crash the system.
+#[test]
+fn test_havoc_midi_send_overflow() {
+    let (engine, _) = EngineHandle::split_for_test();
+    let mut session = ReplSession::with_engine(engine);
+
+    session
+        .eval_line(&format!(":tempo {}", f32::MIN_POSITIVE))
+        .unwrap();
+    session.eval_line("notes = shift(10, 60)").unwrap();
+
+    let _ = session.eval_line(":midi send notes 1");
+    // Give thread time to panic if it's going to
+    std::thread::sleep(std::time::Duration::from_millis(50));
+}

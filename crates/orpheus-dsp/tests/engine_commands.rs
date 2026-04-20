@@ -736,7 +736,7 @@ fn loaded_pattern_hot_swap_waits_for_the_next_cycle_boundary() {
         "drums",
         vec![Event {
             whole: None,
-            part: TimeSpan::new(Rational::zero(), quarter.clone()).unwrap(),
+            part: TimeSpan::new(Rational::zero(), quarter).unwrap(),
             value: SampleTrigger::named("bd"),
         }],
     );
@@ -771,7 +771,7 @@ fn transport_snapshot_reports_pending_pattern_until_boundary() {
         "drums",
         vec![Event {
             whole: None,
-            part: TimeSpan::new(Rational::zero(), quarter.clone()).unwrap(),
+            part: TimeSpan::new(Rational::zero(), quarter).unwrap(),
             value: SampleTrigger::named("bd"),
         }],
     );
