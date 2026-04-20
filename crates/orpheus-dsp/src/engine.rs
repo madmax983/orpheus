@@ -934,7 +934,7 @@ pub fn frames_per_cycle(sample_rate: u32, tempo_bpm: f32) -> Result<u64, EngineE
         return Err(EngineError::FrameOverflow);
     }
 
-    let cycle_duration = Duration::from_secs_f64(cycle_seconds);
+    let cycle_duration = Duration::try_from_secs_f64(cycle_seconds).unwrap_or(Duration::MAX);
     let frames = cycle_duration
         .as_nanos()
         .checked_mul(u128::from(sample_rate))
