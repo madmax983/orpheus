@@ -233,7 +233,7 @@ impl MixerView {
 
     /// Returns the pre-rendered, colorized UI lines of the session's active bindings and graph.
     ///
-    /// While [`summary`] returns a raw text representation, `tui_summary` provides the fully
+    /// While [`MixerView::summary`] returns a raw text representation, `tui_summary` provides the fully
     /// styled and laid-out equivalent for direct rendering in a `ratatui` interface. This avoids
     /// re-parsing and styling the text on every draw tick.
     ///
