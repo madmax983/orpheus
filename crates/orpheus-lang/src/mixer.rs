@@ -555,7 +555,7 @@ impl MixerState {
                     } => {
                         builder = builder.bus_effect_delay(
                             bus_name.as_str(),
-                            time.clone(),
+                            *time,
                             *feedback,
                             *wet,
                         );
@@ -620,14 +620,14 @@ fn compile_track_source(
     })?;
     Ok(TrackSource::SamplePattern(
         events
-            .into_iter()
+            .iter()
             .map(sample_event_to_trigger_event)
             .collect::<Vec<_>>()
             .into_boxed_slice(),
     ))
 }
 
-fn sample_event_to_trigger_event(event: Event<crate::SampleEvent>) -> Event<SampleTrigger> {
+fn sample_event_to_trigger_event(event: &Event<crate::SampleEvent>) -> Event<SampleTrigger> {
     Event {
         whole: event.whole,
         part: event.part,

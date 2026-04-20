@@ -46,7 +46,7 @@ use thiserror::Error;
 /// let start = Rational::new(2, 1).unwrap();
 /// let end = Rational::one();
 ///
-/// let result = TimeSpan::new(start.clone(), end.clone());
+/// let result = TimeSpan::new(start, end);
 ///
 /// assert!(matches!(
 ///     result,

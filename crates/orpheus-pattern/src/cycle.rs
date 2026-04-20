@@ -195,15 +195,15 @@ fn collect_nodes_into<T: Clone>(
         .end()
         .checked_sub(span.start())?
         .checked_mul(&Rational::checked_from_parts(1, count)?)?;
-    let mut cursor = span.start().clone();
+    let mut cursor = *span.start();
 
     for (index, node) in nodes.iter().enumerate() {
         let next = if index + 1 == nodes.len() {
-            span.end().clone()
+            *span.end()
         } else {
             cursor.checked_add(&width)?
         };
-        let child_span = TimeSpan::new(cursor.clone(), next.clone())?;
+        let child_span = TimeSpan::new(cursor, next)?;
 
         match node {
             PatternNode::Atom(value) => events.push((child_span, value.clone())),
@@ -250,8 +250,8 @@ fn shift_span(span: &TimeSpan, offset: &Rational) -> Result<TimeSpan, PatternErr
 }
 
 fn clip_span(span: &TimeSpan, query: &TimeSpan) -> Result<Option<TimeSpan>, PatternError> {
-    let start = max(span.start(), query.start()).clone();
-    let end = min(span.end(), query.end()).clone();
+    let start = *max(span.start(), query.start());
+    let end = *min(span.end(), query.end());
 
     if start >= end {
         return Ok(None);
@@ -368,7 +368,7 @@ mod tests {
         let pattern = CyclePattern::from_nodes(vec![PatternNode::atom("bd")]);
         let start = Rational::new(1, 2).unwrap();
         let end = Rational::new(3, 2).unwrap();
-        let span = TimeSpan::new(start.clone(), end.clone()).unwrap();
+        let span = TimeSpan::new(start, end).unwrap();
         let events = pattern.try_query(&span).unwrap();
 
         assert_eq!(events.len(), 2);

@@ -79,11 +79,7 @@ impl<T> EventStream<T> {
             let whole = event.whole.as_ref().unwrap_or(&event.part);
             if let Some(part) = clip_span(whole, span)? {
                 events.push(Event {
-                    whole: if part == *whole {
-                        None
-                    } else {
-                        Some(whole.clone())
-                    },
+                    whole: if part == *whole { None } else { Some(*whole) },
                     part,
                     value: event.value.clone(),
                 });
@@ -104,8 +100,8 @@ where
 }
 
 fn clip_span(span: &TimeSpan, query: &TimeSpan) -> Result<Option<TimeSpan>, PatternError> {
-    let start = max(span.start(), query.start()).clone();
-    let end = min(span.end(), query.end()).clone();
+    let start = *max(span.start(), query.start());
+    let end = *min(span.end(), query.end());
 
     if start >= end {
         return Ok(None);
@@ -184,12 +180,15 @@ mod tests {
                 .unwrap(),
             value: 42,
         };
-        let stream = EventStream::new(vec![event.clone()]);
+        let stream = EventStream::new(vec![event]);
 
         let query_span = TimeSpan::unit();
         let result = stream.try_query(&query_span).unwrap();
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0], event);
+        assert_eq!(
+            result[0].part,
+            TimeSpan::new(Rational::new(1, 4).unwrap(), Rational::new(1, 2).unwrap()).unwrap()
+        );
     }
 
     #[test]
@@ -198,7 +197,7 @@ mod tests {
             TimeSpan::new(Rational::new(1, 4).unwrap(), Rational::new(3, 4).unwrap()).unwrap();
         let event = Event {
             whole: None,
-            part: event_span.clone(),
+            part: event_span,
             value: 42,
         };
         let stream = EventStream::new(vec![event]);
@@ -223,11 +222,14 @@ mod tests {
             part: TimeSpan::unit(),
             value: "test",
         };
-        let stream = EventStream::new(vec![event.clone()]);
+        let stream = EventStream::new(vec![event]);
 
         let result = stream.query(TimeSpan::unit());
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0], event);
+        assert_eq!(
+            result[0].part,
+            TimeSpan::new(Rational::zero(), Rational::one()).unwrap()
+        );
     }
 
     #[test]

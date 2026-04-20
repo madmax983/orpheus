@@ -2199,8 +2199,8 @@ fn validate_slice_control_patterns(
     let end_events = end_pattern.try_query(&unit)?;
     // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries.
     let mut boundaries = Vec::with_capacity(2 + (start_events.len() + end_events.len()) * 2);
-    boundaries.push(unit.start().clone());
-    boundaries.push(unit.end().clone());
+    boundaries.push(*unit.start());
+    boundaries.push(*unit.end());
 
     for event in &start_events {
         let start = if event.part.start() > unit.start() {
@@ -2214,8 +2214,8 @@ fn validate_slice_control_patterns(
             unit.end()
         };
         if start < end {
-            boundaries.push(start.clone());
-            boundaries.push(end.clone());
+            boundaries.push(*start);
+            boundaries.push(*end);
         }
     }
     for event in &end_events {
@@ -2230,8 +2230,8 @@ fn validate_slice_control_patterns(
             unit.end()
         };
         if start < end {
-            boundaries.push(start.clone());
-            boundaries.push(end.clone());
+            boundaries.push(*start);
+            boundaries.push(*end);
         }
     }
 
@@ -2245,7 +2245,7 @@ fn validate_slice_control_patterns(
         if start >= end {
             continue;
         }
-        let part = build_control_span(start.clone(), end.clone())?;
+        let part = build_control_span(*start, *end)?;
         let mut current_start = 0.0;
         let mut current_end = 1.0;
 
