@@ -360,86 +360,41 @@ impl ReplSession {
             .split_once(char::is_whitespace)
             .map_or((command, ""), |(name, args)| (name, args.trim()));
 
+        if args.is_empty() {
+            match name {
+                "render" => return Err(render_usage().to_owned()),
+                "roll" => return Err(roll_usage().to_owned()),
+                "stats" => return Err(stats_usage().to_owned()),
+                "explain" => return Err(explain_usage().to_owned()),
+                "export" => return Err(export_usage().to_owned()),
+                "tempo" => return Err(tempo_usage().to_owned()),
+                "samples" => return Err(samples_usage().to_owned()),
+                "open" => return Err(open_usage().to_owned()),
+                "track" => return Err(track_usage().to_owned()),
+                "bus" => return Err(bus_usage().to_owned()),
+                "send" => return Err(send_usage().to_owned()),
+                _ => {}
+            }
+        }
+
         match name {
-            "render" => {
-                if args.is_empty() {
-                    Err(render_usage().to_owned())
-                } else {
-                    self.render_binding(args)
-                }
-            }
-            "roll" => {
-                if args.is_empty() {
-                    Err(roll_usage().to_owned())
-                } else {
-                    self.roll_binding(args)
-                }
-            }
-            "stats" => {
-                if args.is_empty() {
-                    Err(stats_usage().to_owned())
-                } else {
-                    self.stats_binding(args)
-                }
-            }
-            "explain" => {
-                if args.is_empty() {
-                    Err(explain_usage().to_owned())
-                } else {
-                    self.explain_binding(args)
-                }
-            }
+            "render" => self.render_binding(args),
+            "roll" => self.roll_binding(args),
+            "stats" => self.stats_binding(args),
+            "explain" => self.explain_binding(args),
             "export" => {
-                if args.is_empty() {
-                    Err(export_usage().to_owned())
-                } else if args.starts_with("stems") {
+                if args.starts_with("stems") {
                     self.export_stems(args)
                 } else {
                     self.export_binding(args)
                 }
             }
-            "tempo" => {
-                if args.is_empty() {
-                    Err(tempo_usage().to_owned())
-                } else {
-                    self.set_tempo(args)
-                }
-            }
-            "samples" => {
-                if args.is_empty() {
-                    Err(samples_usage().to_owned())
-                } else {
-                    self.load_sample_directory(args)
-                }
-            }
-            "open" => {
-                if args.is_empty() {
-                    Err(open_usage().to_owned())
-                } else {
-                    self.open_file(args)
-                }
-            }
-            "track" => {
-                if args.is_empty() {
-                    Err(track_usage().to_owned())
-                } else {
-                    self.eval_track_command(args)
-                }
-            }
-            "bus" => {
-                if args.is_empty() {
-                    Err(bus_usage().to_owned())
-                } else {
-                    self.eval_bus_command(args)
-                }
-            }
-            "send" => {
-                if args.is_empty() {
-                    Err(send_usage().to_owned())
-                } else {
-                    self.eval_send_command(args)
-                }
-            }
+            "tempo" => self.set_tempo(args),
+            "samples" => self.load_sample_directory(args),
+            "open" => self.open_file(args),
+            "track" => self.eval_track_command(args),
+            "bus" => self.eval_bus_command(args),
+            "send" => self.eval_send_command(args),
             "mixer" => self.mixer_command(args),
             "midi" => self.midi_command(args),
             "reload-samples" => self.reload_sample_directory(args),
