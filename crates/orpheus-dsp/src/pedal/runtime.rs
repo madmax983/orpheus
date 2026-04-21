@@ -1164,3 +1164,83 @@ fn smoothing_coeff(ms: f32, sample_rate_hz: f32) -> f32 {
         1.0 - (-1.0 / (seconds * sample_rate_hz.max(1.0))).exp()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core::f32;
+
+    #[test]
+    fn should_sanitize_audio() {
+        assert_eq!(sanitize_audio(1.0), 1.0);
+        assert_eq!(sanitize_audio(-1.0), -1.0);
+        assert_eq!(sanitize_audio(0.0), 0.0);
+        assert_eq!(sanitize_audio(f32::INFINITY), 0.0);
+        assert_eq!(sanitize_audio(f32::NEG_INFINITY), 0.0);
+        assert_eq!(sanitize_audio(f32::NAN), 0.0);
+    }
+
+    #[test]
+    fn should_sanitize_non_negative() {
+        assert_eq!(sanitize_non_negative(1.0), 1.0);
+        assert_eq!(sanitize_non_negative(-1.0), 0.0);
+        assert_eq!(sanitize_non_negative(0.0), 0.0);
+        assert_eq!(sanitize_non_negative(f32::INFINITY), 0.0);
+        assert_eq!(sanitize_non_negative(f32::NEG_INFINITY), 0.0);
+        assert_eq!(sanitize_non_negative(f32::NAN), 0.0);
+    }
+
+    #[test]
+    fn should_calculate_smoothing_coeff() {
+        assert_eq!(smoothing_coeff(0.0, 48000.0), 1.0);
+        assert_eq!(smoothing_coeff(-10.0, 48000.0), 1.0);
+        assert!((smoothing_coeff(10.0, 48000.0) - 0.002_081_155_8).abs() < 1e-6);
+        assert!((smoothing_coeff(f32::NAN, 48000.0) - 0.002_081_155_8).abs() < 1e-6); // falls back to 0.01s (10ms)
+        assert!((smoothing_coeff(f32::INFINITY, 48000.0) - 0.002_081_155_8).abs() < 1e-6); // falls back to 0.01s
+    }
+
+    #[test]
+    fn should_process_lowpass() {
+        let mut filter = LowPassState::new(48000.0);
+        let out1 = filter.process_with_cutoff(1.0, 1000.0);
+        assert!((out1 - 0.122_745_94).abs() < 1e-3);
+
+        let mut filter_nan = LowPassState::new(48000.0);
+        let out_nan = filter_nan.process_with_cutoff(f32::NAN, 1000.0);
+        assert_eq!(out_nan, 0.0);
+    }
+
+    #[test]
+    fn should_process_highpass() {
+        let mut filter = HighPassState::new(48000.0);
+        let out1 = filter.process_with_cutoff(1.0, 1000.0);
+        assert!((out1 - 0.884_163).abs() < 1e-3);
+
+        let out_nan = filter.process_with_cutoff(f32::NAN, 1000.0);
+        assert_eq!(out_nan, 0.0);
+    }
+
+    #[test]
+    fn should_apply_preamp_models() {
+        let jfet = preamp_sample(1.0, 0.5, PreampModel::JfetClean);
+        assert!(jfet > 0.0 && jfet < 1.0);
+        let opamp = preamp_sample(1.0, 0.5, PreampModel::OpampTight);
+        assert!(opamp > 0.0 && opamp < 1.0);
+
+        let nan_jfet = preamp_sample(f32::NAN, 0.5, PreampModel::JfetClean);
+        assert!(nan_jfet.is_nan()); // Preamp doesn't sanitize NaN input
+    }
+
+    #[test]
+    fn should_apply_clip_models() {
+        let silicon = clip_sample(1.0, 0.5, ClipModel::SiliconHard);
+        assert!(silicon > 0.0 && silicon < 1.0);
+        let germanium = clip_sample(1.0, 0.5, ClipModel::GermaniumSoft);
+        assert!(germanium > 0.0 && germanium < 1.0);
+        let led = clip_sample(1.0, 0.5, ClipModel::RedLed);
+        assert!(led > 0.0 && led < 2.0);
+
+        let nan_silicon = clip_sample(f32::NAN, 0.5, ClipModel::SiliconHard);
+        assert!(nan_silicon.is_nan()); // Clip doesn't sanitize NaN input
+    }
+}
