@@ -553,12 +553,8 @@ impl MixerState {
                         feedback,
                         wet,
                     } => {
-                        builder = builder.bus_effect_delay(
-                            bus_name.as_str(),
-                            *time,
-                            *feedback,
-                            *wet,
-                        );
+                        builder =
+                            builder.bus_effect_delay(bus_name.as_str(), *time, *feedback, *wet);
                     }
                     MixerBusEffect::Reverb { size, damp, wet } => {
                         builder = builder.bus_effect_reverb(bus_name.as_str(), *size, *damp, *wet);

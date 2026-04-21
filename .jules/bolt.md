@@ -8,3 +8,6 @@
 **[Derive Copy for lightweight types to eliminate clone overhead]**
 **Learning:** Core temporal primitives like `Rational` and `TimeSpan` in Orpheus only consist of a few numeric types (two `i128` values) but were frequently cloned on hot paths during cycle queries. This led to unnecessary `.clone()` calls causing measurable overhead.
 **Action:** For lightweight structs consisting purely of primitive numerical values on hot paths, immediately derive `Copy`. By passing these types by value rather than by reference, we eliminate the need for explicitly calling `.clone()` or relying on reference lifetimes, which leads to cleaner code and avoids the overhead of deep cloning semantics.
+**Pre-allocating Vec in loops and mapped functions**
+**Learning:** Found loops doing exact insertions without capacity initialization which results in expensive allocations.
+**Action:** When writing or identifying loops appending onto vectors or strings of a known maximum length, use `Vec::with_capacity` to prevent intermediate heap reallocations.

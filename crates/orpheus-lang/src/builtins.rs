@@ -2607,7 +2607,8 @@ fn apply_wolfram(args: Vec<Value>) -> Result<Value, EvalError> {
         current_state[steps as usize / 2] = true; // center pixel
     }
 
-    let mut nodes = Vec::new();
+    // ⚡ Bolt: Pre-allocate capacity to avoid reallocation in nested loop
+    let mut nodes = Vec::with_capacity((steps as usize).saturating_mul(steps as usize));
     for _ in 0..steps {
         // Record current state
         for cell in &current_state {
@@ -2705,7 +2706,8 @@ fn apply_lsystem(args: Vec<Value>) -> Result<Value, EvalError> {
     }
 
     // Convert to nodes. A=0, B=1, C=2, etc. ~ or _ = rest.
-    let mut nodes = Vec::new();
+    // ⚡ Bolt: Pre-allocate vector capacity to avoid heap reallocation based on exact final string length.
+    let mut nodes = Vec::with_capacity(current.len());
     for c in current.chars() {
         if c == '~' || c == '_' {
             nodes.push(orpheus_pattern::PatternNode::rest());
