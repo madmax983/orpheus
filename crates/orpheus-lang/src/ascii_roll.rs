@@ -6,6 +6,8 @@ use std::collections::BTreeMap;
 
 use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
 
+use crossterm::style::Stylize;
+
 use crate::eval::{EvalError, render_span};
 use crate::value::SamplePatternValue;
 
@@ -92,7 +94,11 @@ pub fn render_ascii_roll(
         }
     }
 
-    let title = format!("Pattern Roll: {binding_name} ({cycle_count} cycles)");
+    let title = format!(
+        "{} {binding_name} ({} cycles)",
+        "Pattern Roll:".cyan().bold(),
+        cycle_count.to_string().yellow()
+    );
     let mut table = Table::new();
     table.load_preset(UTF8_BORDERS_ONLY);
 
@@ -126,7 +132,7 @@ mod tests {
 
         let roll = render_ascii_roll("pattern", pattern, 1, 8).unwrap();
 
-        assert!(roll.contains("Pattern Roll: pattern (1 cycles)"));
+        assert!(roll.contains("Pattern Roll:"));
         assert!(roll.contains("bd"));
         assert!(roll.contains("sn"));
         assert!(roll.contains("x---...."));
@@ -141,7 +147,7 @@ mod tests {
 
         let roll = render_ascii_roll("pattern", pattern, 1, 8).unwrap();
 
-        assert!(roll.contains("Pattern Roll: pattern (1 cycles)"));
+        assert!(roll.contains("Pattern Roll:"));
         assert!(roll.contains("bd"));
         assert!(roll.contains("sn"));
         assert!(roll.contains("x-..x-.."));

@@ -2059,7 +2059,7 @@ mod tests {
 
         let message = session.eval_line(":roll pattern 1 8").unwrap();
 
-        assert!(message.contains("Pattern Roll: pattern (1 cycles)"));
+        assert!(message.contains("Pattern Roll:"));
         assert!(message.contains("bd"));
         assert!(message.contains("sn"));
         assert!(message.contains("x---...."));

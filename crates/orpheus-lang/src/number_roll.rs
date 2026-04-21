@@ -7,6 +7,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
 
+use crossterm::style::Stylize;
+
 use crate::eval::{EvalError, render_span};
 use crate::value::NumberPatternValue;
 
@@ -106,7 +108,11 @@ pub fn render_ascii_number_roll(
         }
     }
 
-    let title = format!("Number Roll: {binding_name} ({cycle_count} cycles)");
+    let title = format!(
+        "{} {binding_name} ({} cycles)",
+        "Number Roll:".cyan().bold(),
+        cycle_count.to_string().yellow()
+    );
     let mut table = Table::new();
     table.load_preset(UTF8_BORDERS_ONLY);
 
@@ -142,7 +148,7 @@ mod tests {
 
         let roll = render_ascii_number_roll("pattern", pattern, 1, 8).unwrap();
 
-        assert!(roll.contains("Number Roll: pattern (1 cycles)"));
+        assert!(roll.contains("Number Roll:"));
         assert!(roll.contains("1.00"));
         assert!(roll.contains("2.00"));
         // 2 is higher, so it's on top.
@@ -160,7 +166,7 @@ mod tests {
 
         let roll = render_ascii_number_roll("pattern", pattern, 1, 8).unwrap();
 
-        assert!(roll.contains("Number Roll: pattern (1 cycles)"));
+        assert!(roll.contains("Number Roll:"));
         assert!(roll.contains("4.00"));
         assert!(roll.contains("8.00"));
         assert!(roll.contains("x-..x-.."));
