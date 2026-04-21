@@ -123,16 +123,16 @@ fn load_file_strict_inner(
 
     for import in imports {
         let imported_path = parent.join(import.path.as_ref());
-        let imported_module = load_file_strict_inner(&imported_path, visiting)?;
+        let mut imported_module = load_file_strict_inner(&imported_path, visiting)?;
         for name in import.names {
-            let Some(ty) = imported_module.type_bindings.get(&name).cloned() else {
+            let Some(ty) = imported_module.type_bindings.remove(&name) else {
                 return Err(LoadError::new(format!(
                     "{}: unresolved name `{name}` imported from {}",
                     canonical.display(),
                     imported_path.display()
                 )));
             };
-            let Some(value) = imported_module.value_bindings.get(&name).cloned() else {
+            let Some(value) = imported_module.value_bindings.remove(&name) else {
                 return Err(LoadError::new(format!(
                     "{}: unresolved value `{name}` imported from {}",
                     canonical.display(),
