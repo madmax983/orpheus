@@ -58,27 +58,82 @@ use crate::value::{
 
 #[derive(Clone, Debug, Eq, PartialEq, Error)]
 pub enum EvalError {
+    /// A generic error raised when evaluation encounters an unexpected state.
+    ///
+    /// **Recovery:** Check the message payload. This usually indicates an internal
+    /// engine constraint violation or an unsupported operation that isn't covered
+    /// by a more specific typed error. Review the sequence of operations leading
+    /// to this failure.
     #[error("{message}")]
-    Message { message: Box<str> },
+    Message {
+        /// The string payload describing what went wrong.
+        message: Box<str>,
+    },
 
+    /// The evaluation failed before it even started because the source code
+    /// contained syntax errors.
+    ///
+    /// **Recovery:** Check your `.ode` file or REPL input for missing parentheses,
+    /// invalid operators, or unclosed quotes. The inner `ParseError` will point
+    /// exactly to the line and column where the parser gave up.
     #[error(transparent)]
     Parse(#[from] ParseError),
 
+    /// The engine encountered a value of the wrong type during execution.
+    ///
+    /// For example, trying to apply a spatial transform (like `pan`) to a
+    /// purely numeric pattern, or passing a string where an integer was expected.
+    ///
+    /// **Recovery:** Check the function signature of the operation you are applying.
+    /// If you are using the pipe operator `|>` ensure the left-hand side matches
+    /// the type expected by the right-hand function.
     #[error(transparent)]
     Type(#[from] crate::diagnostics::TypeError),
 
+    /// The engine failed to load an external resource, such as a `.ode` script
+    /// file or an audio sample bank.
+    ///
+    /// **Recovery:** Verify that the file path exists, that your Orpheus
+    /// process has read permissions, and that the file is not corrupted.
     #[error(transparent)]
     Load(#[from] crate::diagnostics::LoadError),
 
+    /// The user provided a pitch literal string (e.g. `c#4` or `db2`) that
+    /// could not be parsed into a valid MIDI note number.
+    ///
+    /// **Recovery:** Ensure pitch literals follow standard scientific pitch
+    /// notation. Valid modifiers are `#` for sharp and `b` for flat. Octave
+    /// numbers should immediately follow the note name.
     #[error(transparent)]
     Pitch(#[from] crate::pitch::PitchLiteralError),
 
+    /// A mathematical operation resulted in an integer that exceeds the maximum
+    /// allowed bounds for the target type.
+    ///
+    /// This typically happens when computing extremely long sequence lengths or
+    /// calculating offsets that overflow standard integer capacities.
+    ///
+    /// **Recovery:** Try reducing the size of your loops or explicit time
+    /// offsets to stay within safe numeric limits.
     #[error(transparent)]
     TryFromInt(#[from] std::num::TryFromIntError),
 
+    /// The engine attempted to parse a string into an integer but failed because
+    /// the string contained non-numeric characters.
+    ///
+    /// **Recovery:** Ensure strings passed to operations expecting numeric IDs
+    /// contain only valid digits (0-9).
     #[error(transparent)]
     ParseInt(#[from] std::num::ParseIntError),
 
+    /// A failure propagating up from the core temporal pattern engine.
+    ///
+    /// This usually involves invalid time manipulation, such as creating a cycle
+    /// span with a zero denominator or attempting to reverse time in a way that
+    /// causes a rational overflow.
+    ///
+    /// **Recovery:** Check any explicit fractional math (like custom `Rational`
+    /// creation) and ensure temporal operations don't divide lengths by zero.
     #[error(transparent)]
     Pattern(#[from] PatternError),
 }
