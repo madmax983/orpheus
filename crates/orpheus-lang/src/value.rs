@@ -4830,7 +4830,7 @@ mod tests {
         let cluster = vec![
             Event {
                 whole: None,
-                part: *span,
+                part: span,
                 value: SampleEvent::named("sn"),
             },
             Event {

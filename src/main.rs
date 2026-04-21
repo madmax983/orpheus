@@ -17,9 +17,9 @@ use orpheus_dsp::EngineHandle;
 
 fn main() {
     if let Err(error) = run() {
-        eprintln!("{} {}", "✗ error:".red().bold(), error);
+        eprintln!("{} {}", "[Error]:".red().bold(), error);
         for cause in error.chain().skip(1) {
-            eprintln!("  {} {}", "↳".cyan(), cause);
+            eprintln!("  {} {}", "->".cyan(), cause);
         }
         std::process::exit(1);
     }
@@ -52,7 +52,7 @@ fn run() -> anyhow::Result<()> {
             let mut message = format!("audio output disabled: {error}");
             for cause in error.chain().skip(1) {
                 use std::fmt::Write;
-                let _ = write!(&mut message, "\n  ↳ {cause}");
+                let _ = write!(&mut message, "\n  -> {cause}");
             }
             (EngineHandle::stub(), None, Some(message))
         }
@@ -136,7 +136,7 @@ fn start_live_audio() -> anyhow::Result<(EngineHandle, Stream)> {
                     output.fill(0.0);
                 }
             },
-            |error| eprintln!("{} {}", "✗ audio stream error:".red().bold(), error),
+            |error| eprintln!("{} {}", "[Error] audio stream error:".red().bold(), error),
             None,
         )
         .context("failed to build the audio output stream")?;
