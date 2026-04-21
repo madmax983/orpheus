@@ -132,7 +132,8 @@ pub fn export_number_pattern_to_midi(
     let span = render_span(cycle_count)?;
     let pattern_events = pattern.try_query(&span)?;
 
-    let mut midi_events = Vec::new();
+    // ⚡ Bolt: Pre-allocate vector capacity assuming exactly two MIDI events (Note On + Note Off) per pattern event.
+    let mut midi_events = Vec::with_capacity(pattern_events.len().saturating_mul(2));
 
     for event in pattern_events {
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -197,7 +198,8 @@ pub fn export_sample_pattern_to_midi(
     let span = render_span(cycle_count)?;
     let pattern_events = pattern.try_query(&span)?;
 
-    let mut midi_events = Vec::new();
+    // ⚡ Bolt: Pre-allocate vector capacity assuming exactly two MIDI events (Note On + Note Off) per pattern event.
+    let mut midi_events = Vec::with_capacity(pattern_events.len().saturating_mul(2));
 
     for event in pattern_events {
         let sample = event.value.sample();
