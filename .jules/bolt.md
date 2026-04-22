@@ -11,3 +11,7 @@
 **Pre-allocating Vec in loops and mapped functions**
 **Learning:** Found loops doing exact insertions without capacity initialization which results in expensive allocations.
 **Action:** When writing or identifying loops appending onto vectors or strings of a known maximum length, use `Vec::with_capacity` to prevent intermediate heap reallocations.
+
+## YYYY-MM-DD - [AST Cloning Bottlenecks]
+**Learning:** Extracting specific keys from owned module environments (like `type_bindings` or `value_bindings` in `orpheus-lang`'s module loading logic) using `.get(&key).cloned()` forces expensive deep copies of complex, heavily-nested AST structures (`Type` and `Value`).
+**Action:** When transferring ownership of specific items out of a uniquely owned collection (e.g., an imported module during loading that will be dropped immediately after), bind the collection as `mut` and use `.remove(&key)` instead of `.get(&key).cloned()` to perform zero-cost transfers.
