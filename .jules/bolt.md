@@ -11,3 +11,6 @@
 **Pre-allocating Vec in loops and mapped functions**
 **Learning:** Found loops doing exact insertions without capacity initialization which results in expensive allocations.
 **Action:** When writing or identifying loops appending onto vectors or strings of a known maximum length, use `Vec::with_capacity` to prevent intermediate heap reallocations.
+**[Reserve Vector Capacity]**
+**Learning:** Appending items to a `Vec` inside a loop on hot paths (like Orpheus's evaluator) without pre-allocating capacity causes redundant heap re-allocations.
+**Action:** Always use `.reserve(len)` before the loop when the exact number of elements to be added is known.

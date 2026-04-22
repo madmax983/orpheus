@@ -267,6 +267,8 @@ impl ExplicitValue {
     fn append_unsorted_shifted(&mut self, base: &Self, offset: &Rational) -> Result<(), EvalError> {
         match (self, base) {
             (Self::Sample(combined), Self::Sample(base_events)) => {
+                // ⚡ Bolt: Reserve capacity to avoid multiple heap allocations when appending a section cycle.
+                combined.reserve(base_events.len());
                 for event in base_events {
                     let mut new_event = event.clone();
                     new_event.part = shift_span(&new_event.part, offset)?;
@@ -278,6 +280,8 @@ impl ExplicitValue {
                 Ok(())
             }
             (Self::Number(combined), Self::Number(base_events)) => {
+                // ⚡ Bolt: Reserve capacity to avoid multiple heap allocations when appending a section cycle.
+                combined.reserve(base_events.len());
                 for event in base_events {
                     let mut new_event = event.clone();
                     new_event.part = shift_span(&new_event.part, offset)?;
