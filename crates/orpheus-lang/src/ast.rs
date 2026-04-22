@@ -1,5 +1,9 @@
 #![allow(clippy::match_same_arms)]
 //! Abstract syntax tree nodes for the Phase 1 Orpheus parser.
+//!
+//! This module defines the structure of the AST emitted by the parser before
+//! any type inference or evaluation has taken place. The primary entrypoint
+//! is the [`Module`] struct, which contains a collection of [`Stmt`] nodes.
 
 /// A parsed Orpheus module.
 #[derive(Clone, Debug, PartialEq)]
