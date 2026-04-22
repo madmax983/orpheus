@@ -4344,7 +4344,7 @@ where
     I: Iterator<Item = &'b TimeSpan>,
 {
     let (lower, upper) = control_parts.size_hint();
-    let capacity_estimate = 2 + upper.unwrap_or(lower) * 2;
+    let capacity_estimate = 2_usize.saturating_add(upper.unwrap_or(lower).saturating_mul(2));
     // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries.
     let mut boundaries = Vec::with_capacity(capacity_estimate);
     boundaries.push(source_span.start());
