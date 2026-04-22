@@ -40,3 +40,7 @@
 **Redundant pub(crate)**
 **Learning:** `clippy::redundant_pub_crate` warns about `pub(crate)` items inside private modules. Since the module itself is private to the crate, making the item `pub(crate)` is functionally equivalent to making it `pub`, but `pub` is more idiomatic and cleaner.
 **Action:** When working in private modules, use `pub` instead of `pub(crate)` for items intended to be accessible throughout the crate. Avoid suppressing the warning with `#[allow(clippy::redundant_pub_crate)]`.
+
+**Extract match arms to method helpers**
+**Learning:** `clippy::too_many_lines` on large enum `match` statements can be resolved by pulling the complex arms into individual methods. This flattens the code structure and improves readability, eliminating the need to use `#[allow(clippy::too_many_lines)]`.
+**Action:** Extract large match arms into separate private helper methods on the enum.
