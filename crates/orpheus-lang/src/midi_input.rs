@@ -41,7 +41,6 @@ fn state() -> &'static MidiInputSharedState {
 }
 
 #[cfg(test)]
-
 pub fn reset_state_for_test() {
     // Cannot easily reset OnceLock, but we can clear the internal data
     if let Ok(mut queue) = state().note_events.lock() {
@@ -109,7 +108,6 @@ pub fn drain_note_events() -> Vec<MidiNoteEvent> {
 }
 
 #[cfg(test)]
-
 pub fn set_cc_value_for_test(controller: u8, value: u8) {
     if let Some(atomic_val) = state().cc_values.get(controller as usize) {
         atomic_val.store(value, Ordering::Relaxed);

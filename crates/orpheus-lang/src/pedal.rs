@@ -206,8 +206,8 @@ impl ValidatedPedalPlan {
 
     #[doc(hidden)]
     #[must_use]
-    pub fn explain(&self) -> String {
-        let title = format!("{}", "Pedal Graph Plan:".cyan().bold());
+    pub fn explain(&self, binding_name: &str) -> String {
+        let title = format!("{} {binding_name}", "Pedal Graph Plan:".cyan().bold());
         let mut table = Table::new();
         table.load_preset(UTF8_BORDERS_ONLY);
         table.set_header(vec![
@@ -284,8 +284,8 @@ impl PedalValue {
 
     #[doc(hidden)]
     #[must_use]
-    pub fn explain(&self) -> String {
-        self.plan.explain()
+    pub fn explain(&self, binding_name: &str) -> String {
+        self.plan.explain(binding_name)
     }
 }
 

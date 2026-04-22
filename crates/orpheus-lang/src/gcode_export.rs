@@ -168,7 +168,7 @@ mod tests {
         assert!(content.contains("F247"));
 
         assert!(content.contains("G1 X"));
-        assert!(content.contains("Y"));
+        assert!(content.contains('Y'));
     }
 
     #[test]

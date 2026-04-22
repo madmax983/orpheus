@@ -534,7 +534,7 @@ impl ReplSession {
             )
         })?;
 
-        Ok(pedal.explain())
+        Ok(pedal.explain(binding_name))
     }
 
     fn export_binding(&self, args: &str) -> Result<String, String> {

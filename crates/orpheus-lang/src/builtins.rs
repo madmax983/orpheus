@@ -531,7 +531,7 @@ fn apply_through(args: Vec<Value>) -> Result<Value, EvalError> {
     )?;
     let pedal_program = std::sync::Arc::new(orpheus_dsp::PedalProgram::new(
         pedal.format_source(),
-        pedal.explain(),
+        pedal.explain("through"),
     ));
 
     Ok(Value::SamplePattern(pattern.through(pedal_program)))
