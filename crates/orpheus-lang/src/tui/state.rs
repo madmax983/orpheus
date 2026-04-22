@@ -344,7 +344,10 @@ const fn next_char_boundary(input: &str, index: usize) -> usize {
 }
 
 fn previous_word_boundary(input: &str, index: usize) -> usize {
-    let mut cursor = index;
+    let mut cursor = index.min(input.len());
+    while !input.is_char_boundary(cursor) && cursor > 0 {
+        cursor -= 1;
+    }
     while cursor > 0 {
         let previous = previous_char_boundary(input, cursor);
         let Some(character) = input[..cursor].chars().next_back() else {
@@ -369,7 +372,10 @@ fn previous_word_boundary(input: &str, index: usize) -> usize {
 }
 
 fn next_word_boundary(input: &str, index: usize) -> usize {
-    let mut cursor = index;
+    let mut cursor = index.min(input.len());
+    while !input.is_char_boundary(cursor) && cursor < input.len() {
+        cursor += 1;
+    }
     while cursor < input.len() {
         let Some(character) = input[cursor..].chars().next() else {
             break;
@@ -551,5 +557,29 @@ mod tests {
         assert!(state.show_help);
         state.toggle_help();
         assert!(!state.show_help);
+    }
+
+    #[test]
+    fn test_havoc_previous_word_boundary_oob() {
+        let text = "abc def";
+        previous_word_boundary(text, 100);
+    }
+
+    #[test]
+    fn test_havoc_next_word_boundary_oob() {
+        let text = "abc def";
+        next_word_boundary(text, 100);
+    }
+
+    #[test]
+    fn test_havoc_next_word_boundary_emoji() {
+        let text = "🚀 def";
+        next_word_boundary(text, 1);
+    }
+
+    #[test]
+    fn test_havoc_previous_word_boundary_emoji() {
+        let text = "🚀 def";
+        previous_word_boundary(text, 1);
     }
 }
