@@ -1888,4 +1888,18 @@ right = sometimes(fast(2), cp hh)";
         assert_eq!(r2.numerator(), -7);
         assert_eq!(r2.denominator(), 1);
     }
+
+    #[test]
+    fn eval_error_from_type_error() {
+        let err = crate::diagnostics::TypeError::new("type error test");
+        let eval_err: super::EvalError = err.into();
+        assert_eq!(eval_err.to_string(), "type error test");
+    }
+
+    #[test]
+    fn eval_error_from_load_error() {
+        let err = crate::diagnostics::LoadError::new("load error test");
+        let eval_err: super::EvalError = err.into();
+        assert_eq!(eval_err.to_string(), "load error test");
+    }
 }
