@@ -17,3 +17,6 @@
 ## 2024-06-25 - Add Error From Tests
 **Learning:** Evaluated code coverage and noticed missing tests for `From` conversions to `EvalError` for `TypeError` and `LoadError`. Also missing tests for `From` conversions to `TypeError` for `ParseError`.
 **Action:** Identify untested `From` or error mapping paths and add basic roundtrip tests to make sure error display logic isn't silently broken.
+## 2024-05-18 - [Unwrap Verification]
+**Learning:** Tools like `grep` can match `unwrap_or` and `unwrap_or_else` when looking for `unwrap`. Furthermore, when calculating capacity based on an iterator's `size_hint` where the items are references to structures stored in memory, `upper` bounds are bounded by physical memory limitations, meaning operations like `upper * 2` are very unlikely to overflow `usize` in standard 64-bit systems.
+**Action:** Use precise regex (like `\.unwrap\(\)`) to search for panics. Avoid modifying safe capacity logic just because `usize::MAX` theoretically overflows it if the value can never approach `usize::MAX` in reality.
