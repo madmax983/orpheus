@@ -571,10 +571,10 @@ pub fn render_sample_pattern_to_wav(
 
 use std::fmt::Write as _;
 
-/// Escapes a string for safe inclusion within a JSON payload.
+/// Escapes a string to be safely embedded within a JSON string literal.
 ///
-/// Converts double quotes, backslashes, and control characters into their corresponding
-/// JSON escape sequences (e.g., `\"`, `\\`, `\n`). This ensures that dynamically generated
+/// This function replaces common control characters and quotes with their
+/// corresponding JSON escape sequences (e.g., `\"`, `\\`, `\n`). This ensures that dynamically generated
 /// text (like sample names) won't break the JSON structure during export operations.
 ///
 /// ## Examples

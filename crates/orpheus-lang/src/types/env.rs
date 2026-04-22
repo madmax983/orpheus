@@ -41,7 +41,13 @@ pub struct TypeEnv {
 }
 
 impl TypeEnv {
+    /// Creates a new typing environment pre-populated with Orpheus built-ins.
+    ///
+    /// This includes fundamental sample identifiers (`bd`, `sn`), signal oscillators
+    /// (`saw`, `tri`), and polymorphic temporal transforms (`fast`, `every`, `when`).
+    ///
     #[must_use]
+    #[doc(hidden)]
     pub fn with_builtins() -> Self {
         let mut env = Self {
             entries: BTreeMap::new(),
@@ -143,11 +149,22 @@ impl TypeEnv {
         env
     }
 
+    /// Inserts a new variable mapping into the type environment.
+    ///
+    /// This makes the variable available for subsequent type inferences in the same environment.
+    ///
+    #[doc(hidden)]
     pub fn insert(&mut self, name: impl Into<String>, scheme: TypeScheme) {
         self.entries.insert(name.into(), scheme);
     }
 
+    /// Looks up a variable's type scheme in the environment.
+    ///
+    /// Returns `Some(&TypeScheme)` if the name exists, which can then be instantiated
+    /// to yield a concrete `Type` during inference. Returns `None` if the name is unbound.
+    ///
     #[must_use]
+    #[doc(hidden)]
     pub fn get(&self, name: &str) -> Option<&TypeScheme> {
         self.entries.get(name)
     }
