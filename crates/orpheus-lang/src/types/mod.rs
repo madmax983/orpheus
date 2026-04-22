@@ -63,6 +63,15 @@ impl Type {
     /// Constructs a `Pattern` type wrapping the given inner type.
     ///
     /// This is a convenience helper to avoid manually allocating `Box::new`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::Type;
+    ///
+    /// let pat_ty = Type::pattern(Type::Number);
+    /// assert!(matches!(pat_ty, Type::Pattern(_)));
+    /// ```
     #[must_use]
     pub fn pattern(inner: Self) -> Self {
         Self::Pattern(Box::new(inner))
@@ -71,6 +80,15 @@ impl Type {
     /// Constructs a `Function` type with the given arguments and return type.
     ///
     /// This is a convenience helper to avoid manually allocating `Box::new`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::Type;
+    ///
+    /// let func_ty = Type::function(vec![Type::Number], Type::Pattern(Box::new(Type::Sample)));
+    /// assert!(matches!(func_ty, Type::Function(_, _)));
+    /// ```
     #[must_use]
     pub fn function(args: Vec<Self>, ret: Self) -> Self {
         Self::Function(args, Box::new(ret))
@@ -80,6 +98,16 @@ impl Type {
     ///
     /// Transforms `(A, B) -> C` into `A -> (B -> C)`. This is necessary for
     /// Hindley-Milner type inference which strictly evaluates unary functions.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::Type;
+    ///
+    /// // Represents taking a Number, returning a function that takes a Sample, returning a Pattern<Sample>
+    /// let curried_ty = Type::curried(vec![Type::Number, Type::Sample], Type::pattern(Type::Sample));
+    /// assert!(matches!(curried_ty, Type::Function(_, _)));
+    /// ```
     #[must_use]
     pub fn curried(args: Vec<Self>, ret: Self) -> Self {
         args.into_iter()
@@ -137,15 +165,12 @@ impl TypedModule {
     /// # Examples
     ///
     /// ```
-    /// use std::collections::BTreeMap;
-    /// use orpheus_lang::{Type, TypedModule};
+    /// // Using internal type constructor, so we test with inference output.
+    /// use orpheus_lang::{infer_module, ReplMode, Type};
     ///
-    /// let mut bindings = BTreeMap::new();
-    /// bindings.insert("x".to_string(), Type::Number);
-    /// let module = TypedModule::new(bindings);
-    ///
-    /// assert!(module.contains_key("x"));
-    /// assert!(!module.contains_key("y"));
+    /// let typed = infer_module("x = bd", ReplMode::Loose).unwrap();
+    /// assert!(typed.contains_key("x"));
+    /// assert!(!typed.contains_key("y"));
     /// ```
     #[must_use]
     pub fn contains_key(&self, name: &str) -> bool {
@@ -157,6 +182,15 @@ impl TypedModule {
     /// Once an Orpheus expression is parsed and bound to a name in the environment, the type
     /// inference engine calculates its principal type. This method allows the REPL or TUI to
     /// display that type back to the user (e.g. telling them that `fast` is `Number -> Pattern -> Pattern`).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{infer_module, ReplMode, Type};
+    ///
+    /// let typed = infer_module("x = bd", ReplMode::Loose).unwrap();
+    /// assert_eq!(typed.type_of("x"), &Type::pattern(Type::Sample));
+    /// ```
     ///
     /// # Panics
     ///
