@@ -114,4 +114,17 @@ mod tests {
         assert!(content.contains("64,192,0,1,0,0:0:0:0:"));
         assert!(content.contains("320,192,1000,1,0,0:0:0:0:"));
     }
+
+    #[test]
+    fn export_cycle_count_zero_returns_error() {
+        let module = eval_module("pat = bd sn", ReplMode::Loose).unwrap();
+        let pat = module.get("pat").unwrap().as_sample_pattern().unwrap();
+
+        assert_eq!(
+            super::export_sample_pattern_to_osu(pat, "test.osu", 0)
+                .unwrap_err()
+                .to_string(),
+            "exporting requires at least one cycle"
+        );
+    }
 }
