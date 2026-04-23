@@ -57,6 +57,9 @@ pub use svg::{export_number_pattern_to_svg, export_sample_pattern_to_svg};
 pub use tracker::{export_number_pattern_to_tracker, export_sample_pattern_to_tracker};
 pub use tui::{render_initial_frame_for_test, run_with_engine, run_with_engine_and_path};
 pub use txt::{export_number_pattern_to_txt, export_sample_pattern_to_txt};
+
+pub(crate) mod dot_export;
+pub use dot_export::export_pedal_value_to_dot;
 pub use types::{Type, TypedModule, infer_into_bindings, infer_module};
 pub use value::{NumberPatternValue, SampleEvent, SamplePatternValue, Value};
 
