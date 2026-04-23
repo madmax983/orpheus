@@ -513,11 +513,12 @@ impl Evaluator {
         layers: &[Expr],
         meter: Option<&MeterContext>,
     ) -> Result<Value, EvalError> {
-        let values: Result<Vec<_>, _> = layers
-            .iter()
-            .map(|layer| self.eval_expr_in_meter(layer, meter))
-            .collect();
-        stack_values(values?)
+        // ⚡ Bolt: Removed intermediate allocation and `.collect()` by pushing directly into pre-allocated `Vec`
+        let mut values = Vec::with_capacity(layers.len());
+        for layer in layers {
+            values.push(self.eval_expr_in_meter(layer, meter)?);
+        }
+        stack_values(values)
     }
 
     fn eval_stream(
