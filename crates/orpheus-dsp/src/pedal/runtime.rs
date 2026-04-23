@@ -766,7 +766,6 @@ struct StageContext<'a> {
 }
 
 impl PedalStage {
-    #[allow(clippy::too_many_lines)]
     fn process(
         &self,
         node_states: &mut [NodeState],
@@ -775,205 +774,218 @@ impl PedalStage {
         input: f32,
     ) -> f32 {
         match self {
-            Self::Buffer { input: source } => resolve(node_values, *source, input),
+            Self::Buffer { .. } => self.process_buffer(node_values, input),
+            Self::Gain { .. } | Self::Level { .. } => {
+                self.process_gain_or_level(node_values, input)
+            }
+            Self::Preamp { .. } => self.process_preamp(node_values, input),
+            Self::Clip { .. } => self.process_clip(node_values, input),
+            Self::Tone { .. } => self.process_tone(&mut StageContext {
+                node_states,
+                node_values,
+                index,
+                input,
+            }),
+            Self::Filter { .. } => self.process_filter(&mut StageContext {
+                node_states,
+                node_values,
+                index,
+                input,
+            }),
+            Self::Eq { .. } => self.process_eq(&mut StageContext {
+                node_states,
+                node_values,
+                index,
+                input,
+            }),
+            Self::Sag { .. } => self.process_sag(&mut StageContext {
+                node_states,
+                node_values,
+                index,
+                input,
+            }),
+            Self::Bias { .. } => self.process_bias(node_values, input),
+        }
+    }
+
+    fn process_buffer(&self, node_values: &[f32], input: f32) -> f32 {
+        let Self::Buffer { input: source } = self else {
+            return input;
+        };
+        resolve(node_values, *source, input)
+    }
+
+    fn process_gain_or_level(&self, node_values: &[f32], input: f32) -> f32 {
+        let (source, amount) = match self {
             Self::Gain {
-                input: source,
-                amount,
+                input: s,
+                amount: a,
             }
             | Self::Level {
-                input: source,
-                amount,
-            } => sanitize_audio(
-                resolve(node_values, *source, input) * resolve(node_values, *amount, input),
-            ),
-            Self::Preamp {
-                input: source,
-                gain,
-                model,
-            } => preamp_sample(
-                resolve(node_values, *source, input),
-                resolve(node_values, *gain, input),
-                *model,
-            ),
-            Self::Clip {
-                input: source,
-                drive,
-                model,
-            } => clip_sample(
-                resolve(node_values, *source, input),
-                resolve(node_values, *drive, input),
-                *model,
-            ),
-            Self::Tone {
-                input: source,
-                cutoff_hz,
-                resonance,
-                model,
-            } => process_tone_stage(
-                &mut StageContext {
-                    node_states,
-                    node_values,
-                    index,
-                    input,
-                },
-                *source,
-                *cutoff_hz,
-                *resonance,
-                *model,
-            ),
-            Self::Filter {
-                input: source,
-                kind,
-                cutoff_hz,
-                resonance,
-            } => process_filter_stage(
-                &mut StageContext {
-                    node_states,
-                    node_values,
-                    index,
-                    input,
-                },
-                *source,
-                *kind,
-                *cutoff_hz,
-                *resonance,
-            ),
-            Self::Eq {
-                input: source,
-                low,
-                mid,
-                high,
-            } => process_eq_stage(
-                &mut StageContext {
-                    node_states,
-                    node_values,
-                    index,
-                    input,
-                },
-                *source,
-                *low,
-                *mid,
-                *high,
-            ),
-            Self::Sag {
-                input: source,
-                amount,
-            } => process_sag_stage(
-                &mut StageContext {
-                    node_states,
-                    node_values,
-                    index,
-                    input,
-                },
-                *source,
-                *amount,
-            ),
-            Self::Bias {
-                input: source,
-                amount,
-            } => sanitize_audio(
-                resolve(node_values, *source, input) + resolve(node_values, *amount, input),
-            ),
+                input: s,
+                amount: a,
+            } => (*s, *a),
+            _ => return input,
+        };
+        sanitize_audio(resolve(node_values, source, input) * resolve(node_values, amount, input))
+    }
+
+    fn process_preamp(&self, node_values: &[f32], input: f32) -> f32 {
+        let Self::Preamp {
+            input: source,
+            gain,
+            model,
+        } = self
+        else {
+            return input;
+        };
+        preamp_sample(
+            resolve(node_values, *source, input),
+            resolve(node_values, *gain, input),
+            *model,
+        )
+    }
+
+    fn process_clip(&self, node_values: &[f32], input: f32) -> f32 {
+        let Self::Clip {
+            input: source,
+            drive,
+            model,
+        } = self
+        else {
+            return input;
+        };
+        clip_sample(
+            resolve(node_values, *source, input),
+            resolve(node_values, *drive, input),
+            *model,
+        )
+    }
+
+    fn process_bias(&self, node_values: &[f32], input: f32) -> f32 {
+        let Self::Bias {
+            input: source,
+            amount,
+        } = self
+        else {
+            return input;
+        };
+        sanitize_audio(resolve(node_values, *source, input) + resolve(node_values, *amount, input))
+    }
+
+    fn process_tone(&self, ctx: &mut StageContext) -> f32 {
+        let Self::Tone {
+            input: source,
+            cutoff_hz,
+            resonance,
+            model,
+        } = self
+        else {
+            return ctx.input;
+        };
+        let signal = resolve(ctx.node_values, *source, ctx.input);
+        if matches!(model, ToneModel::Neutral) {
+            return signal;
+        }
+        let cutoff = resolve(ctx.node_values, *cutoff_hz, ctx.input);
+        let res = resolve(ctx.node_values, *resonance, ctx.input);
+        let NodeState::Tone {
+            low_pass,
+            high_pass,
+        } = &mut ctx.node_states[ctx.index]
+        else {
+            return signal;
+        };
+        let low = low_pass.process_with_cutoff(signal, cutoff);
+        let high = high_pass.process_with_cutoff(signal, cutoff.max(60.0));
+        let mid = signal - low - high;
+        match model {
+            ToneModel::Neutral => unreachable!("neutral tone bypasses filter state"),
+            ToneModel::MidHump => {
+                sanitize_audio(low.mul_add(0.55, mid * res.mul_add(0.9, 1.0)) + high * 0.12)
+            }
+            ToneModel::ScoopedStack => {
+                sanitize_audio(low.mul_add(0.75, mid * res.mul_add(-0.15, 0.25)) + high * 0.85)
+            }
         }
     }
-}
 
-fn process_tone_stage(
-    ctx: &mut StageContext,
-    source: NodeRef,
-    cutoff_hz: NodeRef,
-    resonance: NodeRef,
-    model: ToneModel,
-) -> f32 {
-    let signal = resolve(ctx.node_values, source, ctx.input);
-    if matches!(model, ToneModel::Neutral) {
-        return signal;
-    }
-    let cutoff = resolve(ctx.node_values, cutoff_hz, ctx.input);
-    let resonance = resolve(ctx.node_values, resonance, ctx.input);
-    let NodeState::Tone {
-        low_pass,
-        high_pass,
-    } = &mut ctx.node_states[ctx.index]
-    else {
-        return signal;
-    };
-    let low = low_pass.process_with_cutoff(signal, cutoff);
-    let high = high_pass.process_with_cutoff(signal, cutoff.max(60.0));
-    let mid = signal - low - high;
-    match model {
-        ToneModel::Neutral => unreachable!("neutral tone bypasses filter state"),
-        ToneModel::MidHump => {
-            sanitize_audio(low.mul_add(0.55, mid * resonance.mul_add(0.9, 1.0)) + high * 0.12)
-        }
-        ToneModel::ScoopedStack => {
-            sanitize_audio(low.mul_add(0.75, mid * resonance.mul_add(-0.15, 0.25)) + high * 0.85)
+    fn process_filter(&self, ctx: &mut StageContext) -> f32 {
+        let Self::Filter {
+            input: source,
+            kind,
+            cutoff_hz,
+            resonance,
+        } = self
+        else {
+            return ctx.input;
+        };
+        let signal = resolve(ctx.node_values, *source, ctx.input);
+        let cutoff = resolve(ctx.node_values, *cutoff_hz, ctx.input);
+        let res = resolve(ctx.node_values, *resonance, ctx.input).clamp(0.0, 0.95);
+        match kind {
+            FilterMode::LowPass => {
+                let NodeState::LowPass(low_pass) = &mut ctx.node_states[ctx.index] else {
+                    return signal;
+                };
+                let resonant_input = sanitize_audio((low_pass.state * res).mul_add(-0.9, signal));
+                low_pass.process_with_cutoff(resonant_input, cutoff)
+            }
+            FilterMode::HighPass => {
+                let NodeState::HighPass(high_pass) = &mut ctx.node_states[ctx.index] else {
+                    return signal;
+                };
+                let resonant_input =
+                    sanitize_audio((high_pass.prev_output * res).mul_add(-0.75, signal));
+                high_pass.process_with_cutoff(resonant_input, cutoff)
+            }
         }
     }
-}
 
-fn process_filter_stage(
-    ctx: &mut StageContext,
-    source: NodeRef,
-    kind: FilterMode,
-    cutoff_hz: NodeRef,
-    resonance: NodeRef,
-) -> f32 {
-    let signal = resolve(ctx.node_values, source, ctx.input);
-    let cutoff = resolve(ctx.node_values, cutoff_hz, ctx.input);
-    let resonance = resolve(ctx.node_values, resonance, ctx.input).clamp(0.0, 0.95);
-    match kind {
-        FilterMode::LowPass => {
-            let NodeState::LowPass(low_pass) = &mut ctx.node_states[ctx.index] else {
-                return signal;
-            };
-            let resonant_input = sanitize_audio((low_pass.state * resonance).mul_add(-0.9, signal));
-            low_pass.process_with_cutoff(resonant_input, cutoff)
-        }
-        FilterMode::HighPass => {
-            let NodeState::HighPass(high_pass) = &mut ctx.node_states[ctx.index] else {
-                return signal;
-            };
-            let resonant_input =
-                sanitize_audio((high_pass.prev_output * resonance).mul_add(-0.75, signal));
-            high_pass.process_with_cutoff(resonant_input, cutoff)
-        }
+    fn process_sag(&self, ctx: &mut StageContext) -> f32 {
+        let Self::Sag {
+            input: source,
+            amount,
+        } = self
+        else {
+            return ctx.input;
+        };
+        let signal = resolve(ctx.node_values, *source, ctx.input);
+        let amt = resolve(ctx.node_values, *amount, ctx.input).clamp(0.0, 1.0);
+        let NodeState::Sag { envelope } = &mut ctx.node_states[ctx.index] else {
+            return signal;
+        };
+        *envelope += (signal.abs() - *envelope) * 0.01;
+        let reduction = 1.0 - (*envelope * amt * 0.35).clamp(0.0, 0.8);
+        sanitize_audio(signal * reduction)
     }
-}
 
-fn process_sag_stage(ctx: &mut StageContext, source: NodeRef, amount: NodeRef) -> f32 {
-    let signal = resolve(ctx.node_values, source, ctx.input);
-    let amount = resolve(ctx.node_values, amount, ctx.input).clamp(0.0, 1.0);
-    let NodeState::Sag { envelope } = &mut ctx.node_states[ctx.index] else {
-        return signal;
-    };
-    *envelope += (signal.abs() - *envelope) * 0.01;
-    let reduction = 1.0 - (*envelope * amount * 0.35).clamp(0.0, 0.8);
-    sanitize_audio(signal * reduction)
-}
-
-fn process_eq_stage(
-    ctx: &mut StageContext,
-    source: NodeRef,
-    low: NodeRef,
-    mid: NodeRef,
-    high: NodeRef,
-) -> f32 {
-    let signal = resolve(ctx.node_values, source, ctx.input);
-    let low_gain = resolve(ctx.node_values, low, ctx.input);
-    let mid_gain = resolve(ctx.node_values, mid, ctx.input);
-    let high_gain = resolve(ctx.node_values, high, ctx.input);
-    let NodeState::Eq {
-        low_pass,
-        high_pass,
-    } = &mut ctx.node_states[ctx.index]
-    else {
-        return signal;
-    };
-    let low_band = low_pass.process_with_cutoff(signal, 220.0);
-    let high_band = high_pass.process_with_cutoff(signal, 3_200.0);
-    let mid_band = signal - low_band - high_band;
-    sanitize_audio((low_band * low_gain) + (mid_band * mid_gain) + (high_band * high_gain))
+    fn process_eq(&self, ctx: &mut StageContext) -> f32 {
+        let Self::Eq {
+            input: source,
+            low,
+            mid,
+            high,
+        } = self
+        else {
+            return ctx.input;
+        };
+        let signal = resolve(ctx.node_values, *source, ctx.input);
+        let low_gain = resolve(ctx.node_values, *low, ctx.input);
+        let mid_gain = resolve(ctx.node_values, *mid, ctx.input);
+        let high_gain = resolve(ctx.node_values, *high, ctx.input);
+        let NodeState::Eq {
+            low_pass,
+            high_pass,
+        } = &mut ctx.node_states[ctx.index]
+        else {
+            return signal;
+        };
+        let low_band = low_pass.process_with_cutoff(signal, 220.0);
+        let high_band = high_pass.process_with_cutoff(signal, 3_200.0);
+        let mid_band = signal - low_band - high_band;
+        sanitize_audio((low_band * low_gain) + (mid_band * mid_gain) + (high_band * high_gain))
+    }
 }
 
 fn resolve(node_values: &[f32], reference: NodeRef, input: f32) -> f32 {

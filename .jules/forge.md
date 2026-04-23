@@ -41,6 +41,9 @@
 **Learning:** `clippy::redundant_pub_crate` warns about `pub(crate)` items inside private modules. Since the module itself is private to the crate, making the item `pub(crate)` is functionally equivalent to making it `pub`, but `pub` is more idiomatic and cleaner.
 **Action:** When working in private modules, use `pub` instead of `pub(crate)` for items intended to be accessible throughout the crate. Avoid suppressing the warning with `#[allow(clippy::redundant_pub_crate)]`.
 
+**Extract match arms to method helpers**
+**Learning:** `clippy::too_many_lines` on large enum `match` statements can be resolved by pulling the complex arms into individual methods. This flattens the code structure and improves readability, eliminating the need to use `#[allow(clippy::too_many_lines)]`.
+**Action:** Extract large match arms into separate private helper methods on the enum.
 **Extracting Guard Clauses Without Duplicating Routing Logic**
 **Learning:** When flattening nested guard clauses inside large `match` statements (like a REPL command dispatcher where many arms check `if args.is_empty() { Err(...) }`), it is a critical mistake to extract the error condition by duplicating the entire command routing list. Duplicating the match arms into an upfront `if args.is_empty() { match name { ... } }` and a subsequent execution `match name { ... }` violates DRY principles and creates a fragile maintainability trap where adding a new command requires updating two separate lists.
 **Action:** When extracting preconditions across multiple match arms, extract the precondition into a single block that handles ONLY the arms requiring that condition (falling through with `_ => {}` for others), and retain the single source-of-truth execution `match` block below it.
