@@ -4344,7 +4344,9 @@ where
     I: Iterator<Item = &'b TimeSpan>,
 {
     let (lower, upper) = control_parts.size_hint();
-    let capacity_estimate = 2_usize.saturating_add(upper.unwrap_or(lower).saturating_mul(2));
+    let capacity_estimate = 2_usize
+        .saturating_add(upper.unwrap_or(lower).saturating_mul(2))
+        .min(1024);
     // PRE-ALLOCATE: prevents heap reallocations when collecting span boundaries.
     let mut boundaries = Vec::with_capacity(capacity_estimate);
     boundaries.push(source_span.start());
@@ -4842,5 +4844,28 @@ mod tests {
 
         let events = roll_event_cluster(&cluster, 5).unwrap();
         assert_eq!(events, cluster);
+    }
+
+    /// 👺 Havoc: Prevent massive memory allocation failures from iterators
+    /// lying or accurately reporting enormous upper bounds in `size_hint`.
+    #[test]
+    fn test_havoc_capacity_estimate_oom() {
+        struct MaliciousIterator;
+        impl Iterator for MaliciousIterator {
+            type Item = &'static TimeSpan;
+            fn next(&mut self) -> Option<Self::Item> {
+                None
+            }
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                // Simulate an enormous upper bound
+                (0, Some(usize::MAX))
+            }
+        }
+
+        let zero = Rational::zero();
+        let span = TimeSpan::new(zero, Rational::one()).unwrap();
+
+        // This used to cause `memory allocation of ... bytes failed` (SIGABRT)
+        let _ = super::compute_event_fragment_boundaries(&span, MaliciousIterator);
     }
 }
