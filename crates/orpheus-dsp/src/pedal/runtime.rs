@@ -1184,28 +1184,28 @@ mod tests {
 
     #[test]
     fn should_sanitize_audio() {
-        assert_eq!(sanitize_audio(1.0), 1.0);
-        assert_eq!(sanitize_audio(-1.0), -1.0);
-        assert_eq!(sanitize_audio(0.0), 0.0);
-        assert_eq!(sanitize_audio(f32::INFINITY), 0.0);
-        assert_eq!(sanitize_audio(f32::NEG_INFINITY), 0.0);
-        assert_eq!(sanitize_audio(f32::NAN), 0.0);
+        assert!((sanitize_audio(1.0) - 1.0).abs() < f32::EPSILON);
+        assert!((sanitize_audio(-1.0) - -1.0).abs() < f32::EPSILON);
+        assert!((sanitize_audio(0.0) - 0.0).abs() < f32::EPSILON);
+        assert!((sanitize_audio(f32::INFINITY) - 0.0).abs() < f32::EPSILON);
+        assert!((sanitize_audio(f32::NEG_INFINITY) - 0.0).abs() < f32::EPSILON);
+        assert!((sanitize_audio(f32::NAN) - 0.0).abs() < f32::EPSILON);
     }
 
     #[test]
     fn should_sanitize_non_negative() {
-        assert_eq!(sanitize_non_negative(1.0), 1.0);
-        assert_eq!(sanitize_non_negative(-1.0), 0.0);
-        assert_eq!(sanitize_non_negative(0.0), 0.0);
-        assert_eq!(sanitize_non_negative(f32::INFINITY), 0.0);
-        assert_eq!(sanitize_non_negative(f32::NEG_INFINITY), 0.0);
-        assert_eq!(sanitize_non_negative(f32::NAN), 0.0);
+        assert!((sanitize_non_negative(1.0) - 1.0).abs() < f32::EPSILON);
+        assert!((sanitize_non_negative(-1.0) - 0.0).abs() < f32::EPSILON);
+        assert!((sanitize_non_negative(0.0) - 0.0).abs() < f32::EPSILON);
+        assert!((sanitize_non_negative(f32::INFINITY) - 0.0).abs() < f32::EPSILON);
+        assert!((sanitize_non_negative(f32::NEG_INFINITY) - 0.0).abs() < f32::EPSILON);
+        assert!((sanitize_non_negative(f32::NAN) - 0.0).abs() < f32::EPSILON);
     }
 
     #[test]
     fn should_calculate_smoothing_coeff() {
-        assert_eq!(smoothing_coeff(0.0, 48000.0), 1.0);
-        assert_eq!(smoothing_coeff(-10.0, 48000.0), 1.0);
+        assert!((smoothing_coeff(0.0, 48000.0) - 1.0).abs() < f32::EPSILON);
+        assert!((smoothing_coeff(-10.0, 48000.0) - 1.0).abs() < f32::EPSILON);
         assert!((smoothing_coeff(10.0, 48000.0) - 0.002_081_155_8).abs() < 1e-6);
         assert!((smoothing_coeff(f32::NAN, 48000.0) - 0.002_081_155_8).abs() < 1e-6); // falls back to 0.01s (10ms)
         assert!((smoothing_coeff(f32::INFINITY, 48000.0) - 0.002_081_155_8).abs() < 1e-6); // falls back to 0.01s
@@ -1219,7 +1219,7 @@ mod tests {
 
         let mut filter_nan = LowPassState::new(48000.0);
         let out_nan = filter_nan.process_with_cutoff(f32::NAN, 1000.0);
-        assert_eq!(out_nan, 0.0);
+        assert!((out_nan - 0.0).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -1229,7 +1229,7 @@ mod tests {
         assert!((out1 - 0.884_163).abs() < 1e-3);
 
         let out_nan = filter.process_with_cutoff(f32::NAN, 1000.0);
-        assert_eq!(out_nan, 0.0);
+        assert!((out_nan - 0.0).abs() < f32::EPSILON);
     }
 
     #[test]

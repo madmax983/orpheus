@@ -45,6 +45,10 @@ use crate::value::{
 /// exact, bounded rational time domain, so overflows during shifts or scaling
 /// can result in an `EvalError`.
 ///
+/// **Recovery:** Since `EvalError` wraps various specific errors (like `ParseError` or `TypeError`),
+/// you should match on its variants or display its `Display` implementation to locate the exact syntax issue or runtime flaw.
+/// In a live-coding REPL environment, these errors should be caught and presented to the user to allow them to correct their code, rather than crashing the thread.
+///
 /// # Examples
 ///
 /// An `EvalError` provides an error message indicating what went wrong:
@@ -175,6 +179,9 @@ impl From<std::fmt::Error> for EvalError {
 ///
 /// Returns [`EvalError`] when parsing fails or when evaluation encounters an
 /// unsupported expression or builtin application.
+///
+/// **Recovery:** Catch the error and print its message to the user. Errors are
+/// designed to be human-readable and pinpoint syntax or runtime issues (like missing variables).
 pub fn eval_module(source: &str, mode: ReplMode) -> Result<BTreeMap<String, Value>, EvalError> {
     let parsed = parse_module(source)?;
     Evaluator::new(mode, &parsed).eval_module(&parsed)
@@ -202,6 +209,9 @@ pub fn eval_module(source: &str, mode: ReplMode) -> Result<BTreeMap<String, Valu
 /// # Errors
 ///
 /// Returns [`EvalError`] if parsing fails, or if evaluation encounters a runtime error.
+///
+/// **Recovery:** Catch the error and display it in the REPL. The internal `bindings` environment
+/// remains untouched and can be reused for subsequent evaluations without corruption.
 pub fn eval_into_bindings(
     source: &str,
     mode: ReplMode,
@@ -1077,6 +1087,9 @@ pub fn apply_function_value(function: FunctionValue, args: Vec<Value>) -> Result
     }
 }
 
+/// Applies a user-defined function to the provided arguments, executing the body if fully applied.
+///
+/// If the function is partially applied, this returns a new curried function with the provided arguments captured in its environment.
 fn apply_user_function(mut function: UserFn, args: Vec<Value>) -> Result<Value, EvalError> {
     if function.depth > 200 {
         return Err(EvalError::new("evaluation recursion limit exceeded"));

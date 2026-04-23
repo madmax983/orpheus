@@ -156,6 +156,17 @@ impl SharedTransport {
 }
 
 /// Errors raised by the minimal Orpheus audio engine.
+///
+/// **Recovery:** Catch the error and display it to the user. Typical failures relate to system audio backend misconfiguration or extreme temporal values causing frame overflows. Resetting the audio backend or restarting the application might be necessary for serious host faults.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::EngineError;
+///
+/// let err = EngineError::InvalidChannelCount;
+/// assert_eq!(err.to_string(), "audio output must have at least one channel");
+/// ```
 #[derive(Debug, Error)]
 pub enum EngineError {
     /// The audio backend provided an invalid number of channels.
