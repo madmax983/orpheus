@@ -360,23 +360,6 @@ impl ReplSession {
             .split_once(char::is_whitespace)
             .map_or((command, ""), |(name, args)| (name, args.trim()));
 
-        if args.is_empty() {
-            match name {
-                "render" => return Err(render_usage().to_owned()),
-                "roll" => return Err(roll_usage().to_owned()),
-                "stats" => return Err(stats_usage().to_owned()),
-                "explain" => return Err(explain_usage().to_owned()),
-                "export" => return Err(export_usage().to_owned()),
-                "tempo" => return Err(tempo_usage().to_owned()),
-                "samples" => return Err(samples_usage().to_owned()),
-                "open" => return Err(open_usage().to_owned()),
-                "track" => return Err(track_usage().to_owned()),
-                "bus" => return Err(bus_usage().to_owned()),
-                "send" => return Err(send_usage().to_owned()),
-                _ => {}
-            }
-        }
-
         match name {
             "render" => self.render_binding(args),
             "roll" => self.roll_binding(args),
@@ -807,6 +790,9 @@ impl ReplSession {
     }
 
     fn load_sample_directory(&mut self, args: &str) -> Result<String, String> {
+        if args.is_empty() {
+            return Err(samples_usage().to_owned());
+        }
         let directory = PathBuf::from(args);
         let sample_bank =
             load_sample_bank_from_directory(&directory).map_err(|error| error.to_string())?;
@@ -844,6 +830,9 @@ impl ReplSession {
     /// ```
     pub fn open_file(&mut self, path: impl AsRef<Path>) -> Result<String, String> {
         let path = path.as_ref();
+        if path.as_os_str().is_empty() {
+            return Err(open_usage().to_owned());
+        }
         let loaded = load_file_runtime_strict(path).map_err(|error| error.to_string())?;
         let binding_names = loaded
             .type_bindings
