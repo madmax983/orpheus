@@ -194,6 +194,8 @@ pub enum Stmt {
 /// # Returns
 /// `true` if the identifier is referenced in the expression body and is not shadowed
 /// by a parameter. `false` otherwise.
+///
+#[doc(hidden)]
 pub fn binding_expr_self_references(name: &str, params: &[String], expr: &Expr) -> bool {
     !params.iter().any(|param| param == name) && expr.references_ident(name)
 }
