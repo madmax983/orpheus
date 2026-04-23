@@ -153,4 +153,17 @@ mod tests {
         assert!(content.contains("translate([-30.000, 0.000, 20.000])"));
         assert!(content.contains("rotate([0, 90, 180.000])"));
     }
+
+    #[test]
+    fn export_cycle_count_zero_returns_error() {
+        let module = eval_module("pat = 1 2", ReplMode::Loose).unwrap();
+        let pat = module.get("pat").unwrap().as_number_pattern().unwrap();
+
+        assert_eq!(
+            super::export_number_pattern_to_scad(pat, "test.scad", 0)
+                .unwrap_err()
+                .to_string(),
+            "exporting requires at least one cycle"
+        );
+    }
 }
