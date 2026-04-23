@@ -17,7 +17,7 @@ use orpheus_dsp::EngineHandle;
 
 fn main() {
     if let Err(error) = run() {
-        eprintln!("{} {}", "[Error]:".red().bold(), error);
+        eprintln!("{} {}", "\u{2717} Error:".red().bold(), error);
         for cause in error.chain().skip(1) {
             eprintln!("  {} {}", "->".cyan(), cause);
         }
@@ -136,7 +136,7 @@ fn start_live_audio() -> anyhow::Result<(EngineHandle, Stream)> {
                     output.fill(0.0);
                 }
             },
-            |error| eprintln!("{} {}", "[Error] audio stream error:".red().bold(), error),
+            |error| eprintln!("{} {}", "\u{2717} Audio stream error:".red().bold(), error),
             None,
         )
         .context("failed to build the audio output stream")?;
