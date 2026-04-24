@@ -207,13 +207,23 @@ impl ValidatedPedalPlan {
     #[doc(hidden)]
     #[must_use]
     pub fn explain(&self, binding_name: &str) -> String {
-        let title = format!("{} {binding_name}", "Pedal Graph Plan:".cyan().bold());
+        let title = format!(
+            "{} {binding_name}\nTarget Signal Kind: {}",
+            "Pedal Graph Plan:".cyan().bold(),
+            self.signal_kind().to_string().yellow()
+        );
         let mut table = Table::new();
         table.load_preset(UTF8_BORDERS_ONLY);
         table.set_header(vec![
-            Cell::new("Binding").fg(comfy_table::Color::DarkGrey),
-            Cell::new("Kind").fg(comfy_table::Color::DarkGrey),
-            Cell::new("Node").fg(comfy_table::Color::DarkGrey),
+            Cell::new("Binding")
+                .fg(comfy_table::Color::White)
+                .add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Kind")
+                .fg(comfy_table::Color::White)
+                .add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Node")
+                .fg(comfy_table::Color::White)
+                .add_attribute(comfy_table::Attribute::Bold),
         ]);
 
         for binding in &self.bindings {
@@ -230,12 +240,7 @@ impl ValidatedPedalPlan {
             Cell::new(self.result.summary()).fg(comfy_table::Color::Green),
         ]);
 
-        let metadata = format!(
-            "Target Signal Kind: {}",
-            self.signal_kind.to_string().yellow()
-        );
-
-        format!("{title}\n{metadata}\n{table}")
+        format!("{title}\n{table}")
     }
 }
 
