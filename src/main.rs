@@ -99,22 +99,13 @@ fn print_help() {
     println!();
     println!("{}", "Arguments:".yellow().bold());
     println!(
-        "  {}  {}",
-        "[PATH]".green().bold(),
-        "Optional startup .ode file to load"
+        "  {}  Optional startup .ode file to load",
+        "[PATH]".green().bold()
     );
     println!();
     println!("{}", "Options:".yellow().bold());
-    println!(
-        "  {}  {}",
-        "-h, --help".green().bold(),
-        "     Print help"
-    );
-    println!(
-        "  {}  {}",
-        "-V, --version".green().bold(),
-        "  Print version"
-    );
+    println!("  {}       Print help", "-h, --help".green().bold());
+    println!("  {}    Print version", "-V, --version".green().bold());
     println!();
     println!("{}", "Dashboard Mode:".yellow().bold());
     println!("  Run without a file to open the interactive live-coding TUI/REPL.");

@@ -47,3 +47,7 @@
 **Extracting Guard Clauses Without Duplicating Routing Logic**
 **Learning:** When flattening nested guard clauses inside large `match` statements (like a REPL command dispatcher where many arms check `if args.is_empty() { Err(...) }`), it is a critical mistake to extract the error condition by duplicating the entire command routing list. Duplicating the match arms into an upfront `if args.is_empty() { match name { ... } }` and a subsequent execution `match name { ... }` violates DRY principles and creates a fragile maintainability trap where adding a new command requires updating two separate lists.
 **Action:** When extracting preconditions across multiple match arms, extract the precondition into a single block that handles ONLY the arms requiring that condition (falling through with `_ => {}` for others), and retain the single source-of-truth execution `match` block below it.
+
+**Refactoring `print_literal` with `println!`**
+**Learning:** `clippy::print_literal` warns against passing static string literals as formatting arguments alongside colored variable blocks instead of embedding them directly in the template format string.
+**Action:** Embed unformatted static text directly into the `println!` format string template instead of passing it as an independent string argument when the intention is simply to append text next to a styled variable.
