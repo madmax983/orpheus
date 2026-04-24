@@ -35,8 +35,15 @@ struct SyntaxParser;
 /// Returns [`ParseError`] when the source does not match the Phase 1 grammar
 /// or when the parser encounters an internal AST construction failure.
 pub fn parse_module(source: &str) -> Result<Module, ParseError> {
-    let chunks = split_top_level_bindings(source);
+    let chunks = split_top_level_bindings(source)?;
     if chunks.is_empty() {
+        let mut paren_depth = 0;
+        let mut brace_depth = 0;
+        for line in source.lines() {
+            let (next_paren, next_brace) = update_nesting_depth(paren_depth, brace_depth, line)?;
+            paren_depth = next_paren;
+            brace_depth = next_brace;
+        }
         return parse_single_binding_module(source, 1);
     }
 
@@ -61,7 +68,7 @@ fn parse_single_binding_module(source: &str, start_line: usize) -> Result<Module
     build_module(module_pair, 0)
 }
 
-fn split_top_level_bindings(source: &str) -> Vec<(usize, String)> {
+fn split_top_level_bindings(source: &str) -> Result<Vec<(usize, String)>, ParseError> {
     let mut bindings = Vec::new();
     let mut current = String::new();
     let mut current_start_line = 1_usize;
@@ -87,7 +94,7 @@ fn split_top_level_bindings(source: &str) -> Vec<(usize, String)> {
         }
         current.push_str(line);
         let (next_paren_depth, next_brace_depth) =
-            update_nesting_depth(paren_depth, brace_depth, line);
+            update_nesting_depth(paren_depth, brace_depth, line)?;
         paren_depth = next_paren_depth;
         brace_depth = next_brace_depth;
     }
@@ -96,7 +103,7 @@ fn split_top_level_bindings(source: &str) -> Vec<(usize, String)> {
         bindings.push((current_start_line, current));
     }
 
-    bindings
+    Ok(bindings)
 }
 
 fn enrich_parse_error(source: &str, error: &PestError<Rule>) -> ParseError {
@@ -153,7 +160,7 @@ fn is_identifier(candidate: &str) -> bool {
         && chars.all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
-fn update_nesting_depth(current_paren: i32, current_brace: i32, line: &str) -> (i32, i32) {
+fn update_nesting_depth(current_paren: i32, current_brace: i32, line: &str) -> Result<(i32, i32), ParseError> {
     let mut paren_depth = current_paren;
     let mut brace_depth = current_brace;
     let mut in_string = false;
@@ -181,9 +188,14 @@ fn update_nesting_depth(current_paren: i32, current_brace: i32, line: &str) -> (
             '}' => brace_depth = brace_depth.saturating_sub(1),
             _ => {}
         }
+
+        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+        if paren_depth > MAX_AST_DEPTH as i32 || brace_depth > MAX_AST_DEPTH as i32 {
+            return Err(ParseError::new("maximum AST depth exceeded"));
+        }
     }
 
-    (paren_depth, brace_depth)
+    Ok((paren_depth, brace_depth))
 }
 
 fn unmatched_open_parens(source: &str) -> usize {
