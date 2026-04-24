@@ -50,4 +50,4 @@ pub use synth::{
     AnalogVoice, AnalogVoiceParams, Gain, LadderFilter, Mix, Noise, OscShape, PhaseAccumulator,
     PulseOsc, SawOsc, SoftSat, TriOsc,
 };
-pub use voice::VoiceKind;
+pub use voice::{DEFAULT_ANALOG_BASE_FREQUENCY_HZ, VoiceKind};

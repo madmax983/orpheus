@@ -15,7 +15,7 @@ use crate::effects::BusEffectState;
 use crate::routing::{BusEffectSpec, RoutingSnapshot, TrackSource};
 use crate::sample_bank::SampleBank;
 use crate::scheduler::Scheduler;
-use crate::voice::ActiveVoice;
+use crate::voice::{ActiveVoice, DEFAULT_ANALOG_BASE_FREQUENCY_HZ};
 
 pub const DEFAULT_SAMPLE_RATE: u32 = 48_000;
 const DEFAULT_CHANNELS: u16 = 2;
@@ -178,6 +178,9 @@ pub enum EngineError {
     /// The requested tempo is invalid (e.g., zero, negative, or NaN).
     #[error("tempo must be a finite positive value")]
     InvalidTempo,
+    /// The requested analog-voice reference frequency is invalid.
+    #[error("reference frequency must be a finite positive value")]
+    InvalidReferenceFrequency,
     /// A timing calculation resulted in a schedule time earlier than the beginning of the cycle.
     #[error("pattern time produced a negative cycle offset")]
     NegativeCycleOffset,
@@ -204,6 +207,7 @@ struct EngineCore {
     channels: usize,
     current_frame: u64,
     tempo_bpm: f32,
+    base_hz: f32,
     is_playing: bool,
     frames_per_cycle: u64,
     current_cycle_start_frame: u64,
@@ -240,6 +244,7 @@ impl EngineCore {
             channels: usize::from(config.channels),
             current_frame: 0,
             tempo_bpm: DEFAULT_TEMPO_BPM,
+            base_hz: DEFAULT_ANALOG_BASE_FREQUENCY_HZ,
             is_playing: true,
             frames_per_cycle,
             current_cycle_start_frame: 0,
@@ -291,6 +296,13 @@ impl EngineCore {
                         .checked_add(self.frames_per_cycle)
                         .ok_or(EngineError::FrameOverflow)?;
                 }
+                Ok(())
+            }
+            EngineCommand::SetReferenceFrequency(base_hz) => {
+                if !base_hz.is_finite() || base_hz <= 0.0 {
+                    return Err(EngineError::InvalidReferenceFrequency);
+                }
+                self.base_hz = base_hz;
                 Ok(())
             }
             EngineCommand::PlayTransport => {
@@ -406,6 +418,7 @@ impl EngineCore {
                             self.frames_per_cycle,
                             &trigger.trigger,
                             trigger.duration_frames,
+                            self.base_hz,
                         )
                     })
                 });
@@ -684,6 +697,21 @@ impl RenderEngine {
         self.core.frames_until_boundary()
     }
 
+    /// Exposes the engine's current analog-voice reference frequency in Hertz.
+    ///
+    /// Drains pending commands so a recently enqueued
+    /// [`EngineCommand::SetReferenceFrequency`] is reflected before the caller reads.
+    ///
+    /// # Panics
+    ///
+    /// Panics if draining queued commands fails.
+    #[must_use]
+    pub fn reference_frequency_hz_for_test(&mut self) -> f32 {
+        self.drain_commands()
+            .unwrap_or_else(|error| panic!("drain for ref-freq read failed: {error}"));
+        self.core.base_hz
+    }
+
     /// Exposes the engine's internal continuous-time synchronization metric.
     ///
     /// `orpheus-dsp` achieves sample-accurate musical timing by determining exactly how many
@@ -882,6 +910,19 @@ impl EngineHandle {
     #[must_use]
     pub fn frames_per_cycle_for_test(&self) -> u64 {
         self.test_renderer_ref().frames_per_cycle_for_test()
+    }
+
+    /// Exposes the embedded test renderer's analog-voice reference frequency in Hertz.
+    ///
+    /// Drains pending commands first so the most recently enqueued
+    /// [`EngineCommand::SetReferenceFrequency`] is observable.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the handle does not own an embedded test renderer.
+    #[must_use]
+    pub fn reference_frequency_hz_for_test(&mut self) -> f32 {
+        self.test_renderer_mut().reference_frequency_hz_for_test()
     }
 
     /// Returns a UI-readable transport snapshot for the current engine state.

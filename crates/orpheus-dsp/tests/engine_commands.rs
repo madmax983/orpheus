@@ -620,6 +620,45 @@ fn routing_snapshot_activates_only_at_cycle_boundary() {
 }
 
 #[test]
+fn set_reference_frequency_defaults_to_analog_base_hz() {
+    let mut engine = EngineHandle::stub();
+    assert!(
+        (engine.reference_frequency_hz_for_test() - 220.0).abs() < f32::EPSILON,
+        "default should be 220 Hz (A3)"
+    );
+}
+
+#[test]
+fn set_reference_frequency_updates_engine_state() {
+    let mut engine = EngineHandle::stub();
+    engine
+        .enqueue(EngineCommand::SetReferenceFrequency(432.0))
+        .unwrap();
+    let _ = engine.render_test_block(1);
+    assert!((engine.reference_frequency_hz_for_test() - 432.0).abs() < f32::EPSILON);
+
+    engine
+        .enqueue(EngineCommand::SetReferenceFrequency(220.0))
+        .unwrap();
+    let _ = engine.render_test_block(1);
+    assert!((engine.reference_frequency_hz_for_test() - 220.0).abs() < f32::EPSILON);
+}
+
+#[test]
+fn set_reference_frequency_rejects_non_positive_values() {
+    let (mut handle, mut renderer) = EngineHandle::split_for_test();
+    handle
+        .enqueue(EngineCommand::SetReferenceFrequency(0.0))
+        .unwrap();
+    let mut output = [0.0_f32; 2];
+    let error = renderer.render_into_interleaved(&mut output).unwrap_err();
+    assert!(
+        matches!(error, EngineError::InvalidReferenceFrequency),
+        "zero reference frequency should surface as InvalidReferenceFrequency, got {error:?}"
+    );
+}
+
+#[test]
 fn enqueue_reports_backpressure_instead_of_panicking() {
     let (mut handle, _renderer) = EngineHandle::split_for_test();
 

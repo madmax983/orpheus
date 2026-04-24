@@ -106,6 +106,9 @@ fn lookup_pattern_transform(name: &str) -> Option<Value> {
         "wolfram" => Some(builtin_function_value(BuiltinKind::Wolfram)),
         "pitch_class_set" => Some(builtin_function_value(BuiltinKind::PitchClassSet)),
         "degrees" => Some(builtin_function_value(BuiltinKind::Degrees)),
+        "tuning" => Some(builtin_function_value(BuiltinKind::Tuning)),
+        "load_scl" => Some(builtin_function_value(BuiltinKind::LoadScl)),
+        "tune" => Some(builtin_function_value(BuiltinKind::Tune)),
         _ => None,
     }
 }
@@ -213,6 +216,7 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
                 | Value::PitchClassSet(_)
                 | Value::Function(_)
                 | Value::String(_)
+                | Value::Tuning(_)
                 | Value::Pedal(_) => unreachable!(),
             })
             .collect();
@@ -232,6 +236,7 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
                 | Value::PitchClassSet(_)
                 | Value::Function(_)
                 | Value::String(_)
+                | Value::Tuning(_)
                 | Value::Pedal(_) => unreachable!(),
             })
             .collect();
@@ -384,6 +389,9 @@ impl BuiltinKind {
             Self::MidiCc => "midi_cc",
             Self::Chaos => "chaos",
             Self::Palindrome => "palindrome",
+            Self::Tuning => "tuning",
+            Self::LoadScl => "load_scl",
+            Self::Tune => "tune",
         }
     }
 
@@ -397,6 +405,8 @@ impl BuiltinKind {
             | Self::Strum
             | Self::Chaos
             | Self::Palindrome
+            | Self::Tuning
+            | Self::LoadScl
             | Self::MidiCc => 1,
             Self::Sometimes
             | Self::Mask
@@ -436,7 +446,8 @@ impl BuiltinKind {
             | Self::Rate
             | Self::Jux
             | Self::Through
-            | Self::MidiCc => 2,
+            | Self::MidiCc
+            | Self::Tune => 2,
             Self::Rand => 0,
         }
     }
@@ -496,6 +507,9 @@ impl BuiltinKind {
             Self::MidiCc => apply_midi_cc(args),
             Self::Chaos => apply_chaos(args, function.site_salt.unwrap_or_default()),
             Self::Palindrome => apply_palindrome(args),
+            Self::Tuning => apply_tuning(args),
+            Self::LoadScl => apply_load_scl(args),
+            Self::Tune => apply_tune(args),
         }
     }
 }
@@ -564,6 +578,7 @@ fn apply_every(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::String(_)
+        | Value::Tuning(_)
         | Value::Pedal(_) => Err(EvalError::new(
             "`every` expected a pattern as its final argument",
         )),
@@ -613,6 +628,7 @@ fn apply_when(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::String(_)
+        | Value::Tuning(_)
         | Value::Pedal(_) => Err(EvalError::new(
             "`when` expected a pattern as its final argument",
         )),
@@ -652,6 +668,7 @@ fn apply_jux(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::String(_)
+        | Value::Tuning(_)
         | Value::Pedal(_) => Err(EvalError::new(
             "`jux` expected a sample pattern as its final argument",
         )),
@@ -684,6 +701,7 @@ fn apply_sometimes(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError>
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::String(_)
+        | Value::Tuning(_)
         | Value::Pedal(_) => Err(EvalError::new(
             "`sometimes` expected a pattern as its final argument",
         )),
@@ -726,6 +744,7 @@ fn apply_within(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::String(_)
+        | Value::Tuning(_)
         | Value::Pedal(_) => Err(EvalError::new(
             "`within` expected a pattern as its final argument",
         )),
@@ -751,6 +770,7 @@ fn apply_mask(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::String(_)
+        | Value::Tuning(_)
         | Value::Pedal(_) => Err(EvalError::new(
             "`mask` expected a pattern as its final argument",
         )),
@@ -827,6 +847,7 @@ fn apply_roll(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Tuning(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new("`roll` requires a pattern argument")),
     }
@@ -930,6 +951,7 @@ fn apply_fast(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Tuning(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(
             "`fast` expected a pattern as its final argument",
@@ -954,6 +976,7 @@ fn apply_slow(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Tuning(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(
             "`slow` expected a pattern as its final argument",
@@ -978,6 +1001,7 @@ fn apply_shift(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Tuning(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(
             "`shift` expected a pattern as its final argument",
@@ -998,6 +1022,7 @@ fn apply_rev(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::String(_)
+        | Value::Tuning(_)
         | Value::Pedal(_) => Err(EvalError::new("`rev` expected a pattern argument")),
     }
 }
@@ -1018,6 +1043,7 @@ fn apply_chaos(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Tuning(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new("`chaos` expected a pattern argument")),
     }
@@ -1272,6 +1298,74 @@ fn apply_transpose(args: Vec<Value>) -> Result<Value, EvalError> {
     }))
 }
 
+fn apply_tuning(args: Vec<Value>) -> Result<Value, EvalError> {
+    let pattern = extract_number_pattern(
+        args.into_iter()
+            .next()
+            .ok_or_else(|| EvalError::new("`tuning` requires a ratio list argument"))?,
+        "tuning",
+    )?;
+    let events = pattern.try_query(&TimeSpan::unit())?;
+    if events.is_empty() {
+        return Err(EvalError::new("`tuning` requires at least one ratio value"));
+    }
+    let mut ratios = Vec::with_capacity(events.len());
+    for event in events {
+        if !event.value.is_finite() {
+            return Err(EvalError::new("`tuning` requires finite ratio values"));
+        }
+        ratios.push(event.value);
+    }
+    // Convention: the list's final value is the period (e.g. 2.0 for octave).
+    let period = ratios
+        .pop()
+        .ok_or_else(|| EvalError::new("`tuning` requires a period as the last ratio"))?;
+
+    Ok(Value::Tuning(crate::value::TuningValue::new(
+        "tuning", ratios, period,
+    )?))
+}
+
+fn apply_load_scl(args: Vec<Value>) -> Result<Value, EvalError> {
+    let path = extract_string(
+        args.into_iter()
+            .next()
+            .ok_or_else(|| EvalError::new("`load_scl` requires a path string argument"))?,
+        "load_scl",
+    )?;
+    let tuning = crate::scl::parse_scala_file(std::path::Path::new(&path))?;
+    Ok(Value::Tuning(tuning))
+}
+
+fn apply_tune(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let tuning_value = args
+        .next()
+        .ok_or_else(|| EvalError::new("`tune` requires a tuning argument"))?;
+    let tuning = extract_tuning(tuning_value)?;
+    let pattern = extract_sample_pattern(
+        args.next()
+            .ok_or_else(|| EvalError::new("`tune` requires a sample pattern argument"))?,
+        "tune",
+    )?;
+    Ok(Value::SamplePattern(pattern.tune(&tuning)))
+}
+
+fn extract_tuning(value: Value) -> Result<crate::value::TuningValue, EvalError> {
+    match value {
+        Value::Tuning(tuning) => Ok(tuning),
+        Value::SamplePattern(_)
+        | Value::NumberPattern(_)
+        | Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::Pedal(_)
+        | Value::String(_) => Err(EvalError::new(
+            "`tune` expected a tuning value; construct one via `tuning(...)` or `load_scl(\"...\")`",
+        )),
+    }
+}
+
 fn apply_sample(args: Vec<Value>) -> Result<Value, EvalError> {
     let token = extract_string(
         args.into_iter()
@@ -1301,6 +1395,7 @@ fn apply_onset(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Tuning(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(
             "`onset` expected a sample pattern as its final argument",
@@ -1354,6 +1449,7 @@ fn apply_slice(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Tuning(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(
             "`slice` expected a sample pattern as its final argument",
@@ -1396,6 +1492,7 @@ fn apply_slice_idx(args: Vec<Value>) -> Result<Value, EvalError> {
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Tuning(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(
             "`slice_idx` expected a sample pattern as its final argument",
@@ -1432,6 +1529,7 @@ fn apply_sample_numeric_control(
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Tuning(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(format!(
             "`{builtin_name}` expected a sample pattern as its final argument"
@@ -1500,6 +1598,7 @@ fn extract_unary_pattern_transform(
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::String(_)
+        | Value::Tuning(_)
         | Value::Pedal(_) => Err(EvalError::new(message)),
     }
 }
@@ -1517,6 +1616,7 @@ fn extract_pattern_gate(
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Tuning(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(message)),
     }
@@ -2295,6 +2395,7 @@ fn extract_number_pattern(
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Tuning(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(format!(
             "`{builtin_name}` requires a number pattern argument"
@@ -2314,6 +2415,7 @@ fn extract_sample_pattern(
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Tuning(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(format!(
             "`{builtin_name}` expected a sample pattern argument"
@@ -2329,6 +2431,7 @@ fn extract_pedal(value: Value, builtin_name: &str) -> Result<crate::pedal::Pedal
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Tuning(_)
         | Value::String(_) => Err(EvalError::new(format!(
             "`{builtin_name}` requires a pedal argument"
         ))),
@@ -2346,6 +2449,7 @@ fn extract_constant_number(value: Value, builtin_name: &str) -> Result<f64, Eval
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Tuning(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(format!(
             "`{builtin_name}` requires a constant number argument"
@@ -2360,6 +2464,7 @@ fn extract_string(value: Value, builtin_name: &str) -> Result<String, EvalError>
         | Value::NumberPattern(_)
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
+        | Value::Tuning(_)
         | Value::Pedal(_)
         | Value::Function(_) => Err(EvalError::new(format!(
             "`{builtin_name}` requires a string argument"
@@ -2374,6 +2479,7 @@ fn extract_arp_direction(value: &Value) -> Result<ArpDirectionValue, EvalError> 
         | Value::NumberPattern(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::Tuning(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(
             "`arp` requires a direction argument like `up`, `down`, `pingpong`, or `updown`",
@@ -2390,6 +2496,7 @@ fn extract_pitch_class_set(value: Value) -> Result<PitchClassSetValue, EvalError
         Value::SamplePattern(_)
         | Value::NumberPattern(_)
         | Value::ArpDirection(_)
+        | Value::Tuning(_)
         | Value::Pedal(_)
         | Value::Function(_) => Err(EvalError::new(
             "`degrees` requires a pitch class set as its first argument",

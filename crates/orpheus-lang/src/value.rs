@@ -89,6 +89,9 @@ pub enum BuiltinKind {
     MidiCc,
     Chaos,
     Palindrome,
+    Tuning,
+    LoadScl,
+    Tune,
 }
 
 /// A partially or fully applied built-in function at runtime.
@@ -229,6 +232,140 @@ impl PitchClassSetValue {
     }
 }
 
+/// The period at which a scale repeats, expressed as a frequency ratio.
+///
+/// Phase 1 only supports octaves (2/1). The [`TuningValue::new`] constructor
+/// rejects other periods. The field is still stored so Bohlen-Pierce and
+/// other non-octave-periodic scales can be unlocked in a later phase without
+/// a data-model migration.
+pub const TUNING_OCTAVE_PERIOD: f64 = 2.0;
+
+/// A static microtonal tuning table used to override 12-TET pitch math.
+///
+/// `ratios[0]` is always `1.0` (the implicit 1/1 root). Every other entry is a
+/// ratio strictly greater than the previous and strictly less than `period`.
+/// Out-of-table steps wrap via `ratios[step mod N] * period^floor(step/N)`.
+///
+/// # Examples
+///
+/// ```ignore
+/// use orpheus_lang::{eval_module, ReplMode};
+///
+/// let env = eval_module("t = tuning(1.0 1.125 1.25 1.5 2.0)", ReplMode::Loose).unwrap();
+/// let tuning = env.get("t").unwrap().as_tuning().unwrap();
+/// assert_eq!(tuning.ratios().len(), 4);
+/// ```
+#[derive(Clone, Debug)]
+pub struct TuningValue {
+    name: std::sync::Arc<str>,
+    ratios: std::sync::Arc<[f64]>,
+    period: f64,
+    ref_semitone: i32,
+}
+
+impl TuningValue {
+    /// Constructs a tuning from a list of ratios and a period.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`EvalError`] if the input violates any of:
+    /// - non-empty and `ratios[0] == 1.0`
+    /// - ratios are strictly increasing
+    /// - every ratio lies in `[1.0, period)`
+    /// - `period == 2.0` in Phase 1
+    pub(crate) fn new(
+        name: impl Into<std::sync::Arc<str>>,
+        ratios: Vec<f64>,
+        period: f64,
+    ) -> Result<Self, EvalError> {
+        if ratios.is_empty() {
+            return Err(EvalError::new("`tuning` requires at least one ratio"));
+        }
+        if (period - TUNING_OCTAVE_PERIOD).abs() > f64::EPSILON {
+            return Err(EvalError::new(
+                "`tuning` period must be 2.0 (octave) in Phase 1",
+            ));
+        }
+        if !period.is_finite() || period <= 1.0 {
+            return Err(EvalError::new(
+                "`tuning` period must be a finite value greater than 1.0",
+            ));
+        }
+        if (ratios[0] - 1.0).abs() > f64::EPSILON {
+            return Err(EvalError::new(
+                "`tuning` ratios must start at 1.0 (1/1 root)",
+            ));
+        }
+        let mut previous = f64::NEG_INFINITY;
+        for ratio in &ratios {
+            if !ratio.is_finite() || *ratio <= 0.0 {
+                return Err(EvalError::new("`tuning` requires finite positive ratios"));
+            }
+            if *ratio <= previous {
+                return Err(EvalError::new(
+                    "`tuning` requires strictly monotone increasing ratios",
+                ));
+            }
+            previous = *ratio;
+        }
+        if *ratios.last().unwrap() >= period + f64::EPSILON {
+            return Err(EvalError::new(
+                "`tuning` ratios must be strictly less than the period",
+            ));
+        }
+        Ok(Self {
+            name: name.into(),
+            ratios: ratios.into(),
+            period,
+            ref_semitone: 0,
+        })
+    }
+
+    /// The scale's display name (e.g., `"just_intonation"` or an anonymous label).
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// The stored scale steps. `ratios[0]` is always `1.0`.
+    #[must_use]
+    pub fn ratios(&self) -> &[f64] {
+        &self.ratios
+    }
+
+    /// The repetition interval (2.0 = octave).
+    #[must_use]
+    pub const fn period(&self) -> f64 {
+        self.period
+    }
+
+    /// The semitone aligned with `ratios[0]`. Defaults to `0`.
+    #[must_use]
+    pub const fn ref_semitone(&self) -> i32 {
+        self.ref_semitone
+    }
+
+    fn as_table(&self) -> TuningTable {
+        TuningTable {
+            ratios: std::sync::Arc::clone(&self.ratios),
+            period: self.period,
+            ref_semitone: self.ref_semitone,
+        }
+    }
+}
+
+/// A cheaply-cloneable shared handle to a tuning's scale steps.
+///
+/// Embedded in `TunedPitch` / `TunedPitchPattern` `PatternRuntime` nodes.
+/// All fields are immutable once constructed; cloning only bumps an `Arc`
+/// refcount.
+#[derive(Clone, Debug)]
+struct TuningTable {
+    ratios: std::sync::Arc<[f64]>,
+    period: f64,
+    ref_semitone: i32,
+}
+
 /// Represents the fundamental unit of an evaluated expression.
 ///
 /// Values can be sample-based audio patterns, raw numerical envelopes, primitive
@@ -281,6 +418,8 @@ pub enum Value {
     Function(FunctionValue),
     /// A validated pedal graph ready for later lowering.
     Pedal(PedalValue),
+    /// A static microtonal tuning table used by `tune(...)` to override 12-TET.
+    Tuning(TuningValue),
     /// A primitive string value.
     String(std::sync::Arc<str>),
 }
@@ -305,6 +444,7 @@ impl Value {
             | Self::PitchClassSet(_)
             | Self::Function(_)
             | Self::Pedal(_)
+            | Self::Tuning(_)
             | Self::String(_) => None,
         }
     }
@@ -326,6 +466,7 @@ impl Value {
             Self::SamplePattern(_)
             | Self::ArpDirection(_)
             | Self::PitchClassSet(_)
+            | Self::Tuning(_)
             | Self::Function(_)
             | Self::Pedal(_)
             | Self::String(_) => None,
@@ -351,6 +492,26 @@ impl Value {
             | Self::ArpDirection(_)
             | Self::Function(_)
             | Self::Pedal(_)
+            | Self::Tuning(_)
+            | Self::String(_) => None,
+        }
+    }
+
+    /// Attempts to unwrap the value into a tuning table.
+    ///
+    /// Returns `None` for any other variant. Used by the `tune` builtin and
+    /// by application code that reads a tuning bound via
+    /// `t = tuning(...)` or `t = load_scl(...)`.
+    #[must_use]
+    pub const fn as_tuning(&self) -> Option<&TuningValue> {
+        match self {
+            Self::Tuning(tuning) => Some(tuning),
+            Self::SamplePattern(_)
+            | Self::NumberPattern(_)
+            | Self::ArpDirection(_)
+            | Self::PitchClassSet(_)
+            | Self::Function(_)
+            | Self::Pedal(_)
             | Self::String(_) => None,
         }
     }
@@ -374,6 +535,7 @@ impl Value {
             | Self::PitchClassSet(_)
             | Self::Function(_)
             | Self::Pedal(_)
+            | Self::Tuning(_)
             | Self::String(_) => None,
         }
     }
@@ -388,6 +550,7 @@ impl Value {
             | Self::ArpDirection(_)
             | Self::PitchClassSet(_)
             | Self::Function(_)
+            | Self::Tuning(_)
             | Self::String(_) => None,
         }
     }
@@ -415,6 +578,7 @@ impl Value {
             Self::PitchClassSet(_) => "pitch class set",
             Self::Function(_) => "function",
             Self::Pedal(_) => "pedal",
+            Self::Tuning(_) => "tuning",
             Self::String(_) => "string",
         }
     }
@@ -1023,6 +1187,7 @@ impl PatternRuntimeValue for SampleEvent {
             | Value::PitchClassSet(_)
             | Value::Function(_)
             | Value::Pedal(_)
+            | Value::Tuning(_)
             | Value::String(_) => Err(EvalError::new(
                 "transform returned an incompatible value; expected Pattern<Sample>",
             )),
@@ -1113,6 +1278,7 @@ impl PatternRuntimeValue for f64 {
             | Value::PitchClassSet(_)
             | Value::Function(_)
             | Value::Pedal(_)
+            | Value::Tuning(_)
             | Value::String(_) => Err(EvalError::new(
                 "transform returned an incompatible value; expected Pattern<Number>",
             )),
@@ -1725,6 +1891,12 @@ impl SamplePatternValue {
                 control: Box::new(control.pattern),
                 inner: Box::new(self.pattern),
             },
+        }
+    }
+
+    pub(crate) fn tune(self, tuning: &TuningValue) -> Self {
+        Self {
+            pattern: rewrite_pitch_with_tuning(self.pattern, &tuning.as_table()),
         }
     }
 
@@ -2448,6 +2620,18 @@ enum PatternRuntime<T> {
         control: Box<PatternRuntime<f64>>,
         inner: Box<Self>,
     },
+    /// Same semantics as `Pitch` but consults a microtonal tuning table.
+    TunedPitch {
+        semitones: f64,
+        tuning: TuningTable,
+        inner: Box<Self>,
+    },
+    /// Same semantics as `PitchPattern` but consults a microtonal tuning table.
+    TunedPitchPattern {
+        control: Box<PatternRuntime<f64>>,
+        tuning: TuningTable,
+        inner: Box<Self>,
+    },
     Rate {
         factor: f64,
         inner: Box<Self>,
@@ -2556,6 +2740,8 @@ impl<T> PatternRuntime<T> {
             | Self::CompressorRatioPattern { inner, .. }
             | Self::Pitch { inner, .. }
             | Self::PitchPattern { inner, .. }
+            | Self::TunedPitch { inner, .. }
+            | Self::TunedPitchPattern { inner, .. }
             | Self::Rate { inner, .. }
             | Self::RatePattern { inner, .. }
             | Self::Onset { inner, .. }
@@ -2670,6 +2856,18 @@ where
             Self::PitchPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Pitch)
             }
+            Self::TunedPitch {
+                semitones,
+                tuning,
+                inner,
+            } => apply_value_mutation(inner, span, |value| {
+                *value = value.adjust_rate(semitones_to_tuned_rate(*semitones, tuning));
+            }),
+            Self::TunedPitchPattern {
+                control,
+                tuning,
+                inner,
+            } => apply_tuned_pitch_pattern(inner, control, span, tuning),
             Self::Rate { factor, inner } => {
                 apply_value_mutation(inner, span, |value| *value = value.adjust_rate(*factor))
             }
@@ -3548,6 +3746,424 @@ where
 
 fn semitones_to_rate_multiplier(semitones: f64) -> f64 {
     (semitones / 12.0).exp2()
+}
+
+#[allow(clippy::too_many_lines, clippy::match_same_arms)]
+fn rewrite_pitch_with_tuning<T: Clone>(
+    pattern: PatternRuntime<T>,
+    table: &TuningTable,
+) -> PatternRuntime<T> {
+    use PatternRuntime::{
+        Arp, Chaos, Chorus, ChorusDepth, ChorusDepthPattern, ChorusPattern, ChorusRate,
+        ChorusRatePattern, Compressor, CompressorPattern, CompressorRatio, CompressorRatioPattern,
+        CompressorThreshold, CompressorThresholdPattern, Cycle, Degrees, Delay, DelayFeedback,
+        DelayFeedbackPattern, DelayPattern, DelayTime, DelayTimePattern, Drive, DrivePattern, Drop,
+        Every, ExplicitCycle, Fast, Gain, GainPattern, Hpf, HpfPattern, Invert, Lpf, LpfPattern,
+        Mask, Onset, OnsetPattern, Pan, PanPattern, Pedal, Pitch, PitchPattern, PulseWidth,
+        PulseWidthPattern, Rand, Rate, RatePattern, Res, ResPattern, Rev, Reverb, ReverbDamp,
+        ReverbDampPattern, ReverbPattern, ReverbRoom, ReverbRoomPattern, Roll, Shift, Slice,
+        SliceIdxPattern, SlicePattern, Slow, Sometimes, Stack, Stream, Strum, Transpose,
+        TransposePattern, TunedPitch, TunedPitchPattern, When, Within,
+    };
+
+    macro_rules! recurse {
+        ($inner:expr) => {
+            Box::new(rewrite_pitch_with_tuning(*$inner, table))
+        };
+    }
+
+    match pattern {
+        Pitch { semitones, inner } => TunedPitch {
+            semitones,
+            tuning: table.clone(),
+            inner: recurse!(inner),
+        },
+        PitchPattern { control, inner } => TunedPitchPattern {
+            control,
+            tuning: table.clone(),
+            inner: recurse!(inner),
+        },
+        TunedPitch {
+            semitones, inner, ..
+        } => TunedPitch {
+            semitones,
+            tuning: table.clone(),
+            inner: recurse!(inner),
+        },
+        TunedPitchPattern { control, inner, .. } => TunedPitchPattern {
+            control,
+            tuning: table.clone(),
+            inner: recurse!(inner),
+        },
+        Cycle(c) => Cycle(c),
+        Stream(s) => Stream(s),
+        ExplicitCycle {
+            origin_cycle,
+            stream,
+        } => ExplicitCycle {
+            origin_cycle,
+            stream,
+        },
+        Rand { site_salt } => Rand { site_salt },
+        Stack(layers) => Stack(
+            layers
+                .into_iter()
+                .map(|layer| rewrite_pitch_with_tuning(layer, table))
+                .collect(),
+        ),
+        Every {
+            period,
+            transform,
+            inner,
+        } => Every {
+            period,
+            transform,
+            inner: recurse!(inner),
+        },
+        When {
+            period,
+            offset,
+            transform,
+            inner,
+        } => When {
+            period,
+            offset,
+            transform,
+            inner: recurse!(inner),
+        },
+        Sometimes {
+            site_salt,
+            transform,
+            inner,
+        } => Sometimes {
+            site_salt,
+            transform,
+            inner: recurse!(inner),
+        },
+        Within {
+            start,
+            end,
+            transform,
+            inner,
+        } => Within {
+            start,
+            end,
+            transform,
+            inner: recurse!(inner),
+        },
+        Mask { gate, inner } => Mask {
+            gate,
+            inner: recurse!(inner),
+        },
+        Strum { inner } => Strum {
+            inner: recurse!(inner),
+        },
+        Roll { steps, inner } => Roll {
+            steps,
+            inner: recurse!(inner),
+        },
+        Arp {
+            steps,
+            direction,
+            inner,
+        } => Arp {
+            steps,
+            direction,
+            inner: recurse!(inner),
+        },
+        Invert { count, inner } => Invert {
+            count,
+            inner: recurse!(inner),
+        },
+        Drop { count, inner } => Drop {
+            count,
+            inner: recurse!(inner),
+        },
+        Degrees { collection, inner } => Degrees {
+            collection,
+            inner: recurse!(inner),
+        },
+        Transpose { semitones, inner } => Transpose {
+            semitones,
+            inner: recurse!(inner),
+        },
+        TransposePattern { control, inner } => TransposePattern {
+            control,
+            inner: recurse!(inner),
+        },
+        Fast { factor, inner } => Fast {
+            factor,
+            inner: recurse!(inner),
+        },
+        Slow { factor, inner } => Slow {
+            factor,
+            inner: recurse!(inner),
+        },
+        Shift { offset, inner } => Shift {
+            offset,
+            inner: recurse!(inner),
+        },
+        Rev { inner } => Rev {
+            inner: recurse!(inner),
+        },
+        Chaos { site_salt, inner } => Chaos {
+            site_salt,
+            inner: recurse!(inner),
+        },
+        Gain { factor, inner } => Gain {
+            factor,
+            inner: recurse!(inner),
+        },
+        GainPattern { control, inner } => GainPattern {
+            control,
+            inner: recurse!(inner),
+        },
+        Delay { mix, inner } => Delay {
+            mix,
+            inner: recurse!(inner),
+        },
+        DelayPattern { control, inner } => DelayPattern {
+            control,
+            inner: recurse!(inner),
+        },
+        DelayTime { time, inner } => DelayTime {
+            time,
+            inner: recurse!(inner),
+        },
+        DelayTimePattern { control, inner } => DelayTimePattern {
+            control,
+            inner: recurse!(inner),
+        },
+        DelayFeedback { feedback, inner } => DelayFeedback {
+            feedback,
+            inner: recurse!(inner),
+        },
+        DelayFeedbackPattern { control, inner } => DelayFeedbackPattern {
+            control,
+            inner: recurse!(inner),
+        },
+        Hpf { cutoff_hz, inner } => Hpf {
+            cutoff_hz,
+            inner: recurse!(inner),
+        },
+        HpfPattern { control, inner } => HpfPattern {
+            control,
+            inner: recurse!(inner),
+        },
+        Lpf { cutoff_hz, inner } => Lpf {
+            cutoff_hz,
+            inner: recurse!(inner),
+        },
+        LpfPattern { control, inner } => LpfPattern {
+            control,
+            inner: recurse!(inner),
+        },
+        Reverb { mix, inner } => Reverb {
+            mix,
+            inner: recurse!(inner),
+        },
+        ReverbPattern { control, inner } => ReverbPattern {
+            control,
+            inner: recurse!(inner),
+        },
+        ReverbRoom { room, inner } => ReverbRoom {
+            room,
+            inner: recurse!(inner),
+        },
+        ReverbRoomPattern { control, inner } => ReverbRoomPattern {
+            control,
+            inner: recurse!(inner),
+        },
+        ReverbDamp { damp, inner } => ReverbDamp {
+            damp,
+            inner: recurse!(inner),
+        },
+        ReverbDampPattern { control, inner } => ReverbDampPattern {
+            control,
+            inner: recurse!(inner),
+        },
+        Res { resonance, inner } => Res {
+            resonance,
+            inner: recurse!(inner),
+        },
+        ResPattern { control, inner } => ResPattern {
+            control,
+            inner: recurse!(inner),
+        },
+        Drive { drive, inner } => Drive {
+            drive,
+            inner: recurse!(inner),
+        },
+        DrivePattern { control, inner } => DrivePattern {
+            control,
+            inner: recurse!(inner),
+        },
+        Chorus { mix, inner } => Chorus {
+            mix,
+            inner: recurse!(inner),
+        },
+        ChorusPattern { control, inner } => ChorusPattern {
+            control,
+            inner: recurse!(inner),
+        },
+        ChorusDepth { depth, inner } => ChorusDepth {
+            depth,
+            inner: recurse!(inner),
+        },
+        ChorusDepthPattern { control, inner } => ChorusDepthPattern {
+            control,
+            inner: recurse!(inner),
+        },
+        ChorusRate { rate, inner } => ChorusRate {
+            rate,
+            inner: recurse!(inner),
+        },
+        ChorusRatePattern { control, inner } => ChorusRatePattern {
+            control,
+            inner: recurse!(inner),
+        },
+        PulseWidth { pulse_width, inner } => PulseWidth {
+            pulse_width,
+            inner: recurse!(inner),
+        },
+        PulseWidthPattern { control, inner } => PulseWidthPattern {
+            control,
+            inner: recurse!(inner),
+        },
+        Pan { amount, inner } => Pan {
+            amount,
+            inner: recurse!(inner),
+        },
+        PanPattern { control, inner } => PanPattern {
+            control,
+            inner: recurse!(inner),
+        },
+        Compressor { mix, inner } => Compressor {
+            mix,
+            inner: recurse!(inner),
+        },
+        CompressorPattern { control, inner } => CompressorPattern {
+            control,
+            inner: recurse!(inner),
+        },
+        CompressorThreshold { threshold, inner } => CompressorThreshold {
+            threshold,
+            inner: recurse!(inner),
+        },
+        CompressorThresholdPattern { control, inner } => CompressorThresholdPattern {
+            control,
+            inner: recurse!(inner),
+        },
+        CompressorRatio { ratio, inner } => CompressorRatio {
+            ratio,
+            inner: recurse!(inner),
+        },
+        CompressorRatioPattern { control, inner } => CompressorRatioPattern {
+            control,
+            inner: recurse!(inner),
+        },
+        Rate { factor, inner } => Rate {
+            factor,
+            inner: recurse!(inner),
+        },
+        RatePattern { control, inner } => RatePattern {
+            control,
+            inner: recurse!(inner),
+        },
+        Onset { onset_index, inner } => Onset {
+            onset_index,
+            inner: recurse!(inner),
+        },
+        OnsetPattern { control, inner } => OnsetPattern {
+            control,
+            inner: recurse!(inner),
+        },
+        Slice { start, end, inner } => Slice {
+            start,
+            end,
+            inner: recurse!(inner),
+        },
+        SlicePattern {
+            start_control,
+            end_control,
+            inner,
+        } => SlicePattern {
+            start_control,
+            end_control,
+            inner: recurse!(inner),
+        },
+        SliceIdxPattern {
+            control,
+            segments,
+            inner,
+        } => SliceIdxPattern {
+            control,
+            segments,
+            inner: recurse!(inner),
+        },
+        Pedal {
+            pedal_program,
+            inner,
+        } => Pedal {
+            pedal_program,
+            inner: recurse!(inner),
+        },
+    }
+}
+
+/// Maps an integer semitone step onto a ratio from `table`, wrapping beyond one
+/// octave by multiplying through `period`. Fractional semitones round to the
+/// nearest step in Phase 1.
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss
+)]
+fn semitones_to_tuned_rate(semitones: f64, table: &TuningTable) -> f64 {
+    let ratios = table.ratios.as_ref();
+    debug_assert!(!ratios.is_empty(), "tuning tables are non-empty");
+    // Scale sizes are far below i32::MAX in practice (tens or low hundreds);
+    // the wrap warning is suppressed to keep the single-multiply fast path.
+    let n = ratios.len() as i32;
+    let step = (semitones.round() as i32).saturating_sub(table.ref_semitone);
+    let idx = step.rem_euclid(n) as usize;
+    let octaves = step.div_euclid(n);
+    ratios[idx] * table.period.powi(octaves)
+}
+
+fn apply_tuned_pitch_pattern<T>(
+    inner: &PatternRuntime<T>,
+    control: &PatternRuntime<f64>,
+    span: &TimeSpan,
+    tuning: &TuningTable,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    let source_events = inner.try_query(span)?;
+    let control_events = control.try_query(span)?;
+    for event in &control_events {
+        ControlPatternKind::validate_pitch(event.value)?;
+    }
+    if control_events.is_empty() {
+        return Ok(source_events);
+    }
+
+    apply_event_fragments(
+        &source_events,
+        control_events.iter().map(|e| &e.part),
+        |part, value| {
+            let mut new_value = value.clone();
+            for control_event in &control_events {
+                if spans_overlap(&control_event.part, part) {
+                    new_value =
+                        new_value.adjust_rate(semitones_to_tuned_rate(control_event.value, tuning));
+                }
+            }
+            Ok(Some(new_value))
+        },
+    )
 }
 
 fn whole_number_from_degree_value(value: f64) -> Result<i32, EvalError> {
