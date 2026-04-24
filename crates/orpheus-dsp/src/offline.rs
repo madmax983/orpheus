@@ -711,3 +711,15 @@ fn sanitize_stem_name(name: &str) -> String {
         trimmed.to_owned()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn offline_render_error_from_engine_error() {
+        let engine_err = EngineError::FrameOverflow;
+        let err: OfflineRenderError = engine_err.into();
+        assert_eq!(err.to_string(), EngineError::FrameOverflow.to_string());
+    }
+}
