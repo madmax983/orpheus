@@ -301,27 +301,27 @@ impl HypertilePlugin for TransportPlugin {
         }
         if let Some(message) = &state.status_message {
             lines.push(Line::raw(""));
-            if message.contains("error")
+            let is_error = message.contains("error")
                 || message.contains("failed")
                 || message.contains("unknown")
-                || message.contains("usage:")
-            {
-                lines.push(Line::styled(
-                    format!(" Note: \u{2717} {message} "),
-                    Style::default()
-                        .bg(Color::Red)
-                        .fg(Color::White)
-                        .add_modifier(Modifier::BOLD),
-                ));
+                || message.contains("usage:");
+
+            let (prefix, bg, fg) = if is_error {
+                ("\u{2717} Failed", Color::Red, Color::White)
             } else {
-                lines.push(Line::styled(
-                    format!(" Note: \u{2713} {message} "),
-                    Style::default()
-                        .bg(Color::Green)
-                        .fg(Color::Black)
-                        .add_modifier(Modifier::BOLD),
-                ));
-            }
+                ("\u{2713} Success", Color::Green, Color::Black)
+            };
+
+            lines.push(Line::from(vec![
+                Span::styled(
+                    format!(" {prefix} "),
+                    Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!(" {message} "),
+                    Style::default().bg(Color::DarkGray).fg(Color::White),
+                ),
+            ]));
         }
         lines.push(Line::from(vec![
             Span::styled(format!("{:<9} ", "Quit"), key_style),

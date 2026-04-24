@@ -17,9 +17,9 @@ use orpheus_dsp::EngineHandle;
 
 fn main() {
     if let Err(error) = run() {
-        eprintln!("{} {}", "\u{2717} Error:".red().bold(), error);
+        eprintln!("{} {}", "\u{2717} Failed:".red().bold(), error);
         for cause in error.chain().skip(1) {
-            eprintln!("  {} {}", "->".cyan(), cause);
+            eprintln!("  {} {}", "->".dark_grey(), cause);
         }
         std::process::exit(1);
     }
@@ -49,7 +49,7 @@ fn run() -> anyhow::Result<()> {
     let (engine, _stream, warning) = match start_live_audio() {
         Ok((engine, stream)) => (engine, Some(stream), None),
         Err(error) => {
-            let mut message = format!("audio output disabled: {error}");
+            let mut message = format!("Audio Output Disabled: {error}");
             for cause in error.chain().skip(1) {
                 use std::fmt::Write;
                 let _ = write!(&mut message, "\n  -> {cause}");
@@ -99,13 +99,25 @@ fn print_help() {
     println!();
     println!("{}", "Arguments:".yellow().bold());
     println!(
-        "  {}  Optional startup .ode file to load",
-        "[PATH]".green().bold()
+        "  {}  {}",
+        "[PATH]".green().bold(),
+        "Optional startup .ode file to load"
     );
     println!();
     println!("{}", "Options:".yellow().bold());
-    println!("  {}     Print help", "-h, --help".green().bold());
-    println!("  {}  Print version", "-V, --version".green().bold());
+    println!(
+        "  {}  {}",
+        "-h, --help".green().bold(),
+        "     Print help"
+    );
+    println!(
+        "  {}  {}",
+        "-V, --version".green().bold(),
+        "  Print version"
+    );
+    println!();
+    println!("{}", "Dashboard Mode:".yellow().bold());
+    println!("  Run without a file to open the interactive live-coding TUI/REPL.");
 }
 
 fn start_live_audio() -> anyhow::Result<(EngineHandle, Stream)> {
