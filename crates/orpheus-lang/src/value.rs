@@ -4311,7 +4311,10 @@ fn merge_open_spans<I: Iterator<Item = TimeSpan>>(mut iter: I) -> Result<Vec<Tim
 
     // ⚡ Bolt: Pre-allocate vector using the iterator's size hint as the maximum bound
     // to reduce heap reallocations during merge operations.
-    let mut merged = Vec::with_capacity(iter.size_hint().0.saturating_add(1));
+    // 👺 Havoc: Clamp the capacity estimate to a reasonable upper limit (e.g. 1024)
+    // to prevent Out-Of-Memory (OOM/SIGABRT) panics if the iterator yields an artificially enormous upper bound.
+    let capacity_estimate = iter.size_hint().0.saturating_add(1).min(1024);
+    let mut merged = Vec::with_capacity(capacity_estimate);
 
     for span in iter {
         if span.start() <= current.end() {
@@ -4344,6 +4347,8 @@ where
     I: Iterator<Item = &'b TimeSpan>,
 {
     let (lower, upper) = control_parts.size_hint();
+    // 👺 Havoc: Clamp the capacity estimate to a reasonable upper limit (e.g. 1024)
+    // to prevent Out-Of-Memory (OOM/SIGABRT) panics if the iterator yields an artificially enormous upper bound.
     let capacity_estimate = 2_usize
         .saturating_add(upper.unwrap_or(lower).saturating_mul(2))
         .min(1024);
@@ -4867,5 +4872,23 @@ mod tests {
 
         // This used to cause `memory allocation of ... bytes failed` (SIGABRT)
         let _ = super::compute_event_fragment_boundaries(&span, MaliciousIterator);
+    }
+
+    #[test]
+    fn test_havoc_capacity_estimate_oom_merge() {
+        struct MaliciousIterator2;
+        impl Iterator for MaliciousIterator2 {
+            type Item = TimeSpan;
+            fn next(&mut self) -> Option<Self::Item> {
+                None
+            }
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                // Simulate an enormous upper bound
+                (usize::MAX, Some(usize::MAX))
+            }
+        }
+
+        // This used to cause `memory allocation of ... bytes failed` (SIGABRT)
+        let _ = super::merge_open_spans(MaliciousIterator2);
     }
 }
