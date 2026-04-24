@@ -655,6 +655,7 @@ fn activate_voice(
                     frames_per_cycle,
                     &scheduled_trigger.trigger,
                     scheduled_trigger.duration_frames,
+                    crate::DEFAULT_ANALOG_BASE_FREQUENCY_HZ,
                 )
             } else {
                 return Err(OfflineRenderError::UnknownSampleToken(

@@ -20,6 +20,7 @@ mod pedal;
 mod pitch;
 mod repl;
 pub(crate) mod scad_export;
+pub(crate) mod scl;
 pub(crate) mod session;
 pub(crate) mod srt;
 pub(crate) mod stats;
@@ -60,8 +61,9 @@ pub use txt::{export_number_pattern_to_txt, export_sample_pattern_to_txt};
 
 pub(crate) mod dot_export;
 pub use dot_export::export_pedal_value_to_dot;
+pub use scl::{SclError, parse_scala_file, parse_scala_source};
 pub use types::{Type, TypedModule, infer_into_bindings, infer_module};
-pub use value::{NumberPatternValue, SampleEvent, SamplePatternValue, Value};
+pub use value::{NumberPatternValue, SampleEvent, SamplePatternValue, TuningValue, Value};
 
 // Hidden re-exports keep rustdoc examples for internal helpers compiling.
 #[doc(hidden)]

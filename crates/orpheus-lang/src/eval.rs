@@ -853,6 +853,9 @@ impl Evaluator {
             Value::Pedal(_) => Err(EvalError::new(
                 "pedal graphs cannot be materialized into explicit-time event streams",
             )),
+            Value::Tuning(_) => Err(EvalError::new(
+                "tunings cannot be materialized into explicit-time event streams",
+            )),
             Value::String(_) => Err(EvalError::new(
                 "strings cannot be materialized into explicit-time event streams",
             )),
@@ -881,6 +884,7 @@ impl Evaluator {
             | Value::ArpDirection(_)
             | Value::PitchClassSet(_)
             | Value::Pedal(_)
+            | Value::Tuning(_)
             | Value::String(_) => Err(EvalError::new(format!(
                 "cannot call a {}",
                 callee.kind_name()
@@ -1275,6 +1279,7 @@ fn extract_constant_number_value(value: Value, context: &str) -> Result<f64, Eva
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::Pedal(_)
+        | Value::Tuning(_)
         | Value::String(_) => Err(EvalError::new(format!(
             "{context} must resolve to a constant number"
         ))),
@@ -1289,7 +1294,8 @@ fn extract_string_value(value: Value, message: &str) -> Result<String, EvalError
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::Pedal(_) => Err(EvalError::new(message)),
+        | Value::Pedal(_)
+        | Value::Tuning(_) => Err(EvalError::new(message)),
     }
 }
 

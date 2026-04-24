@@ -373,6 +373,7 @@ impl ReplSession {
                 }
             }
             "tempo" => self.set_tempo(args),
+            "ref_freq" => self.set_ref_freq(args),
             "samples" => self.load_sample_directory(args),
             "open" => self.open_file(args),
             "track" => self.eval_track_command(args),
@@ -760,6 +761,7 @@ impl ReplSession {
             | Value::PitchClassSet(_)
             | Value::Function(_)
             | Value::Pedal(_)
+            | Value::Tuning(_)
             | Value::String(_) => {
                 return Err(format!(
                     "binding `{binding_name}` is a {} and cannot be exported",
@@ -787,6 +789,25 @@ impl ReplSession {
             .enqueue(EngineCommand::SetTempo(tempo_bpm))
             .map_err(|error| error.to_string())?;
         Ok(format!("tempo set to {tempo_bpm} BPM"))
+    }
+
+    fn set_ref_freq(&mut self, args: &str) -> Result<String, String> {
+        let tokens: Vec<_> = args.split_whitespace().collect();
+        if tokens.len() != 1 {
+            return Err(ref_freq_usage().to_owned());
+        }
+
+        let hz = tokens[0]
+            .parse::<f32>()
+            .map_err(|_| "reference frequency must be a finite positive Hz value".to_owned())?;
+        if !hz.is_finite() || hz <= 0.0 {
+            return Err("reference frequency must be a finite positive Hz value".to_owned());
+        }
+
+        self.engine
+            .enqueue(EngineCommand::SetReferenceFrequency(hz))
+            .map_err(|error| error.to_string())?;
+        Ok(format!("reference frequency set to {hz} Hz"))
     }
 
     fn load_sample_directory(&mut self, args: &str) -> Result<String, String> {
@@ -1476,6 +1497,10 @@ const fn explain_usage() -> &'static str {
 
 const fn tempo_usage() -> &'static str {
     "usage: :tempo <bpm>"
+}
+
+const fn ref_freq_usage() -> &'static str {
+    "usage: :ref_freq <hz>"
 }
 
 const fn samples_usage() -> &'static str {

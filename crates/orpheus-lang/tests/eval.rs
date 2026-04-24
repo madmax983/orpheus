@@ -2945,3 +2945,149 @@ fn apply_builtin_function_returns_error_when_overapplied() {
         &["`fast` expected 2 argument(s), got 3"],
     );
 }
+
+fn first_sample_rate(module: &std::collections::BTreeMap<String, Value>, binding: &str) -> f64 {
+    let events = module
+        .get(binding)
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+    assert_eq!(events.len(), 1, "expected a single event");
+    events[0].value.rate()
+}
+
+fn sample_rates(module: &std::collections::BTreeMap<String, Value>, binding: &str) -> Vec<f64> {
+    module
+        .get(binding)
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap()
+        .into_iter()
+        .map(|e| e.value.rate())
+        .collect()
+}
+
+#[test]
+fn tuning_builtin_binds_ratio_list() {
+    let env = eval_module("t = tuning(1.0 1.125 1.25 1.5 2.0)", ReplMode::Loose).unwrap();
+    let value = env.get("t").unwrap();
+    let tuning = value.as_tuning().expect("binding should be a tuning value");
+    let ratios: Vec<f64> = tuning.ratios().to_vec();
+    assert_eq!(ratios.len(), 4);
+    assert!((ratios[0] - 1.0).abs() < f64::EPSILON);
+    assert!((ratios[1] - 1.125).abs() < f64::EPSILON);
+    assert!((ratios[2] - 1.25).abs() < f64::EPSILON);
+    assert!((ratios[3] - 1.5).abs() < f64::EPSILON);
+    assert!((tuning.period() - 2.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn tuning_builtin_rejects_non_octave_period() {
+    assert_eval_error_contains("t = tuning(1.0 1.5 3.0)", ReplMode::Loose, &["period"]);
+}
+
+#[test]
+fn tuning_builtin_rejects_non_monotone_ratios() {
+    assert_eval_error_contains(
+        "t = tuning(1.0 1.5 1.25 2.0)",
+        ReplMode::Loose,
+        &["monotone", "increasing", "strictly"],
+    );
+}
+
+#[test]
+fn tune_overrides_twelve_tet_for_pitch() {
+    let env = eval_module(
+        r#"
+t = tuning(1.0 1.125 1.25 1.5 2.0)
+lead = sample("vox_ah") |> pitch(2) |> tune(t)
+"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let rate = first_sample_rate(&env, "lead");
+    assert!(
+        (rate - 1.25).abs() < f64::EPSILON,
+        "expected 1.25 got {rate}"
+    );
+}
+
+#[test]
+fn tune_wraps_out_of_octave_semitones() {
+    let env = eval_module(
+        r#"
+t = tuning(1.0 1.125 1.25 1.5 2.0)
+up = sample("vox_ah") |> pitch(5) |> tune(t)
+"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let rate = first_sample_rate(&env, "up");
+    // scale length 4 (ratios are [1.0, 1.125, 1.25, 1.5]); step 5 wraps to idx 1, octave 1.
+    // rate = 1.125 * 2.0^1 = 2.25
+    assert!(
+        (rate - 2.25).abs() < f64::EPSILON,
+        "expected 2.25 got {rate}"
+    );
+}
+
+#[test]
+fn tune_handles_negative_semitones() {
+    let env = eval_module(
+        r#"
+t = tuning(1.0 1.125 1.25 1.5 2.0)
+down = sample("vox_ah") |> pitch(-1) |> tune(t)
+"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let rate = first_sample_rate(&env, "down");
+    // step = -1; ratios len N=4 -> idx = (-1).rem_euclid(4) = 3; octave = (-1).div_euclid(4) = -1
+    // rate = ratios[3] * 2.0^-1 = 1.5 * 0.5 = 0.75
+    assert!(
+        (rate - 0.75).abs() < f64::EPSILON,
+        "expected 0.75 got {rate}"
+    );
+}
+
+#[test]
+fn tune_supports_pattern_valued_pitch_control() {
+    let env = eval_module(
+        r#"
+t = tuning(1.0 1.125 1.25 1.5 2.0)
+line = sample("vox_ah") |> pitch(0 2) |> tune(t)
+"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let rates = sample_rates(&env, "line");
+    assert_eq!(rates.len(), 2);
+    assert!((rates[0] - 1.0).abs() < f64::EPSILON);
+    assert!((rates[1] - 1.25).abs() < f64::EPSILON);
+}
+
+#[test]
+fn untuned_pitch_remains_twelve_tet() {
+    // Regression: patterns without `tune` must keep exact 12-TET behavior.
+    let env = eval_module(r#"lead = sample("vox_ah") |> pitch(12)"#, ReplMode::Loose).unwrap();
+    let rate = first_sample_rate(&env, "lead");
+    assert!((rate - 2.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn load_scl_binds_tuning_from_fixture() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/tuning/just_intonation.scl");
+    let source = format!(
+        "t = load_scl({:?})\nlead = sample(\"vox_ah\") |> pitch(7) |> tune(t)\n",
+        path.to_str().unwrap()
+    );
+    let env = eval_module(&source, ReplMode::Loose).unwrap();
+    let rate = first_sample_rate(&env, "lead");
+    // 5-limit JI step 7 == 3/2 perfect fifth
+    assert!((rate - 1.5).abs() < f64::EPSILON, "expected 1.5 got {rate}");
+}

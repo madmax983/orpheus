@@ -507,6 +507,12 @@ pub enum EngineCommand {
     ReplaceSampleBank(SampleBank),
     /// Updates the transport tempo in beats per minute.
     SetTempo(f32),
+    /// Updates the analog-voice reference frequency in Hertz.
+    ///
+    /// Applied immediately on the audio thread; affects every new analog voice
+    /// allocation. The default is [`crate::DEFAULT_ANALOG_BASE_FREQUENCY_HZ`]
+    /// (220 Hz / A3). Use 432.0 for A4 = 432 Hz tuning, for example.
+    SetReferenceFrequency(f32),
     /// Starts transport playback from the current rewound position.
     PlayTransport,
     /// Stops transport playback, silencing output and rewinding to the start.

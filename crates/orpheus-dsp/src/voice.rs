@@ -15,7 +15,12 @@ use crate::sample_bank::PlaybackSample;
 use crate::synth::{AnalogVoice, AnalogVoiceParams, OscShape};
 
 const MAX_SAMPLE_EDGE_RAMP_FRAMES: u32 = 32;
-const ANALOG_BASE_FREQUENCY_HZ: f32 = 220.0;
+/// Default reference frequency for analog-voice playback rate = 1.0.
+///
+/// A3 (220 Hz) historically — kept stable so existing analog-voice renders
+/// reproduce bit-for-bit. Override at runtime with
+/// [`crate::EngineCommand::SetReferenceFrequency`].
+pub const DEFAULT_ANALOG_BASE_FREQUENCY_HZ: f32 = 220.0;
 const ANALOG_OUTPUT_TRIM: f32 = 0.35;
 const INSERT_CHORUS_BUFFER_FRAMES: usize = 64;
 const INSERT_REVERB_MAX_COMB_LENGTH: u32 = 307;
@@ -146,6 +151,7 @@ impl ActiveVoice {
         frames_per_cycle: u64,
         trigger: &SampleTrigger,
         duration_frames: u32,
+        base_hz: f32,
     ) -> Self {
         let (left_gain, right_gain) = stereo_gains_for_pan(trigger.pan());
         let pedal = trigger
@@ -181,7 +187,7 @@ impl ActiveVoice {
             track_id,
             state: ActiveVoiceState::AnalogSynth {
                 voice: AnalogVoice::new(sample_rate as f32),
-                params: analog_voice_params(kind, trigger),
+                params: analog_voice_params(kind, trigger, base_hz),
                 frame_index: 0,
                 duration_frames: duration_frames.max(1),
             },
@@ -716,7 +722,11 @@ const fn drum_duration_frames(kind: VoiceKind, sample_rate: u32) -> u32 {
 }
 
 #[allow(clippy::cast_possible_truncation)]
-fn analog_voice_params(kind: VoiceKind, trigger: &SampleTrigger) -> AnalogVoiceParams {
+fn analog_voice_params(
+    kind: VoiceKind,
+    trigger: &SampleTrigger,
+    base_hz: f32,
+) -> AnalogVoiceParams {
     AnalogVoiceParams {
         osc_shape: match kind {
             VoiceKind::AnalogSaw => OscShape::Saw,
@@ -730,7 +740,7 @@ fn analog_voice_params(kind: VoiceKind, trigger: &SampleTrigger) -> AnalogVoiceP
                 unreachable!("drum voices do not produce analog voice parameters")
             }
         },
-        freq_hz: analog_frequency_hz(trigger),
+        freq_hz: analog_frequency_hz(trigger, base_hz),
         pulse_width: sanitize_pulse_width(trigger.pulse_width()),
         cutoff_hz: trigger.lpf_cutoff_hz().unwrap_or(1_200.0) as f32,
         resonance: sanitize_unit_f32(trigger.resonance(), 0.2),
@@ -740,13 +750,13 @@ fn analog_voice_params(kind: VoiceKind, trigger: &SampleTrigger) -> AnalogVoiceP
 }
 
 #[allow(clippy::cast_possible_truncation)]
-fn analog_frequency_hz(trigger: &SampleTrigger) -> f32 {
+fn analog_frequency_hz(trigger: &SampleTrigger, base_hz: f32) -> f32 {
     let rate = if trigger.rate().is_finite() {
         trigger.rate().abs() as f32
     } else {
         1.0
     };
-    (ANALOG_BASE_FREQUENCY_HZ * rate).max(0.0)
+    (base_hz * rate).max(0.0)
 }
 
 #[allow(clippy::cast_possible_truncation, clippy::missing_const_for_fn)]
