@@ -277,6 +277,8 @@ impl ExplicitValue {
     fn append_unsorted_shifted(&mut self, base: &Self, offset: &Rational) -> Result<(), EvalError> {
         match (self, base) {
             (Self::Sample(combined), Self::Sample(base_events)) => {
+                // ⚡ Bolt: Pre-allocate capacity to eliminate redundant heap allocations when appending events.
+                combined.reserve(base_events.len());
                 for event in base_events {
                     let mut new_event = event.clone();
                     new_event.part = shift_span(&new_event.part, offset)?;
@@ -288,6 +290,8 @@ impl ExplicitValue {
                 Ok(())
             }
             (Self::Number(combined), Self::Number(base_events)) => {
+                // ⚡ Bolt: Pre-allocate capacity to eliminate redundant heap allocations when appending events.
+                combined.reserve(base_events.len());
                 for event in base_events {
                     let mut new_event = event.clone();
                     new_event.part = shift_span(&new_event.part, offset)?;
