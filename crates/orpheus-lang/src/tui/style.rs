@@ -1,3 +1,9 @@
+//! Styling and formatting utilities for the Terminal User Interface (TUI).
+//!
+//! This module provides functions for formatting text, computing status colors,
+//! and building UI components (like `ratatui` Lines and Spans) to ensure a
+//! consistent visual language across the interactive session view.
+
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
@@ -6,13 +12,34 @@ use crate::session::{MixerView, TransportView};
 const MIN_BINDING_LEGEND_ROWS: usize = 6;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Represents the high-level playback state of the audio engine as displayed in the UI.
+///
+/// This state combines the low-level engine transport snapshot with the REPL's
+/// pattern queue to distinguish between patterns that are actively playing,
+/// patterns queued to start at the next cycle, and a fully stopped engine.
 pub enum UiTransportState {
+    /// The engine is running and actively rendering the current pattern.
     Playing,
+    /// The engine is stopped and producing no audio.
     Stopped,
+    /// The engine is playing, but a new pattern is queued and waiting for the next cycle boundary.
     Syncing,
+    /// The engine is stopped, but a pattern has been queued and will start when playback resumes.
     Queued,
 }
 
+/// Computes the overall UI transport state from a transport snapshot view.
+///
+/// ## Examples
+/// ```
+/// use orpheus_lang::session::ReplSession;
+/// use orpheus_dsp::EngineHandle;
+/// use orpheus_lang::tui::style::{transport_state, UiTransportState};
+///
+/// let mut session = ReplSession::with_engine(EngineHandle::stub());
+/// let view = session.transport_view();
+/// assert_eq!(transport_state(&view), UiTransportState::Stopped);
+/// ```
 pub fn transport_state(view: &TransportView) -> UiTransportState {
     if view.pending_pattern_name().is_some() {
         if view.snapshot().has_pending_pattern() && view.snapshot().is_playing() {
@@ -27,6 +54,18 @@ pub fn transport_state(view: &TransportView) -> UiTransportState {
     }
 }
 
+/// Returns a human-readable string representation of the current transport state.
+///
+/// ## Examples
+/// ```
+/// use orpheus_lang::session::ReplSession;
+/// use orpheus_dsp::EngineHandle;
+/// use orpheus_lang::tui::style::format_transport_status;
+///
+/// let mut session = ReplSession::with_engine(EngineHandle::stub());
+/// let view = session.transport_view();
+/// assert_eq!(format_transport_status(&view), "stopped");
+/// ```
 pub fn format_transport_status(view: &TransportView) -> &'static str {
     match transport_state(view) {
         UiTransportState::Playing => "playing",
@@ -36,6 +75,18 @@ pub fn format_transport_status(view: &TransportView) -> &'static str {
     }
 }
 
+/// Returns the appropriate `ratatui` text style based on the current transport state.
+///
+/// ## Examples
+/// ```
+/// use orpheus_lang::session::ReplSession;
+/// use orpheus_dsp::EngineHandle;
+/// use orpheus_lang::tui::style::transport_status_style;
+///
+/// let mut session = ReplSession::with_engine(EngineHandle::stub());
+/// let view = session.transport_view();
+/// let style = transport_status_style(&view);
+/// ```
 pub fn transport_status_style(view: &TransportView) -> Style {
     let color = match transport_state(view) {
         UiTransportState::Playing => Color::Green,
@@ -46,6 +97,18 @@ pub fn transport_status_style(view: &TransportView) -> Style {
     Style::default().fg(color).add_modifier(Modifier::BOLD)
 }
 
+/// Builds a formatted `Line` displaying the transport status and optionally the pending pattern target.
+///
+/// ## Examples
+/// ```
+/// use orpheus_lang::session::ReplSession;
+/// use orpheus_dsp::EngineHandle;
+/// use orpheus_lang::tui::style::transport_status_line;
+///
+/// let mut session = ReplSession::with_engine(EngineHandle::stub());
+/// let view = session.transport_view();
+/// let line = transport_status_line("Status: ", &view, false);
+/// ```
 pub fn transport_status_line(
     prefix: &'static str,
     view: &TransportView,
@@ -62,6 +125,18 @@ pub fn transport_status_line(
     Line::from(spans)
 }
 
+/// Builds a formatted `Line` indicating whether there are pending mixer routing updates.
+///
+/// ## Examples
+/// ```
+/// use orpheus_lang::session::ReplSession;
+/// use orpheus_dsp::EngineHandle;
+/// use orpheus_lang::tui::style::routing_status_line;
+///
+/// let mut session = ReplSession::with_engine(EngineHandle::stub());
+/// let view = session.mixer_view();
+/// let line = routing_status_line(&view);
+/// ```
 pub fn routing_status_line(mixer: &MixerView) -> Line<'static> {
     let status = if mixer.has_pending_routing() {
         Span::styled(
@@ -76,12 +151,31 @@ pub fn routing_status_line(mixer: &MixerView) -> Line<'static> {
     Line::from(vec![Span::raw("Routing: "), status])
 }
 
+/// Returns the text style used to highlight the currently active (live) binding in the UI.
+///
+/// ## Examples
+/// ```
+/// use orpheus_lang::tui::style::live_binding_style;
+/// let style = live_binding_style();
+/// ```
 pub fn live_binding_style() -> Style {
     Style::default()
         .fg(Color::Green)
         .add_modifier(Modifier::BOLD)
 }
 
+/// Returns the text style used to highlight a pending (queued) binding in the UI.
+///
+/// ## Examples
+/// ```
+/// use orpheus_lang::session::ReplSession;
+/// use orpheus_dsp::EngineHandle;
+/// use orpheus_lang::tui::style::pending_binding_style;
+///
+/// let mut session = ReplSession::with_engine(EngineHandle::stub());
+/// let view = session.transport_view();
+/// let style = pending_binding_style(&view);
+/// ```
 pub fn pending_binding_style(transport: &TransportView) -> Style {
     let color = match transport_state(transport) {
         UiTransportState::Queued => Color::Blue,
@@ -92,6 +186,18 @@ pub fn pending_binding_style(transport: &TransportView) -> Style {
     Style::default().fg(color).add_modifier(Modifier::BOLD)
 }
 
+/// Builds a `ListItem` for a binding summary, applying appropriate highlighting if it is live or pending.
+///
+/// ## Examples
+/// ```
+/// use orpheus_lang::session::ReplSession;
+/// use orpheus_dsp::EngineHandle;
+/// use orpheus_lang::tui::style::binding_list_item;
+///
+/// let mut session = ReplSession::with_engine(EngineHandle::stub());
+/// let view = session.transport_view();
+/// let item = binding_list_item("pattern: bd".to_string(), &view);
+/// ```
 pub fn binding_list_item(
     summary: String,
     transport: &TransportView,
@@ -116,6 +222,18 @@ pub fn binding_list_item(
     ListItem::new(summary)
 }
 
+/// Builds a `ListItem` displaying the legend for binding highlights (live vs pending).
+///
+/// ## Examples
+/// ```
+/// use orpheus_lang::session::ReplSession;
+/// use orpheus_dsp::EngineHandle;
+/// use orpheus_lang::tui::style::binding_legend_item;
+///
+/// let mut session = ReplSession::with_engine(EngineHandle::stub());
+/// let view = session.transport_view();
+/// let item = binding_legend_item(&view);
+/// ```
 pub fn binding_legend_item(transport: &TransportView) -> ratatui::widgets::ListItem<'static> {
     use ratatui::widgets::ListItem;
 
@@ -128,6 +246,19 @@ pub fn binding_legend_item(transport: &TransportView) -> ratatui::widgets::ListI
     ]))
 }
 
+/// Determines whether the binding legend should be displayed based on available vertical space.
+///
+/// ## Examples
+/// ```
+/// use orpheus_lang::session::ReplSession;
+/// use orpheus_dsp::EngineHandle;
+/// use orpheus_lang::tui::style::should_show_binding_legend;
+///
+/// let mut session = ReplSession::with_engine(EngineHandle::stub());
+/// let view = session.transport_view();
+/// let show = should_show_binding_legend(20, 2, &view);
+/// assert!(!show);
+/// ```
 pub fn should_show_binding_legend(
     bindings_height: u16,
     binding_count: usize,
@@ -140,22 +271,56 @@ pub fn should_show_binding_legend(
     visible_rows >= MIN_BINDING_LEGEND_ROWS && visible_rows >= binding_count.saturating_add(2)
 }
 
+/// Returns the text style used for keyboard shortcut legends.
+///
+/// ## Examples
+/// ```
+/// use orpheus_lang::tui::style::key_legend_style;
+/// let style = key_legend_style();
+/// ```
 pub fn key_legend_style() -> Style {
     Style::default()
         .fg(Color::DarkGray)
         .add_modifier(Modifier::DIM)
 }
 
+/// Returns the text style used for the border of the help overlay modal.
+///
+/// ## Examples
+/// ```
+/// use orpheus_lang::tui::style::help_overlay_border_style;
+/// let style = help_overlay_border_style();
+/// ```
 pub fn help_overlay_border_style() -> Style {
     Style::default()
         .fg(Color::Cyan)
         .add_modifier(Modifier::BOLD)
 }
 
+/// Returns the text style used for the footer of the help overlay modal.
+///
+/// ## Examples
+/// ```
+/// use orpheus_lang::tui::style::help_overlay_footer_style;
+/// let style = help_overlay_footer_style();
+/// ```
 pub fn help_overlay_footer_style() -> Style {
     Style::default().fg(Color::Gray).add_modifier(Modifier::DIM)
 }
 
+/// Formats the current cycle and sub-cycle progress into a string (e.g., "1.500").
+///
+/// ## Examples
+/// ```
+/// use orpheus_lang::session::ReplSession;
+/// use orpheus_dsp::EngineHandle;
+/// use orpheus_lang::tui::style::format_cycle_position;
+///
+/// let mut session = ReplSession::with_engine(EngineHandle::stub());
+/// let snapshot = session.transport_snapshot();
+/// let fmt = format_cycle_position(&snapshot);
+/// assert_eq!(fmt, "0.000");
+/// ```
 pub fn format_cycle_position(snapshot: &orpheus_dsp::TransportSnapshot) -> String {
     let frames_per_cycle = snapshot.frames_per_cycle();
     if frames_per_cycle == 0 {
@@ -169,6 +334,19 @@ pub fn format_cycle_position(snapshot: &orpheus_dsp::TransportSnapshot) -> Strin
     format!("{cycle_index}.{progress_millis:03}")
 }
 
+/// Formats the current tempo into a string, preserving decimals only when necessary.
+///
+/// ## Examples
+/// ```
+/// use orpheus_lang::session::ReplSession;
+/// use orpheus_dsp::EngineHandle;
+/// use orpheus_lang::tui::style::format_tempo_bpm;
+///
+/// let mut session = ReplSession::with_engine(EngineHandle::stub());
+/// let snapshot = session.transport_snapshot();
+/// let fmt = format_tempo_bpm(&snapshot);
+/// assert_eq!(fmt, "120");
+/// ```
 pub fn format_tempo_bpm(snapshot: &orpheus_dsp::TransportSnapshot) -> String {
     let tempo_bpm = snapshot.tempo_bpm();
     if tempo_bpm.fract().abs() < f32::EPSILON {

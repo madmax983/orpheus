@@ -1,9 +1,15 @@
+//! TUI Plugins for rendering distinct panes in the Orpheus interface.
+//!
+//! The Orpheus Terminal User Interface is built on a custom tiling window manager
+//! (`Hypertile`). This module provides the specific plugins that occupy those tiles:
+//! the REPL input/transcript, the Bindings session view, and the Transport status bar.
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::prelude::Widget;
+
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Wrap};
@@ -20,6 +26,10 @@ use super::style::{
 // REPL Plugin
 // ---------------------------------------------------------------------------
 
+/// Provides the interactive Read-Eval-Print Loop (REPL) pane within the TUI.
+///
+/// This plugin manages the input prompt, user text entry, command history, and the
+/// scrollable transcript of past evaluations and outputs.
 pub struct ReplPlugin {
     pub state: Rc<RefCell<SharedState>>,
 }
@@ -138,6 +148,10 @@ impl HypertilePlugin for ReplPlugin {
 // Bindings Plugin
 // ---------------------------------------------------------------------------
 
+/// Displays the current live-coding session state and active pattern bindings.
+///
+/// This plugin monitors the `ReplSession` and renders a list of active tracks,
+/// highlighting patterns that are currently playing versus those queued for the next cycle.
 pub struct BindingsPlugin {
     pub state: Rc<RefCell<SharedState>>,
     scroll: Cell<usize>,
@@ -243,6 +257,10 @@ impl HypertilePlugin for BindingsPlugin {
 // Transport Plugin
 // ---------------------------------------------------------------------------
 
+/// Renders the transport and mixer status bar at the bottom of the TUI.
+///
+/// This plugin provides heads-up information about the current playback state,
+/// tempo, cycle position, and any pending routing changes in the mixer.
 pub struct TransportPlugin {
     pub state: Rc<RefCell<SharedState>>,
 }

@@ -16,3 +16,6 @@
 ## 2026-04-23 - [Graph API 'Dead End' Errors and Trait Usage]
 **Confusion:** The `GraphError` enum did not explain how users should recover from channel mismatch errors (a "Dead End"), and core abstractions like the `Node` trait lacked examples demonstrating how to actually implement a custom node.
 **Clarification:** Added a "Recovery" section and executable doctest to `GraphError` demonstrating how mismatch errors are formed. Added an executable `Doubler` node implementation example to the `Node` trait to bridge the abstraction gap.
+## 2024-11-28 - [Missing Doctests and Comments for TUI]
+**Confusion:** The TUI plugins (`ReplPlugin`, `BindingsPlugin`, `TransportPlugin`) and style formatting functions lacked module-level comments, purpose explanations, and executable doctests (the "Hero's Journey" and "Missing Link").
+**Clarification:** Added complete `//!` module comments, `///` narrative docblocks, and comprehensive `/// ```...```` examples to `crates/orpheus-lang/src/tui/style.rs` and `plugins.rs`. Crucially, doctests were rewritten to use actual runtime instantiations (e.g. `ReplSession::with_engine(EngineHandle::stub())`) so that they are truly executable examples instead of just blank `use` imports, fulfilling Bard's principles. Removed temporary utility scripts before submission.
