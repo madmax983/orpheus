@@ -105,11 +105,7 @@ fn print_help() {
     );
     println!();
     println!("{}", "Options:".yellow().bold());
-    println!(
-        "  {}  {}",
-        "-h, --help".green().bold(),
-        "     Print help"
-    );
+    println!("  {}  {}", "-h, --help".green().bold(), "     Print help");
     println!(
         "  {}  {}",
         "-V, --version".green().bold(),
