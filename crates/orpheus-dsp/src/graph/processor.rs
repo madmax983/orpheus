@@ -31,6 +31,17 @@ impl fmt::Debug for Processor {
 
 impl Processor {
     /// Compile a graph into a `Processor`.
+    ///
+    /// ## Examples
+    ///
+    /// ```rust
+    /// use orpheus_dsp::{Processor, saw, Node};
+    ///
+    /// let mut my_graph = Processor::new(saw(48000.0));
+    ///
+    /// assert_eq!(my_graph.inputs(), 1); // Frequency input
+    /// assert_eq!(my_graph.outputs(), 1); // Audio output
+    /// ```
     pub fn new(root: impl Node + 'static) -> Self {
         Self {
             root: Box::new(root),

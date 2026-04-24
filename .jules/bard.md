@@ -13,3 +13,6 @@
 ## 2024-05-20 - [Eliminating Getter Noise in Public APIs]
 **Confusion:** Functions named like `get`, `summary`, or `phase` were documented simply with "Gets the..." or "Returns the...", which violates the Bard philosophy of explaining *why* a function exists and what it represents within the domain context. These descriptions assume the user already understands the internal architecture, creating a "getter noise" anti-pattern.
 **Clarification:** Rewrote the documentation for `sample_bank.rs`, `session.rs`, and `math.rs` to frame their descriptions around their purpose (e.g., synchronizing REPL UI state, memory-resident audio buffers). Added `## Examples` executable doctests where appropriate for public functions to provide concrete usage context without relying on internal knowledge.
+## 2026-04-23 - [Graph API 'Dead End' Errors and Trait Usage]
+**Confusion:** The `GraphError` enum did not explain how users should recover from channel mismatch errors (a "Dead End"), and core abstractions like the `Node` trait lacked examples demonstrating how to actually implement a custom node.
+**Clarification:** Added a "Recovery" section and executable doctest to `GraphError` demonstrating how mismatch errors are formed. Added an executable `Doubler` node implementation example to the `Node` trait to bridge the abstraction gap.
