@@ -337,6 +337,16 @@ impl Inferencer {
     }
 
     fn apply_argument(&mut self, callee_ty: Type, arg_ty: Type) -> Result<Type, TypeError> {
+        if let Type::Function(args, ret) = self.resolve(callee_ty.clone()) {
+            if let Some((first, rest)) = args.split_first() {
+                self.unify(first.clone(), arg_ty)?;
+                return Ok(if rest.is_empty() {
+                    self.resolve(*ret)
+                } else {
+                    Type::function(rest.to_vec(), *ret)
+                });
+            }
+        }
         let param_ty = self.fresh_var_type();
         let ret_ty = self.fresh_var_type();
         self.unify(

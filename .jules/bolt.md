@@ -8,3 +8,6 @@
 **[Reserve Vector Capacity]**
 **Learning:** Appending items to a `Vec` inside a loop on hot paths (like Orpheus's evaluator) without pre-allocating capacity causes redundant heap re-allocations. In `eval.rs::append_unsorted_shifted`, `combined.push(new_event)` is called `base_events.len()` times but capacity isn't reserved.
 **Action:** Always use `.reserve(len)` before the loop when the exact number of elements to be added is known.
+## 2024-05-15 - [AST Type Unification and Apply Argument Fast Paths]
+**Learning:** Checking for common base cases and unwrapping types on hot paths like `apply_argument` instead of forcing them through deep generic `unify` passes and `fresh_var_type` allocations reduces expensive structural evaluations and eliminates redundant `Var` binding allocations.
+**Action:** Always attempt to peel or resolve immediately matching structural variants before generating fresh type variables for full generic unification.
