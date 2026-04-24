@@ -153,8 +153,8 @@ impl From<std::io::Error> for EvalError {
 }
 
 impl From<std::fmt::Error> for EvalError {
-    fn from(error: std::fmt::Error) -> Self {
-        Self::new(error.to_string())
+    fn from(_error: std::fmt::Error) -> Self {
+        Self::new("an error occurred when formatting an argument")
     }
 }
 

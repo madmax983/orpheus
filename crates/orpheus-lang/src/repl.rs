@@ -61,7 +61,7 @@ pub fn run_stdio_with_engine_and_path(
     if let Some(path) = startup_path {
         match session.open_file(path) {
             Ok(msg) => writeln!(stdout, "{}", format!("\u{2713} {msg}").green())?,
-            Err(msg) => writeln!(stderr, "{}", format!("\u{2717} {msg}").red().bold())?,
+            Err(msg) => writeln!(stderr, "{} {}", "\u{2717} Failed:".red().bold(), msg)?,
         }
     }
 
@@ -98,7 +98,7 @@ where
 
         match session.eval_line(trimmed) {
             Ok(message) => writeln!(stdout, "{}", format!("\u{2713} {message}").green())?,
-            Err(message) => writeln!(stderr, "{}", format!("\u{2717} {message}").red().bold())?,
+            Err(message) => writeln!(stderr, "{} {}", "\u{2717} Failed:".red().bold(), message)?,
         }
     }
 
@@ -137,6 +137,7 @@ mod tests {
         run_with_handles(reader, &mut stdout, &mut stderr, &mut session).unwrap();
 
         let stderr_str = String::from_utf8(stderr).unwrap();
-        assert!(stderr_str.contains("\u{2717} parse error"));
+        assert!(stderr_str.contains("\u{2717} Failed:"));
+        assert!(stderr_str.contains("parse error"));
     }
 }
