@@ -29,3 +29,6 @@
 ## 2026-04-16 - Export zero-cycle count tests
 **Learning:** Evaluated export handlers for HTML, Markdown, CSV, Tracker, text, and other formatters. While logic safely catches zero `cycle_count` conditions with `EvalError` across the `export.rs` functions, dedicated unit tests verifying this error outcome were only added to some files and entirely missing in `html.rs`, `mermaid.rs`, `osu_export.rs`, `scad_export.rs`, `sonic_pi_export.rs`, and `svg.rs`.
 **Action:** Ensure boundary assertions and error branches in common data extraction patterns (like exporting media patterns) have corresponding regression tests written across all format implementations, rather than relying on one format's tests to cover the identical logic structure everywhere.
+## 2026-04-24 - [Ensure zero cycle boundary conditions are consistently tested in exporters]
+**Learning:** Found that `export_cycle_count_zero_returns_error` was missing in `midi_export.rs` and `srt.rs`.
+**Action:** Added explicit regression tests for missing zero cycle boundary error checks in exporter functions.
