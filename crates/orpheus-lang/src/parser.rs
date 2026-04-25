@@ -35,6 +35,19 @@ struct SyntaxParser;
 /// Returns [`ParseError`] when the source does not match the Phase 1 grammar
 /// or when the parser encounters an internal AST construction failure.
 pub fn parse_module(source: &str) -> Result<Module, ParseError> {
+    // 👺 Havoc: Prevent pest from panicking via stack overflow on extremely deeply nested inputs.
+    let mut current_depth = 0;
+    for c in source.chars() {
+        if c == '(' || c == '{' {
+            current_depth += 1;
+            if current_depth > MAX_AST_DEPTH {
+                return Err(ParseError::new("maximum AST depth exceeded"));
+            }
+        } else if c == ')' || c == '}' {
+            current_depth = current_depth.saturating_sub(1);
+        }
+    }
+
     let chunks = split_top_level_bindings(source);
     if chunks.is_empty() {
         return parse_single_binding_module(source, 1);
@@ -532,6 +545,9 @@ fn build_named_call_arg(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, Pars
 }
 
 fn build_group(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("maximum AST depth exceeded"));
+    }
     let items = pair
         .into_inner()
         .map(|pair| build_sum_expr(pair, depth))

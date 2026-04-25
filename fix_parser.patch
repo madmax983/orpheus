@@ -1,0 +1,20 @@
+<<<<<<< SEARCH
+fn build_group(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    let items = pair
+        .into_inner()
+        .map(|pair| build_sum_expr(pair, depth))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Expr::Group(items))
+}
+=======
+fn build_group(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("maximum AST depth exceeded"));
+    }
+    let items = pair
+        .into_inner()
+        .map(|pair| build_sum_expr(pair, depth))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Expr::Group(items))
+}
+>>>>>>> REPLACE
