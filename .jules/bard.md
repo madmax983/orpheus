@@ -16,3 +16,6 @@
 ## 2026-04-23 - [Graph API 'Dead End' Errors and Trait Usage]
 **Confusion:** The `GraphError` enum did not explain how users should recover from channel mismatch errors (a "Dead End"), and core abstractions like the `Node` trait lacked examples demonstrating how to actually implement a custom node.
 **Clarification:** Added a "Recovery" section and executable doctest to `GraphError` demonstrating how mismatch errors are formed. Added an executable `Doubler` node implementation example to the `Node` trait to bridge the abstraction gap.
+## 2024-05-19 - Documenting SclError variants
+**Confusion:** The fields `expected` and `actual` inside the `Count` variant of `SclError` in `scl.rs` lacked documentation, leading to warnings when running `cargo doc` with strict lints.
+**Clarification:** Added missing doc comments explaining what `expected` and `actual` mean in the context of Scala `.scl` file parsing.

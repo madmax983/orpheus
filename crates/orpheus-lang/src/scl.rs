@@ -36,7 +36,12 @@ pub enum SclError {
     Entry(String, String),
     /// The entry count does not match the number of entries.
     #[error("Scala file note count mismatch: header declared {expected} entries but got {actual}")]
-    Count { expected: usize, actual: usize },
+    Count {
+        /// The number of entries declared in the header.
+        expected: usize,
+        /// The actual number of entries parsed from the file.
+        actual: usize,
+    },
     /// Entries violate tuning invariants (non-monotone, non-positive, bad period).
     #[error("invalid Scala tuning: {0}")]
     Invariant(String),
