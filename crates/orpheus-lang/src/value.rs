@@ -5484,4 +5484,91 @@ mod tests {
         // This used to cause `memory allocation of ... bytes failed` (SIGABRT)
         let _ = super::compute_event_fragment_boundaries(&span, MaliciousIterator);
     }
+
+    #[test]
+    fn test_control_pattern_kind_validation_rejects_invalid_values() {
+        use super::ControlPatternKind;
+        let test_cases = vec![
+            (ControlPatternKind::Gain, f64::NAN, "finite"),
+            (ControlPatternKind::Gain, f64::INFINITY, "finite"),
+            (ControlPatternKind::DelayMix, f64::NAN, "finite"),
+            (ControlPatternKind::DelayMix, -0.1, "[0, 1]"),
+            (ControlPatternKind::DelayMix, 1.1, "[0, 1]"),
+            (ControlPatternKind::DelayTime, f64::NAN, "finite"),
+            (ControlPatternKind::DelayTime, 0.0, "(0, 1]"),
+            (ControlPatternKind::DelayTime, -0.1, "(0, 1]"),
+            (ControlPatternKind::DelayTime, 1.1, "(0, 1]"),
+            (ControlPatternKind::DelayFeedback, f64::NAN, "finite"),
+            (ControlPatternKind::DelayFeedback, -0.1, "[0, 1]"),
+            (ControlPatternKind::DelayFeedback, 1.1, "[0, 1]"),
+            (ControlPatternKind::Hpf, f64::NAN, "finite"),
+            (ControlPatternKind::Hpf, 0.0, "positive"),
+            (ControlPatternKind::Hpf, -1.0, "positive"),
+            (ControlPatternKind::Lpf, f64::NAN, "finite"),
+            (ControlPatternKind::Lpf, 0.0, "positive"),
+            (ControlPatternKind::Lpf, -1.0, "positive"),
+            (ControlPatternKind::ReverbMix, f64::NAN, "finite"),
+            (ControlPatternKind::ReverbMix, -0.1, "[0, 1]"),
+            (ControlPatternKind::ReverbMix, 1.1, "[0, 1]"),
+            (ControlPatternKind::ReverbRoom, f64::NAN, "finite"),
+            (ControlPatternKind::ReverbRoom, -0.1, "[0, 1]"),
+            (ControlPatternKind::ReverbRoom, 1.1, "[0, 1]"),
+            (ControlPatternKind::ReverbDamp, f64::NAN, "finite"),
+            (ControlPatternKind::ReverbDamp, -0.1, "[0, 1]"),
+            (ControlPatternKind::ReverbDamp, 1.1, "[0, 1]"),
+            (ControlPatternKind::Res, f64::NAN, "finite"),
+            (ControlPatternKind::Res, -0.1, "[0, 1]"),
+            (ControlPatternKind::Res, 1.1, "[0, 1]"),
+            (ControlPatternKind::Drive, f64::NAN, "finite"),
+            (ControlPatternKind::Drive, -0.1, "non-negative"),
+            (ControlPatternKind::ChorusMix, f64::NAN, "finite"),
+            (ControlPatternKind::ChorusMix, -0.1, "[0, 1]"),
+            (ControlPatternKind::ChorusMix, 1.1, "[0, 1]"),
+            (ControlPatternKind::ChorusDepth, f64::NAN, "finite"),
+            (ControlPatternKind::ChorusDepth, -0.1, "[0, 1]"),
+            (ControlPatternKind::ChorusDepth, 1.1, "[0, 1]"),
+            (ControlPatternKind::ChorusRate, f64::NAN, "finite"),
+            (ControlPatternKind::ChorusRate, 0.0, "positive"),
+            (ControlPatternKind::ChorusRate, -1.0, "positive"),
+            (ControlPatternKind::PulseWidth, f64::NAN, "finite"),
+            (ControlPatternKind::PulseWidth, 0.0, "(0, 1)"),
+            (ControlPatternKind::PulseWidth, 1.0, "(0, 1)"),
+            (ControlPatternKind::Pan, f64::NAN, "finite"),
+            (ControlPatternKind::Pan, -1.1, "[-1, 1]"),
+            (ControlPatternKind::Pan, 1.1, "[-1, 1]"),
+            (ControlPatternKind::CompressorMix, f64::NAN, "finite"),
+            (ControlPatternKind::CompressorMix, -0.1, "[0, 1]"),
+            (ControlPatternKind::CompressorMix, 1.1, "[0, 1]"),
+            (ControlPatternKind::CompressorThreshold, f64::NAN, "finite"),
+            (ControlPatternKind::CompressorThreshold, -0.1, "[0, 1]"),
+            (ControlPatternKind::CompressorThreshold, 1.1, "[0, 1]"),
+            (ControlPatternKind::CompressorRatio, f64::NAN, "finite"),
+            (ControlPatternKind::CompressorRatio, 0.9, ">= 1"),
+            (ControlPatternKind::Pitch, f64::NAN, "finite"),
+            (ControlPatternKind::Pitch, f64::INFINITY, "finite"),
+            (ControlPatternKind::Rate, f64::NAN, "finite"),
+            (ControlPatternKind::Rate, 0.0, "non-zero"),
+            (ControlPatternKind::Transpose, f64::NAN, "finite"),
+            (ControlPatternKind::Transpose, f64::INFINITY, "finite"),
+        ];
+
+        for (kind, value, expected_msg_part) in test_cases {
+            let result = kind.validate(value);
+            assert!(
+                result.is_err(),
+                "Expected validation to fail for {:?} with value {}",
+                kind,
+                value
+            );
+            let err_msg = result.unwrap_err().to_string();
+            assert!(
+                err_msg.contains(expected_msg_part),
+                "Expected error message for {:?} ({}) to contain '{}', but got: {}",
+                kind,
+                value,
+                expected_msg_part,
+                err_msg
+            );
+        }
+    }
 }
