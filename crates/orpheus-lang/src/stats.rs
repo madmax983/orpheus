@@ -10,7 +10,7 @@ use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
 use crossterm::style::Stylize;
 
 use crate::eval::{EvalError, render_span};
-use crate::value::{NumberPatternValue, SamplePatternValue};
+use crate::value::{NumberPatternValue, SamplePatternValue, TuningValue};
 
 /// Analyzes a sample pattern's evaluated events and returns a formatted report.
 ///
@@ -200,6 +200,72 @@ pub fn number_pattern_stats(
     ]);
 
     Ok(format!("{title}\n{table}"))
+}
+
+/// Analyzes a tuning value and returns a formatted report.
+///
+/// The report contains the name, period, reference semitone, and ratios.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, tuning_stats};
+///
+/// let env = eval_module("t = tuning(1.0 1.125 1.25 1.333)", ReplMode::Loose).unwrap();
+/// let tuning = env.get("t").unwrap().as_tuning().unwrap();
+///
+/// let stats = tuning_stats("t", tuning);
+/// println!("{stats}");
+/// ```
+pub fn tuning_stats(binding_name: &str, tuning: &TuningValue) -> String {
+    use std::fmt::Write;
+
+    let title = format!(
+        "{} {}",
+        "Tuning Stats:".cyan().bold(),
+        binding_name.yellow()
+    );
+
+    let mut table = Table::new();
+    table.load_preset(UTF8_BORDERS_ONLY);
+
+    table.add_row(vec![
+        Cell::new("Name")
+            .fg(comfy_table::Color::White)
+            .add_attribute(comfy_table::Attribute::Bold),
+        Cell::new(tuning.name()).fg(comfy_table::Color::Green),
+    ]);
+
+    table.add_row(vec![
+        Cell::new("Period")
+            .fg(comfy_table::Color::White)
+            .add_attribute(comfy_table::Attribute::Bold),
+        Cell::new(format!("{:.3}", tuning.period())).fg(comfy_table::Color::Yellow),
+    ]);
+
+    table.add_row(vec![
+        Cell::new("Ref Semitone")
+            .fg(comfy_table::Color::White)
+            .add_attribute(comfy_table::Attribute::Bold),
+        Cell::new(tuning.ref_semitone().to_string()).fg(comfy_table::Color::Yellow),
+    ]);
+
+    let mut ratio_list = String::with_capacity(tuning.ratios().len() * 8);
+    for (i, ratio) in tuning.ratios().iter().enumerate() {
+        if i > 0 {
+            ratio_list.push_str(", ");
+        }
+        let _ = write!(ratio_list, "{ratio:.3}");
+    }
+
+    table.add_row(vec![
+        Cell::new("Ratios")
+            .fg(comfy_table::Color::White)
+            .add_attribute(comfy_table::Attribute::Bold),
+        Cell::new(format!("{} [{ratio_list}]", tuning.ratios().len())).fg(comfy_table::Color::Cyan),
+    ]);
+
+    format!("{title}\n{table}")
 }
 
 #[cfg(test)]
