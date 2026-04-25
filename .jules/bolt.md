@@ -8,3 +8,8 @@
 **[Reserve Vector Capacity]**
 **Learning:** Appending items to a `Vec` inside a loop on hot paths (like Orpheus's evaluator) without pre-allocating capacity causes redundant heap re-allocations. In `eval.rs::append_unsorted_shifted`, `combined.push(new_event)` is called `base_events.len()` times but capacity isn't reserved.
 **Action:** Always use `.reserve(len)` before the loop when the exact number of elements to be added is known.
+## YYYY-MM-DD - Struct Cloning vs Referencing
+
+**Learning:** Cloning an entire struct inside a hot loop merely to overwrite some of its fields is an anti-pattern that causes unnecessary heap allocations for its other owned fields (like Strings or embedded Vecs).
+
+**Action:** When constructing slightly modified versions of a struct in a loop, construct the new instance directly by borrowing the unchanged fields from the original struct and only performing a `clone()` on the fields that strictly require it (or none, if the field implements `Copy`).

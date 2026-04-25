@@ -280,12 +280,18 @@ impl ExplicitValue {
                 // ⚡ Bolt: Pre-allocate capacity to eliminate redundant heap allocations when appending events.
                 combined.reserve(base_events.len());
                 for event in base_events {
-                    let mut new_event = event.clone();
-                    new_event.part = shift_span(&new_event.part, offset)?;
-                    if let Some(whole) = new_event.whole.take() {
-                        new_event.whole = Some(shift_span(&whole, offset)?);
-                    }
-                    combined.push(new_event);
+                    // ⚡ Bolt: Construct a new instance directly from references instead of cloning the entire struct
+                    // just to modify one or two fields. This eliminates a redundant heap allocation per event.
+                    let whole = match event.whole.as_ref() {
+                        Some(whole) => Some(shift_span(whole, offset)?),
+                        None => None,
+                    };
+
+                    combined.push(Event {
+                        whole,
+                        part: shift_span(&event.part, offset)?,
+                        value: event.value.clone(),
+                    });
                 }
                 Ok(())
             }
@@ -293,12 +299,18 @@ impl ExplicitValue {
                 // ⚡ Bolt: Pre-allocate capacity to eliminate redundant heap allocations when appending events.
                 combined.reserve(base_events.len());
                 for event in base_events {
-                    let mut new_event = event.clone();
-                    new_event.part = shift_span(&new_event.part, offset)?;
-                    if let Some(whole) = new_event.whole.take() {
-                        new_event.whole = Some(shift_span(&whole, offset)?);
-                    }
-                    combined.push(new_event);
+                    // ⚡ Bolt: Construct a new instance directly from references instead of cloning the entire struct
+                    // just to modify one or two fields. This eliminates a redundant heap allocation per event.
+                    let whole = match event.whole.as_ref() {
+                        Some(whole) => Some(shift_span(whole, offset)?),
+                        None => None,
+                    };
+
+                    combined.push(Event {
+                        whole,
+                        part: shift_span(&event.part, offset)?,
+                        value: event.value, // f64 implements Copy
+                    });
                 }
                 Ok(())
             }
