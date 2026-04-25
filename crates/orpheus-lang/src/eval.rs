@@ -1912,4 +1912,45 @@ right = sometimes(fast(2), cp hh)";
         assert_eq!(r2.numerator(), -7);
         assert_eq!(r2.denominator(), 1);
     }
+
+    #[test]
+    fn extract_string_value_handles_strings() {
+        let val = crate::value::Value::String("hello".into());
+        let res = super::extract_string_value(val, "error");
+        assert_eq!(res.unwrap(), "hello");
+    }
+
+    #[test]
+    fn extract_string_value_returns_error_on_non_string() {
+        let val = crate::value::Value::NumberPattern(
+            crate::value::NumberPatternValue::from_events(vec![]),
+        );
+        let res = super::extract_string_value(val, "expected string");
+        assert_eq!(res.unwrap_err().to_string(), "expected string");
+    }
+
+    #[test]
+    fn extract_constant_number_value_handles_number_pattern() {
+        use orpheus_pattern::{Event, TimeSpan};
+        let event = Event {
+            whole: None,
+            part: TimeSpan::unit(),
+            value: 42.0,
+        };
+        let val = crate::value::Value::NumberPattern(
+            crate::value::NumberPatternValue::from_events(vec![event]),
+        );
+        let res = super::extract_constant_number_value(val, "expected number");
+        assert_eq!(res.unwrap(), 42.0);
+    }
+
+    #[test]
+    fn extract_constant_number_value_returns_error_on_non_number() {
+        let val = crate::value::Value::String("hello".into());
+        let res = super::extract_constant_number_value(val, "expected number");
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "expected number must resolve to a constant number"
+        );
+    }
 }
