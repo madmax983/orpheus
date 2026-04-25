@@ -2528,9 +2528,9 @@ mod tests {
         assert_eq!(events.len(), 4);
 
         let mut left_events: Vec<_> = events.iter().filter(|e| e.value.pan() < 0.0).collect();
-        left_events.sort_by(|a, b| a.part.start().cmp(b.part.start()));
+        left_events.sort_unstable_by(|a, b| a.part.start().cmp(b.part.start()));
         let mut right_events: Vec<_> = events.iter().filter(|e| e.value.pan() > 0.0).collect();
-        right_events.sort_by(|a, b| a.part.start().cmp(b.part.start()));
+        right_events.sort_unstable_by(|a, b| a.part.start().cmp(b.part.start()));
 
         assert_eq!(left_events.len(), 2);
         assert_eq!(right_events.len(), 2);

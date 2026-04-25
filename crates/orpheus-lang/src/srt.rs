@@ -41,7 +41,7 @@ pub fn export_sample_pattern_to_srt(
     let span = render_span(cycle_count)?;
     let mut events = pattern.try_query(&span)?;
     // SRT requires events to be sorted by start time
-    events.sort_by(|a, b| a.part.start().cmp(b.part.start()));
+    events.sort_unstable_by(|a, b| a.part.start().cmp(b.part.start()));
 
     let path = path.as_ref();
     let mut file = std::fs::File::create(path)?;
@@ -93,7 +93,7 @@ pub fn export_number_pattern_to_srt(
 
     let span = render_span(cycle_count)?;
     let mut events = pattern.try_query(&span)?;
-    events.sort_by(|a, b| a.part.start().cmp(b.part.start()));
+    events.sort_unstable_by(|a, b| a.part.start().cmp(b.part.start()));
 
     let path = path.as_ref();
     let mut file = std::fs::File::create(path)?;

@@ -3130,7 +3130,7 @@ where
 }
 
 fn invert_event_cluster(cluster: &mut [Event<f64>], count: u32) -> Result<(), EvalError> {
-    cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
+    cluster.sort_unstable_by(|left, right| left.value.total_cmp(&right.value));
     for _ in 0..count {
         if cluster.len() <= 1 {
             break;
@@ -3142,7 +3142,7 @@ fn invert_event_cluster(cluster: &mut [Event<f64>], count: u32) -> Result<(), Ev
                 "`invert` produced a non-finite numeric value",
             ));
         }
-        cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
+        cluster.sort_unstable_by(|left, right| left.value.total_cmp(&right.value));
     }
     Ok(())
 }
@@ -3202,7 +3202,7 @@ fn strum_event_cluster(cluster: &mut [Event<f64>]) -> Result<(), EvalError> {
         return Ok(());
     }
 
-    cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
+    cluster.sort_unstable_by(|left, right| left.value.total_cmp(&right.value));
     let span = cluster[0].part;
     let width = window_width(&span)?;
     if width == Rational::zero() {
@@ -3243,7 +3243,7 @@ fn arp_event_cluster(
         ));
     }
 
-    cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
+    cluster.sort_unstable_by(|left, right| left.value.total_cmp(&right.value));
     let span = cluster[0].part;
     let width = window_width(&span)?;
     if width == Rational::zero() {
@@ -3298,7 +3298,7 @@ fn arp_event_cluster(
 }
 
 fn drop_event_cluster(cluster: &mut [Event<f64>], count: u32) -> Result<(), EvalError> {
-    cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
+    cluster.sort_unstable_by(|left, right| left.value.total_cmp(&right.value));
     let len = cluster.len();
     let count = usize::try_from(count)
         .map_err(|_| EvalError::new("`drop` exceeded the supported evaluator range"))?;
@@ -3311,7 +3311,7 @@ fn drop_event_cluster(cluster: &mut [Event<f64>], count: u32) -> Result<(), Eval
     if !cluster[target_index].value.is_finite() {
         return Err(EvalError::new("`drop` produced a non-finite numeric value"));
     }
-    cluster.sort_by(|left, right| left.value.total_cmp(&right.value));
+    cluster.sort_unstable_by(|left, right| left.value.total_cmp(&right.value));
     Ok(())
 }
 
@@ -4864,8 +4864,10 @@ fn rescale_events<T>(
     Ok(())
 }
 
+/// ⚡ Bolt: Use `sort_unstable_by` instead of `sort_by` to eliminate sorting allocation overhead,
+/// as pattern events occurring at the exact same time have no inherent order to preserve.
 fn sort_events<T>(events: &mut [Event<T>]) {
-    events.sort_by(|left, right| {
+    events.sort_unstable_by(|left, right| {
         left.part
             .start()
             .cmp(right.part.start())

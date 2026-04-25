@@ -1223,7 +1223,7 @@ impl ReplSession {
                 midi_events.push((end, false, note));
             }
         }
-        midi_events.sort_by(|left, right| {
+        midi_events.sort_unstable_by(|left, right| {
             left.0
                 .total_cmp(&right.0)
                 .then_with(|| right.1.cmp(&left.1))

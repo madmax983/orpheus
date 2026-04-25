@@ -152,7 +152,7 @@ pub fn export_number_pattern_to_midi(
         }
     }
 
-    midi_events.sort_by(|left, right| {
+    midi_events.sort_unstable_by(|left, right| {
         left.0
             .cmp(&right.0)
             .then_with(|| left.1.cmp(&right.1)) // Note Offs before Note Ons (false < true)
@@ -237,7 +237,7 @@ pub fn export_sample_pattern_to_midi(
         }
     }
 
-    midi_events.sort_by(|left, right| {
+    midi_events.sort_unstable_by(|left, right| {
         left.0
             .cmp(&right.0)
             .then_with(|| left.1.cmp(&right.1)) // Note Offs before Note Ons (false < true)

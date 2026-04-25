@@ -1384,8 +1384,10 @@ fn shift_span(span: &TimeSpan, offset: &Rational) -> Result<TimeSpan, EvalError>
     )
 }
 
+/// ⚡ Bolt: Use `sort_unstable_by` instead of `sort_by` to eliminate sorting allocation overhead,
+/// as pattern events occurring at the exact same time have no inherent order to preserve.
 fn sort_events<T>(events: &mut [Event<T>]) {
-    events.sort_by(|left, right| {
+    events.sort_unstable_by(|left, right| {
         left.part
             .start()
             .cmp(right.part.start())
