@@ -12,8 +12,24 @@ use orpheus_dsp::EngineHandle;
 
 use crate::session::ReplSession;
 
+/// Runs the default phase-one Orpheus REPL with a stubbed audio engine.
 ///
-/// Blank lines are ignored. `:quit` exits the session.
+/// In the spirit of exploration, this entry point provides a blank canvas—a standard
+/// I/O loop where musical ideas can be tested without the complexities of the full UI
+/// or active audio thread. It relies on a stubbed engine, making it perfect for
+/// environments where an audio device isn't available or required.
+///
+/// Blank lines are ignored. To end the chronicle, send `:quit`.
+///
+/// ## Examples
+///
+/// ```no_run
+/// use orpheus_lang::run_stdio;
+///
+/// // Starts the interactive standard I/O loop.
+/// // The tale begins here, blocking until the user decides to step away with `:quit`.
+/// run_stdio().unwrap();
+/// ```
 ///
 /// # Errors
 ///
@@ -23,9 +39,25 @@ pub fn run_stdio() -> io::Result<()> {
     run_stdio_with_engine(EngineHandle::stub())
 }
 
-/// Runs the phase-one Orpheus REPL with the provided audio engine handle.
+/// Runs the phase-one Orpheus REPL with a customized audio engine handle.
 ///
-/// Blank lines are ignored. `:quit` exits the session.
+/// This acts as the bridge connecting the silent text of the REPL to the vibrant
+/// life of the audio graph. By providing your own [`EngineHandle`], you tell the REPL
+/// exactly where the music should be sent, empowering live-coding performance
+/// through a simple textual interface.
+///
+/// Blank lines are ignored. To close the session, whisper `:quit`.
+///
+/// ## Examples
+///
+/// ```no_run
+/// use orpheus_lang::run_stdio_with_engine;
+/// use orpheus_dsp::EngineHandle;
+///
+/// // Forge a connection to the DSP world, then start the loop.
+/// let engine = EngineHandle::stub();
+/// run_stdio_with_engine(engine).unwrap();
+/// ```
 ///
 /// # Errors
 ///
@@ -36,6 +68,25 @@ pub fn run_stdio_with_engine(engine: EngineHandle) -> io::Result<()> {
 }
 
 /// Runs the phase-one Orpheus REPL with an optional startup `.ode` preload.
+///
+/// Every great story has a beginning. This function lets you pass a script—a `.ode`
+/// file containing pre-written patterns or configurations—to be evaluated the moment
+/// the REPL awakens. This eliminates the tedious setup of variables, ensuring
+/// your creative flow can start immediately. You can also provide an optional warning
+/// message to alert the user of important context upon launch.
+///
+/// ## Examples
+///
+/// ```no_run
+/// use orpheus_lang::run_stdio_with_engine_and_path;
+/// use orpheus_dsp::EngineHandle;
+/// use std::path::Path;
+///
+/// let engine = EngineHandle::stub();
+/// let start_file = Path::new("init.ode");
+/// // Prepare the stage with `init.ode` and no warnings.
+/// run_stdio_with_engine_and_path(engine, Some(start_file), None).unwrap();
+/// ```
 ///
 /// # Errors
 ///

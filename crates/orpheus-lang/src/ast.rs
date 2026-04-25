@@ -187,8 +187,13 @@ pub enum Stmt {
 /// Checks if a binding expression references its own binding name,
 /// indicating a recursive definition.
 ///
-/// This is used during type inference and evaluation to detect cyclic
-/// dependencies or infinite loops, unless it's a valid local shadowing.
+/// Recursive definitions are a powerful tool, but an uncontrolled infinite loop
+/// is a quick way to crash an audio engine. This function traverses the AST of an
+/// expression to see if it mistakenly calls itself without passing through a parameter
+/// boundary, preventing stack overflows during type checking and evaluation.
+///
+/// It does this by checking if the binding name exists within the body, unless
+/// the name is safely overshadowed by a local parameter of the same name.
 ///
 /// # Parameters
 /// - `name`: The name of the binding being defined.
@@ -199,6 +204,17 @@ pub enum Stmt {
 /// `true` if the identifier is referenced in the expression body and is not shadowed
 /// by a parameter. `false` otherwise.
 ///
+/// ## Examples
+///
+/// ```
+/// use orpheus_lang::Expr;
+///
+/// // Constructing an AST representing a simple identifier reference.
+/// // Note: The function `binding_expr_self_references` is hidden from the public API
+/// // because it's a compiler internal, but here we show the basic shape of the expression
+/// // it evaluates.
+/// let expr = Expr::Ident("foo".to_string());
+/// ```
 #[doc(hidden)]
 pub fn binding_expr_self_references(name: &str, params: &[String], expr: &Expr) -> bool {
     !params.iter().any(|param| param == name) && expr.references_ident(name)

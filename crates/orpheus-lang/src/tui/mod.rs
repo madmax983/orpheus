@@ -156,6 +156,22 @@ const TRANSPORT_PLUGIN: &str = "transport";
 
 /// Runs the interactive ratatui session shell with the provided audio engine.
 ///
+/// This is the gateway to the primary live-coding environment of Orpheus.
+/// It connects your keystrokes to a living audio session, managing the visual
+/// feedback loop of the terminal UI while keeping perfect synchronization with
+/// the DSP thread.
+///
+/// ## Examples
+///
+/// ```no_run
+/// use orpheus_lang::run_with_engine;
+/// use orpheus_dsp::EngineHandle;
+///
+/// let engine = EngineHandle::stub();
+/// // Starts the TUI. The curtain rises, and this blocks until the user exits.
+/// run_with_engine(engine).unwrap();
+/// ```
+///
 /// # Errors
 ///
 /// Returns any terminal initialization, draw, input polling, or terminal
@@ -166,6 +182,24 @@ pub fn run_with_engine(engine: EngineHandle) -> io::Result<()> {
 
 /// Runs the interactive ratatui session shell with an optional startup `.ode`
 /// preload.
+///
+/// Just like a musician setting up their instruments before the show, this allows
+/// you to load a predefined composition state into the engine the moment the TUI
+/// appears. Perfect for resuming work or kicking off a set.
+///
+/// ## Examples
+///
+/// ```no_run
+/// use orpheus_lang::run_with_engine_and_path;
+/// use orpheus_dsp::EngineHandle;
+/// use std::path::Path;
+///
+/// let engine = EngineHandle::stub();
+/// let preload = Path::new("song.ode");
+///
+/// // Starts the TUI and seamlessly weaves `song.ode` into the initial session state.
+/// run_with_engine_and_path(engine, Some(preload), None).unwrap();
+/// ```
 ///
 /// # Errors
 ///
@@ -563,6 +597,21 @@ impl Drop for TerminalGuard {
 
 #[must_use]
 /// Renders the first TUI frame against a test backend and returns its text.
+///
+/// Behind every good show is a dress rehearsal. This hidden testing utility
+/// forces the TUI to render exactly one frame into a memory buffer without
+/// taking over the user's actual terminal. This ensures our visual layout
+/// behaves correctly before the audience ever sees it.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_lang::render_initial_frame_for_test;
+///
+/// // Render a small 80x24 terminal frame and verify the prompt appears.
+/// let frame = render_initial_frame_for_test(80, 24);
+/// assert!(frame.contains(">"));
+/// ```
 ///
 /// # Panics
 ///
