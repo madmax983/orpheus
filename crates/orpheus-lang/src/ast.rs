@@ -121,20 +121,9 @@ impl Expr {
             | Self::Stack(items)
             | Self::Stream(items)
             | Self::SeqSections(items)
-            | Self::Group(items) => items
-                .iter()
-                .any(|item| item.references_ident_with_shadow(target, shadowed)),
+            | Self::Group(items) => Self::references_ident_in_list(items, target, shadowed),
             Self::Graph { bindings, result } => {
-                let mut shadowed = shadowed;
-                for binding in bindings {
-                    if binding.expr.references_ident_with_shadow(target, shadowed) {
-                        return true;
-                    }
-                    if binding.name == target {
-                        shadowed = true;
-                    }
-                }
-                result.references_ident_with_shadow(target, shadowed)
+                Self::references_ident_in_graph(bindings, result, target, shadowed)
             }
             Self::Pipe { lhs, rhs } | Self::Binary { lhs, rhs, .. } => {
                 lhs.references_ident_with_shadow(target, shadowed)
@@ -142,9 +131,7 @@ impl Expr {
             }
             Self::Call { callee, args } => {
                 callee.references_ident_with_shadow(target, shadowed)
-                    || args
-                        .iter()
-                        .any(|arg| arg.references_ident_with_shadow(target, shadowed))
+                    || Self::references_ident_in_list(args, target, shadowed)
             }
             Self::At { start, pattern } => {
                 start.references_ident_with_shadow(target, shadowed)
@@ -167,6 +154,29 @@ impl Expr {
             Self::Ident(name) => !shadowed && name == target,
             Self::Rest | Self::Number(_) | Self::String(_) => false,
         }
+    }
+
+    fn references_ident_in_list(items: &[Self], target: &str, shadowed: bool) -> bool {
+        items
+            .iter()
+            .any(|item| item.references_ident_with_shadow(target, shadowed))
+    }
+
+    fn references_ident_in_graph(
+        bindings: &[GraphBinding],
+        result: &Self,
+        target: &str,
+        mut shadowed: bool,
+    ) -> bool {
+        for binding in bindings {
+            if binding.expr.references_ident_with_shadow(target, shadowed) {
+                return true;
+            }
+            if binding.name == target {
+                shadowed = true;
+            }
+        }
+        result.references_ident_with_shadow(target, shadowed)
     }
 }
 
