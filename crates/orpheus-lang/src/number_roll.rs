@@ -172,4 +172,17 @@ mod tests {
         assert!(roll.contains("x-..x-.."));
         assert!(roll.contains("..x-..x-"));
     }
+
+    #[test]
+    fn export_cycle_count_zero_returns_error() {
+        let module = eval_module("pat = 1 2", ReplMode::Loose).unwrap();
+        let pat = module.get("pat").unwrap().as_number_pattern().unwrap();
+
+        assert_eq!(
+            super::render_ascii_number_roll("pat", pat, 0, 8)
+                .unwrap_err()
+                .to_string(),
+            "rendering requires at least one cycle"
+        );
+    }
 }
