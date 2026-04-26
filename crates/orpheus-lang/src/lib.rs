@@ -1,5 +1,6 @@
 //! Language and REPL surface for Orpheus.
 
+pub(crate) mod abc_export;
 pub(crate) mod ascii_roll;
 mod ast;
 mod builtins;
@@ -31,6 +32,7 @@ pub(crate) mod txt;
 mod types;
 mod value;
 
+pub use abc_export::export_number_pattern_to_abc;
 pub use ascii_roll::render_ascii_roll;
 pub use ast::{BinaryOp, Expr, Module, Stmt};
 pub use diagnostics::{LoadError, ParseError, TypeError};
