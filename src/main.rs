@@ -49,10 +49,19 @@ fn run() -> anyhow::Result<()> {
     let (engine, _stream, warning) = match start_live_audio() {
         Ok((engine, stream)) => (engine, Some(stream), None),
         Err(error) => {
-            let mut message = format!("Audio Output Disabled: {error}");
+            let mut message = format!(
+                "{}\n  {}",
+                "Audio Output Disabled:".yellow().bold(),
+                error.to_string().red()
+            );
             for cause in error.chain().skip(1) {
                 use std::fmt::Write;
-                let _ = write!(&mut message, "\n  -> {cause}");
+                let _ = write!(
+                    &mut message,
+                    "\n  {} {}",
+                    "->".dark_grey(),
+                    cause.to_string().dark_grey()
+                );
             }
             (EngineHandle::stub(), None, Some(message))
         }
@@ -80,12 +89,20 @@ fn startup_path_from_args(args: impl IntoIterator<Item = OsString>) -> anyhow::R
             }
             if path_str.starts_with('-') {
                 return Err(anyhow!(
-                    "unexpected argument '{path_str}' found\n\nUsage: orpheus [PATH]\n\nFor more information, try '--help'."
+                    "unexpected argument {} found\n\n{} orpheus {}\n\nFor more information, try {}.",
+                    format!("'{path_str}'").yellow().bold(),
+                    "Usage:".green().bold(),
+                    "[PATH]".cyan(),
+                    "'--help'".green()
                 ));
             }
             Ok(CliAction::Run(Some(PathBuf::from(path))))
         }
-        _ => Err(anyhow!("usage: orpheus [path/to/song.ode]")),
+        _ => Err(anyhow!(
+            "{} orpheus {}",
+            "Usage:".green().bold(),
+            "[path/to/song.ode]".cyan()
+        )),
     }
 }
 
@@ -232,10 +249,7 @@ mod tests {
     fn startup_path_from_args_rejects_multiple_args() {
         let args = vec![OsString::from("file1.ode"), OsString::from("file2.ode")];
         let error = startup_path_from_args(args).unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("usage: orpheus [path/to/song.ode]")
-        );
+        assert!(error.to_string().contains("orpheus"));
+        assert!(error.to_string().contains("[path/to/song.ode]"));
     }
 }
