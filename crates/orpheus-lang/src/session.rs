@@ -511,14 +511,18 @@ impl ReplSession {
             .bindings
             .get(binding_name)
             .ok_or_else(|| format!("no binding named `{binding_name}`"))?;
-        let pedal = value.as_pedal().ok_or_else(|| {
-            format!(
-                "binding `{binding_name}` is a {} and is not a pedal",
-                value.kind_name()
-            )
-        })?;
 
-        Ok(pedal.explain(binding_name))
+        #[allow(clippy::option_if_let_else)]
+        if let Some(pedal) = value.as_pedal() {
+            Ok(pedal.explain(binding_name))
+        } else if let Some(tuning) = value.as_tuning() {
+            Ok(tuning.explain(binding_name))
+        } else {
+            Err(format!(
+                "binding `{binding_name}` is a {} and cannot be explained",
+                value.kind_name()
+            ))
+        }
     }
 
     fn export_binding(&self, args: &str) -> Result<String, String> {
