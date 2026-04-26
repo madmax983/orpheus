@@ -365,6 +365,7 @@ impl ReplSession {
             "roll" => self.roll_binding(args),
             "stats" => self.stats_binding(args),
             "explain" => self.explain_binding(args),
+            "env" => self.env_command(args),
             "export" => {
                 if args.starts_with("stems") {
                     self.export_stems(args)
@@ -503,6 +504,35 @@ impl ReplSession {
         } else {
             Err(format!("no binding named `{binding_name}`"))
         }
+    }
+
+    fn env_command(&self, args: &str) -> Result<String, String> {
+        if !args.trim().is_empty() {
+            return Err("usage: :env (no arguments)".to_owned());
+        }
+
+        let mut table = comfy_table::Table::new();
+        table.load_preset(comfy_table::presets::UTF8_BORDERS_ONLY);
+        table.set_header(vec![
+            comfy_table::Cell::new("Binding").fg(comfy_table::Color::DarkGrey),
+            comfy_table::Cell::new("Type").fg(comfy_table::Color::DarkGrey),
+        ]);
+
+        let summaries = self.binding_summaries();
+        if summaries.is_empty() {
+            return Ok("environment is empty".to_owned());
+        }
+
+        for summary in summaries {
+            if let Some((name, ty)) = summary.split_once(": ") {
+                table.add_row(vec![
+                    comfy_table::Cell::new(name).fg(comfy_table::Color::Cyan),
+                    comfy_table::Cell::new(ty).fg(comfy_table::Color::Yellow),
+                ]);
+            }
+        }
+
+        Ok(format!("\n{table}"))
     }
 
     fn explain_binding(&self, args: &str) -> Result<String, String> {
@@ -1705,6 +1735,27 @@ mod tests {
 
     fn temp_svg_path() -> std::path::PathBuf {
         std::env::temp_dir().join(format!("orpheus-export-{}.svg", unique_temp_suffix()))
+    }
+
+    #[test]
+    fn env_command_prints_table_of_bindings() {
+        let mut session = ReplSession::new();
+        session.eval_line("drums = bd sn cp sn").unwrap();
+        session.eval_line("tempo = 120").unwrap();
+
+        let output = session.eval_line(":env").unwrap();
+        assert!(output.contains("drums"));
+        assert!(output.contains("Pattern<Sample>"));
+        assert!(output.contains("tempo"));
+        assert!(output.contains("Pattern<Number>"));
+        assert!(output.contains("─")); // comfy-table border char
+    }
+
+    #[test]
+    fn env_command_reports_empty_environment() {
+        let mut session = ReplSession::new();
+        let output = session.eval_line(":env").unwrap();
+        assert_eq!(output, "environment is empty");
     }
 
     #[test]
