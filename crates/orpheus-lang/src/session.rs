@@ -491,6 +491,10 @@ impl ReplSession {
                         .map_err(|error| error.to_string())?;
                     Ok(format!("\n{}", stats.trim_end()))
                 }
+                crate::value::Value::Tuning(tuning) => {
+                    let stats = crate::stats::tuning_stats(binding_name, tuning);
+                    Ok(format!("\n{}", stats.trim_end()))
+                }
                 _ => Err(format!(
                     "binding `{binding_name}` is a {} and cannot be analyzed",
                     value.kind_name()
@@ -2053,6 +2057,26 @@ mod tests {
         let error = session.eval_line(":roll pattern foo").unwrap_err();
 
         assert!(error.contains("cycles must be a positive integer"));
+    }
+
+    #[test]
+    fn stats_command_returns_tuning_stats() {
+        let mut session = ReplSession::new();
+        session
+            .eval_line("t = tuning(1.0 1.125 1.25 1.5 2.0)")
+            .unwrap();
+
+        let message = session.eval_line(":stats t").unwrap();
+
+        assert!(message.contains("Tuning Stats:"));
+        assert!(message.contains("Name"));
+        assert!(message.contains("tuning"));
+        assert!(message.contains("Period"));
+        assert!(message.contains("2.000"));
+        assert!(message.contains("Ref Semitone"));
+        assert!(message.contains("0"));
+        assert!(message.contains("Ratios"));
+        assert!(message.contains("5 [1.000, 1.125, 1.250, 1.500, 2.000]"));
     }
 
     #[test]
