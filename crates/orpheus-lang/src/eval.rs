@@ -75,6 +75,17 @@ pub enum EvalError {
     /// An error that occurred while parsing a dynamic evaluation string.
     ///
     /// This happens when source code provided to [`eval_module`] contains syntax errors.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::EvalError;
+    ///
+    /// // While diagnostics::ParseError is private, we can observe the error
+    /// // conversion indirectly via the public eval_module API:
+    /// let err = orpheus_lang::eval_module("bad syntax (", orpheus_lang::ReplMode::Loose).unwrap_err();
+    /// assert!(err.to_string().contains("parse error"));
+    /// ```
     #[error(transparent)]
     Parse(#[from] ParseError),
 
@@ -82,12 +93,35 @@ pub enum EvalError {
     ///
     /// This occurs when an expression tries to apply a function to an invalid
     /// variable type (e.g., trying to shift a `Value::Function`).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::EvalError;
+    ///
+    /// // While diagnostics::TypeError is private, we can trigger the type error
+    /// // indirectly via static inference when loading a module or evaluating:
+    /// let err = orpheus_lang::infer_module("song = fast(bd, sn)", orpheus_lang::ReplMode::Strict).unwrap_err();
+    /// let eval_err = EvalError::from(err);
+    /// assert!(eval_err.to_string().contains("type mismatch"));
+    /// ```
     #[error(transparent)]
     Type(#[from] crate::diagnostics::TypeError),
 
     /// An error encountered when loading an external resource.
     ///
     /// This is typically emitted when parsing a file or a sample directory fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::EvalError;
+    ///
+    /// // We trigger a load error by trying to import a missing file:
+    /// let err = orpheus_lang::load_file_strict("missing.ode").unwrap_err();
+    /// let eval_err = EvalError::from(err);
+    /// assert!(eval_err.to_string().contains("file not found"));
+    /// ```
     #[error(transparent)]
     Load(#[from] crate::diagnostics::LoadError),
 
