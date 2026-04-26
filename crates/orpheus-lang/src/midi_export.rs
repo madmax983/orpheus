@@ -309,4 +309,27 @@ mod tests {
         write_vlq(106903, &mut buf).unwrap();
         assert_eq!(buf, vec![0x86, 0xC3, 0x17]);
     }
+
+    #[test]
+    fn export_cycle_count_zero_returns_error() {
+        let module = eval_module("pat = bd sn", ReplMode::Loose).unwrap();
+        let pat = module.get("pat").unwrap().as_sample_pattern().unwrap();
+
+        assert_eq!(
+            super::export_sample_pattern_to_midi(pat, "test.mid", 0)
+                .unwrap_err()
+                .to_string(),
+            "exporting requires at least one cycle"
+        );
+
+        let module = eval_module("pat = 60 62", ReplMode::Loose).unwrap();
+        let pat = module.get("pat").unwrap().as_number_pattern().unwrap();
+
+        assert_eq!(
+            super::export_number_pattern_to_midi(pat, "test.mid", 0)
+                .unwrap_err()
+                .to_string(),
+            "exporting requires at least one cycle"
+        );
+    }
 }
