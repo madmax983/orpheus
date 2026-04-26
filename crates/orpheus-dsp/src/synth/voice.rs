@@ -50,6 +50,24 @@ pub struct AnalogVoice {
 
 impl AnalogVoice {
     /// Creates a new analog voice wrapper for `sample_rate_hz`.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::{AnalogVoice, AnalogVoiceParams, OscShape};
+    ///
+    /// let mut voice = AnalogVoice::new(48000.0);
+    /// let params = AnalogVoiceParams {
+    ///     osc_shape: OscShape::Saw,
+    ///     freq_hz: 440.0,
+    ///     pulse_width: 0.5,
+    ///     cutoff_hz: 2000.0,
+    ///     resonance: 0.0,
+    ///     drive: 0.0,
+    ///     gain: 1.0,
+    /// };
+    /// let sample = voice.next_sample(&params);
+    /// ```
     #[must_use]
     pub fn new(sample_rate_hz: f32) -> Self {
         Self {
@@ -75,6 +93,24 @@ impl AnalogVoice {
     }
 
     /// Renders one monophonic sample through source, filter, saturation, and gain.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::{AnalogVoice, AnalogVoiceParams, OscShape};
+    ///
+    /// let mut voice = AnalogVoice::new(48000.0);
+    /// let params = AnalogVoiceParams {
+    ///     osc_shape: OscShape::Saw,
+    ///     freq_hz: 440.0,
+    ///     pulse_width: 0.5,
+    ///     cutoff_hz: 2000.0,
+    ///     resonance: 0.0,
+    ///     drive: 0.0,
+    ///     gain: 1.0,
+    /// };
+    /// let sample = voice.next_sample(&params);
+    /// ```
     #[must_use]
     pub fn next_sample(&mut self, params: &AnalogVoiceParams) -> f32 {
         let source = match params.osc_shape {

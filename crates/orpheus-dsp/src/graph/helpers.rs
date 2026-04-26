@@ -128,16 +128,20 @@ impl Node for Bind {
 /// Bound channels are removed from the external interface; unbound channels
 /// are renumbered contiguously starting from 0.
 ///
-/// # Example
+/// # Examples
 ///
-/// ```ignore
-/// // saw has 1 input (freq_hz). Bind it to 440 Hz → 0 inputs, 1 output.
-/// let fixed_saw = bind(saw(48000.0), &[(0, 440.0)])?;
+/// ```
+/// use orpheus_dsp::{bind, one_pole, Node};
 ///
-/// // ladder_filter has 3 inputs (audio, cutoff, res).
-/// // Bind cutoff and res, leaving audio as the only external input.
-/// let fixed_filter = bind(ladder_filter(48000.0), &[(1, 2000.0), (2, 0.3)])?;
-/// // fixed_filter: 1 input (audio), 1 output
+/// // one_pole has 2 inputs (audio, cutoff_hz)
+/// let filter = one_pole(48_000.0);
+/// assert_eq!(filter.inputs(), 2);
+///
+/// // Bind cutoff_hz (index 1) to 1000.0 Hz
+/// let bound_filter = bind(filter, &[(1, 1000.0)]).unwrap();
+///
+/// // Now it has only 1 input (audio)
+/// assert_eq!(bound_filter.inputs(), 1);
 /// ```
 ///
 /// # Errors
