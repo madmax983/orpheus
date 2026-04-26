@@ -8,3 +8,6 @@
 **[Reserve Vector Capacity]**
 **Learning:** Appending items to a `Vec` inside a loop on hot paths (like Orpheus's evaluator) without pre-allocating capacity causes redundant heap re-allocations. In `eval.rs::append_unsorted_shifted`, `combined.push(new_event)` is called `base_events.len()` times but capacity isn't reserved.
 **Action:** Always use `.reserve(len)` before the loop when the exact number of elements to be added is known.
+**[Event Cloning Bottlenecks]**
+**Learning:** When creating a modified struct from an old one (like Orpheus's `Event`), using `let mut new_event = event.clone()` followed by mutations incurs a full, expensive deep copy of all fields, including complex payload enums.
+**Action:** Reconstruct the struct explicitly by transferring ownership or cloning only the specific fields required (e.g., `value: event.value.clone()`) while using references to generate new values for other fields, to eliminate unnecessary deep cloning.

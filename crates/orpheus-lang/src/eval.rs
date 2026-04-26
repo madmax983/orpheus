@@ -280,12 +280,15 @@ impl ExplicitValue {
                 // ⚡ Bolt: Pre-allocate capacity to eliminate redundant heap allocations when appending events.
                 combined.reserve(base_events.len());
                 for event in base_events {
-                    let mut new_event = event.clone();
-                    new_event.part = shift_span(&new_event.part, offset)?;
-                    if let Some(whole) = new_event.whole.take() {
-                        new_event.whole = Some(shift_span(&whole, offset)?);
-                    }
-                    combined.push(new_event);
+                    combined.push(Event {
+                        whole: event
+                            .whole
+                            .as_ref()
+                            .map(|whole| shift_span(whole, offset))
+                            .transpose()?,
+                        part: shift_span(&event.part, offset)?,
+                        value: event.value.clone(),
+                    });
                 }
                 Ok(())
             }
@@ -293,12 +296,15 @@ impl ExplicitValue {
                 // ⚡ Bolt: Pre-allocate capacity to eliminate redundant heap allocations when appending events.
                 combined.reserve(base_events.len());
                 for event in base_events {
-                    let mut new_event = event.clone();
-                    new_event.part = shift_span(&new_event.part, offset)?;
-                    if let Some(whole) = new_event.whole.take() {
-                        new_event.whole = Some(shift_span(&whole, offset)?);
-                    }
-                    combined.push(new_event);
+                    combined.push(Event {
+                        whole: event
+                            .whole
+                            .as_ref()
+                            .map(|whole| shift_span(whole, offset))
+                            .transpose()?,
+                        part: shift_span(&event.part, offset)?,
+                        value: event.value,
+                    });
                 }
                 Ok(())
             }
