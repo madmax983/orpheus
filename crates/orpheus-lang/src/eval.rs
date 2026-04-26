@@ -21,14 +21,11 @@
 
 use std::collections::BTreeMap;
 
-use thiserror::Error;
-
-use orpheus_pattern::{Event, PatternError, PatternNode, Rational, TimeSpan};
+use orpheus_pattern::{Event, PatternNode, Rational, TimeSpan};
 
 use crate::ReplMode;
 use crate::ast::{Expr, Module, Stmt, binding_expr_self_references};
 use crate::builtins::{builtin_value, is_sample_identifier, stack_values};
-use crate::diagnostics::ParseError;
 use crate::parser::parse_module;
 use crate::pedal::compile_graph;
 use crate::pitch::parse_named_pitch_literal;
@@ -47,116 +44,7 @@ use crate::value::{
 ///
 /// **Recovery:** Since `EvalError` wraps various specific errors (like `ParseError` or `TypeError`),
 /// you should match on its variants or display its `Display` implementation to locate the exact syntax issue or runtime flaw.
-/// In a live-coding REPL environment, these errors should be caught and presented to the user to allow them to correct their code, rather than crashing the thread.
-///
-/// # Examples
-///
-/// An `EvalError` provides an error message indicating what went wrong:
-///
-/// ```
-/// use orpheus_lang::EvalError;
-///
-/// let err = EvalError::new("decimal literal exceeded the supported range");
-/// assert_eq!(err.to_string(), "decimal literal exceeded the supported range");
-/// ```
-
-#[derive(Clone, Debug, Eq, PartialEq, Error)]
-pub enum EvalError {
-    /// An arbitrary runtime error message string.
-    ///
-    /// This is a fallback variant for dynamically generated evaluation errors
-    /// (e.g. division by zero, capacity overflows) that don't fit into a specific domain type.
-    #[error("{message}")]
-    Message {
-        /// The textual description of the error.
-        message: Box<str>,
-    },
-
-    /// An error that occurred while parsing a dynamic evaluation string.
-    ///
-    /// This happens when source code provided to [`eval_module`] contains syntax errors.
-    #[error(transparent)]
-    Parse(#[from] ParseError),
-
-    /// A type checking error during expression evaluation or function application.
-    ///
-    /// This occurs when an expression tries to apply a function to an invalid
-    /// variable type (e.g., trying to shift a `Value::Function`).
-    #[error(transparent)]
-    Type(#[from] crate::diagnostics::TypeError),
-
-    /// An error encountered when loading an external resource.
-    ///
-    /// This is typically emitted when parsing a file or a sample directory fails.
-    #[error(transparent)]
-    Load(#[from] crate::diagnostics::LoadError),
-
-    /// An error parsing a named pitch literal into semitones.
-    ///
-    /// This happens if an identifier resolves to an invalid note name (like `C#99`).
-    #[error(transparent)]
-    Pitch(#[from] crate::pitch::PitchLiteralError),
-
-    /// A downcasting bounds error for integer representations.
-    ///
-    /// Occurs when explicitly converting numbers like cycle repeats or bounds
-    /// into usize or u64 and the value is out of range.
-    #[error(transparent)]
-    TryFromInt(#[from] std::num::TryFromIntError),
-
-    /// An error parsing a string into an integer.
-    #[error(transparent)]
-    ParseInt(#[from] std::num::ParseIntError),
-
-    /// An underlying temporal error from pattern operations.
-    ///
-    /// Examples include attempting a rational division by zero or invalid shifts
-    /// in explicit-time streams.
-    #[error(transparent)]
-    Pattern(#[from] PatternError),
-}
-
-impl EvalError {
-    /// Creates a new `EvalError` with the given message.
-    ///
-    /// The message explains what went wrong during runtime evaluation.
-    ///
-    /// Common causes for `EvalError` include:
-    /// - Out-of-bounds numeric parameters.
-    /// - Arithmetic overflow during explicit time-shifts.
-    /// - Applying functions to invalid types.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use orpheus_lang::EvalError;
-    ///
-    /// let err = EvalError::new("division by zero");
-    /// assert_eq!(err.to_string(), "division by zero");
-    /// ```
-    pub fn new(message: impl Into<Box<str>>) -> Self {
-        Self::Message {
-            message: message.into(),
-        }
-    }
-}
-
-impl From<std::io::Error> for EvalError {
-    fn from(error: std::io::Error) -> Self {
-        let message = match error.kind() {
-            std::io::ErrorKind::NotFound => "file not found".to_owned(),
-            std::io::ErrorKind::PermissionDenied => "permission denied".to_owned(),
-            _ => error.to_string(),
-        };
-        Self::new(message)
-    }
-}
-
-impl From<std::fmt::Error> for EvalError {
-    fn from(error: std::fmt::Error) -> Self {
-        Self::new(error.to_string())
-    }
-}
+pub use crate::error::EvalError;
 
 /// Evaluates bootstrap Orpheus source into runtime values.
 ///
@@ -1787,19 +1675,19 @@ right = sometimes(fast(2), cp hh)";
     #[test]
     fn eval_error_from_conversions() {
         let num_err: std::num::TryFromIntError = u8::try_from(256u16).unwrap_err();
-        let eval_err: crate::eval::EvalError = num_err.into();
+        let eval_err: crate::error::EvalError = num_err.into();
         assert!(eval_err.to_string().contains("out of range"));
 
         let num_err: std::num::ParseIntError = "abc".parse::<i32>().unwrap_err();
-        let eval_err: crate::eval::EvalError = num_err.into();
+        let eval_err: crate::error::EvalError = num_err.into();
         assert!(eval_err.to_string().contains("invalid digit"));
 
         let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "not found");
-        let eval_err: crate::eval::EvalError = io_err.into();
+        let eval_err: crate::error::EvalError = io_err.into();
         assert_eq!(eval_err.to_string(), "file not found");
 
         let fmt_err = std::fmt::Error;
-        let eval_err: crate::eval::EvalError = fmt_err.into();
+        let eval_err: crate::error::EvalError = fmt_err.into();
         assert_eq!(
             eval_err.to_string(),
             "an error occurred when formatting an argument"
@@ -1807,7 +1695,7 @@ right = sometimes(fast(2), cp hh)";
 
         let pat_err: orpheus_pattern::PatternError =
             orpheus_pattern::PatternError::InvalidDenominator { denominator: 0 };
-        let eval_err: crate::eval::EvalError = pat_err.into();
+        let eval_err: crate::error::EvalError = pat_err.into();
         assert_eq!(eval_err.to_string(), "rational denominator cannot be zero");
     }
 

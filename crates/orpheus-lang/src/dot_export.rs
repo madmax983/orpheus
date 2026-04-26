@@ -4,7 +4,7 @@
 use std::io::Write;
 use std::path::Path;
 
-use crate::eval::EvalError;
+use crate::error::EvalError;
 use crate::pedal::{PedalNodeKind, PedalValue, SignalKind};
 
 /// Exports a pedal graph's internal evaluated plan to a Graphviz DOT file.
