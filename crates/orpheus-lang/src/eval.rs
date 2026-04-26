@@ -277,35 +277,33 @@ impl ExplicitValue {
     fn append_unsorted_shifted(&mut self, base: &Self, offset: &Rational) -> Result<(), EvalError> {
         match (self, base) {
             (Self::Sample(combined), Self::Sample(base_events)) => {
-                // ⚡ Bolt: Pre-allocate capacity to eliminate redundant heap allocations when appending events.
-                combined.reserve(base_events.len());
-                for event in base_events {
-                    let mut new_event = event.clone();
-                    new_event.part = shift_span(&new_event.part, offset)?;
-                    if let Some(whole) = new_event.whole.take() {
-                        new_event.whole = Some(shift_span(&whole, offset)?);
-                    }
-                    combined.push(new_event);
-                }
-                Ok(())
+                Self::append_shifted_events(combined, base_events, offset)
             }
             (Self::Number(combined), Self::Number(base_events)) => {
-                // ⚡ Bolt: Pre-allocate capacity to eliminate redundant heap allocations when appending events.
-                combined.reserve(base_events.len());
-                for event in base_events {
-                    let mut new_event = event.clone();
-                    new_event.part = shift_span(&new_event.part, offset)?;
-                    if let Some(whole) = new_event.whole.take() {
-                        new_event.whole = Some(shift_span(&whole, offset)?);
-                    }
-                    combined.push(new_event);
-                }
-                Ok(())
+                Self::append_shifted_events(combined, base_events, offset)
             }
             (Self::Sample(_), Self::Number(_)) | (Self::Number(_), Self::Sample(_)) => Err(
                 EvalError::new("explicit-time items must all resolve to the same pattern kind"),
             ),
         }
+    }
+
+    fn append_shifted_events<T: Clone>(
+        combined: &mut Vec<Event<T>>,
+        base_events: &[Event<T>],
+        offset: &Rational,
+    ) -> Result<(), EvalError> {
+        // ⚡ Bolt: Pre-allocate capacity to eliminate redundant heap allocations when appending events.
+        combined.reserve(base_events.len());
+        for event in base_events {
+            let mut new_event = event.clone();
+            new_event.part = shift_span(&new_event.part, offset)?;
+            if let Some(whole) = new_event.whole.take() {
+                new_event.whole = Some(shift_span(&whole, offset)?);
+            }
+            combined.push(new_event);
+        }
+        Ok(())
     }
 
     fn sort(&mut self) {
@@ -323,31 +321,24 @@ impl ExplicitValue {
     }
 
     fn empty_with_capacity_matching(&self, multiplier: usize) -> Result<Self, EvalError> {
+        let current_len = match self {
+            Self::Sample(events) => events.len(),
+            Self::Number(events) => events.len(),
+        };
+
+        let capacity = current_len
+            .checked_mul(multiplier)
+            .ok_or_else(|| EvalError::new("section pattern capacity overflowed"))?;
+
+        if capacity > 100_000 {
+            return Err(EvalError::new(
+                "evaluation exceeded the maximum allowed event limit",
+            ));
+        }
+
         match self {
-            Self::Sample(events) => {
-                let capacity = events
-                    .len()
-                    .checked_mul(multiplier)
-                    .ok_or_else(|| EvalError::new("section pattern capacity overflowed"))?;
-                if capacity > 100_000 {
-                    return Err(EvalError::new(
-                        "evaluation exceeded the maximum allowed event limit",
-                    ));
-                }
-                Ok(Self::Sample(Vec::with_capacity(capacity)))
-            }
-            Self::Number(events) => {
-                let capacity = events
-                    .len()
-                    .checked_mul(multiplier)
-                    .ok_or_else(|| EvalError::new("section pattern capacity overflowed"))?;
-                if capacity > 100_000 {
-                    return Err(EvalError::new(
-                        "evaluation exceeded the maximum allowed event limit",
-                    ));
-                }
-                Ok(Self::Number(Vec::with_capacity(capacity)))
-            }
+            Self::Sample(_) => Ok(Self::Sample(Vec::with_capacity(capacity))),
+            Self::Number(_) => Ok(Self::Number(Vec::with_capacity(capacity))),
         }
     }
 }
@@ -841,24 +832,10 @@ impl Evaluator {
             Value::NumberPattern(pattern) => {
                 Ok(ExplicitValue::Number(pattern.try_query(&TimeSpan::unit())?))
             }
-            Value::Function(_) => Err(EvalError::new(
-                "functions cannot be materialized into explicit-time event streams",
-            )),
-            Value::ArpDirection(_) => Err(EvalError::new(
-                "arp directions cannot be materialized into explicit-time event streams",
-            )),
-            Value::PitchClassSet(_) => Err(EvalError::new(
-                "pitch class sets cannot be materialized into explicit-time event streams",
-            )),
-            Value::Pedal(_) => Err(EvalError::new(
-                "pedal graphs cannot be materialized into explicit-time event streams",
-            )),
-            Value::Tuning(_) => Err(EvalError::new(
-                "tunings cannot be materialized into explicit-time event streams",
-            )),
-            Value::String(_) => Err(EvalError::new(
-                "strings cannot be materialized into explicit-time event streams",
-            )),
+            _ => Err(EvalError::new(format!(
+                "{}s cannot be materialized into explicit-time event streams",
+                value.kind_name()
+            ))),
         }
     }
 
@@ -868,28 +845,21 @@ impl Evaluator {
         args: Vec<Value>,
         site_salt: Option<u64>,
     ) -> Result<Value, EvalError> {
-        match callee {
-            Value::Function(FunctionValue::Builtin(function)) => {
-                let function = Self::apply_site_salt_to_builtin(function, site_salt);
-                apply_function_value(FunctionValue::Builtin(function), args)
-            }
-            Value::Function(mut function) => {
-                if let FunctionValue::User(ref mut user_fn) = function {
-                    user_fn.depth = self.depth.get();
-                }
-                apply_function_value(function, args)
-            }
-            Value::SamplePattern(_)
-            | Value::NumberPattern(_)
-            | Value::ArpDirection(_)
-            | Value::PitchClassSet(_)
-            | Value::Pedal(_)
-            | Value::Tuning(_)
-            | Value::String(_) => Err(EvalError::new(format!(
+        let Value::Function(mut function) = callee else {
+            return Err(EvalError::new(format!(
                 "cannot call a {}",
                 callee.kind_name()
-            ))),
+            )));
+        };
+
+        if let FunctionValue::Builtin(builtin_func) = function {
+            let salted_func = Self::apply_site_salt_to_builtin(builtin_func, site_salt);
+            function = FunctionValue::Builtin(salted_func);
+        } else if let FunctionValue::User(ref mut user_fn) = function {
+            user_fn.depth = self.depth.get();
         }
+
+        apply_function_value(function, args)
     }
 
     const fn apply_site_salt_to_builtin(
@@ -939,20 +909,7 @@ impl Evaluator {
 
     fn check_unsupported_pattern_item(item: &Expr, context: &str) -> Option<EvalError> {
         match item {
-            Expr::Call { callee, args } => {
-                let name = if let Expr::Ident(name) = callee.as_ref() {
-                    name.as_str()
-                } else {
-                    "call"
-                };
-                if name == "sample" && args.len() == 1 {
-                    None
-                } else {
-                    Some(EvalError::new(format!(
-                        "function call `{name}` cannot appear inside a pattern {context} in Task 5; apply transforms with the pipe operator `|>` or call `{name}(..., pattern)` directly"
-                    )))
-                }
-            }
+            Expr::Call { callee, args } => Self::check_unsupported_call(callee, args, context),
             Expr::Ident(name) if matches!(builtin_value(name), Some(Value::Function(_))) => {
                 Some(EvalError::new(format!(
                     "function `{name}` cannot appear inside a pattern {context} in Task 5; apply transforms with the pipe operator `|>` or call `{name}(..., pattern)` directly"
@@ -968,6 +925,22 @@ impl Evaluator {
             ))),
             Expr::Group(group_items) => Self::unsupported_pattern_item_error(group_items, context),
             _ => None,
+        }
+    }
+
+    fn check_unsupported_call(callee: &Expr, args: &[Expr], context: &str) -> Option<EvalError> {
+        let name = if let Expr::Ident(name) = callee {
+            name.as_str()
+        } else {
+            "call"
+        };
+
+        if name == "sample" && args.len() == 1 {
+            None
+        } else {
+            Some(EvalError::new(format!(
+                "function call `{name}` cannot appear inside a pattern {context} in Task 5; apply transforms with the pipe operator `|>` or call `{name}(..., pattern)` directly"
+            )))
         }
     }
 
@@ -1272,30 +1245,20 @@ fn expr_key(expr: &Expr) -> usize {
 }
 
 fn extract_constant_number_value(value: Value, context: &str) -> Result<f64, EvalError> {
-    match value {
-        Value::NumberPattern(pattern) => pattern.constant_value(),
-        Value::SamplePattern(_)
-        | Value::ArpDirection(_)
-        | Value::PitchClassSet(_)
-        | Value::Function(_)
-        | Value::Pedal(_)
-        | Value::Tuning(_)
-        | Value::String(_) => Err(EvalError::new(format!(
+    if let Value::NumberPattern(pattern) = value {
+        pattern.constant_value()
+    } else {
+        Err(EvalError::new(format!(
             "{context} must resolve to a constant number"
-        ))),
+        )))
     }
 }
 
 fn extract_string_value(value: Value, message: &str) -> Result<String, EvalError> {
-    match value {
-        Value::String(string) => Ok(string.to_string()),
-        Value::SamplePattern(_)
-        | Value::NumberPattern(_)
-        | Value::ArpDirection(_)
-        | Value::PitchClassSet(_)
-        | Value::Function(_)
-        | Value::Pedal(_)
-        | Value::Tuning(_) => Err(EvalError::new(message)),
+    if let Value::String(string) = value {
+        Ok(string.to_string())
+    } else {
+        Err(EvalError::new(message))
     }
 }
 
