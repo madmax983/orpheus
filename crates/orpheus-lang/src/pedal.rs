@@ -28,7 +28,7 @@ use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
 use crossterm::style::Stylize;
 
 use crate::ast::{BinaryOp, Expr, GraphBinding};
-use crate::eval::EvalError;
+use crate::error::EvalError;
 
 /// The coarse signal domain understood by the pedal DSL.
 #[derive(Clone, Debug, Eq, PartialEq)]

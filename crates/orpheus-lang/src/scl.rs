@@ -19,7 +19,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use crate::eval::EvalError;
+use crate::error::EvalError;
 use crate::value::{TUNING_OCTAVE_PERIOD, TuningValue};
 
 /// Errors surfaced while parsing a Scala `.scl` file.
