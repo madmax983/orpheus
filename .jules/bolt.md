@@ -8,3 +8,4 @@
 **[Reserve Vector Capacity]**
 **Learning:** Appending items to a `Vec` inside a loop on hot paths (like Orpheus's evaluator) without pre-allocating capacity causes redundant heap re-allocations. In `eval.rs::append_unsorted_shifted`, `combined.push(new_event)` is called `base_events.len()` times but capacity isn't reserved.
 **Action:** Always use `.reserve(len)` before the loop when the exact number of elements to be added is known.
+**[sort_unstable_by instead of sort_by]**\n**Learning:** In Rust, `sort_by` allocates memory and requires extra overhead to guarantee that equal elements preserve their original relative order. For sorting pattern events in Orpheus, concurrent events often have no inherent order, making stable sorting unnecessary and slower on hot paths.\n**Action:** Use `sort_unstable_by` instead of `sort_by` for collections where the order of equal elements does not matter, to avoid allocations and reduce sorting overhead.
