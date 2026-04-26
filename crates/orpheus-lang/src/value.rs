@@ -352,6 +352,41 @@ impl TuningValue {
             ref_semitone: self.ref_semitone,
         }
     }
+
+    #[doc(hidden)]
+    #[must_use]
+    pub fn explain(&self, binding_name: &str) -> String {
+        use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
+        use crossterm::style::Stylize;
+
+        let title = format!(
+            "{} {binding_name}\nScale: {}\nPeriod: {:.2}\nSteps: {}",
+            "Tuning Table Plan:".cyan().bold(),
+            self.name().to_string().yellow(),
+            self.period(),
+            self.ratios().len()
+        );
+
+        let mut table = Table::new();
+        table.load_preset(UTF8_BORDERS_ONLY);
+        table.set_header(vec![
+            Cell::new("Step")
+                .fg(comfy_table::Color::White)
+                .add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Ratio")
+                .fg(comfy_table::Color::White)
+                .add_attribute(comfy_table::Attribute::Bold),
+        ]);
+
+        for (i, ratio) in self.ratios().iter().enumerate() {
+            table.add_row(vec![
+                Cell::new(i.to_string()).fg(comfy_table::Color::Cyan),
+                Cell::new(format!("{ratio:.4}")).fg(comfy_table::Color::Yellow),
+            ]);
+        }
+
+        format!("{title}\n{table}")
+    }
 }
 
 /// A cheaply-cloneable shared handle to a tuning's scale steps.
