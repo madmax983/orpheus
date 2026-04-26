@@ -5591,18 +5591,12 @@ mod tests {
             let result = kind.validate(value);
             assert!(
                 result.is_err(),
-                "Expected validation to fail for {:?} with value {}",
-                kind,
-                value
+                "Expected validation to fail for {kind:?} with value {value}"
             );
             let err_msg = result.unwrap_err().to_string();
             assert!(
                 err_msg.contains(expected_msg_part),
-                "Expected error message for {:?} ({}) to contain '{}', but got: {}",
-                kind,
-                value,
-                expected_msg_part,
-                err_msg
+                "Expected error message for {kind:?} ({value}) to contain '{expected_msg_part}', but got: {err_msg}"
             );
         }
     }

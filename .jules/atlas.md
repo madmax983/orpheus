@@ -16,3 +16,7 @@
 **[Standardize EvalError type]
 **Tangle:** Manual implementation of `From` for cloneable error types in `EvalError` inside `crates/orpheus-lang/src/eval.rs`, causing boilerplate and losing inner type structure.
 **Blueprint:** Converted `EvalError` from a flat struct to an enum using the `thiserror` crate's `#[from]` attribute for cloneable types, standardizing error boundaries.
+
+**[Enforce Private Type Inference Environment]
+**Tangle:** The `TypeEnv` and `TypeScheme` structs in `orpheus-lang/src/types/env.rs` were declared as `pub struct`, unnecessarily leaking the internal type-checker abstractions to the public API where only `TypedModule` is expected to be consumed.
+**Blueprint:** Modified `TypeEnv` and `TypeScheme` (and their respective methods) to use `pub(crate)` visibility instead. This reinforces strong module boundaries and correctly encapsulates the language's inference engine implementation details.
