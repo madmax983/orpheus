@@ -1896,7 +1896,7 @@ impl SamplePatternValue {
 
     pub(crate) fn tune(self, tuning: &TuningValue) -> Self {
         Self {
-            pattern: rewrite_pitch_with_tuning(self.pattern, &tuning.as_table()),
+            pattern: self.pattern.with_tuning(&tuning.as_table()),
         }
     }
 
@@ -2673,6 +2673,367 @@ enum PatternRuntime<T> {
 }
 
 impl<T> PatternRuntime<T> {
+    #[allow(clippy::too_many_lines, clippy::match_same_arms)]
+    fn with_tuning(self, table: &TuningTable) -> Self {
+        use PatternRuntime::{
+            Arp, Chaos, Chorus, ChorusDepth, ChorusDepthPattern, ChorusPattern, ChorusRate,
+            ChorusRatePattern, Compressor, CompressorPattern, CompressorRatio,
+            CompressorRatioPattern, CompressorThreshold, CompressorThresholdPattern, Cycle,
+            Degrees, Delay, DelayFeedback, DelayFeedbackPattern, DelayPattern, DelayTime,
+            DelayTimePattern, Drive, DrivePattern, Drop, Every, ExplicitCycle, Fast, Gain,
+            GainPattern, Hpf, HpfPattern, Invert, Lpf, LpfPattern, Mask, Onset, OnsetPattern, Pan,
+            PanPattern, Pedal, Pitch, PitchPattern, PulseWidth, PulseWidthPattern, Rand, Rate,
+            RatePattern, Res, ResPattern, Rev, Reverb, ReverbDamp, ReverbDampPattern,
+            ReverbPattern, ReverbRoom, ReverbRoomPattern, Roll, Shift, Slice, SliceIdxPattern,
+            SlicePattern, Slow, Sometimes, Stack, Stream, Strum, Transpose, TransposePattern,
+            TunedPitch, TunedPitchPattern, When, Within,
+        };
+
+        macro_rules! recurse {
+            ($inner:expr) => {
+                Box::new($inner.with_tuning(table))
+            };
+        }
+
+        match self {
+            Pitch { semitones, inner } => TunedPitch {
+                semitones,
+                tuning: table.clone(),
+                inner: recurse!(inner),
+            },
+            PitchPattern { control, inner } => TunedPitchPattern {
+                control,
+                tuning: table.clone(),
+                inner: recurse!(inner),
+            },
+            TunedPitch {
+                semitones, inner, ..
+            } => TunedPitch {
+                semitones,
+                tuning: table.clone(),
+                inner: recurse!(inner),
+            },
+            TunedPitchPattern { control, inner, .. } => TunedPitchPattern {
+                control,
+                tuning: table.clone(),
+                inner: recurse!(inner),
+            },
+            Cycle(c) => Cycle(c),
+            Stream(s) => Stream(s),
+            ExplicitCycle {
+                origin_cycle,
+                stream,
+            } => ExplicitCycle {
+                origin_cycle,
+                stream,
+            },
+            Rand { site_salt } => Rand { site_salt },
+            Stack(layers) => Stack(
+                layers
+                    .into_iter()
+                    .map(|layer| layer.with_tuning(table))
+                    .collect(),
+            ),
+            Every {
+                period,
+                transform,
+                inner,
+            } => Every {
+                period,
+                transform,
+                inner: recurse!(inner),
+            },
+            When {
+                period,
+                offset,
+                transform,
+                inner,
+            } => When {
+                period,
+                offset,
+                transform,
+                inner: recurse!(inner),
+            },
+            Sometimes {
+                site_salt,
+                transform,
+                inner,
+            } => Sometimes {
+                site_salt,
+                transform,
+                inner: recurse!(inner),
+            },
+            Within {
+                start,
+                end,
+                transform,
+                inner,
+            } => Within {
+                start,
+                end,
+                transform,
+                inner: recurse!(inner),
+            },
+            Mask { gate, inner } => Mask {
+                gate,
+                inner: recurse!(inner),
+            },
+            Strum { inner } => Strum {
+                inner: recurse!(inner),
+            },
+            Roll { steps, inner } => Roll {
+                steps,
+                inner: recurse!(inner),
+            },
+            Arp {
+                steps,
+                direction,
+                inner,
+            } => Arp {
+                steps,
+                direction,
+                inner: recurse!(inner),
+            },
+            Invert { count, inner } => Invert {
+                count,
+                inner: recurse!(inner),
+            },
+            Drop { count, inner } => Drop {
+                count,
+                inner: recurse!(inner),
+            },
+            Degrees { collection, inner } => Degrees {
+                collection,
+                inner: recurse!(inner),
+            },
+            Transpose { semitones, inner } => Transpose {
+                semitones,
+                inner: recurse!(inner),
+            },
+            TransposePattern { control, inner } => TransposePattern {
+                control,
+                inner: recurse!(inner),
+            },
+            Fast { factor, inner } => Fast {
+                factor,
+                inner: recurse!(inner),
+            },
+            Slow { factor, inner } => Slow {
+                factor,
+                inner: recurse!(inner),
+            },
+            Shift { offset, inner } => Shift {
+                offset,
+                inner: recurse!(inner),
+            },
+            Rev { inner } => Rev {
+                inner: recurse!(inner),
+            },
+            Chaos { site_salt, inner } => Chaos {
+                site_salt,
+                inner: recurse!(inner),
+            },
+            Gain { factor, inner } => Gain {
+                factor,
+                inner: recurse!(inner),
+            },
+            GainPattern { control, inner } => GainPattern {
+                control,
+                inner: recurse!(inner),
+            },
+            Delay { mix, inner } => Delay {
+                mix,
+                inner: recurse!(inner),
+            },
+            DelayPattern { control, inner } => DelayPattern {
+                control,
+                inner: recurse!(inner),
+            },
+            DelayTime { time, inner } => DelayTime {
+                time,
+                inner: recurse!(inner),
+            },
+            DelayTimePattern { control, inner } => DelayTimePattern {
+                control,
+                inner: recurse!(inner),
+            },
+            DelayFeedback { feedback, inner } => DelayFeedback {
+                feedback,
+                inner: recurse!(inner),
+            },
+            DelayFeedbackPattern { control, inner } => DelayFeedbackPattern {
+                control,
+                inner: recurse!(inner),
+            },
+            Hpf { cutoff_hz, inner } => Hpf {
+                cutoff_hz,
+                inner: recurse!(inner),
+            },
+            HpfPattern { control, inner } => HpfPattern {
+                control,
+                inner: recurse!(inner),
+            },
+            Lpf { cutoff_hz, inner } => Lpf {
+                cutoff_hz,
+                inner: recurse!(inner),
+            },
+            LpfPattern { control, inner } => LpfPattern {
+                control,
+                inner: recurse!(inner),
+            },
+            Reverb { mix, inner } => Reverb {
+                mix,
+                inner: recurse!(inner),
+            },
+            ReverbPattern { control, inner } => ReverbPattern {
+                control,
+                inner: recurse!(inner),
+            },
+            ReverbRoom { room, inner } => ReverbRoom {
+                room,
+                inner: recurse!(inner),
+            },
+            ReverbRoomPattern { control, inner } => ReverbRoomPattern {
+                control,
+                inner: recurse!(inner),
+            },
+            ReverbDamp { damp, inner } => ReverbDamp {
+                damp,
+                inner: recurse!(inner),
+            },
+            ReverbDampPattern { control, inner } => ReverbDampPattern {
+                control,
+                inner: recurse!(inner),
+            },
+            Res { resonance, inner } => Res {
+                resonance,
+                inner: recurse!(inner),
+            },
+            ResPattern { control, inner } => ResPattern {
+                control,
+                inner: recurse!(inner),
+            },
+            Drive { drive, inner } => Drive {
+                drive,
+                inner: recurse!(inner),
+            },
+            DrivePattern { control, inner } => DrivePattern {
+                control,
+                inner: recurse!(inner),
+            },
+            Chorus { mix, inner } => Chorus {
+                mix,
+                inner: recurse!(inner),
+            },
+            ChorusPattern { control, inner } => ChorusPattern {
+                control,
+                inner: recurse!(inner),
+            },
+            ChorusDepth { depth, inner } => ChorusDepth {
+                depth,
+                inner: recurse!(inner),
+            },
+            ChorusDepthPattern { control, inner } => ChorusDepthPattern {
+                control,
+                inner: recurse!(inner),
+            },
+            ChorusRate { rate, inner } => ChorusRate {
+                rate,
+                inner: recurse!(inner),
+            },
+            ChorusRatePattern { control, inner } => ChorusRatePattern {
+                control,
+                inner: recurse!(inner),
+            },
+            PulseWidth { pulse_width, inner } => PulseWidth {
+                pulse_width,
+                inner: recurse!(inner),
+            },
+            PulseWidthPattern { control, inner } => PulseWidthPattern {
+                control,
+                inner: recurse!(inner),
+            },
+            Pan { amount, inner } => Pan {
+                amount,
+                inner: recurse!(inner),
+            },
+            PanPattern { control, inner } => PanPattern {
+                control,
+                inner: recurse!(inner),
+            },
+            Compressor { mix, inner } => Compressor {
+                mix,
+                inner: recurse!(inner),
+            },
+            CompressorPattern { control, inner } => CompressorPattern {
+                control,
+                inner: recurse!(inner),
+            },
+            CompressorThreshold { threshold, inner } => CompressorThreshold {
+                threshold,
+                inner: recurse!(inner),
+            },
+            CompressorThresholdPattern { control, inner } => CompressorThresholdPattern {
+                control,
+                inner: recurse!(inner),
+            },
+            CompressorRatio { ratio, inner } => CompressorRatio {
+                ratio,
+                inner: recurse!(inner),
+            },
+            CompressorRatioPattern { control, inner } => CompressorRatioPattern {
+                control,
+                inner: recurse!(inner),
+            },
+            Rate { factor, inner } => Rate {
+                factor,
+                inner: recurse!(inner),
+            },
+            RatePattern { control, inner } => RatePattern {
+                control,
+                inner: recurse!(inner),
+            },
+            Onset { onset_index, inner } => Onset {
+                onset_index,
+                inner: recurse!(inner),
+            },
+            OnsetPattern { control, inner } => OnsetPattern {
+                control,
+                inner: recurse!(inner),
+            },
+            Slice { start, end, inner } => Slice {
+                start,
+                end,
+                inner: recurse!(inner),
+            },
+            SlicePattern {
+                start_control,
+                end_control,
+                inner,
+            } => SlicePattern {
+                start_control,
+                end_control,
+                inner: recurse!(inner),
+            },
+            SliceIdxPattern {
+                control,
+                segments,
+                inner,
+            } => SliceIdxPattern {
+                control,
+                segments,
+                inner: recurse!(inner),
+            },
+            Pedal {
+                pedal_program,
+                inner,
+            } => Pedal {
+                pedal_program,
+                inner: recurse!(inner),
+            },
+        }
+    }
+
     fn absolute_cycle(&self, cycle: i128) -> Result<i128, EvalError> {
         match self {
             Self::ExplicitCycle { origin_cycle, .. } => origin_cycle
@@ -3746,369 +4107,6 @@ where
 
 fn semitones_to_rate_multiplier(semitones: f64) -> f64 {
     (semitones / 12.0).exp2()
-}
-
-#[allow(clippy::too_many_lines, clippy::match_same_arms)]
-fn rewrite_pitch_with_tuning<T: Clone>(
-    pattern: PatternRuntime<T>,
-    table: &TuningTable,
-) -> PatternRuntime<T> {
-    use PatternRuntime::{
-        Arp, Chaos, Chorus, ChorusDepth, ChorusDepthPattern, ChorusPattern, ChorusRate,
-        ChorusRatePattern, Compressor, CompressorPattern, CompressorRatio, CompressorRatioPattern,
-        CompressorThreshold, CompressorThresholdPattern, Cycle, Degrees, Delay, DelayFeedback,
-        DelayFeedbackPattern, DelayPattern, DelayTime, DelayTimePattern, Drive, DrivePattern, Drop,
-        Every, ExplicitCycle, Fast, Gain, GainPattern, Hpf, HpfPattern, Invert, Lpf, LpfPattern,
-        Mask, Onset, OnsetPattern, Pan, PanPattern, Pedal, Pitch, PitchPattern, PulseWidth,
-        PulseWidthPattern, Rand, Rate, RatePattern, Res, ResPattern, Rev, Reverb, ReverbDamp,
-        ReverbDampPattern, ReverbPattern, ReverbRoom, ReverbRoomPattern, Roll, Shift, Slice,
-        SliceIdxPattern, SlicePattern, Slow, Sometimes, Stack, Stream, Strum, Transpose,
-        TransposePattern, TunedPitch, TunedPitchPattern, When, Within,
-    };
-
-    macro_rules! recurse {
-        ($inner:expr) => {
-            Box::new(rewrite_pitch_with_tuning(*$inner, table))
-        };
-    }
-
-    match pattern {
-        Pitch { semitones, inner } => TunedPitch {
-            semitones,
-            tuning: table.clone(),
-            inner: recurse!(inner),
-        },
-        PitchPattern { control, inner } => TunedPitchPattern {
-            control,
-            tuning: table.clone(),
-            inner: recurse!(inner),
-        },
-        TunedPitch {
-            semitones, inner, ..
-        } => TunedPitch {
-            semitones,
-            tuning: table.clone(),
-            inner: recurse!(inner),
-        },
-        TunedPitchPattern { control, inner, .. } => TunedPitchPattern {
-            control,
-            tuning: table.clone(),
-            inner: recurse!(inner),
-        },
-        Cycle(c) => Cycle(c),
-        Stream(s) => Stream(s),
-        ExplicitCycle {
-            origin_cycle,
-            stream,
-        } => ExplicitCycle {
-            origin_cycle,
-            stream,
-        },
-        Rand { site_salt } => Rand { site_salt },
-        Stack(layers) => Stack(
-            layers
-                .into_iter()
-                .map(|layer| rewrite_pitch_with_tuning(layer, table))
-                .collect(),
-        ),
-        Every {
-            period,
-            transform,
-            inner,
-        } => Every {
-            period,
-            transform,
-            inner: recurse!(inner),
-        },
-        When {
-            period,
-            offset,
-            transform,
-            inner,
-        } => When {
-            period,
-            offset,
-            transform,
-            inner: recurse!(inner),
-        },
-        Sometimes {
-            site_salt,
-            transform,
-            inner,
-        } => Sometimes {
-            site_salt,
-            transform,
-            inner: recurse!(inner),
-        },
-        Within {
-            start,
-            end,
-            transform,
-            inner,
-        } => Within {
-            start,
-            end,
-            transform,
-            inner: recurse!(inner),
-        },
-        Mask { gate, inner } => Mask {
-            gate,
-            inner: recurse!(inner),
-        },
-        Strum { inner } => Strum {
-            inner: recurse!(inner),
-        },
-        Roll { steps, inner } => Roll {
-            steps,
-            inner: recurse!(inner),
-        },
-        Arp {
-            steps,
-            direction,
-            inner,
-        } => Arp {
-            steps,
-            direction,
-            inner: recurse!(inner),
-        },
-        Invert { count, inner } => Invert {
-            count,
-            inner: recurse!(inner),
-        },
-        Drop { count, inner } => Drop {
-            count,
-            inner: recurse!(inner),
-        },
-        Degrees { collection, inner } => Degrees {
-            collection,
-            inner: recurse!(inner),
-        },
-        Transpose { semitones, inner } => Transpose {
-            semitones,
-            inner: recurse!(inner),
-        },
-        TransposePattern { control, inner } => TransposePattern {
-            control,
-            inner: recurse!(inner),
-        },
-        Fast { factor, inner } => Fast {
-            factor,
-            inner: recurse!(inner),
-        },
-        Slow { factor, inner } => Slow {
-            factor,
-            inner: recurse!(inner),
-        },
-        Shift { offset, inner } => Shift {
-            offset,
-            inner: recurse!(inner),
-        },
-        Rev { inner } => Rev {
-            inner: recurse!(inner),
-        },
-        Chaos { site_salt, inner } => Chaos {
-            site_salt,
-            inner: recurse!(inner),
-        },
-        Gain { factor, inner } => Gain {
-            factor,
-            inner: recurse!(inner),
-        },
-        GainPattern { control, inner } => GainPattern {
-            control,
-            inner: recurse!(inner),
-        },
-        Delay { mix, inner } => Delay {
-            mix,
-            inner: recurse!(inner),
-        },
-        DelayPattern { control, inner } => DelayPattern {
-            control,
-            inner: recurse!(inner),
-        },
-        DelayTime { time, inner } => DelayTime {
-            time,
-            inner: recurse!(inner),
-        },
-        DelayTimePattern { control, inner } => DelayTimePattern {
-            control,
-            inner: recurse!(inner),
-        },
-        DelayFeedback { feedback, inner } => DelayFeedback {
-            feedback,
-            inner: recurse!(inner),
-        },
-        DelayFeedbackPattern { control, inner } => DelayFeedbackPattern {
-            control,
-            inner: recurse!(inner),
-        },
-        Hpf { cutoff_hz, inner } => Hpf {
-            cutoff_hz,
-            inner: recurse!(inner),
-        },
-        HpfPattern { control, inner } => HpfPattern {
-            control,
-            inner: recurse!(inner),
-        },
-        Lpf { cutoff_hz, inner } => Lpf {
-            cutoff_hz,
-            inner: recurse!(inner),
-        },
-        LpfPattern { control, inner } => LpfPattern {
-            control,
-            inner: recurse!(inner),
-        },
-        Reverb { mix, inner } => Reverb {
-            mix,
-            inner: recurse!(inner),
-        },
-        ReverbPattern { control, inner } => ReverbPattern {
-            control,
-            inner: recurse!(inner),
-        },
-        ReverbRoom { room, inner } => ReverbRoom {
-            room,
-            inner: recurse!(inner),
-        },
-        ReverbRoomPattern { control, inner } => ReverbRoomPattern {
-            control,
-            inner: recurse!(inner),
-        },
-        ReverbDamp { damp, inner } => ReverbDamp {
-            damp,
-            inner: recurse!(inner),
-        },
-        ReverbDampPattern { control, inner } => ReverbDampPattern {
-            control,
-            inner: recurse!(inner),
-        },
-        Res { resonance, inner } => Res {
-            resonance,
-            inner: recurse!(inner),
-        },
-        ResPattern { control, inner } => ResPattern {
-            control,
-            inner: recurse!(inner),
-        },
-        Drive { drive, inner } => Drive {
-            drive,
-            inner: recurse!(inner),
-        },
-        DrivePattern { control, inner } => DrivePattern {
-            control,
-            inner: recurse!(inner),
-        },
-        Chorus { mix, inner } => Chorus {
-            mix,
-            inner: recurse!(inner),
-        },
-        ChorusPattern { control, inner } => ChorusPattern {
-            control,
-            inner: recurse!(inner),
-        },
-        ChorusDepth { depth, inner } => ChorusDepth {
-            depth,
-            inner: recurse!(inner),
-        },
-        ChorusDepthPattern { control, inner } => ChorusDepthPattern {
-            control,
-            inner: recurse!(inner),
-        },
-        ChorusRate { rate, inner } => ChorusRate {
-            rate,
-            inner: recurse!(inner),
-        },
-        ChorusRatePattern { control, inner } => ChorusRatePattern {
-            control,
-            inner: recurse!(inner),
-        },
-        PulseWidth { pulse_width, inner } => PulseWidth {
-            pulse_width,
-            inner: recurse!(inner),
-        },
-        PulseWidthPattern { control, inner } => PulseWidthPattern {
-            control,
-            inner: recurse!(inner),
-        },
-        Pan { amount, inner } => Pan {
-            amount,
-            inner: recurse!(inner),
-        },
-        PanPattern { control, inner } => PanPattern {
-            control,
-            inner: recurse!(inner),
-        },
-        Compressor { mix, inner } => Compressor {
-            mix,
-            inner: recurse!(inner),
-        },
-        CompressorPattern { control, inner } => CompressorPattern {
-            control,
-            inner: recurse!(inner),
-        },
-        CompressorThreshold { threshold, inner } => CompressorThreshold {
-            threshold,
-            inner: recurse!(inner),
-        },
-        CompressorThresholdPattern { control, inner } => CompressorThresholdPattern {
-            control,
-            inner: recurse!(inner),
-        },
-        CompressorRatio { ratio, inner } => CompressorRatio {
-            ratio,
-            inner: recurse!(inner),
-        },
-        CompressorRatioPattern { control, inner } => CompressorRatioPattern {
-            control,
-            inner: recurse!(inner),
-        },
-        Rate { factor, inner } => Rate {
-            factor,
-            inner: recurse!(inner),
-        },
-        RatePattern { control, inner } => RatePattern {
-            control,
-            inner: recurse!(inner),
-        },
-        Onset { onset_index, inner } => Onset {
-            onset_index,
-            inner: recurse!(inner),
-        },
-        OnsetPattern { control, inner } => OnsetPattern {
-            control,
-            inner: recurse!(inner),
-        },
-        Slice { start, end, inner } => Slice {
-            start,
-            end,
-            inner: recurse!(inner),
-        },
-        SlicePattern {
-            start_control,
-            end_control,
-            inner,
-        } => SlicePattern {
-            start_control,
-            end_control,
-            inner: recurse!(inner),
-        },
-        SliceIdxPattern {
-            control,
-            segments,
-            inner,
-        } => SliceIdxPattern {
-            control,
-            segments,
-            inner: recurse!(inner),
-        },
-        Pedal {
-            pedal_program,
-            inner,
-        } => Pedal {
-            pedal_program,
-            inner: recurse!(inner),
-        },
-    }
 }
 
 /// Maps an integer semitone step onto a ratio from `table`, wrapping beyond one
