@@ -53,6 +53,17 @@ impl From<SclError> for EvalError {
 /// The file stem (e.g. `"just_intonation"` from `just_intonation.scl`) becomes
 /// the returned tuning's name.
 ///
+/// # Examples
+///
+/// ```no_run
+/// use std::path::Path;
+/// use orpheus_lang::parse_scala_file;
+///
+/// let path = Path::new("just_intonation.scl");
+/// let tuning = parse_scala_file(path).unwrap();
+/// assert_eq!(tuning.name(), "just_intonation");
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`SclError::Io`] if the path cannot be read, and any of the other
@@ -67,6 +78,24 @@ pub fn parse_scala_file(path: &Path) -> Result<TuningValue, SclError> {
 }
 
 /// Parses a Scala `.scl` document from an in-memory string.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::parse_scala_source;
+///
+/// let source = "\
+/// ! A test scale
+/// Test scale
+/// 3
+/// 5/4
+/// 3/2
+/// 2/1
+/// ";
+/// let tuning = parse_scala_source(source, "test").unwrap();
+/// assert_eq!(tuning.ratios().len(), 4); // 1.0 is implicitly added
+/// assert_eq!(tuning.period(), 2.0);
+/// ```
 ///
 /// # Errors
 ///
