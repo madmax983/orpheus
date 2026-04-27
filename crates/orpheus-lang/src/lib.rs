@@ -57,7 +57,7 @@ pub use pedal::{PedalGraph, PedalValue, SignalKind, ValidatedPedalPlan};
 pub use repl::{run_stdio, run_stdio_with_engine, run_stdio_with_engine_and_path};
 pub use scad_export::export_number_pattern_to_scad;
 pub use srt::{export_number_pattern_to_srt, export_sample_pattern_to_srt};
-pub use stats::{number_pattern_stats, sample_pattern_stats};
+pub use stats::{number_pattern_stats, sample_pattern_stats, tuning_stats};
 pub use svg::{export_number_pattern_to_svg, export_sample_pattern_to_svg};
 pub use tracker::{export_number_pattern_to_tracker, export_sample_pattern_to_tracker};
 pub use tui::{render_initial_frame_for_test, run_with_engine, run_with_engine_and_path};

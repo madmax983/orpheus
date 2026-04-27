@@ -101,20 +101,20 @@ pub enum BuiltinKind {
 /// required arity.
 #[derive(Clone, Debug)]
 pub struct BuiltinFn {
-    pub(crate) kind: BuiltinKind,
-    pub(crate) bound_args: Vec<Value>,
-    pub(crate) site_salt: Option<u64>,
+    pub kind: BuiltinKind,
+    pub bound_args: Vec<Value>,
+    pub site_salt: Option<u64>,
 }
 
 /// A user-defined top-level curried function with captured bindings.
 #[derive(Clone, Debug)]
 pub struct UserFn {
-    pub(crate) mode: ReplMode,
-    pub(crate) remaining_params: Vec<String>,
-    pub(crate) body: Expr,
-    pub(crate) captured_bindings: BTreeMap<String, Value>,
-    pub(crate) expr_site_salts: BTreeMap<usize, u64>,
-    pub(crate) depth: usize,
+    pub mode: ReplMode,
+    pub remaining_params: Vec<String>,
+    pub body: Expr,
+    pub captured_bindings: BTreeMap<String, Value>,
+    pub expr_site_salts: BTreeMap<usize, u64>,
+    pub depth: usize,
 }
 
 /// A callable runtime value, either builtin or user-defined.
@@ -4126,7 +4126,7 @@ impl ControlPatternKind {
     }
 
     fn validate_pulse_width(value: f64) -> Result<(), EvalError> {
-        if !value.is_finite() || !(0.0..1.0).contains(&value) {
+        if !value.is_finite() || value <= 0.0 || value >= 1.0 {
             return Err(EvalError::new(
                 "`pw` requires finite control values in the open interval (0, 1)",
             ));

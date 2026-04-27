@@ -46,6 +46,8 @@ pub enum Type {
     ArpDirection,
     /// A collection of pitch classes that define a musical chord or scale.
     PitchClassSet,
+    /// A microtonal tuning definition.
+    Tuning,
     /// Textual data.
     String,
     /// A callable operation mapping arguments to a return value.
@@ -127,6 +129,7 @@ impl Display for Type {
             Self::Duration => formatter.write_str("Duration"),
             Self::ArpDirection => formatter.write_str("ArpDirection"),
             Self::PitchClassSet => formatter.write_str("PitchClassSet"),
+            Self::Tuning => formatter.write_str("Tuning"),
             Self::String => formatter.write_str("String"),
             Self::Function(args, ret) => {
                 formatter.write_str("Function(")?;
