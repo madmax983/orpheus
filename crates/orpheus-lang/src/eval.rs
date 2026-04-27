@@ -1794,7 +1794,7 @@ right = sometimes(fast(2), cp hh)";
             crate::value::NumberPatternValue::from_events(vec![event]),
         );
         let res = super::extract_constant_number_value(val, "expected number");
-        assert_eq!(res.unwrap(), 42.0);
+        assert!((res.unwrap() - 42.0).abs() < f64::EPSILON);
     }
 
     #[test]
