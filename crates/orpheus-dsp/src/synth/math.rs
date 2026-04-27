@@ -36,6 +36,22 @@ impl PhaseAccumulator {
     }
 
     /// Advances the phase by `step` turns and returns the wrapped phase.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::PhaseAccumulator;
+    ///
+    /// let mut phase = PhaseAccumulator::new();
+    ///
+    /// // Advance by quarter turns
+    /// assert_eq!(phase.advance(0.25), 0.25);
+    /// assert_eq!(phase.advance(0.25), 0.50);
+    /// assert_eq!(phase.advance(0.25), 0.75);
+    ///
+    /// // Wrap around the unit interval
+    /// assert_eq!(phase.advance(0.25), 0.0);
+    /// ```
     pub fn advance(&mut self, step: f32) -> f32 {
         if !step.is_finite() {
             return self.phase;

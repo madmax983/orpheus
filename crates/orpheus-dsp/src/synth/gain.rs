@@ -25,6 +25,20 @@ impl Gain {
     pub const fn reset(&mut self) {}
 
     /// Applies linear gain to a single sample.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::Gain;
+    ///
+    /// let mut gain = Gain::new();
+    ///
+    /// // Attenuate by half
+    /// assert_eq!(gain.process(1.0, 0.5), 0.5);
+    ///
+    /// // Phase inversion
+    /// assert_eq!(gain.process(1.0, -1.0), -1.0);
+    /// ```
     #[must_use]
     pub fn process(&mut self, input: f32, amount: f32) -> f32 {
         input * amount
