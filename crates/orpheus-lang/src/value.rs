@@ -126,6 +126,70 @@ pub enum FunctionValue {
     User(UserFn),
 }
 
+impl FunctionValue {
+    #[doc(hidden)]
+    #[must_use]
+    pub fn explain(&self, binding_name: &str) -> String {
+        use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
+        use crossterm::style::Stylize;
+
+        let title = format!(
+            "{} {}",
+            "Function Plan:".cyan().bold(),
+            binding_name.yellow()
+        );
+
+        let mut table = Table::new();
+        table.load_preset(UTF8_BORDERS_ONLY);
+        table.set_header(vec![
+            Cell::new("Property")
+                .fg(comfy_table::Color::White)
+                .add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Value")
+                .fg(comfy_table::Color::White)
+                .add_attribute(comfy_table::Attribute::Bold),
+        ]);
+
+        match self {
+            Self::Builtin(builtin) => {
+                table.add_row(vec![
+                    Cell::new("Type").fg(comfy_table::Color::Cyan),
+                    Cell::new("Builtin").fg(comfy_table::Color::Yellow),
+                ]);
+                table.add_row(vec![
+                    Cell::new("Kind").fg(comfy_table::Color::Cyan),
+                    Cell::new(format!("{:?}", builtin.kind)).fg(comfy_table::Color::Green),
+                ]);
+                table.add_row(vec![
+                    Cell::new("Bound Args").fg(comfy_table::Color::Cyan),
+                    Cell::new(builtin.bound_args.len().to_string()).fg(comfy_table::Color::Magenta),
+                ]);
+            }
+            Self::User(user) => {
+                table.add_row(vec![
+                    Cell::new("Type").fg(comfy_table::Color::Cyan),
+                    Cell::new("User Defined").fg(comfy_table::Color::Yellow),
+                ]);
+                table.add_row(vec![
+                    Cell::new("Params").fg(comfy_table::Color::Cyan),
+                    Cell::new(user.remaining_params.join(", ")).fg(comfy_table::Color::Green),
+                ]);
+                table.add_row(vec![
+                    Cell::new("Captured Bindings").fg(comfy_table::Color::Cyan),
+                    Cell::new(user.captured_bindings.len().to_string())
+                        .fg(comfy_table::Color::Magenta),
+                ]);
+                table.add_row(vec![
+                    Cell::new("Depth").fg(comfy_table::Color::Cyan),
+                    Cell::new(user.depth.to_string()).fg(comfy_table::Color::Magenta),
+                ]);
+            }
+        }
+
+        format!("{title}\n{table}")
+    }
+}
+
 /// A gate pattern passed to structural combinators like `mask`.
 #[derive(Clone, Debug)]
 pub enum GatePatternValue {
@@ -1446,6 +1510,41 @@ pub struct SamplePatternValue {
 }
 
 impl SamplePatternValue {
+    #[doc(hidden)]
+    #[must_use]
+    pub fn explain(&self, binding_name: &str) -> String {
+        use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
+        use crossterm::style::Stylize;
+
+        let title = format!(
+            "{} {}",
+            "Sample Pattern Plan:".cyan().bold(),
+            binding_name.yellow()
+        );
+
+        let mut table = Table::new();
+        table.load_preset(UTF8_BORDERS_ONLY);
+        table.set_header(vec![
+            Cell::new("Property")
+                .fg(comfy_table::Color::White)
+                .add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Value")
+                .fg(comfy_table::Color::White)
+                .add_attribute(comfy_table::Attribute::Bold),
+        ]);
+
+        table.add_row(vec![
+            Cell::new("Type").fg(comfy_table::Color::Cyan),
+            Cell::new("Lazy Pattern Tree").fg(comfy_table::Color::Yellow),
+        ]);
+        table.add_row(vec![
+            Cell::new("Event Type").fg(comfy_table::Color::Cyan),
+            Cell::new("SampleEvent").fg(comfy_table::Color::Green),
+        ]);
+
+        format!("{title}\n{table}")
+    }
+
     pub(crate) fn atom(sample: &str) -> Self {
         Self::from_nodes(vec![PatternNode::atom(SampleEvent::named(sample))])
     }
@@ -2098,6 +2197,41 @@ pub struct NumberPatternValue {
 }
 
 impl NumberPatternValue {
+    #[doc(hidden)]
+    #[must_use]
+    pub fn explain(&self, binding_name: &str) -> String {
+        use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
+        use crossterm::style::Stylize;
+
+        let title = format!(
+            "{} {}",
+            "Number Pattern Plan:".cyan().bold(),
+            binding_name.yellow()
+        );
+
+        let mut table = Table::new();
+        table.load_preset(UTF8_BORDERS_ONLY);
+        table.set_header(vec![
+            Cell::new("Property")
+                .fg(comfy_table::Color::White)
+                .add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Value")
+                .fg(comfy_table::Color::White)
+                .add_attribute(comfy_table::Attribute::Bold),
+        ]);
+
+        table.add_row(vec![
+            Cell::new("Type").fg(comfy_table::Color::Cyan),
+            Cell::new("Lazy Pattern Tree").fg(comfy_table::Color::Yellow),
+        ]);
+        table.add_row(vec![
+            Cell::new("Event Type").fg(comfy_table::Color::Cyan),
+            Cell::new("f64 (Number)").fg(comfy_table::Color::Green),
+        ]);
+
+        format!("{title}\n{table}")
+    }
+
     pub(crate) fn constant(value: f64) -> Self {
         Self::from_nodes(vec![PatternNode::atom(value)])
     }
