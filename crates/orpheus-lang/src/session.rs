@@ -365,6 +365,7 @@ impl ReplSession {
             "roll" => self.roll_binding(args),
             "stats" => self.stats_binding(args),
             "explain" => self.explain_binding(args),
+            "help" => Self::help_command(args),
             "env" => self.env_command(args),
             "export" => {
                 if args.starts_with("stems") {
@@ -504,6 +505,84 @@ impl ReplSession {
         } else {
             Err(format!("no binding named `{binding_name}`"))
         }
+    }
+
+    fn help_command(args: &str) -> Result<String, String> {
+        if !args.trim().is_empty() {
+            return Err("usage: :help (no arguments)".to_owned());
+        }
+
+        let mut table = comfy_table::Table::new();
+        table.load_preset(comfy_table::presets::UTF8_BORDERS_ONLY);
+        table.set_header(vec![
+            comfy_table::Cell::new("Command").fg(comfy_table::Color::DarkGrey),
+            comfy_table::Cell::new("Description").fg(comfy_table::Color::DarkGrey),
+        ]);
+
+        let commands = [
+            (":env", "List all available bindings in the environment"),
+            (
+                ":explain <binding>",
+                "Explain the internal structure of a pattern or pedal",
+            ),
+            (
+                ":stats <binding>",
+                "Show event density and statistics for a pattern",
+            ),
+            (
+                ":render <binding> <path> <cycles>",
+                "Render a pattern to an audio file (.wav/.flac)",
+            ),
+            (
+                ":export <binding> <path> <cycles>",
+                "Export a pattern to various formats (MIDI, SVG, etc.)",
+            ),
+            (
+                ":export stems <binding> <dir> <cycles>",
+                "Export individual track stems to a directory",
+            ),
+            (
+                ":roll <binding>",
+                "Display an ASCII piano roll of a pattern",
+            ),
+            (":tempo <bpm>", "Set the global tempo in beats per minute"),
+            (
+                ":ref_freq <hz>",
+                "Set the global reference frequency for tuning",
+            ),
+            (
+                ":samples <dir>",
+                "Load additional audio samples from a directory",
+            ),
+            (
+                ":reload-samples",
+                "Reload the most recently loaded sample directory",
+            ),
+            (":open <path>", "Open and evaluate an external .ode script"),
+            (":track ...", "Manage mixer tracks (new, bind, level, mute)"),
+            (":bus ...", "Manage mixer buses and effects (new, fx)"),
+            (":send ...", "Manage track effect sends to buses"),
+            (
+                ":mixer",
+                "Display the current state of tracks, buses, and sends",
+            ),
+            (":midi ...", "Manage MIDI inputs and outputs"),
+            (":play", "Start the transport clock"),
+            (":stop", "Stop the transport clock"),
+            (":help", "List available REPL commands and descriptions"),
+            (":quit", "Exit the REPL session"),
+        ];
+
+        for (cmd, desc) in commands {
+            table.add_row(vec![
+                comfy_table::Cell::new(cmd).fg(comfy_table::Color::Cyan),
+                comfy_table::Cell::new(desc).fg(comfy_table::Color::Green),
+            ]);
+        }
+
+        Ok(format!(
+            "\n\x1b[38;5;14m\x1b[1mREPL Commands:\x1b[0m\n{table}"
+        ))
     }
 
     fn env_command(&self, args: &str) -> Result<String, String> {
@@ -1735,6 +1814,23 @@ mod tests {
 
     fn temp_svg_path() -> std::path::PathBuf {
         std::env::temp_dir().join(format!("orpheus-export-{}.svg", unique_temp_suffix()))
+    }
+
+    #[test]
+    fn help_command_prints_table_of_commands() {
+        let mut session = ReplSession::new();
+        let output = session.eval_line(":help").unwrap();
+        assert!(output.contains("REPL Commands:"));
+        assert!(output.contains(":env"));
+        assert!(output.contains(":explain <binding>"));
+        assert!(output.contains("─")); // comfy-table border char
+    }
+
+    #[test]
+    fn help_command_rejects_arguments() {
+        let mut session = ReplSession::new();
+        let error = session.eval_line(":help me").unwrap_err();
+        assert_eq!(error, "usage: :help (no arguments)");
     }
 
     #[test]
