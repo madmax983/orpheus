@@ -133,7 +133,8 @@ pub fn parse_scala_source(source: &str, name: &str) -> Result<TuningValue, SclEr
         });
     }
 
-    let mut ratios = Vec::with_capacity(expected + 1);
+    // 👺 Havoc: Prevent OOM on malformed or malicious note counts
+    let mut ratios = Vec::with_capacity(expected.saturating_add(1).min(1024));
     ratios.push(1.0);
     for entry in &entries[..entries.len().saturating_sub(1)] {
         ratios.push(parse_scala_entry(entry)?);
