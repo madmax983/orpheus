@@ -426,11 +426,21 @@ impl MixerState {
         let mut track_table = Table::new();
         track_table.load_preset(UTF8_BORDERS_ONLY);
         track_table.set_header(vec![
-            Cell::new("Track").fg(comfy_table::Color::DarkGrey),
-            Cell::new("Binding").fg(comfy_table::Color::DarkGrey),
-            Cell::new("Level").fg(comfy_table::Color::DarkGrey),
-            Cell::new("Muted").fg(comfy_table::Color::DarkGrey),
-            Cell::new("Sends").fg(comfy_table::Color::DarkGrey),
+            Cell::new("Track")
+                .fg(comfy_table::Color::White)
+                .add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Binding")
+                .fg(comfy_table::Color::White)
+                .add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Level")
+                .fg(comfy_table::Color::White)
+                .add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Muted")
+                .fg(comfy_table::Color::White)
+                .add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Sends")
+                .fg(comfy_table::Color::White)
+                .add_attribute(comfy_table::Attribute::Bold),
         ]);
 
         if self.has_explicit_bound_tracks() {
@@ -479,8 +489,12 @@ impl MixerState {
             let mut bus_table = Table::new();
             bus_table.load_preset(UTF8_BORDERS_ONLY);
             bus_table.set_header(vec![
-                Cell::new("Bus").fg(comfy_table::Color::DarkGrey),
-                Cell::new("Effect").fg(comfy_table::Color::DarkGrey),
+                Cell::new("Bus")
+                    .fg(comfy_table::Color::White)
+                    .add_attribute(comfy_table::Attribute::Bold),
+                Cell::new("Effect")
+                    .fg(comfy_table::Color::White)
+                    .add_attribute(comfy_table::Attribute::Bold),
             ]);
 
             for (bus_name, bus) in &self.buses {
