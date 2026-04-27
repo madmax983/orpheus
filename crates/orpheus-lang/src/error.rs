@@ -104,3 +104,23 @@ impl From<std::fmt::Error> for EvalError {
         Self::new("an error occurred when formatting an argument")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagnostics::{LoadError, TypeError};
+
+    #[test]
+    fn type_error_converts_to_eval_error() {
+        let type_err = TypeError::new("mock type error");
+        let eval_err: EvalError = type_err.into();
+        assert!(eval_err.to_string().contains("mock type error"));
+    }
+
+    #[test]
+    fn load_error_converts_to_eval_error() {
+        let load_err = LoadError::new("mock load error");
+        let eval_err: EvalError = load_err.into();
+        assert!(eval_err.to_string().contains("mock load error"));
+    }
+}

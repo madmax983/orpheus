@@ -36,6 +36,8 @@ pub enum Type {
     Sample,
     /// A behavior-first pedal graph value.
     Pedal,
+    /// A tuning system defining pitch relationships.
+    Tuning,
     /// A discrete musical pitch or frequency representation.
     Note,
     /// A generic numeric value, primarily used for DSP parameters like gain or filter cutoff.
@@ -122,6 +124,7 @@ impl Display for Type {
             Self::Pattern(inner) => write!(formatter, "Pattern<{inner}>"),
             Self::Sample => formatter.write_str("Sample"),
             Self::Pedal => formatter.write_str("Pedal"),
+            Self::Tuning => formatter.write_str("Tuning"),
             Self::Note => formatter.write_str("Note"),
             Self::Number => formatter.write_str("Number"),
             Self::Duration => formatter.write_str("Duration"),
