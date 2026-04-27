@@ -89,6 +89,7 @@ impl TransportSnapshot {
 #[derive(Debug, Default)]
 struct SharedTransport {
     publish_epoch: AtomicU64,
+    poisoned: AtomicBool,
     current_frame: AtomicU64,
     current_cycle_start_frame: AtomicU64,
     frames_per_cycle: AtomicU64,
@@ -98,8 +99,25 @@ struct SharedTransport {
     has_pending_routing: AtomicBool,
 }
 
+struct PublishGuard<'a> {
+    transport: &'a SharedTransport,
+    completed: bool,
+}
+
+impl Drop for PublishGuard<'_> {
+    fn drop(&mut self) {
+        if !self.completed {
+            self.transport.poisoned.store(true, Ordering::Release);
+        }
+    }
+}
+
 impl SharedTransport {
     fn publish(&self, core: &EngineCore) {
+        let mut guard = PublishGuard {
+            transport: self,
+            completed: false,
+        };
         // Start the write transaction. Relaxed is sufficient because the
         // atomic fence handles the required release semantics.
         self.publish_epoch.fetch_add(1, Ordering::Relaxed);
@@ -122,10 +140,24 @@ impl SharedTransport {
         // Commit the write transaction.
         std::sync::atomic::fence(Ordering::Release);
         self.publish_epoch.fetch_add(1, Ordering::Relaxed);
+        guard.completed = true;
     }
 
     fn snapshot(&self) -> TransportSnapshot {
         loop {
+            if self.poisoned.load(Ordering::Acquire) {
+                return TransportSnapshot {
+                    publish_epoch: 0,
+                    current_frame: 0,
+                    current_cycle_start_frame: 0,
+                    frames_per_cycle: 44100, // safe default
+                    tempo_bpm_bits: 120.0_f32.to_bits(),
+                    is_playing: false,
+                    has_pending_pattern: false,
+                    has_pending_routing: false,
+                };
+            }
+
             let start_epoch = self.publish_epoch.load(Ordering::Relaxed);
             std::sync::atomic::fence(Ordering::Acquire);
 

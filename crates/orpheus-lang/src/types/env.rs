@@ -16,6 +16,7 @@ use crate::types::{Type, TypeVarId};
 /// whether `t` is a `Sample` or a `Number`. During type inference, the scheme
 /// is instantiated to produce a concrete type for each specific usage.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) struct TypeScheme {
     pub vars: Vec<TypeVarId>,
     pub ty: Type,
@@ -36,6 +37,7 @@ impl TypeScheme {
 /// Stores both the predefined built-in primitives and any user-defined
 /// variables created during a session.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) struct TypeEnv {
     entries: BTreeMap<String, TypeScheme>,
 }
