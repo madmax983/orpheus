@@ -1295,13 +1295,13 @@ mod tests {
     ) -> Result<Vec<Event<SampleEvent>>, super::EvalError> {
         value
             .as_sample_pattern()
-            .unwrap()
+            .expect("expected sample pattern")
             .try_query(&render_span(cycle_count)?)
     }
 
     fn sample_names_in_cycle(events: &[Event<SampleEvent>], cycle: i128) -> Vec<String> {
-        let cycle_start = Rational::checked_from_parts(cycle, 1).unwrap();
-        let cycle_end = Rational::checked_from_parts(cycle + 1, 1).unwrap();
+        let cycle_start = Rational::checked_from_parts(cycle, 1).expect("valid rational");
+        let cycle_end = Rational::checked_from_parts(cycle + 1, 1).expect("valid rational");
         events
             .iter()
             .filter(|event| event.part.start() >= &cycle_start && event.part.end() <= &cycle_end)
@@ -1310,7 +1310,7 @@ mod tests {
     }
 
     fn find_call_expr_site_salt(source: &str, binding_name: &str) -> u64 {
-        let parsed = parse_module(source).unwrap();
+        let parsed = parse_module(source).expect("failed to parse module");
         let evaluator = Evaluator::new(ReplMode::Loose, &parsed);
         let expr = parsed
             .statements
@@ -1319,8 +1319,8 @@ mod tests {
                 crate::Stmt::Binding { name, expr, .. } if name == binding_name => Some(expr),
                 crate::Stmt::Binding { .. } => None,
             })
-            .unwrap();
-        evaluator.expr_site_salt(expr).unwrap()
+            .expect("expected binding to exist");
+        evaluator.expr_site_salt(expr).expect("expected salt")
     }
 
     #[test]
@@ -1336,11 +1336,11 @@ right = sometimes(fast(2), cp hh)";
                     != sometimes_applies_on_cycle(*cycle, right_salt)
             })
             .expect("expected separate call sites to diverge on some cycle");
-        let module = eval_module(source, ReplMode::Loose).unwrap();
-        let span_cycles = u64::try_from(cycle + 1).unwrap();
-        let left_events = sample_events_for_span(module.get("left").unwrap(), span_cycles).unwrap();
+        let module = eval_module(source, ReplMode::Loose).expect("failed to eval");
+        let span_cycles = u64::try_from(cycle + 1).expect("valid span");
+        let left_events = sample_events_for_span(module.get("left").expect("left bound"), span_cycles).expect("events");
         let right_events =
-            sample_events_for_span(module.get("right").unwrap(), span_cycles).unwrap();
+            sample_events_for_span(module.get("right").expect("right bound"), span_cycles).expect("events");
         let left_names = sample_names_in_cycle(&left_events, cycle);
         let right_names = sample_names_in_cycle(&right_events, cycle);
 
@@ -1645,13 +1645,14 @@ right = sometimes(fast(2), cp hh)";
     }
 
     #[test]
-    fn eval_apply_user_function_currying_success() {
-        let result = eval_module("f x y = x y\npartial = f(1)", ReplMode::Loose).unwrap();
-        let partial = result.get("partial").unwrap();
+    fn eval_apply_user_function_currying_success() -> Result<(), Box<dyn std::error::Error>> {
+        let result = eval_module("f x y = x y\npartial = f(1)", ReplMode::Loose)?;
+        let partial = result.get("partial").expect("expected partial");
         assert!(matches!(
             partial,
             Value::Function(crate::value::FunctionValue::User(_))
         ));
+        Ok(())
     }
 
     #[test]
@@ -1738,39 +1739,43 @@ right = sometimes(fast(2), cp hh)";
     }
 
     #[test]
-    fn f64_to_rational_handles_fractional_floats() {
-        let r = super::f64_to_rational(0.123_456_789, "test").unwrap();
+    fn f64_to_rational_handles_fractional_floats() -> Result<(), super::EvalError> {
+        let r = super::f64_to_rational(0.123_456_789, "test")?;
         assert_eq!(r.numerator(), 123_456_789);
         assert_eq!(r.denominator(), 1_000_000_000);
+        Ok(())
     }
 
     #[test]
-    fn f64_to_rational_handles_negative_floats() {
-        let r = super::f64_to_rational(-1.25, "test").unwrap();
+    fn f64_to_rational_handles_negative_floats() -> Result<(), super::EvalError> {
+        let r = super::f64_to_rational(-1.25, "test")?;
         assert_eq!(r.numerator(), -5);
         assert_eq!(r.denominator(), 4);
 
-        let r2 = super::f64_to_rational(-0.75, "test").unwrap();
+        let r2 = super::f64_to_rational(-0.75, "test")?;
         assert_eq!(r2.numerator(), -3);
         assert_eq!(r2.denominator(), 4);
+        Ok(())
     }
 
     #[test]
-    fn f64_to_rational_handles_floats_without_fraction() {
-        let r = super::f64_to_rational(42.0, "test").unwrap();
+    fn f64_to_rational_handles_floats_without_fraction() -> Result<(), super::EvalError> {
+        let r = super::f64_to_rational(42.0, "test")?;
         assert_eq!(r.numerator(), 42);
         assert_eq!(r.denominator(), 1);
 
-        let r2 = super::f64_to_rational(-7.0, "test").unwrap();
+        let r2 = super::f64_to_rational(-7.0, "test")?;
         assert_eq!(r2.numerator(), -7);
         assert_eq!(r2.denominator(), 1);
+        Ok(())
     }
 
     #[test]
-    fn extract_string_value_handles_strings() {
+    fn extract_string_value_handles_strings() -> Result<(), super::EvalError> {
         let val = crate::value::Value::String("hello".into());
-        let res = super::extract_string_value(val, "error");
-        assert_eq!(res.unwrap(), "hello");
+        let res = super::extract_string_value(val, "error")?;
+        assert_eq!(res, "hello");
+        Ok(())
     }
 
     #[test]
@@ -1783,7 +1788,7 @@ right = sometimes(fast(2), cp hh)";
     }
 
     #[test]
-    fn extract_constant_number_value_handles_number_pattern() {
+    fn extract_constant_number_value_handles_number_pattern() -> Result<(), super::EvalError> {
         use orpheus_pattern::{Event, TimeSpan};
         let event = Event {
             whole: None,
@@ -1793,8 +1798,9 @@ right = sometimes(fast(2), cp hh)";
         let val = crate::value::Value::NumberPattern(
             crate::value::NumberPatternValue::from_events(vec![event]),
         );
-        let res = super::extract_constant_number_value(val, "expected number");
-        assert!((res.unwrap() - 42.0).abs() < f64::EPSILON);
+        let res = super::extract_constant_number_value(val, "expected number")?;
+        assert!((res - 42.0).abs() < f64::EPSILON);
+        Ok(())
     }
 
     #[test]

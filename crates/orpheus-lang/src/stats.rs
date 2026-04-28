@@ -217,6 +217,7 @@ pub fn number_pattern_stats(
 /// let stats = tuning_stats("t", tuning);
 /// println!("{stats}");
 /// ```
+#[must_use]
 pub fn tuning_stats(binding_name: &str, tuning: &TuningValue) -> String {
     use std::fmt::Write;
 
