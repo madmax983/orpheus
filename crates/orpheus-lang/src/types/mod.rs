@@ -57,6 +57,8 @@ pub enum Type {
     /// A type signifying no meaningful data. Usually represents side-effects
     /// or empty states.
     Unit,
+    /// A musical tuning scale system defining interval relationships.
+    Tuning,
 }
 
 impl Type {
@@ -140,6 +142,7 @@ impl Display for Type {
             }
             Self::Var(id) => write!(formatter, "t{}", id.0),
             Self::Unit => formatter.write_str("Unit"),
+            Self::Tuning => formatter.write_str("Tuning"),
         }
     }
 }
@@ -218,6 +221,7 @@ mod tests {
         assert_eq!(Type::PitchClassSet.to_string(), "PitchClassSet");
         assert_eq!(Type::String.to_string(), "String");
         assert_eq!(Type::Unit.to_string(), "Unit");
+        assert_eq!(Type::Tuning.to_string(), "Tuning");
 
         assert_eq!(Type::Var(TypeVarId::new(42)).to_string(), "t42");
         assert_eq!(Type::pattern(Type::Sample).to_string(), "Pattern<Sample>");

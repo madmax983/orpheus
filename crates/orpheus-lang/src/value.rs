@@ -4126,7 +4126,7 @@ impl ControlPatternKind {
     }
 
     fn validate_pulse_width(value: f64) -> Result<(), EvalError> {
-        if !value.is_finite() || !(0.0..1.0).contains(&value) {
+        if !value.is_finite() || value <= 0.0 || value >= 1.0 {
             return Err(EvalError::new(
                 "`pw` requires finite control values in the open interval (0, 1)",
             ));

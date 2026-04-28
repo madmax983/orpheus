@@ -16,14 +16,14 @@ use crate::types::{Type, TypeVarId};
 /// whether `t` is a `Sample` or a `Number`. During type inference, the scheme
 /// is instantiated to produce a concrete type for each specific usage.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct TypeScheme {
+pub(super) struct TypeScheme {
     pub vars: Vec<TypeVarId>,
     pub ty: Type,
 }
 
 impl TypeScheme {
     #[must_use]
-    pub(crate) const fn monomorphic(ty: Type) -> Self {
+    pub(super) const fn monomorphic(ty: Type) -> Self {
         Self {
             vars: Vec::new(),
             ty,
@@ -36,7 +36,7 @@ impl TypeScheme {
 /// Stores both the predefined built-in primitives and any user-defined
 /// variables created during a session.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct TypeEnv {
+pub(super) struct TypeEnv {
     entries: BTreeMap<String, TypeScheme>,
 }
 
@@ -46,9 +46,10 @@ impl TypeEnv {
     /// This includes fundamental sample identifiers (`bd`, `sn`), signal oscillators
     /// (`saw`, `tri`), and polymorphic temporal transforms (`fast`, `every`, `when`).
     ///
+    #[allow(clippy::too_many_lines)]
     #[must_use]
     #[doc(hidden)]
-    pub(crate) fn with_builtins() -> Self {
+    pub(super) fn with_builtins() -> Self {
         let mut env = Self {
             entries: BTreeMap::new(),
         };
@@ -133,6 +134,25 @@ impl TypeEnv {
         }
 
         env.insert(
+            "tuning",
+            TypeScheme::monomorphic(Type::function(
+                vec![Type::pattern(Type::Number)],
+                Type::Tuning,
+            )),
+        );
+        env.insert(
+            "load_scl",
+            TypeScheme::monomorphic(Type::function(vec![Type::String], Type::Tuning)),
+        );
+        env.insert(
+            "tune",
+            TypeScheme::monomorphic(Type::curried(
+                vec![Type::Tuning, Type::pattern(Type::Sample)],
+                Type::pattern(Type::Sample),
+            )),
+        );
+
+        env.insert(
             "rand",
             TypeScheme::monomorphic(Type::function(vec![], Type::pattern(Type::Number))),
         );
@@ -154,7 +174,7 @@ impl TypeEnv {
     /// This makes the variable available for subsequent type inferences in the same environment.
     ///
     #[doc(hidden)]
-    pub(crate) fn insert(&mut self, name: impl Into<String>, scheme: TypeScheme) {
+    pub(super) fn insert(&mut self, name: impl Into<String>, scheme: TypeScheme) {
         self.entries.insert(name.into(), scheme);
     }
 
@@ -165,11 +185,11 @@ impl TypeEnv {
     ///
     #[must_use]
     #[doc(hidden)]
-    pub(crate) fn get(&self, name: &str) -> Option<&TypeScheme> {
+    pub(super) fn get(&self, name: &str) -> Option<&TypeScheme> {
         self.entries.get(name)
     }
 
-    pub(crate) fn values(&self) -> impl Iterator<Item = &TypeScheme> {
+    pub(super) fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }
 }
