@@ -1,11 +1,3 @@
-**[AST Cloning Bottlenecks]**
-**Learning:** Extracting specific keys from owned module environments (like `type_bindings` or `value_bindings` in `orpheus-lang`) using `.get(&key).cloned()` forces expensive deep copies of complex, heavily-nested AST structures (`Type` and `Value`).
-**Action:** When transferring ownership of specific items out of a uniquely owned collection (e.g., an imported module during loading), use `.remove(&key)` instead of cloning.
-
-**[Intermediate Iteration Collect]**
-**Learning:** Chaining `.iter().map().collect()` to produce a `Vec` where size is known (like `layers.len()`) forces an intermediate collection vector if the resulting items could be pre-allocated properly. Although `collect()` may reserve capacity, manually pre-allocating a `Vec::with_capacity` and pushing reduces overhead when dealing with fallible operations (`Result`).
-**Action:** When evaluating child nodes into a collection, use a pre-allocated vector and a simple loop to reduce intermediate heap allocation overhead.
-**[Reserve Vector Capacity]**
-**Learning:** Appending items to a `Vec` inside a loop on hot paths (like Orpheus's evaluator) without pre-allocating capacity causes redundant heap re-allocations. In `eval.rs::append_unsorted_shifted`, `combined.push(new_event)` is called `base_events.len()` times but capacity isn't reserved.
-**Action:** Always use `.reserve(len)` before the loop when the exact number of elements to be added is known.
-**[sort_unstable_by instead of sort_by]**\n**Learning:** In Rust, `sort_by` allocates memory and requires extra overhead to guarantee that equal elements preserve their original relative order. For sorting pattern events in Orpheus, concurrent events often have no inherent order, making stable sorting unnecessary and slower on hot paths.\n**Action:** Use `sort_unstable_by` instead of `sort_by` for collections where the order of equal elements does not matter, to avoid allocations and reduce sorting overhead.
+**[Curried Function Allocation Optimization]**
+**Learning:** Passing structs containing pre-allocated vectors by reference to internal helpers forces new allocations and deep copies when modifying them.
+**Action:** When a public method takes `self` by value, consume it completely by passing it by value to internal helper functions. This transfers ownership and allows reusing existing internal vector allocations (e.g., via `.extend()`), eliminating redundant heap allocations and clones.

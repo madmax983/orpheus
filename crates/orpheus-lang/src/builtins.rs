@@ -266,7 +266,7 @@ impl BuiltinFn {
     }
 
     pub(crate) fn apply(self, args: Vec<Value>) -> Result<Value, EvalError> {
-        apply_builtin_function(&self, args)
+        apply_builtin_function(self, args)
     }
 }
 
@@ -302,35 +302,36 @@ impl BuiltinFn {
 /// if let Value::Function(FunctionValue::Builtin(func)) = fast_func {
 ///     // `fast` takes 2 arguments: a rate and a pattern.
 ///     // Applying only 1 argument (the rate) returns a new curried function.
-///     let curried = apply_builtin_function(&func, vec![bd]).unwrap();
+///     let curried = apply_builtin_function(func, vec![bd]).unwrap();
 ///     assert!(matches!(curried, Value::Function(_)));
 /// }
 /// ```
-pub fn apply_builtin_function(function: &BuiltinFn, args: Vec<Value>) -> Result<Value, EvalError> {
+pub fn apply_builtin_function(
+    mut function: BuiltinFn,
+    args: Vec<Value>,
+) -> Result<Value, EvalError> {
     let kind = function.kind;
-    // PRE-ALLOCATE: avoids extra heap allocations when combining bound arguments and explicit arguments.
-    let mut combined = Vec::with_capacity(function.bound_args.len() + args.len());
-    combined.extend_from_slice(&function.bound_args);
-    combined.extend(args);
 
-    if combined.len() < kind.arity() {
-        return Ok(Value::Function(FunctionValue::Builtin(BuiltinFn {
-            kind,
-            bound_args: combined,
-            site_salt: function.site_salt,
-        })));
+    // ⚡ Bolt: Reuse the existing `bound_args` allocation instead of cloning it into a new Vec
+    function.bound_args.extend(args);
+
+    if function.bound_args.len() < kind.arity() {
+        return Ok(Value::Function(FunctionValue::Builtin(function)));
     }
 
-    if combined.len() > kind.arity() {
+    if function.bound_args.len() > kind.arity() {
         return Err(EvalError::new(format!(
             "`{}` expected {} argument(s), got {}",
             kind.name(),
             kind.arity(),
-            combined.len()
+            function.bound_args.len()
         )));
     }
 
-    kind.execute(function, combined)
+    // ⚡ Bolt: Use `std::mem::take` to extract the `bound_args` Vec from the `function` without cloning,
+    // allowing us to pass both the `&function` reference and the owned args to `execute`.
+    let combined = std::mem::take(&mut function.bound_args);
+    kind.execute(&function, combined)
 }
 
 impl BuiltinKind {
