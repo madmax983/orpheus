@@ -16,14 +16,14 @@ use crate::types::{Type, TypeVarId};
 /// whether `t` is a `Sample` or a `Number`. During type inference, the scheme
 /// is instantiated to produce a concrete type for each specific usage.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct TypeScheme {
+pub struct TypeScheme {
     pub vars: Vec<TypeVarId>,
     pub ty: Type,
 }
 
 impl TypeScheme {
     #[must_use]
-    pub(crate) const fn monomorphic(ty: Type) -> Self {
+    pub const fn monomorphic(ty: Type) -> Self {
         Self {
             vars: Vec::new(),
             ty,
@@ -36,7 +36,7 @@ impl TypeScheme {
 /// Stores both the predefined built-in primitives and any user-defined
 /// variables created during a session.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct TypeEnv {
+pub struct TypeEnv {
     entries: BTreeMap<String, TypeScheme>,
 }
 
@@ -84,6 +84,14 @@ impl TypeEnv {
             )),
         );
         env.insert("degrees", degrees_scheme());
+
+        env.insert(
+            "tuning",
+            TypeScheme::monomorphic(Type::function(
+                vec![Type::pattern(Type::Number)],
+                Type::Tuning,
+            )),
+        );
 
         for name in [
             "ionian",

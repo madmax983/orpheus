@@ -437,6 +437,7 @@ impl Inferencer {
             | Type::Duration
             | Type::ArpDirection
             | Type::PitchClassSet
+            | Type::Tuning
             | Type::String
             | Type::Unit => false,
         }
@@ -461,6 +462,7 @@ impl Inferencer {
             Type::Duration => Type::Duration,
             Type::ArpDirection => Type::ArpDirection,
             Type::PitchClassSet => Type::PitchClassSet,
+            Type::Tuning => Type::Tuning,
             Type::String => Type::String,
             Type::Unit => Type::Unit,
         }
@@ -513,6 +515,7 @@ fn substitute_scheme_vars(ty: &Type, replacements: &BTreeMap<TypeVarId, Type>) -
         Type::Duration => Type::Duration,
         Type::ArpDirection => Type::ArpDirection,
         Type::PitchClassSet => Type::PitchClassSet,
+        Type::Tuning => Type::Tuning,
         Type::String => Type::String,
         Type::Unit => Type::Unit,
     }
@@ -537,6 +540,7 @@ fn free_type_vars(ty: &Type) -> BTreeSet<TypeVarId> {
         | Type::Duration
         | Type::ArpDirection
         | Type::PitchClassSet
+        | Type::Tuning
         | Type::String
         | Type::Unit => BTreeSet::new(),
     }
