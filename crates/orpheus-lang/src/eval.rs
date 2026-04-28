@@ -609,6 +609,14 @@ impl Evaluator {
             return Err(EvalError::new("section cycle count must be positive"));
         }
 
+        Self::repeat_explicit_value(base, repeat_count, cycle_offset)
+    }
+
+    fn repeat_explicit_value(
+        base: ExplicitValue,
+        repeat_count: i128,
+        cycle_offset: i128,
+    ) -> Result<ExplicitValue, EvalError> {
         let repeat_count_usize = usize::try_from(repeat_count)
             .map_err(|_| EvalError::new("section cycle count exceeded evaluator limits"))?;
 
