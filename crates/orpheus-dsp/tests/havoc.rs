@@ -1,5 +1,5 @@
 use loom::sync::Arc;
-use loom::sync::atomic::{AtomicU64, Ordering};
+use loom::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use loom::thread;
 
 #[derive(Debug, Default)]
@@ -7,6 +7,20 @@ struct SharedTransportLoom {
     publish_epoch: AtomicU64,
     current_frame: AtomicU64,
     current_cycle_start_frame: AtomicU64,
+    is_poisoned: AtomicBool,
+}
+
+struct PublishGuardLoom<'a> {
+    transport: &'a SharedTransportLoom,
+    completed: bool,
+}
+
+impl Drop for PublishGuardLoom<'_> {
+    fn drop(&mut self) {
+        if !self.completed {
+            self.transport.is_poisoned.store(true, Ordering::Release);
+        }
+    }
 }
 
 impl SharedTransportLoom {
@@ -15,6 +29,7 @@ impl SharedTransportLoom {
             publish_epoch: AtomicU64::new(0),
             current_frame: AtomicU64::new(0),
             current_cycle_start_frame: AtomicU64::new(0),
+            is_poisoned: AtomicBool::new(false),
         }
     }
 
@@ -22,16 +37,33 @@ impl SharedTransportLoom {
         self.publish_epoch.fetch_add(1, Ordering::Relaxed);
         loom::sync::atomic::fence(Ordering::Release);
 
+        let mut guard = PublishGuardLoom {
+            transport: self,
+            completed: false,
+        };
+
         self.current_frame.store(current_frame, Ordering::Relaxed);
         self.current_cycle_start_frame
             .store(current_cycle_start_frame, Ordering::Relaxed);
+
+        guard.completed = true;
 
         loom::sync::atomic::fence(Ordering::Release);
         self.publish_epoch.fetch_add(1, Ordering::Relaxed);
     }
 
     fn snapshot(&self) -> (u64, u64) {
+        let mut spins = 0;
         loop {
+            if self.is_poisoned.load(Ordering::Acquire) {
+                return (0, 0); // fallback state
+            }
+
+            spins += 1;
+            if spins > 10 {
+                panic!("Livelock detected: spun too many times waiting for even epoch");
+            }
+
             let start_epoch = self.publish_epoch.load(Ordering::Relaxed);
             loom::sync::atomic::fence(Ordering::Acquire);
 
@@ -70,5 +102,38 @@ fn havoc_test_transport() {
                 "Torn read detected: cf={cf}, ccsf={ccsf}"
             );
         });
+    });
+}
+
+#[test]
+fn havoc_test_transport_panic_livelock() {
+    loom::model(|| {
+        let transport = Arc::new(SharedTransportLoom::new());
+
+        let t1 = transport.clone();
+        let _ = thread::spawn(move || {
+            // Simulate panicking in the middle of publish
+            t1.publish_epoch.fetch_add(1, Ordering::Relaxed);
+            loom::sync::atomic::fence(Ordering::Release);
+
+            let mut _guard = PublishGuardLoom {
+                transport: &t1,
+                completed: false,
+            };
+
+            t1.current_frame.store(100, Ordering::Relaxed);
+            // thread dies here, _guard is dropped and sets is_poisoned
+        })
+        .join();
+
+        thread::spawn(move || {
+            // Because is_poisoned is set, this should immediately return the fallback (0, 0)
+            // instead of livelocking.
+            let (cf, ccsf) = transport.snapshot();
+            assert_eq!(cf, 0);
+            assert_eq!(ccsf, 0);
+        })
+        .join()
+        .unwrap();
     });
 }
