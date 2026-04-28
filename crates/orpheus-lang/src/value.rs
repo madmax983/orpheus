@@ -123,7 +123,7 @@ pub enum FunctionValue {
     /// A core primitive transformation provided by the language standard library.
     Builtin(BuiltinFn),
     /// A custom function defined by the user in the REPL or a script file.
-    User(UserFn),
+    User(std::sync::Arc<UserFn>),
 }
 
 impl FunctionValue {
