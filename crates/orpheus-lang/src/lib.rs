@@ -10,6 +10,7 @@ mod eval;
 pub(crate) mod export;
 #[cfg(feature = "experimental-gcode")]
 pub(crate) mod gcode_export;
+pub(crate) mod godot_export;
 pub(crate) mod html;
 mod loader;
 pub(crate) mod midi_export;
@@ -47,6 +48,7 @@ pub use export::{
 };
 #[cfg(feature = "experimental-gcode")]
 pub use gcode_export::export_number_pattern_to_gcode;
+pub use godot_export::{export_number_pattern_to_godot, export_sample_pattern_to_godot};
 pub use html::{export_number_pattern_to_html, export_sample_pattern_to_html};
 pub use loader::load_file_strict;
 pub use midi_export::{export_number_pattern_to_midi, export_sample_pattern_to_midi};
