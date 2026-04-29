@@ -50,6 +50,18 @@ pub fn export_sample_pattern_to_tracker(
     // ⚡ Bolt: Use a sorted vector of string slices instead of allocating Strings
     let sample_list: Vec<&str> = samples.into_iter().collect();
 
+    // Pre-allocate formatted sample strings
+    let formatted_samples: Vec<String> = sample_list
+        .iter()
+        .map(|s| {
+            if s.len() > 4 {
+                s[..4].to_string()
+            } else {
+                s.to_string()
+            }
+        })
+        .collect();
+
     // Resolution: 16 steps per cycle
     let steps_per_cycle = 16_u32;
     let total_steps = usize::try_from(cycle_count * u64::from(steps_per_cycle))?;
@@ -57,11 +69,12 @@ pub fn export_sample_pattern_to_tracker(
     // Create a grid of dimensions: [total_steps][sample_list.len()]
     // Each cell will optionally contain a formatted string of the sample name (if triggered)
     // or the delay/continuation character.
-    let mut grid: Vec<Vec<Option<String>>> = vec![vec![None; sample_list.len()]; total_steps];
+    let mut grid: Vec<Vec<Option<&str>>> = vec![vec![None; sample_list.len()]; total_steps];
 
     for event in &events {
-        let sample = event.value.sample().to_string();
+        let sample = event.value.sample();
         let lane_idx = sample_list.iter().position(|s| *s == sample).unwrap();
+        let formatted_name = formatted_samples[lane_idx].as_str();
 
         let start_f64 = f64::from(event.part.start());
         let end_f64 = f64::from(event.part.end());
@@ -75,24 +88,13 @@ pub fn export_sample_pattern_to_tracker(
         let end_step = end_step.min(total_steps);
 
         if start_step < end_step {
-            // Format sample name up to 4 chars
-            let formatted_name = if sample.len() > 4 {
-                sample[..4].to_string()
-            } else {
-                sample.clone()
-            };
             grid[start_step][lane_idx] = Some(formatted_name);
             for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
                 if item[lane_idx].is_none() {
-                    item[lane_idx] = Some("====".to_string());
+                    item[lane_idx] = Some("====");
                 }
             }
         } else if start_step < total_steps && grid[start_step][lane_idx].is_none() {
-            let formatted_name = if sample.len() > 4 {
-                sample[..4].to_string()
-            } else {
-                sample.clone()
-            };
             grid[start_step][lane_idx] = Some(formatted_name);
         }
     }
