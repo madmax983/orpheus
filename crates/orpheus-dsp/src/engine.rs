@@ -24,7 +24,7 @@ const BEATS_PER_CYCLE: f64 = 4.0;
 const MAX_ACTIVE_VOICES: usize = 32;
 
 /// A UI-readable snapshot of the transport clock.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
 pub struct TransportSnapshot {
     publish_epoch: u64,
     current_frame: u64,
@@ -96,6 +96,21 @@ struct SharedTransport {
     is_playing: AtomicBool,
     has_pending_pattern: AtomicBool,
     has_pending_routing: AtomicBool,
+    poisoned: AtomicBool,
+}
+
+struct PublishGuard<'a> {
+    transport: &'a SharedTransport,
+}
+
+impl Drop for PublishGuard<'_> {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            self.transport.poisoned.store(true, Ordering::Relaxed);
+        }
+        std::sync::atomic::fence(Ordering::Release);
+        self.transport.publish_epoch.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 impl SharedTransport {
@@ -104,6 +119,8 @@ impl SharedTransport {
         // atomic fence handles the required release semantics.
         self.publish_epoch.fetch_add(1, Ordering::Relaxed);
         std::sync::atomic::fence(Ordering::Release);
+
+        let _guard = PublishGuard { transport: self };
 
         self.current_frame
             .store(core.current_frame, Ordering::Relaxed);
@@ -118,14 +135,14 @@ impl SharedTransport {
             .store(core.pending_pattern_name.is_some(), Ordering::Relaxed);
         self.has_pending_routing
             .store(core.pending_routing.is_some(), Ordering::Relaxed);
-
-        // Commit the write transaction.
-        std::sync::atomic::fence(Ordering::Release);
-        self.publish_epoch.fetch_add(1, Ordering::Relaxed);
     }
 
     fn snapshot(&self) -> TransportSnapshot {
         loop {
+            if self.poisoned.load(Ordering::Relaxed) {
+                return TransportSnapshot::default();
+            }
+
             let start_epoch = self.publish_epoch.load(Ordering::Relaxed);
             std::sync::atomic::fence(Ordering::Acquire);
 
@@ -149,6 +166,9 @@ impl SharedTransport {
             let end_epoch = self.publish_epoch.load(Ordering::Acquire);
             // If the epoch is unchanged, we observed a consistent state.
             if start_epoch == end_epoch {
+                if self.poisoned.load(Ordering::Relaxed) {
+                    return TransportSnapshot::default();
+                }
                 return snap;
             }
         }
