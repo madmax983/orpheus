@@ -54,3 +54,7 @@
 **[Refactored massive function with enum match to impl method]**
 **Learning:** `clippy::too_many_lines` on a function that pattern-matches an enum with 70+ variants (like an AST or `PatternRuntime`) is often caused by the match statement being a freestanding function instead of a method. Moving the function into an `impl` block as a method (e.g., `fn with_tuning(self, ...)`) follows Tell, Don't Ask, shrinks the caller function, and makes the enum operations more modular. If splitting the match into 70 different helper methods would destroy readability, it's safe to keep the large match and apply `#[allow(clippy::too_many_lines)]` specifically to the method.
 **Action:** When I encounter `too_many_lines` on a freestanding function switching over a massive enum, I will implement it as a method directly on that enum instead of writing separate helper functions in the module scope.
+
+**[Title] Fix Redundant pub(crate)**
+**Learning:** `clippy::redundant_pub_crate` warns about `pub(crate)` items inside private modules. Since the module itself is private to the crate, making the item `pub(crate)` is functionally equivalent to making it `pub`, but `pub` is more idiomatic and cleaner.
+**Action:** When working in private modules, use `pub` instead of `pub(crate)` for items intended to be accessible throughout the crate. Avoid suppressing the warning with `#[allow(clippy::redundant_pub_crate)]`.
