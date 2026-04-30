@@ -19,6 +19,8 @@ use thiserror::Error;
 /// - Missing or unexpected tokens (like a dangling comma or pipe).
 /// - Malformed literals (e.g., an unclosed string quote).
 ///
+/// **Recovery:** Review the source text at the line and column indicated by the error message. Ensure all parentheses match and verify that commas and operators are placed correctly.
+///
 /// # Examples
 ///
 /// ```
@@ -55,6 +57,8 @@ impl ParseError {
 /// - A heterogeneous sequence like `bd 123`. Sequences must contain either all
 ///   sample patterns or all number patterns.
 /// - Passing a number literal to a function expecting a pattern of numbers.
+///
+/// **Recovery:** Verify the argument types against the signatures of the built-in or user-defined functions being called. Ensure that pattern sequences contain elements of a uniform type.
 ///
 /// # Examples
 ///
@@ -95,6 +99,8 @@ impl TypeError {
 /// - The application does not have permission to read the file.
 /// - The `.ode` file contains invalid syntax (results in a `ParseError` wrapped inside).
 /// - The `.ode` file contains type errors (results in a `TypeError` wrapped inside).
+///
+/// **Recovery:** Check that the path provided points to an existing `.ode` file and that you have read permissions. If the file exists, address any wrapped parsing or type errors indicated in the failure message.
 ///
 /// # Examples
 ///
