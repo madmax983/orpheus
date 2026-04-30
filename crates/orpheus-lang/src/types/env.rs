@@ -23,7 +23,7 @@ pub struct TypeScheme {
 
 impl TypeScheme {
     #[must_use]
-    pub(crate) const fn monomorphic(ty: Type) -> Self {
+    pub const fn monomorphic(ty: Type) -> Self {
         Self {
             vars: Vec::new(),
             ty,
@@ -84,6 +84,14 @@ impl TypeEnv {
             )),
         );
         env.insert("degrees", degrees_scheme());
+
+        env.insert(
+            "tuning",
+            TypeScheme::monomorphic(Type::function(
+                vec![Type::pattern(Type::Number)],
+                Type::Tuning,
+            )),
+        );
 
         for name in [
             "ionian",
