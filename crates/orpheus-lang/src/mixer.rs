@@ -420,7 +420,7 @@ impl MixerState {
         }
     }
 
-    pub(crate) fn render_summary(&self) -> String {
+    fn render_track_summary(&self) -> String {
         let mut output = String::new();
 
         let mut track_table = Table::new();
@@ -497,6 +497,12 @@ impl MixerState {
         );
         output.push_str(&track_table.to_string());
 
+        output
+    }
+
+    fn render_bus_summary(&self) -> String {
+        let mut output = String::new();
+
         if !self.buses.is_empty() {
             let mut bus_table = Table::new();
             bus_table.load_preset(UTF8_BORDERS_ONLY);
@@ -529,6 +535,13 @@ impl MixerState {
             output.push_str(&bus_table.to_string());
         }
 
+        output
+    }
+
+    pub(crate) fn render_summary(&self) -> String {
+        let mut output = String::new();
+        output.push_str(&self.render_track_summary());
+        output.push_str(&self.render_bus_summary());
         output
     }
 
