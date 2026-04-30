@@ -862,6 +862,12 @@ impl ReplSession {
         {
             crate::midi_export::export_number_pattern_to_midi(pattern, path, cycles)
                 .map_err(|error: crate::EvalError| error.to_string())?;
+        } else if export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("abc"))
+        {
+            crate::abc_export::export_number_pattern_to_abc(pattern, path, cycles)
+                .map_err(|error: crate::EvalError| error.to_string())?;
         } else {
             crate::export::export_number_pattern_to_csv(pattern, path, cycles)
                 .map_err(|error: crate::EvalError| error.to_string())?;
@@ -2282,6 +2288,25 @@ mod tests {
         assert!(message.contains("rendered `song`"));
         assert!(path.exists());
         assert!(fs::metadata(&path).unwrap().len() > 44);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn export_command_exports_number_pattern_to_abc() {
+        let mut session = ReplSession::new();
+        let path = std::env::temp_dir().join(format!("orpheus-export-{}.abc", unique_temp_suffix()));
+
+        session.eval_line("notes = 60 62 64").unwrap();
+        let message = session
+            .eval_line(&format!(":export notes {} 1", path.display()))
+            .unwrap();
+
+        assert!(message.contains("exported `notes`"));
+        assert!(path.exists());
+        let contents = fs::read_to_string(&path).unwrap();
+        assert!(contents.contains("X:1"));
+        assert!(contents.contains("C5 D5 E5 "));
 
         let _ = fs::remove_file(path);
     }
