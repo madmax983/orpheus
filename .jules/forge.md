@@ -61,3 +61,7 @@
 **[Title] Fix Redundant pub(crate)**
 **Learning:** `clippy::redundant_pub_crate` warns about `pub(crate)` items inside private modules. Since the module itself is private to the crate, making the item `pub(crate)` is functionally equivalent to making it `pub`, but `pub` is more idiomatic and cleaner.
 **Action:** When working in private modules, use `pub` instead of `pub(crate)` for items intended to be accessible throughout the crate. Avoid suppressing the warning with `#[allow(clippy::redundant_pub_crate)]`.
+
+**[Extracting Table Builders to Helper Methods]**
+**Learning:** `clippy::too_many_lines` on summary or TUI orchestrator functions is often caused by the procedural, sequential building of complex UI components or string-based tables directly inside the orchestrator.
+**Action:** Extract the construction of each distinct logical table or visual section into its own helper method that returns the formatted string or component. This flattens the main orchestrator, which then simply combines the outputs without changing behavior.

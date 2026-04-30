@@ -422,7 +422,12 @@ impl MixerState {
 
     pub(crate) fn render_summary(&self) -> String {
         let mut output = String::new();
+        self.render_summary_tracks_table(&mut output);
+        self.render_summary_buses_table(&mut output);
+        output
+    }
 
+    fn render_summary_tracks_table(&self, output: &mut String) {
         let mut track_table = Table::new();
         track_table.load_preset(UTF8_BORDERS_ONLY);
         track_table.set_header(vec![
@@ -491,12 +496,12 @@ impl MixerState {
             ]);
         }
 
-        let _ = std::fmt::Write::write_fmt(
-            &mut output,
-            format_args!("{}\n", "Mixer Tracks:".cyan().bold()),
-        );
+        let _ =
+            std::fmt::Write::write_fmt(output, format_args!("{}\n", "Mixer Tracks:".cyan().bold()));
         output.push_str(&track_table.to_string());
+    }
 
+    fn render_summary_buses_table(&self, output: &mut String) {
         if !self.buses.is_empty() {
             let mut bus_table = Table::new();
             bus_table.load_preset(UTF8_BORDERS_ONLY);
@@ -523,13 +528,11 @@ impl MixerState {
             }
 
             let _ = std::fmt::Write::write_fmt(
-                &mut output,
+                output,
                 format_args!("\n\n{}\n", "Mixer Buses:".cyan().bold()),
             );
             output.push_str(&bus_table.to_string());
         }
-
-        output
     }
 
     pub(crate) fn compile_snapshot(
