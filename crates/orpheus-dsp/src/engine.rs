@@ -96,6 +96,20 @@ struct SharedTransport {
     is_playing: AtomicBool,
     has_pending_pattern: AtomicBool,
     has_pending_routing: AtomicBool,
+    is_poisoned: AtomicBool,
+}
+
+struct PublishGuard<'a> {
+    transport: &'a SharedTransport,
+    completed: bool,
+}
+
+impl Drop for PublishGuard<'_> {
+    fn drop(&mut self) {
+        if !self.completed {
+            self.transport.is_poisoned.store(true, Ordering::Release);
+        }
+    }
 }
 
 impl SharedTransport {
@@ -104,6 +118,11 @@ impl SharedTransport {
         // atomic fence handles the required release semantics.
         self.publish_epoch.fetch_add(1, Ordering::Relaxed);
         std::sync::atomic::fence(Ordering::Release);
+
+        let mut guard = PublishGuard {
+            transport: self,
+            completed: false,
+        };
 
         self.current_frame
             .store(core.current_frame, Ordering::Relaxed);
@@ -119,6 +138,9 @@ impl SharedTransport {
         self.has_pending_routing
             .store(core.pending_routing.is_some(), Ordering::Relaxed);
 
+        // Disarm the guard as we have completed successfully.
+        guard.completed = true;
+
         // Commit the write transaction.
         std::sync::atomic::fence(Ordering::Release);
         self.publish_epoch.fetch_add(1, Ordering::Relaxed);
@@ -126,6 +148,19 @@ impl SharedTransport {
 
     fn snapshot(&self) -> TransportSnapshot {
         loop {
+            if self.is_poisoned.load(Ordering::Acquire) {
+                return TransportSnapshot {
+                    publish_epoch: 0,
+                    current_frame: 0,
+                    current_cycle_start_frame: 0,
+                    frames_per_cycle: 0,
+                    tempo_bpm_bits: 0,
+                    is_playing: false,
+                    has_pending_pattern: false,
+                    has_pending_routing: false,
+                };
+            }
+
             let start_epoch = self.publish_epoch.load(Ordering::Relaxed);
             std::sync::atomic::fence(Ordering::Acquire);
 
