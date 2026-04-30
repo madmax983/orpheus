@@ -57,6 +57,8 @@ pub enum Type {
     /// A type signifying no meaningful data. Usually represents side-effects
     /// or empty states.
     Unit,
+    /// A tuning table.
+    Tuning,
 }
 
 impl Type {
@@ -140,6 +142,7 @@ impl Display for Type {
             }
             Self::Var(id) => write!(formatter, "t{}", id.0),
             Self::Unit => formatter.write_str("Unit"),
+            Self::Tuning => formatter.write_str("Tuning"),
         }
     }
 }

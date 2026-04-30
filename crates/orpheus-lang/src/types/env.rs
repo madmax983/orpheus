@@ -146,6 +146,7 @@ impl TypeEnv {
             );
         }
 
+        env.insert("tuning", tuning_scheme());
         env
     }
 
@@ -389,4 +390,11 @@ mod tests {
         assert!(scheme.vars.is_empty());
         assert_eq!(scheme.ty, Type::Duration);
     }
+}
+
+fn tuning_scheme() -> TypeScheme {
+    TypeScheme::monomorphic(Type::curried(
+        vec![Type::pattern(Type::Number)],
+        Type::Tuning,
+    ))
 }

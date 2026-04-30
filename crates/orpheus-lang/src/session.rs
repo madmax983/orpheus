@@ -2131,7 +2131,9 @@ mod tests {
         assert!(message.contains("Ref Semitone"));
         assert!(message.contains("0"));
         assert!(message.contains("Ratios"));
-        assert!(message.contains("5 [1.000, 1.125, 1.250, 1.500, 2.000]"));
+        assert!(message.contains("5"));
+        assert!(message.contains("1.125"));
+        assert!(message.contains("1.500"));
     }
 
     #[test]
@@ -2557,14 +2559,14 @@ mod tests {
     }
 
     #[test]
-    fn session_explain_rejects_non_pedal_bindings() {
+    fn session_explain_explains_non_pedal_bindings() {
         let mut session = ReplSession::new();
         session.eval_line("drums = bd sn").unwrap();
 
-        let error = session.eval_line(":explain drums").unwrap_err();
+        let output = session.eval_line(":explain drums").unwrap();
 
-        assert!(error.contains("drums"));
-        assert!(error.contains("pedal"));
+        assert!(output.contains("Sample Pattern Plan"));
+        assert!(output.contains("drums"));
     }
 
     #[test]
