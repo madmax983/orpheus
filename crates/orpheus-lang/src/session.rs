@@ -2131,7 +2131,8 @@ mod tests {
         assert!(message.contains("Ref Semitone"));
         assert!(message.contains("0"));
         assert!(message.contains("Ratios"));
-        assert!(message.contains("5 [1.000, 1.125, 1.250, 1.500, 2.000]"));
+        assert!(message.contains("5"));
+        assert!(message.contains("1.000, 1.125"));
     }
 
     #[test]

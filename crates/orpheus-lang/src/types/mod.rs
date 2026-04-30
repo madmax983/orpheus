@@ -46,6 +46,8 @@ pub enum Type {
     ArpDirection,
     /// A collection of pitch classes that define a musical chord or scale.
     PitchClassSet,
+    /// A mathematical tuning definition (e.g. from a Scala file or manual ratios).
+    Tuning,
     /// Textual data.
     String,
     /// A callable operation mapping arguments to a return value.
@@ -127,6 +129,7 @@ impl Display for Type {
             Self::Duration => formatter.write_str("Duration"),
             Self::ArpDirection => formatter.write_str("ArpDirection"),
             Self::PitchClassSet => formatter.write_str("PitchClassSet"),
+            Self::Tuning => formatter.write_str("Tuning"),
             Self::String => formatter.write_str("String"),
             Self::Function(args, ret) => {
                 formatter.write_str("Function(")?;
@@ -216,6 +219,7 @@ mod tests {
         assert_eq!(Type::Duration.to_string(), "Duration");
         assert_eq!(Type::ArpDirection.to_string(), "ArpDirection");
         assert_eq!(Type::PitchClassSet.to_string(), "PitchClassSet");
+        assert_eq!(Type::Tuning.to_string(), "Tuning");
         assert_eq!(Type::String.to_string(), "String");
         assert_eq!(Type::Unit.to_string(), "Unit");
 

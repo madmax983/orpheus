@@ -48,6 +48,7 @@ impl TypeEnv {
     ///
     #[must_use]
     #[doc(hidden)]
+    #[allow(clippy::too_many_lines)]
     pub(crate) fn with_builtins() -> Self {
         let mut env = Self {
             entries: BTreeMap::new(),
@@ -135,6 +136,25 @@ impl TypeEnv {
         env.insert(
             "rand",
             TypeScheme::monomorphic(Type::function(vec![], Type::pattern(Type::Number))),
+        );
+
+        env.insert(
+            "tuning",
+            TypeScheme::monomorphic(Type::curried(
+                vec![Type::pattern(Type::Number)],
+                Type::Tuning,
+            )),
+        );
+        env.insert(
+            "load_scl",
+            TypeScheme::monomorphic(Type::curried(vec![Type::String], Type::Tuning)),
+        );
+        env.insert(
+            "tune",
+            TypeScheme::monomorphic(Type::curried(
+                vec![Type::Tuning, Type::pattern(Type::Sample)],
+                Type::pattern(Type::Sample),
+            )),
         );
         for name in ["cc", "midi_cc"] {
             env.insert(
