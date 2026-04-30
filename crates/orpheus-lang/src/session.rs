@@ -768,6 +768,15 @@ impl ReplSession {
         {
             crate::txt::export_number_pattern_to_txt(pattern, path, cycles)
                 .map_err(|error: crate::EvalError| error.to_string())?;
+        } else if cfg!(feature = "lilypond_export") && export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("ly"))
+        {
+            #[cfg(feature = "lilypond_export")]
+            {
+                crate::lilypond_export::export_number_pattern_to_lilypond(pattern, path, cycles)
+                    .map_err(|error: crate::EvalError| error.to_string())?;
+            }
         } else if export_path.extension().is_some_and(|ext| {
             ext.eq_ignore_ascii_case("trk") || ext.eq_ignore_ascii_case("tracker")
         }) {
