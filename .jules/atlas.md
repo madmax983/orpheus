@@ -23,3 +23,6 @@
 **[Enforce Public Structure inside Private Module]
 **Tangle:** The `TypeScheme` and `TypeEnv` structs in `orpheus-lang/src/types/env.rs` were declared as `pub(crate) struct`, which triggers `clippy::redundant_pub_crate` because the parent module `env` is private.
 **Blueprint:** Modified `TypeScheme` and `TypeEnv` to use `pub` visibility instead of `pub(crate)`. This satisfies Clippy while correctly maintaining the private boundary since the module itself is private, making the items effectively crate-visible.
+**[Extract Mixer Table Building]
+**Tangle:** `MixerState::render_summary` in `crates/orpheus-lang/src/mixer.rs` was a single large function building two separate summary tables (tracks and buses) inline, violating `clippy::too_many_lines` and coupling the overall string output structure directly to the table generation logic.
+**Blueprint:** Extracted the table construction logic into two helper functions `build_tracks_summary_table` and `build_buses_summary_table` returning `comfy_table::Table`, flattening the orchestrator function and enforcing higher cohesion.
