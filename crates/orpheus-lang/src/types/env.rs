@@ -48,7 +48,7 @@ impl TypeEnv {
     ///
     #[must_use]
     #[doc(hidden)]
-    pub(crate) fn with_builtins() -> Self {
+    pub fn with_builtins() -> Self {
         let mut env = Self {
             entries: BTreeMap::new(),
         };
@@ -162,7 +162,7 @@ impl TypeEnv {
     /// This makes the variable available for subsequent type inferences in the same environment.
     ///
     #[doc(hidden)]
-    pub(crate) fn insert(&mut self, name: impl Into<String>, scheme: TypeScheme) {
+    pub fn insert(&mut self, name: impl Into<String>, scheme: TypeScheme) {
         self.entries.insert(name.into(), scheme);
     }
 
@@ -173,11 +173,11 @@ impl TypeEnv {
     ///
     #[must_use]
     #[doc(hidden)]
-    pub(crate) fn get(&self, name: &str) -> Option<&TypeScheme> {
+    pub fn get(&self, name: &str) -> Option<&TypeScheme> {
         self.entries.get(name)
     }
 
-    pub(crate) fn values(&self) -> impl Iterator<Item = &TypeScheme> {
+    pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }
 }
