@@ -610,7 +610,9 @@ impl ReplSession {
             if let Some((name, ty)) = summary.split_once(": ") {
                 table.add_row(vec![
                     comfy_table::Cell::new(name).fg(comfy_table::Color::Cyan),
-                    comfy_table::Cell::new(ty).fg(comfy_table::Color::Yellow),
+                    comfy_table::Cell::new(ty)
+                        .fg(comfy_table::Color::Yellow)
+                        .set_alignment(comfy_table::CellAlignment::Right),
                 ]);
             }
         }

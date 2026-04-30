@@ -6,7 +6,7 @@
 
 use std::collections::BTreeSet;
 
-use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
+use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
 use crossterm::style::Stylize;
 
 use crate::eval::{EvalError, render_span};
@@ -76,19 +76,25 @@ pub fn sample_pattern_stats(
         Cell::new("Total Events")
             .fg(comfy_table::Color::White)
             .add_attribute(comfy_table::Attribute::Bold),
-        Cell::new(total_events.to_string()).fg(comfy_table::Color::Green),
+        Cell::new(total_events.to_string())
+            .fg(comfy_table::Color::Green)
+            .set_alignment(CellAlignment::Right),
     ]);
     table.add_row(vec![
         Cell::new("Unique Samples")
             .fg(comfy_table::Color::White)
             .add_attribute(comfy_table::Attribute::Bold),
-        Cell::new(format!("{unique_count} ({sample_list})")).fg(comfy_table::Color::Yellow),
+        Cell::new(format!("{unique_count} ({sample_list})"))
+            .fg(comfy_table::Color::Yellow)
+            .set_alignment(CellAlignment::Right),
     ]);
     table.add_row(vec![
         Cell::new("Event Density")
             .fg(comfy_table::Color::White)
             .add_attribute(comfy_table::Attribute::Bold),
-        Cell::new(format!("{density:.2} events/cycle")).fg(comfy_table::Color::Cyan),
+        Cell::new(format!("{density:.2} events/cycle"))
+            .fg(comfy_table::Color::Cyan)
+            .set_alignment(CellAlignment::Right),
     ]);
 
     Ok(format!("{title}\n{table}"))
@@ -172,31 +178,41 @@ pub fn number_pattern_stats(
         Cell::new("Total Events")
             .fg(comfy_table::Color::White)
             .add_attribute(comfy_table::Attribute::Bold),
-        Cell::new(total_events.to_string()).fg(comfy_table::Color::Green),
+        Cell::new(total_events.to_string())
+            .fg(comfy_table::Color::Green)
+            .set_alignment(CellAlignment::Right),
     ]);
     table.add_row(vec![
         Cell::new("Min Value")
             .fg(comfy_table::Color::White)
             .add_attribute(comfy_table::Attribute::Bold),
-        Cell::new(format!("{min_val:.3}")).fg(comfy_table::Color::Yellow),
+        Cell::new(format!("{min_val:.3}"))
+            .fg(comfy_table::Color::Yellow)
+            .set_alignment(CellAlignment::Right),
     ]);
     table.add_row(vec![
         Cell::new("Max Value")
             .fg(comfy_table::Color::White)
             .add_attribute(comfy_table::Attribute::Bold),
-        Cell::new(format!("{max_val:.3}")).fg(comfy_table::Color::Yellow),
+        Cell::new(format!("{max_val:.3}"))
+            .fg(comfy_table::Color::Yellow)
+            .set_alignment(CellAlignment::Right),
     ]);
     table.add_row(vec![
         Cell::new("Average Value")
             .fg(comfy_table::Color::White)
             .add_attribute(comfy_table::Attribute::Bold),
-        Cell::new(format!("{avg:.3}")).fg(comfy_table::Color::Yellow),
+        Cell::new(format!("{avg:.3}"))
+            .fg(comfy_table::Color::Yellow)
+            .set_alignment(CellAlignment::Right),
     ]);
     table.add_row(vec![
         Cell::new("Event Density")
             .fg(comfy_table::Color::White)
             .add_attribute(comfy_table::Attribute::Bold),
-        Cell::new(format!("{density:.2} events/cycle")).fg(comfy_table::Color::Cyan),
+        Cell::new(format!("{density:.2} events/cycle"))
+            .fg(comfy_table::Color::Cyan)
+            .set_alignment(CellAlignment::Right),
     ]);
 
     Ok(format!("{title}\n{table}"))
@@ -234,21 +250,27 @@ pub fn tuning_stats(binding_name: &str, tuning: &TuningValue) -> String {
         Cell::new("Name")
             .fg(comfy_table::Color::White)
             .add_attribute(comfy_table::Attribute::Bold),
-        Cell::new(tuning.name()).fg(comfy_table::Color::Green),
+        Cell::new(tuning.name())
+            .fg(comfy_table::Color::Green)
+            .set_alignment(CellAlignment::Right),
     ]);
 
     table.add_row(vec![
         Cell::new("Period")
             .fg(comfy_table::Color::White)
             .add_attribute(comfy_table::Attribute::Bold),
-        Cell::new(format!("{:.3}", tuning.period())).fg(comfy_table::Color::Yellow),
+        Cell::new(format!("{:.3}", tuning.period()))
+            .fg(comfy_table::Color::Yellow)
+            .set_alignment(CellAlignment::Right),
     ]);
 
     table.add_row(vec![
         Cell::new("Ref Semitone")
             .fg(comfy_table::Color::White)
             .add_attribute(comfy_table::Attribute::Bold),
-        Cell::new(tuning.ref_semitone().to_string()).fg(comfy_table::Color::Yellow),
+        Cell::new(tuning.ref_semitone().to_string())
+            .fg(comfy_table::Color::Yellow)
+            .set_alignment(CellAlignment::Right),
     ]);
 
     let mut ratio_list = String::with_capacity(tuning.ratios().len() * 8);
@@ -263,7 +285,9 @@ pub fn tuning_stats(binding_name: &str, tuning: &TuningValue) -> String {
         Cell::new("Ratios")
             .fg(comfy_table::Color::White)
             .add_attribute(comfy_table::Attribute::Bold),
-        Cell::new(format!("{} [{ratio_list}]", tuning.ratios().len())).fg(comfy_table::Color::Cyan),
+        Cell::new(format!("{} [{ratio_list}]", tuning.ratios().len()))
+            .fg(comfy_table::Color::Cyan)
+            .set_alignment(CellAlignment::Right),
     ]);
 
     format!("{title}\n{table}")
