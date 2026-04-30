@@ -24,7 +24,7 @@ const BEATS_PER_CYCLE: f64 = 4.0;
 const MAX_ACTIVE_VOICES: usize = 32;
 
 /// A UI-readable snapshot of the transport clock.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct TransportSnapshot {
     publish_epoch: u64,
     current_frame: u64,
@@ -96,14 +96,15 @@ struct SharedTransport {
     is_playing: AtomicBool,
     has_pending_pattern: AtomicBool,
     has_pending_routing: AtomicBool,
+    poisoned: AtomicBool,
 }
 
 impl SharedTransport {
     fn publish(&self, core: &EngineCore) {
-        // Start the write transaction. Relaxed is sufficient because the
-        // atomic fence handles the required release semantics.
         self.publish_epoch.fetch_add(1, Ordering::Relaxed);
         std::sync::atomic::fence(Ordering::Release);
+
+        let _guard = PublishGuard { transport: self };
 
         self.current_frame
             .store(core.current_frame, Ordering::Relaxed);
@@ -118,19 +119,22 @@ impl SharedTransport {
             .store(core.pending_pattern_name.is_some(), Ordering::Relaxed);
         self.has_pending_routing
             .store(core.pending_routing.is_some(), Ordering::Relaxed);
-
-        // Commit the write transaction.
-        std::sync::atomic::fence(Ordering::Release);
-        self.publish_epoch.fetch_add(1, Ordering::Relaxed);
     }
 
     fn snapshot(&self) -> TransportSnapshot {
+        if self.poisoned.load(Ordering::Relaxed) {
+            return TransportSnapshot::default();
+        }
+
         loop {
             let start_epoch = self.publish_epoch.load(Ordering::Relaxed);
             std::sync::atomic::fence(Ordering::Acquire);
 
             // If odd, a write is in progress. Wait for it to finish.
             if !start_epoch.is_multiple_of(2) {
+                if self.poisoned.load(Ordering::Relaxed) {
+                    return TransportSnapshot::default();
+                }
                 std::hint::spin_loop();
                 continue;
             }
@@ -151,6 +155,22 @@ impl SharedTransport {
             if start_epoch == end_epoch {
                 return snap;
             }
+        }
+    }
+}
+
+struct PublishGuard<'a> {
+    transport: &'a SharedTransport,
+}
+
+impl Drop for PublishGuard<'_> {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            self.transport.poisoned.store(true, Ordering::Relaxed);
+            std::sync::atomic::fence(Ordering::Release);
+        } else {
+            std::sync::atomic::fence(Ordering::Release);
+            self.transport.publish_epoch.fetch_add(1, Ordering::Relaxed);
         }
     }
 }
