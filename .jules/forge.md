@@ -57,3 +57,7 @@
 **[Execution Order Semantics]
 **Learning:** Extracting logic into helper methods can accidentally alter the execution order of operations that produce side-effects or errors (like evaluating an expression versus evaluating a count). In interpreters or evaluators, changing this order fundamentally alters semantics and breaks the 'zero behavior change' refactoring rule.
 **Action:** When performing 'Extract Method' refactorings in evaluator code, strictly preserve the original sequential order of evaluations, variable assignments, and error checks to prevent unintended logic changes.
+
+**[Title] Fix Redundant pub(crate)**
+**Learning:** `clippy::redundant_pub_crate` warns about `pub(crate)` items inside private modules. Since the module itself is private to the crate, making the item `pub(crate)` is functionally equivalent to making it `pub`, but `pub` is more idiomatic and cleaner.
+**Action:** When working in private modules, use `pub` instead of `pub(crate)` for items intended to be accessible throughout the crate. Avoid suppressing the warning with `#[allow(clippy::redundant_pub_crate)]`.

@@ -184,12 +184,22 @@ impl ExplicitValue {
         // ⚡ Bolt: Pre-allocate capacity to eliminate redundant heap allocations when appending events.
         combined.reserve(base_events.len());
         for event in base_events {
-            let mut new_event = event.clone();
-            new_event.part = shift_span(&new_event.part, offset)?;
-            if let Some(whole) = new_event.whole.take() {
-                new_event.whole = Some(shift_span(&whole, offset)?);
-            }
-            combined.push(new_event);
+            let shifted_part = shift_span(&event.part, offset)?;
+            let shifted_whole = if let Some(whole) = &event.whole {
+                Some(shift_span(whole, offset)?)
+            } else {
+                None
+            };
+
+            // ⚡ Bolt: Avoid redundant allocations when shifting events.
+            // By instantiating a new Event directly and only cloning `event.value`,
+            // we eliminate unnecessary cloning of `TimeSpan` fields (`part` and `whole`)
+            // that are immediately overwritten anyway.
+            combined.push(Event {
+                whole: shifted_whole,
+                part: shifted_part,
+                value: event.value.clone(),
+            });
         }
         Ok(())
     }
