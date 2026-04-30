@@ -12,6 +12,7 @@ rust-version = "1.88"
 version = "0.1.0"
 
 [workspace.dependencies]
+smallvec = "1.11.2"
 anyhow = "1"
 cpal = "0.15"
 comfy-table = "7.1.3"

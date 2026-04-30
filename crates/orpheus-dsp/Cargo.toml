@@ -8,6 +8,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+smallvec.workspace = true
 cpal.workspace = true
 flacenc.workspace = true
 hound.workspace = true
