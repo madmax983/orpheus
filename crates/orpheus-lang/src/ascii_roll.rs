@@ -4,7 +4,7 @@
 //! events of a pattern in the terminal, showing time on the x-axis.
 use std::collections::BTreeMap;
 
-use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
+use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
 
 use crossterm::style::Stylize;
 
@@ -111,7 +111,9 @@ pub fn render_ascii_roll(
             row_string.push(c);
         }
         table.add_row(vec![
-            Cell::new(sample).fg(comfy_table::Color::Cyan),
+            Cell::new(sample)
+                .fg(comfy_table::Color::Cyan)
+                .set_alignment(CellAlignment::Right),
             Cell::new(row_string).fg(comfy_table::Color::Green),
         ]);
     }

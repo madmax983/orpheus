@@ -5,7 +5,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
+use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
 
 use crossterm::style::Stylize;
 
@@ -127,7 +127,9 @@ pub fn render_ascii_number_roll(
             row_string.push(c);
         }
         table.add_row(vec![
-            Cell::new(label).fg(comfy_table::Color::Cyan),
+            Cell::new(label)
+                .fg(comfy_table::Color::Cyan)
+                .set_alignment(CellAlignment::Right),
             Cell::new(row_string).fg(comfy_table::Color::Green),
         ]);
     }

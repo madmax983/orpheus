@@ -130,7 +130,7 @@ impl FunctionValue {
     #[doc(hidden)]
     #[must_use]
     pub fn explain(&self, binding_name: &str) -> String {
-        use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
+        use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
         use crossterm::style::Stylize;
 
         let title = format!(
@@ -154,34 +154,47 @@ impl FunctionValue {
             Self::Builtin(builtin) => {
                 table.add_row(vec![
                     Cell::new("Type").fg(comfy_table::Color::Cyan),
-                    Cell::new("Builtin").fg(comfy_table::Color::Yellow),
+                    Cell::new("Builtin")
+                        .fg(comfy_table::Color::Yellow)
+                        .set_alignment(CellAlignment::Right),
                 ]);
                 table.add_row(vec![
                     Cell::new("Kind").fg(comfy_table::Color::Cyan),
-                    Cell::new(format!("{:?}", builtin.kind)).fg(comfy_table::Color::Green),
+                    Cell::new(format!("{:?}", builtin.kind))
+                        .fg(comfy_table::Color::Green)
+                        .set_alignment(CellAlignment::Right),
                 ]);
                 table.add_row(vec![
                     Cell::new("Bound Args").fg(comfy_table::Color::Cyan),
-                    Cell::new(builtin.bound_args.len().to_string()).fg(comfy_table::Color::Magenta),
+                    Cell::new(builtin.bound_args.len().to_string())
+                        .fg(comfy_table::Color::Magenta)
+                        .set_alignment(CellAlignment::Right),
                 ]);
             }
             Self::User(user) => {
                 table.add_row(vec![
                     Cell::new("Type").fg(comfy_table::Color::Cyan),
-                    Cell::new("User Defined").fg(comfy_table::Color::Yellow),
+                    Cell::new("User Defined")
+                        .fg(comfy_table::Color::Yellow)
+                        .set_alignment(CellAlignment::Right),
                 ]);
                 table.add_row(vec![
                     Cell::new("Params").fg(comfy_table::Color::Cyan),
-                    Cell::new(user.remaining_params.join(", ")).fg(comfy_table::Color::Green),
+                    Cell::new(user.remaining_params.join(", "))
+                        .fg(comfy_table::Color::Green)
+                        .set_alignment(CellAlignment::Right),
                 ]);
                 table.add_row(vec![
                     Cell::new("Captured Bindings").fg(comfy_table::Color::Cyan),
                     Cell::new(user.captured_bindings.len().to_string())
-                        .fg(comfy_table::Color::Magenta),
+                        .fg(comfy_table::Color::Magenta)
+                        .set_alignment(CellAlignment::Right),
                 ]);
                 table.add_row(vec![
                     Cell::new("Depth").fg(comfy_table::Color::Cyan),
-                    Cell::new(user.depth.to_string()).fg(comfy_table::Color::Magenta),
+                    Cell::new(user.depth.to_string())
+                        .fg(comfy_table::Color::Magenta)
+                        .set_alignment(CellAlignment::Right),
                 ]);
             }
         }
@@ -420,7 +433,7 @@ impl TuningValue {
     #[doc(hidden)]
     #[must_use]
     pub fn explain(&self, binding_name: &str) -> String {
-        use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
+        use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
         use crossterm::style::Stylize;
 
         let title = format!(
@@ -445,7 +458,9 @@ impl TuningValue {
         for (i, ratio) in self.ratios().iter().enumerate() {
             table.add_row(vec![
                 Cell::new(i.to_string()).fg(comfy_table::Color::Cyan),
-                Cell::new(format!("{ratio:.4}")).fg(comfy_table::Color::Yellow),
+                Cell::new(format!("{ratio:.4}"))
+                    .fg(comfy_table::Color::Yellow)
+                    .set_alignment(CellAlignment::Right),
             ]);
         }
 
@@ -1513,7 +1528,7 @@ impl SamplePatternValue {
     #[doc(hidden)]
     #[must_use]
     pub fn explain(&self, binding_name: &str) -> String {
-        use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
+        use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
         use crossterm::style::Stylize;
 
         let title = format!(
@@ -1535,11 +1550,15 @@ impl SamplePatternValue {
 
         table.add_row(vec![
             Cell::new("Type").fg(comfy_table::Color::Cyan),
-            Cell::new("Lazy Pattern Tree").fg(comfy_table::Color::Yellow),
+            Cell::new("Lazy Pattern Tree")
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
         ]);
         table.add_row(vec![
             Cell::new("Event Type").fg(comfy_table::Color::Cyan),
-            Cell::new("SampleEvent").fg(comfy_table::Color::Green),
+            Cell::new("SampleEvent")
+                .fg(comfy_table::Color::Green)
+                .set_alignment(CellAlignment::Right),
         ]);
 
         format!("{title}\n{table}")
@@ -2200,7 +2219,7 @@ impl NumberPatternValue {
     #[doc(hidden)]
     #[must_use]
     pub fn explain(&self, binding_name: &str) -> String {
-        use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
+        use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
         use crossterm::style::Stylize;
 
         let title = format!(
@@ -2222,11 +2241,15 @@ impl NumberPatternValue {
 
         table.add_row(vec![
             Cell::new("Type").fg(comfy_table::Color::Cyan),
-            Cell::new("Lazy Pattern Tree").fg(comfy_table::Color::Yellow),
+            Cell::new("Lazy Pattern Tree")
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
         ]);
         table.add_row(vec![
             Cell::new("Event Type").fg(comfy_table::Color::Cyan),
-            Cell::new("f64 (Number)").fg(comfy_table::Color::Green),
+            Cell::new("f64 (Number)")
+                .fg(comfy_table::Color::Green)
+                .set_alignment(CellAlignment::Right),
         ]);
 
         format!("{title}\n{table}")

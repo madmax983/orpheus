@@ -14,7 +14,7 @@
 
 use std::collections::BTreeMap;
 
-use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
+use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
 use crossterm::style::Stylize;
 
 use ratatui::style::{Color as TuiColor, Modifier as TuiModifier, Style as TuiStyle};
@@ -450,9 +450,15 @@ impl MixerState {
                 track_table.add_row(vec![
                     Cell::new(track_name).fg(comfy_table::Color::Cyan),
                     Cell::new(binding).fg(comfy_table::Color::Yellow),
-                    Cell::new(format!("{:.2}", track.level)).fg(comfy_table::Color::Green),
-                    Cell::new(track.muted.to_string()).fg(muted_color),
-                    Cell::new(sends).fg(comfy_table::Color::DarkGrey),
+                    Cell::new(format!("{:.2}", track.level))
+                        .fg(comfy_table::Color::Green)
+                        .set_alignment(CellAlignment::Right),
+                    Cell::new(track.muted.to_string())
+                        .fg(muted_color)
+                        .set_alignment(CellAlignment::Right),
+                    Cell::new(sends)
+                        .fg(comfy_table::Color::DarkGrey)
+                        .set_alignment(CellAlignment::Right),
                 ]);
             }
         } else {
@@ -463,9 +469,15 @@ impl MixerState {
             track_table.add_row(vec![
                 Cell::new("main (auto)").fg(comfy_table::Color::Cyan),
                 Cell::new(binding).fg(comfy_table::Color::Yellow),
-                Cell::new("1.00").fg(comfy_table::Color::Green),
-                Cell::new("false").fg(comfy_table::Color::DarkGrey),
-                Cell::new(String::new()).fg(comfy_table::Color::DarkGrey),
+                Cell::new("1.00")
+                    .fg(comfy_table::Color::Green)
+                    .set_alignment(CellAlignment::Right),
+                Cell::new("false")
+                    .fg(comfy_table::Color::DarkGrey)
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(String::new())
+                    .fg(comfy_table::Color::DarkGrey)
+                    .set_alignment(CellAlignment::Right),
             ]);
         }
 
@@ -490,7 +502,9 @@ impl MixerState {
                     .map_or_else(|| "none".to_owned(), MixerBusEffect::summary);
                 bus_table.add_row(vec![
                     Cell::new(bus_name).fg(comfy_table::Color::Cyan),
-                    Cell::new(effect).fg(comfy_table::Color::Green),
+                    Cell::new(effect)
+                        .fg(comfy_table::Color::Green)
+                        .set_alignment(CellAlignment::Right),
                 ]);
             }
 
