@@ -1,3 +1,7 @@
+//! Interactive pane plugins for the Orpheus Hypertile TUI.
+//!
+//! This module contains the implementations of the individual UI panels (e.g., REPL, Bindings, Transport).
+
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -20,6 +24,22 @@ use super::style::{
 // REPL Plugin
 // ---------------------------------------------------------------------------
 
+/// The interactive REPL input and history pane.
+///
+/// This plugin manages the user's text input for evaluating Orpheus code, and displays the transcript of previous commands, outputs, and errors. It serves as the primary interface for live coding.
+///
+/// # Examples
+///
+/// ```ignore
+/// use std::rc::Rc;
+/// use std::cell::RefCell;
+/// use orpheus_lang::tui::plugins::ReplPlugin;
+/// use orpheus_lang::tui::state::SharedState;
+/// use orpheus_dsp::EngineHandle;
+///
+/// let state = Rc::new(RefCell::new(SharedState::new(EngineHandle::stub())));
+/// let plugin = ReplPlugin::new(state);
+/// ```
 pub struct ReplPlugin {
     pub state: Rc<RefCell<SharedState>>,
 }
@@ -138,6 +158,22 @@ impl HypertilePlugin for ReplPlugin {
 // Bindings Plugin
 // ---------------------------------------------------------------------------
 
+/// The session state visualization pane.
+///
+/// This plugin displays a list of all active variable bindings, showing what patterns are currently running or queued. It provides crucial visibility into the hidden state of the Orpheus evaluator.
+///
+/// # Examples
+///
+/// ```ignore
+/// use std::rc::Rc;
+/// use std::cell::RefCell;
+/// use orpheus_lang::tui::plugins::BindingsPlugin;
+/// use orpheus_lang::tui::state::SharedState;
+/// use orpheus_dsp::EngineHandle;
+///
+/// let state = Rc::new(RefCell::new(SharedState::new(EngineHandle::stub())));
+/// let plugin = BindingsPlugin::new(state);
+/// ```
 pub struct BindingsPlugin {
     pub state: Rc<RefCell<SharedState>>,
     scroll: Cell<usize>,
@@ -243,6 +279,22 @@ impl HypertilePlugin for BindingsPlugin {
 // Transport Plugin
 // ---------------------------------------------------------------------------
 
+/// The playback and timing control pane.
+///
+/// This plugin visualizes the engine's time state, including the current cycle, tempo, and playing status. It helps the user stay synchronized with the ongoing audio block boundaries.
+///
+/// # Examples
+///
+/// ```ignore
+/// use std::rc::Rc;
+/// use std::cell::RefCell;
+/// use orpheus_lang::tui::plugins::TransportPlugin;
+/// use orpheus_lang::tui::state::SharedState;
+/// use orpheus_dsp::EngineHandle;
+///
+/// let state = Rc::new(RefCell::new(SharedState::new(EngineHandle::stub())));
+/// let plugin = TransportPlugin::new(state);
+/// ```
 pub struct TransportPlugin {
     pub state: Rc<RefCell<SharedState>>,
 }

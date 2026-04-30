@@ -1,3 +1,7 @@
+//! Shared application state for the Orpheus Hypertile TUI.
+//!
+//! This module manages the global state shared across all UI plugins, including the session and user inputs.
+
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -27,7 +31,20 @@ pub const COMMAND_HINTS: [(&str, &str); 14] = [
     (":track", ":track <new|bind|level|mute> ..."),
 ];
 
-/// Shared application state accessible by all pane plugins via `Rc<RefCell<_>>`.
+/// Shared application state accessible by all pane plugins.
+///
+/// This struct holds the core `ReplSession`, transcript history, user input buffer, and UI status messages. Wrapping this in an `Rc<RefCell<>>` allows independent UI plugins to read and mutate the central application logic.
+///
+/// # Examples
+///
+/// ```ignore
+/// use orpheus_lang::tui::state::SharedState;
+/// use orpheus_dsp::EngineHandle;
+///
+/// let engine = EngineHandle::stub();
+/// let state = SharedState::new(engine);
+/// assert!(state.input.is_empty());
+/// ```
 pub struct SharedState {
     pub session: ReplSession,
     pub transcript: Vec<String>,
@@ -42,10 +59,37 @@ pub struct SharedState {
 }
 
 impl SharedState {
+    /// Creates a new `SharedState` hooked to the provided audio engine.
+    ///
+    /// Initializes the REPL session and prepares the input buffers for the TUI.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use orpheus_lang::tui::state::SharedState;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let state = SharedState::new(EngineHandle::stub());
+    /// ```
+    #[must_use]
     pub fn new(engine: EngineHandle) -> Self {
         Self::with_startup(engine, None, None)
     }
 
+    /// Creates a new `SharedState` and executes a startup script.
+    ///
+    /// This is used to load predefined bindings, drum kits, or settings from an `.ode` file immediately upon starting the TUI.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use orpheus_lang::tui::state::SharedState;
+    /// use orpheus_dsp::EngineHandle;
+    /// use std::path::Path;
+    ///
+    /// let state = SharedState::with_startup(EngineHandle::stub(), Path::new("setup.ode"));
+    /// ```
+    #[must_use]
     pub fn with_startup(
         engine: EngineHandle,
         startup_path: Option<&Path>,

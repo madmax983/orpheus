@@ -19,3 +19,6 @@
 ## 2024-05-19 - Documenting SclError variants
 **Confusion:** The fields `expected` and `actual` inside the `Count` variant of `SclError` in `scl.rs` lacked documentation, leading to warnings when running `cargo doc` with strict lints.
 **Clarification:** Added missing doc comments explaining what `expected` and `actual` mean in the context of Scala `.scl` file parsing.
+## 2024-05-20 - [Mocking Doctests for Private TUI Modules]
+**Confusion:** The TUI modules (`style.rs`, `state.rs`, `plugins.rs`) are internal/private to `orpheus-lang`. Standard `///` doctests compile as external crates and thus cannot import the private module items to run assertions, causing `cargo test` failures.
+**Clarification:** Rather than making internal modules public or adding complex mocked boilerplate inside hidden doc lines, the most pragmatic approach to fulfill the `## Examples` requirement for internal modules without breaking the build is to use `/// ```ignore` blocks. This preserves the descriptive, executable-like code examples in the generated documentation while safely bypassing external compilation errors.
