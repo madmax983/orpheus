@@ -32,3 +32,14 @@
 ## 2024-06-25 - Export zero-cycle count tests
 **Learning:** Evaluated export handlers for HTML, Markdown, CSV, Tracker, text, and other formatters. While logic safely catches zero `cycle_count` conditions with `EvalError` across the `export.rs` functions, dedicated unit tests verifying this error outcome were only added to some files and entirely missing in `ascii_roll.rs`, `number_roll.rs`, `midi_export.rs`, and `srt.rs`.
 **Action:** Ensure boundary assertions and error branches in common data extraction patterns (like exporting media patterns) have corresponding regression tests written across all format implementations, rather than relying on one format's tests to cover the identical logic structure everywhere.
+## 2026-04-29 - [Pulse Width Open Interval Verification]
+**Learning:** The `PulseWidth` bounding logic incorrectly allowed the boundary value `0.0` due to the use of an inclusive-start interval `0.0..1.0` combined with `.contains()`. Open intervals should be explicit in Rust since native range `..` is inclusive of the starting value.
+**Action:** When enforcing open intervals (e.g. `(0, 1)`), explicitly use strict inequalities like `0.0 < value && value < 1.0` rather than relying on `(0.0..1.0).contains()`.
+
+## 2026-04-29 - [TypeEnv Tuning Resolution]
+**Learning:** Type environments and REPL context logic need strict adherence to registering newly defined variants (like `Type::Tuning`) in the `Type` enum, adding matching handlers in type inference `unify` blocks, and ensuring builtins map safely onto matching generic or variadic functions.
+**Action:** When a test fails with "unresolved identifier", trace the identifier explicitly to `TypeEnv::with_builtins()` to confirm registration with the expected `TypeScheme`.
+
+## 2026-04-29 - [Doctest Context Completeness]
+**Learning:** During test repairs, attempting to shortcut compilation errors in doctests by commenting out the execution of the function itself neutralizes the documentation's value and breaks strict persona invariants (do not mask failing tests to pass a build).
+**Action:** Retain full functional execution logic inside doctests (import the target function using full paths if needed) to ensure the doctest remains a valid demonstration.

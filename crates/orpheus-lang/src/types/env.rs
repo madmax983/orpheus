@@ -68,6 +68,13 @@ impl TypeEnv {
         env.insert("strum", unary_number_pattern_scheme());
         env.insert("roll", numeric_pattern_transform_scheme(alpha));
         env.insert("arp", arp_scheme());
+        env.insert(
+            "tuning",
+            TypeScheme::monomorphic(Type::function(
+                vec![Type::pattern(Type::Number)],
+                Type::Tuning,
+            )),
+        );
         env.insert("up", TypeScheme::monomorphic(Type::ArpDirection));
         env.insert("down", TypeScheme::monomorphic(Type::ArpDirection));
 

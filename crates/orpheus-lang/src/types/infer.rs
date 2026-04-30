@@ -397,6 +397,7 @@ impl Inferencer {
             | (Type::ArpDirection, Type::ArpDirection)
             | (Type::PitchClassSet, Type::PitchClassSet)
             | (Type::String, Type::String)
+            | (Type::Tuning, Type::Tuning)
             | (Type::Unit, Type::Unit) => Ok(()),
             (left, right) => {
                 if let Some((coerced_left, coerced_right)) = self.try_loose_coercion(&left, &right)
@@ -438,6 +439,7 @@ impl Inferencer {
             | Type::ArpDirection
             | Type::PitchClassSet
             | Type::String
+            | Type::Tuning
             | Type::Unit => false,
         }
     }
@@ -462,6 +464,7 @@ impl Inferencer {
             Type::ArpDirection => Type::ArpDirection,
             Type::PitchClassSet => Type::PitchClassSet,
             Type::String => Type::String,
+            Type::Tuning => Type::Tuning,
             Type::Unit => Type::Unit,
         }
     }
@@ -514,6 +517,7 @@ fn substitute_scheme_vars(ty: &Type, replacements: &BTreeMap<TypeVarId, Type>) -
         Type::ArpDirection => Type::ArpDirection,
         Type::PitchClassSet => Type::PitchClassSet,
         Type::String => Type::String,
+        Type::Tuning => Type::Tuning,
         Type::Unit => Type::Unit,
     }
 }
@@ -538,6 +542,7 @@ fn free_type_vars(ty: &Type) -> BTreeSet<TypeVarId> {
         | Type::ArpDirection
         | Type::PitchClassSet
         | Type::String
+        | Type::Tuning
         | Type::Unit => BTreeSet::new(),
     }
 }

@@ -210,8 +210,7 @@ pub fn number_pattern_stats(
 ///
 /// ```
 /// use orpheus_lang::{ReplMode, eval_module, tuning_stats};
-///
-/// let env = eval_module("t = tuning(1.0 1.125 1.25 1.333)", ReplMode::Loose).unwrap();
+/// let env = eval_module("t = tuning(1.0 1.125 1.25 1.5 2.0)", ReplMode::Loose).unwrap();
 /// let tuning = env.get("t").unwrap().as_tuning().unwrap();
 ///
 /// let stats = tuning_stats("t", tuning);

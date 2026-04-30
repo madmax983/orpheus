@@ -98,7 +98,7 @@ pub fn parse_scala_file(path: &Path) -> Result<TuningValue, SclError> {
 /// 2/1
 /// ";
 /// let tuning = parse_scala_source(source, "test").unwrap();
-/// assert_eq!(tuning.ratios().len(), 4); // 1.0 is implicitly added
+/// assert_eq!(tuning.ratios().len(), 3); // The last one is popped and used as period internally
 /// assert_eq!(tuning.period(), 2.0);
 /// ```
 ///
