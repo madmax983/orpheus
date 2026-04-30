@@ -12,6 +12,8 @@ pub(crate) mod export;
 #[cfg(feature = "experimental-gcode")]
 pub(crate) mod gcode_export;
 pub(crate) mod html;
+#[cfg(feature = "lilypond_export")]
+pub(crate) mod lilypond_export;
 mod loader;
 pub(crate) mod midi_export;
 mod midi_input;
@@ -50,6 +52,8 @@ pub use export::{
 #[cfg(feature = "experimental-gcode")]
 pub use gcode_export::export_number_pattern_to_gcode;
 pub use html::{export_number_pattern_to_html, export_sample_pattern_to_html};
+#[cfg(feature = "lilypond_export")]
+pub use lilypond_export::export_number_pattern_to_lilypond;
 pub use loader::load_file_strict;
 pub use midi_export::{export_number_pattern_to_midi, export_sample_pattern_to_midi};
 pub use number_roll::render_ascii_number_roll;
