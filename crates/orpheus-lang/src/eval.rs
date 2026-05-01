@@ -20,6 +20,7 @@
 //! ```
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use orpheus_pattern::{Event, PatternNode, Rational, TimeSpan};
 
@@ -278,14 +279,14 @@ impl Evaluator {
                     let value = if params.is_empty() {
                         self.eval_expr(expr)?
                     } else {
-                        Value::Function(FunctionValue::User(UserFn {
+                        Value::Function(FunctionValue::User(Arc::new(UserFn {
                             mode: self.mode,
                             remaining_params: params.clone(),
                             body: expr.clone(),
                             captured_bindings: self.bindings.clone(),
                             expr_site_salts: self.expr_site_salts.clone(),
                             depth: self.depth.get(),
-                        }))
+                        })))
                     };
                     self.bindings.insert(name.clone(), value.clone());
                     Ok(Some((name.clone(), value)))
@@ -762,7 +763,7 @@ impl Evaluator {
             let salted_func = Self::apply_site_salt_to_builtin(builtin_func, site_salt);
             function = FunctionValue::Builtin(salted_func);
         } else if let FunctionValue::User(ref mut user_fn) = function {
-            user_fn.depth = self.depth.get();
+            std::sync::Arc::make_mut(user_fn).depth = self.depth.get();
         }
 
         apply_function_value(function, args)
@@ -978,7 +979,10 @@ pub fn apply_function_value(function: FunctionValue, args: Vec<Value>) -> Result
 /// Applies a user-defined function to the provided arguments, executing the body if fully applied.
 ///
 /// If the function is partially applied, this returns a new curried function with the provided arguments captured in its environment.
-fn apply_user_function(mut function: UserFn, args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_user_function(
+    mut function: std::sync::Arc<UserFn>,
+    args: Vec<Value>,
+) -> Result<Value, EvalError> {
     if function.depth > 200 {
         return Err(EvalError::new("evaluation recursion limit exceeded"));
     }
@@ -990,22 +994,26 @@ fn apply_user_function(mut function: UserFn, args: Vec<Value>) -> Result<Value, 
         )));
     }
 
+    let user_fn = std::sync::Arc::make_mut(&mut function);
+
     // ⚡ Bolt: Drain parameters directly to avoid cloning strings when binding arguments
-    for (param, arg) in function.remaining_params.drain(..applied).zip(args) {
-        function.captured_bindings.insert(param, arg);
+    for (param, arg) in user_fn.remaining_params.drain(..applied).zip(args) {
+        user_fn.captured_bindings.insert(param, arg);
     }
 
-    if !function.remaining_params.is_empty() {
+    if !user_fn.remaining_params.is_empty() {
         return Ok(Value::Function(FunctionValue::User(function)));
     }
 
+    let owned_user_fn = std::sync::Arc::unwrap_or_clone(function);
+
     let evaluator = Evaluator {
-        mode: function.mode,
-        bindings: function.captured_bindings,
-        expr_site_salts: function.expr_site_salts,
-        depth: std::cell::Cell::new(function.depth + 1),
+        mode: owned_user_fn.mode,
+        bindings: owned_user_fn.captured_bindings,
+        expr_site_salts: owned_user_fn.expr_site_salts,
+        depth: std::cell::Cell::new(owned_user_fn.depth + 1),
     };
-    evaluator.eval_expr(&function.body)
+    evaluator.eval_expr(&owned_user_fn.body)
 }
 
 const SITE_SEED_ROOT: u64 = 0xC6A4_A793_5BD1_E995;

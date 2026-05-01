@@ -9,3 +9,7 @@
 **Learning:** Appending items to a `Vec` inside a loop on hot paths (like Orpheus's evaluator) without pre-allocating capacity causes redundant heap re-allocations. In `eval.rs::append_unsorted_shifted`, `combined.push(new_event)` is called `base_events.len()` times but capacity isn't reserved.
 **Action:** Always use `.reserve(len)` before the loop when the exact number of elements to be added is known.
 **[sort_unstable_by instead of sort_by]**\n**Learning:** In Rust, `sort_by` allocates memory and requires extra overhead to guarantee that equal elements preserve their original relative order. For sorting pattern events in Orpheus, concurrent events often have no inherent order, making stable sorting unnecessary and slower on hot paths.\n**Action:** Use `sort_unstable_by` instead of `sort_by` for collections where the order of equal elements does not matter, to avoid allocations and reduce sorting overhead.
+
+**UserFn Allocation Optimization Correctly Handled**
+**Learning:** `Arc::make_mut` copies the underlying data if the reference count is greater than 1. The original implementation resulted in performance regressions because it returned `&mut UserFn` requiring the internal values like BTreeMaps to be cloned on the hot path.
+**Action:** Use `Arc::unwrap_or_clone` instead to consume the arc and regain ownership, dropping down to O(1) pointer copies when no concurrent use is present without adding cloning overhead in the function execution path.
