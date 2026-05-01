@@ -71,6 +71,34 @@ pub fn load_sample_manifest(
         })
 }
 
+#[derive(Default)]
+struct ManifestParseContext {
+    manifest: SampleManifest,
+    seen_tokens: bool,
+    seen_aliases: bool,
+    seen_regions: bool,
+}
+
+struct RegionParseContext {
+    token: Option<String>,
+    start: Option<f64>,
+    end: Option<f64>,
+    rate: f64,
+    seen_rate: bool,
+}
+
+impl Default for RegionParseContext {
+    fn default() -> Self {
+        Self {
+            token: None,
+            start: None,
+            end: None,
+            rate: 1.0,
+            seen_rate: false,
+        }
+    }
+}
+
 struct ManifestParser<'a> {
     source: &'a str,
     offset: usize,
@@ -84,10 +112,7 @@ impl<'a> ManifestParser<'a> {
     fn parse_manifest(&mut self) -> Result<SampleManifest, String> {
         self.skip_ignored();
         self.expect_char('(')?;
-        let mut manifest = SampleManifest::default();
-        let mut seen_tokens = false;
-        let mut seen_aliases = false;
-        let mut seen_regions = false;
+        let mut ctx = ManifestParseContext::default();
 
         loop {
             self.skip_ignored();
@@ -99,34 +124,7 @@ impl<'a> ManifestParser<'a> {
             self.skip_ignored();
             self.expect_char(':')?;
             self.skip_ignored();
-            match field.as_str() {
-                "tokens" => {
-                    if seen_tokens {
-                        return Err("duplicate `tokens` section".to_owned());
-                    }
-                    manifest.tokens = self.parse_string_map()?;
-                    seen_tokens = true;
-                }
-                "aliases" => {
-                    if seen_aliases {
-                        return Err("duplicate `aliases` section".to_owned());
-                    }
-                    manifest.aliases = self.parse_string_map()?;
-                    seen_aliases = true;
-                }
-                "regions" => {
-                    if seen_regions {
-                        return Err("duplicate `regions` section".to_owned());
-                    }
-                    manifest.regions = self.parse_region_map()?;
-                    seen_regions = true;
-                }
-                other => {
-                    return Err(format!(
-                        "unknown manifest field `{other}`; expected `tokens`, `aliases`, or `regions`"
-                    ));
-                }
-            }
+            self.parse_manifest_field(&field, &mut ctx)?;
 
             self.skip_ignored();
             if self.consume_char(',') {
@@ -143,7 +141,43 @@ impl<'a> ManifestParser<'a> {
             return Err(self.expected_message("end of manifest"));
         }
 
-        Ok(manifest)
+        Ok(ctx.manifest)
+    }
+
+    fn parse_manifest_field(
+        &mut self,
+        field: &str,
+        ctx: &mut ManifestParseContext,
+    ) -> Result<(), String> {
+        match field {
+            "tokens" => {
+                if ctx.seen_tokens {
+                    return Err("duplicate `tokens` section".to_owned());
+                }
+                ctx.manifest.tokens = self.parse_string_map()?;
+                ctx.seen_tokens = true;
+            }
+            "aliases" => {
+                if ctx.seen_aliases {
+                    return Err("duplicate `aliases` section".to_owned());
+                }
+                ctx.manifest.aliases = self.parse_string_map()?;
+                ctx.seen_aliases = true;
+            }
+            "regions" => {
+                if ctx.seen_regions {
+                    return Err("duplicate `regions` section".to_owned());
+                }
+                ctx.manifest.regions = self.parse_region_map()?;
+                ctx.seen_regions = true;
+            }
+            other => {
+                return Err(format!(
+                    "unknown manifest field `{other}`; expected `tokens`, `aliases`, or `regions`"
+                ));
+            }
+        }
+        Ok(())
     }
 
     fn parse_string_map(&mut self) -> Result<BTreeMap<String, String>, String> {
@@ -212,11 +246,7 @@ impl<'a> ManifestParser<'a> {
 
     fn parse_region(&mut self) -> Result<SampleRegion, String> {
         self.expect_char('(')?;
-        let mut token = None;
-        let mut start = None;
-        let mut end = None;
-        let mut rate = 1.0;
-        let mut seen_rate = false;
+        let mut ctx = RegionParseContext::default();
 
         loop {
             self.skip_ignored();
@@ -229,38 +259,7 @@ impl<'a> ManifestParser<'a> {
             self.expect_char(':')?;
             self.skip_ignored();
 
-            match field.as_str() {
-                "token" => {
-                    if token.is_some() {
-                        return Err("duplicate `token` field in region".to_owned());
-                    }
-                    token = Some(self.parse_string()?);
-                }
-                "start" => {
-                    if start.is_some() {
-                        return Err("duplicate `start` field in region".to_owned());
-                    }
-                    start = Some(self.parse_number()?);
-                }
-                "end" => {
-                    if end.is_some() {
-                        return Err("duplicate `end` field in region".to_owned());
-                    }
-                    end = Some(self.parse_number()?);
-                }
-                "rate" => {
-                    if seen_rate {
-                        return Err("duplicate `rate` field in region".to_owned());
-                    }
-                    rate = self.parse_number()?;
-                    seen_rate = true;
-                }
-                other => {
-                    return Err(format!(
-                        "unknown region field `{other}`; expected `token`, `start`, `end`, or `rate`"
-                    ));
-                }
-            }
+            self.parse_region_field(&field, &mut ctx)?;
 
             self.skip_ignored();
             if self.consume_char(',') {
@@ -272,9 +271,15 @@ impl<'a> ManifestParser<'a> {
             return Err(self.expected_message("`,` or `)`"));
         }
 
-        let token = token.ok_or_else(|| "region missing required `token` field".to_owned())?;
-        let start = start.ok_or_else(|| "region missing required `start` field".to_owned())?;
-        let end = end.ok_or_else(|| "region missing required `end` field".to_owned())?;
+        let token = ctx
+            .token
+            .ok_or_else(|| "region missing required `token` field".to_owned())?;
+        let start = ctx
+            .start
+            .ok_or_else(|| "region missing required `start` field".to_owned())?;
+        let end = ctx
+            .end
+            .ok_or_else(|| "region missing required `end` field".to_owned())?;
         if !start.is_finite()
             || !end.is_finite()
             || !(0.0..=1.0).contains(&start)
@@ -283,7 +288,7 @@ impl<'a> ManifestParser<'a> {
         {
             return Err("region requires 0 <= start < end <= 1".to_owned());
         }
-        if !rate.is_finite() || rate <= 0.0 {
+        if !ctx.rate.is_finite() || ctx.rate <= 0.0 {
             return Err("region `rate` must be a positive finite number".to_owned());
         }
 
@@ -291,8 +296,48 @@ impl<'a> ManifestParser<'a> {
             token,
             start,
             end,
-            rate,
+            rate: ctx.rate,
         })
+    }
+
+    fn parse_region_field(
+        &mut self,
+        field: &str,
+        ctx: &mut RegionParseContext,
+    ) -> Result<(), String> {
+        match field {
+            "token" => {
+                if ctx.token.is_some() {
+                    return Err("duplicate `token` field in region".to_owned());
+                }
+                ctx.token = Some(self.parse_string()?);
+            }
+            "start" => {
+                if ctx.start.is_some() {
+                    return Err("duplicate `start` field in region".to_owned());
+                }
+                ctx.start = Some(self.parse_number()?);
+            }
+            "end" => {
+                if ctx.end.is_some() {
+                    return Err("duplicate `end` field in region".to_owned());
+                }
+                ctx.end = Some(self.parse_number()?);
+            }
+            "rate" => {
+                if ctx.seen_rate {
+                    return Err("duplicate `rate` field in region".to_owned());
+                }
+                ctx.rate = self.parse_number()?;
+                ctx.seen_rate = true;
+            }
+            other => {
+                return Err(format!(
+                    "unknown region field `{other}`; expected `token`, `start`, `end`, or `rate`"
+                ));
+            }
+        }
+        Ok(())
     }
 
     fn parse_identifier(&mut self) -> Result<String, String> {

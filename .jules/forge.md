@@ -61,3 +61,6 @@
 **[Title] Fix Redundant pub(crate)**
 **Learning:** `clippy::redundant_pub_crate` warns about `pub(crate)` items inside private modules. Since the module itself is private to the crate, making the item `pub(crate)` is functionally equivalent to making it `pub`, but `pub` is more idiomatic and cleaner.
 **Action:** When working in private modules, use `pub` instead of `pub(crate)` for items intended to be accessible throughout the crate. Avoid suppressing the warning with `#[allow(clippy::redundant_pub_crate)]`.
+**[Title]** Extract God Functions using Context Structs
+**Learning:** Extracting large `match` blocks that modify numerous local variables can lead to an unidiomatic soup of mutable reference parameters.
+**Action:** When extracting complex parsing logic or loops, group the local variables into a `Context` struct (e.g., `ParseContext`) to keep the method signatures clean and adhere to the "5+ arguments" rule.
