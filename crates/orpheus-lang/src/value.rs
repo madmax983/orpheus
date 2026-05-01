@@ -92,6 +92,7 @@ pub enum BuiltinKind {
     Tuning,
     LoadScl,
     Tune,
+    Morse,
 }
 
 /// A partially or fully applied built-in function at runtime.

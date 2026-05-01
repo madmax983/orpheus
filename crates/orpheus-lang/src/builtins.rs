@@ -109,6 +109,7 @@ fn lookup_pattern_transform(name: &str) -> Option<Value> {
         "tuning" => Some(builtin_function_value(BuiltinKind::Tuning)),
         "load_scl" => Some(builtin_function_value(BuiltinKind::LoadScl)),
         "tune" => Some(builtin_function_value(BuiltinKind::Tune)),
+        "morse" => Some(builtin_function_value(BuiltinKind::Morse)),
         _ => None,
     }
 }
@@ -392,6 +393,7 @@ impl BuiltinKind {
             Self::Tuning => "tuning",
             Self::LoadScl => "load_scl",
             Self::Tune => "tune",
+            Self::Morse => "morse",
         }
     }
 
@@ -406,6 +408,7 @@ impl BuiltinKind {
             | Self::Chaos
             | Self::Palindrome
             | Self::Tuning
+            | Self::Morse
             | Self::LoadScl
             | Self::MidiCc => 1,
             Self::Sometimes
@@ -510,6 +513,7 @@ impl BuiltinKind {
             Self::Tuning => apply_tuning(args),
             Self::LoadScl => apply_load_scl(args),
             Self::Tune => apply_tune(args),
+            Self::Morse => apply_morse(args),
         }
     }
 }
@@ -2646,6 +2650,8 @@ fn apply_palindrome(args: Vec<Value>) -> Result<Value, EvalError> {
 
 #[cfg(test)]
 mod test_nova {
+
+
     use crate::{ReplMode, eval_module};
     use orpheus_pattern::{Rational, TimeSpan};
 
@@ -2833,4 +2839,136 @@ fn apply_lsystem(args: Vec<Value>) -> Result<Value, EvalError> {
     }
 
     Ok(Value::NumberPattern(NumberPatternValue::from_nodes(nodes)))
+}
+
+fn apply_morse(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let text = extract_string(
+        args.next()
+            .ok_or_else(|| EvalError::new("`morse` requires a string argument"))?,
+        "`morse` text",
+    )?;
+
+    let mut total_units = 0;
+
+    let words: Vec<&str> = text.split_whitespace().collect();
+    for (i, word) in words.iter().enumerate() {
+        if i > 0 {
+            total_units += 7;
+        }
+
+        let chars: Vec<char> = word.chars().collect();
+        for (j, c) in chars.iter().enumerate() {
+            let code = match c.to_ascii_uppercase() {
+                'A' => ".-", 'B' => "-...", 'C' => "-.-.", 'D' => "-..", 'E' => ".",
+                'F' => "..-.", 'G' => "--.", 'H' => "....", 'I' => "..", 'J' => ".---",
+                'K' => "-.-", 'L' => ".-..", 'M' => "--", 'N' => "-.", 'O' => "---",
+                'P' => ".--.", 'Q' => "--.-", 'R' => ".-.", 'S' => "...", 'T' => "-",
+                'U' => "..-", 'V' => "...-", 'W' => ".--", 'X' => "-..-", 'Y' => "-.--",
+                'Z' => "--..", '1' => ".----", '2' => "..---", '3' => "...--",
+                '4' => "....-", '5' => ".....", '6' => "-....", '7' => "--...",
+                '8' => "---..", '9' => "----.", '0' => "-----", _ => "",
+            };
+
+            let symbols: Vec<char> = code.chars().collect();
+            for (k, sym) in symbols.iter().enumerate() {
+                if *sym == '.' {
+                    total_units += 1;
+                } else if *sym == '-' {
+                    total_units += 3;
+                }
+
+                if k < symbols.len() - 1 {
+                    total_units += 1;
+                }
+            }
+
+            if j < chars.len() - 1 {
+                total_units += 3;
+            }
+        }
+    }
+
+    if total_units == 0 {
+        return Ok(Value::NumberPattern(NumberPatternValue::from_events(Vec::new())));
+    }
+
+    let mut events = Vec::new();
+    let mut current_unit = 0;
+
+    for (i, word) in words.iter().enumerate() {
+        if i > 0 {
+            current_unit += 7;
+        }
+
+        let chars: Vec<char> = word.chars().collect();
+        for (j, c) in chars.iter().enumerate() {
+            let code = match c.to_ascii_uppercase() {
+                'A' => ".-", 'B' => "-...", 'C' => "-.-.", 'D' => "-..", 'E' => ".",
+                'F' => "..-.", 'G' => "--.", 'H' => "....", 'I' => "..", 'J' => ".---",
+                'K' => "-.-", 'L' => ".-..", 'M' => "--", 'N' => "-.", 'O' => "---",
+                'P' => ".--.", 'Q' => "--.-", 'R' => ".-.", 'S' => "...", 'T' => "-",
+                'U' => "..-", 'V' => "...-", 'W' => ".--", 'X' => "-..-", 'Y' => "-.--",
+                'Z' => "--..", '1' => ".----", '2' => "..---", '3' => "...--",
+                '4' => "....-", '5' => ".....", '6' => "-....", '7' => "--...",
+                '8' => "---..", '9' => "----.", '0' => "-----", _ => "",
+            };
+
+            let symbols: Vec<char> = code.chars().collect();
+            for (k, sym) in symbols.iter().enumerate() {
+                let duration = if *sym == '.' { 1 } else if *sym == '-' { 3 } else { 0 };
+
+                if duration > 0 {
+                    let start = orpheus_pattern::Rational::new(current_unit as i64, total_units as i64)
+                        .map_err(|e| EvalError::new(e.to_string()))?;
+                    let end = orpheus_pattern::Rational::new((current_unit + duration) as i64, total_units as i64)
+                        .map_err(|e| EvalError::new(e.to_string()))?;
+
+                    let span = orpheus_pattern::TimeSpan::new(start, end)
+                        .map_err(|e| EvalError::new(e.to_string()))?;
+
+                    events.push(orpheus_pattern::Event {
+                        whole: Some(span),
+                        part: span,
+                        value: 1.0,
+                    });
+
+                    current_unit += duration;
+                }
+
+                if k < symbols.len() - 1 {
+                    current_unit += 1;
+                }
+            }
+
+            if j < chars.len() - 1 {
+                current_unit += 3;
+            }
+        }
+    }
+
+    Ok(Value::NumberPattern(NumberPatternValue::from_events(events)))
+}
+
+#[cfg(test)]
+mod morse_tests {
+    use crate::{ReplMode, eval_module};
+    use orpheus_pattern::Rational;
+
+    #[test]
+    fn test_morse_builtin() {
+        let source = "pat = morse(\"SOS\")";
+        let result = eval_module(source, ReplMode::Loose).unwrap();
+        let pattern = result.get("pat").unwrap().as_number_pattern().unwrap();
+
+        let span = orpheus_pattern::TimeSpan::new(Rational::zero(), Rational::one()).unwrap();
+        let events = pattern.try_query(&span).unwrap();
+
+        assert_eq!(events.len(), 9);
+
+        let dot_duration = events[0].part.end().checked_sub(events[0].part.start()).unwrap();
+        let dash_duration = events[3].part.end().checked_sub(events[3].part.start()).unwrap();
+
+        assert_eq!(dash_duration, dot_duration.checked_mul(&orpheus_pattern::Rational::new(3, 1).unwrap()).unwrap());
+    }
 }
