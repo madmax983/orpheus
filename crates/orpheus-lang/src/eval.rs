@@ -278,14 +278,14 @@ impl Evaluator {
                     let value = if params.is_empty() {
                         self.eval_expr(expr)?
                     } else {
-                        Value::Function(FunctionValue::User(UserFn {
+                        Value::Function(FunctionValue::User(std::sync::Arc::new(UserFn {
                             mode: self.mode,
                             remaining_params: params.clone(),
                             body: expr.clone(),
                             captured_bindings: self.bindings.clone(),
                             expr_site_salts: self.expr_site_salts.clone(),
                             depth: self.depth.get(),
-                        }))
+                        })))
                     };
                     self.bindings.insert(name.clone(), value.clone());
                     Ok(Some((name.clone(), value)))
@@ -762,7 +762,7 @@ impl Evaluator {
             let salted_func = Self::apply_site_salt_to_builtin(builtin_func, site_salt);
             function = FunctionValue::Builtin(salted_func);
         } else if let FunctionValue::User(ref mut user_fn) = function {
-            user_fn.depth = self.depth.get();
+            std::sync::Arc::make_mut(user_fn).depth = self.depth.get();
         }
 
         apply_function_value(function, args)
@@ -978,7 +978,11 @@ pub fn apply_function_value(function: FunctionValue, args: Vec<Value>) -> Result
 /// Applies a user-defined function to the provided arguments, executing the body if fully applied.
 ///
 /// If the function is partially applied, this returns a new curried function with the provided arguments captured in its environment.
-fn apply_user_function(mut function: UserFn, args: Vec<Value>) -> Result<Value, EvalError> {
+fn apply_user_function(
+    mut function_arc: std::sync::Arc<UserFn>,
+    args: Vec<Value>,
+) -> Result<Value, EvalError> {
+    let function = std::sync::Arc::make_mut(&mut function_arc);
     if function.depth > 200 {
         return Err(EvalError::new("evaluation recursion limit exceeded"));
     }
@@ -996,13 +1000,13 @@ fn apply_user_function(mut function: UserFn, args: Vec<Value>) -> Result<Value, 
     }
 
     if !function.remaining_params.is_empty() {
-        return Ok(Value::Function(FunctionValue::User(function)));
+        return Ok(Value::Function(FunctionValue::User(function_arc)));
     }
 
     let evaluator = Evaluator {
         mode: function.mode,
-        bindings: function.captured_bindings,
-        expr_site_salts: function.expr_site_salts,
+        bindings: function.captured_bindings.clone(),
+        expr_site_salts: function.expr_site_salts.clone(),
         depth: std::cell::Cell::new(function.depth + 1),
     };
     evaluator.eval_expr(&function.body)
