@@ -23,3 +23,6 @@
 **[Enforce Public Structure inside Private Module]
 **Tangle:** The `TypeScheme` and `TypeEnv` structs in `orpheus-lang/src/types/env.rs` were declared as `pub(crate) struct`, which triggers `clippy::redundant_pub_crate` because the parent module `env` is private.
 **Blueprint:** Modified `TypeScheme` and `TypeEnv` to use `pub` visibility instead of `pub(crate)`. This satisfies Clippy while correctly maintaining the private boundary since the module itself is private, making the items effectively crate-visible.
+**Extracting Table Builders to Helper Methods**
+**Tangle:** clippy::too_many_lines on summary or TUI orchestrator functions is often caused by the procedural, sequential building of complex UI components or string-based tables directly inside the orchestrator.
+**Blueprint:** Extract the construction of each distinct logical table or visual section into its own helper method that returns the formatted string or component. This flattens the main orchestrator, which then simply combines the outputs without changing behavior.
