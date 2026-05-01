@@ -6,6 +6,18 @@
 //! is the [`Module`] struct, which contains a collection of [`Stmt`] nodes.
 
 /// A parsed Orpheus module.
+///
+/// This structure holds the raw results of parsing an Orpheus file or input string,
+/// before any semantic analysis like type inference has been performed.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::parse_module;
+///
+/// let module = parse_module("x = 1").unwrap();
+/// assert_eq!(module.statements.len(), 1);
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct Module {
     /// Top-level statements in source order.
@@ -13,6 +25,19 @@ pub struct Module {
 }
 
 /// Phase 1 expression forms.
+///
+/// These expressions represent the syntactic structure of Orpheus code exactly
+/// as it was written, prior to any type checking or conversion into runtime values.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{parse_module, Stmt, Expr};
+///
+/// let module = parse_module("x = 42").unwrap();
+/// let Stmt::Binding { expr: Expr::Number(n), .. } = &module.statements[0] else { panic!("Expected a number binding") };
+/// assert_eq!(*n, 42.0);
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
     /// Sequential composition created by juxtaposition.
@@ -181,6 +206,18 @@ impl Expr {
 }
 
 /// Phase 1 statements.
+///
+/// Statements represent the top-level constructs in an Orpheus module,
+/// primarily bindings that associate a name with an evaluated expression.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{parse_module, Stmt};
+///
+/// let module = parse_module("my_pattern = bd sn").unwrap();
+/// assert!(matches!(module.statements[0], Stmt::Binding { .. }));
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub enum Stmt {
     /// A top-level binding statement.

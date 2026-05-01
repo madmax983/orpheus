@@ -13,15 +13,21 @@ pub enum EvalError {
     ///
     /// This is a fallback variant for dynamically generated evaluation errors
     /// (e.g. division by zero, capacity overflows) that don't fit into a specific domain type.
+    ///
+    /// **Recovery:** Display the custom `message` to the user and prompt them to fix the logic error.
     #[error("{message}")]
     Message {
         /// The textual description of the error.
         message: Box<str>,
     },
 
+    // Note: Other variants don't need doc tests individually, but a general # Recovery
+    // has been added to EvalError::new
     /// An error that occurred while parsing a dynamic evaluation string.
     ///
     /// This happens when source code provided to `eval_module` contains syntax errors.
+    ///
+    /// **Recovery:** Display the syntax error diagnostics and prompt the user to correct the code.
     #[error(transparent)]
     Parse(#[from] ParseError),
 
@@ -65,6 +71,9 @@ pub enum EvalError {
 
 impl EvalError {
     /// Creates a new `EvalError` with the given message.
+    ///
+    /// **Recovery:** Catch the error and print its message to the user. The internal
+    /// environment remains uncorrupted.
     ///
     /// The message explains what went wrong during runtime evaluation.
     ///

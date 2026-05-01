@@ -19,3 +19,6 @@
 ## 2024-05-19 - Documenting SclError variants
 **Confusion:** The fields `expected` and `actual` inside the `Count` variant of `SclError` in `scl.rs` lacked documentation, leading to warnings when running `cargo doc` with strict lints.
 **Clarification:** Added missing doc comments explaining what `expected` and `actual` mean in the context of Scala `.scl` file parsing.
+## 2024-05-24 - [Missing Doctests and Recovery Sections for Core Types]
+**Confusion:** The core Phase 1 AST representations (`Module`, `Expr`, `Stmt`) in `ast.rs`, the REPL entry points (`run_stdio`, etc.) in `repl.rs`, and the `EvalError` runtime error variants in `error.rs` were missing `# Examples` and specific `# Recovery` sections. This made it difficult for users to understand how to interact with the raw parsed structures before type-checking or how to gracefully recover from evaluation failures.
+**Clarification:** Added `# Examples` executable doctests demonstrating pattern matching on `Expr` and `Stmt` inside `ast.rs`. Added `no_run` doctests for the blocking REPL entry points in `repl.rs` to prevent CI hangs while still providing copy-pasteable examples. Finally, added explicit `**Recovery:**` sections to the `Message` and `Parse` variants of `EvalError` in `error.rs` explaining how to present these errors to the user without corrupting the internal environment state.

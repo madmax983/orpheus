@@ -15,6 +15,16 @@ use crate::session::ReplSession;
 ///
 /// Blank lines are ignored. `:quit` exits the session.
 ///
+/// # Examples
+///
+/// ```no_run
+/// use orpheus_lang::run_stdio;
+///
+/// // Starts the interactive command-line REPL.
+/// // This will block until the user exits.
+/// run_stdio().unwrap();
+/// ```
+///
 /// # Errors
 ///
 /// Returns any terminal I/O failure encountered while reading input or
@@ -27,6 +37,16 @@ pub fn run_stdio() -> io::Result<()> {
 ///
 /// Blank lines are ignored. `:quit` exits the session.
 ///
+/// # Examples
+///
+/// ```no_run
+/// use orpheus_dsp::EngineHandle;
+/// use orpheus_lang::run_stdio_with_engine;
+///
+/// // Start the REPL connected to a specific (or stubbed) audio engine.
+/// run_stdio_with_engine(EngineHandle::stub()).unwrap();
+/// ```
+///
 /// # Errors
 ///
 /// Returns any terminal I/O failure encountered while reading input or
@@ -36,6 +56,18 @@ pub fn run_stdio_with_engine(engine: EngineHandle) -> io::Result<()> {
 }
 
 /// Runs the phase-one Orpheus REPL with an optional startup `.ode` preload.
+///
+/// # Examples
+///
+/// ```no_run
+/// use std::path::Path;
+/// use orpheus_dsp::EngineHandle;
+/// use orpheus_lang::run_stdio_with_engine_and_path;
+///
+/// // Starts the REPL, preloading the definitions from "startup.ode"
+/// let path = Path::new("startup.ode");
+/// run_stdio_with_engine_and_path(EngineHandle::stub(), Some(path), None).unwrap();
+/// ```
 ///
 /// # Errors
 ///
