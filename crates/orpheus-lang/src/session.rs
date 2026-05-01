@@ -853,9 +853,10 @@ impl ReplSession {
         {
             crate::txt::export_number_pattern_to_txt(pattern, path, cycles)
                 .map_err(|error: crate::EvalError| error.to_string())?;
-        } else if cfg!(feature = "lilypond_export") && export_path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("ly"))
+        } else if cfg!(feature = "lilypond_export")
+            && export_path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("ly"))
         {
             #[cfg(feature = "lilypond_export")]
             {
@@ -2311,7 +2312,8 @@ mod tests {
     #[test]
     fn export_command_exports_number_pattern_to_abc() {
         let mut session = ReplSession::new();
-        let path = std::env::temp_dir().join(format!("orpheus-export-{}.abc", unique_temp_suffix()));
+        let path =
+            std::env::temp_dir().join(format!("orpheus-export-{}.abc", unique_temp_suffix()));
 
         session.eval_line("notes = 60 62 64").unwrap();
         let message = session
