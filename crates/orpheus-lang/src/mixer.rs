@@ -420,6 +420,7 @@ impl MixerState {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     pub(crate) fn render_summary(&self) -> String {
         let mut output = String::new();
 

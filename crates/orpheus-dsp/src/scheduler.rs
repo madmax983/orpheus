@@ -67,7 +67,8 @@ impl Scheduler {
         let iter = events.into_iter();
         let (lower, upper) = iter.size_hint();
         // ⚡ Bolt: Pre-allocate vectors based on iterator size hints to avoid O(N) heap allocations.
-        let mut pending = Vec::with_capacity(upper.unwrap_or(lower));
+        // 👺 Havoc: Cap the unverified allocation size to prevent an immediate OOM panic.
+        let mut pending = Vec::with_capacity(upper.unwrap_or(lower).min(1024));
         for event in iter {
             let offset = rational_to_frame_offset(event.part.start(), frames_per_cycle)?;
             let frame = cycle_start_frame
@@ -172,4 +173,47 @@ fn duration_frames_for_event(
     let end = rational_to_frame_offset(event.part.end(), frames_per_cycle)?;
     let duration = end.saturating_sub(start).max(1);
     u32::try_from(duration).map_err(|_| EngineError::FrameOverflow)
+}
+
+#[cfg(test)]
+mod havoc_tests {
+    use super::*;
+
+    /// 👺 Havoc: Tests that malicious or unbounded AST pattern iteration yielding enormous size hints
+    /// gracefully bounds memory allocation and avoids Vec::with_capacity OOM panics.
+    #[test]
+    fn test_havoc_scheduler_capacity_oom() {
+        struct EvilIter<'a> {
+            count: usize,
+            _marker: std::marker::PhantomData<&'a ()>,
+        }
+
+        impl<'a> Iterator for EvilIter<'a> {
+            type Item = &'a Event<SampleTrigger>;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                if self.count > 0 {
+                    self.count -= 1;
+                    None
+                } else {
+                    None
+                }
+            }
+
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                // Fake a massive upper bound to cause OOM in Vec::with_capacity
+                (usize::MAX - 100, Some(usize::MAX - 100))
+            }
+        }
+
+        let mut scheduler = Scheduler::new_for_test();
+        let iter = EvilIter {
+            count: 0,
+            _marker: std::marker::PhantomData,
+        };
+
+        // This will panic or abort if Vec::with_capacity(usize::MAX - 100) is called.
+        // It should gracefully execute because we clamped the size hint.
+        let _ = scheduler.schedule_cycle_events(TrackId::new(0), 0, 44100, iter);
+    }
 }
