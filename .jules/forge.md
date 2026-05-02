@@ -61,3 +61,7 @@
 **[Title] Fix Redundant pub(crate)**
 **Learning:** `clippy::redundant_pub_crate` warns about `pub(crate)` items inside private modules. Since the module itself is private to the crate, making the item `pub(crate)` is functionally equivalent to making it `pub`, but `pub` is more idiomatic and cleaner.
 **Action:** When working in private modules, use `pub` instead of `pub(crate)` for items intended to be accessible throughout the crate. Avoid suppressing the warning with `#[allow(clippy::redundant_pub_crate)]`.
+
+**[Splitting Borrows in Enum Matches]**
+**Learning:** When extracting logic from a `match` on a mutable enum field (e.g., `match &mut self.state`), passing `&mut self` to the extracted helper methods will cause borrow checker errors because the field is already mutably borrowed by the match statement.
+**Action:** Pass only the specific destructured fields (and any other independent variables) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
