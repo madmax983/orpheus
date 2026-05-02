@@ -1546,11 +1546,15 @@ fn extract_positive_integer_factor(value: Value, builtin_name: &str) -> Result<i
         )));
     }
 
-    let integer = format!("{number:.0}").parse::<i64>().map_err(|_| {
-        EvalError::new(format!(
+    #[allow(clippy::cast_possible_truncation)]
+    let integer = number.round() as i64;
+    #[allow(clippy::cast_precision_loss)]
+    let max_i64_as_f64 = i64::MAX as f64;
+    if integer == i64::MAX && number > max_i64_as_f64 {
+        return Err(EvalError::new(format!(
             "`{builtin_name}` factor exceeded the supported evaluator range"
-        ))
-    })?;
+        )));
+    }
 
     if integer > 1024 {
         return Err(EvalError::new(format!(
@@ -1732,11 +1736,13 @@ fn extract_whole_number(
         )));
     }
 
-    let integer = format!("{number:.0}").parse::<u32>().map_err(|_| {
-        EvalError::new(format!(
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let integer = number.round() as u32;
+    if integer == u32::MAX && number > f64::from(u32::MAX) {
+        return Err(EvalError::new(format!(
             "`{context}` exceeded the supported evaluator range"
-        ))
-    })?;
+        )));
+    }
 
     if integer > 1024 {
         return Err(EvalError::new(format!(
