@@ -1,0 +1,13 @@
+--- crates/orpheus-lang/src/eval.rs
++++ crates/orpheus-lang/src/eval.rs
+@@ -1009,14 +1009,15 @@
+     let owned_user_fn = std::sync::Arc::unwrap_or_clone(function);
+
+     let evaluator = Evaluator {
+         mode: owned_user_fn.mode,
+         bindings: owned_user_fn.captured_bindings,
+         expr_site_salts: owned_user_fn.expr_site_salts,
+         depth: std::cell::Cell::new(owned_user_fn.depth + 1),
+     };
+     evaluator.eval_expr(&owned_user_fn.body)
+ }
