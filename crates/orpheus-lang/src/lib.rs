@@ -29,6 +29,7 @@ pub(crate) mod scl;
 pub(crate) mod session;
 pub(crate) mod srt;
 pub(crate) mod stats;
+pub mod supercollider_export;
 mod svg;
 pub(crate) mod tracker;
 mod tui;
