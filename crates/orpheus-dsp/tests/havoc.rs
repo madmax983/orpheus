@@ -60,9 +60,10 @@ impl SharedTransportLoom {
             }
 
             spins += 1;
-            if spins > 10 {
-                panic!("Livelock detected: spun too many times waiting for even epoch");
-            }
+            assert!(
+                spins <= 10,
+                "Livelock detected: spun too many times waiting for even epoch"
+            );
 
             let start_epoch = self.publish_epoch.load(Ordering::Relaxed);
             loom::sync::atomic::fence(Ordering::Acquire);
