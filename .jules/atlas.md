@@ -23,3 +23,6 @@
 **[Enforce Public Structure inside Private Module]
 **Tangle:** The `TypeScheme` and `TypeEnv` structs in `orpheus-lang/src/types/env.rs` were declared as `pub(crate) struct`, which triggers `clippy::redundant_pub_crate` because the parent module `env` is private.
 **Blueprint:** Modified `TypeScheme` and `TypeEnv` to use `pub` visibility instead of `pub(crate)`. This satisfies Clippy while correctly maintaining the private boundary since the module itself is private, making the items effectively crate-visible.
+**[Enforce Public Structure inside Private Module for TUI Plugins]
+**Tangle:** The `ReplPlugin`, `BindingsPlugin`, and `TransportPlugin` structs in `orpheus-lang/src/tui/plugins.rs` were declared as `pub(crate) struct`, which triggers `clippy::redundant_pub_crate` because the parent module `plugins` is private.
+**Blueprint:** Modified `ReplPlugin`, `BindingsPlugin`, and `TransportPlugin` to use `pub` visibility instead of `pub(crate)`. This satisfies Clippy while correctly maintaining the private boundary since the module itself is private, making the items effectively crate-visible.
