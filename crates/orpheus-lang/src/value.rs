@@ -4556,6 +4556,7 @@ fn validate_onset_control_events(control_events: &[Event<f64>]) -> Result<(), Ev
     Ok(())
 }
 
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn whole_number_from_slice_idx_value(value: f64) -> Result<u32, EvalError> {
     if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
         return Err(EvalError::new(
@@ -4563,11 +4564,17 @@ fn whole_number_from_slice_idx_value(value: f64) -> Result<u32, EvalError> {
         ));
     }
 
-    format!("{value:.0}").parse::<u32>().map_err(|_| {
-        EvalError::new("`slice_idx` control value exceeded the supported evaluator range")
-    })
+    let rounded = value.round();
+    if rounded > f64::from(u32::MAX) || rounded < 0.0 {
+        return Err(EvalError::new(
+            "`slice_idx` control value exceeded the supported evaluator range",
+        ));
+    }
+
+    Ok(rounded as u32)
 }
 
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn whole_number_from_onset_value(value: f64) -> Result<u32, EvalError> {
     if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
         return Err(EvalError::new(
@@ -4575,9 +4582,14 @@ fn whole_number_from_onset_value(value: f64) -> Result<u32, EvalError> {
         ));
     }
 
-    format!("{value:.0}")
-        .parse::<u32>()
-        .map_err(|_| EvalError::new("`onset` control value exceeded the supported evaluator range"))
+    let rounded = value.round();
+    if rounded > f64::from(u32::MAX) || rounded < 0.0 {
+        return Err(EvalError::new(
+            "`onset` control value exceeded the supported evaluator range",
+        ));
+    }
+
+    Ok(rounded as u32)
 }
 
 fn query_rand<T>(site_salt: u64, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError>

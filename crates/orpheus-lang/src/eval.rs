@@ -713,6 +713,7 @@ impl Evaluator {
         Ok(beat_index.checked_mul(&beat_length)?)
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     fn eval_positive_integer(
         &self,
         expr: &Expr,
@@ -726,9 +727,15 @@ impl Evaluator {
             )));
         }
 
-        format!("{value:.0}")
-            .parse::<i128>()
-            .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))
+        let rounded = value.round();
+        let integer = rounded as i128;
+        if integer <= 0 {
+            return Err(EvalError::new(format!(
+                "{context} must be a strictly positive integer"
+            )));
+        }
+
+        Ok(integer)
     }
 
     fn value_to_explicit(value: Value) -> Result<ExplicitValue, EvalError> {

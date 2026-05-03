@@ -1537,6 +1537,7 @@ fn apply_sample_numeric_control(
     }
 }
 
+#[allow(clippy::cast_possible_truncation)]
 fn extract_positive_integer_factor(value: Value, builtin_name: &str) -> Result<i64, EvalError> {
     let number = extract_constant_number(value, builtin_name)?;
 
@@ -1546,11 +1547,14 @@ fn extract_positive_integer_factor(value: Value, builtin_name: &str) -> Result<i
         )));
     }
 
-    let integer = format!("{number:.0}").parse::<i64>().map_err(|_| {
-        EvalError::new(format!(
+    let rounded = number.round();
+    let integer = rounded as i64;
+
+    if integer <= 0 {
+        return Err(EvalError::new(format!(
             "`{builtin_name}` factor exceeded the supported evaluator range"
-        ))
-    })?;
+        )));
+    }
 
     if integer > 1024 {
         return Err(EvalError::new(format!(
@@ -1710,6 +1714,7 @@ fn extract_unit_interval_boundary(value: Value, label: &str) -> Result<Rational,
     Ok(rational)
 }
 
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn extract_whole_number(
     value: Value,
     context: &str,
@@ -1732,11 +1737,14 @@ fn extract_whole_number(
         )));
     }
 
-    let integer = format!("{number:.0}").parse::<u32>().map_err(|_| {
-        EvalError::new(format!(
+    let rounded = number.round();
+    if rounded > f64::from(u32::MAX) || rounded < 0.0 {
+        return Err(EvalError::new(format!(
             "`{context}` exceeded the supported evaluator range"
-        ))
-    })?;
+        )));
+    }
+
+    let integer = rounded as u32;
 
     if integer > 1024 {
         return Err(EvalError::new(format!(
