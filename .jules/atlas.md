@@ -23,3 +23,6 @@
 **[Enforce Public Structure inside Private Module]
 **Tangle:** The `TypeScheme` and `TypeEnv` structs in `orpheus-lang/src/types/env.rs` were declared as `pub(crate) struct`, which triggers `clippy::redundant_pub_crate` because the parent module `env` is private.
 **Blueprint:** Modified `TypeScheme` and `TypeEnv` to use `pub` visibility instead of `pub(crate)`. This satisfies Clippy while correctly maintaining the private boundary since the module itself is private, making the items effectively crate-visible.
+**[Fix Leaky Abstraction in Value and FunctionValue Enums]
+**Tangle:** The `Value` and `FunctionValue` enums in `orpheus-lang` were public and exposed inner payload types like `ArpDirectionValue`, `PitchClassSetValue`, `BuiltinFn`, `BuiltinKind`, and `UserFn` as part of their variants. However, these inner types were not re-exported in the crate's `lib.rs`, creating a leaky abstraction where consumers could match on the variants but could not explicitly name the types of the values they extracted.
+**Blueprint:** Explicitly re-exported `ArpDirectionValue`, `BuiltinFn`, `BuiltinKind`, `PitchClassSetValue`, and `UserFn` from the `value` module inside `crates/orpheus-lang/src/lib.rs` to ensure all publicly reachable types are fully nameable.

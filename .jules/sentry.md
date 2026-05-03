@@ -32,3 +32,6 @@
 ## 2024-06-25 - Export zero-cycle count tests
 **Learning:** Evaluated export handlers for HTML, Markdown, CSV, Tracker, text, and other formatters. While logic safely catches zero `cycle_count` conditions with `EvalError` across the `export.rs` functions, dedicated unit tests verifying this error outcome were only added to some files and entirely missing in `ascii_roll.rs`, `number_roll.rs`, `midi_export.rs`, and `srt.rs`.
 **Action:** Ensure boundary assertions and error branches in common data extraction patterns (like exporting media patterns) have corresponding regression tests written across all format implementations, rather than relying on one format's tests to cover the identical logic structure everywhere.
+## 2025-05-02 - Eliminate unwrap() using stable Rust constructs
+**Learning:** Replacing `.unwrap()` with `if let Some` and `&&` (let chains) is an unstable Rust feature. Using it causes the compiler to reject the build.
+**Action:** Always use either nested `if` statements with `#[allow(clippy::collapsible_if)]` or modern iterator methods like `.is_some_and(...)` when safely unpacking values conditionally on stable Rust.

@@ -97,7 +97,12 @@ pub fn export_sample_pattern_to_svg(
     // Draw events
     for event in &events {
         let sample = event.value.sample();
-        let lane_idx = sample_list.iter().position(|s| *s == sample).unwrap();
+        let lane_idx = sample_list
+            .iter()
+            .position(|s| *s == sample)
+            .ok_or_else(|| {
+                crate::EvalError::new(format!("sample '{sample}' not found in lane list"))
+            })?;
         #[allow(clippy::cast_precision_loss)]
         let y = (lane_idx as f64).mul_add(lane_height, 40.0) + 5.0;
 

@@ -515,8 +515,12 @@ impl ReplSession {
         let mut table = comfy_table::Table::new();
         table.load_preset(comfy_table::presets::UTF8_BORDERS_ONLY);
         table.set_header(vec![
-            comfy_table::Cell::new("Command").fg(comfy_table::Color::DarkGrey),
-            comfy_table::Cell::new("Description").fg(comfy_table::Color::DarkGrey),
+            comfy_table::Cell::new("Command")
+                .fg(comfy_table::Color::White)
+                .add_attribute(comfy_table::Attribute::Bold),
+            comfy_table::Cell::new("Description")
+                .fg(comfy_table::Color::White)
+                .add_attribute(comfy_table::Attribute::Bold),
         ]);
 
         let commands = [
@@ -1505,6 +1509,8 @@ impl ReplSession {
             .collect()
     }
 
+    /// Exposes the name of the most recently evaluated and loaded pattern for assertions.
+    /// Useful when verifying that REPL or script execution resulted in the expected active bindings.
     #[cfg(test)]
     pub fn last_loaded_pattern_name(&self) -> Option<String> {
         self.pattern_display

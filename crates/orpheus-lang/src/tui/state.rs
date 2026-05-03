@@ -350,7 +350,7 @@ fn previous_word_boundary(input: &str, index: usize) -> usize {
     }
     while cursor > 0 {
         let previous = previous_char_boundary(input, cursor);
-        let Some(character) = input[..cursor].chars().next_back() else {
+        let Some(character) = input.get(..cursor).and_then(|s| s.chars().next_back()) else {
             break;
         };
         if !character.is_whitespace() {
@@ -360,7 +360,7 @@ fn previous_word_boundary(input: &str, index: usize) -> usize {
     }
     while cursor > 0 {
         let previous = previous_char_boundary(input, cursor);
-        let Some(character) = input[..cursor].chars().next_back() else {
+        let Some(character) = input.get(..cursor).and_then(|s| s.chars().next_back()) else {
             break;
         };
         if character.is_whitespace() {
@@ -377,7 +377,7 @@ fn next_word_boundary(input: &str, index: usize) -> usize {
         cursor += 1;
     }
     while cursor < input.len() {
-        let Some(character) = input[cursor..].chars().next() else {
+        let Some(character) = input.get(cursor..).and_then(|s| s.chars().next()) else {
             break;
         };
         if !character.is_whitespace() {
@@ -386,7 +386,7 @@ fn next_word_boundary(input: &str, index: usize) -> usize {
         cursor = next_char_boundary(input, cursor);
     }
     while cursor < input.len() {
-        let Some(character) = input[cursor..].chars().next() else {
+        let Some(character) = input.get(cursor..).and_then(|s| s.chars().next()) else {
             break;
         };
         if character.is_whitespace() {
@@ -433,6 +433,16 @@ mod tests {
         assert_eq!(next_word_boundary(text, 0), 5);
         assert_eq!(next_word_boundary(text, 5), 12);
         assert_eq!(next_word_boundary(text, 12), 12);
+    }
+
+    /// 👺 Havoc: Test that out-of-bounds or non-char boundary inputs do not panic
+    #[test]
+    fn test_havoc_word_boundary_out_of_bounds() {
+        let text = "🚀 def";
+        assert_eq!(previous_word_boundary(text, 100), 5);
+        assert_eq!(next_word_boundary(text, 100), 8);
+        assert_eq!(previous_word_boundary(text, 2), 0);
+        assert_eq!(next_word_boundary(text, 2), 8);
     }
 
     #[test]

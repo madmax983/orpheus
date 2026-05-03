@@ -55,6 +55,12 @@ pub fn render_ascii_roll(
     let mut lanes: BTreeMap<String, Vec<char>> = BTreeMap::new();
     let total_steps = usize::try_from(cycle_count * u64::from(steps_per_cycle))?;
 
+    if total_steps > 100_000 {
+        return Err(EvalError::new(
+            "evaluation exceeded the maximum allowed event limit",
+        ));
+    }
+
     // Determine unique samples to initialize lanes
     for event in &events {
         let sample = event.value.sample().to_string();

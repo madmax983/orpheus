@@ -24,7 +24,7 @@
 use core::fmt::{self, Display, Formatter};
 use std::collections::{BTreeMap, BTreeSet};
 
-use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
+use comfy_table::Cell;
 use crossterm::style::Stylize;
 
 use crate::ast::{BinaryOp, Expr, GraphBinding};
@@ -212,19 +212,7 @@ impl ValidatedPedalPlan {
             "Pedal Graph Plan:".cyan().bold(),
             self.signal_kind().to_string().yellow()
         );
-        let mut table = Table::new();
-        table.load_preset(UTF8_BORDERS_ONLY);
-        table.set_header(vec![
-            Cell::new("Binding")
-                .fg(comfy_table::Color::White)
-                .add_attribute(comfy_table::Attribute::Bold),
-            Cell::new("Kind")
-                .fg(comfy_table::Color::White)
-                .add_attribute(comfy_table::Attribute::Bold),
-            Cell::new("Node")
-                .fg(comfy_table::Color::White)
-                .add_attribute(comfy_table::Attribute::Bold),
-        ]);
+        let mut table = crate::value::explain_table(["Binding", "Kind", "Node"]);
 
         for binding in &self.bindings {
             table.add_row(vec![

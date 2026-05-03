@@ -251,6 +251,7 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
             kind,
@@ -1546,11 +1547,21 @@ fn extract_positive_integer_factor(value: Value, builtin_name: &str) -> Result<i
         )));
     }
 
-    let integer = format!("{number:.0}").parse::<i64>().map_err(|_| {
-        EvalError::new(format!(
+    #[allow(clippy::cast_possible_truncation)]
+    let integer = number.round() as i64;
+    #[allow(clippy::cast_precision_loss)]
+    let max_i64_as_f64 = i64::MAX as f64;
+    if integer == i64::MAX && number > max_i64_as_f64 {
+        return Err(EvalError::new(format!(
             "`{builtin_name}` factor exceeded the supported evaluator range"
-        ))
-    })?;
+        )));
+    }
+
+    if integer <= 0 {
+        return Err(EvalError::new(format!(
+            "`{builtin_name}` requires a positive integer factor"
+        )));
+    }
 
     if integer > 1024 {
         return Err(EvalError::new(format!(
@@ -1732,11 +1743,13 @@ fn extract_whole_number(
         )));
     }
 
-    let integer = format!("{number:.0}").parse::<u32>().map_err(|_| {
-        EvalError::new(format!(
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let integer = number.round() as u32;
+    if integer == u32::MAX && number > f64::from(u32::MAX) {
+        return Err(EvalError::new(format!(
             "`{context}` exceeded the supported evaluator range"
-        ))
-    })?;
+        )));
+    }
 
     if integer > 1024 {
         return Err(EvalError::new(format!(
@@ -2290,6 +2303,29 @@ fn numeric_control_to_pattern(control: NumericControl) -> NumberPatternValue {
     }
 }
 
+fn push_span_boundaries(
+    events: &[orpheus_pattern::Event<f64>],
+    unit: &TimeSpan,
+    boundaries: &mut Vec<Rational>,
+) {
+    for event in events {
+        let start = if event.part.start() > unit.start() {
+            event.part.start()
+        } else {
+            unit.start()
+        };
+        let end = if event.part.end() < unit.end() {
+            event.part.end()
+        } else {
+            unit.end()
+        };
+        if start < end {
+            boundaries.push(*start);
+            boundaries.push(*end);
+        }
+    }
+}
+
 fn validate_slice_control_patterns(
     start_pattern: &NumberPatternValue,
     end_pattern: &NumberPatternValue,
@@ -2302,38 +2338,8 @@ fn validate_slice_control_patterns(
     boundaries.push(*unit.start());
     boundaries.push(*unit.end());
 
-    for event in &start_events {
-        let start = if event.part.start() > unit.start() {
-            event.part.start()
-        } else {
-            unit.start()
-        };
-        let end = if event.part.end() < unit.end() {
-            event.part.end()
-        } else {
-            unit.end()
-        };
-        if start < end {
-            boundaries.push(*start);
-            boundaries.push(*end);
-        }
-    }
-    for event in &end_events {
-        let start = if event.part.start() > unit.start() {
-            event.part.start()
-        } else {
-            unit.start()
-        };
-        let end = if event.part.end() < unit.end() {
-            event.part.end()
-        } else {
-            unit.end()
-        };
-        if start < end {
-            boundaries.push(*start);
-            boundaries.push(*end);
-        }
-    }
+    push_span_boundaries(&start_events, &unit, &mut boundaries);
+    push_span_boundaries(&end_events, &unit, &mut boundaries);
 
     boundaries.sort();
     boundaries.dedup();

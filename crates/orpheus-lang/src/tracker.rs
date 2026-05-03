@@ -54,6 +54,12 @@ pub fn export_sample_pattern_to_tracker(
     let steps_per_cycle = 16_u32;
     let total_steps = usize::try_from(cycle_count * u64::from(steps_per_cycle))?;
 
+    if total_steps > 100_000 {
+        return Err(EvalError::new(
+            "evaluation exceeded the maximum allowed event limit",
+        ));
+    }
+
     // Create a grid of dimensions: [total_steps][sample_list.len()]
     // Each cell will optionally contain a formatted string of the sample name (if triggered)
     // or the delay/continuation character.
@@ -61,7 +67,12 @@ pub fn export_sample_pattern_to_tracker(
 
     for event in &events {
         let sample = event.value.sample().to_string();
-        let lane_idx = sample_list.iter().position(|s| *s == sample).unwrap();
+        let lane_idx = sample_list
+            .iter()
+            .position(|s| *s == sample)
+            .ok_or_else(|| {
+                crate::EvalError::new(format!("sample '{sample}' not found in lane list"))
+            })?;
 
         let start_f64 = f64::from(event.part.start());
         let end_f64 = f64::from(event.part.end());
@@ -176,6 +187,12 @@ pub fn export_number_pattern_to_tracker(
 
     let steps_per_cycle = 16_u32;
     let total_steps = usize::try_from(cycle_count * u64::from(steps_per_cycle))?;
+
+    if total_steps > 100_000 {
+        return Err(EvalError::new(
+            "evaluation exceeded the maximum allowed event limit",
+        ));
+    }
 
     let mut grid: Vec<Option<String>> = vec![None; total_steps];
 
