@@ -61,3 +61,7 @@
 **[Title] Fix Redundant pub(crate)**
 **Learning:** `clippy::redundant_pub_crate` warns about `pub(crate)` items inside private modules. Since the module itself is private to the crate, making the item `pub(crate)` is functionally equivalent to making it `pub`, but `pub` is more idiomatic and cleaner.
 **Action:** When working in private modules, use `pub` instead of `pub(crate)` for items intended to be accessible throughout the crate. Avoid suppressing the warning with `#[allow(clippy::redundant_pub_crate)]`.
+
+**[Extracting Table Builders to Helper Methods]**
+**Learning:** Extracting large `match` blocks or procedural table building logic across multiple files into a shared helper function `explain_table` reduces code duplication and line count, while keeping the output identical.
+**Action:** When refactoring multiple structs that use identical boilerplate setup (like `comfy_table::Table::new()`), extract the setup into a centralized `pub fn` to simplify the individual methods.
