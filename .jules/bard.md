@@ -19,6 +19,9 @@
 ## 2024-05-19 - Documenting SclError variants
 **Confusion:** The fields `expected` and `actual` inside the `Count` variant of `SclError` in `scl.rs` lacked documentation, leading to warnings when running `cargo doc` with strict lints.
 **Clarification:** Added missing doc comments explaining what `expected` and `actual` mean in the context of Scala `.scl` file parsing.
+## 2024-05-25 - [Missing Test Assertion Documentation]
+**Confusion:** The `last_loaded_pattern_name` function was entirely undocumented, causing warnings when strict documentation lints were applied. It was unclear why this test-only helper existed.
+**Clarification:** Added a descriptive comment explaining that it is used to expose the name of the most recently evaluated pattern for assertions, helping users understand *why* it exists in the REPL session struct.
 
 ## 2024-05-18 - [Missing DSP Effect Documentation]
 **Confusion:** The stateful DSP effects like  and  lacked doc comments and executable examples, obscuring how they integrate with the audio graph and language runtime.

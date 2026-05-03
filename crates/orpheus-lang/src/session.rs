@@ -1509,6 +1509,8 @@ impl ReplSession {
             .collect()
     }
 
+    /// Exposes the name of the most recently evaluated and loaded pattern for assertions.
+    /// Useful when verifying that REPL or script execution resulted in the expected active bindings.
     #[cfg(test)]
     pub fn last_loaded_pattern_name(&self) -> Option<String> {
         self.pattern_display
