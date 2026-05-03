@@ -67,7 +67,12 @@ pub fn export_sample_pattern_to_tracker(
 
     for event in &events {
         let sample = event.value.sample().to_string();
-        let lane_idx = sample_list.iter().position(|s| *s == sample).unwrap();
+        let lane_idx = sample_list
+            .iter()
+            .position(|s| *s == sample)
+            .ok_or_else(|| {
+                crate::EvalError::new(format!("sample '{sample}' not found in lane list"))
+            })?;
 
         let start_f64 = f64::from(event.part.start());
         let end_f64 = f64::from(event.part.end());
