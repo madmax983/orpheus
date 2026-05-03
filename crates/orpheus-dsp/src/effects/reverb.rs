@@ -14,6 +14,21 @@ const RIGHT_ALLPASS_LENGTHS: [usize; 2] = [47, 19];
 const ALLPASS_FEEDBACK: f32 = 0.5;
 const INPUT_GAIN: f32 = 0.125;
 
+/// A stateful reverb effect applied to a stereo audio bus.
+///
+/// This implements a Schroeder reverberator utilizing parallel comb filters
+/// and series allpass filters to generate dense artificial room echoes.
+/// It operates lock-free on the audio thread.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::ReverbSpec;
+/// // (ReverbState is instantiated internally by the routing DSP graph)
+///
+/// // Create a reverb spec with 50% wet, size 0.8, and dampening 0.3.
+/// let spec = ReverbSpec::new(0.5, 0.8, 0.3);
+/// ```
 #[derive(Debug)]
 pub struct ReverbState {
     left: ReverbChannelState,
@@ -22,6 +37,9 @@ pub struct ReverbState {
 }
 
 impl ReverbState {
+    /// Constructs a new reverb instance configured by the given `ReverbSpec`.
+    ///
+    /// This allocates the comb and allpass delay buffers for the Schroeder algorithm.
     #[must_use]
     pub fn new(spec: &ReverbSpec) -> Self {
         let feedback = reverb_feedback(spec.size());
@@ -43,6 +61,10 @@ impl ReverbState {
         }
     }
 
+    /// Dynamically updates the reverb size, dampening, and wet mix.
+    ///
+    /// The update is applied without clearing the delay buffers, ensuring continuous
+    /// playback without audio dropout.
     pub fn sync_spec(&mut self, spec: &ReverbSpec) {
         let feedback = reverb_feedback(spec.size());
         self.left.sync_spec(feedback, spec.damp());
@@ -50,6 +72,10 @@ impl ReverbState {
         self.wet = spec.wet();
     }
 
+    /// Processes a single stereo frame through the Schroeder reverberator network.
+    ///
+    /// The input channels are downmixed to mono, processed through independent left/right
+    /// networks of comb and allpass filters, and output scaled by the wet mix.
     #[must_use]
     pub fn process_frame(&mut self, input_left: f32, input_right: f32) -> (f32, f32) {
         let input = (input_left + input_right) * INPUT_GAIN;
@@ -58,6 +84,8 @@ impl ReverbState {
         (left, right)
     }
 
+    /// Clears the internal delay buffers for all comb and allpass filters, instantly
+    /// stopping the reverberation tail.
     pub fn reset(&mut self) {
         self.left.reset();
         self.right.reset();

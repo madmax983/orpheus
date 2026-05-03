@@ -22,3 +22,10 @@
 ## 2024-05-25 - [Missing Test Assertion Documentation]
 **Confusion:** The `last_loaded_pattern_name` function was entirely undocumented, causing warnings when strict documentation lints were applied. It was unclear why this test-only helper existed.
 **Clarification:** Added a descriptive comment explaining that it is used to expose the name of the most recently evaluated pattern for assertions, helping users understand *why* it exists in the REPL session struct.
+
+## 2024-05-18 - [Missing DSP Effect Documentation]
+**Confusion:** The stateful DSP effects like  and  lacked doc comments and executable examples, obscuring how they integrate with the audio graph and language runtime.
+**Clarification:** Added narrative  documentation to the structs and their core methods (, /, , ). Included  using  to demonstrate instantiation via the public API wrapper, as the structs themselves are not exported at the crate root.
+## 2024-05-18 - [Missing DSP Effect Documentation]
+**Confusion:** The stateful DSP effects like `DelayState` and `ReverbState` lacked doc comments and executable examples, obscuring how they integrate with the audio graph and language runtime.
+**Clarification:** Added narrative `///` documentation to the structs and their core methods (`new`, `sync_timing`/`sync_spec`, `process_frame`, `reset`). Included `## Examples` using `BusEffectState::from_spec` to demonstrate instantiation via the public API wrapper, as the structs themselves are not exported at the crate root.
