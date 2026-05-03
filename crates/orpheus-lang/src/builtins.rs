@@ -2291,6 +2291,29 @@ fn numeric_control_to_pattern(control: NumericControl) -> NumberPatternValue {
     }
 }
 
+fn push_span_boundaries(
+    events: &[orpheus_pattern::Event<f64>],
+    unit: &TimeSpan,
+    boundaries: &mut Vec<Rational>,
+) {
+    for event in events {
+        let start = if event.part.start() > unit.start() {
+            event.part.start()
+        } else {
+            unit.start()
+        };
+        let end = if event.part.end() < unit.end() {
+            event.part.end()
+        } else {
+            unit.end()
+        };
+        if start < end {
+            boundaries.push(*start);
+            boundaries.push(*end);
+        }
+    }
+}
+
 fn validate_slice_control_patterns(
     start_pattern: &NumberPatternValue,
     end_pattern: &NumberPatternValue,
@@ -2303,38 +2326,8 @@ fn validate_slice_control_patterns(
     boundaries.push(*unit.start());
     boundaries.push(*unit.end());
 
-    for event in &start_events {
-        let start = if event.part.start() > unit.start() {
-            event.part.start()
-        } else {
-            unit.start()
-        };
-        let end = if event.part.end() < unit.end() {
-            event.part.end()
-        } else {
-            unit.end()
-        };
-        if start < end {
-            boundaries.push(*start);
-            boundaries.push(*end);
-        }
-    }
-    for event in &end_events {
-        let start = if event.part.start() > unit.start() {
-            event.part.start()
-        } else {
-            unit.start()
-        };
-        let end = if event.part.end() < unit.end() {
-            event.part.end()
-        } else {
-            unit.end()
-        };
-        if start < end {
-            boundaries.push(*start);
-            boundaries.push(*end);
-        }
-    }
+    push_span_boundaries(&start_events, &unit, &mut boundaries);
+    push_span_boundaries(&end_events, &unit, &mut boundaries);
 
     boundaries.sort();
     boundaries.dedup();
