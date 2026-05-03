@@ -32,3 +32,6 @@
 ## 2024-06-25 - Export zero-cycle count tests
 **Learning:** Evaluated export handlers for HTML, Markdown, CSV, Tracker, text, and other formatters. While logic safely catches zero `cycle_count` conditions with `EvalError` across the `export.rs` functions, dedicated unit tests verifying this error outcome were only added to some files and entirely missing in `ascii_roll.rs`, `number_roll.rs`, `midi_export.rs`, and `srt.rs`.
 **Action:** Ensure boundary assertions and error branches in common data extraction patterns (like exporting media patterns) have corresponding regression tests written across all format implementations, rather than relying on one format's tests to cover the identical logic structure everywhere.
+## 2026-05-03 - Add EvalError From Trait tests
+**Learning:** Found significant test coverage gap in `crates/orpheus-lang/src/error.rs` specifically for `From` conversions mapping standard library and parser/pattern errors into `EvalError`.
+**Action:** Always write tests to cover explicitly implemented `From` or error mapping functions to prevent regressions in error reporting logic.

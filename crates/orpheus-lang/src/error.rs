@@ -104,3 +104,102 @@ impl From<std::fmt::Error> for EvalError {
         Self::new("an error occurred when formatting an argument")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fmt;
+    use std::io;
+
+    #[test]
+    fn test_from_io_error_not_found() {
+        let err = io::Error::new(io::ErrorKind::NotFound, "test");
+        let eval_err: EvalError = err.into();
+        assert_eq!(eval_err.to_string(), "file not found");
+    }
+
+    #[test]
+    fn test_from_io_error_permission_denied() {
+        let err = io::Error::new(io::ErrorKind::PermissionDenied, "test");
+        let eval_err: EvalError = err.into();
+        assert_eq!(eval_err.to_string(), "permission denied");
+    }
+
+    #[test]
+    fn test_from_io_error_other() {
+        let err = io::Error::new(io::ErrorKind::Other, "custom io error");
+        let eval_err: EvalError = err.into();
+        assert_eq!(eval_err.to_string(), "custom io error");
+    }
+
+    #[test]
+    fn test_from_fmt_error() {
+        let err = fmt::Error;
+        let eval_err: EvalError = err.into();
+        assert_eq!(
+            eval_err.to_string(),
+            "an error occurred when formatting an argument"
+        );
+    }
+
+    #[test]
+    fn test_from_parse_error() {
+        let err = crate::diagnostics::ParseError::new("mock parse error");
+        let eval_err: EvalError = err.into();
+        assert!(matches!(eval_err, EvalError::Parse(_)));
+        assert_eq!(eval_err.to_string(), "mock parse error");
+    }
+
+    #[test]
+    fn test_from_type_error() {
+        let err = crate::diagnostics::TypeError::new("mock type error");
+        let eval_err: EvalError = err.into();
+        assert!(matches!(eval_err, EvalError::Type(_)));
+        assert_eq!(eval_err.to_string(), "mock type error");
+    }
+
+    #[test]
+    fn test_from_load_error() {
+        let err = crate::diagnostics::LoadError::new("mock load error");
+        let eval_err: EvalError = err.into();
+        assert!(matches!(eval_err, EvalError::Load(_)));
+        assert_eq!(eval_err.to_string(), "mock load error");
+    }
+
+    #[test]
+    fn test_from_pitch_literal_error() {
+        let err = crate::pitch::PitchLiteralError::new(
+            "invalid named pitch literal: 'C#99' - invalid octave",
+        );
+        let eval_err: EvalError = err.into();
+        assert!(matches!(eval_err, EvalError::Pitch(_)));
+        assert_eq!(
+            eval_err.to_string(),
+            "invalid named pitch literal: 'C#99' - invalid octave"
+        );
+    }
+
+    #[test]
+    fn test_from_try_from_int_error() {
+        let err: Result<u8, _> = 1000u16.try_into();
+        let eval_err: EvalError = err.unwrap_err().into();
+        assert!(matches!(eval_err, EvalError::TryFromInt(_)));
+        assert!(eval_err.to_string().contains("out of range"));
+    }
+
+    #[test]
+    fn test_from_parse_int_error() {
+        let err = "abc".parse::<i32>().unwrap_err();
+        let eval_err: EvalError = err.into();
+        assert!(matches!(eval_err, EvalError::ParseInt(_)));
+        assert!(eval_err.to_string().contains("invalid digit"));
+    }
+
+    #[test]
+    fn test_from_pattern_error() {
+        let err = PatternError::InvalidDenominator { denominator: 0 };
+        let eval_err: EvalError = err.into();
+        assert!(matches!(eval_err, EvalError::Pattern(_)));
+        assert_eq!(eval_err.to_string(), "rational denominator cannot be zero");
+    }
+}
