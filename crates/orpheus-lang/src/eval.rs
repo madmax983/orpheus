@@ -726,9 +726,17 @@ impl Evaluator {
             )));
         }
 
-        format!("{value:.0}")
+        let parsed = format!("{value:.0}")
             .parse::<i128>()
-            .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))
+            .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?;
+
+        if parsed <= 0 {
+            return Err(EvalError::new(format!(
+                "{context} must be a positive integer"
+            )));
+        }
+
+        Ok(parsed)
     }
 
     fn value_to_explicit(value: Value) -> Result<ExplicitValue, EvalError> {
