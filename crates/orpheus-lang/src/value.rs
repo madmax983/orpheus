@@ -30,6 +30,24 @@ use crate::{
     pedal::PedalValue,
 };
 
+pub fn explain_table<const N: usize>(headers: [&str; N]) -> comfy_table::Table {
+    use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
+    let mut table = Table::new();
+    table.load_preset(UTF8_BORDERS_ONLY);
+
+    let header_cells: Vec<Cell> = headers
+        .into_iter()
+        .map(|h| {
+            Cell::new(h)
+                .fg(comfy_table::Color::White)
+                .add_attribute(comfy_table::Attribute::Bold)
+        })
+        .collect();
+
+    table.set_header(header_cells);
+    table
+}
+
 /// Identifies which core built-in function is being represented.
 ///
 /// These variants map exactly to the standard Orpheus primitive transformations
@@ -130,7 +148,6 @@ impl FunctionValue {
     #[doc(hidden)]
     #[must_use]
     pub fn explain(&self, binding_name: &str) -> String {
-        use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
         use crossterm::style::Stylize;
 
         let title = format!(
@@ -139,67 +156,64 @@ impl FunctionValue {
             binding_name.yellow()
         );
 
-        let mut table = Table::new();
-        table.load_preset(UTF8_BORDERS_ONLY);
-        table.set_header(vec![
-            Cell::new("Property")
-                .fg(comfy_table::Color::White)
-                .add_attribute(comfy_table::Attribute::Bold),
-            Cell::new("Value")
-                .fg(comfy_table::Color::White)
-                .add_attribute(comfy_table::Attribute::Bold),
-        ]);
+        let mut table = explain_table(["Property", "Value"]);
 
         match self {
-            Self::Builtin(builtin) => {
-                table.add_row(vec![
-                    Cell::new("Type").fg(comfy_table::Color::Cyan),
-                    Cell::new("Builtin")
-                        .fg(comfy_table::Color::Yellow)
-                        .set_alignment(CellAlignment::Right),
-                ]);
-                table.add_row(vec![
-                    Cell::new("Kind").fg(comfy_table::Color::Cyan),
-                    Cell::new(format!("{:?}", builtin.kind))
-                        .fg(comfy_table::Color::Green)
-                        .set_alignment(CellAlignment::Right),
-                ]);
-                table.add_row(vec![
-                    Cell::new("Bound Args").fg(comfy_table::Color::Cyan),
-                    Cell::new(builtin.bound_args.len().to_string())
-                        .fg(comfy_table::Color::Magenta)
-                        .set_alignment(CellAlignment::Right),
-                ]);
-            }
-            Self::User(user) => {
-                table.add_row(vec![
-                    Cell::new("Type").fg(comfy_table::Color::Cyan),
-                    Cell::new("User Defined")
-                        .fg(comfy_table::Color::Yellow)
-                        .set_alignment(CellAlignment::Right),
-                ]);
-                table.add_row(vec![
-                    Cell::new("Params").fg(comfy_table::Color::Cyan),
-                    Cell::new(user.remaining_params.join(", "))
-                        .fg(comfy_table::Color::Green)
-                        .set_alignment(CellAlignment::Right),
-                ]);
-                table.add_row(vec![
-                    Cell::new("Captured Bindings").fg(comfy_table::Color::Cyan),
-                    Cell::new(user.captured_bindings.len().to_string())
-                        .fg(comfy_table::Color::Magenta)
-                        .set_alignment(CellAlignment::Right),
-                ]);
-                table.add_row(vec![
-                    Cell::new("Depth").fg(comfy_table::Color::Cyan),
-                    Cell::new(user.depth.to_string())
-                        .fg(comfy_table::Color::Magenta)
-                        .set_alignment(CellAlignment::Right),
-                ]);
-            }
+            Self::Builtin(builtin) => Self::explain_builtin(&mut table, builtin),
+            Self::User(user) => Self::explain_user(&mut table, user),
         }
 
         format!("{title}\n{table}")
+    }
+
+    fn explain_builtin(table: &mut comfy_table::Table, builtin: &BuiltinFn) {
+        use comfy_table::{Cell, CellAlignment};
+        table.add_row(vec![
+            Cell::new("Type").fg(comfy_table::Color::Cyan),
+            Cell::new("Builtin")
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ]);
+        table.add_row(vec![
+            Cell::new("Kind").fg(comfy_table::Color::Cyan),
+            Cell::new(format!("{:?}", builtin.kind))
+                .fg(comfy_table::Color::Green)
+                .set_alignment(CellAlignment::Right),
+        ]);
+        table.add_row(vec![
+            Cell::new("Bound Args").fg(comfy_table::Color::Cyan),
+            Cell::new(builtin.bound_args.len().to_string())
+                .fg(comfy_table::Color::Magenta)
+                .set_alignment(CellAlignment::Right),
+        ]);
+    }
+
+    fn explain_user(table: &mut comfy_table::Table, user: &UserFn) {
+        use comfy_table::{Cell, CellAlignment};
+        table.add_row(vec![
+            Cell::new("Type").fg(comfy_table::Color::Cyan),
+            Cell::new("User Defined")
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ]);
+        table.add_row(vec![
+            Cell::new("Params").fg(comfy_table::Color::Cyan),
+            Cell::new(user.remaining_params.join(", "))
+                .fg(comfy_table::Color::Green)
+                .set_alignment(CellAlignment::Right),
+        ]);
+        table.add_row(vec![
+            Cell::new("Captured Bindings").fg(comfy_table::Color::Cyan),
+            Cell::new(user.captured_bindings.len().to_string())
+                .fg(comfy_table::Color::Magenta)
+                .set_alignment(CellAlignment::Right),
+        ]);
+        table.add_row(vec![
+            Cell::new("Depth").fg(comfy_table::Color::Cyan),
+            Cell::new(user.depth.to_string())
+                .fg(comfy_table::Color::Magenta)
+                .set_alignment(CellAlignment::Right),
+        ]);
     }
 }
 
@@ -433,7 +447,7 @@ impl TuningValue {
     #[doc(hidden)]
     #[must_use]
     pub fn explain(&self, binding_name: &str) -> String {
-        use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
+        use comfy_table::{Cell, CellAlignment};
         use crossterm::style::Stylize;
 
         let title = format!(
@@ -444,16 +458,7 @@ impl TuningValue {
             self.ratios().len()
         );
 
-        let mut table = Table::new();
-        table.load_preset(UTF8_BORDERS_ONLY);
-        table.set_header(vec![
-            Cell::new("Step")
-                .fg(comfy_table::Color::White)
-                .add_attribute(comfy_table::Attribute::Bold),
-            Cell::new("Ratio")
-                .fg(comfy_table::Color::White)
-                .add_attribute(comfy_table::Attribute::Bold),
-        ]);
+        let mut table = explain_table(["Step", "Ratio"]);
 
         for (i, ratio) in self.ratios().iter().enumerate() {
             table.add_row(vec![
@@ -1528,7 +1533,7 @@ impl SamplePatternValue {
     #[doc(hidden)]
     #[must_use]
     pub fn explain(&self, binding_name: &str) -> String {
-        use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
+        use comfy_table::{Cell, CellAlignment};
         use crossterm::style::Stylize;
 
         let title = format!(
@@ -1537,16 +1542,7 @@ impl SamplePatternValue {
             binding_name.yellow()
         );
 
-        let mut table = Table::new();
-        table.load_preset(UTF8_BORDERS_ONLY);
-        table.set_header(vec![
-            Cell::new("Property")
-                .fg(comfy_table::Color::White)
-                .add_attribute(comfy_table::Attribute::Bold),
-            Cell::new("Value")
-                .fg(comfy_table::Color::White)
-                .add_attribute(comfy_table::Attribute::Bold),
-        ]);
+        let mut table = explain_table(["Property", "Value"]);
 
         table.add_row(vec![
             Cell::new("Type").fg(comfy_table::Color::Cyan),
@@ -2219,7 +2215,7 @@ impl NumberPatternValue {
     #[doc(hidden)]
     #[must_use]
     pub fn explain(&self, binding_name: &str) -> String {
-        use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
+        use comfy_table::{Cell, CellAlignment};
         use crossterm::style::Stylize;
 
         let title = format!(
@@ -2228,16 +2224,7 @@ impl NumberPatternValue {
             binding_name.yellow()
         );
 
-        let mut table = Table::new();
-        table.load_preset(UTF8_BORDERS_ONLY);
-        table.set_header(vec![
-            Cell::new("Property")
-                .fg(comfy_table::Color::White)
-                .add_attribute(comfy_table::Attribute::Bold),
-            Cell::new("Value")
-                .fg(comfy_table::Color::White)
-                .add_attribute(comfy_table::Attribute::Bold),
-        ]);
+        let mut table = explain_table(["Property", "Value"]);
 
         table.add_row(vec![
             Cell::new("Type").fg(comfy_table::Color::Cyan),
