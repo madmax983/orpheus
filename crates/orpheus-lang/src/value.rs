@@ -4550,9 +4550,14 @@ fn whole_number_from_slice_idx_value(value: f64) -> Result<u32, EvalError> {
         ));
     }
 
-    format!("{value:.0}").parse::<u32>().map_err(|_| {
-        EvalError::new("`slice_idx` control value exceeded the supported evaluator range")
-    })
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let integer = value.round() as u32;
+    if integer == u32::MAX && value > f64::from(u32::MAX) {
+        return Err(EvalError::new(
+            "`slice_idx` control value exceeded the supported evaluator range",
+        ));
+    }
+    Ok(integer)
 }
 
 fn whole_number_from_onset_value(value: f64) -> Result<u32, EvalError> {
@@ -4562,9 +4567,14 @@ fn whole_number_from_onset_value(value: f64) -> Result<u32, EvalError> {
         ));
     }
 
-    format!("{value:.0}")
-        .parse::<u32>()
-        .map_err(|_| EvalError::new("`onset` control value exceeded the supported evaluator range"))
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let integer = value.round() as u32;
+    if integer == u32::MAX && value > f64::from(u32::MAX) {
+        return Err(EvalError::new(
+            "`onset` control value exceeded the supported evaluator range",
+        ));
+    }
+    Ok(integer)
 }
 
 fn query_rand<T>(site_salt: u64, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError>
