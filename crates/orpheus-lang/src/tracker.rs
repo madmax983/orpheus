@@ -54,14 +54,26 @@ pub fn export_sample_pattern_to_tracker(
     let steps_per_cycle = 16_u32;
     let total_steps = usize::try_from(cycle_count * u64::from(steps_per_cycle))?;
 
+    // ⚡ Bolt: Pre-allocate all unique formatted string representations up front
+    // to eliminate repetitive heap allocations per-event on the hot path.
+    let mut formatted_samples = Vec::with_capacity(sample_list.len());
+    for &sample in &sample_list {
+        if sample.len() > 4 {
+            formatted_samples.push(sample[..4].to_string());
+        } else {
+            formatted_samples.push(sample.to_string());
+        }
+    }
+
     // Create a grid of dimensions: [total_steps][sample_list.len()]
     // Each cell will optionally contain a formatted string of the sample name (if triggered)
     // or the delay/continuation character.
-    let mut grid: Vec<Vec<Option<String>>> = vec![vec![None; sample_list.len()]; total_steps];
+    let mut grid: Vec<Vec<Option<&str>>> = vec![vec![None; sample_list.len()]; total_steps];
 
     for event in &events {
-        let sample = event.value.sample().to_string();
+        let sample = event.value.sample();
         let lane_idx = sample_list.iter().position(|s| *s == sample).unwrap();
+        let formatted_name = formatted_samples[lane_idx].as_str();
 
         let start_f64 = f64::from(event.part.start());
         let end_f64 = f64::from(event.part.end());
@@ -75,24 +87,13 @@ pub fn export_sample_pattern_to_tracker(
         let end_step = end_step.min(total_steps);
 
         if start_step < end_step {
-            // Format sample name up to 4 chars
-            let formatted_name = if sample.len() > 4 {
-                sample[..4].to_string()
-            } else {
-                sample.clone()
-            };
             grid[start_step][lane_idx] = Some(formatted_name);
             for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
                 if item[lane_idx].is_none() {
-                    item[lane_idx] = Some("====".to_string());
+                    item[lane_idx] = Some("====");
                 }
             }
         } else if start_step < total_steps && grid[start_step][lane_idx].is_none() {
-            let formatted_name = if sample.len() > 4 {
-                sample[..4].to_string()
-            } else {
-                sample.clone()
-            };
             grid[start_step][lane_idx] = Some(formatted_name);
         }
     }
@@ -177,9 +178,16 @@ pub fn export_number_pattern_to_tracker(
     let steps_per_cycle = 16_u32;
     let total_steps = usize::try_from(cycle_count * u64::from(steps_per_cycle))?;
 
-    let mut grid: Vec<Option<String>> = vec![None; total_steps];
-
+    // ⚡ Bolt: Pre-allocate all unique formatted string representations up front
+    // to eliminate repetitive heap allocations per-event on the hot path.
+    let mut formatted_values = Vec::with_capacity(events.len());
     for event in &events {
+        formatted_values.push(format!("{:7.2}", event.value));
+    }
+
+    let mut grid: Vec<Option<&str>> = vec![None; total_steps];
+
+    for (idx, event) in events.iter().enumerate() {
         let start_f64 = f64::from(event.part.start());
         let end_f64 = f64::from(event.part.end());
 
@@ -190,13 +198,13 @@ pub fn export_number_pattern_to_tracker(
 
         let start_step = start_step.min(total_steps);
         let end_step = end_step.min(total_steps);
-        let val_str = format!("{:7.2}", event.value);
+        let val_str = formatted_values[idx].as_str();
 
         if start_step < end_step {
             grid[start_step] = Some(val_str);
             for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
                 if item.is_none() {
-                    *item = Some("=======".to_string());
+                    *item = Some("=======");
                 }
             }
         } else if start_step < total_steps && grid[start_step].is_none() {

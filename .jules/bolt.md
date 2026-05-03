@@ -13,3 +13,6 @@
 **UserFn Allocation Optimization Correctly Handled**
 **Learning:** `Arc::make_mut` copies the underlying data if the reference count is greater than 1. The original implementation resulted in performance regressions because it returned `&mut UserFn` requiring the internal values like BTreeMaps to be cloned on the hot path.
 **Action:** Use `Arc::unwrap_or_clone` instead to consume the arc and regain ownership, dropping down to O(1) pointer copies when no concurrent use is present without adding cloning overhead in the function execution path.
+**[Eliminate Per-Event String Allocations]**
+**Learning:** Constructing strings (via `.to_string()`, `.clone()`, or `format!()`) inside hot event-processing loops (e.g., rendering tracker grids or export loops) causes severe memory allocation bottlenecks.
+**Action:** Pre-allocate all unique formatted strings into a `Vec<String>` before the loop, and use an inner collection holding string slices (`Vec<Option<&str>>`) to safely reference them during iteration, eliminating repetitive per-event allocations.
