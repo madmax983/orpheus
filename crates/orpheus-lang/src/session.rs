@@ -808,6 +808,14 @@ impl ReplSession {
         {
             crate::midi_export::export_sample_pattern_to_midi(pattern, path, cycles)
                 .map_err(|error: crate::EvalError| error.to_string())?;
+        } else if export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("scd"))
+        {
+            crate::supercollider_export::export_sample_pattern_to_supercollider(
+                pattern, path, cycles,
+            )
+            .map_err(|error: crate::EvalError| error.to_string())?;
         } else {
             crate::export::export_sample_pattern_to_csv(pattern, path, cycles)
                 .map_err(|error: crate::EvalError| error.to_string())?;
@@ -884,6 +892,14 @@ impl ReplSession {
         {
             crate::abc_export::export_number_pattern_to_abc(pattern, path, cycles)
                 .map_err(|error: crate::EvalError| error.to_string())?;
+        } else if export_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("scd"))
+        {
+            crate::supercollider_export::export_number_pattern_to_supercollider(
+                pattern, path, cycles,
+            )
+            .map_err(|error: crate::EvalError| error.to_string())?;
         } else {
             crate::export::export_number_pattern_to_csv(pattern, path, cycles)
                 .map_err(|error: crate::EvalError| error.to_string())?;
@@ -1810,7 +1826,7 @@ fn trim_quoted_arg(value: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -2174,7 +2190,7 @@ mod tests {
         let muted = session.render_test_block_for_tui(4);
         assert!(muted.iter().all(|sample| sample.abs() < f32::EPSILON));
 
-        fs::remove_dir_all(directory).unwrap();
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
@@ -2202,7 +2218,7 @@ mod tests {
         let second_expected = 0.9 * edge_envelope(0, 4);
         assert!((second[0] - second_expected).abs() < f32::EPSILON);
 
-        fs::remove_dir_all(directory).unwrap();
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
@@ -2310,9 +2326,9 @@ mod tests {
 
         assert!(message.contains("rendered `song`"));
         assert!(path.exists());
-        assert!(fs::metadata(&path).unwrap().len() > 44);
+        assert!(std::fs::metadata(&path).unwrap().len() > 44);
 
-        let _ = fs::remove_file(path);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
@@ -2328,11 +2344,11 @@ mod tests {
 
         assert!(message.contains("exported `notes`"));
         assert!(path.exists());
-        let contents = fs::read_to_string(&path).unwrap();
+        let contents = std::fs::read_to_string(&path).unwrap();
         assert!(contents.contains("X:1"));
         assert!(contents.contains("C5 D5 E5 "));
 
-        let _ = fs::remove_file(path);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
@@ -2347,14 +2363,14 @@ mod tests {
 
         assert!(message.contains("exported `song`"));
         assert!(path.exists());
-        let contents = fs::read_to_string(&path).unwrap();
+        let contents = std::fs::read_to_string(&path).unwrap();
         assert!(contents.contains(
             "start_num,start_den,start_float,end_num,end_den,end_float,sample,gain,pan,rate"
         ));
         assert!(contents.contains("bd"));
         assert!(contents.contains("sn"));
 
-        let _ = fs::remove_file(path);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
@@ -2369,12 +2385,12 @@ mod tests {
 
         assert!(message.contains("exported `song`"));
         assert!(path.exists());
-        let contents = fs::read_to_string(&path).unwrap();
+        let contents = std::fs::read_to_string(&path).unwrap();
         assert!(contents.contains("<svg xmlns=\"http://www.w3.org/2000/svg\""));
         assert!(contents.contains("bd"));
         assert!(contents.contains("sn"));
 
-        let _ = fs::remove_file(path);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
@@ -2389,7 +2405,7 @@ mod tests {
 
         assert!(message.contains("exported `song`"));
         assert!(path.exists());
-        let contents = fs::read_to_string(&path).unwrap();
+        let contents = std::fs::read_to_string(&path).unwrap();
         let json: serde_json::Value = serde_json::from_str(&contents).unwrap();
         assert_eq!(json["kind"], "sample");
         assert_eq!(json["cycle_count"], 2);
@@ -2397,7 +2413,7 @@ mod tests {
         assert_eq!(json["events"][0]["sample"], "bd");
         assert_eq!(json["events"][1]["sample"], "sn");
 
-        let _ = fs::remove_file(path);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
@@ -2412,11 +2428,11 @@ mod tests {
 
         assert!(message.contains("exported `notes`"));
         assert!(path.exists());
-        let contents = fs::read_to_string(&path).unwrap();
+        let contents = std::fs::read_to_string(&path).unwrap();
         assert!(contents.contains("<svg xmlns=\"http://www.w3.org/2000/svg\""));
         assert!(contents.contains("<rect"));
 
-        let _ = fs::remove_file(path);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
@@ -2431,14 +2447,14 @@ mod tests {
 
         assert!(message.contains("exported `notes`"));
         assert!(path.exists());
-        let contents = fs::read_to_string(&path).unwrap();
+        let contents = std::fs::read_to_string(&path).unwrap();
         assert!(
             contents.contains("start_num,start_den,start_float,end_num,end_den,end_float,value")
         );
         assert!(contents.contains('1'));
         assert!(contents.contains('2'));
 
-        let _ = fs::remove_file(path);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
@@ -2453,7 +2469,7 @@ mod tests {
 
         assert!(message.contains("exported `notes`"));
         assert!(path.exists());
-        let contents = fs::read_to_string(&path).unwrap();
+        let contents = std::fs::read_to_string(&path).unwrap();
         let json: serde_json::Value = serde_json::from_str(&contents).unwrap();
         assert_eq!(json["kind"], "number");
         assert_eq!(json["cycle_count"], 1);
@@ -2461,7 +2477,7 @@ mod tests {
         assert_eq!(json["events"][0]["value"], 1.0);
         assert_eq!(json["events"][1]["value"], 2.0);
 
-        let _ = fs::remove_file(path);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
@@ -2481,7 +2497,7 @@ mod tests {
         assert!(rendered_dir.join("drums_track.wav").exists());
         assert!(rendered_dir.join("bass_track.wav").exists());
 
-        let _ = fs::remove_dir_all(rendered_dir);
+        let _ = std::fs::remove_dir_all(rendered_dir);
     }
 
     #[test]
@@ -2503,7 +2519,7 @@ mod tests {
         assert!(rendered_dir.join("drums_track.wav").exists());
         assert!(rendered_dir.join("verb_bus.wav").exists());
 
-        let _ = fs::remove_dir_all(rendered_dir);
+        let _ = std::fs::remove_dir_all(rendered_dir);
     }
 
     #[test]
@@ -2523,7 +2539,7 @@ mod tests {
         assert!((rendered[0] - expected).abs() < f32::EPSILON);
         assert!((rendered[1] - expected).abs() < f32::EPSILON);
 
-        fs::remove_dir_all(directory).unwrap();
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
@@ -2556,14 +2572,14 @@ mod tests {
         let reloaded_expected = 0.9 * edge_envelope(0, 4);
         assert!((first_trigger_next_cycle[0] - reloaded_expected).abs() < f32::EPSILON);
 
-        fs::remove_dir_all(directory).unwrap();
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
     fn sample_playback_params_flow_into_live_engine() {
         let mut session = ReplSession::new();
         let directory = temp_directory("repl-sample-params");
-        fs::write(
+        std::fs::write(
             directory.join("samples.ron"),
             "(\n  tokens: {\n    \"vox_ah\": \"vox.wav\",\n  },\n)\n",
         )
@@ -2587,7 +2603,7 @@ mod tests {
         assert!((rendered[2] - second_expected).abs() < f32::EPSILON);
         assert!(rendered[3].abs() < f32::EPSILON);
 
-        fs::remove_dir_all(directory).unwrap();
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
@@ -2813,7 +2829,7 @@ mod tests {
     fn temp_directory(name: &str) -> PathBuf {
         let directory =
             std::env::temp_dir().join(format!("orpheus-samples-{name}-{}", unique_temp_suffix()));
-        fs::create_dir_all(&directory).unwrap();
+        std::fs::create_dir_all(&directory).unwrap();
         directory
     }
 
@@ -2865,4 +2881,50 @@ mod tests {
     fn normalized_edge_gain(distance_from_edge: u32, ramp_frames: u32) -> f32 {
         (((distance_from_edge as f32) + 0.5) / (ramp_frames as f32)).min(1.0)
     }
+}
+
+#[cfg(test)]
+mod supercollider_integration_tests {
+    use super::*;
+
+    #[test]
+    fn export_command_exports_a_bound_pattern_to_supercollider() {
+        let mut session = ReplSession::new();
+        let path = std::env::temp_dir().join(format!("orpheus-export-{}.scd", 1_234_578));
+
+        session.eval_line("song = bd sn cp sn").unwrap();
+        let message = session
+            .eval_line(&format!(":export song {} 2", path.display()))
+            .unwrap();
+
+        assert!(message.contains("exported `song`"));
+        assert!(path.exists());
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert!(contents.contains("// Orpheus `SuperCollider` Export"));
+        assert!(contents.contains("Synth(\\play_sample"));
+        assert!(contents.contains("\\bd"));
+        assert!(contents.contains("\\sn"));
+
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+#[test]
+fn export_command_exports_number_pattern_to_supercollider() {
+    let mut session = ReplSession::new();
+    let path = std::env::temp_dir().join("orpheus-export-num-1_234_578.scd");
+
+    session.eval_line("notes = 60 62 64").unwrap();
+    let message = session
+        .eval_line(&format!(":export notes {} 1", path.display()))
+        .unwrap();
+
+    assert!(message.contains("exported `notes`"));
+    assert!(path.exists());
+    let contents = std::fs::read_to_string(&path).unwrap();
+    assert!(contents.contains("// Orpheus `SuperCollider` Export"));
+    assert!(contents.contains("Synth(\\default"));
+    assert!(contents.contains("60.000.midicps"));
+
+    let _ = std::fs::remove_file(path);
 }
