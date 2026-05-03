@@ -141,4 +141,11 @@ mod tests {
         let err = LoadError::new("file not found");
         assert_eq!(err.to_string(), "file not found");
     }
+
+    #[test]
+    fn type_error_from_parse_error() {
+        let parse_err = ParseError::new("mock parse error");
+        let type_err: TypeError = parse_err.into();
+        assert_eq!(type_err.to_string(), "mock parse error");
+    }
 }
