@@ -251,6 +251,7 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
             kind,
