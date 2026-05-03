@@ -19,3 +19,10 @@
 ## 2024-05-19 - Documenting SclError variants
 **Confusion:** The fields `expected` and `actual` inside the `Count` variant of `SclError` in `scl.rs` lacked documentation, leading to warnings when running `cargo doc` with strict lints.
 **Clarification:** Added missing doc comments explaining what `expected` and `actual` mean in the context of Scala `.scl` file parsing.
+
+## 2024-05-18 - [Missing DSP Effect Documentation]
+**Confusion:** The stateful DSP effects like  and  lacked doc comments and executable examples, obscuring how they integrate with the audio graph and language runtime.
+**Clarification:** Added narrative  documentation to the structs and their core methods (, /, , ). Included  using  to demonstrate instantiation via the public API wrapper, as the structs themselves are not exported at the crate root.
+## 2024-05-18 - [Missing DSP Effect Documentation]
+**Confusion:** The stateful DSP effects like `DelayState` and `ReverbState` lacked doc comments and executable examples, obscuring how they integrate with the audio graph and language runtime.
+**Clarification:** Added narrative `///` documentation to the structs and their core methods (`new`, `sync_timing`/`sync_spec`, `process_frame`, `reset`). Included `## Examples` using `BusEffectState::from_spec` to demonstrate instantiation via the public API wrapper, as the structs themselves are not exported at the crate root.
