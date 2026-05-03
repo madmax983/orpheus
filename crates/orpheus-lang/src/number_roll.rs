@@ -61,6 +61,12 @@ pub fn render_ascii_number_roll(
 
     let total_steps = usize::try_from(cycle_count * u64::from(steps_per_cycle))?;
 
+    if total_steps > 100_000 {
+        return Err(EvalError::new(
+            "evaluation exceeded the maximum allowed event limit",
+        ));
+    }
+
     // Determine unique values
     for event in &events {
         let val = event.value;
