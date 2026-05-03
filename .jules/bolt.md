@@ -13,6 +13,10 @@
 **UserFn Allocation Optimization Correctly Handled**
 **Learning:** `Arc::make_mut` copies the underlying data if the reference count is greater than 1. The original implementation resulted in performance regressions because it returned `&mut UserFn` requiring the internal values like BTreeMaps to be cloned on the hot path.
 **Action:** Use `Arc::unwrap_or_clone` instead to consume the arc and regain ownership, dropping down to O(1) pointer copies when no concurrent use is present without adding cloning overhead in the function execution path.
+
+**[TrustedLen Collect Optimization]**
+**Learning:** Replacing `.into_iter().map(...).collect::<Vec<_>>()` with a manual `Vec::with_capacity()` and `.push()` loop can degrade performance or fail code review because it bypasses the standard library's `TrustedLen` optimization, which uses `.collect()` to safely elide bounds checks during allocation.
+**Action:** Rely on `.collect()` when iterating over exact-size types. Focus instead on eliminating intermediate collections (like `.collect::<Vec<_>>().join()`) by dynamically writing to a pre-allocated `String` or buffer.
 ⚡ Bolt: Eliminates string heap allocations during integer parsing.
 
 💡 **What:** Replaced string formatting () with direct / float casting in `crates/orpheus-lang/src/value.rs` and `crates/orpheus-lang/src/builtins.rs`.

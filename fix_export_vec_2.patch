@@ -1,0 +1,41 @@
+--- crates/orpheus-lang/src/export.rs
++++ crates/orpheus-lang/src/export.rs
+@@ -176,11 +176,12 @@
+     let mut file = std::fs::File::create(path)?;
+     writeln!(file, "{header}")?;
+     // Add Markdown table separator
+-    let separators = header
+-        .split('|')
+-        .map(|s| if s.is_empty() { "" } else { "---" })
+-        .collect::<Vec<_>>()
+-        .join("|");
++    let mut separators = String::with_capacity(header.len() * 2);
++    let parts: Vec<&str> = header.split('|').collect();
++    for (i, s) in parts.iter().enumerate() {
++        if i > 0 { separators.push('|'); }
++        if !s.is_empty() { separators.push_str("---"); }
++    }
+     writeln!(file, "{separators}")?;
+
+     for event in events {
+@@ -532,12 +533,13 @@
+         }
+     })?;
+-    let rendered_events = events
+-        .into_iter()
+-        .map(|event| Event {
+-            whole: event.whole,
+-            part: event.part,
+-            value: sample_trigger_from_event(&event.value),
+-        })
+-        .collect::<Vec<_>>();
++    let mut rendered_events = Vec::with_capacity(events.len());
++    for event in events {
++        rendered_events.push(Event {
++            whole: event.whole,
++            part: event.part,
++            value: sample_trigger_from_event(&event.value),
++        });
++    }
+
+     render_events_to_file_with_bank(path, &rendered_events, cycle_count, sample_bank)?;
