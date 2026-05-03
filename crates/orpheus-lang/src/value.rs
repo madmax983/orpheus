@@ -399,10 +399,13 @@ impl TuningValue {
             }
             previous = *ratio;
         }
-        if *ratios.last().unwrap() >= period + f64::EPSILON {
-            return Err(EvalError::new(
-                "`tuning` ratios must be strictly less than the period",
-            ));
+        #[allow(clippy::collapsible_if)]
+        if let Some(last_ratio) = ratios.last() {
+            if *last_ratio >= period + f64::EPSILON {
+                return Err(EvalError::new(
+                    "`tuning` ratios must be strictly less than the period",
+                ));
+            }
         }
         Ok(Self {
             name: name.into(),

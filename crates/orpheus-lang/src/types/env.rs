@@ -397,4 +397,14 @@ mod tests {
         assert!(scheme.vars.is_empty());
         assert_eq!(scheme.ty, Type::Duration);
     }
+
+    #[test]
+    fn type_env_values_iterates_all_items() {
+        let mut env = TypeEnv::with_builtins();
+        let initial_count = env.values().count();
+        assert!(initial_count > 0, "Builtin environment should not be empty");
+
+        env.insert("test_val", TypeScheme::monomorphic(Type::Number));
+        assert_eq!(env.values().count(), initial_count + 1);
+    }
 }
