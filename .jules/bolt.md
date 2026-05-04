@@ -27,3 +27,11 @@
 **[Float-to-Integer Cast Optimization]**
 **Learning:** Converting floats to integers via `format!("{value:.0}").parse::<T>()` is extremely slow and causes heap allocations. Direct casting (`value.round() as T`) is significantly faster but will trigger `clippy::cast_possible_truncation`, `clippy::cast_sign_loss`, or `clippy::cast_precision_loss` warnings.
 **Action:** Optimize conversions using `.round() as T`, explicitly suppress the resulting `clippy` lints with `#[allow(...)]`, and perform boundary/saturation checks (e.g., `integer == T::MAX && value > f64::from(T::MAX)`) *after* the cast to maintain safety without parsing strings.
+
+**[Float-to-Integer Cast Optimization Revisited]**
+**Learning:** While `val.round() as T` is significantly faster than `format!("{val:.0}").parse::<T>()`, the `as` operator is saturating. This means negative floats cast to unsigned integers (like `u32`) will silently become `0`, bypassing errors. Similarly, `NaN` casts to `0`.
+**Action:** When replacing `.parse()` with `as T`, explicitly enforce constraints like `value.is_nan()` or `value < 0.0` (for unsigned) *before* the cast to maintain robust error handling. Also, bounds check for precision safely using explicit max float conversions (e.g. `i128::MAX as f64`).
+
+**[String Concatenation Optimization]**
+**Learning:** Using `format!("{a}{b}")` to concatenate string slices introduces unnecessary formatting macro overhead and allocations.
+**Action:** Use `[a, b].concat()` to concatenate string slices more efficiently when formatting rules are not required.
