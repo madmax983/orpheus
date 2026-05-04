@@ -471,7 +471,7 @@ impl MixerState {
                     .collect::<Vec<_>>()
                     .join("\n");
                 let muted_color = if track.muted {
-                    comfy_table::Color::Red
+                    comfy_table::Color::Magenta
                 } else {
                     comfy_table::Color::DarkGrey
                 };
