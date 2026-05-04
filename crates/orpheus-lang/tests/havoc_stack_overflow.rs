@@ -6,4 +6,26 @@ fn test_havoc_stack_overflow() {
     let source = "f x = x(x)\nomega = f(f)";
     let result = eval_module(source, ReplMode::Loose);
     assert!(result.is_err(), "Expected an error but got: {result:?}");
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        "evaluation recursion limit exceeded"
+    );
+}
+
+#[test]
+fn test_havoc_stack_overflow_meter_eval() {
+    let mut source = "bd".to_string();
+    for _ in 0..300 {
+        source = format!("({source})");
+    }
+    source = format!("notes = {source}");
+
+    let result = eval_module(&source, ReplMode::Loose);
+    // Either parse error or eval error, but not an abort
+    if let Err(e) = result {
+        assert!(
+            e.to_string().contains("exceeded") || e.to_string().contains("limit"),
+            "Unexpected error: {e}"
+        );
+    }
 }
