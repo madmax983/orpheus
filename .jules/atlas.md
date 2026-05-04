@@ -26,3 +26,9 @@
 **[Fix Leaky Abstraction in Value and FunctionValue Enums]
 **Tangle:** The `Value` and `FunctionValue` enums in `orpheus-lang` were public and exposed inner payload types like `ArpDirectionValue`, `PitchClassSetValue`, `BuiltinFn`, `BuiltinKind`, and `UserFn` as part of their variants. However, these inner types were not re-exported in the crate's `lib.rs`, creating a leaky abstraction where consumers could match on the variants but could not explicitly name the types of the values they extracted.
 **Blueprint:** Explicitly re-exported `ArpDirectionValue`, `BuiltinFn`, `BuiltinKind`, `PitchClassSetValue`, and `UserFn` from the `value` module inside `crates/orpheus-lang/src/lib.rs` to ensure all publicly reachable types are fully nameable.
+**[Enforce Private SuperCollider Export Module]
+**Tangle:** The  module in  was declared as , leaking the internal implementation details of the SuperCollider export module.
+**Blueprint:** Changed  to  in . This enforces strong module boundaries by keeping the module internal while the intended public APIs ( and ) are explicitly exposed via .
+**[Enforce Private SuperCollider Export Module]
+**Tangle:** The `supercollider_export` module in `orpheus-lang/src/lib.rs` was declared as `pub mod`, leaking the internal implementation details of the SuperCollider export module.
+**Blueprint:** Changed `pub mod supercollider_export;` to `pub(crate) mod supercollider_export;` in `crates/orpheus-lang/src/lib.rs`. This enforces strong module boundaries by keeping the module internal while the intended public APIs (`export_number_pattern_to_supercollider` and `export_sample_pattern_to_supercollider`) are explicitly exposed via `pub use`.
