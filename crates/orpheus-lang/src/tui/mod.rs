@@ -7,7 +7,8 @@
 
 mod plugins;
 mod state;
-mod style;
+#[allow(clippy::redundant_pub_crate)]
+pub(crate) mod style;
 
 use std::cell::RefCell;
 use std::io;

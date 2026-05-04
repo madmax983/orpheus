@@ -93,6 +93,14 @@ pub use pitch::{PitchLiteralError, parse_named_pitch_literal};
 #[doc(hidden)]
 pub use session::{MixerView, ReplSession, TransportView};
 #[doc(hidden)]
+pub use tui::style::{
+    UiTransportState, binding_legend_item, binding_list_item, format_cycle_position,
+    format_tempo_bpm, format_transport_status, help_overlay_border_style,
+    help_overlay_footer_style, key_legend_style, live_binding_style, pending_binding_style,
+    routing_status_line, should_show_binding_legend, transport_state, transport_status_line,
+    transport_status_style,
+};
+#[doc(hidden)]
 pub use value::FunctionValue;
 
 /// REPL type-checking mode for the bootstrap workspace.
