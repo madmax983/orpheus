@@ -60,7 +60,10 @@ pub use midi_export::{export_number_pattern_to_midi, export_sample_pattern_to_mi
 pub use number_roll::render_ascii_number_roll;
 pub use osu_export::export_sample_pattern_to_osu;
 pub use parser::parse_module;
-pub use pedal::{PedalGraph, PedalValue, SignalKind, ValidatedPedalPlan};
+pub use pedal::{
+    PedalGraph, PedalValue, SignalKind, ValidatedPedalBinding, ValidatedPedalNode,
+    ValidatedPedalPlan,
+};
 pub use repl::{run_stdio, run_stdio_with_engine, run_stdio_with_engine_and_path};
 pub use scad_export::export_number_pattern_to_scad;
 pub use srt::{export_number_pattern_to_srt, export_sample_pattern_to_srt};
@@ -76,10 +79,10 @@ pub use txt::{export_number_pattern_to_txt, export_sample_pattern_to_txt};
 pub(crate) mod dot_export;
 pub use dot_export::export_pedal_value_to_dot;
 pub use scl::{SclError, parse_scala_file, parse_scala_source};
-pub use types::{Type, TypedModule, infer_into_bindings, infer_module};
+pub use types::{Type, TypeVarId, TypedModule, infer_into_bindings, infer_module};
 pub use value::{
-    ArpDirectionValue, BuiltinFn, BuiltinKind, NumberPatternValue, PitchClassSetValue, SampleEvent,
-    SamplePatternValue, TuningValue, UserFn, Value,
+    ArpDirectionValue, BuiltinFn, BuiltinKind, GatePatternValue, NumberPatternValue,
+    PitchClassSetValue, SampleEvent, SamplePatternValue, TuningValue, UserFn, Value,
 };
 
 // Hidden re-exports keep rustdoc examples for internal helpers compiling.

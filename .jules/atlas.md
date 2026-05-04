@@ -32,3 +32,17 @@
 **[Enforce Private SuperCollider Export Module]
 **Tangle:** The `supercollider_export` module in `orpheus-lang/src/lib.rs` was declared as `pub mod`, leaking the internal implementation details of the SuperCollider export module.
 **Blueprint:** Changed `pub mod supercollider_export;` to `pub(crate) mod supercollider_export;` in `crates/orpheus-lang/src/lib.rs`. This enforces strong module boundaries by keeping the module internal while the intended public APIs (`export_number_pattern_to_supercollider` and `export_sample_pattern_to_supercollider`) are explicitly exposed via `pub use`.
+**[Fix Leaky Abstraction in ValidatedPedalPlan and GatePatternValue Enums]
+**Tangle:** The `ValidatedPedalPlan` and `Value` enums in `orpheus-lang` were public and exposed inner payload types like `ValidatedPedalBinding`, `ValidatedPedalNode`, `PedalNodeKind`, and `GatePatternValue` as part of their variants. However, these inner types were either private or not re-exported in the crate's `lib.rs`, creating a leaky abstraction where consumers could not explicitly name the types of the values they extracted or the compiler complained about privacy.
+**Blueprint:** Explicitly re-exported `GatePatternValue`, `ValidatedPedalBinding`, and `ValidatedPedalNode` from the `value` and `pedal` modules inside `crates/orpheus-lang/src/lib.rs` and made `PedalNodeKind` public to ensure all publicly reachable types are fully nameable and privacy boundaries are respected.
+**[Fix Leaky Abstraction in Type Enum]
+**Tangle:** The `Type` enum in `orpheus-lang` was public and exposed the inner payload type `TypeVarId` as part of its `Var` variant. However, this inner type was not re-exported in the crate's `lib.rs`, creating a leaky abstraction.
+**Blueprint:** Explicitly re-exported `TypeVarId` from the `types` module inside `crates/orpheus-lang/src/lib.rs` to ensure all publicly reachable types are fully nameable.
+
+**[Float Epsilon Equality Bug]**
+**Learning:** Checking floating-point equality in tests using `val - expected < f64::EPSILON` is a logical bug because a negative difference will always evaluate as less than epsilon, causing false positives.
+**Action:** Always apply `.abs()` to the difference before comparing to epsilon: `(val - expected).abs() < f64::EPSILON`.
+
+**[Simplify IO Other Error]**
+**Learning:** Instantiating generic IO errors using `std::io::Error::new(std::io::ErrorKind::Other, "message")` triggers `clippy::io_other_error`.
+**Action:** Use the cleaner, modern shorthand `std::io::Error::other("message")`.
