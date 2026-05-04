@@ -21,7 +21,7 @@ const SECONDS_PER_CYCLE: f64 = 2.0;
 ///
 /// ```
 /// use orpheus_lang::{ReplMode, eval_module};
-/// use orpheus_lang::supercollider_export::export_sample_pattern_to_supercollider;
+/// use orpheus_lang::export_sample_pattern_to_supercollider;
 ///
 /// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
 /// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
@@ -99,7 +99,7 @@ pub fn export_sample_pattern_to_supercollider(
 ///
 /// ```
 /// use orpheus_lang::{ReplMode, eval_module};
-/// use orpheus_lang::supercollider_export::export_number_pattern_to_supercollider;
+/// use orpheus_lang::export_number_pattern_to_supercollider;
 ///
 /// let env = eval_module("x = 60 62 64", ReplMode::Loose).unwrap();
 /// let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
