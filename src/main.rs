@@ -161,7 +161,7 @@ fn start_live_audio() -> anyhow::Result<(EngineHandle, Stream)> {
                     "{} {}",
                     "\u{2717} Audio stream error:".magenta().bold(),
                     error
-                )
+                );
             },
             None,
         )
