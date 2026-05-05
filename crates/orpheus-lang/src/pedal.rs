@@ -223,7 +223,7 @@ impl ValidatedPedalPlan {
         }
 
         table.add_row(vec![
-            Cell::new("=> result").fg(comfy_table::Color::Magenta),
+            Cell::new("=> result").fg(comfy_table::Color::Cyan),
             Cell::new(self.result.signal_kind().to_string()).fg(comfy_table::Color::Yellow),
             Cell::new(self.result.summary()).fg(comfy_table::Color::Green),
         ]);

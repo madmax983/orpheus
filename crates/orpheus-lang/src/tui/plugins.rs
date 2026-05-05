@@ -35,9 +35,7 @@ impl HypertilePlugin for ReplPlugin {
                 let style = if entry.starts_with("> ") {
                     Style::default().fg(Color::DarkGray)
                 } else if entry.starts_with("\u{2717} ") {
-                    Style::default()
-                        .fg(Color::Magenta)
-                        .add_modifier(Modifier::BOLD)
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
                 } else if entry.starts_with("\u{26a0}\u{fe0f} ") {
                     Style::default()
                         .fg(Color::Yellow)
@@ -309,7 +307,7 @@ impl HypertilePlugin for TransportPlugin {
                 || message.contains("usage:");
 
             let (prefix, bg, fg) = if is_error {
-                ("\u{2717} Failed", Color::Magenta, Color::White)
+                ("\u{2717} Failed", Color::Red, Color::White)
             } else {
                 ("\u{2713} Success", Color::Green, Color::Black)
             };
