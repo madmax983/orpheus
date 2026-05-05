@@ -27,3 +27,7 @@
 **[Float-to-Integer Cast Optimization]**
 **Learning:** Converting floats to integers via `format!("{value:.0}").parse::<T>()` is extremely slow and causes heap allocations. Direct casting (`value.round() as T`) is significantly faster but will trigger `clippy::cast_possible_truncation`, `clippy::cast_sign_loss`, or `clippy::cast_precision_loss` warnings.
 **Action:** Optimize conversions using `.round() as T`, explicitly suppress the resulting `clippy` lints with `#[allow(...)]`, and perform boundary/saturation checks (e.g., `integer == T::MAX && value > f64::from(T::MAX)`) *after* the cast to maintain safety without parsing strings.
+
+**[Float-to-Integer Cast Boundary Checking]**
+**Learning:** When optimizing float-to-integer conversions from `format!` to direct casting (`value.round() as T`), the maximum and minimum boundaries must match the target type's boundaries casted to float (e.g. `i128::MAX as f64` not `u32::MAX`), and all constraints (e.g. `< 0.0` or `is_nan()`) must be consistently applied since the cast saturates instead of failing.
+**Action:** Ensure boundaries explicitly mirror the exact target type limit when using `.round() as T` optimizations.

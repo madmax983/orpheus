@@ -2166,9 +2166,12 @@ fn extract_inversion_count(value: Value) -> Result<u32, EvalError> {
         return Err(EvalError::new("`invert` requires a whole number"));
     }
 
-    format!("{number:.0}")
-        .parse::<u32>()
-        .map_err(|_| EvalError::new("`invert` exceeded the supported evaluator range"))
+    if number.is_nan() || number > f64::from(u32::MAX) || number < 0.0 {
+        return Err(EvalError::new("`invert` exceeded the supported evaluator range"));
+    }
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    Ok(number.round() as u32)
 }
 
 fn extract_drop_count(value: Value) -> Result<u32, EvalError> {
@@ -2182,9 +2185,12 @@ fn whole_number_from_pitch_class_value(value: f64) -> Result<i32, EvalError> {
         ));
     }
 
-    format!("{value:.0}")
-        .parse::<i32>()
-        .map_err(|_| EvalError::new("`pitch_class_set` exceeded the supported evaluator range"))
+    if value.is_nan() || value > f64::from(i32::MAX) || value < f64::from(i32::MIN) {
+        return Err(EvalError::new("`pitch_class_set` exceeded the supported evaluator range"));
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    Ok(value.round() as i32)
 }
 
 fn extract_onset_index_control(value: Value) -> Result<OnsetIndexControl, EvalError> {
@@ -2242,9 +2248,13 @@ fn validate_slice_idx_constant(value: f64, segments: u32) -> Result<u32, EvalErr
         return Err(EvalError::new("`slice_idx index` requires a whole number"));
     }
 
-    let index = format!("{value:.0}")
-        .parse::<u32>()
-        .map_err(|_| EvalError::new("`slice_idx index` exceeded the supported evaluator range"))?;
+    if value.is_nan() || value > f64::from(u32::MAX) || value < 0.0 {
+        return Err(EvalError::new("`slice_idx index` exceeded the supported evaluator range"));
+    }
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let index = value.round() as u32;
+
     if index >= segments {
         return Err(EvalError::new("`slice_idx` requires index < segments"));
     }
@@ -2272,9 +2282,12 @@ fn validate_onset_index_constant(value: f64) -> Result<u32, EvalError> {
         return Err(EvalError::new("`onset index` requires a whole number"));
     }
 
-    format!("{value:.0}")
-        .parse::<u32>()
-        .map_err(|_| EvalError::new("`onset index` exceeded the supported evaluator range"))
+    if value.is_nan() || value > f64::from(u32::MAX) || value < 0.0 {
+        return Err(EvalError::new("`onset index` exceeded the supported evaluator range"));
+    }
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    Ok(value.round() as u32)
 }
 
 fn validate_onset_index_control_value(value: f64) -> Result<(), EvalError> {
