@@ -157,11 +157,7 @@ fn start_live_audio() -> anyhow::Result<(EngineHandle, Stream)> {
                 }
             },
             |error| {
-                eprintln!(
-                    "{} {}",
-                    "\u{2717} Audio stream error:".magenta().bold(),
-                    error
-                )
+                eprintln!("{} {}", "\u{2717} Audio stream error:".red().bold(), error);
             },
             None,
         )
