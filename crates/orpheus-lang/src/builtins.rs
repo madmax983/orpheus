@@ -104,6 +104,7 @@ fn lookup_pattern_transform(name: &str) -> Option<Value> {
         "euclid" => Some(builtin_function_value(BuiltinKind::Euclid)),
         "lsystem" => Some(builtin_function_value(BuiltinKind::Lsystem)),
         "wolfram" => Some(builtin_function_value(BuiltinKind::Wolfram)),
+        "morse" => Some(builtin_function_value(BuiltinKind::Morse)),
         "pitch_class_set" => Some(builtin_function_value(BuiltinKind::PitchClassSet)),
         "degrees" => Some(builtin_function_value(BuiltinKind::Degrees)),
         "tuning" => Some(builtin_function_value(BuiltinKind::Tuning)),
@@ -390,6 +391,7 @@ impl BuiltinKind {
             Self::MidiCc => "midi_cc",
             Self::Chaos => "chaos",
             Self::Palindrome => "palindrome",
+            Self::Morse => "morse",
             Self::Tuning => "tuning",
             Self::LoadScl => "load_scl",
             Self::Tune => "tune",
@@ -406,6 +408,7 @@ impl BuiltinKind {
             | Self::Strum
             | Self::Chaos
             | Self::Palindrome
+            | Self::Morse
             | Self::Tuning
             | Self::LoadScl
             | Self::MidiCc => 1,
@@ -508,6 +511,7 @@ impl BuiltinKind {
             Self::MidiCc => apply_midi_cc(args),
             Self::Chaos => apply_chaos(args, function.site_salt.unwrap_or_default()),
             Self::Palindrome => apply_palindrome(args),
+            Self::Morse => apply_morse(args),
             Self::Tuning => apply_tuning(args),
             Self::LoadScl => apply_load_scl(args),
             Self::Tune => apply_tune(args),
@@ -2839,4 +2843,198 @@ fn apply_lsystem(args: Vec<Value>) -> Result<Value, EvalError> {
     }
 
     Ok(Value::NumberPattern(NumberPatternValue::from_nodes(nodes)))
+}
+
+const fn char_to_morse(c: char) -> Option<&'static str> {
+    match c {
+        'A' => Some(".-"),
+        'B' => Some("-..."),
+        'C' => Some("-.-."),
+        'D' => Some("-.."),
+        'E' => Some("."),
+        'F' => Some("..-."),
+        'G' => Some("--."),
+        'H' => Some("...."),
+        'I' => Some(".."),
+        'J' => Some(".---"),
+        'K' => Some("-.-"),
+        'L' => Some(".-.."),
+        'M' => Some("--"),
+        'N' => Some("-."),
+        'O' => Some("---"),
+        'P' => Some(".--."),
+        'Q' => Some("--.-"),
+        'R' => Some(".-."),
+        'S' => Some("..."),
+        'T' => Some("-"),
+        'U' => Some("..-"),
+        'V' => Some("...-"),
+        'W' => Some(".--"),
+        'X' => Some("-..-"),
+        'Y' => Some("-.--"),
+        'Z' => Some("--.."),
+        '0' => Some("-----"),
+        '1' => Some(".----"),
+        '2' => Some("..---"),
+        '3' => Some("...--"),
+        '4' => Some("....-"),
+        '5' => Some("....."),
+        '6' => Some("-...."),
+        '7' => Some("--..."),
+        '8' => Some("---.."),
+        '9' => Some("----."),
+        _ => None,
+    }
+}
+
+#[allow(clippy::too_many_lines)]
+fn apply_morse(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let text = extract_string(
+        args.next()
+            .ok_or_else(|| EvalError::new("`morse` requires a string argument"))?,
+        "morse",
+    )?;
+
+    let text = text.trim().to_uppercase();
+    if text.is_empty() {
+        return Ok(Value::SamplePattern(SamplePatternValue::from_events(
+            Vec::new(),
+        )));
+    }
+
+    let mut events = Vec::new();
+    let mut current_time = orpheus_pattern::Rational::zero();
+
+    // The basic unit of time in Morse code.
+    // Let's define the total duration of the message to fit within one cycle (or more, but usually
+    // builtins generate patterns within [0, 1) or an explicit cycle length, but we can compute total
+    // units and scale later, OR just use units and stretch them to 1 cycle).
+
+    // Calculate total units to normalize to 1 cycle.
+    let mut total_units = 0;
+
+    // Simple Morse code table
+
+    // First pass: calculate total length
+    let words: Vec<&str> = text.split_whitespace().collect();
+    for (w_idx, word) in words.iter().enumerate() {
+        if w_idx > 0 {
+            total_units += 7; // word gap
+        }
+        let chars: Vec<char> = word.chars().collect();
+        for (c_idx, c) in chars.iter().enumerate() {
+            if c_idx > 0 {
+                total_units += 3; // letter gap
+            }
+            if let Some(morse) = char_to_morse(*c) {
+                let parts: Vec<char> = morse.chars().collect();
+                for (p_idx, p) in parts.iter().enumerate() {
+                    if p_idx > 0 {
+                        total_units += 1; // intra-character gap
+                    }
+                    if *p == '.' {
+                        total_units += 1;
+                    } else if *p == '-' {
+                        total_units += 3;
+                    }
+                }
+            } else {
+                // Unknown character, skip or treat as space? Let's just treat as space of 3 units
+                total_units += 3;
+            }
+        }
+    }
+
+    if total_units == 0 {
+        return Ok(Value::SamplePattern(SamplePatternValue::from_events(
+            Vec::new(),
+        )));
+    }
+
+    let unit_duration =
+        orpheus_pattern::Rational::checked_from_parts(1, i128::from(total_units))
+            .map_err(|_| EvalError::new("`morse` pattern duration calculation failed"))?;
+
+    for (w_idx, word) in words.iter().enumerate() {
+        if w_idx > 0 {
+            let gap = unit_duration
+                .checked_mul(&orpheus_pattern::Rational::checked_from_parts(7, 1).unwrap())
+                .unwrap();
+            current_time = current_time.checked_add(&gap).unwrap();
+        }
+        let chars: Vec<char> = word.chars().collect();
+        for (c_idx, c) in chars.iter().enumerate() {
+            if c_idx > 0 {
+                let gap = unit_duration
+                    .checked_mul(&orpheus_pattern::Rational::checked_from_parts(3, 1).unwrap())
+                    .unwrap();
+                current_time = current_time.checked_add(&gap).unwrap();
+            }
+            if let Some(morse) = char_to_morse(*c) {
+                let parts: Vec<char> = morse.chars().collect();
+                for (p_idx, p) in parts.iter().enumerate() {
+                    if p_idx > 0 {
+                        let gap = unit_duration
+                            .checked_mul(
+                                &orpheus_pattern::Rational::checked_from_parts(1, 1).unwrap(),
+                            )
+                            .unwrap();
+                        current_time = current_time.checked_add(&gap).unwrap();
+                    }
+                    let duration = if *p == '.' {
+                        unit_duration
+                            .checked_mul(
+                                &orpheus_pattern::Rational::checked_from_parts(1, 1).unwrap(),
+                            )
+                            .unwrap()
+                    } else {
+                        // '-'
+                        unit_duration
+                            .checked_mul(
+                                &orpheus_pattern::Rational::checked_from_parts(3, 1).unwrap(),
+                            )
+                            .unwrap()
+                    };
+
+                    let end_time = current_time.checked_add(&duration).unwrap();
+                    let span = orpheus_pattern::TimeSpan::new(current_time, end_time)
+                        .map_err(|_| EvalError::new("invalid span created in `morse`"))?;
+
+                    events.push(orpheus_pattern::Event {
+                        whole: None,
+                        part: span,
+                        value: crate::value::SampleEvent::named("pulse"),
+                    });
+
+                    current_time = end_time;
+                }
+            } else {
+                let gap = unit_duration
+                    .checked_mul(&orpheus_pattern::Rational::checked_from_parts(3, 1).unwrap())
+                    .unwrap();
+                current_time = current_time.checked_add(&gap).unwrap();
+            }
+        }
+    }
+
+    Ok(Value::SamplePattern(SamplePatternValue::from_events(
+        events,
+    )))
+}
+
+#[test]
+fn morse_generates_rhythmic_sequence() {
+    let source = r#"a = morse("sos")"#;
+    let module = crate::eval_module(source, crate::ReplMode::Loose).unwrap();
+    let pattern = module.get("a").unwrap().as_sample_pattern().unwrap();
+
+    let events = pattern
+        .try_query(&orpheus_pattern::TimeSpan::unit())
+        .unwrap();
+    assert_eq!(events.len(), 9);
+
+    for event in &events {
+        assert_eq!(event.value.sample(), "pulse");
+    }
 }

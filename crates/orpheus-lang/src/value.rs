@@ -107,6 +107,7 @@ pub enum BuiltinKind {
     MidiCc,
     Chaos,
     Palindrome,
+    Morse,
     Tuning,
     LoadScl,
     Tune,
