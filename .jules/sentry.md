@@ -35,3 +35,11 @@
 ## 2025-05-02 - Eliminate unwrap() using stable Rust constructs
 **Learning:** Replacing `.unwrap()` with `if let Some` and `&&` (let chains) is an unstable Rust feature. Using it causes the compiler to reject the build.
 **Action:** Always use either nested `if` statements with `#[allow(clippy::collapsible_if)]` or modern iterator methods like `.is_some_and(...)` when safely unpacking values conditionally on stable Rust.
+
+## 2024-10-27 - std::io::Error::other Shorthand
+**Learning:** Found clippy warning `clippy::io_other_error` in `test_havoc_error.rs` when using `std::io::Error::new(std::io::ErrorKind::Other, "...")`.
+**Action:** Use the shorthand `std::io::Error::other("...")` when constructing generic I/O errors to satisfy clippy and improve readability.
+
+## 2024-10-27 - float_equality_without_abs
+**Learning:** Found clippy warning `clippy::float_equality_without_abs` in `eval.rs` when checking float equality without `abs()`. `val - 42.0 < f64::EPSILON` is unsafe because a very negative number is also less than epsilon.
+**Action:** Always use `.abs()` when comparing floats to epsilon: `(val - expected).abs() < f64::EPSILON`.
