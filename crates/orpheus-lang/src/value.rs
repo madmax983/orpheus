@@ -183,7 +183,7 @@ impl FunctionValue {
         table.add_row(vec![
             Cell::new("Bound Args").fg(comfy_table::Color::Cyan),
             Cell::new(builtin.bound_args.len().to_string())
-                .fg(comfy_table::Color::Magenta)
+                .fg(comfy_table::Color::Yellow)
                 .set_alignment(CellAlignment::Right),
         ]);
     }
@@ -205,13 +205,13 @@ impl FunctionValue {
         table.add_row(vec![
             Cell::new("Captured Bindings").fg(comfy_table::Color::Cyan),
             Cell::new(user.captured_bindings.len().to_string())
-                .fg(comfy_table::Color::Magenta)
+                .fg(comfy_table::Color::Yellow)
                 .set_alignment(CellAlignment::Right),
         ]);
         table.add_row(vec![
             Cell::new("Depth").fg(comfy_table::Color::Cyan),
             Cell::new(user.depth.to_string())
-                .fg(comfy_table::Color::Magenta)
+                .fg(comfy_table::Color::Yellow)
                 .set_alignment(CellAlignment::Right),
         ]);
     }
