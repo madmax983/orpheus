@@ -32,3 +32,6 @@
 **[Enforce Private SuperCollider Export Module]
 **Tangle:** The `supercollider_export` module in `orpheus-lang/src/lib.rs` was declared as `pub mod`, leaking the internal implementation details of the SuperCollider export module.
 **Blueprint:** Changed `pub mod supercollider_export;` to `pub(crate) mod supercollider_export;` in `crates/orpheus-lang/src/lib.rs`. This enforces strong module boundaries by keeping the module internal while the intended public APIs (`export_number_pattern_to_supercollider` and `export_sample_pattern_to_supercollider`) are explicitly exposed via `pub use`.
+**[Leaky Abstraction in Public Enums]**
+**Tangle:** The `GatePatternValue` type in `orpheus-lang` was used as a parameter and exposed through internal methods but was missing from the crate's public re-exports, violating the "Leaky Abstraction" rule.
+**Blueprint:** Added `GatePatternValue` to the public re-exports in `crates/orpheus-lang/src/lib.rs` to explicitly expose the type.

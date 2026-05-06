@@ -78,8 +78,8 @@ pub use dot_export::export_pedal_value_to_dot;
 pub use scl::{SclError, parse_scala_file, parse_scala_source};
 pub use types::{Type, TypedModule, infer_into_bindings, infer_module};
 pub use value::{
-    ArpDirectionValue, BuiltinFn, BuiltinKind, NumberPatternValue, PitchClassSetValue, SampleEvent,
-    SamplePatternValue, TuningValue, UserFn, Value,
+    ArpDirectionValue, BuiltinFn, BuiltinKind, GatePatternValue, NumberPatternValue,
+    PitchClassSetValue, SampleEvent, SamplePatternValue, TuningValue, UserFn, Value,
 };
 
 // Hidden re-exports keep rustdoc examples for internal helpers compiling.
