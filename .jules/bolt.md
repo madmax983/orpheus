@@ -27,3 +27,7 @@
 **[Float-to-Integer Cast Optimization]**
 **Learning:** Converting floats to integers via `format!("{value:.0}").parse::<T>()` is extremely slow and causes heap allocations. Direct casting (`value.round() as T`) is significantly faster but will trigger `clippy::cast_possible_truncation`, `clippy::cast_sign_loss`, or `clippy::cast_precision_loss` warnings.
 **Action:** Optimize conversions using `.round() as T`, explicitly suppress the resulting `clippy` lints with `#[allow(...)]`, and perform boundary/saturation checks (e.g., `integer == T::MAX && value > f64::from(T::MAX)`) *after* the cast to maintain safety without parsing strings.
+
+**[Float-to-Integer Cast Optimization]**
+**Learning:** Using `format!("{value:.0}").parse::<T>()` to convert floats to integers incurs significant overhead due to memory allocation and string formatting in the hot path.
+**Action:** Replace string parsing with direct casting (`value.round() as T`), ensuring explicit bounds checking against `T::MAX`/`T::MIN` and handling `NaN` beforehand to prevent panics and maintain identical semantics. Suppress `clippy::cast_possible_truncation`, `clippy::cast_sign_loss`, and `clippy::cast_precision_loss` when the bounds checks are in place.

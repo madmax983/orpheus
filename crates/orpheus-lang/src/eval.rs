@@ -726,9 +726,15 @@ impl Evaluator {
             )));
         }
 
-        let parsed = format!("{value:.0}")
-            .parse::<i128>()
-            .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?;
+        #[allow(clippy::cast_precision_loss)]
+        let (max_val, min_val) = (i128::MAX as f64, i128::MIN as f64);
+        if value.is_nan() || value > max_val || value < min_val {
+            return Err(EvalError::new(format!(
+                "{context} exceeded the supported range"
+            )));
+        }
+        #[allow(clippy::cast_possible_truncation)]
+        let parsed = value.round() as i128;
 
         if parsed <= 0 {
             return Err(EvalError::new(format!(
