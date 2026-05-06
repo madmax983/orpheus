@@ -1523,6 +1523,16 @@ right = sometimes(fast(2), cp hh)";
     }
 
     #[test]
+    fn explicit_seq_sections_mixed_types() {
+        let result = eval_module("x = seq_sections(section(at(0, bd), 1), section(at(0, 1), 1))", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "explicit-time items must all resolve to the same pattern kind"
+        );
+    }
+
+    #[test]
     fn eval_apply_value_to_non_function() {
         let result = eval_module("x = 1 |> 2", ReplMode::Strict);
         assert!(result.is_err());
