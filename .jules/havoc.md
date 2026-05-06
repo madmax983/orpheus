@@ -1,3 +1,5 @@
-## 2023-10-27 - [OOM via Vec::with_capacity]
-**Learning:** Pre-allocating a `Vec` based on an unverified user-supplied size constraint (like a header count) can lead to an Out-of-Memory (OOM) panic. Also, performing arithmetic (like `expected + 1`) on such an unverified value before capping it can result in an integer overflow panic in debug mode.
-**Action:** Always safely clamp the capacity estimate (e.g., `.saturating_add(1).min(1024)`) so the collection falls back to standard dynamic resizing for extreme cases.
+## 2026-03-24 - System Resilience against Fuzzing and Concurrency
+
+**Insight:** Extensive proptest and fuzzing attempts across `f64_to_rational`, `parse_named_pitch_literal`, and `eval_module` yielded no panics. The system gracefully returns `Result::Err` on garbage input. `loom` testing on MIDI concurrency and Mutexes revealed no deadlocks or data races. OOM and Stack Overflow vectors are properly mitigated by hard limits (100k events and 200 depth limit respectively). Added explicit proptest harness to verify this resilience.
+
+**Action:** The system withstood the chaos. Documenting its robust limits and submitting a resilience PR.
