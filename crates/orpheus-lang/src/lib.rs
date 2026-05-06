@@ -12,6 +12,7 @@ pub(crate) mod export;
 #[cfg(feature = "experimental-gcode")]
 pub(crate) mod gcode_export;
 pub(crate) mod html;
+pub(crate) mod ics_export;
 #[cfg(feature = "lilypond_export")]
 pub(crate) mod lilypond_export;
 mod loader;
@@ -53,6 +54,7 @@ pub use export::{
 #[cfg(feature = "experimental-gcode")]
 pub use gcode_export::export_number_pattern_to_gcode;
 pub use html::{export_number_pattern_to_html, export_sample_pattern_to_html};
+pub use ics_export::{export_number_pattern_to_ics, export_sample_pattern_to_ics};
 #[cfg(feature = "lilypond_export")]
 pub use lilypond_export::export_number_pattern_to_lilypond;
 pub use loader::load_file_strict;
