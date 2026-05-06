@@ -8,6 +8,7 @@ mod builtins;
 mod diagnostics;
 mod error;
 mod eval;
+pub mod explain;
 pub(crate) mod export;
 #[cfg(feature = "experimental-gcode")]
 pub(crate) mod gcode_export;

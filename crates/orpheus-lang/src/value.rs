@@ -16,6 +16,7 @@
 //! events over a specific window of time using `query_unit()`. Those events are
 //! returned as fully-materialized [`SampleEvent`]s.
 
+use crate::explain::{Explain, explain_table};
 use core::cmp::{max, min};
 use core::fmt;
 use std::collections::BTreeMap;
@@ -29,24 +30,6 @@ use crate::{
     eval::{EvalError, apply_function_value},
     pedal::PedalValue,
 };
-
-pub fn explain_table<const N: usize>(headers: [&str; N]) -> comfy_table::Table {
-    use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
-    let mut table = Table::new();
-    table.load_preset(UTF8_BORDERS_ONLY);
-
-    let header_cells: Vec<Cell> = headers
-        .into_iter()
-        .map(|h| {
-            Cell::new(h)
-                .fg(comfy_table::Color::White)
-                .add_attribute(comfy_table::Attribute::Bold)
-        })
-        .collect();
-
-    table.set_header(header_cells);
-    table
-}
 
 /// Identifies which core built-in function is being represented.
 ///
@@ -144,10 +127,8 @@ pub enum FunctionValue {
     User(Arc<UserFn>),
 }
 
-impl FunctionValue {
-    #[doc(hidden)]
-    #[must_use]
-    pub fn explain(&self, binding_name: &str) -> String {
+impl Explain for FunctionValue {
+    fn explain(&self, binding_name: &str) -> String {
         use crossterm::style::Stylize;
 
         let title = format!(
@@ -165,7 +146,9 @@ impl FunctionValue {
 
         format!("{title}\n{table}")
     }
+}
 
+impl FunctionValue {
     fn explain_builtin(table: &mut comfy_table::Table, builtin: &BuiltinFn) {
         use comfy_table::{Cell, CellAlignment};
         table.add_row(vec![
@@ -354,6 +337,34 @@ pub struct TuningValue {
     ref_semitone: i32,
 }
 
+impl Explain for TuningValue {
+    fn explain(&self, binding_name: &str) -> String {
+        use comfy_table::{Cell, CellAlignment};
+        use crossterm::style::Stylize;
+
+        let title = format!(
+            "{} {binding_name}\nScale: {}\nPeriod: {:.2}\nSteps: {}",
+            "Tuning Table Plan:".cyan().bold(),
+            self.name().to_string().yellow(),
+            self.period(),
+            self.ratios().len()
+        );
+
+        let mut table = explain_table(["Step", "Ratio"]);
+
+        for (i, ratio) in self.ratios().iter().enumerate() {
+            table.add_row(vec![
+                Cell::new(i.to_string()).fg(comfy_table::Color::Cyan),
+                Cell::new(format!("{ratio:.4}"))
+                    .fg(comfy_table::Color::Yellow)
+                    .set_alignment(CellAlignment::Right),
+            ]);
+        }
+
+        format!("{title}\n{table}")
+    }
+}
+
 impl TuningValue {
     /// Constructs a tuning from a list of ratios and a period.
     ///
@@ -445,34 +456,6 @@ impl TuningValue {
             period: self.period,
             ref_semitone: self.ref_semitone,
         }
-    }
-
-    #[doc(hidden)]
-    #[must_use]
-    pub fn explain(&self, binding_name: &str) -> String {
-        use comfy_table::{Cell, CellAlignment};
-        use crossterm::style::Stylize;
-
-        let title = format!(
-            "{} {binding_name}\nScale: {}\nPeriod: {:.2}\nSteps: {}",
-            "Tuning Table Plan:".cyan().bold(),
-            self.name().to_string().yellow(),
-            self.period(),
-            self.ratios().len()
-        );
-
-        let mut table = explain_table(["Step", "Ratio"]);
-
-        for (i, ratio) in self.ratios().iter().enumerate() {
-            table.add_row(vec![
-                Cell::new(i.to_string()).fg(comfy_table::Color::Cyan),
-                Cell::new(format!("{ratio:.4}"))
-                    .fg(comfy_table::Color::Yellow)
-                    .set_alignment(CellAlignment::Right),
-            ]);
-        }
-
-        format!("{title}\n{table}")
     }
 }
 
@@ -1532,10 +1515,8 @@ pub struct SamplePatternValue {
     pattern: PatternRuntime<SampleEvent>,
 }
 
-impl SamplePatternValue {
-    #[doc(hidden)]
-    #[must_use]
-    pub fn explain(&self, binding_name: &str) -> String {
+impl Explain for SamplePatternValue {
+    fn explain(&self, binding_name: &str) -> String {
         use comfy_table::{Cell, CellAlignment};
         use crossterm::style::Stylize;
 
@@ -1562,7 +1543,9 @@ impl SamplePatternValue {
 
         format!("{title}\n{table}")
     }
+}
 
+impl SamplePatternValue {
     pub(crate) fn atom(sample: &str) -> Self {
         Self::from_nodes(vec![PatternNode::atom(SampleEvent::named(sample))])
     }
@@ -2214,10 +2197,8 @@ pub struct NumberPatternValue {
     pattern: PatternRuntime<f64>,
 }
 
-impl NumberPatternValue {
-    #[doc(hidden)]
-    #[must_use]
-    pub fn explain(&self, binding_name: &str) -> String {
+impl Explain for NumberPatternValue {
+    fn explain(&self, binding_name: &str) -> String {
         use comfy_table::{Cell, CellAlignment};
         use crossterm::style::Stylize;
 
@@ -2244,7 +2225,9 @@ impl NumberPatternValue {
 
         format!("{title}\n{table}")
     }
+}
 
+impl NumberPatternValue {
     pub(crate) fn constant(value: f64) -> Self {
         Self::from_nodes(vec![PatternNode::atom(value)])
     }

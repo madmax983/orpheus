@@ -9,6 +9,7 @@
 //! typed Orpheus [`Value`]s and interfaces directly with the `orpheus_dsp` layer via an
 //! `EngineHandle`.
 
+use crate::explain::Explain;
 use ratatui::text::Line;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};

@@ -10,6 +10,7 @@
 //!
 //! Note that functions like `stack_values` handles variadic list processing, whereas types like
 //! `BuiltinFn` encapsulate fixed-arity curried transformations.
+use crate::explain::Explain;
 
 use orpheus_pattern::{Rational, TimeSpan};
 

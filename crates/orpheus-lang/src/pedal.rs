@@ -21,6 +21,7 @@
     clippy::needless_pass_by_value,
     clippy::unused_self
 )]
+use crate::explain::{Explain, explain_table};
 use core::fmt::{self, Display, Formatter};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -212,7 +213,7 @@ impl ValidatedPedalPlan {
             "Pedal Graph Plan:".cyan().bold(),
             self.signal_kind().to_string().yellow()
         );
-        let mut table = crate::value::explain_table(["Binding", "Kind", "Node"]);
+        let mut table = explain_table(["Binding", "Kind", "Node"]);
 
         for binding in &self.bindings {
             table.add_row(vec![
@@ -237,6 +238,12 @@ impl ValidatedPedalPlan {
 pub struct PedalValue {
     graph: PedalGraph,
     plan: ValidatedPedalPlan,
+}
+
+impl Explain for PedalValue {
+    fn explain(&self, binding_name: &str) -> String {
+        self.plan.explain(binding_name)
+    }
 }
 
 impl PedalValue {
@@ -273,12 +280,6 @@ impl PedalValue {
     #[must_use]
     pub fn format_source(&self) -> String {
         self.graph.format_source()
-    }
-
-    #[doc(hidden)]
-    #[must_use]
-    pub fn explain(&self, binding_name: &str) -> String {
-        self.plan.explain(binding_name)
     }
 }
 

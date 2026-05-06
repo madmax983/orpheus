@@ -65,3 +65,7 @@
 **[Extracting Table Builders to Helper Methods]**
 **Learning:** Extracting large `match` blocks or procedural table building logic across multiple files into a shared helper function `explain_table` reduces code duplication and line count, while keeping the output identical.
 **Action:** When refactoring multiple structs that use identical boilerplate setup (like `comfy_table::Table::new()`), extract the setup into a centralized `pub fn` to simplify the individual methods.
+
+**[Title]** Extracted Explain method to an Explain Trait
+**Learning:** Having identical function signatures `pub fn explain(&self, binding_name: &str) -> String` across multiple disjoint types (like `FunctionValue`, `PedalValue`, etc.) is a missed opportunity for polymorphic abstractions.
+**Action:** Extract the identical methods into a shared `Explain` trait and `impl Explain for Type` to establish a formal abstraction, keeping `explain_table` shared.
