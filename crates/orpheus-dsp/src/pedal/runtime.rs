@@ -667,6 +667,15 @@ fn smooth_control_value(current: f32, target: f32, coeff: f32) -> f32 {
     }
 }
 
+struct EvalContext<'a> {
+    node_states: &'a mut [NodeState],
+    node_values: &'a [f32],
+    sample_rate_hz: f32,
+    sample_step: usize,
+    index: usize,
+    input: f32,
+}
+
 #[allow(clippy::cast_precision_loss)]
 fn evaluate_node(
     node_states: &mut [NodeState],
@@ -677,52 +686,42 @@ fn evaluate_node(
     node: &PedalNode,
     input: f32,
 ) -> f32 {
+    let mut ctx = EvalContext {
+        node_states,
+        node_values,
+        sample_rate_hz,
+        sample_step,
+        index,
+        input,
+    };
+
     match node.kind() {
         PedalNodeKind::Constant { value_bits } => f32::from_bits(*value_bits),
         PedalNodeKind::Lfo {
             rate_hz_bits,
             depth_bits,
             offset_bits,
-        } => {
-            let NodeState::Lfo { phase } = &mut node_states[index] else {
-                return 0.0;
-            };
-            let value = phase
-                .sin()
-                .mul_add(f32::from_bits(*depth_bits), f32::from_bits(*offset_bits));
-            let increment =
-                core::f32::consts::TAU * f32::from_bits(*rate_hz_bits) * (sample_step as f32)
-                    / sample_rate_hz.max(1.0);
-            *phase = (*phase + increment).rem_euclid(core::f32::consts::TAU);
-            value
-        }
+        } => evaluate_lfo(&mut ctx, *rate_hz_bits, *depth_bits, *offset_bits),
         PedalNodeKind::EnvFollow {
             input: source,
             attack_ms_bits,
             release_ms_bits,
-        } => {
-            let target = resolve(node_values, *source, input).abs();
-            let NodeState::EnvFollow { envelope } = &mut node_states[index] else {
-                return target;
-            };
-            let effective_sample_rate = sample_rate_hz / (sample_step.max(1) as f32);
-            let attack = smoothing_coeff(f32::from_bits(*attack_ms_bits), effective_sample_rate);
-            let release = smoothing_coeff(f32::from_bits(*release_ms_bits), effective_sample_rate);
-            let coeff = if target > *envelope { attack } else { release };
-            *envelope += (target - *envelope) * coeff;
-            *envelope
+        } => evaluate_env_follow(&mut ctx, *source, *attack_ms_bits, *release_ms_bits),
+        PedalNodeKind::Add { left, right } => sanitize_audio(
+            resolve(ctx.node_values, *left, ctx.input)
+                + resolve(ctx.node_values, *right, ctx.input),
+        ),
+        PedalNodeKind::Mul { left, right } => sanitize_audio(
+            resolve(ctx.node_values, *left, ctx.input)
+                * resolve(ctx.node_values, *right, ctx.input),
+        ),
+        PedalNodeKind::Stage(stage) => {
+            stage.process(ctx.node_states, ctx.node_values, ctx.index, ctx.input)
         }
-        PedalNodeKind::Add { left, right } => {
-            sanitize_audio(resolve(node_values, *left, input) + resolve(node_values, *right, input))
-        }
-        PedalNodeKind::Mul { left, right } => {
-            sanitize_audio(resolve(node_values, *left, input) * resolve(node_values, *right, input))
-        }
-        PedalNodeKind::Stage(stage) => stage.process(node_states, node_values, index, input),
         PedalNodeKind::Mix { inputs } => sanitize_audio(
             inputs
                 .iter()
-                .map(|reference| resolve(node_values, *reference, input))
+                .map(|reference| resolve(ctx.node_values, *reference, ctx.input))
                 .sum::<f32>(),
         ),
         PedalNodeKind::Feedback {
@@ -730,32 +729,85 @@ fn evaluate_node(
             amount,
             delay_samples,
             tone_hz_bits,
-        } => {
-            let signal = resolve(node_values, *source, input);
-            let amount = resolve(node_values, *amount, input).clamp(0.0, 0.98);
-            let NodeState::Feedback {
-                buffer,
-                write_index,
-                low_pass,
-            } = &mut node_states[index]
-            else {
-                return signal;
-            };
-            let delayed = buffer[*write_index];
-            let feedback_signal = tone_hz_bits.as_ref().map_or(delayed, |cutoff_hz| {
-                low_pass
-                    .as_mut()
-                    .expect("feedback tone filter state should exist")
-                    .process_with_cutoff(delayed, f32::from_bits(*cutoff_hz))
-            });
-            buffer[*write_index] = sanitize_audio(feedback_signal.mul_add(amount, signal));
-            *write_index += 1;
-            if *write_index >= (*delay_samples).max(1) {
-                *write_index = 0;
-            }
-            sanitize_audio(feedback_signal.mul_add(amount, signal))
-        }
+        } => evaluate_feedback(
+            &mut ctx,
+            *source,
+            *amount,
+            *delay_samples,
+            tone_hz_bits.as_ref(),
+        ),
     }
+}
+
+#[allow(clippy::cast_precision_loss)]
+fn evaluate_lfo(
+    ctx: &mut EvalContext,
+    rate_hz_bits: u32,
+    depth_bits: u32,
+    offset_bits: u32,
+) -> f32 {
+    let NodeState::Lfo { phase } = &mut ctx.node_states[ctx.index] else {
+        return 0.0;
+    };
+    let value = phase
+        .sin()
+        .mul_add(f32::from_bits(depth_bits), f32::from_bits(offset_bits));
+    let increment =
+        core::f32::consts::TAU * f32::from_bits(rate_hz_bits) * (ctx.sample_step as f32)
+            / ctx.sample_rate_hz.max(1.0);
+    *phase = (*phase + increment).rem_euclid(core::f32::consts::TAU);
+    value
+}
+
+#[allow(clippy::cast_precision_loss)]
+fn evaluate_env_follow(
+    ctx: &mut EvalContext,
+    source: NodeRef,
+    attack_ms_bits: u32,
+    release_ms_bits: u32,
+) -> f32 {
+    let target = resolve(ctx.node_values, source, ctx.input).abs();
+    let NodeState::EnvFollow { envelope } = &mut ctx.node_states[ctx.index] else {
+        return target;
+    };
+    let effective_sample_rate = ctx.sample_rate_hz / (ctx.sample_step.max(1) as f32);
+    let attack = smoothing_coeff(f32::from_bits(attack_ms_bits), effective_sample_rate);
+    let release = smoothing_coeff(f32::from_bits(release_ms_bits), effective_sample_rate);
+    let coeff = if target > *envelope { attack } else { release };
+    *envelope += (target - *envelope) * coeff;
+    *envelope
+}
+
+fn evaluate_feedback(
+    ctx: &mut EvalContext,
+    source: NodeRef,
+    amount_ref: NodeRef,
+    delay_samples: usize,
+    tone_hz_bits: Option<&u32>,
+) -> f32 {
+    let signal = resolve(ctx.node_values, source, ctx.input);
+    let amount = resolve(ctx.node_values, amount_ref, ctx.input).clamp(0.0, 0.98);
+    let NodeState::Feedback {
+        buffer,
+        write_index,
+        low_pass,
+    } = &mut ctx.node_states[ctx.index]
+    else {
+        return signal;
+    };
+    let delayed = buffer[*write_index];
+    let feedback_signal = tone_hz_bits.map_or(delayed, |cutoff_hz| {
+        low_pass
+            .as_mut()
+            .expect("feedback tone filter state should exist")
+            .process_with_cutoff(delayed, f32::from_bits(*cutoff_hz))
+    });
+    buffer[*write_index] = sanitize_audio(feedback_signal.mul_add(amount, signal));
+    *write_index += 1;
+    if *write_index >= delay_samples.max(1) {
+        *write_index = 0;
+    }
+    sanitize_audio(feedback_signal.mul_add(amount, signal))
 }
 
 struct StageContext<'a> {
