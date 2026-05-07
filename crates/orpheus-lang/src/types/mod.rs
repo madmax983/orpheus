@@ -7,7 +7,7 @@
 //! The entry points for type inference are `infer_module` and `infer_into_bindings`,
 //! which evaluate AST sequences against a `TypeEnv` to produce a `TypedModule`.
 
-mod env;
+pub mod env;
 mod infer;
 
 use std::collections::BTreeMap;
@@ -21,7 +21,7 @@ pub use infer::infer_module;
 /// # Examples
 ///
 /// ```
-/// use orpheus_lang::types::TypeVarId;
+/// use orpheus_lang::TypeVarId;
 /// // The inner value is internal, so we don't instantiate it directly here.
 /// ```
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]

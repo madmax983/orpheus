@@ -29,3 +29,9 @@
 ## 2024-05-18 - [Missing DSP Effect Documentation]
 **Confusion:** The stateful DSP effects like `DelayState` and `ReverbState` lacked doc comments and executable examples, obscuring how they integrate with the audio graph and language runtime.
 **Clarification:** Added narrative `///` documentation to the structs and their core methods (`new`, `sync_timing`/`sync_spec`, `process_frame`, `reset`). Included `## Examples` using `BusEffectState::from_spec` to demonstrate instantiation via the public API wrapper, as the structs themselves are not exported at the crate root.
+## 2025-05-07 - Doc Test Linkage Confusion
+**Confusion:** Rustdoc doc tests (like `/// # Examples`) fail when relying on private modules or functions not exported correctly at the crate root, leading to "unresolved import" or "private module" errors. Moreover, when instantiating complex types like `NumberPatternValue`, standard `From` implementations must be correctly qualified (e.g. `2.0.into()` instead of `.constant(2.0)` which is private).
+**Clarification:** To ensure doc tests compile for internal components:
+1. Export necessary hidden types at the crate root (`lib.rs`) with `#[doc(hidden)] pub use ...`.
+2. Do not use `use crate::...` in doc tests. Instead, always refer to the crate by name (`use orpheus_lang::...`).
+3. Ensure that when modifying examples to fix compilation errors, you use public struct instantiators, variants, and trait implementations (like `Value::String("val".into())` vs `Value::NumberPattern(...)`).

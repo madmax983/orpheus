@@ -10,7 +10,7 @@
 /// # Examples
 ///
 /// ```
-/// use orpheus_lang::parser::parse_module;
+/// use orpheus_lang::parse_module;
 ///
 /// let module = parse_module("f = bd").unwrap();
 /// ```
@@ -25,7 +25,7 @@ pub struct Module {
 /// # Examples
 ///
 /// ```
-/// use orpheus_lang::ast::Expr;
+/// use orpheus_lang::Expr;
 ///
 /// let expr = Expr::Ident("bd".to_string());
 /// ```
@@ -111,7 +111,7 @@ pub enum Expr {
 /// # Examples
 ///
 /// ```
-/// use orpheus_lang::ast::{Expr, GraphBinding};
+/// use orpheus_lang::{Expr, GraphBinding};
 ///
 /// let binding = GraphBinding {
 ///     name: "x".to_string(),
@@ -131,7 +131,7 @@ pub struct GraphBinding {
 /// # Examples
 ///
 /// ```
-/// use orpheus_lang::ast::BinaryOp;
+/// use orpheus_lang::BinaryOp;
 ///
 /// let op = BinaryOp::Add;
 /// ```
@@ -244,7 +244,20 @@ pub enum Stmt {
 /// `true` if the identifier is referenced in the expression body and is not shadowed
 /// by a parameter. `false` otherwise.
 ///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::Expr;
+/// use orpheus_lang::binding_expr_self_references;
+///
+/// let expr = Expr::Ident("foo".to_string());
+/// let params = vec![];
+///
+/// // Since "foo" is not shadowed by parameters, it is self-referencing.
+/// assert!(binding_expr_self_references("foo", &params, &expr));
+/// ```
 #[doc(hidden)]
+#[must_use]
 pub fn binding_expr_self_references(name: &str, params: &[String], expr: &Expr) -> bool {
     !params.iter().any(|param| param == name) && expr.references_ident(name)
 }

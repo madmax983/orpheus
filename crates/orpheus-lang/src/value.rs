@@ -122,13 +122,13 @@ pub enum BuiltinKind {
 ///
 /// ```
 /// use orpheus_lang::{BuiltinKind, Value};
-/// use orpheus_lang::value::BuiltinFn;
+/// use orpheus_lang::BuiltinFn;
 ///
-/// let bfn = BuiltinFn {
-///     kind: BuiltinKind::Fast,
-///     bound_args: vec![Value::number(2.0)],
-///     site_salt: None,
-/// };
+/// use orpheus_lang::builtin_value;
+/// // We typically instantiate built-in functions via the evaluator, but we can access them:
+/// let bfn_value = builtin_value("fast").unwrap();
+///
+/// assert!(matches!(bfn_value, orpheus_lang::Value::Function(_)));
 /// ```
 #[derive(Clone, Debug)]
 pub struct BuiltinFn {
@@ -146,7 +146,7 @@ pub struct BuiltinFn {
 ///
 /// let bindings = eval_module("f x = x", ReplMode::Loose).unwrap();
 /// let val = bindings.get("f").unwrap();
-/// assert!(val.as_function().is_some());
+/// assert!(matches!(val, orpheus_lang::Value::Function(_)));
 /// ```
 #[derive(Clone, Debug)]
 pub struct UserFn {

@@ -87,13 +87,17 @@ pub use value::{
 
 // Hidden re-exports keep rustdoc examples for internal helpers compiling.
 #[doc(hidden)]
+pub use ast::{GraphBinding, binding_expr_self_references};
+#[doc(hidden)]
+pub use types::env::{TypeEnv, TypeScheme};
+#[doc(hidden)]
 pub use builtins::{apply_builtin_function, builtin_value, is_sample_identifier, stack_values};
 #[doc(hidden)]
 pub use eval::{apply_function_value, eval_into_bindings, f64_to_rational};
 #[doc(hidden)]
 pub use export::escape_json_string;
 #[doc(hidden)]
-pub use loader::load_file_runtime_strict;
+pub use loader::{load_file_runtime_strict, StrictLoadedFile};
 #[doc(hidden)]
 pub use pitch::{PitchLiteralError, parse_named_pitch_literal};
 #[doc(hidden)]

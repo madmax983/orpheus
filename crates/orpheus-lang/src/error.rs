@@ -1,3 +1,10 @@
+//! The `error` module provides the common runtime error type for Orpheus.
+//!
+//! This module encapsulates all errors that can occur during the execution phase,
+//! unifying underlying parse, load, type, and temporal pattern errors into a single
+//! [`EvalError`] type. This ensures that callers of the evaluator can cleanly match
+//! and recover from or present errors to the user.
+
 use orpheus_pattern::PatternError;
 use thiserror::Error;
 
@@ -13,6 +20,9 @@ pub enum EvalError {
     ///
     /// This is a fallback variant for dynamically generated evaluation errors
     /// (e.g. division by zero, capacity overflows) that don't fit into a specific domain type.
+    ///
+    /// **Recovery:** Review the source syntax causing the overflow or invalid mathematical operation.
+    /// Check any variable bounds that may exceed the valid `u64` range.
     #[error("{message}")]
     Message {
         /// The textual description of the error.
@@ -22,6 +32,9 @@ pub enum EvalError {
     /// An error that occurred while parsing a dynamic evaluation string.
     ///
     /// This happens when source code provided to `eval_module` contains syntax errors.
+    ///
+    /// **Recovery:** Check the syntax of the input string for missing closing brackets,
+    /// invalid characters, or malformed patterns.
     #[error(transparent)]
     Parse(#[from] ParseError),
 
@@ -29,18 +42,27 @@ pub enum EvalError {
     ///
     /// This occurs when an expression tries to apply a function to an invalid
     /// variable type (e.g., trying to shift a `Value::Function`).
+    ///
+    /// **Recovery:** Ensure the function is called with arguments of the correct type.
+    /// Check for variable name typos that might bind to the wrong value.
     #[error(transparent)]
     Type(#[from] crate::diagnostics::TypeError),
 
     /// An error encountered when loading an external resource.
     ///
     /// This is typically emitted when parsing a file or a sample directory fails.
+    ///
+    /// **Recovery:** Verify that the requested file or directory exists and has the
+    /// correct permissions. Ensure the file path is correct relative to the current directory.
     #[error(transparent)]
     Load(#[from] crate::diagnostics::LoadError),
 
     /// An error parsing a named pitch literal into semitones.
     ///
     /// This happens if an identifier resolves to an invalid note name (like `C#99`).
+    ///
+    /// **Recovery:** Use standard musical note notation (e.g., `"c4"`, `"fs4"`, `"bf3"`).
+    /// Ensure the octave number is within a reasonable range.
     #[error(transparent)]
     Pitch(#[from] crate::pitch::PitchLiteralError),
 
@@ -48,10 +70,15 @@ pub enum EvalError {
     ///
     /// Occurs when explicitly converting numbers like cycle repeats or bounds
     /// into usize or u64 and the value is out of range.
+    ///
+    /// **Recovery:** Reduce the numerical value to fit within a standard 64-bit unsigned integer.
     #[error(transparent)]
     TryFromInt(#[from] std::num::TryFromIntError),
 
     /// An error parsing a string into an integer.
+    ///
+    /// **Recovery:** Ensure the string contains only valid numeric digits without
+    /// special characters or trailing spaces.
     #[error(transparent)]
     ParseInt(#[from] std::num::ParseIntError),
 
@@ -59,6 +86,9 @@ pub enum EvalError {
     ///
     /// Examples include attempting a rational division by zero or invalid shifts
     /// in explicit-time streams.
+    ///
+    /// **Recovery:** Avoid shifting patterns by non-finite or `NaN` values, and
+    /// prevent mathematical transformations that create `0` denominators in rational time representations.
     #[error(transparent)]
     Pattern(#[from] PatternError),
 }
