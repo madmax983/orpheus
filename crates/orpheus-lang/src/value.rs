@@ -117,6 +117,19 @@ pub enum BuiltinKind {
 /// This structure tracks the function's identity alongside arguments that have
 /// already been supplied. It supports partial application up to the function's
 /// required arity.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{BuiltinKind, Value};
+/// use orpheus_lang::value::BuiltinFn;
+///
+/// let bfn = BuiltinFn {
+///     kind: BuiltinKind::Fast,
+///     bound_args: vec![Value::number(2.0)],
+///     site_salt: None,
+/// };
+/// ```
 #[derive(Clone, Debug)]
 pub struct BuiltinFn {
     pub(crate) kind: BuiltinKind,
@@ -125,6 +138,16 @@ pub struct BuiltinFn {
 }
 
 /// A user-defined top-level curried function with captured bindings.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module};
+///
+/// let bindings = eval_module("f x = x", ReplMode::Loose).unwrap();
+/// let val = bindings.get("f").unwrap();
+/// assert!(val.as_function().is_some());
+/// ```
 #[derive(Clone, Debug)]
 pub struct UserFn {
     pub(crate) mode: ReplMode,

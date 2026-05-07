@@ -15,6 +15,15 @@ use crate::types::{Type, TypeVarId};
 /// This allows functions like `fast` to operate on `Pattern<t>` regardless of
 /// whether `t` is a `Sample` or a `Number`. During type inference, the scheme
 /// is instantiated to produce a concrete type for each specific usage.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::Type;
+/// use orpheus_lang::types::TypeScheme;
+///
+/// let scheme = TypeScheme::monomorphic(Type::Sample);
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
     pub vars: Vec<TypeVarId>,
@@ -35,6 +44,14 @@ impl TypeScheme {
 ///
 /// Stores both the predefined built-in primitives and any user-defined
 /// variables created during a session.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::types::TypeEnv;
+///
+/// let env = TypeEnv::with_builtins();
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeEnv {
     entries: BTreeMap<String, TypeScheme>,

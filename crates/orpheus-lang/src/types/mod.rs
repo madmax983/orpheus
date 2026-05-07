@@ -17,6 +17,13 @@ pub use infer::infer_into_bindings;
 pub use infer::infer_module;
 
 /// A unique identifier representing a universally quantified type variable inside a `TypeScheme`.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::types::TypeVarId;
+/// // The inner value is internal, so we don't instantiate it directly here.
+/// ```
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct TypeVarId(u32);
 
@@ -151,6 +158,14 @@ impl Display for Type {
 ///
 /// Contains the resolved monomorphic types for all top-level bindings defined
 /// in the module.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, infer_module};
+///
+/// let module = infer_module("f = bd", ReplMode::Strict).unwrap();
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypedModule {
     bindings: BTreeMap<String, Type>,

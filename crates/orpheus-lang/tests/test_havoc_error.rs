@@ -10,7 +10,7 @@ fn eval_error_from_io_error() {
     let err: EvalError = io_err.into();
     assert!(err.to_string().contains("permission denied"));
 
-    let io_err = std::io::Error::new(std::io::ErrorKind::Other, "other error");
+    let io_err = std::io::Error::other("other error");
     let err: EvalError = io_err.into();
     assert!(err.to_string().contains("other error"));
 }
