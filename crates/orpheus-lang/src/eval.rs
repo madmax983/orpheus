@@ -726,9 +726,23 @@ impl Evaluator {
             )));
         }
 
-        let parsed = format!("{value:.0}")
-            .parse::<i128>()
-            .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?;
+        if value.is_nan() {
+            return Err(EvalError::new(format!(
+                "{context} requires a valid number"
+            )));
+        }
+
+        #[allow(clippy::cast_possible_truncation)]
+        let parsed = value.round() as i128;
+        #[allow(clippy::cast_precision_loss)]
+        let max_val = i128::MAX as f64;
+        #[allow(clippy::cast_precision_loss)]
+        let min_val = i128::MIN as f64;
+        if value > max_val || value < min_val {
+            return Err(EvalError::new(format!(
+                "{context} exceeded the supported range"
+            )));
+        }
 
         if parsed <= 0 {
             return Err(EvalError::new(format!(
@@ -1224,7 +1238,7 @@ pub fn f64_to_rational(value: f64, context: &str) -> Result<Rational, EvalError>
 
     let (numerator, denominator) = if let Some((whole, fractional)) = digits.split_once('.') {
         let scale = checked_pow10(fractional.len())?;
-        let combined = format!("{whole}{fractional}");
+        let combined = [whole, fractional].concat();
         let numerator = combined
             .parse::<i128>()
             .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?;
