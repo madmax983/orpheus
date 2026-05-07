@@ -24,6 +24,19 @@ struct ImportSpec {
 /// Contains the fully inferred type bindings and fully evaluated runtime values
 /// for all top-level statements. Also tracks the name of the final binding
 /// so the REPL knows what pattern to make active automatically.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::StrictLoadedFile;
+/// use std::collections::BTreeMap;
+///
+/// let file = StrictLoadedFile {
+///     type_bindings: BTreeMap::new(),
+///     value_bindings: BTreeMap::new(),
+///     last_binding_name: None,
+/// };
+/// ```
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
     pub type_bindings: BTreeMap<String, Type>,

@@ -6,6 +6,14 @@
 //! is the [`Module`] struct, which contains a collection of [`Stmt`] nodes.
 
 /// A parsed Orpheus module.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::parser::parse_module;
+///
+/// let module = parse_module("f = bd").unwrap();
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct Module {
     /// Top-level statements in source order.
@@ -13,6 +21,14 @@ pub struct Module {
 }
 
 /// Phase 1 expression forms.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::ast::Expr;
+///
+/// let expr = Expr::Ident("bd".to_string());
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
     /// Sequential composition created by juxtaposition.
@@ -91,6 +107,17 @@ pub enum Expr {
 }
 
 /// A single let-bound signal inside a pedal graph.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::ast::{Expr, GraphBinding};
+///
+/// let binding = GraphBinding {
+///     name: "x".to_string(),
+///     expr: Expr::Number(1.0),
+/// };
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct GraphBinding {
     /// The local signal name.
@@ -100,6 +127,14 @@ pub struct GraphBinding {
 }
 
 /// Arithmetic operators supported by the pedal graph surface.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::ast::BinaryOp;
+///
+/// let op = BinaryOp::Add;
+/// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BinaryOp {
     /// Addition.
