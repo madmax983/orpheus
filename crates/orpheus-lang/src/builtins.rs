@@ -612,28 +612,24 @@ fn apply_when(args: Vec<Value>) -> Result<Value, EvalError> {
         .next()
         .ok_or_else(|| EvalError::new("`when` requires a pattern argument"))?;
 
-    match pattern {
-        Value::SamplePattern(pattern) => {
-            let transform = extract_unary_pattern_transform(transform, "when", "third")?;
-            Ok(Value::SamplePattern(
-                pattern.when(period, offset, transform),
-            ))
-        }
-        Value::NumberPattern(pattern) => {
-            let transform = extract_unary_pattern_transform(transform, "when", "third")?;
-            Ok(Value::NumberPattern(
-                pattern.when(period, offset, transform),
-            ))
-        }
-        Value::ArpDirection(_)
-        | Value::PitchClassSet(_)
-        | Value::Function(_)
-        | Value::String(_)
-        | Value::Tuning(_)
-        | Value::Pedal(_) => Err(EvalError::new(
-            "`when` expected a pattern as its final argument",
-        )),
-    }
+    apply_pattern_transform(
+        pattern,
+        |p| {
+            Ok(Value::SamplePattern(p.when(
+                period,
+                offset,
+                extract_unary_pattern_transform(transform.clone(), "when", "third")?,
+            )))
+        },
+        |p| {
+            Ok(Value::NumberPattern(p.when(
+                period,
+                offset,
+                extract_unary_pattern_transform(transform.clone(), "when", "third")?,
+            )))
+        },
+        "when",
+    )
 }
 
 fn apply_jux(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -645,9 +641,10 @@ fn apply_jux(args: Vec<Value>) -> Result<Value, EvalError> {
         .next()
         .ok_or_else(|| EvalError::new("`jux` requires a pattern argument"))?;
 
-    match pattern {
-        Value::SamplePattern(pattern_val) => {
-            let transform_fn = extract_unary_pattern_transform(transform, "jux", "first")?;
+    apply_pattern_transform(
+        pattern,
+        |pattern_val| {
+            let transform_fn = extract_unary_pattern_transform(transform.clone(), "jux", "first")?;
             let transformed_val = apply_function_value(
                 transform_fn,
                 vec![Value::SamplePattern(pattern_val.clone())],
@@ -663,17 +660,10 @@ fn apply_jux(args: Vec<Value>) -> Result<Value, EvalError> {
             Ok(Value::SamplePattern(SamplePatternValue::stack(vec![
                 left, right,
             ])))
-        }
-        Value::NumberPattern(_) => Err(EvalError::new("`jux` only applies to sample patterns")),
-        Value::ArpDirection(_)
-        | Value::PitchClassSet(_)
-        | Value::Function(_)
-        | Value::String(_)
-        | Value::Tuning(_)
-        | Value::Pedal(_) => Err(EvalError::new(
-            "`jux` expected a sample pattern as its final argument",
-        )),
-    }
+        },
+        |_| Err(EvalError::new("`jux` only applies to sample patterns")),
+        "jux",
+    )
 }
 
 fn apply_sometimes(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
@@ -685,28 +675,22 @@ fn apply_sometimes(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError>
         .next()
         .ok_or_else(|| EvalError::new("`sometimes` requires a pattern argument"))?;
 
-    match pattern {
-        Value::SamplePattern(pattern) => {
-            let transform = extract_unary_pattern_transform(transform, "sometimes", "first")?;
-            Ok(Value::SamplePattern(
-                pattern.sometimes_with_site_salt(transform, site_salt),
-            ))
-        }
-        Value::NumberPattern(pattern) => {
-            let transform = extract_unary_pattern_transform(transform, "sometimes", "first")?;
-            Ok(Value::NumberPattern(
-                pattern.sometimes_with_site_salt(transform, site_salt),
-            ))
-        }
-        Value::ArpDirection(_)
-        | Value::PitchClassSet(_)
-        | Value::Function(_)
-        | Value::String(_)
-        | Value::Tuning(_)
-        | Value::Pedal(_) => Err(EvalError::new(
-            "`sometimes` expected a pattern as its final argument",
-        )),
-    }
+    apply_pattern_transform(
+        pattern,
+        |p| {
+            Ok(Value::SamplePattern(p.sometimes_with_site_salt(
+                extract_unary_pattern_transform(transform.clone(), "sometimes", "first")?,
+                site_salt,
+            )))
+        },
+        |p| {
+            Ok(Value::NumberPattern(p.sometimes_with_site_salt(
+                extract_unary_pattern_transform(transform.clone(), "sometimes", "first")?,
+                site_salt,
+            )))
+        },
+        "sometimes",
+    )
 }
 
 fn apply_within(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -732,24 +716,24 @@ fn apply_within(args: Vec<Value>) -> Result<Value, EvalError> {
         .next()
         .ok_or_else(|| EvalError::new("`within` requires a pattern argument"))?;
 
-    match pattern {
-        Value::SamplePattern(pattern) => {
-            let transform = extract_unary_pattern_transform(transform, "within", "third")?;
-            Ok(Value::SamplePattern(pattern.within(start, end, transform)))
-        }
-        Value::NumberPattern(pattern) => {
-            let transform = extract_unary_pattern_transform(transform, "within", "third")?;
-            Ok(Value::NumberPattern(pattern.within(start, end, transform)))
-        }
-        Value::ArpDirection(_)
-        | Value::PitchClassSet(_)
-        | Value::Function(_)
-        | Value::String(_)
-        | Value::Tuning(_)
-        | Value::Pedal(_) => Err(EvalError::new(
-            "`within` expected a pattern as its final argument",
-        )),
-    }
+    apply_pattern_transform(
+        pattern,
+        |p| {
+            Ok(Value::SamplePattern(p.within(
+                start,
+                end,
+                extract_unary_pattern_transform(transform.clone(), "within", "third")?,
+            )))
+        },
+        |p| {
+            Ok(Value::NumberPattern(p.within(
+                start,
+                end,
+                extract_unary_pattern_transform(transform.clone(), "within", "third")?,
+            )))
+        },
+        "within",
+    )
 }
 
 fn apply_mask(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -764,18 +748,12 @@ fn apply_mask(args: Vec<Value>) -> Result<Value, EvalError> {
         .next()
         .ok_or_else(|| EvalError::new("`mask` requires a pattern argument"))?;
 
-    match pattern {
-        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.mask(gate))),
-        Value::NumberPattern(pattern) => Ok(Value::NumberPattern(pattern.mask(gate))),
-        Value::ArpDirection(_)
-        | Value::PitchClassSet(_)
-        | Value::Function(_)
-        | Value::String(_)
-        | Value::Tuning(_)
-        | Value::Pedal(_) => Err(EvalError::new(
-            "`mask` expected a pattern as its final argument",
-        )),
-    }
+    apply_pattern_transform(
+        pattern,
+        |p| Ok(Value::SamplePattern(p.mask(gate.clone()))),
+        |p| Ok(Value::NumberPattern(p.mask(gate.clone()))),
+        "mask",
+    )
 }
 
 fn apply_euclid(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -842,16 +820,12 @@ fn apply_roll(args: Vec<Value>) -> Result<Value, EvalError> {
         .next()
         .ok_or_else(|| EvalError::new("`roll` requires a pattern argument"))?;
 
-    match pattern {
-        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.roll(steps))),
-        Value::NumberPattern(pattern) => Ok(Value::NumberPattern(pattern.roll(steps))),
-        Value::ArpDirection(_)
-        | Value::PitchClassSet(_)
-        | Value::Function(_)
-        | Value::Tuning(_)
-        | Value::Pedal(_)
-        | Value::String(_) => Err(EvalError::new("`roll` requires a pattern argument")),
-    }
+    apply_pattern_transform(
+        pattern,
+        |p| Ok(Value::SamplePattern(p.roll(steps))),
+        |p| Ok(Value::NumberPattern(p.roll(steps))),
+        "roll",
+    )
 }
 
 fn apply_arp(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -946,18 +920,12 @@ fn apply_fast(args: Vec<Value>) -> Result<Value, EvalError> {
         .next()
         .ok_or_else(|| EvalError::new("`fast` requires a pattern argument"))?;
 
-    match pattern {
-        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.fast(factor))),
-        Value::NumberPattern(pattern) => Ok(Value::NumberPattern(pattern.fast(factor))),
-        Value::ArpDirection(_)
-        | Value::PitchClassSet(_)
-        | Value::Function(_)
-        | Value::Tuning(_)
-        | Value::Pedal(_)
-        | Value::String(_) => Err(EvalError::new(
-            "`fast` expected a pattern as its final argument",
-        )),
-    }
+    apply_pattern_transform(
+        pattern,
+        |p| Ok(Value::SamplePattern(p.fast(factor))),
+        |p| Ok(Value::NumberPattern(p.fast(factor))),
+        "fast",
+    )
 }
 
 fn apply_slow(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -971,18 +939,12 @@ fn apply_slow(args: Vec<Value>) -> Result<Value, EvalError> {
         .next()
         .ok_or_else(|| EvalError::new("`slow` requires a pattern argument"))?;
 
-    match pattern {
-        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.slow(factor))),
-        Value::NumberPattern(pattern) => Ok(Value::NumberPattern(pattern.slow(factor))),
-        Value::ArpDirection(_)
-        | Value::PitchClassSet(_)
-        | Value::Function(_)
-        | Value::Tuning(_)
-        | Value::Pedal(_)
-        | Value::String(_) => Err(EvalError::new(
-            "`slow` expected a pattern as its final argument",
-        )),
-    }
+    apply_pattern_transform(
+        pattern,
+        |p| Ok(Value::SamplePattern(p.slow(factor))),
+        |p| Ok(Value::NumberPattern(p.slow(factor))),
+        "slow",
+    )
 }
 
 fn apply_shift(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -996,18 +958,12 @@ fn apply_shift(args: Vec<Value>) -> Result<Value, EvalError> {
         .next()
         .ok_or_else(|| EvalError::new("`shift` requires a pattern argument"))?;
 
-    match pattern {
-        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.shift(offset))),
-        Value::NumberPattern(pattern) => Ok(Value::NumberPattern(pattern.shift(offset))),
-        Value::ArpDirection(_)
-        | Value::PitchClassSet(_)
-        | Value::Function(_)
-        | Value::Tuning(_)
-        | Value::Pedal(_)
-        | Value::String(_) => Err(EvalError::new(
-            "`shift` expected a pattern as its final argument",
-        )),
-    }
+    apply_pattern_transform(
+        pattern,
+        |p| Ok(Value::SamplePattern(p.shift(offset))),
+        |p| Ok(Value::NumberPattern(p.shift(offset))),
+        "shift",
+    )
 }
 
 fn apply_rev(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -1016,16 +972,12 @@ fn apply_rev(args: Vec<Value>) -> Result<Value, EvalError> {
         .next()
         .ok_or_else(|| EvalError::new("`rev` requires a pattern argument"))?;
 
-    match pattern {
-        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.rev())),
-        Value::NumberPattern(pattern) => Ok(Value::NumberPattern(pattern.rev())),
-        Value::ArpDirection(_)
-        | Value::PitchClassSet(_)
-        | Value::Function(_)
-        | Value::String(_)
-        | Value::Tuning(_)
-        | Value::Pedal(_) => Err(EvalError::new("`rev` expected a pattern argument")),
-    }
+    apply_pattern_transform(
+        pattern,
+        |p| Ok(Value::SamplePattern(p.rev())),
+        |p| Ok(Value::NumberPattern(p.rev())),
+        "rev",
+    )
 }
 
 fn apply_chaos(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
@@ -1034,20 +986,12 @@ fn apply_chaos(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
         .next()
         .ok_or_else(|| EvalError::new("`chaos` requires a pattern argument"))?;
 
-    match pattern {
-        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(
-            pattern.chaos_with_site_salt(site_salt),
-        )),
-        Value::NumberPattern(pattern) => Ok(Value::NumberPattern(
-            pattern.chaos_with_site_salt(site_salt),
-        )),
-        Value::ArpDirection(_)
-        | Value::PitchClassSet(_)
-        | Value::Function(_)
-        | Value::Tuning(_)
-        | Value::Pedal(_)
-        | Value::String(_) => Err(EvalError::new("`chaos` expected a pattern argument")),
-    }
+    apply_pattern_transform(
+        pattern,
+        |p| Ok(Value::SamplePattern(p.chaos_with_site_salt(site_salt))),
+        |p| Ok(Value::NumberPattern(p.chaos_with_site_salt(site_salt))),
+        "chaos",
+    )
 }
 
 fn apply_gain(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -1498,6 +1442,21 @@ fn apply_slice_idx(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::String(_) => Err(EvalError::new(
             "`slice_idx` expected a sample pattern as its final argument",
         )),
+    }
+}
+
+fn apply_pattern_transform(
+    pattern: Value,
+    mut apply_sample: impl FnMut(crate::value::SamplePatternValue) -> Result<Value, EvalError>,
+    mut apply_number: impl FnMut(crate::value::NumberPatternValue) -> Result<Value, EvalError>,
+    builtin_name: &str,
+) -> Result<Value, EvalError> {
+    match pattern {
+        Value::SamplePattern(p) => apply_sample(p),
+        Value::NumberPattern(p) => apply_number(p),
+        _ => Err(EvalError::new(format!(
+            "`{builtin_name}` expected a pattern argument"
+        ))),
     }
 }
 

@@ -65,3 +65,8 @@
 **[Extracting Table Builders to Helper Methods]**
 **Learning:** Extracting large `match` blocks or procedural table building logic across multiple files into a shared helper function `explain_table` reduces code duplication and line count, while keeping the output identical.
 **Action:** When refactoring multiple structs that use identical boilerplate setup (like `comfy_table::Table::new()`), extract the setup into a centralized `pub fn` to simplify the individual methods.
+**[Refactor  pattern match blocks]**\n**Learning:** The  functions for structural pattern combinators in  contained repetitive, verbose match blocks over  returning  for everything except  and .\n**Action:** Extracted the core routing logic into a  helper function, utilizing closures to safely extract mutable closures, and dramatically flattened the , , , , , , , , , , and  functions.
+
+**[Refactor apply_ pattern match blocks]**
+**Learning:** The apply_ functions for structural pattern combinators in builtins.rs contained repetitive, verbose match blocks over Value returning EvalError for everything except SamplePattern and NumberPattern.
+**Action:** Extracted the core routing logic into a apply_pattern_transform helper function, utilizing closures to safely extract mutable closures, and dramatically flattened the apply_every, apply_when, apply_sometimes, apply_within, apply_mask, apply_roll, apply_fast, apply_slow, apply_shift, apply_rev, and apply_chaos functions.
