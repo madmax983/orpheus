@@ -1859,6 +1859,6 @@ right = sometimes(fast(2), cp hh)";
     fn apply_function_value_evaluates_user_function_correctly() {
         let module = eval_module("f x = x\nres = f(42.0)", ReplMode::Loose).unwrap();
         let val = module.get("res").unwrap().as_number_pattern().unwrap();
-        assert!(val.try_query_unit().unwrap()[0].value - 42.0 < f64::EPSILON);
+        assert!((val.try_query_unit().unwrap()[0].value - 42.0).abs() < f64::EPSILON);
     }
 }
