@@ -29,6 +29,7 @@ use crossterm::style::Stylize;
 
 use crate::ast::{BinaryOp, Expr, GraphBinding};
 use crate::error::EvalError;
+use crate::explain::Explain;
 
 /// The coarse signal domain understood by the pedal DSL.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -203,33 +204,6 @@ impl ValidatedPedalPlan {
     pub const fn result(&self) -> &ValidatedPedalNode {
         &self.result
     }
-
-    #[doc(hidden)]
-    #[must_use]
-    pub fn explain(&self, binding_name: &str) -> String {
-        let title = format!(
-            "{} {binding_name}\nTarget Signal Kind: {}",
-            "Pedal Graph Plan:".cyan().bold(),
-            self.signal_kind().to_string().yellow()
-        );
-        let mut table = crate::value::explain_table(["Binding", "Kind", "Node"]);
-
-        for binding in &self.bindings {
-            table.add_row(vec![
-                Cell::new(binding.name()).fg(comfy_table::Color::Cyan),
-                Cell::new(binding.node().signal_kind().to_string()).fg(comfy_table::Color::Yellow),
-                Cell::new(binding.node().summary()).fg(comfy_table::Color::Green),
-            ]);
-        }
-
-        table.add_row(vec![
-            Cell::new("=> result").fg(comfy_table::Color::Cyan),
-            Cell::new(self.result.signal_kind().to_string()).fg(comfy_table::Color::Yellow),
-            Cell::new(self.result.summary()).fg(comfy_table::Color::Green),
-        ]);
-
-        format!("{title}\n{table}")
-    }
 }
 
 /// The language-side value for a pedal graph.
@@ -273,12 +247,6 @@ impl PedalValue {
     #[must_use]
     pub fn format_source(&self) -> String {
         self.graph.format_source()
-    }
-
-    #[doc(hidden)]
-    #[must_use]
-    pub fn explain(&self, binding_name: &str) -> String {
-        self.plan.explain(binding_name)
     }
 }
 
@@ -957,4 +925,37 @@ pub fn compile_graph(
     let graph = PedalGraph::new(graph_src);
     let plan = ValidatedPedalPlan::new(compiled_bindings, result);
     Ok(PedalValue::new(graph, plan))
+}
+
+impl Explain for ValidatedPedalPlan {
+    fn explain(&self, binding_name: &str) -> String {
+        let title = format!(
+            "{} {binding_name}\nTarget Signal Kind: {}",
+            "Pedal Graph Plan:".cyan().bold(),
+            self.signal_kind().to_string().yellow()
+        );
+        let mut table = crate::explain::explain_table(["Binding", "Kind", "Node"]);
+
+        for binding in &self.bindings {
+            table.add_row(vec![
+                Cell::new(binding.name()).fg(comfy_table::Color::Cyan),
+                Cell::new(binding.node().signal_kind().to_string()).fg(comfy_table::Color::Yellow),
+                Cell::new(binding.node().summary()).fg(comfy_table::Color::Green),
+            ]);
+        }
+
+        table.add_row(vec![
+            Cell::new("=> result").fg(comfy_table::Color::Cyan),
+            Cell::new(self.result.signal_kind().to_string()).fg(comfy_table::Color::Yellow),
+            Cell::new(self.result.summary()).fg(comfy_table::Color::Green),
+        ]);
+
+        format!("{title}\n{table}")
+    }
+}
+
+impl Explain for PedalValue {
+    fn explain(&self, binding_name: &str) -> String {
+        self.plan.explain(binding_name)
+    }
 }

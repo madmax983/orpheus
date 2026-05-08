@@ -70,3 +70,7 @@
 **[Refactor apply_ pattern match blocks]**
 **Learning:** The apply_ functions for structural pattern combinators in builtins.rs contained repetitive, verbose match blocks over Value returning EvalError for everything except SamplePattern and NumberPattern.
 **Action:** Extracted the core routing logic into a apply_pattern_transform helper function, utilizing closures to safely extract mutable closures, and dramatically flattened the apply_every, apply_when, apply_sometimes, apply_within, apply_mask, apply_roll, apply_fast, apply_slow, apply_shift, apply_rev, and apply_chaos functions.
+
+**[Shared Trait Abstraction]**
+**Learning:** Having identical function signatures (like `pub fn explain(&self, binding_name: &str) -> String`) across multiple disjoint types represents a missed opportunity for polymorphic abstractions.
+**Action:** Extract identical methods into a shared trait (e.g., `Explain`) and implement it for the relevant types to establish a formal abstraction, grouping any shared helpers (like `explain_table`) in the same module.
