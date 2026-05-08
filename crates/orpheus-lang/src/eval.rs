@@ -727,13 +727,9 @@ impl Evaluator {
         }
 
         if value.is_nan() {
-            return Err(EvalError::new(format!(
-                "{context} requires a valid number"
-            )));
+            return Err(EvalError::new(format!("{context} requires a valid number")));
         }
 
-        #[allow(clippy::cast_possible_truncation)]
-        let parsed = value.round() as i128;
         #[allow(clippy::cast_precision_loss)]
         let max_val = i128::MAX as f64;
         #[allow(clippy::cast_precision_loss)]
@@ -743,6 +739,9 @@ impl Evaluator {
                 "{context} exceeded the supported range"
             )));
         }
+
+        #[allow(clippy::cast_possible_truncation)]
+        let parsed = value.round() as i128;
 
         if parsed <= 0 {
             return Err(EvalError::new(format!(
@@ -1538,7 +1537,10 @@ right = sometimes(fast(2), cp hh)";
 
     #[test]
     fn explicit_seq_sections_mixed_types() {
-        let result = eval_module("x = seq_sections(section(at(0, bd), 1), section(at(0, 1), 1))", ReplMode::Strict);
+        let result = eval_module(
+            "x = seq_sections(section(at(0, bd), 1), section(at(0, 1), 1))",
+            ReplMode::Strict,
+        );
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().to_string(),

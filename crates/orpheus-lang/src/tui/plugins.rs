@@ -35,9 +35,7 @@ impl HypertilePlugin for ReplPlugin {
                 let style = if entry.starts_with("> ") {
                     Style::default().fg(Color::DarkGray)
                 } else if entry.starts_with("\u{2717} ") {
-                    Style::default()
-                        .fg(Color::Red)
-                        .add_modifier(Modifier::BOLD)
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
                 } else if entry.starts_with("\u{26a0}\u{fe0f} ") {
                     Style::default()
                         .fg(Color::Yellow)
