@@ -109,3 +109,19 @@ mod tests {
         );
     }
 }
+#[cfg(test)]
+mod test_zero_cycle {
+    use super::*;
+    use crate::{ReplMode, eval_module};
+
+    #[test]
+    fn export_sample_pattern_zero_cycles() {
+        let source = "pattern = fast(2, bd sn)";
+        let module = eval_module(source, ReplMode::Loose).unwrap();
+        let pattern = module.get("pattern").unwrap().as_sample_pattern().unwrap();
+        let path = std::env::temp_dir().join("test_zero_sample.mermaid");
+
+        let err = export_sample_pattern_to_mermaid_gantt(pattern, &path, 0).unwrap_err();
+        assert_eq!(err.to_string(), "exporting requires at least one cycle");
+    }
+}
