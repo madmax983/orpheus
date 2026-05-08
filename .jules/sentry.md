@@ -43,3 +43,6 @@
 ## 2024-10-27 - float_equality_without_abs
 **Learning:** Found clippy warning `clippy::float_equality_without_abs` in `eval.rs` when checking float equality without `abs()`. `val - 42.0 < f64::EPSILON` is unsafe because a very negative number is also less than epsilon.
 **Action:** Always use `.abs()` when comparing floats to epsilon: `(val - expected).abs() < f64::EPSILON`.
+## 2024-05-24 - [Uncovered eval_group error state]
+**Learning:** Evaluator `eval_group` safely returns an `EvalError` if children item types do not match, but the coverage reports showed the branch testing the empty `[]` array fallthrough returning that error was never executed.
+**Action:** Add test `eval_group_empty` calling `eval_group(&[], None)` directly to verify the expected fallback error is created properly.

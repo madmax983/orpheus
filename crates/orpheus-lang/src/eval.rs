@@ -727,9 +727,7 @@ impl Evaluator {
         }
 
         if value.is_nan() {
-            return Err(EvalError::new(format!(
-                "{context} requires a valid number"
-            )));
+            return Err(EvalError::new(format!("{context} requires a valid number")));
         }
 
         #[allow(clippy::cast_possible_truncation)]
@@ -1538,7 +1536,10 @@ right = sometimes(fast(2), cp hh)";
 
     #[test]
     fn explicit_seq_sections_mixed_types() {
-        let result = eval_module("x = seq_sections(section(at(0, bd), 1), section(at(0, 1), 1))", ReplMode::Strict);
+        let result = eval_module(
+            "x = seq_sections(section(at(0, bd), 1), section(at(0, 1), 1))",
+            ReplMode::Strict,
+        );
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().to_string(),
@@ -1870,5 +1871,21 @@ right = sometimes(fast(2), cp hh)";
         let module = eval_module("f x = x\nres = f(42.0)", ReplMode::Loose).unwrap();
         let val = module.get("res").unwrap().as_number_pattern().unwrap();
         assert!((val.try_query_unit().unwrap()[0].value - 42.0).abs() < f64::EPSILON);
+    }
+}
+
+#[cfg(test)]
+mod tests_additional_eval {
+    use super::*;
+
+    #[test]
+    fn eval_group_empty() {
+        let evaluator = Evaluator::default();
+        let result = evaluator.eval_group(&[], None);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "group pattern items must all resolve to the same structural pattern kind"
+        );
     }
 }
