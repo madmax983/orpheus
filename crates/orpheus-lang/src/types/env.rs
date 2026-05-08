@@ -20,7 +20,7 @@ use crate::types::{Type, TypeVarId};
 ///
 /// ```
 /// use orpheus_lang::Type;
-/// use orpheus_lang::types::TypeScheme;
+/// use orpheus_lang::TypeScheme;
 ///
 /// let scheme = TypeScheme::monomorphic(Type::Sample);
 /// ```
@@ -48,7 +48,7 @@ impl TypeScheme {
 /// # Examples
 ///
 /// ```
-/// use orpheus_lang::types::TypeEnv;
+/// use orpheus_lang::TypeEnv;
 ///
 /// let env = TypeEnv::with_builtins();
 /// ```
