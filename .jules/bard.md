@@ -23,9 +23,14 @@
 **Confusion:** The `last_loaded_pattern_name` function was entirely undocumented, causing warnings when strict documentation lints were applied. It was unclear why this test-only helper existed.
 **Clarification:** Added a descriptive comment explaining that it is used to expose the name of the most recently evaluated pattern for assertions, helping users understand *why* it exists in the REPL session struct.
 
-## 2024-05-18 - [Missing DSP Effect Documentation]
-**Confusion:** The stateful DSP effects like  and  lacked doc comments and executable examples, obscuring how they integrate with the audio graph and language runtime.
-**Clarification:** Added narrative  documentation to the structs and their core methods (, /, , ). Included  using  to demonstrate instantiation via the public API wrapper, as the structs themselves are not exported at the crate root.
-## 2024-05-18 - [Missing DSP Effect Documentation]
-**Confusion:** The stateful DSP effects like `DelayState` and `ReverbState` lacked doc comments and executable examples, obscuring how they integrate with the audio graph and language runtime.
-**Clarification:** Added narrative `///` documentation to the structs and their core methods (`new`, `sync_timing`/`sync_spec`, `process_frame`, `reset`). Included `## Examples` using `BusEffectState::from_spec` to demonstrate instantiation via the public API wrapper, as the structs themselves are not exported at the crate root.
+## 2024-05-18 - [Missing UI Plugin Documentation]
+**Confusion:** The TUI plugins `ReplPlugin`, `BindingsPlugin`, and `TransportPlugin` in `crates/orpheus-lang/src/tui/plugins.rs` were undocumented, leaving the purpose of these UI components unclear and causing strict lints to fail.
+**Clarification:** Added module-level `///` docs explaining their roles in rendering the interface and dispatching keyboard events. Added `## Examples` to demonstrate instantiation.
+
+## 2024-05-18 - [Missing Transient Detection Documentation]
+**Confusion:** The transient detection functions `detect_transient_markers`, `rebase_transient_markers`, and `resolve_onset_slice` in `crates/orpheus-dsp/src/transient.rs` lacked doc comments and examples, obscuring how audio is chopped into slices.
+**Clarification:** Added `///` narrative documentation explaining their parameters and return types (normalized regions), and provided `## Examples` to demonstrate their use.
+
+## 2024-05-18 - [Missing Eval Documentation]
+**Confusion:** The core evaluation functions `eval_module` and `eval_into_bindings` in `crates/orpheus-lang/src/eval.rs` were undocumented.
+**Clarification:** Added narrative documentation explaining their parameters and return types, and provided `## Examples` to demonstrate their use.

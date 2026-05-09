@@ -20,7 +20,25 @@ use super::style::{
 // REPL Plugin
 // ---------------------------------------------------------------------------
 
+/// A Ratatui-Hypertile plugin that renders the REPL interface and handles user input.
+///
+/// This plugin is responsible for displaying the REPL transcript, the active input line,
+/// and dispatching keyboard events to modify the `SharedState` (e.g., submitting lines,
+/// moving the cursor).
+///
+/// # Examples
+/// ```
+/// use orpheus_lang::tui::plugins::ReplPlugin;
+/// use orpheus_lang::tui::state::SharedState;
+/// use orpheus_dsp::EngineHandle;
+/// use std::rc::Rc;
+/// use std::cell::RefCell;
+///
+/// let state = Rc::new(RefCell::new(SharedState::new(EngineHandle::stub())));
+/// let plugin = ReplPlugin { state };
+/// ```
 pub struct ReplPlugin {
+    /// The shared mutable state containing the REPL session and input history.
     pub state: Rc<RefCell<SharedState>>,
 }
 
@@ -35,9 +53,7 @@ impl HypertilePlugin for ReplPlugin {
                 let style = if entry.starts_with("> ") {
                     Style::default().fg(Color::DarkGray)
                 } else if entry.starts_with("\u{2717} ") {
-                    Style::default()
-                        .fg(Color::Red)
-                        .add_modifier(Modifier::BOLD)
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
                 } else if entry.starts_with("\u{26a0}\u{fe0f} ") {
                     Style::default()
                         .fg(Color::Yellow)
@@ -140,7 +156,24 @@ impl HypertilePlugin for ReplPlugin {
 // Bindings Plugin
 // ---------------------------------------------------------------------------
 
+/// A Ratatui-Hypertile plugin that displays currently active and pending variable bindings.
+///
+/// It renders a scrollable list of binding summaries, highlighting those that are currently
+/// active (`[live]`) or scheduled to play next (`[next]`).
+///
+/// # Examples
+/// ```
+/// use orpheus_lang::tui::plugins::BindingsPlugin;
+/// use orpheus_lang::tui::state::SharedState;
+/// use orpheus_dsp::EngineHandle;
+/// use std::rc::Rc;
+/// use std::cell::RefCell;
+///
+/// let state = Rc::new(RefCell::new(SharedState::new(EngineHandle::stub())));
+/// let plugin = BindingsPlugin::new(state);
+/// ```
 pub struct BindingsPlugin {
+    /// The shared mutable state containing the REPL session and environment.
     pub state: Rc<RefCell<SharedState>>,
     scroll: Cell<usize>,
     last_height: Cell<u16>,
@@ -245,7 +278,24 @@ impl HypertilePlugin for BindingsPlugin {
 // Transport Plugin
 // ---------------------------------------------------------------------------
 
+/// A Ratatui-Hypertile plugin that displays the DSP engine's transport status.
+///
+/// It renders current playback state (playing, stopped, queued), active patterns,
+/// routing summaries, tempo information, and a keyboard shortcut legend.
+///
+/// # Examples
+/// ```
+/// use orpheus_lang::tui::plugins::TransportPlugin;
+/// use orpheus_lang::tui::state::SharedState;
+/// use orpheus_dsp::EngineHandle;
+/// use std::rc::Rc;
+/// use std::cell::RefCell;
+///
+/// let state = Rc::new(RefCell::new(SharedState::new(EngineHandle::stub())));
+/// let plugin = TransportPlugin { state };
+/// ```
 pub struct TransportPlugin {
+    /// The shared mutable state containing the REPL session and transport views.
     pub state: Rc<RefCell<SharedState>>,
 }
 

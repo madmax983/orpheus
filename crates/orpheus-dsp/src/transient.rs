@@ -17,6 +17,19 @@ const RELEASE_COEFFICIENT: f32 = 0.02;
 const THRESHOLD_MULTIPLIER: f32 = 3.0;
 const MIN_THRESHOLD: f32 = 0.005;
 
+/// Detects transient onsets in an audio buffer.
+///
+/// This calculates an amplitude envelope and flux to find rhythmic attack points,
+/// returning them as a normalized slice (0.0 to 1.0) indicating their proportional
+/// position within the buffer.
+///
+/// # Examples
+/// ```
+/// use orpheus_dsp::transient::detect_transient_markers;
+///
+/// let frames = vec![0.0; 100]; // normally audio data
+/// let markers = detect_transient_markers(&frames, 44100);
+/// ```
 #[allow(clippy::cast_precision_loss)]
 pub fn detect_transient_markers(frames: &[f32], sample_rate_hz: u32) -> Arc<[f64]> {
     if frames.is_empty() {
@@ -84,6 +97,14 @@ pub fn detect_transient_markers(frames: &[f32], sample_rate_hz: u32) -> Arc<[f64
     )
 }
 
+/// Rebases a set of transient markers from a sub-region back to the full range 0.0-1.0.
+///
+/// # Examples
+/// ```
+/// use orpheus_dsp::transient::rebase_transient_markers;
+///
+/// let rebased = rebase_transient_markers(&[0.1, 0.4, 0.8], 0.25, 0.75);
+/// ```
 #[allow(clippy::cast_precision_loss)]
 pub fn rebase_transient_markers(markers: &[f64], start: f64, end: f64) -> Arc<[f64]> {
     let range = end - start;
@@ -101,6 +122,15 @@ pub fn rebase_transient_markers(markers: &[f64], start: f64, end: f64) -> Arc<[f
     )
 }
 
+/// Given a list of transient markers and a target onset index, returns the normalized (start, end) times for that slice.
+///
+/// # Examples
+/// ```
+/// use orpheus_dsp::transient::resolve_onset_slice;
+///
+/// let slice = resolve_onset_slice(&[0.1, 0.4, 0.8], 1);
+/// assert_eq!(slice, Some((0.4, 0.8)));
+/// ```
 pub fn resolve_onset_slice(markers: &[f64], onset_index: u32) -> Option<(f64, f64)> {
     if markers.is_empty() {
         return (onset_index == 0).then_some((0.0, 1.0));

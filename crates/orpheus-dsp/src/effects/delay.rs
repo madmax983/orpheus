@@ -15,6 +15,16 @@ use orpheus_pattern::Rational;
 use crate::engine::EngineError;
 use crate::routing::DelaySpec;
 
+/// A tempo-synchronized stereo delay effect.
+///
+/// This delay uses a pre-allocated circular buffer to store previous audio frames.
+///
+/// # Time Synchronization
+/// The delay time is not specified in milliseconds, but as an exact [`Rational`]
+/// value representing a fraction of a cycle (e.g., `1/4` for a quarter-cycle delay).
+/// This is converted into an exact number of audio frames based on the current
+/// `frames_per_cycle` provided by the DSP scheduler. If the tempo changes, the
+/// buffer size is re-calculated and re-allocated via [`DelayState::sync_timing`].
 #[derive(Debug)]
 pub struct DelayState {
     buffer: Vec<(f32, f32)>,

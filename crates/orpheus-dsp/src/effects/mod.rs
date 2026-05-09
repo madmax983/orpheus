@@ -19,6 +19,23 @@ mod reverb;
 pub use delay::DelayState;
 pub use reverb::ReverbState;
 
+/// Represents the state of a stereo bus effect instance.
+///
+/// `BusEffectState` holds the DSP state for effects like delay or reverb.
+/// It provides methods to instantiate from a [`BusEffectSpec`], sync timing
+/// and parameters without allocation, process stereo frames, and reset state.
+///
+/// # Examples
+/// ```
+/// use orpheus_dsp::effects::BusEffectState;
+/// use orpheus_dsp::routing::{BusEffectSpec, DelaySpec};
+/// use orpheus_pattern::Rational;
+///
+/// let spec = BusEffectSpec::Delay(DelaySpec::new(Rational::new(1, 4).unwrap(), 0.5, 0.2));
+/// let mut state = BusEffectState::from_spec(&spec, 44100).unwrap();
+/// let output = state.process_frame(1.0, 1.0);
+/// state.reset();
+/// ```
 #[derive(Debug)]
 pub enum BusEffectState {
     Delay(DelayState),

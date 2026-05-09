@@ -82,6 +82,9 @@ pub fn eval_module(source: &str, mode: ReplMode) -> Result<BTreeMap<String, Valu
 /// sequential inputs. It optionally returns the last evaluated statement's
 /// binding name and value, which is useful for printing the result of an assignment.
 ///
+/// **Recovery:** Catch the error and print its message to the user. Errors are
+/// designed to be human-readable and pinpoint syntax or runtime issues (like missing variables).
+///
 /// # Examples
 ///
 /// ```
@@ -727,9 +730,7 @@ impl Evaluator {
         }
 
         if value.is_nan() {
-            return Err(EvalError::new(format!(
-                "{context} requires a valid number"
-            )));
+            return Err(EvalError::new(format!("{context} requires a valid number")));
         }
 
         #[allow(clippy::cast_possible_truncation)]
@@ -974,6 +975,9 @@ impl Evaluator {
 /// Returns an [`EvalError`] if the function application results in a runtime
 /// error (e.g., mismatched types during builtin execution) or if the arity
 /// of user-defined functions is violated during execution.
+///
+/// **Recovery:** Catch the error and display it in the REPL. The internal `bindings` environment
+/// remains untouched and can be reused for subsequent evaluations without corruption.
 ///
 /// # Examples
 ///
@@ -1538,7 +1542,10 @@ right = sometimes(fast(2), cp hh)";
 
     #[test]
     fn explicit_seq_sections_mixed_types() {
-        let result = eval_module("x = seq_sections(section(at(0, bd), 1), section(at(0, 1), 1))", ReplMode::Strict);
+        let result = eval_module(
+            "x = seq_sections(section(at(0, bd), 1), section(at(0, 1), 1))",
+            ReplMode::Strict,
+        );
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().to_string(),
