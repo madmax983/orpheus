@@ -46,3 +46,6 @@
 **[Simplify IO Other Error]**
 **Learning:** Instantiating generic IO errors using `std::io::Error::new(std::io::ErrorKind::Other, "message")` triggers `clippy::io_other_error`.
 **Action:** Use the cleaner, modern shorthand `std::io::Error::other("message")`.
+**[Fix Leaky Abstraction in GraphBinding]
+**Tangle:** The `GraphBinding` struct in `orpheus-lang/src/ast.rs` was public, but it was not explicitly re-exported in `crates/orpheus-lang/src/lib.rs`. Since it's used inside the public `Expr::Graph` enum variant, this created a leaky abstraction where consumers could not name `GraphBinding` explicitly.
+**Blueprint:** Re-exported `GraphBinding` in `crates/orpheus-lang/src/lib.rs` alongside `Expr`, `Module`, `Stmt`, and `BinaryOp`.
