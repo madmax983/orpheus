@@ -8,6 +8,7 @@
 //! The central type is `ReplSession`, which maintains a `BTreeMap` of variable names to
 //! typed Orpheus [`Value`]s and interfaces directly with the `orpheus_dsp` layer via an
 //! `EngineHandle`.
+use crate::value::Explain;
 
 use ratatui::text::Line;
 use std::cell::RefCell;

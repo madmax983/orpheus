@@ -30,6 +30,12 @@ use crate::{
     pedal::PedalValue,
 };
 
+/// A trait for generic extraction of explain information.
+pub trait Explain {
+    /// Explain the plan
+    fn explain(&self, binding_name: &str) -> String;
+}
+
 pub fn explain_table<const N: usize>(headers: [&str; N]) -> comfy_table::Table {
     use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
     let mut table = Table::new();
@@ -168,27 +174,6 @@ pub enum FunctionValue {
 }
 
 impl FunctionValue {
-    #[doc(hidden)]
-    #[must_use]
-    pub fn explain(&self, binding_name: &str) -> String {
-        use crossterm::style::Stylize;
-
-        let title = format!(
-            "{} {}",
-            "Function Plan:".cyan().bold(),
-            binding_name.yellow()
-        );
-
-        let mut table = explain_table(["Property", "Value"]);
-
-        match self {
-            Self::Builtin(builtin) => Self::explain_builtin(&mut table, builtin),
-            Self::User(user) => Self::explain_user(&mut table, user),
-        }
-
-        format!("{title}\n{table}")
-    }
-
     fn explain_builtin(table: &mut comfy_table::Table, builtin: &BuiltinFn) {
         use comfy_table::{Cell, CellAlignment};
         table.add_row(vec![
@@ -237,6 +222,26 @@ impl FunctionValue {
                 .fg(comfy_table::Color::Yellow)
                 .set_alignment(CellAlignment::Right),
         ]);
+    }
+}
+impl Explain for FunctionValue {
+    fn explain(&self, binding_name: &str) -> String {
+        use crossterm::style::Stylize;
+
+        let title = format!(
+            "{} {}",
+            "Function Plan:".cyan().bold(),
+            binding_name.yellow()
+        );
+
+        let mut table = explain_table(["Property", "Value"]);
+
+        match self {
+            Self::Builtin(builtin) => Self::explain_builtin(&mut table, builtin),
+            Self::User(user) => Self::explain_user(&mut table, user),
+        }
+
+        format!("{title}\n{table}")
     }
 }
 
@@ -469,10 +474,9 @@ impl TuningValue {
             ref_semitone: self.ref_semitone,
         }
     }
-
-    #[doc(hidden)]
-    #[must_use]
-    pub fn explain(&self, binding_name: &str) -> String {
+}
+impl Explain for TuningValue {
+    fn explain(&self, binding_name: &str) -> String {
         use comfy_table::{Cell, CellAlignment};
         use crossterm::style::Stylize;
 
@@ -1556,36 +1560,6 @@ pub struct SamplePatternValue {
 }
 
 impl SamplePatternValue {
-    #[doc(hidden)]
-    #[must_use]
-    pub fn explain(&self, binding_name: &str) -> String {
-        use comfy_table::{Cell, CellAlignment};
-        use crossterm::style::Stylize;
-
-        let title = format!(
-            "{} {}",
-            "Sample Pattern Plan:".cyan().bold(),
-            binding_name.yellow()
-        );
-
-        let mut table = explain_table(["Property", "Value"]);
-
-        table.add_row(vec![
-            Cell::new("Type").fg(comfy_table::Color::Cyan),
-            Cell::new("Lazy Pattern Tree")
-                .fg(comfy_table::Color::Yellow)
-                .set_alignment(CellAlignment::Right),
-        ]);
-        table.add_row(vec![
-            Cell::new("Event Type").fg(comfy_table::Color::Cyan),
-            Cell::new("SampleEvent")
-                .fg(comfy_table::Color::Green)
-                .set_alignment(CellAlignment::Right),
-        ]);
-
-        format!("{title}\n{table}")
-    }
-
     pub(crate) fn atom(sample: &str) -> Self {
         Self::from_nodes(vec![PatternNode::atom(SampleEvent::named(sample))])
     }
@@ -2211,6 +2185,35 @@ impl SamplePatternValue {
         self.pattern.try_query(span)
     }
 }
+impl Explain for SamplePatternValue {
+    fn explain(&self, binding_name: &str) -> String {
+        use comfy_table::{Cell, CellAlignment};
+        use crossterm::style::Stylize;
+
+        let title = format!(
+            "{} {}",
+            "Sample Pattern Plan:".cyan().bold(),
+            binding_name.yellow()
+        );
+
+        let mut table = explain_table(["Property", "Value"]);
+
+        table.add_row(vec![
+            Cell::new("Type").fg(comfy_table::Color::Cyan),
+            Cell::new("Lazy Pattern Tree")
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ]);
+        table.add_row(vec![
+            Cell::new("Event Type").fg(comfy_table::Color::Cyan),
+            Cell::new("SampleEvent")
+                .fg(comfy_table::Color::Green)
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        format!("{title}\n{table}")
+    }
+}
 
 /// A delayed computation representing a sequence of raw numbers over time.
 ///
@@ -2238,36 +2241,6 @@ pub struct NumberPatternValue {
 }
 
 impl NumberPatternValue {
-    #[doc(hidden)]
-    #[must_use]
-    pub fn explain(&self, binding_name: &str) -> String {
-        use comfy_table::{Cell, CellAlignment};
-        use crossterm::style::Stylize;
-
-        let title = format!(
-            "{} {}",
-            "Number Pattern Plan:".cyan().bold(),
-            binding_name.yellow()
-        );
-
-        let mut table = explain_table(["Property", "Value"]);
-
-        table.add_row(vec![
-            Cell::new("Type").fg(comfy_table::Color::Cyan),
-            Cell::new("Lazy Pattern Tree")
-                .fg(comfy_table::Color::Yellow)
-                .set_alignment(CellAlignment::Right),
-        ]);
-        table.add_row(vec![
-            Cell::new("Event Type").fg(comfy_table::Color::Cyan),
-            Cell::new("f64 (Number)")
-                .fg(comfy_table::Color::Green)
-                .set_alignment(CellAlignment::Right),
-        ]);
-
-        format!("{title}\n{table}")
-    }
-
     pub(crate) fn constant(value: f64) -> Self {
         Self::from_nodes(vec![PatternNode::atom(value)])
     }
@@ -2576,6 +2549,35 @@ impl NumberPatternValue {
         Self {
             pattern: PatternRuntime::Rand { site_salt },
         }
+    }
+}
+impl Explain for NumberPatternValue {
+    fn explain(&self, binding_name: &str) -> String {
+        use comfy_table::{Cell, CellAlignment};
+        use crossterm::style::Stylize;
+
+        let title = format!(
+            "{} {}",
+            "Number Pattern Plan:".cyan().bold(),
+            binding_name.yellow()
+        );
+
+        let mut table = explain_table(["Property", "Value"]);
+
+        table.add_row(vec![
+            Cell::new("Type").fg(comfy_table::Color::Cyan),
+            Cell::new("Lazy Pattern Tree")
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ]);
+        table.add_row(vec![
+            Cell::new("Event Type").fg(comfy_table::Color::Cyan),
+            Cell::new("f64 (Number)")
+                .fg(comfy_table::Color::Green)
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        format!("{title}\n{table}")
     }
 }
 
