@@ -33,7 +33,7 @@ pub struct SharedState {
     pub transcript: Vec<String>,
     pub history: Vec<String>,
     pub history_index: Option<usize>,
-    pub status_message: Option<String>,
+    pub status_message: Option<(String, bool)>,
     pub status_expires_at: Option<Instant>,
     pub input: String,
     pub cursor_index: usize,
@@ -96,11 +96,10 @@ impl SharedState {
         }
 
         if line.starts_with(':') {
-            let message = self
-                .session
-                .eval_line(&line)
-                .unwrap_or_else(|message| message);
-            self.set_status_message(message);
+            match self.session.eval_line(&line) {
+                Ok(message) => self.set_status_message(message, false),
+                Err(error) => self.set_status_message(error, true),
+            }
             return;
         }
 
@@ -118,15 +117,14 @@ impl SharedState {
         } else {
             ":play"
         };
-        let message = self
-            .session
-            .eval_line(command)
-            .unwrap_or_else(|error| error);
-        self.set_status_message(message);
+        match self.session.eval_line(command) {
+            Ok(message) => self.set_status_message(message, false),
+            Err(error) => self.set_status_message(error, true),
+        }
     }
 
-    pub fn set_status_message(&mut self, message: impl Into<String>) {
-        self.status_message = Some(message.into());
+    pub fn set_status_message(&mut self, message: impl Into<String>, is_error: bool) {
+        self.status_message = Some((message.into(), is_error));
         self.status_expires_at = Some(Instant::now() + STATUS_TOAST_TTL);
     }
 
@@ -232,21 +230,22 @@ impl SharedState {
 
     pub fn clear_transcript(&mut self) {
         self.transcript.clear();
-        self.set_status_message("transcript cleared");
+        self.set_status_message("transcript cleared", false);
     }
 
     pub fn toggle_help(&mut self) {
         self.show_help = !self.show_help;
-        self.set_status_message(if self.show_help {
+        let message = if self.show_help {
             "help overlay shown"
         } else {
             "help overlay hidden"
-        });
+        };
+        self.set_status_message(message, false);
     }
 
     pub fn close_help(&mut self) {
         self.show_help = false;
-        self.set_status_message("help overlay hidden");
+        self.set_status_message("help overlay hidden", false);
     }
 
     pub fn recall_previous_history(&mut self) {
@@ -548,8 +547,8 @@ mod tests {
 
         assert!(state.status_message.is_none());
 
-        state.set_status_message("hello".to_string());
-        assert_eq!(state.status_message, Some("hello".to_string()));
+        state.set_status_message("hello".to_string(), false);
+        assert_eq!(state.status_message, Some(("hello".to_string(), false)));
         assert!(state.status_expires_at.is_some());
 
         state.clear_status_message();
