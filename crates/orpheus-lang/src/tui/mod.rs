@@ -719,3 +719,83 @@ mod tests {
         assert_eq!(workspace.active_runtime().mode(), InputMode::Layout,);
     }
 }
+
+#[cfg(test)]
+mod help_overlay_tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+
+    #[test]
+    fn test_render_help_overlay() {
+        let backend = TestBackend::new(100, 100);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                render_help_overlay(frame);
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        let content = buffer_to_string(buffer);
+        assert!(content.contains("Help"));
+    }
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use super::*;
+
+    #[test]
+    fn test_help_footer_line() {
+        let full_width = FULL_HELP_FOOTER.len() as u16;
+        let line = help_footer_line(full_width);
+        assert_eq!(line.spans[0].content, FULL_HELP_FOOTER);
+
+        let med_width = MEDIUM_HELP_FOOTER.len() as u16;
+        let line = help_footer_line(med_width);
+        assert_eq!(line.spans[0].content, MEDIUM_HELP_FOOTER);
+
+        let compact_width = COMPACT_HELP_FOOTER.len() as u16;
+        let line = help_footer_line(compact_width);
+        assert_eq!(line.spans[0].content, COMPACT_HELP_FOOTER);
+
+        let min_width = MIN_HELP_FOOTER.len() as u16;
+        let line = help_footer_line(min_width);
+        assert_eq!(line.spans[0].content, MIN_HELP_FOOTER);
+
+        let tiny_width = 1;
+        let line = help_footer_line(tiny_width);
+        assert_eq!(line.spans[0].content, "?");
+    }
+
+    #[test]
+    fn test_centered_rect() {
+        let area = Rect::new(0, 0, 100, 100);
+        let rect = centered_rect(area, 50, 50);
+        assert_eq!(rect.x, 25);
+        assert_eq!(rect.y, 25);
+        assert_eq!(rect.width, 50);
+        assert_eq!(rect.height, 50);
+
+        let rect2 = centered_rect(area, 68, 72);
+        assert_eq!(rect2.x, 16);
+        assert_eq!(rect2.y, 14);
+        assert_eq!(rect2.width, 68);
+        assert_eq!(rect2.height, 72);
+    }
+
+    #[test]
+    fn test_modal_backdrop_areas() {
+        let area = Rect::new(0, 0, 100, 100);
+        let overlay = Rect::new(20, 20, 60, 60);
+        let areas = modal_backdrop_areas(area, overlay);
+
+        // Top
+        assert_eq!(areas[0], Rect::new(0, 0, 100, 20));
+        // Bottom
+        assert_eq!(areas[1], Rect::new(0, 80, 100, 20));
+        // Left
+        assert_eq!(areas[2], Rect::new(0, 20, 20, 60));
+        // Right
+        assert_eq!(areas[3], Rect::new(80, 20, 20, 60));
+    }
+}
