@@ -110,6 +110,8 @@ pub enum BuiltinKind {
     Tuning,
     LoadScl,
     Tune,
+    Hex,
+    Bin,
 }
 
 /// A partially or fully applied built-in function at runtime.

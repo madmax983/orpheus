@@ -109,6 +109,8 @@ fn lookup_pattern_transform(name: &str) -> Option<Value> {
         "tuning" => Some(builtin_function_value(BuiltinKind::Tuning)),
         "load_scl" => Some(builtin_function_value(BuiltinKind::LoadScl)),
         "tune" => Some(builtin_function_value(BuiltinKind::Tune)),
+        "hex" => Some(builtin_function_value(BuiltinKind::Hex)),
+        "bin" => Some(builtin_function_value(BuiltinKind::Bin)),
         _ => None,
     }
 }
@@ -393,6 +395,8 @@ impl BuiltinKind {
             Self::Tuning => "tuning",
             Self::LoadScl => "load_scl",
             Self::Tune => "tune",
+            Self::Hex => "hex",
+            Self::Bin => "bin",
         }
     }
 
@@ -449,6 +453,7 @@ impl BuiltinKind {
             | Self::Through
             | Self::MidiCc
             | Self::Tune => 2,
+            Self::Hex | Self::Bin => 1,
             Self::Rand => 0,
         }
     }
@@ -511,6 +516,8 @@ impl BuiltinKind {
             Self::Tuning => apply_tuning(args),
             Self::LoadScl => apply_load_scl(args),
             Self::Tune => apply_tune(args),
+            Self::Hex => apply_hex(args),
+            Self::Bin => apply_bin(args),
         }
     }
 }
@@ -2157,9 +2164,7 @@ fn whole_number_from_pitch_class_value(value: f64) -> Result<i32, EvalError> {
     }
 
     if value.is_nan() {
-        return Err(EvalError::new(
-            "`pitch_class_set` requires a valid number",
-        ));
+        return Err(EvalError::new("`pitch_class_set` requires a valid number"));
     }
 
     #[allow(clippy::cast_possible_truncation)]
@@ -2232,7 +2237,9 @@ fn validate_slice_idx_constant(value: f64, segments: u32) -> Result<u32, EvalErr
     }
 
     if value < 0.0 {
-        return Err(EvalError::new("`slice_idx index` requires a non-negative whole number"));
+        return Err(EvalError::new(
+            "`slice_idx index` requires a non-negative whole number",
+        ));
     }
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -2274,7 +2281,9 @@ fn validate_onset_index_constant(value: f64) -> Result<u32, EvalError> {
     }
 
     if value < 0.0 {
-        return Err(EvalError::new("`onset index` requires a non-negative whole number"));
+        return Err(EvalError::new(
+            "`onset index` requires a non-negative whole number",
+        ));
     }
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -2518,6 +2527,50 @@ fn extract_pitch_class_set(value: Value) -> Result<PitchClassSetValue, EvalError
             "`degrees` requires a pitch class set as its first argument",
         )),
     }
+}
+
+fn apply_hex(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let text = extract_string(
+        args.next()
+            .ok_or_else(|| EvalError::new("`hex` requires a string argument"))?,
+        "`hex` string",
+    )?;
+
+    let mut nodes = Vec::new();
+    for ch in text.chars() {
+        if let Some(val) = ch.to_digit(16) {
+            for i in (0..4).rev() {
+                if (val & (1 << i)) != 0 {
+                    nodes.push(orpheus_pattern::PatternNode::atom(1.0));
+                } else {
+                    nodes.push(orpheus_pattern::PatternNode::rest());
+                }
+            }
+        }
+    }
+
+    Ok(Value::NumberPattern(NumberPatternValue::from_nodes(nodes)))
+}
+
+fn apply_bin(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let text = extract_string(
+        args.next()
+            .ok_or_else(|| EvalError::new("`bin` requires a string argument"))?,
+        "`bin` string",
+    )?;
+
+    let mut nodes = Vec::new();
+    for ch in text.chars() {
+        if ch == '1' {
+            nodes.push(orpheus_pattern::PatternNode::atom(1.0));
+        } else if ch == '0' {
+            nodes.push(orpheus_pattern::PatternNode::rest());
+        }
+    }
+
+    Ok(Value::NumberPattern(NumberPatternValue::from_nodes(nodes)))
 }
 
 #[cfg(test)]
@@ -2849,4 +2902,72 @@ fn apply_lsystem(args: Vec<Value>) -> Result<Value, EvalError> {
     }
 
     Ok(Value::NumberPattern(NumberPatternValue::from_nodes(nodes)))
+}
+
+#[cfg(test)]
+mod hex_bin_tests {
+    use super::*;
+
+    #[test]
+    fn test_hex_builtin() {
+        let text = std::sync::Arc::from("89a");
+        let result = apply_hex(vec![Value::String(text)]).unwrap();
+        let pattern = result.as_number_pattern().unwrap();
+        let span = orpheus_pattern::TimeSpan::new(
+            orpheus_pattern::Rational::new(0, 1).unwrap(),
+            orpheus_pattern::Rational::new(1, 1).unwrap(),
+        )
+        .unwrap();
+        let events = pattern.try_query(&span).unwrap();
+        assert_eq!(events.len(), 5);
+        assert_eq!(
+            events[0].part.start(),
+            &orpheus_pattern::Rational::new(0, 12).unwrap()
+        );
+        assert_eq!(events[0].value, 1.0);
+        assert_eq!(
+            events[1].part.start(),
+            &orpheus_pattern::Rational::new(4, 12).unwrap()
+        );
+        assert_eq!(events[1].value, 1.0);
+        assert_eq!(
+            events[2].part.start(),
+            &orpheus_pattern::Rational::new(7, 12).unwrap()
+        );
+        assert_eq!(events[2].value, 1.0);
+        assert_eq!(
+            events[3].part.start(),
+            &orpheus_pattern::Rational::new(8, 12).unwrap()
+        );
+        assert_eq!(events[3].value, 1.0);
+        assert_eq!(
+            events[4].part.start(),
+            &orpheus_pattern::Rational::new(10, 12).unwrap()
+        );
+        assert_eq!(events[4].value, 1.0);
+    }
+
+    #[test]
+    fn test_bin_builtin() {
+        let text = std::sync::Arc::from("101");
+        let result = apply_bin(vec![Value::String(text)]).unwrap();
+        let pattern = result.as_number_pattern().unwrap();
+        let span = orpheus_pattern::TimeSpan::new(
+            orpheus_pattern::Rational::new(0, 1).unwrap(),
+            orpheus_pattern::Rational::new(1, 1).unwrap(),
+        )
+        .unwrap();
+        let events = pattern.try_query(&span).unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(
+            events[0].part.start(),
+            &orpheus_pattern::Rational::new(0, 3).unwrap()
+        );
+        assert_eq!(events[0].value, 1.0);
+        assert_eq!(
+            events[1].part.start(),
+            &orpheus_pattern::Rational::new(2, 3).unwrap()
+        );
+        assert_eq!(events[1].value, 1.0);
+    }
 }
