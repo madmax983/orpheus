@@ -43,3 +43,6 @@
 ## 2024-10-27 - float_equality_without_abs
 **Learning:** Found clippy warning `clippy::float_equality_without_abs` in `eval.rs` when checking float equality without `abs()`. `val - 42.0 < f64::EPSILON` is unsafe because a very negative number is also less than epsilon.
 **Action:** Always use `.abs()` when comparing floats to epsilon: `(val - expected).abs() < f64::EPSILON`.
+## 2025-02-27 - [Re-exporting Private Sub-Modules for Doctests]
+**Learning:** When using `#[doc(hidden)] pub use parent::child::Type;` at the crate root to mock internal functions for doctests, the compiler will throw `E0603: module is private` if the intermediate `child` module is private within its `parent`.
+**Action:** Ensure the intermediate module is marked as `pub mod` or `pub(crate) mod` inside its parent (e.g., `pub mod env;` in `types/mod.rs`) before re-exporting its contents at the crate root.
