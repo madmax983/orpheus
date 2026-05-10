@@ -74,3 +74,6 @@
 **[Shared Trait Abstraction]**
 **Learning:** Having identical function signatures (like `pub fn explain(&self, binding_name: &str) -> String`) across multiple disjoint types represents a missed opportunity for polymorphic abstractions.
 **Action:** Extract identical methods into a shared trait (e.g., `Explain`) and implement it for the relevant types to establish a formal abstraction, grouping any shared helpers (like `explain_table`) in the same module.
+**[Exhaustive Pattern Matching Updates]**
+**Learning:** When appending new variants to an existing enum (like `BuiltinKind`), automated string-replacement scripts can easily miss downstream `match` blocks (such as `arity()`, `name()`, and `execute()`). This results in `E0004: non-exhaustive patterns` compilation errors.
+**Action:** Always perform a full search for occurrences of the enum across the entire file/module and update *all* exhaustive `match` blocks whenever adding new enum variants.

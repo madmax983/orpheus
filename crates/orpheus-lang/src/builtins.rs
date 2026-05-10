@@ -413,6 +413,8 @@ impl BuiltinKind {
             | Self::Palindrome
             | Self::Tuning
             | Self::LoadScl
+            | Self::Hex
+            | Self::Bin
             | Self::MidiCc => 1,
             Self::Sometimes
             | Self::Mask
@@ -454,7 +456,6 @@ impl BuiltinKind {
             | Self::Through
             | Self::MidiCc
             | Self::Tune => 2,
-            Self::Hex | Self::Bin => 1,
             Self::Rand => 0,
         }
     }
