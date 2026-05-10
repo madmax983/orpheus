@@ -180,9 +180,13 @@ where
     let mut separators = String::with_capacity(header.len() * 3);
     let mut first = true;
     for s in header.split('|') {
-        if !first { separators.push('|'); }
+        if !first {
+            separators.push('|');
+        }
         first = false;
-        if !s.is_empty() { separators.push_str("---"); }
+        if !s.is_empty() {
+            separators.push_str("---");
+        }
     }
     writeln!(file, "{separators}")?;
 
