@@ -8,6 +8,7 @@ mod builtins;
 mod diagnostics;
 mod error;
 mod eval;
+pub mod explain;
 pub(crate) mod export;
 #[cfg(feature = "experimental-gcode")]
 pub(crate) mod gcode_export;
@@ -44,6 +45,7 @@ pub use ast::{BinaryOp, Expr, GraphBinding, Module, Stmt};
 pub use diagnostics::{LoadError, ParseError, TypeError};
 pub use error::EvalError;
 pub use eval::{eval_module, render_span};
+pub use explain::Explain;
 pub use export::{
     RenderError, export_number_pattern_to_csv, export_number_pattern_to_json,
     export_number_pattern_to_md, export_sample_pattern_to_csv, export_sample_pattern_to_json,

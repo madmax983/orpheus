@@ -9,6 +9,7 @@
 //! typed Orpheus [`Value`]s and interfaces directly with the `orpheus_dsp` layer via an
 //! `EngineHandle`.
 
+use crate::explain::Explain;
 use ratatui::text::Line;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
@@ -1827,6 +1828,7 @@ fn trim_quoted_arg(value: &str) -> &str {
 #[cfg(test)]
 mod tests {
 
+    use crate::explain::Explain;
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
