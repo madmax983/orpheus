@@ -97,10 +97,6 @@ pub enum BuiltinKind {
     Bin,
 }
 
-
-
-
-
 impl fmt::Display for BuiltinKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = match self {
@@ -160,11 +156,12 @@ impl fmt::Display for BuiltinKind {
             Self::Tuning => "tuning",
             Self::LoadScl => "load_scl",
             Self::Tune => "tune",
+            Self::Hex => "hex",
+            Self::Bin => "bin",
         };
         write!(f, "{name}")
     }
 }
-
 
 /// A partially or fully applied built-in function at runtime.
 ///
@@ -1482,8 +1479,16 @@ impl PatternRuntimeValue for f64 {
         steps: u32,
     ) -> Result<Vec<Event<Self>>, EvalError> {
         sort_events(&mut events);
-        let mut rolled = process_event_clusters(&events, "roll", |cluster| {
-            roll_event_cluster(cluster, steps)
+        let mut rolled = Vec::with_capacity(events.len().saturating_mul(steps as usize));
+        mutate_event_clusters(&mut events, "roll", |cluster| {
+            let cluster_result = roll_event_cluster(cluster, steps)?;
+            if rolled.len() + cluster_result.len() > 100_000 {
+                return Err(EvalError::new(
+                    "evaluation exceeded the maximum allowed event limit",
+                ));
+            }
+            rolled.extend(cluster_result);
+            Ok(())
         })?;
         sort_events(&mut rolled);
         Ok(rolled)
@@ -1504,15 +1509,25 @@ impl PatternRuntimeValue for f64 {
     /// ⚡ Bolt: Uses slice bounds (`&events[start_index].part`) instead of cloning `TimeSpan`
     /// for every group of events with the same span, eliminating redundant memory copying
     /// in the hot evaluation loop.
+    /// Applies an arpeggiator effect to overlapping events.
+    ///
+    /// ⚡ Bolt: Uses `mutate_event_clusters` to pass a mutable reference to the underlying elements to `arp_event_cluster` instead of deep cloning every cluster in the slice to satisfy an immutable API. Eliminates severe O(N) heap allocations per overlapping chord in the hot path.
     fn arp_events(
         mut events: Vec<Event<Self>>,
         steps: u32,
         direction: ArpDirectionValue,
     ) -> Result<Vec<Event<Self>>, EvalError> {
         sort_events(&mut events);
-        let mut arped = process_event_clusters(&events, "arp", |cluster| {
-            let mut cluster_clone = cluster.to_vec();
-            arp_event_cluster(&mut cluster_clone, steps, direction)
+        let mut arped = Vec::with_capacity(events.len());
+        mutate_event_clusters(&mut events, "arp", |cluster| {
+            let cluster_result = arp_event_cluster(cluster, steps, direction)?;
+            if arped.len() + cluster_result.len() > 100_000 {
+                return Err(EvalError::new(
+                    "evaluation exceeded the maximum allowed event limit",
+                ));
+            }
+            arped.extend(cluster_result);
+            Ok(())
         })?;
         sort_events(&mut arped);
         Ok(arped)
@@ -3861,42 +3876,6 @@ fn drop_event_cluster(cluster: &mut [Event<f64>], count: u32) -> Result<(), Eval
     }
     cluster.sort_unstable_by(|left, right| left.value.total_cmp(&right.value));
     Ok(())
-}
-
-fn process_event_clusters<T, F, R>(
-    events: &[Event<T>],
-    context: &str,
-    mut process_cluster: F,
-) -> Result<Vec<R>, EvalError>
-where
-    T: PatternRuntimeValue,
-    F: FnMut(&[Event<T>]) -> Result<Vec<R>, EvalError>,
-{
-    let mut result = Vec::with_capacity(events.len());
-    let mut index = 0;
-
-    while index < events.len() {
-        let start_index = index;
-        let span = &events[start_index].part;
-        while index < events.len() && &events[index].part == span {
-            if !events[index].value.is_finite_numeric() {
-                return Err(EvalError::new(format!(
-                    "`{context}` requires finite numeric values"
-                )));
-            }
-            index += 1;
-        }
-
-        let cluster_result = process_cluster(&events[start_index..index])?;
-        if result.len() + cluster_result.len() > 100_000 {
-            return Err(EvalError::new(
-                "evaluation exceeded the maximum allowed event limit",
-            ));
-        }
-        result.extend(cluster_result);
-    }
-
-    Ok(result)
 }
 
 fn mutate_event_clusters<T, F>(

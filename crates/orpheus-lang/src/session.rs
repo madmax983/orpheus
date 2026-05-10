@@ -324,7 +324,7 @@ impl ReplSession {
     ///
     /// // Bind a pattern.
     /// let response = session.eval_line("notes = 1 2 3").unwrap();
-    /// assert_eq!(response, "bound notes: Pattern<Number>");
+    /// assert_eq!(response, "bound notes = Pattern<Number>: Pattern<Number>");
     ///
     /// // Execute a command.
     /// let response = session.eval_line(":tempo 120").unwrap();
@@ -1828,7 +1828,6 @@ fn trim_quoted_arg(value: &str) -> &str {
 #[cfg(test)]
 mod tests {
 
-    use crate::explain::Explain;
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
