@@ -572,6 +572,28 @@ pub enum Value {
     String(std::sync::Arc<str>),
 }
 
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::SamplePattern(_) => write!(f, "Pattern<Sample>"),
+            Self::NumberPattern(_) => write!(f, "Pattern<Number>"),
+            Self::ArpDirection(_) => write!(f, "ArpDirection"),
+            Self::PitchClassSet(_) => write!(f, "PitchClassSet"),
+            Self::Function(func) => write!(
+                f,
+                "Function({})",
+                match func {
+                    FunctionValue::Builtin(_) => "Builtin",
+                    FunctionValue::User(_) => "User",
+                }
+            ),
+            Self::Pedal(_) => write!(f, "Pedal"),
+            Self::Tuning(_) => write!(f, "Tuning"),
+            Self::String(s) => write!(f, "\"{s}\""),
+        }
+    }
+}
+
 impl Value {
     /// Attempts to unwrap the value into a concrete sample pattern.
     ///

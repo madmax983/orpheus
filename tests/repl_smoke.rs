@@ -48,7 +48,9 @@ fn repl_accepts_pattern_and_reports_success() {
     cmd.write_stdin("drums = bd sn cp sn\n:quit\n")
         .assert()
         .success()
-        .stdout(contains("\u{2713} bound drums: Pattern<Sample>"));
+        .stdout(contains(
+            "\u{2713} bound drums = Pattern<Sample>: Pattern<Sample>",
+        ));
 }
 
 #[test]
@@ -79,8 +81,12 @@ fn repl_reuses_prior_bindings_across_lines() {
     cmd.write_stdin("drums = bd sn cp sn\ncopy = drums\n:quit\n")
         .assert()
         .success()
-        .stdout(contains("\u{2713} bound drums: Pattern<Sample>"))
-        .stdout(contains("\u{2713} bound copy: Pattern<Sample>"));
+        .stdout(contains(
+            "\u{2713} bound drums = Pattern<Sample>: Pattern<Sample>",
+        ))
+        .stdout(contains(
+            "\u{2713} bound copy = Pattern<Sample>: Pattern<Sample>",
+        ));
 }
 
 #[test]
@@ -90,7 +96,9 @@ fn repl_prints_inferred_function_types() {
     cmd.write_stdin("warp = fast(2)\n:quit\n")
         .assert()
         .success()
-        .stdout(contains("\u{2713} bound warp: Function("));
+        .stdout(contains(
+            "\u{2713} bound warp = Function(Builtin): Function(",
+        ));
 }
 
 #[test]

@@ -349,7 +349,7 @@ impl ReplSession {
         debug_assert_eq!(name, value_name);
 
         self.push_pattern_update(&name, &value)?;
-        Ok(success_banner(&name, &ty))
+        Ok(success_banner(&name, &value, &ty))
     }
 
     fn eval_command(&mut self, source: &str) -> Result<String, String> {
@@ -1633,8 +1633,8 @@ impl ReplSession {
     }
 }
 
-fn success_banner(name: &str, ty: &Type) -> String {
-    format!("bound {name}: {ty}")
+fn success_banner(name: &str, value: &Value, ty: &Type) -> String {
+    format!("bound {name} = {value}: {ty}")
 }
 
 const fn render_usage() -> &'static str {
@@ -1906,11 +1906,11 @@ mod tests {
 
         assert_eq!(
             session.eval_line("drums = bd sn cp sn"),
-            Ok("bound drums: Pattern<Sample>".to_owned())
+            Ok("bound drums = Pattern<Sample>: Pattern<Sample>".to_owned())
         );
         assert_eq!(
             session.eval_line("copy = drums"),
-            Ok("bound copy: Pattern<Sample>".to_owned())
+            Ok("bound copy = Pattern<Sample>: Pattern<Sample>".to_owned())
         );
     }
 
@@ -2650,7 +2650,7 @@ mod tests {
         assert_eq!(session.last_loaded_pattern_name(), Some("song".to_owned()));
         assert_eq!(
             session.eval_line("copy = song"),
-            Ok("bound copy: Pattern<Sample>".to_owned())
+            Ok("bound copy = Pattern<Sample>: Pattern<Sample>".to_owned())
         );
         assert_eq!(
             session.eval_line(":render scratch out.wav 1"),
