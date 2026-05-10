@@ -15,6 +15,26 @@ use orpheus_pattern::Rational;
 use crate::engine::EngineError;
 use crate::routing::DelaySpec;
 
+/// A stateful delay effect applied to a stereo audio bus.
+///
+/// This maintains a circular buffer of audio frames whose length is precisely
+/// synchronized to the temporal cycle grid via the DSP scheduler. It operates
+/// lock-free on the audio thread.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::{BusEffectSpec, DelaySpec};
+/// use orpheus_pattern::Rational;
+/// // (DelayState is typically instantiated internally by the routing DSP graph)
+///
+/// // Create a delay spec for 1/4 cycle, 50% feedback, 20% wet mix
+/// let spec = BusEffectSpec::Delay(DelaySpec::new(
+///     Rational::new(1, 4).unwrap(),
+///     0.5,
+///     0.2
+/// ));
+/// ```
 #[derive(Debug)]
 pub struct DelayState {
     buffer: Vec<(f32, f32)>,
@@ -25,6 +45,11 @@ pub struct DelayState {
 }
 
 impl DelayState {
+    /// Constructs a new delay instance configured by the given `DelaySpec`.
+    ///
+    /// This allocates the internal circular buffer based on the exact fractional
+    /// `time` requested and the current `frames_per_cycle`. It returns an error
+    /// if the calculated frame count exceeds reasonable bounds.
     pub fn new(spec: &DelaySpec, frames_per_cycle: u64) -> Result<Self, EngineError> {
         let delay_frames = delay_frames(spec.time(), frames_per_cycle)?;
         Ok(Self {
@@ -36,6 +61,11 @@ impl DelayState {
         })
     }
 
+    /// Dynamically updates the delay time, feedback, and wet mix.
+    ///
+    /// If the required delay buffer length changes (either due to a tempo change
+    /// altering `frames_per_cycle` or a new fractional `time`), the buffer is
+    /// re-allocated and reset, which clears any trailing audio tail.
     pub fn sync_timing(
         &mut self,
         spec: &DelaySpec,
@@ -52,6 +82,11 @@ impl DelayState {
         Ok(())
     }
 
+    /// Processes a single stereo frame through the delay buffer.
+    ///
+    /// The input is mixed with the delayed feedback signal and written to the
+    /// circular buffer. The output is strictly the delayed wet signal (dry mix
+    /// is handled externally by the bus architecture).
     #[must_use]
     pub fn process_frame(&mut self, input_left: f32, input_right: f32) -> (f32, f32) {
         let (delayed_left, delayed_right) = self.buffer[self.write_index];
@@ -66,6 +101,7 @@ impl DelayState {
         (delayed_left * self.wet, delayed_right * self.wet)
     }
 
+    /// Clears the internal delay buffer, instantly stopping the feedback tail.
     pub fn reset(&mut self) {
         self.buffer.fill((0.0, 0.0));
         self.write_index = 0;

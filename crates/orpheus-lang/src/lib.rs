@@ -8,6 +8,7 @@ mod builtins;
 mod diagnostics;
 mod error;
 mod eval;
+pub mod explain;
 pub(crate) mod export;
 #[cfg(feature = "experimental-gcode")]
 pub(crate) mod gcode_export;
@@ -40,10 +41,11 @@ mod value;
 pub use abc_export::export_number_pattern_to_abc;
 pub use arduino_export::export_number_pattern_to_arduino;
 pub use ascii_roll::render_ascii_roll;
-pub use ast::{BinaryOp, Expr, Module, Stmt};
+pub use ast::{BinaryOp, Expr, GraphBinding, Module, Stmt};
 pub use diagnostics::{LoadError, ParseError, TypeError};
 pub use error::EvalError;
 pub use eval::{eval_module, render_span};
+pub use explain::Explain;
 pub use export::{
     RenderError, export_number_pattern_to_csv, export_number_pattern_to_json,
     export_number_pattern_to_md, export_sample_pattern_to_csv, export_sample_pattern_to_json,

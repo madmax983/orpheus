@@ -19,6 +19,27 @@ mod reverb;
 pub use delay::DelayState;
 pub use reverb::ReverbState;
 
+/// A stateful instance of a global stereo bus effect.
+///
+/// This enum wraps the specific implementation details of effects like
+/// delay or reverb. It provides a unified interface for the DSP routing
+/// graph to instantiate and process audio through any supported effect type.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::{BusEffectSpec, DelaySpec};
+/// use orpheus_pattern::Rational;
+/// // BusEffectState is not publicly exported at the crate root, but is
+/// // instantiated internally by the routing DSP graph using from_spec:
+///
+/// // Create a delay specification
+/// let spec = BusEffectSpec::Delay(DelaySpec::new(
+///     Rational::new(1, 4).unwrap(),
+///     0.5,
+///     0.2
+/// ));
+/// ```
 #[derive(Debug)]
 pub enum BusEffectState {
     Delay(DelayState),
@@ -26,6 +47,10 @@ pub enum BusEffectState {
 }
 
 impl BusEffectState {
+    /// Constructs a new stateful effect instance configured by the given specification.
+    ///
+    /// This instantiates the underlying effect implementation (e.g., [`DelayState`] or
+    /// [`ReverbState`]) based on the enum variant of the provided [`BusEffectSpec`].
     pub fn from_spec(spec: &BusEffectSpec, frames_per_cycle: u64) -> Result<Self, EngineError> {
         match spec {
             BusEffectSpec::Delay(delay) => {
@@ -35,6 +60,10 @@ impl BusEffectState {
         }
     }
 
+    /// Dynamically updates the parameters of the underlying effect implementation.
+    ///
+    /// The runtime ensures that the `spec` matches the internal state variant.
+    /// It delegates the update to the specific effect's synchronization logic.
     pub fn sync_timing(
         &mut self,
         spec: &BusEffectSpec,
@@ -53,6 +82,7 @@ impl BusEffectState {
         }
     }
 
+    /// Processes a single stereo frame through the underlying effect implementation.
     #[must_use]
     pub fn process_frame(&mut self, input_left: f32, input_right: f32) -> (f32, f32) {
         match self {
@@ -61,6 +91,8 @@ impl BusEffectState {
         }
     }
 
+    /// Clears the internal delay or history buffers of the underlying effect,
+    /// instantly stopping any trailing audio tail.
     pub fn reset(&mut self) {
         match self {
             Self::Delay(state) => state.reset(),

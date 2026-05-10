@@ -14,6 +14,7 @@
 use orpheus_pattern::{Rational, TimeSpan};
 
 use crate::eval::{EvalError, apply_function_value, f64_to_rational};
+use crate::explain::Explain;
 use crate::midi_input;
 use crate::value::{
     ArpDirectionValue, BuiltinFn, BuiltinKind, FunctionValue, GatePatternValue, NumberPatternValue,
