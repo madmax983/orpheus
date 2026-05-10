@@ -93,6 +93,8 @@ pub enum BuiltinKind {
     Tuning,
     LoadScl,
     Tune,
+    Hex,
+    Bin,
 }
 
 
