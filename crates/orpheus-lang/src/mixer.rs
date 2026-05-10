@@ -322,10 +322,8 @@ impl MixerState {
                     if i > 0 {
                         sends.push_str(", ");
                     }
-                    let _ = std::fmt::Write::write_fmt(
-                        &mut sends,
-                        format_args!("{bus} @ {level:.2}")
-                    );
+                    let _ =
+                        std::fmt::Write::write_fmt(&mut sends, format_args!("{bus} @ {level:.2}"));
                 }
                 let muted_color = if track.muted {
                     TuiColor::Red
@@ -432,14 +430,14 @@ impl MixerState {
 
         let _ = std::fmt::Write::write_fmt(
             &mut output,
-            format_args!("{}\n", "Mixer Tracks:".cyan().bold())
+            format_args!("{}\n", "Mixer Tracks:".cyan().bold()),
         );
         output.push_str(&self.render_summary_tracks_table());
 
         if !self.buses.is_empty() {
             let _ = std::fmt::Write::write_fmt(
                 &mut output,
-                format_args!("\n{}\n", "Mixer Buses:".cyan().bold())
+                format_args!("\n{}\n", "Mixer Buses:".cyan().bold()),
             );
             output.push_str(&self.render_summary_buses_table());
         }
@@ -479,10 +477,8 @@ impl MixerState {
                     if i > 0 {
                         sends.push('\n');
                     }
-                    let _ = std::fmt::Write::write_fmt(
-                        &mut sends,
-                        format_args!("{bus} @ {level:.2}")
-                    );
+                    let _ =
+                        std::fmt::Write::write_fmt(&mut sends, format_args!("{bus} @ {level:.2}"));
                 }
                 let muted_color = if track.muted {
                     comfy_table::Color::Red

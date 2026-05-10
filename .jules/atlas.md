@@ -46,10 +46,18 @@
 **[Simplify IO Other Error]**
 **Learning:** Instantiating generic IO errors using `std::io::Error::new(std::io::ErrorKind::Other, "message")` triggers `clippy::io_other_error`.
 **Action:** Use the cleaner, modern shorthand `std::io::Error::other("message")`.
-**[Fix Leaky Abstractions and Broken Doctests]
-**Tangle:** Several `orpheus_lang` public APIs referenced internal, private types (like `GraphBinding`, `TypeEnv`, and `TypeScheme`), causing leaky abstractions. Furthermore, missing getter methods for variants like `FunctionValue` caused test failures. Several documentation tests were bypassing the crate facade by reaching directly into private submodules.
-**Blueprint:** Explicitly re-exported internal types (`GraphBinding`, `TypeEnv`, `TypeScheme`) in `lib.rs` and the `types/mod.rs` module. Refactored doctests to utilize the public facade and exposed a `Value::as_function` method to fulfill the expected public API contract without exposing underlying structural data prematurely.
-
 **[Fix Leaky Abstraction in AST GraphBinding]**
 **Tangle:** The `Expr` enum in `orpheus-lang` was public and exposed the inner payload type `GraphBinding` as part of its `Graph` variant. However, this inner type was not re-exported in the crate's `lib.rs`, creating a leaky abstraction where consumers could match on the variant but could not explicitly name the type of the value they extracted.
 **Blueprint:** Explicitly re-exported `GraphBinding` from the `ast` module inside `crates/orpheus-lang/src/lib.rs` to ensure all publicly reachable types are fully nameable.
+
+**[Fix Exhaustive Match for BuiltinKind]
+**Tangle:** The `BuiltinKind` enum added variants `Hex` and `Bin`, but downstream match blocks such as `impl fmt::Display for BuiltinKind` lacked coverage for these variants, causing a `non-exhaustive patterns` compilation error.
+**Blueprint:** Updated the `Display` implementation for `BuiltinKind` to include exhaustive match arms for `Self::Hex` and `Self::Bin`.
+
+**[Items after Test Module]
+**Tangle:** Added `impl Explain` blocks for `FunctionValue`, `TuningValue`, `SamplePatternValue`, and `NumberPatternValue` after the `mod tests` block, triggering a `clippy::items_after_test_module` warning.
+**Blueprint:** Moved the `impl Explain` blocks before the `mod tests` block to conform to idiomatic Rust module structure, satisfying the clippy lint.
+
+**[Fix Leaky Abstractions and Broken Doctests]
+**Tangle:** Several `orpheus_lang` public APIs referenced internal, private types (like `GraphBinding`, `TypeEnv`, and `TypeScheme`), causing leaky abstractions. Furthermore, missing getter methods for variants like `FunctionValue` caused test failures. Several documentation tests were bypassing the crate facade by reaching directly into private submodules.
+**Blueprint:** Explicitly re-exported internal types (`GraphBinding`, `TypeEnv`, `TypeScheme`) in `lib.rs` and the `types/mod.rs` module. Refactored doctests to utilize the public facade and exposed a `Value::as_function` method to fulfill the expected public API contract without exposing underlying structural data prematurely.
