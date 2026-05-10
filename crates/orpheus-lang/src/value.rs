@@ -95,6 +95,75 @@ pub enum BuiltinKind {
     Tune,
 }
 
+
+
+
+
+impl fmt::Display for BuiltinKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            Self::Every => "every",
+            Self::When => "when",
+            Self::Sometimes => "sometimes",
+            Self::Within => "within",
+            Self::Mask => "mask",
+            Self::Strum => "strum",
+            Self::Roll => "roll",
+            Self::Arp => "arp",
+            Self::Invert => "invert",
+            Self::Drop => "drop",
+            Self::Chord => "chord",
+            Self::Euclid => "euclid",
+            Self::Lsystem => "lsystem",
+            Self::Wolfram => "wolfram",
+            Self::PitchClassSet => "pitch_class_set",
+            Self::Degrees => "degrees",
+            Self::Fast => "fast",
+            Self::Slow => "slow",
+            Self::Shift => "shift",
+            Self::Rev => "rev",
+            Self::Gain => "gain",
+            Self::Delay => "delay",
+            Self::DelayTime => "delay_time",
+            Self::DelayFeedback => "delay_feedback",
+            Self::Hpf => "hpf",
+            Self::Lpf => "lpf",
+            Self::Reverb => "reverb",
+            Self::ReverbRoom => "reverb_room",
+            Self::ReverbDamp => "reverb_damp",
+            Self::Cutoff => "cutoff",
+            Self::Chorus => "chorus",
+            Self::ChorusDepth => "chorus_depth",
+            Self::ChorusRate => "chorus_rate",
+            Self::Compressor => "compressor",
+            Self::CompressorThreshold => "compressor_threshold",
+            Self::CompressorRatio => "compressor_ratio",
+            Self::Res => "res",
+            Self::Drive => "drive",
+            Self::Pw => "pw",
+            Self::Pan => "pan",
+            Self::Pitch => "pitch",
+            Self::Transpose => "transpose",
+            Self::Sample => "sample",
+            Self::Onset => "onset",
+            Self::Rate => "rate",
+            Self::Slice => "slice",
+            Self::SliceIdx => "slice_idx",
+            Self::Rand => "rand",
+            Self::Jux => "jux",
+            Self::Through => "through",
+            Self::MidiCc => "midi_cc",
+            Self::Chaos => "chaos",
+            Self::Palindrome => "palindrome",
+            Self::Tuning => "tuning",
+            Self::LoadScl => "load_scl",
+            Self::Tune => "tune",
+        };
+        write!(f, "{name}")
+    }
+}
+
+
 /// A partially or fully applied built-in function at runtime.
 ///
 /// This structure tracks the function's identity alongside arguments that have
@@ -105,7 +174,7 @@ pub enum BuiltinKind {
 ///
 /// ```
 /// use orpheus_lang::{BuiltinKind, Value};
-/// use orpheus_lang::value::BuiltinFn;
+/// use orpheus_lang::BuiltinFn;
 ///
 /// let bfn = BuiltinFn {
 ///     kind: BuiltinKind::Fast,
@@ -161,7 +230,7 @@ impl FunctionValue {
         ]);
         table.add_row(vec![
             Cell::new("Kind").fg(comfy_table::Color::Cyan),
-            Cell::new(format!("{:?}", builtin.kind))
+            Cell::new(format!("{}", builtin.kind))
                 .fg(comfy_table::Color::Green)
                 .set_alignment(CellAlignment::Right),
         ]);
