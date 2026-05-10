@@ -324,7 +324,7 @@ impl ReplSession {
     ///
     /// // Bind a pattern.
     /// let response = session.eval_line("notes = 1 2 3").unwrap();
-    /// assert_eq!(response, "bound notes: Pattern<Number>");
+    /// assert_eq!(response, "bound notes = Pattern<Number>: Pattern<Number>");
     ///
     /// // Execute a command.
     /// let response = session.eval_line(":tempo 120").unwrap();

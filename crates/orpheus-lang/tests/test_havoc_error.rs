@@ -40,7 +40,10 @@ fn eval_error_from_scl_error() {
 fn eval_error_from_try_from_int_error() {
     let int_err = u8::try_from(256u16).unwrap_err();
     let err: EvalError = int_err.into();
-    assert!(err.to_string().contains("out of range integral type conversion attempted"));
+    assert!(
+        err.to_string()
+            .contains("out of range integral type conversion attempted")
+    );
 }
 
 #[test]
@@ -55,5 +58,8 @@ fn eval_error_from_pattern_error() {
     use orpheus_pattern::PatternError;
     let pattern_err = PatternError::InvalidDenominator { denominator: 0 };
     let err: EvalError = pattern_err.into();
-    assert!(err.to_string().contains("rational denominator cannot be zero"));
+    assert!(
+        err.to_string()
+            .contains("rational denominator cannot be zero")
+    );
 }
