@@ -314,12 +314,19 @@ impl MixerState {
         if self.has_explicit_bound_tracks() {
             for (track_name, track) in &self.tracks {
                 let binding = track.binding_name.as_deref().unwrap_or("<unbound>");
-                let sends = track
-                    .sends
-                    .iter()
-                    .map(|(bus, level)| format!("{bus} @ {level:.2}"))
-                    .collect::<Vec<_>>()
-                    .join(", ");
+                // ⚡ Bolt: Eliminate intermediate Vec and String allocations on the hot path.
+                // Replaced `.map(|...| format!(...)).collect::<Vec<_>>().join(", ")`
+                // with direct buffered writing into a pre-allocated String.
+                let mut sends = String::with_capacity(track.sends.len() * 16);
+                for (i, (bus, level)) in track.sends.iter().enumerate() {
+                    if i > 0 {
+                        sends.push_str(", ");
+                    }
+                    let _ = std::fmt::Write::write_fmt(
+                        &mut sends,
+                        format_args!("{bus} @ {level:.2}")
+                    );
+                }
                 let muted_color = if track.muted {
                     TuiColor::Red
                 } else {
@@ -425,14 +432,14 @@ impl MixerState {
 
         let _ = std::fmt::Write::write_fmt(
             &mut output,
-            format_args!("{}\n", "Mixer Tracks:".cyan().bold()),
+            format_args!("{}\n", "Mixer Tracks:".cyan().bold())
         );
         output.push_str(&self.render_summary_tracks_table());
 
         if !self.buses.is_empty() {
             let _ = std::fmt::Write::write_fmt(
                 &mut output,
-                format_args!("\n\n{}\n", "Mixer Buses:".cyan().bold()),
+                format_args!("\n{}\n", "Mixer Buses:".cyan().bold())
             );
             output.push_str(&self.render_summary_buses_table());
         }
@@ -464,12 +471,19 @@ impl MixerState {
         if self.has_explicit_bound_tracks() {
             for (track_name, track) in &self.tracks {
                 let binding = track.binding_name.as_deref().unwrap_or("<unbound>");
-                let sends = track
-                    .sends
-                    .iter()
-                    .map(|(bus, level)| format!("{bus} @ {level:.2}"))
-                    .collect::<Vec<_>>()
-                    .join("\n");
+                // ⚡ Bolt: Eliminate intermediate Vec and String allocations on the hot path.
+                // Replaced `.map(|...| format!(...)).collect::<Vec<_>>().join("\n")`
+                // with direct buffered writing into a pre-allocated String.
+                let mut sends = String::with_capacity(track.sends.len() * 16);
+                for (i, (bus, level)) in track.sends.iter().enumerate() {
+                    if i > 0 {
+                        sends.push('\n');
+                    }
+                    let _ = std::fmt::Write::write_fmt(
+                        &mut sends,
+                        format_args!("{bus} @ {level:.2}")
+                    );
+                }
                 let muted_color = if track.muted {
                     comfy_table::Color::Red
                 } else {

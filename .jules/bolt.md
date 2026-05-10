@@ -35,3 +35,8 @@
 **[String Concatenation Optimization]**
 **Learning:** Using `format!("{a}{b}")` to concatenate string slices introduces unnecessary formatting macro overhead and allocations.
 **Action:** Use `[a, b].concat()` to concatenate string slices more efficiently when formatting rules are not required.
+
+**[Eliminating Intermediate String Allocations]**
+**Learning:** Chaining `.map(|...| format!(...)).collect::<Vec<_>>().join(...)` causes unnecessary `Vec` and `String` allocations.
+**Action:** Pre-allocate a single `String` with `.with_capacity()` and use `write!` from `std::fmt::Write` to build the string in place.
+**Action:** Place `use std::fmt::Write;` at the beginning of the scope to avoid `clippy::items_after_statements` warnings.
