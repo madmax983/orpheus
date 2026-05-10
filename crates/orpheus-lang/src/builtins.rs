@@ -2925,27 +2925,27 @@ mod hex_bin_tests {
             events[0].part.start(),
             &orpheus_pattern::Rational::new(0, 12).unwrap()
         );
-        assert_eq!(events[0].value, 1.0);
+        assert!((events[0].value - 1.0).abs() < f64::EPSILON);
         assert_eq!(
             events[1].part.start(),
             &orpheus_pattern::Rational::new(4, 12).unwrap()
         );
-        assert_eq!(events[1].value, 1.0);
+        assert!((events[1].value - 1.0).abs() < f64::EPSILON);
         assert_eq!(
             events[2].part.start(),
             &orpheus_pattern::Rational::new(7, 12).unwrap()
         );
-        assert_eq!(events[2].value, 1.0);
+        assert!((events[2].value - 1.0).abs() < f64::EPSILON);
         assert_eq!(
             events[3].part.start(),
             &orpheus_pattern::Rational::new(8, 12).unwrap()
         );
-        assert_eq!(events[3].value, 1.0);
+        assert!((events[3].value - 1.0).abs() < f64::EPSILON);
         assert_eq!(
             events[4].part.start(),
             &orpheus_pattern::Rational::new(10, 12).unwrap()
         );
-        assert_eq!(events[4].value, 1.0);
+        assert!((events[4].value - 1.0).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -2964,11 +2964,11 @@ mod hex_bin_tests {
             events[0].part.start(),
             &orpheus_pattern::Rational::new(0, 3).unwrap()
         );
-        assert_eq!(events[0].value, 1.0);
+        assert!((events[0].value - 1.0).abs() < f64::EPSILON);
         assert_eq!(
             events[1].part.start(),
             &orpheus_pattern::Rational::new(2, 3).unwrap()
         );
-        assert_eq!(events[1].value, 1.0);
+        assert!((events[1].value - 1.0).abs() < f64::EPSILON);
     }
 }

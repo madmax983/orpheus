@@ -74,3 +74,7 @@
 **[Shared Trait Abstraction]**
 **Learning:** Having identical function signatures (like `pub fn explain(&self, binding_name: &str) -> String`) across multiple disjoint types represents a missed opportunity for polymorphic abstractions.
 **Action:** Extract identical methods into a shared trait (e.g., `Explain`) and implement it for the relevant types to establish a formal abstraction, grouping any shared helpers (like `explain_table`) in the same module.
+
+**[Item After Test Module]**
+**Learning:** `clippy::items_after_test_module` triggers when module items (like `impl` blocks or `struct`s) are placed after the `#[cfg(test)] mod tests` module. This is confusing to read since tests should be at the absolute end of the file.
+**Action:** When creating tests or using automated tools to refactor, ensure the `tests` module is physically located at the very end of the file after all regular module items.

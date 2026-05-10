@@ -97,10 +97,6 @@ pub enum BuiltinKind {
     Bin,
 }
 
-
-
-
-
 impl fmt::Display for BuiltinKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = match self {
@@ -160,11 +156,12 @@ impl fmt::Display for BuiltinKind {
             Self::Tuning => "tuning",
             Self::LoadScl => "load_scl",
             Self::Tune => "tune",
+            Self::Hex => "hex",
+            Self::Bin => "bin",
         };
         write!(f, "{name}")
     }
 }
-
 
 /// A partially or fully applied built-in function at runtime.
 ///
@@ -5365,6 +5362,115 @@ const fn ceil_rational(value: &Rational) -> i128 {
     }
 }
 
+impl Explain for FunctionValue {
+    fn explain(&self, binding_name: &str) -> String {
+        use crossterm::style::Stylize;
+
+        let title = format!(
+            "{} {}",
+            "Function Plan:".cyan().bold(),
+            binding_name.yellow()
+        );
+
+        let mut table = crate::explain::explain_table(["Property", "Value"]);
+
+        match self {
+            Self::Builtin(builtin) => Self::explain_builtin(&mut table, builtin),
+            Self::User(user) => Self::explain_user(&mut table, user),
+        }
+
+        format!("{title}\n{table}")
+    }
+}
+
+impl Explain for TuningValue {
+    fn explain(&self, binding_name: &str) -> String {
+        use comfy_table::{Cell, CellAlignment};
+        use crossterm::style::Stylize;
+
+        let title = format!(
+            "{} {binding_name}\nScale: {}\nPeriod: {:.2}\nSteps: {}",
+            "Tuning Table Plan:".cyan().bold(),
+            self.name().to_string().yellow(),
+            self.period(),
+            self.ratios().len()
+        );
+
+        let mut table = crate::explain::explain_table(["Step", "Ratio"]);
+
+        for (i, ratio) in self.ratios().iter().enumerate() {
+            table.add_row(vec![
+                Cell::new(i.to_string()).fg(comfy_table::Color::Cyan),
+                Cell::new(format!("{ratio:.4}"))
+                    .fg(comfy_table::Color::Yellow)
+                    .set_alignment(CellAlignment::Right),
+            ]);
+        }
+
+        format!("{title}\n{table}")
+    }
+}
+
+impl Explain for SamplePatternValue {
+    fn explain(&self, binding_name: &str) -> String {
+        use comfy_table::{Cell, CellAlignment};
+        use crossterm::style::Stylize;
+
+        let title = format!(
+            "{} {}",
+            "Sample Pattern Plan:".cyan().bold(),
+            binding_name.yellow()
+        );
+
+        let mut table = crate::explain::explain_table(["Property", "Value"]);
+
+        table.add_row(vec![
+            Cell::new("Type").fg(comfy_table::Color::Cyan),
+            Cell::new("Lazy Pattern Tree")
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ]);
+        table.add_row(vec![
+            Cell::new("Event Type").fg(comfy_table::Color::Cyan),
+            Cell::new("SampleEvent")
+                .fg(comfy_table::Color::Green)
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        format!("{title}\n{table}")
+    }
+}
+
+impl Explain for NumberPatternValue {
+    fn explain(&self, binding_name: &str) -> String {
+        use comfy_table::{Cell, CellAlignment};
+        use crossterm::style::Stylize;
+
+        let title = format!(
+            "{} {}",
+            "Number Pattern Plan:".cyan().bold(),
+            binding_name.yellow()
+        );
+
+        let mut table = crate::explain::explain_table(["Property", "Value"]);
+
+        table.add_row(vec![
+            Cell::new("Type").fg(comfy_table::Color::Cyan),
+            Cell::new("Lazy Pattern Tree")
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ]);
+        table.add_row(vec![
+            Cell::new("Event Type").fg(comfy_table::Color::Cyan),
+            Cell::new("f64 (Number)")
+                .fg(comfy_table::Color::Green)
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        format!("{title}\n{table}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -5761,114 +5867,5 @@ mod tests {
                 "Expected error message for {kind:?} ({value}) to contain '{expected_msg_part}', but got: {err_msg}"
             );
         }
-    }
-}
-
-impl Explain for FunctionValue {
-    fn explain(&self, binding_name: &str) -> String {
-        use crossterm::style::Stylize;
-
-        let title = format!(
-            "{} {}",
-            "Function Plan:".cyan().bold(),
-            binding_name.yellow()
-        );
-
-        let mut table = crate::explain::explain_table(["Property", "Value"]);
-
-        match self {
-            Self::Builtin(builtin) => Self::explain_builtin(&mut table, builtin),
-            Self::User(user) => Self::explain_user(&mut table, user),
-        }
-
-        format!("{title}\n{table}")
-    }
-}
-
-impl Explain for TuningValue {
-    fn explain(&self, binding_name: &str) -> String {
-        use comfy_table::{Cell, CellAlignment};
-        use crossterm::style::Stylize;
-
-        let title = format!(
-            "{} {binding_name}\nScale: {}\nPeriod: {:.2}\nSteps: {}",
-            "Tuning Table Plan:".cyan().bold(),
-            self.name().to_string().yellow(),
-            self.period(),
-            self.ratios().len()
-        );
-
-        let mut table = crate::explain::explain_table(["Step", "Ratio"]);
-
-        for (i, ratio) in self.ratios().iter().enumerate() {
-            table.add_row(vec![
-                Cell::new(i.to_string()).fg(comfy_table::Color::Cyan),
-                Cell::new(format!("{ratio:.4}"))
-                    .fg(comfy_table::Color::Yellow)
-                    .set_alignment(CellAlignment::Right),
-            ]);
-        }
-
-        format!("{title}\n{table}")
-    }
-}
-
-impl Explain for SamplePatternValue {
-    fn explain(&self, binding_name: &str) -> String {
-        use comfy_table::{Cell, CellAlignment};
-        use crossterm::style::Stylize;
-
-        let title = format!(
-            "{} {}",
-            "Sample Pattern Plan:".cyan().bold(),
-            binding_name.yellow()
-        );
-
-        let mut table = crate::explain::explain_table(["Property", "Value"]);
-
-        table.add_row(vec![
-            Cell::new("Type").fg(comfy_table::Color::Cyan),
-            Cell::new("Lazy Pattern Tree")
-                .fg(comfy_table::Color::Yellow)
-                .set_alignment(CellAlignment::Right),
-        ]);
-        table.add_row(vec![
-            Cell::new("Event Type").fg(comfy_table::Color::Cyan),
-            Cell::new("SampleEvent")
-                .fg(comfy_table::Color::Green)
-                .set_alignment(CellAlignment::Right),
-        ]);
-
-        format!("{title}\n{table}")
-    }
-}
-
-impl Explain for NumberPatternValue {
-    fn explain(&self, binding_name: &str) -> String {
-        use comfy_table::{Cell, CellAlignment};
-        use crossterm::style::Stylize;
-
-        let title = format!(
-            "{} {}",
-            "Number Pattern Plan:".cyan().bold(),
-            binding_name.yellow()
-        );
-
-        let mut table = crate::explain::explain_table(["Property", "Value"]);
-
-        table.add_row(vec![
-            Cell::new("Type").fg(comfy_table::Color::Cyan),
-            Cell::new("Lazy Pattern Tree")
-                .fg(comfy_table::Color::Yellow)
-                .set_alignment(CellAlignment::Right),
-        ]);
-        table.add_row(vec![
-            Cell::new("Event Type").fg(comfy_table::Color::Cyan),
-            Cell::new("f64 (Number)")
-                .fg(comfy_table::Color::Green)
-                .set_alignment(CellAlignment::Right),
-        ]);
-
-        format!("{title}\n{table}")
     }
 }
