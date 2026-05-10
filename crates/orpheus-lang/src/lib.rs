@@ -11,6 +11,7 @@ mod eval;
 pub(crate) mod export;
 #[cfg(feature = "experimental-gcode")]
 pub(crate) mod gcode_export;
+pub(crate) mod guitar_tab_export;
 pub(crate) mod html;
 #[cfg(feature = "lilypond_export")]
 pub(crate) mod lilypond_export;
@@ -52,6 +53,7 @@ pub use export::{
 };
 #[cfg(feature = "experimental-gcode")]
 pub use gcode_export::export_number_pattern_to_gcode;
+pub use guitar_tab_export::export_number_pattern_to_guitar_tab;
 pub use html::{export_number_pattern_to_html, export_sample_pattern_to_html};
 #[cfg(feature = "lilypond_export")]
 pub use lilypond_export::export_number_pattern_to_lilypond;
