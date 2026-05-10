@@ -36,6 +36,9 @@
 **Learning:** Using `format!("{a}{b}")` to concatenate string slices introduces unnecessary formatting macro overhead and allocations.
 **Action:** Use `[a, b].concat()` to concatenate string slices more efficiently when formatting rules are not required.
 
+**[Dynamic String Allocation]**
+**Learning:** Using `.collect::<Vec<_>>().join()` to concatenate multiple string segments derived from an iterator forces unnecessary heap allocation of an intermediate vector holding string slices.
+**Action:** Replace intermediate vector allocations with `String::with_capacity` and iterate directly over the elements, pushing chars or strings, to reduce allocations during string construction.
 **[Eliminating Intermediate String Allocations]**
 **Learning:** Chaining `.map(|...| format!(...)).collect::<Vec<_>>().join(...)` causes unnecessary `Vec` and `String` allocations.
 **Action:** Pre-allocate a single `String` with `.with_capacity()` and use `write!` from `std::fmt::Write` to build the string in place.
