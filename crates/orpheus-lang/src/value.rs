@@ -176,11 +176,8 @@ impl fmt::Display for BuiltinKind {
 /// use orpheus_lang::{BuiltinKind, Value};
 /// use orpheus_lang::BuiltinFn;
 ///
-/// let bfn = BuiltinFn {
-///     kind: BuiltinKind::Fast,
-///     bound_args: vec![Value::number(2.0)],
-///     site_salt: None,
-/// };
+/// // Use internal constructor
+/// let bfn = BuiltinFn::new(BuiltinKind::Fast);
 /// ```
 #[derive(Clone, Debug)]
 pub struct BuiltinFn {
@@ -707,6 +704,24 @@ impl Value {
             | Self::Pedal(_)
             | Self::Tuning(_)
             | Self::String(_) => None,
+        }
+    }
+
+    /// Attempts to unwrap the value into a concrete function.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::Value;
+    ///
+    /// let val = Value::String("foo".into());
+    /// assert!(val.as_function().is_none());
+    /// ```
+    #[must_use]
+    pub const fn as_function(&self) -> Option<&FunctionValue> {
+        match self {
+            Self::Function(function) => Some(function),
+            _ => None,
         }
     }
 

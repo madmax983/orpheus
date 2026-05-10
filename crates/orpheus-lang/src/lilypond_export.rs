@@ -78,7 +78,7 @@ fn duration_to_lilypond(duration: f64) -> String {
 ///
 /// ```
 /// use orpheus_lang::{ReplMode, eval_module};
-/// use orpheus_lang::lilypond_export::export_number_pattern_to_lilypond;
+/// use orpheus_lang::export_number_pattern_to_lilypond;
 ///
 /// let env = eval_module("melody = 60 62 64", ReplMode::Loose).unwrap();
 /// let pattern = env.get("melody").unwrap().as_number_pattern().unwrap();

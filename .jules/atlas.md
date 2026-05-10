@@ -46,6 +46,9 @@
 **[Simplify IO Other Error]**
 **Learning:** Instantiating generic IO errors using `std::io::Error::new(std::io::ErrorKind::Other, "message")` triggers `clippy::io_other_error`.
 **Action:** Use the cleaner, modern shorthand `std::io::Error::other("message")`.
+**[Fix Leaky Abstractions and Broken Doctests]
+**Tangle:** Several `orpheus_lang` public APIs referenced internal, private types (like `GraphBinding`, `TypeEnv`, and `TypeScheme`), causing leaky abstractions. Furthermore, missing getter methods for variants like `FunctionValue` caused test failures. Several documentation tests were bypassing the crate facade by reaching directly into private submodules.
+**Blueprint:** Explicitly re-exported internal types (`GraphBinding`, `TypeEnv`, `TypeScheme`) in `lib.rs` and the `types/mod.rs` module. Refactored doctests to utilize the public facade and exposed a `Value::as_function` method to fulfill the expected public API contract without exposing underlying structural data prematurely.
 
 **[Fix Leaky Abstraction in AST GraphBinding]**
 **Tangle:** The `Expr` enum in `orpheus-lang` was public and exposed the inner payload type `GraphBinding` as part of its `Graph` variant. However, this inner type was not re-exported in the crate's `lib.rs`, creating a leaky abstraction where consumers could match on the variant but could not explicitly name the type of the value they extracted.

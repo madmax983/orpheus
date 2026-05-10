@@ -57,7 +57,7 @@ pub use gcode_export::export_number_pattern_to_gcode;
 pub use html::{export_number_pattern_to_html, export_sample_pattern_to_html};
 #[cfg(feature = "lilypond_export")]
 pub use lilypond_export::export_number_pattern_to_lilypond;
-pub use loader::load_file_strict;
+pub use loader::{StrictLoadedFile, load_file_strict};
 pub use midi_export::{export_number_pattern_to_midi, export_sample_pattern_to_midi};
 pub use number_roll::render_ascii_number_roll;
 pub use osu_export::export_sample_pattern_to_osu;
@@ -81,7 +81,7 @@ pub use txt::{export_number_pattern_to_txt, export_sample_pattern_to_txt};
 pub(crate) mod dot_export;
 pub use dot_export::export_pedal_value_to_dot;
 pub use scl::{SclError, parse_scala_file, parse_scala_source};
-pub use types::{Type, TypeVarId, TypedModule, infer_into_bindings, infer_module};
+pub use types::{Type, TypeEnv, TypeScheme, TypeVarId, TypedModule, infer_into_bindings, infer_module};
 pub use value::{
     ArpDirectionValue, BuiltinFn, BuiltinKind, GatePatternValue, NumberPatternValue,
     PitchClassSetValue, SampleEvent, SamplePatternValue, TuningValue, UserFn, Value,
