@@ -299,14 +299,9 @@ impl HypertilePlugin for TransportPlugin {
                 Span::styled(format!(": {desc}"), desc_style),
             ]));
         }
-        if let Some(message) = &state.status_message {
+        if let Some((message, is_error)) = &state.status_message {
             lines.push(Line::raw(""));
-            let is_error = message.contains("error")
-                || message.contains("failed")
-                || message.contains("unknown")
-                || message.contains("usage:");
-
-            let (prefix, bg, fg) = if is_error {
+            let (prefix, bg, fg) = if *is_error {
                 ("\u{2717} Failed", Color::Red, Color::White)
             } else {
                 ("\u{2713} Success", Color::Green, Color::Black)
