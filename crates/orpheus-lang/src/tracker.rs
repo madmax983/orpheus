@@ -88,7 +88,7 @@ pub fn export_sample_pattern_to_tracker(
         if start_step < end_step {
             // Format sample name up to 4 chars
             let formatted_name = if sample.len() > 4 {
-                sample[..4].to_string()
+                sample.chars().take(4).collect::<String>()
             } else {
                 sample.clone()
             };
@@ -100,7 +100,7 @@ pub fn export_sample_pattern_to_tracker(
             }
         } else if start_step < total_steps && grid[start_step][lane_idx].is_none() {
             let formatted_name = if sample.len() > 4 {
-                sample[..4].to_string()
+                sample.chars().take(4).collect::<String>()
             } else {
                 sample.clone()
             };
@@ -117,9 +117,9 @@ pub fn export_sample_pattern_to_tracker(
     write!(file, " STEP | TIME  |")?;
     for sample in &sample_list {
         let padded = if sample.len() > 4 {
-            &sample[..4]
+            sample.chars().take(4).collect::<String>()
         } else {
-            sample
+            sample.to_string()
         };
         write!(file, " {padded:4} |")?;
     }

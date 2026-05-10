@@ -175,3 +175,18 @@ mod tests {
         );
     }
 }
+#[cfg(test)]
+mod test_zero_cycle {
+    use super::*;
+    use crate::{ReplMode, eval_module};
+
+    #[test]
+    fn render_ascii_roll_zero_cycles() {
+        let source = "pattern = fast(2, bd sn)";
+        let module = eval_module(source, ReplMode::Loose).unwrap();
+        let pattern = module.get("pattern").unwrap().as_sample_pattern().unwrap();
+
+        let err = render_ascii_roll("pattern", pattern, 0, 16).unwrap_err();
+        assert_eq!(err.to_string(), "rendering requires at least one cycle");
+    }
+}

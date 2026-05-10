@@ -14,6 +14,7 @@
 use orpheus_pattern::{Rational, TimeSpan};
 
 use crate::eval::{EvalError, apply_function_value, f64_to_rational};
+use crate::explain::Explain;
 use crate::midi_input;
 use crate::value::{
     ArpDirectionValue, BuiltinFn, BuiltinKind, FunctionValue, GatePatternValue, NumberPatternValue,
@@ -2157,9 +2158,7 @@ fn whole_number_from_pitch_class_value(value: f64) -> Result<i32, EvalError> {
     }
 
     if value.is_nan() {
-        return Err(EvalError::new(
-            "`pitch_class_set` requires a valid number",
-        ));
+        return Err(EvalError::new("`pitch_class_set` requires a valid number"));
     }
 
     #[allow(clippy::cast_possible_truncation)]
@@ -2232,7 +2231,9 @@ fn validate_slice_idx_constant(value: f64, segments: u32) -> Result<u32, EvalErr
     }
 
     if value < 0.0 {
-        return Err(EvalError::new("`slice_idx index` requires a non-negative whole number"));
+        return Err(EvalError::new(
+            "`slice_idx index` requires a non-negative whole number",
+        ));
     }
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -2274,7 +2275,9 @@ fn validate_onset_index_constant(value: f64) -> Result<u32, EvalError> {
     }
 
     if value < 0.0 {
-        return Err(EvalError::new("`onset index` requires a non-negative whole number"));
+        return Err(EvalError::new(
+            "`onset index` requires a non-negative whole number",
+        ));
     }
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
