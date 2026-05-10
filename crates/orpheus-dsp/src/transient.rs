@@ -122,7 +122,7 @@ fn amplitude_envelope(frames: &[f32]) -> Vec<f32> {
         } else {
             RELEASE_COEFFICIENT
         };
-        previous += coefficient * (magnitude - previous);
+        previous = coefficient.mul_add(magnitude - previous, previous);
         envelope.push(previous);
     }
     envelope

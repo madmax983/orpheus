@@ -121,8 +121,8 @@ fn print_help() {
     );
     println!();
     println!("{}", "Options:".yellow().bold());
-    println!("  {}       Print help", "-h, --help".green().bold(),);
-    println!("  {}    Print version", "-V, --version".green().bold(),);
+    println!("  {}       Print help", "-h, --help".green().bold());
+    println!("  {}    Print version", "-V, --version".green().bold());
     println!();
     println!("{}", "Dashboard Mode:".yellow().bold());
     println!("  Run without a file to open the interactive live-coding TUI/REPL.");
