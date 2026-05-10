@@ -730,8 +730,6 @@ impl Evaluator {
             return Err(EvalError::new(format!("{context} requires a valid number")));
         }
 
-        #[allow(clippy::cast_possible_truncation)]
-        let parsed = value.round() as i128;
         #[allow(clippy::cast_precision_loss)]
         let max_val = i128::MAX as f64;
         #[allow(clippy::cast_precision_loss)]
@@ -741,6 +739,9 @@ impl Evaluator {
                 "{context} exceeded the supported range"
             )));
         }
+
+        #[allow(clippy::cast_possible_truncation)]
+        let parsed = value.round() as i128;
 
         if parsed <= 0 {
             return Err(EvalError::new(format!(
