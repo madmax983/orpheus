@@ -43,3 +43,7 @@
 **Learning:** Chaining `.map(|...| format!(...)).collect::<Vec<_>>().join(...)` causes unnecessary `Vec` and `String` allocations.
 **Action:** Pre-allocate a single `String` with `.with_capacity()` and use `write!` from `std::fmt::Write` to build the string in place.
 **Action:** Place `use std::fmt::Write;` at the beginning of the scope to avoid `clippy::items_after_statements` warnings.
+
+**[Optimizing Event Generation with In-Place Mutation]**
+**Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
+**Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
