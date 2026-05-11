@@ -2976,3 +2976,28 @@ mod hex_bin_tests {
         assert_one(events[1].value);
     }
 }
+
+#[cfg(test)]
+mod hex_bin_error_tests {
+    use super::*;
+
+    #[test]
+    fn test_hex_builtin_missing_arg() {
+        let result = apply_hex(vec![]);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "`hex` requires a string argument"
+        );
+    }
+
+    #[test]
+    fn test_bin_builtin_missing_arg() {
+        let result = apply_bin(vec![]);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "`bin` requires a string argument"
+        );
+    }
+}

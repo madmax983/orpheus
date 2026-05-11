@@ -46,3 +46,6 @@
 ## 2025-02-27 - [Re-exporting Private Sub-Modules for Doctests]
 **Learning:** When using `#[doc(hidden)] pub use parent::child::Type;` at the crate root to mock internal functions for doctests, the compiler will throw `E0603: module is private` if the intermediate `child` module is private within its `parent`.
 **Action:** Ensure the intermediate module is marked as `pub mod` or `pub(crate) mod` inside its parent (e.g., `pub mod env;` in `types/mod.rs`) before re-exporting its contents at the crate root.
+## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
+**Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
+**Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
