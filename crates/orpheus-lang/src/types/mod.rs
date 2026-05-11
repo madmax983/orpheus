@@ -13,10 +13,10 @@ mod infer;
 use std::collections::BTreeMap;
 use std::fmt::{self, Display, Formatter};
 
-pub use infer::infer_into_bindings;
-pub use infer::infer_module;
 pub use env::TypeEnv;
 pub use env::TypeScheme;
+pub use infer::infer_into_bindings;
+pub use infer::infer_module;
 
 /// A unique identifier representing a universally quantified type variable inside a `TypeScheme`.
 ///

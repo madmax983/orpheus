@@ -468,43 +468,51 @@ fn build_binary_expr(
     Ok(expr)
 }
 
+/// ⚡ Bolt: Destructure vectors directly to avoid cloning expressions when building call trees.
 fn build_call_expr(callee: Expr, args: Vec<Expr>) -> Result<Expr, ParseError> {
     if let Expr::Ident(callee_name) = &callee {
         match callee_name.as_str() {
             "stream" => return Ok(Expr::Stream(args)),
-            "at" => match args.as_slice() {
-                [start, pattern] => {
+            "at" => {
+                if args.len() == 2 {
+                    let mut iter = args.into_iter();
                     return Ok(Expr::At {
-                        start: Box::new(start.clone()),
-                        pattern: Box::new(pattern.clone()),
+                        start: Box::new(iter.next().unwrap()),
+                        pattern: Box::new(iter.next().unwrap()),
                     });
                 }
-                _ => return Err(ParseError::new("`at` requires exactly two arguments")),
-            },
-            "meter" => match args.as_slice() {
-                [beats, unit, pattern] => {
+                return Err(ParseError::new("`at` requires exactly two arguments"));
+            }
+            "meter" => {
+                if args.len() == 3 {
+                    let mut iter = args.into_iter();
                     return Ok(Expr::Meter {
-                        beats: Box::new(beats.clone()),
-                        unit: Box::new(unit.clone()),
-                        pattern: Box::new(pattern.clone()),
+                        beats: Box::new(iter.next().unwrap()),
+                        unit: Box::new(iter.next().unwrap()),
+                        pattern: Box::new(iter.next().unwrap()),
                     });
+                } else if args.len() == 2 {
+                    // Let it fall through, do not consume args
+                } else {
+                    return Err(ParseError::new("`meter` requires exactly three arguments"));
                 }
-                [_, _] => {}
-                _ => return Err(ParseError::new("`meter` requires exactly three arguments")),
-            },
-            "beat" => match args.as_slice() {
-                [value] => return Ok(Expr::Beat(Box::new(value.clone()))),
-                _ => return Err(ParseError::new("`beat` requires exactly one argument")),
-            },
-            "section" => match args.as_slice() {
-                [pattern, cycles] => {
+            }
+            "beat" => {
+                if args.len() == 1 {
+                    return Ok(Expr::Beat(Box::new(args.into_iter().next().unwrap())));
+                }
+                return Err(ParseError::new("`beat` requires exactly one argument"));
+            }
+            "section" => {
+                if args.len() == 2 {
+                    let mut iter = args.into_iter();
                     return Ok(Expr::Section {
-                        pattern: Box::new(pattern.clone()),
-                        cycles: Box::new(cycles.clone()),
+                        pattern: Box::new(iter.next().unwrap()),
+                        cycles: Box::new(iter.next().unwrap()),
                     });
                 }
-                _ => return Err(ParseError::new("`section` requires exactly two arguments")),
-            },
+                return Err(ParseError::new("`section` requires exactly two arguments"));
+            }
             "seq_sections" => return Ok(Expr::SeqSections(args)),
             _ => {}
         }
