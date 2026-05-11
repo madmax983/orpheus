@@ -29,3 +29,10 @@
 ## 2024-05-18 - [Missing DSP Effect Documentation]
 **Confusion:** The stateful DSP effects like `DelayState` and `ReverbState` lacked doc comments and executable examples, obscuring how they integrate with the audio graph and language runtime.
 **Clarification:** Added narrative `///` documentation to the structs and their core methods (`new`, `sync_timing`/`sync_spec`, `process_frame`, `reset`). Included `## Examples` using `BusEffectState::from_spec` to demonstrate instantiation via the public API wrapper, as the structs themselves are not exported at the crate root.
+## 2024-05-19 - [Missing Value Enum Variant Documentation]
+**Confusion:** The massive `BuiltinKind` enum and the gate pattern enums (`GatePatternValue`, `ArpDirectionValue`) in `value.rs` had dozens of variants missing documentation, leading to `missing_docs` warnings and obfuscated API context for language users.
+**Clarification:** Added detailed `///` documentation to all missing variants describing their musical function rather than just repeating their names. Included `## Examples` doctests for the complex ones like `every`, `when`, and `strum` to show how they operate within the language.
+
+## 2024-05-19 - [Missing Module Level Test Documentation]
+**Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
+**Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.

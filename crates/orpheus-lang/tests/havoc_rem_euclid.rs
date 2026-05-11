@@ -1,3 +1,4 @@
+//! Tests evaluating euclidean rhythm generation with edge-case parameters like zero or negative steps to prevent division-by-zero panics.
 use orpheus_lang::ReplMode;
 use orpheus_lang::eval_module;
 

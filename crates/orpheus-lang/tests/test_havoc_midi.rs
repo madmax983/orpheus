@@ -1,3 +1,4 @@
+//! Chaos engineering tests for the MIDI subsystem to ensure concurrent scheduling, negative time offsets, and invalid messages do not bring down the audio thread.
 use orpheus_dsp::EngineHandle;
 use orpheus_lang::ReplSession;
 

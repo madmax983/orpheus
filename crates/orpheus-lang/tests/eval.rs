@@ -1,3 +1,4 @@
+//! Core integration tests for the language evaluator, verifying that expressions compile down to the correct temporal patterns and audio graphs.
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 

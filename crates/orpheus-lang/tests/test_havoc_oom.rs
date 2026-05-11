@@ -1,3 +1,4 @@
+//! Chaos engineering tests verifying the pattern engine's resistance to Out-Of-Memory conditions during massive pattern expansion or deep recursion.
 use orpheus_lang::ReplMode;
 use orpheus_lang::eval_module;
 use orpheus_lang::export_number_pattern_to_tracker;

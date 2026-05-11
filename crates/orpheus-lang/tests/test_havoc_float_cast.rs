@@ -1,3 +1,4 @@
+//! Tests evaluating float-to-integer casting operations to ensure robust handling of NaN, Infinity, and out-of-bounds values without crashing.
 use orpheus_lang::{ReplMode, eval_module};
 
 #[test]

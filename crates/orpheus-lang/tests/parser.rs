@@ -1,3 +1,4 @@
+//! Integration tests for the syntax parser, ensuring all language constructs translate correctly into the internal Abstract Syntax Tree.
 use orpheus_lang::{BinaryOp, Expr, Stmt, parse_module};
 
 fn binding_expr(source: &str) -> Expr {

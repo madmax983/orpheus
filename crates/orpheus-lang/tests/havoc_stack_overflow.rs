@@ -1,3 +1,4 @@
+//! Chaos engineering tests validating the AST evaluator's recursion limits, ensuring deeply nested closures return an error instead of causing a stack overflow.
 use orpheus_lang::ReplMode;
 use orpheus_lang::eval_module;
 

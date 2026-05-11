@@ -1,3 +1,4 @@
+//! Integration tests for parsing and evaluating Scala (.scl) microtonal tuning files to ensure accurate pitch translations.
 use orpheus_lang::{parse_scala_file, parse_scala_source};
 
 const EPS: f64 = 1e-9;

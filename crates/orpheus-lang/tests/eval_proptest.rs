@@ -1,3 +1,4 @@
+//! Property-based tests for the evaluator engine, verifying that valid combinations of patterns and DSP nodes always produce sound structures.
 use orpheus_dsp::EngineHandle;
 use orpheus_lang::ReplSession;
 use proptest::prelude::*;
