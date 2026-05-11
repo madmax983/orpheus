@@ -289,6 +289,7 @@ impl HypertilePlugin for TransportPlugin {
             ("Set", ":tempo <bpm>"),
             ("Render", ":render <binding> <path> [cyc]"),
             ("Export", ":export <bind> <path> [cyc] | stems"),
+            ("Import", ":import stems <dir>"),
             ("Analyze", ":roll / :stats / :explain"),
             ("Help", "?"),
         ];

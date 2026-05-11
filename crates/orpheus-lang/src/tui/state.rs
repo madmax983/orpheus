@@ -7,13 +7,14 @@ use crate::session::{MixerView, ReplSession, TransportView};
 
 pub const STATUS_TOAST_TTL: Duration = Duration::from_secs(3);
 
-pub const COMMAND_HINTS: [(&str, &str); 14] = [
+pub const COMMAND_HINTS: [(&str, &str); 15] = [
     (":bus", ":bus <new|fx> ..."),
     (":explain", ":explain <binding>"),
     (
         ":export",
         ":export <binding> <path> [cycles] | :export stems [cycles] [--buses]",
     ),
+    (":import", ":import stems <directory>"),
     (":mixer", ":mixer"),
     (":open", ":open <path>"),
     (":play", ":play"),

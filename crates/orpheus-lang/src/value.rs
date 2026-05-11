@@ -97,10 +97,6 @@ pub enum BuiltinKind {
     Bin,
 }
 
-
-
-
-
 impl fmt::Display for BuiltinKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = match self {
@@ -160,11 +156,12 @@ impl fmt::Display for BuiltinKind {
             Self::Tuning => "tuning",
             Self::LoadScl => "load_scl",
             Self::Tune => "tune",
+            Self::Hex => "hex",
+            Self::Bin => "bin",
         };
         write!(f, "{name}")
     }
 }
-
 
 /// A partially or fully applied built-in function at runtime.
 ///
@@ -5366,6 +5363,7 @@ const fn ceil_rational(value: &Rational) -> i128 {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::{
         ArpDirectionValue, BuiltinFn, BuiltinKind, FunctionValue, NumberPatternValue, SampleEvent,
