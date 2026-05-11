@@ -97,10 +97,6 @@ pub enum BuiltinKind {
     Bin,
 }
 
-
-
-
-
 impl fmt::Display for BuiltinKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = match self {
@@ -160,11 +156,12 @@ impl fmt::Display for BuiltinKind {
             Self::Tuning => "tuning",
             Self::LoadScl => "load_scl",
             Self::Tune => "tune",
+            Self::Hex => "hex",
+            Self::Bin => "bin",
         };
         write!(f, "{name}")
     }
 }
-
 
 /// A partially or fully applied built-in function at runtime.
 ///
@@ -3369,6 +3366,11 @@ where
     }
 
     fn try_query_transform(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
+        self.try_query_transform_method(span)
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn try_query_transform_method(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
         match self {
             Self::Roll { steps, inner } => T::roll_events(inner.try_query(span)?, *steps),
             Self::Strum { inner } => T::strum_events(inner.try_query(span)?),
@@ -3451,6 +3453,11 @@ where
     }
 
     fn try_query_audio_effect(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
+        self.try_query_audio_effect_method(span)
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn try_query_audio_effect_method(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
         match self {
             Self::Delay { mix, inner } => {
                 apply_value_mutation(inner, span, |value| *value = value.adjust_delay_mix(*mix))
@@ -3517,6 +3524,11 @@ where
     }
 
     fn try_query_modulation_effect(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
+        self.try_query_modulation_effect_method(span)
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn try_query_modulation_effect_method(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
         match self {
             Self::Chorus { mix, inner } => {
                 apply_value_mutation(inner, span, |value| *value = value.adjust_chorus_mix(*mix))

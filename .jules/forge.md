@@ -74,3 +74,11 @@
 **[Shared Trait Abstraction]**
 **Learning:** Having identical function signatures (like `pub fn explain(&self, binding_name: &str) -> String`) across multiple disjoint types represents a missed opportunity for polymorphic abstractions.
 **Action:** Extract identical methods into a shared trait (e.g., `Explain`) and implement it for the relevant types to establish a formal abstraction, grouping any shared helpers (like `explain_table`) in the same module.
+
+**Refactoring `clippy::too_many_lines` on massive matches**
+**Learning:** `clippy::too_many_lines` on large enum `match` statements across different methods (like `absolute_cycle` or `try_query_transform` on an AST or Value enum) can be resolved by extracting inner chunks to helper methods and appending `#[allow(clippy::too_many_lines)]` locally if breaking it up too much destroys readability.
+**Action:** Extract large portions of the match to private helper methods, such as `try_query_transform_method` or `try_query_audio_effect_method` and suppress the clippy warning there if the match must remain large.
+
+**Extracting Match Arms that mutate State**
+**Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
+**Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
