@@ -12,7 +12,7 @@
 use crate::explain::Explain;
 use ratatui::text::Line;
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -324,7 +324,7 @@ impl ReplSession {
     ///
     /// // Bind a pattern.
     /// let response = session.eval_line("notes = 1 2 3").unwrap();
-    /// assert_eq!(response, "bound notes: Pattern<Number>");
+    /// assert_eq!(response, "bound notes = Pattern<Number>: Pattern<Number>");
     ///
     /// // Execute a command.
     /// let response = session.eval_line(":tempo 120").unwrap();
@@ -378,6 +378,7 @@ impl ReplSession {
             "tempo" => self.set_tempo(args),
             "ref_freq" => self.set_ref_freq(args),
             "samples" => self.load_sample_directory(args),
+            "import" => self.import_command(args),
             "open" => self.open_file(args),
             "track" => self.eval_track_command(args),
             "bus" => self.eval_bus_command(args),
@@ -558,6 +559,10 @@ impl ReplSession {
             (
                 ":samples <dir>",
                 "Load additional audio samples from a directory",
+            ),
+            (
+                ":import stems <dir>",
+                "Load stem WAVs as sample patterns and routed tracks",
             ),
             (
                 ":reload-samples",
@@ -988,6 +993,103 @@ impl ReplSession {
             directory.display(),
             available_tokens.join(", ")
         ))
+    }
+
+    fn import_command(&mut self, args: &str) -> Result<String, String> {
+        let tokens: Vec<_> = args.split_whitespace().collect();
+        match tokens.as_slice() {
+            ["stems", directory @ ..] if !directory.is_empty() => {
+                self.import_stems(&directory.join(" "))
+            }
+            _ => Err(import_usage().to_owned()),
+        }
+    }
+
+    fn import_stems(&mut self, raw_directory: &str) -> Result<String, String> {
+        let directory = PathBuf::from(trim_quoted_arg(raw_directory));
+        if directory.as_os_str().is_empty() {
+            return Err(import_usage().to_owned());
+        }
+
+        let stem_paths = collect_stem_wav_paths(&directory)?;
+        if stem_paths.is_empty() {
+            return Err(format!(
+                "no stem WAV files found in `{}`",
+                directory.display()
+            ));
+        }
+
+        let mut reserved_names = BTreeSet::new();
+        let mut stems = Vec::with_capacity(stem_paths.len());
+        for path in &stem_paths {
+            let stem = path
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .ok_or_else(|| format!("stem path `{}` is not valid Unicode", path.display()))?;
+            let binding_name = self.unique_import_binding_name(stem, &reserved_names);
+            reserved_names.insert(binding_name.clone());
+            stems.push(ImportedStem {
+                binding_name,
+                token: stem.to_ascii_lowercase(),
+            });
+        }
+
+        let sample_bank =
+            load_sample_bank_from_directory(&directory).map_err(|error| error.to_string())?;
+
+        let mut bindings = self.bindings.clone();
+        let mut type_bindings = self.type_bindings.clone();
+        let mut mixer = self.mixer.clone();
+        for stem in &stems {
+            let pattern = crate::value::SamplePatternValue::atom(&stem.token);
+            bindings.insert(stem.binding_name.clone(), Value::SamplePattern(pattern));
+            type_bindings.insert(stem.binding_name.clone(), Type::pattern(Type::Sample));
+        }
+        for stem in &stems {
+            mixer.new_track(&stem.binding_name)?;
+            mixer.bind_track(&stem.binding_name, &stem.binding_name, &bindings)?;
+        }
+
+        self.bindings = bindings;
+        self.type_bindings = type_bindings;
+        self.mixer = mixer;
+        self.sample_bank = sample_bank.clone();
+        self.sample_directory = Some(directory.clone());
+        self.engine
+            .enqueue(EngineCommand::ReplaceSampleBank(sample_bank))
+            .map_err(|error| error.to_string())?;
+        self.enqueue_mixer_snapshot()?;
+        if let Some(stem) = stems.last() {
+            self.pattern_display.borrow_mut().last_loaded_pattern_name =
+                Some(stem.binding_name.clone());
+        }
+
+        let names = stems
+            .iter()
+            .map(|stem| stem.binding_name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        Ok(format!(
+            "imported {} stem(s) from `{}` ({names})",
+            stems.len(),
+            directory.display()
+        ))
+    }
+
+    fn unique_import_binding_name(&self, stem: &str, reserved_names: &BTreeSet<String>) -> String {
+        let base = stem_binding_name(stem);
+        let mut candidate = base.clone();
+        let mut suffix = 2_u32;
+        while self.bindings.contains_key(&candidate)
+            || self.type_bindings.contains_key(&candidate)
+            || self.mixer.contains_routing_name(&candidate)
+            || reserved_names.contains(&candidate)
+            || is_reserved_routing_name(&candidate)
+        {
+            candidate = format!("{base}_{suffix}");
+            suffix = suffix.saturating_add(1);
+        }
+        candidate
     }
 
     /// Loads an Orpheus source file, replacing the current session's bindings.
@@ -1669,6 +1771,10 @@ const fn samples_usage() -> &'static str {
     "usage: :samples <directory>"
 }
 
+const fn import_usage() -> &'static str {
+    "usage: :import stems <directory>"
+}
+
 const fn track_usage() -> &'static str {
     "usage: :track <new|bind|level|mute> ..."
 }
@@ -1825,10 +1931,88 @@ fn trim_quoted_arg(value: &str) -> &str {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ImportedStem {
+    binding_name: String,
+    token: String,
+}
+
+fn collect_stem_wav_paths(directory: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut paths = Vec::new();
+    let entries = std::fs::read_dir(directory).map_err(|source| {
+        format!(
+            "failed to read stem directory `{}`: {}",
+            directory.display(),
+            readable_io_error(&source)
+        )
+    })?;
+
+    for entry in entries {
+        let entry = entry.map_err(|source| {
+            format!(
+                "failed to read stem directory `{}`: {}",
+                directory.display(),
+                readable_io_error(&source)
+            )
+        })?;
+        let path = entry.path();
+        if path.is_file() && is_stem_wav_path(&path) {
+            paths.push(path);
+        }
+    }
+
+    paths.sort_by(|left, right| left.file_name().cmp(&right.file_name()));
+    Ok(paths)
+}
+
+fn is_stem_wav_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| matches!(extension.to_ascii_lowercase().as_str(), "wav" | "wave"))
+}
+
+fn stem_binding_name(stem: &str) -> String {
+    let mut name = String::with_capacity(stem.len());
+    for ch in stem.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            name.push(ch.to_ascii_lowercase());
+        } else {
+            name.push('_');
+        }
+    }
+
+    let mut name = name.trim_matches('_').to_owned();
+    if name.is_empty() {
+        name.push_str("stem");
+    }
+    if !name
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_')
+    {
+        name.insert_str(0, "stem_");
+    }
+    if is_reserved_routing_name(&name) {
+        name.push_str("_stem");
+    }
+    name
+}
+
+fn is_reserved_routing_name(name: &str) -> bool {
+    matches!(name, "main" | "master")
+}
+
+fn readable_io_error(source: &std::io::Error) -> String {
+    match source.kind() {
+        std::io::ErrorKind::NotFound => "file not found".to_owned(),
+        std::io::ErrorKind::PermissionDenied => "permission denied".to_owned(),
+        _ => source.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
-    use crate::explain::Explain;
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -2522,6 +2706,40 @@ mod tests {
         assert!(rendered_dir.join("verb_bus.wav").exists());
 
         let _ = std::fs::remove_dir_all(rendered_dir);
+    }
+
+    #[test]
+    fn import_stems_command_loads_wavs_as_bound_tracks() {
+        let mut session = ReplSession::new();
+        let directory = temp_directory("import-stems");
+        write_wav(directory.join("Drum Stem.wav"), &[0.5, 0.0, 0.0, 0.0]);
+        write_wav(directory.join("bass-track.wav"), &[0.25, 0.0, 0.0, 0.0]);
+        std::fs::write(directory.join("notes.txt"), "not a stem").unwrap();
+
+        let message = session
+            .eval_line(&format!(":import stems {}", directory.display()))
+            .unwrap();
+
+        assert!(message.contains("imported 2 stem(s)"));
+        assert!(message.contains("bass_track"));
+        assert!(message.contains("drum_stem"));
+        assert_eq!(
+            session.binding_summaries(),
+            vec![
+                "bass_track: Pattern<Sample>".to_owned(),
+                "drum_stem: Pattern<Sample>".to_owned()
+            ]
+        );
+
+        let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
+        assert_eq!(
+            session.engine.active_track_names_for_test(),
+            ["bass_track", "drum_stem"]
+        );
+        let rendered = session.render_test_block_for_tui(4);
+        assert!(rendered.iter().any(|sample| sample.abs() > f32::EPSILON));
+
+        let _ = std::fs::remove_dir_all(directory);
     }
 
     #[test]

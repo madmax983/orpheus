@@ -128,7 +128,7 @@ fn help_overlay_body() -> Vec<Line<'static>> {
         key_style,
     )]));
     lines.push(Line::from(vec![Span::styled(
-        "  :render / :export / :roll / :stats / :explain",
+        "  :render / :export / :import stems / :roll / :stats / :explain",
         key_style,
     )]));
     lines.push(Line::from(vec![Span::styled(
