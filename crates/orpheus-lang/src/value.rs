@@ -160,6 +160,8 @@ impl fmt::Display for BuiltinKind {
             Self::Tuning => "tuning",
             Self::LoadScl => "load_scl",
             Self::Tune => "tune",
+            Self::Hex => "hex",
+            Self::Bin => "bin",
         };
         write!(f, "{name}")
     }
