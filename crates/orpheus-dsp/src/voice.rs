@@ -326,7 +326,11 @@ impl ActiveVoice {
         }
     }
 
-    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss, clippy::cast_sign_loss)]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        clippy::cast_sign_loss
+    )]
     fn next_drum_synth_sample(
         kind: VoiceKind,
         frame_index: &mut u32,
@@ -355,9 +359,7 @@ impl ActiveVoice {
                 };
                 next_noise(noise_state) * envelope.powi(2) * burst * 0.55
             }
-            VoiceKind::HiHatLike => {
-                next_noise(noise_state).signum() * envelope.powi(2) * 0.35
-            }
+            VoiceKind::HiHatLike => next_noise(noise_state).signum() * envelope.powi(2) * 0.35,
             VoiceKind::AnalogSaw
             | VoiceKind::AnalogPulse
             | VoiceKind::AnalogTri
@@ -370,7 +372,11 @@ impl ActiveVoice {
         Some(sample as f32)
     }
 
-    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss, clippy::cast_sign_loss)]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        clippy::cast_sign_loss
+    )]
     fn next_analog_synth_sample(
         voice: &mut AnalogVoice,
         params: &AnalogVoiceParams,
@@ -391,7 +397,12 @@ impl ActiveVoice {
         Some(sample)
     }
 
-    #[allow(clippy::too_many_arguments, clippy::cast_possible_truncation, clippy::cast_precision_loss, clippy::cast_sign_loss)]
+    #[allow(
+        clippy::too_many_arguments,
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        clippy::cast_sign_loss
+    )]
     fn next_sample_frame(
         frames: &[f32],
         frame_position: &mut f64,
