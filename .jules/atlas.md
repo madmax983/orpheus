@@ -53,3 +53,6 @@
 **[Fix Leaky Abstraction in AST GraphBinding]**
 **Tangle:** The `Expr` enum in `orpheus-lang` was public and exposed the inner payload type `GraphBinding` as part of its `Graph` variant. However, this inner type was not re-exported in the crate's `lib.rs`, creating a leaky abstraction where consumers could match on the variant but could not explicitly name the type of the value they extracted.
 **Blueprint:** Explicitly re-exported `GraphBinding` from the `ast` module inside `crates/orpheus-lang/src/lib.rs` to ensure all publicly reachable types are fully nameable.
+**[Enforce Private Explain Module]
+**Tangle:** The `explain` module in `orpheus-lang/src/lib.rs` and its internal `Explain` trait and `explain_table` function were declared as `pub`, leaking internal REPL table rendering details to the public API.
+**Blueprint:** Changed the visibility of the `Explain` trait and `explain_table` function to `pub(crate)` in `crates/orpheus-lang/src/explain.rs`. Removed the `pub use explain::Explain;` re-export from `crates/orpheus-lang/src/lib.rs` and changed the module declaration to `pub(crate) mod explain;`. This strictly enforces internal encapsulation.
