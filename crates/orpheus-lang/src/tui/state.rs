@@ -7,7 +7,7 @@ use crate::session::{MixerView, ReplSession, TransportView};
 
 pub const STATUS_TOAST_TTL: Duration = Duration::from_secs(3);
 
-pub const COMMAND_HINTS: [(&str, &str); 15] = [
+pub const COMMAND_HINTS: [(&str, &str); 17] = [
     (":bus", ":bus <new|fx> ..."),
     (":explain", ":explain <binding>"),
     (
@@ -19,6 +19,7 @@ pub const COMMAND_HINTS: [(&str, &str); 15] = [
     (":open", ":open <path>"),
     (":play", ":play"),
     (":quit", ":quit"),
+    (":redo", ":redo"),
     (":render", ":render <binding> <path> [cycles]"),
     (":roll", ":roll <binding> [cycles] [steps_per_cycle]"),
     (":send", ":send <track> <bus> <level>"),
@@ -26,6 +27,7 @@ pub const COMMAND_HINTS: [(&str, &str); 15] = [
     (":stop", ":stop"),
     (":tempo", ":tempo <bpm>"),
     (":track", ":track <new|bind|level|mute> ..."),
+    (":undo", ":undo"),
 ];
 
 /// Shared application state accessible by all pane plugins via `Rc<RefCell<_>>`.
@@ -97,10 +99,7 @@ impl SharedState {
         }
 
         if line.starts_with(':') {
-            match self.session.eval_line(&line) {
-                Ok(message) => self.set_status_message(message, false),
-                Err(error) => self.set_status_message(error, true),
-            }
+            self.run_status_command(&line);
             return;
         }
 
@@ -118,6 +117,18 @@ impl SharedState {
         } else {
             ":play"
         };
+        self.run_status_command(command);
+    }
+
+    pub fn undo_session_change(&mut self) {
+        self.run_status_command(":undo");
+    }
+
+    pub fn redo_session_change(&mut self) {
+        self.run_status_command(":redo");
+    }
+
+    fn run_status_command(&mut self, command: &str) {
         match self.session.eval_line(command) {
             Ok(message) => self.set_status_message(message, false),
             Err(error) => self.set_status_message(error, true),

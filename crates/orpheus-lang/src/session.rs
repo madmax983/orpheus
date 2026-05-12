@@ -12,7 +12,7 @@
 use crate::explain::Explain;
 use ratatui::text::Line;
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -20,9 +20,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use orpheus_dsp::{
-    EngineCommand, EngineHandle, PatternUpdate, SampleBank, SampleLibraryWatcher,
-    SampleLibraryWatcherConfig, TransportSnapshot, load_sample_bank_from_directory,
-    render_routing_snapshot_to_stem_wavs,
+    DEFAULT_ANALOG_BASE_FREQUENCY_HZ, EngineCommand, EngineHandle, PatternUpdate, SampleBank,
+    SampleLibraryWatcher, SampleLibraryWatcherConfig, TransportSnapshot,
+    load_sample_bank_from_directory, render_routing_snapshot_to_stem_wavs,
 };
 use orpheus_pattern::Rational;
 
@@ -34,6 +34,8 @@ use crate::midi_input;
 use crate::mixer::MixerState;
 use crate::types::infer_into_bindings;
 use crate::{ReplMode, Type, Value};
+
+const SESSION_HISTORY_LIMIT: usize = 50;
 
 /// Represents the interactive state of an Orpheus environment.
 ///
@@ -67,6 +69,9 @@ pub struct ReplSession {
     midi_output: MidiOutputState,
     midi_input: MidiInputState,
     midi_note_mappings: HashMap<u8, String>,
+    tempo_bpm: f32,
+    reference_frequency_hz: f32,
+    history: SessionHistory,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -87,6 +92,70 @@ struct MidiOutputState {
 struct MidiInputState {
     connection: Option<MidiInputConnection<()>>,
     port_name: Option<String>,
+}
+
+#[derive(Clone)]
+struct SessionSnapshot {
+    sample_bank: SampleBank,
+    sample_directory: Option<PathBuf>,
+    bindings: BTreeMap<String, Value>,
+    type_bindings: BTreeMap<String, Type>,
+    mixer: MixerState,
+    pattern_display: PatternDisplayState,
+    tempo_bpm: f32,
+    reference_frequency_hz: f32,
+}
+
+struct SessionHistory {
+    undo_stack: VecDeque<SessionSnapshot>,
+    redo_stack: Vec<SessionSnapshot>,
+    limit: usize,
+}
+
+impl Default for SessionHistory {
+    fn default() -> Self {
+        Self::with_limit(SESSION_HISTORY_LIMIT)
+    }
+}
+
+impl SessionHistory {
+    const fn with_limit(limit: usize) -> Self {
+        Self {
+            undo_stack: VecDeque::new(),
+            redo_stack: Vec::new(),
+            limit,
+        }
+    }
+
+    fn record(&mut self, snapshot: SessionSnapshot) {
+        if self.limit == 0 {
+            return;
+        }
+        self.push_undo(snapshot);
+        self.redo_stack.clear();
+    }
+
+    fn undo(&mut self, current: SessionSnapshot) -> Option<SessionSnapshot> {
+        let target = self.undo_stack.pop_back()?;
+        self.redo_stack.push(current);
+        Some(target)
+    }
+
+    fn redo(&mut self, current: SessionSnapshot) -> Option<SessionSnapshot> {
+        let target = self.redo_stack.pop()?;
+        self.push_undo(current);
+        Some(target)
+    }
+
+    fn push_undo(&mut self, snapshot: SessionSnapshot) {
+        if self.limit == 0 {
+            return;
+        }
+        if self.undo_stack.len() == self.limit {
+            let _ = self.undo_stack.pop_front();
+        }
+        self.undo_stack.push_back(snapshot);
+    }
 }
 
 /// A snapshot of the transport state formatted for visual presentation.
@@ -291,6 +360,7 @@ impl ReplSession {
     /// let session = ReplSession::with_engine(engine);
     /// ```
     pub fn with_engine(engine: EngineHandle) -> Self {
+        let tempo_bpm = engine.transport_snapshot().tempo_bpm();
         Self {
             mode: ReplMode::Loose,
             engine,
@@ -304,6 +374,9 @@ impl ReplSession {
             midi_output: MidiOutputState::default(),
             midi_input: MidiInputState::default(),
             midi_note_mappings: HashMap::new(),
+            tempo_bpm,
+            reference_frequency_hz: DEFAULT_ANALOG_BASE_FREQUENCY_HZ,
+            history: SessionHistory::default(),
         }
     }
 
@@ -340,6 +413,7 @@ impl ReplSession {
             return self.eval_command(source);
         }
 
+        let snapshot = self.capture_history_snapshot();
         let Some((name, ty)) = infer_into_bindings(source, self.mode, &mut self.type_bindings)
             .map_err(|error| error.to_string())?
         else {
@@ -353,6 +427,7 @@ impl ReplSession {
         debug_assert_eq!(name, value_name);
 
         self.push_pattern_update(&name, &value)?;
+        self.history.record(snapshot);
         Ok(success_banner(&name, &value, &ty))
     }
 
@@ -366,6 +441,8 @@ impl ReplSession {
             .map_or((command, ""), |(name, args)| (name, args.trim()));
 
         match name {
+            "undo" => self.undo_command(args),
+            "redo" => self.redo_command(args),
             "render" => self.render_binding(args),
             "roll" => self.roll_binding(args),
             "stats" => self.stats_binding(args),
@@ -379,21 +456,125 @@ impl ReplSession {
                     self.export_binding(args)
                 }
             }
-            "tempo" => self.set_tempo(args),
-            "ref_freq" => self.set_ref_freq(args),
-            "samples" => self.load_sample_directory(args),
-            "import" => self.import_command(args),
-            "open" => self.open_file(args),
-            "track" => self.eval_track_command(args),
-            "bus" => self.eval_bus_command(args),
-            "send" => self.eval_send_command(args),
+            "tempo" => self.eval_mutating_command(|session| session.set_tempo(args)),
+            "ref_freq" => self.eval_mutating_command(|session| session.set_ref_freq(args)),
+            "samples" => self.eval_mutating_command(|session| session.load_sample_directory(args)),
+            "import" => self.eval_mutating_command(|session| session.import_command(args)),
+            "open" => self.eval_mutating_command(|session| session.open_file(args)),
+            "track" => self.eval_mutating_command(|session| session.eval_track_command(args)),
+            "bus" => self.eval_mutating_command(|session| session.eval_bus_command(args)),
+            "send" => self.eval_mutating_command(|session| session.eval_send_command(args)),
             "mixer" => self.mixer_command(args),
             "midi" => self.midi_command(args),
-            "reload-samples" => self.reload_sample_directory(args),
+            "reload-samples" => {
+                self.eval_mutating_command(|session| session.reload_sample_directory(args))
+            }
             "play" => self.play_transport(args),
             "stop" => self.stop_transport(args),
             other => Err(format!("unknown REPL command `:{other}`")),
         }
+    }
+
+    fn eval_mutating_command(
+        &mut self,
+        run: impl FnOnce(&mut Self) -> Result<String, String>,
+    ) -> Result<String, String> {
+        let snapshot = self.capture_history_snapshot();
+        match run(self) {
+            Ok(message) => {
+                self.history.record(snapshot);
+                Ok(message)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    fn undo_command(&mut self, args: &str) -> Result<String, String> {
+        if !args.trim().is_empty() {
+            return Err(undo_usage().to_owned());
+        }
+
+        let current = self.capture_history_snapshot();
+        let snapshot = self
+            .history
+            .undo(current)
+            .ok_or_else(|| "nothing to undo".to_owned())?;
+        self.restore_history_snapshot(snapshot)?;
+        Ok("undid last session change".to_owned())
+    }
+
+    fn redo_command(&mut self, args: &str) -> Result<String, String> {
+        if !args.trim().is_empty() {
+            return Err(redo_usage().to_owned());
+        }
+
+        let current = self.capture_history_snapshot();
+        let snapshot = self
+            .history
+            .redo(current)
+            .ok_or_else(|| "nothing to redo".to_owned())?;
+        self.restore_history_snapshot(snapshot)?;
+        Ok("redid session change".to_owned())
+    }
+
+    fn capture_history_snapshot(&self) -> SessionSnapshot {
+        SessionSnapshot {
+            sample_bank: self.sample_bank.clone(),
+            sample_directory: self.sample_directory.clone(),
+            bindings: self.bindings.clone(),
+            type_bindings: self.type_bindings.clone(),
+            mixer: self.mixer.clone(),
+            pattern_display: self.pattern_display.borrow().clone(),
+            tempo_bpm: self.tempo_bpm,
+            reference_frequency_hz: self.reference_frequency_hz,
+        }
+    }
+
+    fn restore_history_snapshot(&mut self, snapshot: SessionSnapshot) -> Result<(), String> {
+        let routing_snapshot = snapshot.mixer.compile_snapshot(&snapshot.bindings)?;
+
+        if self.sample_bank != snapshot.sample_bank {
+            self.engine
+                .enqueue(EngineCommand::ReplaceSampleBank(
+                    snapshot.sample_bank.clone(),
+                ))
+                .map_err(|error| format!("failed to enqueue restored sample bank: {error}"))?;
+        }
+        if self.tempo_bpm.to_bits() != snapshot.tempo_bpm.to_bits() {
+            self.engine
+                .enqueue(EngineCommand::SetTempo(snapshot.tempo_bpm))
+                .map_err(|error| format!("failed to enqueue restored tempo: {error}"))?;
+        }
+        if self.reference_frequency_hz.to_bits() != snapshot.reference_frequency_hz.to_bits() {
+            self.engine
+                .enqueue(EngineCommand::SetReferenceFrequency(
+                    snapshot.reference_frequency_hz,
+                ))
+                .map_err(|error| {
+                    format!("failed to enqueue restored reference frequency: {error}")
+                })?;
+        }
+        self.engine
+            .enqueue(EngineCommand::SwapRoutingSnapshot(routing_snapshot))
+            .map_err(|error| format!("failed to enqueue restored routing snapshot: {error}"))?;
+
+        self.sample_bank = snapshot.sample_bank;
+        self.sample_directory = snapshot.sample_directory;
+        self.bindings = snapshot.bindings;
+        self.type_bindings = snapshot.type_bindings;
+        self.mixer = snapshot.mixer;
+        *self.pattern_display.borrow_mut() = snapshot.pattern_display;
+        self.tempo_bpm = snapshot.tempo_bpm;
+        self.reference_frequency_hz = snapshot.reference_frequency_hz;
+        self.restart_sample_watcher_after_restore()
+    }
+
+    fn restart_sample_watcher_after_restore(&mut self) -> Result<(), String> {
+        self.sample_watcher = None;
+        if let Some(directory) = self.sample_directory.clone() {
+            self.start_sample_watcher(&directory)?;
+        }
+        Ok(())
     }
 
     fn render_binding(&self, args: &str) -> Result<String, String> {
@@ -531,6 +712,8 @@ impl ReplSession {
 
         let commands = [
             (":env", "List all available bindings in the environment"),
+            (":undo", "Restore the previous compositional session state"),
+            (":redo", "Reapply the most recently undone session state"),
             (
                 ":explain <binding>",
                 "Explain the internal structure of a pattern or pedal",
@@ -957,6 +1140,7 @@ impl ReplSession {
         self.engine
             .enqueue(EngineCommand::SetTempo(tempo_bpm))
             .map_err(|error| error.to_string())?;
+        self.tempo_bpm = tempo_bpm;
         Ok(format!("tempo set to {tempo_bpm} BPM"))
     }
 
@@ -976,6 +1160,7 @@ impl ReplSession {
         self.engine
             .enqueue(EngineCommand::SetReferenceFrequency(hz))
             .map_err(|error| error.to_string())?;
+        self.reference_frequency_hz = hz;
         Ok(format!("reference frequency set to {hz} Hz"))
     }
 
@@ -1852,6 +2037,14 @@ const fn stop_usage() -> &'static str {
     "usage: :stop"
 }
 
+const fn undo_usage() -> &'static str {
+    "usage: :undo"
+}
+
+const fn redo_usage() -> &'static str {
+    "usage: :redo"
+}
+
 struct BusDelayParams {
     time: Rational,
     feedback: f32,
@@ -2108,6 +2301,37 @@ mod tests {
         std::env::temp_dir().join(format!("orpheus-export-{}.svg", unique_temp_suffix()))
     }
 
+    fn sample_tokens(session: &ReplSession, binding_name: &str) -> Vec<String> {
+        session
+            .bindings
+            .get(binding_name)
+            .and_then(crate::Value::as_sample_pattern)
+            .unwrap_or_else(|| panic!("expected `{binding_name}` to be a sample pattern"))
+            .query_unit()
+            .unwrap_or_else(|error| panic!("querying `{binding_name}` should succeed: {error}"))
+            .into_iter()
+            .map(|event| event.value.sample().to_owned())
+            .collect()
+    }
+
+    fn constant_number(session: &ReplSession, binding_name: &str) -> f64 {
+        session
+            .bindings
+            .get(binding_name)
+            .and_then(crate::Value::as_number_pattern)
+            .unwrap_or_else(|| panic!("expected `{binding_name}` to be a number pattern"))
+            .constant_value()
+            .unwrap_or_else(|_| panic!("expected `{binding_name}` to be constant"))
+    }
+
+    fn assert_constant_number(session: &ReplSession, binding_name: &str, expected: f64) {
+        let actual = constant_number(session, binding_name);
+        assert!(
+            (actual - expected).abs() < f64::EPSILON,
+            "expected `{binding_name}` to be {expected}, got {actual}"
+        );
+    }
+
     #[test]
     fn help_command_prints_table_of_commands() {
         let mut session = ReplSession::new();
@@ -2123,6 +2347,105 @@ mod tests {
         let mut session = ReplSession::new();
         let error = session.eval_line(":help me").unwrap_err();
         assert_eq!(error, "usage: :help (no arguments)");
+    }
+
+    #[test]
+    fn undo_and_redo_restore_recent_binding_states() {
+        let mut session = ReplSession::new();
+
+        assert_eq!(
+            session.eval_line(":undo"),
+            Err("nothing to undo".to_owned())
+        );
+        session.eval_line("drums = bd").unwrap();
+        session.eval_line("drums = sn").unwrap();
+        assert_eq!(sample_tokens(&session, "drums"), vec!["sn"]);
+
+        assert_eq!(
+            session.eval_line(":undo").unwrap(),
+            "undid last session change"
+        );
+        assert_eq!(sample_tokens(&session, "drums"), vec!["bd"]);
+
+        assert_eq!(session.eval_line(":redo").unwrap(), "redid session change");
+        assert_eq!(sample_tokens(&session, "drums"), vec!["sn"]);
+    }
+
+    #[test]
+    fn undo_restores_mixer_routing_and_redo_reapplies_it() {
+        let mut session = ReplSession::new();
+
+        session.eval_line("drums = bd").unwrap();
+        session.eval_line(":track new kit").unwrap();
+        session.eval_line(":track bind kit drums").unwrap();
+        session.eval_line(":track level kit 0.25").unwrap();
+        assert!(session.eval_line(":mixer").unwrap().contains("0.25"));
+
+        assert_eq!(
+            session.eval_line(":undo").unwrap(),
+            "undid last session change"
+        );
+        let undone = session.eval_line(":mixer").unwrap();
+        assert!(undone.contains("kit"));
+        assert!(undone.contains("1.00"));
+        assert!(!undone.contains("0.25"));
+
+        assert_eq!(session.eval_line(":redo").unwrap(), "redid session change");
+        assert!(session.eval_line(":mixer").unwrap().contains("0.25"));
+    }
+
+    #[test]
+    fn redo_stack_is_cleared_by_new_session_change_after_undo() {
+        let mut session = ReplSession::new();
+
+        session.eval_line("x = 1").unwrap();
+        session.eval_line("x = 2").unwrap();
+        session.eval_line(":undo").unwrap();
+        assert_constant_number(&session, "x", 1.0);
+
+        session.eval_line("x = 3").unwrap();
+        assert_eq!(
+            session.eval_line(":redo"),
+            Err("nothing to redo".to_owned())
+        );
+        assert_constant_number(&session, "x", 3.0);
+    }
+
+    #[test]
+    fn history_keeps_only_the_last_fifty_session_changes() {
+        let mut session = ReplSession::new();
+
+        for value in 0..60 {
+            session.eval_line(&format!("x = {value}")).unwrap();
+        }
+
+        for _ in 0..50 {
+            session.eval_line(":undo").unwrap();
+        }
+
+        assert_constant_number(&session, "x", 9.0);
+        assert_eq!(
+            session.eval_line(":undo"),
+            Err("nothing to undo".to_owned())
+        );
+    }
+
+    #[test]
+    fn undo_restoration_waits_for_the_next_cycle_boundary() {
+        let mut session = ReplSession::new();
+
+        session.eval_line(":tempo 48000").unwrap();
+        session.eval_line("drums = bd").unwrap();
+        let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
+        session.eval_line("drums = sn").unwrap();
+        let _ = session.render_test_block_for_tui(1);
+
+        session.eval_line(":undo").unwrap();
+        let _ = session.render_test_block_for_tui(1);
+
+        assert!(!session.engine.swap_applied_before_boundary());
+        let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
+        assert!(!session.engine.swap_applied_before_boundary());
     }
 
     #[test]
