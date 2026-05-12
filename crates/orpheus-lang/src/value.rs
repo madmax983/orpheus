@@ -3546,7 +3546,10 @@ where
     }
 
     #[allow(clippy::too_many_lines)]
-    fn try_query_modulation_effect_method(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
+    fn try_query_modulation_effect_method(
+        &self,
+        span: &TimeSpan,
+    ) -> Result<Vec<Event<T>>, EvalError> {
         match self {
             Self::Chorus { mix, inner } => {
                 apply_value_mutation(inner, span, |value| *value = value.adjust_chorus_mix(*mix))

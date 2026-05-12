@@ -44,7 +44,7 @@ use style::{
 
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
-const FULL_KEY_LEGEND: &str = "? help   i input   p palette   s/v split";
+const FULL_KEY_LEGEND: &str = "? help   i input   p palette   s/v split   Ctrl-Z/Y undo/redo";
 const MEDIUM_KEY_LEGEND: &str = "? help   i input   p palette";
 const COMPACT_KEY_LEGEND: &str = "? i p s/v";
 
@@ -107,6 +107,7 @@ fn help_overlay_body() -> Vec<Line<'static>> {
         ("  Type", "evaluate expressions"),
         ("  Tab", "complete commands"),
         ("  Up/Down", "history recall"),
+        ("  Ctrl-Z/Y", "undo / redo session state"),
         ("  Space", "toggle transport (empty input)"),
         ("  Ctrl-A/E/K/U/W/L", "emacs editing"),
         ("  Alt-B/F", "word navigation"),
@@ -120,7 +121,7 @@ fn help_overlay_body() -> Vec<Line<'static>> {
     lines.push(Line::raw(""));
     lines.push(Line::styled("Commands:", header_style));
     lines.push(Line::from(vec![Span::styled(
-        "  :play / :stop / :tempo <bpm>",
+        "  :undo / :redo / :play / :stop / :tempo <bpm>",
         key_style,
     )]));
     lines.push(Line::from(vec![Span::styled(
@@ -303,6 +304,20 @@ fn handle_key(
     }
 
     // Help overlay is modal — swallow all keys except toggle/close/quit.
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
+        match key.code {
+            KeyCode::Char('z') => {
+                state.undo_session_change();
+                return;
+            }
+            KeyCode::Char('y') => {
+                state.redo_session_change();
+                return;
+            }
+            _ => {}
+        }
+    }
+
     if state.show_help {
         match key.code {
             KeyCode::Esc => state.close_help(),
@@ -701,6 +716,30 @@ mod tests {
                 .binding_summaries()
                 .iter()
                 .any(|s| s.contains("drums"))
+        );
+    }
+
+    #[test]
+    fn ctrl_z_and_ctrl_y_trigger_global_time_travel() {
+        let (shared, mut workspace) = test_setup();
+
+        for line in ["drums = bd", "drums = sn"] {
+            for c in line.chars() {
+                handle_key(&shared, &mut workspace, press(KeyCode::Char(c)));
+            }
+            handle_key(&shared, &mut workspace, press(KeyCode::Enter));
+        }
+
+        handle_key(&shared, &mut workspace, ctrl(KeyCode::Char('z')));
+        assert_eq!(
+            shared.borrow().status_message,
+            Some(("undid last session change".to_owned(), false))
+        );
+
+        handle_key(&shared, &mut workspace, ctrl(KeyCode::Char('y')));
+        assert_eq!(
+            shared.borrow().status_message,
+            Some(("redid session change".to_owned(), false))
         );
     }
 

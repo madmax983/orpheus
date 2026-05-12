@@ -282,6 +282,7 @@ impl HypertilePlugin for TransportPlugin {
         let desc_style = Style::default().fg(Color::DarkGray);
 
         let legend = [
+            ("Undo", "Ctrl-Z / Ctrl-Y"),
             ("Space", "toggle (empty input)"),
             ("Open", ":open <path>"),
             ("Transport", ":play / :stop"),
