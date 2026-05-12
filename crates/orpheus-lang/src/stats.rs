@@ -10,7 +10,7 @@ use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
 use crossterm::style::Stylize;
 
 use crate::eval::{EvalError, render_span};
-use crate::value::{NumberPatternValue, SamplePatternValue, TuningValue};
+use crate::value::{NumberPatternValue, PluginPatternValue, SamplePatternValue, TuningValue};
 
 /// Analyzes a sample pattern's evaluated events and returns a formatted report.
 ///
@@ -291,6 +291,69 @@ pub fn tuning_stats(binding_name: &str, tuning: &TuningValue) -> String {
     ]);
 
     format!("{title}\n{table}")
+}
+
+/// Analyzes a plugin pattern's evaluated events and returns a formatted report.
+///
+/// The report contains the total notes triggered, parameter lanes active,
+/// and note density over the cycle count.
+///
+/// # Errors
+///
+/// Returns [`EvalError`] if `cycle_count` is 0.
+pub fn plugin_pattern_stats(
+    binding_name: &str,
+    pattern: &PluginPatternValue,
+    cycle_count: u64,
+) -> Result<String, EvalError> {
+    if cycle_count == 0 {
+        return Err(EvalError::new("stats requires at least one cycle"));
+    }
+
+    let notes = pattern.track_source().notes();
+    let lanes = pattern.track_source().parameter_lanes();
+
+    #[allow(clippy::cast_possible_truncation)]
+    let total_notes = notes.len() * (cycle_count as usize);
+    let total_lanes = lanes.len();
+
+    #[allow(clippy::cast_precision_loss)]
+    let note_density = (total_notes as f64) / (cycle_count as f64);
+
+    let title = format!(
+        "{} {binding_name} ({} cycles)",
+        "Plugin Stats:".cyan().bold(),
+        cycle_count.to_string().yellow()
+    );
+    let mut table = Table::new();
+    table.load_preset(UTF8_BORDERS_ONLY);
+
+    table.add_row(vec![
+        Cell::new("Total Notes")
+            .fg(comfy_table::Color::White)
+            .add_attribute(comfy_table::Attribute::Bold),
+        Cell::new(total_notes.to_string())
+            .fg(comfy_table::Color::Green)
+            .set_alignment(CellAlignment::Right),
+    ]);
+    table.add_row(vec![
+        Cell::new("Param Lanes")
+            .fg(comfy_table::Color::White)
+            .add_attribute(comfy_table::Attribute::Bold),
+        Cell::new(total_lanes.to_string())
+            .fg(comfy_table::Color::Yellow)
+            .set_alignment(CellAlignment::Right),
+    ]);
+    table.add_row(vec![
+        Cell::new("Note Density")
+            .fg(comfy_table::Color::White)
+            .add_attribute(comfy_table::Attribute::Bold),
+        Cell::new(format!("{note_density:.2} notes/cycle"))
+            .fg(comfy_table::Color::Cyan)
+            .set_alignment(CellAlignment::Right),
+    ]);
+
+    Ok(format!("{title}\n{table}"))
 }
 
 #[cfg(test)]

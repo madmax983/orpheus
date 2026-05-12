@@ -684,6 +684,11 @@ impl ReplSession {
                     let stats = crate::stats::tuning_stats(binding_name, tuning);
                     Ok(format!("\n{}", stats.trim_end()))
                 }
+                crate::value::Value::PluginPattern(pattern) => {
+                    let stats = crate::stats::plugin_pattern_stats(binding_name, pattern, cycles)
+                        .map_err(|error| error.to_string())?;
+                    Ok(format!("\n{}", stats.trim_end()))
+                }
                 _ => Err(format!(
                     "binding `{binding_name}` is a {} and cannot be analyzed",
                     value.kind_name()
@@ -756,6 +761,7 @@ impl ReplSession {
             crate::value::Value::Function(func) => Ok(func.explain(binding_name)),
             crate::value::Value::Pedal(pedal) => Ok(pedal.explain(binding_name)),
             crate::value::Value::Tuning(tuning) => Ok(tuning.explain(binding_name)),
+            crate::value::Value::PluginPattern(pattern) => Ok(pattern.explain(binding_name)),
             _ => Err(format!(
                 "binding `{binding_name}` is a {} and cannot be explained",
                 value.kind_name()
