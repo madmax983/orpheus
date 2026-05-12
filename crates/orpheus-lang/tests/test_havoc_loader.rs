@@ -1,3 +1,4 @@
+//! Integration tests for the file loader to ensure it safely handles missing or malformed paths without panicking.
 use orpheus_lang::load_file_strict;
 
 #[test]

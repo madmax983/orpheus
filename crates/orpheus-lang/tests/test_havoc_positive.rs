@@ -1,3 +1,4 @@
+//! Tests evaluating edge cases with extremely small positive numbers and float meters to ensure precise timing precision.
 use orpheus_lang::{ReplMode, eval_module};
 
 #[test]

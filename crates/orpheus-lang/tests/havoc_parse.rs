@@ -1,3 +1,4 @@
+//! Fuzz testing and property-based tests for the language parser to verify resilience against malformed syntax.
 use orpheus_lang::parse_module;
 use proptest::prelude::*;
 

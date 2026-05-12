@@ -1,3 +1,4 @@
+//! Chaos engineering tests for the Scala scale loader to ensure massive or maliciously crafted files do not cause Out-Of-Memory (OOM) panics.
 use orpheus_lang::parse_scala_source;
 
 /// 👺 Havoc: Tests that an extremely large note count declared in a Scala

@@ -1,3 +1,4 @@
+//! Integration tests for loading and executing external Orpheus modules (.ode) to verify the module system and namespace isolation.
 use std::path::PathBuf;
 
 use orpheus_lang::load_file_strict;

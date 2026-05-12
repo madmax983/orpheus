@@ -68,32 +68,59 @@ pub enum BuiltinKind {
     ReverbDamp,
     Cutoff,
     Chorus,
+    /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,
+    /// Rate control for a chorus effect, measured in Hz.
     ChorusRate,
+    /// The built-in audio compressor effect for dynamic range control.
     Compressor,
+    /// The threshold in decibels (dB) below which the compressor has no effect.
     CompressorThreshold,
+    /// The ratio of compression applied when the signal exceeds the threshold.
     CompressorRatio,
+    /// The resonance amount for a filter, emphasizing the cutoff frequency.
     Res,
+    /// The drive or saturation amount to apply to an audio signal.
     Drive,
+    /// The pulse width (duty cycle) for a pulse wave oscillator.
     Pw,
+    /// The stereo panning position, where -1.0 is hard left and 1.0 is hard right.
     Pan,
+    /// The primary pitch of an event, typically represented as a MIDI note number or frequency.
     Pitch,
+    /// A semitone offset applied to the base pitch of an event.
     Transpose,
+    /// Represents an audio sample loaded from disk or memory.
     Sample,
+    /// The precise onset time of an event relative to the start of its cycle.
     Onset,
+    /// The playback rate multiplier for a sample (e.g., 2.0 plays twice as fast).
     Rate,
+    /// The built-in operation for slicing a sample evenly into segments.
     Slice,
+    /// Selects a specific slice index from a sliced sample.
     SliceIdx,
+    /// The built-in pseudo-random number generator function.
     Rand,
+    /// The jux operation, applying a function to only the left or right channel of a pattern.
     Jux,
+    /// Evaluates expressions sequentially but passes the final value through unchanged.
     Through,
+    /// Represents a MIDI Continuous Controller (CC) message.
     MidiCc,
+    /// The chaos operation, introducing extreme instability into pattern generation.
     Chaos,
+    /// Reverses the second half of a cycle to create a palindromic pattern.
     Palindrome,
+    /// An operation to apply a specific microtonal tuning scale to an event.
     Tuning,
+    /// Loads a Scala (.scl) microtonal tuning file from disk.
     LoadScl,
+    /// Adjusts the base tuning frequency (e.g., A4 = 440 Hz) for pitch calculations.
     Tune,
+    /// Interprets a numeric string or value as hexadecimal.
     Hex,
+    /// Interprets a numeric string or value as binary.
     Bin,
 }
 
@@ -270,15 +297,20 @@ impl FunctionValue {
 /// A gate pattern passed to structural combinators like `mask`.
 #[derive(Clone, Debug)]
 pub enum GatePatternValue {
+    /// A gate pattern that contains sample events.
     Sample(SamplePatternValue),
+    /// A gate pattern that contains numeric events.
     Number(NumberPatternValue),
 }
 
 /// Indicates the order in which an arpeggiator traverses the notes of a chord.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ArpDirectionValue {
+    /// Ascending order (lowest to highest pitch).
     Up,
+    /// Descending order (highest to lowest pitch).
     Down,
+    /// Ascending then descending order repeatedly.
     PingPong,
 }
 

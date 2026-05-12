@@ -1,3 +1,4 @@
+//! Fuzz testing the pattern evaluation engine with random AST nodes and structural combinations to surface hidden panics or undefined behavior.
 use orpheus_lang::ReplMode;
 use orpheus_lang::eval_module;
 use proptest::prelude::*;

@@ -1,3 +1,4 @@
+//! Integration tests for the type inference engine to guarantee strict checking for `.ode` files and loose, forgiving checking for REPL sessions.
 use orpheus_lang::{ReplMode, Type, infer_module};
 
 #[test]

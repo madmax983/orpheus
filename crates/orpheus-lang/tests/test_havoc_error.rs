@@ -1,3 +1,4 @@
+//! Chaos tests verifying that deep IO errors, parser failures, and evaluation issues are correctly transformed into safe `EvalError`s instead of panics.
 use orpheus_lang::EvalError;
 
 #[test]
