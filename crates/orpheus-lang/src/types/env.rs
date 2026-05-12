@@ -109,6 +109,7 @@ impl TypeEnv {
                 Type::Tuning,
             )),
         );
+        install_plugin_builtins(&mut env);
 
         for name in [
             "ionian",
@@ -204,6 +205,31 @@ fn sample_control_scheme() -> TypeScheme {
         vec![Type::pattern(Type::Number), Type::pattern(Type::Sample)],
         Type::pattern(Type::Sample),
     ))
+}
+
+fn install_plugin_builtins(env: &mut TypeEnv) {
+    for name in ["vst", "au"] {
+        env.insert(
+            name,
+            TypeScheme::monomorphic(Type::curried(vec![Type::String], Type::Plugin)),
+        );
+    }
+    env.insert(
+        "notes",
+        TypeScheme::monomorphic(Type::curried(
+            vec![Type::pattern(Type::Number), Type::Plugin],
+            Type::Plugin,
+        )),
+    );
+    for name in ["p", "param"] {
+        env.insert(
+            name,
+            TypeScheme::monomorphic(Type::curried(
+                vec![Type::String, Type::pattern(Type::Number), Type::Plugin],
+                Type::Plugin,
+            )),
+        );
+    }
 }
 
 fn numeric_pattern_transform_scheme(alpha: TypeVarId) -> TypeScheme {

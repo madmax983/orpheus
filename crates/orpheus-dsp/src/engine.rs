@@ -12,6 +12,7 @@ use thiserror::Error;
 
 use crate::command::{EngineCommand, PatternUpdate, new_command_queue};
 use crate::effects::BusEffectState;
+use crate::plugin_host::PluginProcessor;
 use crate::routing::{BusEffectSpec, RoutingSnapshot, TrackSource};
 use crate::sample_bank::SampleBank;
 use crate::scheduler::Scheduler;
@@ -238,6 +239,7 @@ struct EngineCore {
     active_routing: RoutingSnapshot,
     pending_routing: Option<RoutingSnapshot>,
     bus_effect_states: Vec<Option<BusEffectState>>,
+    plugin_processors: Vec<Option<PluginProcessor>>,
     sample_rate: u32,
     channels: usize,
     current_frame: u64,
@@ -266,6 +268,7 @@ impl EngineCore {
         let active_routing = default_main_routing_snapshot();
         let track_mix_buffer = vec![(0.0, 0.0); active_routing.tracks().len()];
         let bus_mix_buffer = vec![(0.0, 0.0); active_routing.buses().len()];
+        let plugin_processors = vec![None; active_routing.tracks().len()];
         Ok(Self {
             scheduler: Scheduler::default(),
             active_voices: std::iter::repeat_with(|| None)
@@ -275,6 +278,7 @@ impl EngineCore {
             active_routing,
             pending_routing: None,
             bus_effect_states: Vec::new(),
+            plugin_processors,
             sample_rate: config.sample_rate.0,
             channels: usize::from(config.channels),
             current_frame: 0,
@@ -312,9 +316,10 @@ impl EngineCore {
                 Ok(())
             }
             EngineCommand::SwapRoutingSnapshot(snapshot) => {
+                self.prime_initial_routing =
+                    self.current_frame == 0 && routing_snapshot_has_main_plugin(&snapshot);
                 self.pending_routing = Some(snapshot);
                 self.pending_pattern_name = None;
-                self.prime_initial_routing = false;
                 Ok(())
             }
             EngineCommand::ReplaceSampleBank(sample_bank) => {
@@ -369,6 +374,9 @@ impl EngineCore {
         }
 
         self.sync_bus_effect_timing()?;
+        for processor in self.plugin_processors.iter_mut().flatten() {
+            processor.begin_cycle();
+        }
 
         for track in self.active_routing.tracks() {
             if let TrackSource::SamplePattern(events) = track.source() {
@@ -536,6 +544,15 @@ impl EngineCore {
         }
 
         self.bus_effect_states = bus_effect_states;
+        self.plugin_processors = self
+            .active_routing
+            .tracks()
+            .iter()
+            .map(|track| match track.source() {
+                TrackSource::Plugin(source) => Some(PluginProcessor::new(source, self.sample_rate)),
+                TrackSource::Unbound | TrackSource::SamplePattern(_) => None,
+            })
+            .collect();
         self.resize_mix_buffers();
         Ok(())
     }
@@ -576,6 +593,25 @@ impl EngineCore {
                     *slot = None;
                 }
             }
+        }
+
+        let local_frame = self
+            .current_frame
+            .saturating_sub(self.current_cycle_start_frame);
+        for track in self.active_routing.tracks() {
+            let TrackSource::Plugin(source) = track.source() else {
+                continue;
+            };
+            let track_index = usize::try_from(track.id().get())
+                .unwrap_or_else(|_| panic!("track id did not fit in usize"));
+            let Some(processor) = self.plugin_processors[track_index].as_mut() else {
+                continue;
+            };
+            let (plugin_left, plugin_right) =
+                processor.process_frame(source, local_frame, self.frames_per_cycle);
+            let (left, right) = &mut self.track_mix_buffer[track_index];
+            *left += plugin_left;
+            *right += plugin_right;
         }
 
         let mut master_left = 0.0_f32;
@@ -1054,10 +1090,19 @@ fn compatibility_routing_snapshot(pattern: &PatternUpdate) -> RoutingSnapshot {
 }
 
 fn routing_snapshot_has_audio(snapshot: &RoutingSnapshot) -> bool {
+    snapshot.tracks().iter().any(|track| {
+        matches!(
+            track.source(),
+            TrackSource::SamplePattern(_) | TrackSource::Plugin(_)
+        )
+    })
+}
+
+fn routing_snapshot_has_main_plugin(snapshot: &RoutingSnapshot) -> bool {
     snapshot
         .tracks()
         .iter()
-        .any(|track| matches!(track.source(), TrackSource::SamplePattern(_)))
+        .any(|track| track.name() == "main" && matches!(track.source(), TrackSource::Plugin(_)))
 }
 
 fn bus_effect_specs_match(left: Option<&BusEffectSpec>, right: Option<&BusEffectSpec>) -> bool {

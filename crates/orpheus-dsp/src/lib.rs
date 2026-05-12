@@ -16,6 +16,7 @@ mod engine;
 mod graph;
 mod offline;
 mod pedal;
+mod plugin_host;
 mod routing;
 mod sample;
 mod sample_bank;
@@ -36,6 +37,10 @@ pub use offline::{
 pub use pedal::{
     ClipModel, FilterMode, NodeRef, PEDAL_CONTROL_INTERVAL_SAMPLES, PedalGraphProgram,
     PedalInstance, PedalNode, PedalNodeKind, PedalStage, PreampModel, SignalKind, ToneModel,
+};
+pub use plugin_host::{
+    PluginBufferCapacities, PluginDescriptor, PluginFormat, PluginHostError, PluginNote,
+    PluginParameterLane, PluginProcessor, PluginTrackSource,
 };
 pub use routing::{
     BusEffectSpec, BusId, BusView, DelaySpec, ReverbSpec, RoutingError, RoutingSnapshot,

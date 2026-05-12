@@ -14,7 +14,7 @@ use orpheus_pattern::Event;
 use orpheus_pattern::Rational;
 use thiserror::Error;
 
-use crate::SampleTrigger;
+use crate::{PluginTrackSource, SampleTrigger};
 
 /// Stable identifier for a track in a routing snapshot.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -71,6 +71,8 @@ pub enum TrackSource {
     Unbound,
     /// A fully resolved unit-cycle sample pattern.
     SamplePattern(Box<[Event<SampleTrigger>]>),
+    /// A fully resolved headless plugin instrument track.
+    Plugin(PluginTrackSource),
 }
 
 impl TrackSource {

@@ -391,11 +391,13 @@ impl Inferencer {
             }
             (Type::Sample, Type::Sample)
             | (Type::Pedal, Type::Pedal)
+            | (Type::Plugin, Type::Plugin)
             | (Type::Note, Type::Note)
             | (Type::Number, Type::Number)
             | (Type::Duration, Type::Duration)
             | (Type::ArpDirection, Type::ArpDirection)
             | (Type::PitchClassSet, Type::PitchClassSet)
+            | (Type::Tuning, Type::Tuning)
             | (Type::String, Type::String)
             | (Type::Unit, Type::Unit) => Ok(()),
             (left, right) => {
@@ -432,6 +434,7 @@ impl Inferencer {
             }
             Type::Sample
             | Type::Pedal
+            | Type::Plugin
             | Type::Note
             | Type::Number
             | Type::Duration
@@ -457,6 +460,7 @@ impl Inferencer {
             ),
             Type::Sample => Type::Sample,
             Type::Pedal => Type::Pedal,
+            Type::Plugin => Type::Plugin,
             Type::Note => Type::Note,
             Type::Number => Type::Number,
             Type::Duration => Type::Duration,
@@ -510,6 +514,7 @@ fn substitute_scheme_vars(ty: &Type, replacements: &BTreeMap<TypeVarId, Type>) -
         Type::Var(var) => replacements.get(var).cloned().unwrap_or(Type::Var(*var)),
         Type::Sample => Type::Sample,
         Type::Pedal => Type::Pedal,
+        Type::Plugin => Type::Plugin,
         Type::Note => Type::Note,
         Type::Number => Type::Number,
         Type::Duration => Type::Duration,
@@ -535,6 +540,7 @@ fn free_type_vars(ty: &Type) -> BTreeSet<TypeVarId> {
         Type::Var(var) => BTreeSet::from([*var]),
         Type::Sample
         | Type::Pedal
+        | Type::Plugin
         | Type::Note
         | Type::Number
         | Type::Duration

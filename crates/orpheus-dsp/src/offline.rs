@@ -18,6 +18,7 @@ use thiserror::Error;
 use crate::SampleTrigger;
 use crate::effects::BusEffectState;
 use crate::engine::{DEFAULT_SAMPLE_RATE, DEFAULT_TEMPO_BPM, EngineError, frames_per_cycle};
+use crate::plugin_host::PluginProcessor;
 use crate::routing::{RoutingSnapshot, TrackId, TrackSource};
 use crate::sample_bank::SampleBank;
 use crate::scheduler::{ScheduledTrigger, Scheduler};
@@ -169,9 +170,11 @@ pub fn render_routing_snapshot_to_stereo_for_test(
                 .transpose()
         })
         .collect::<Result<Vec<_>, _>>()?;
+    let mut plugin_processors = plugin_processors_for_snapshot(snapshot);
     let mut rendered = Vec::with_capacity(total_frames_usize * usize::from(OFFLINE_CHANNELS));
 
     for frame in 0..total_frames {
+        begin_plugin_cycle_if_needed(frame, frames_per_cycle, &mut plugin_processors);
         activate_due_snapshot_voices(
             frame,
             frames_per_cycle,
@@ -179,12 +182,18 @@ pub fn render_routing_snapshot_to_stereo_for_test(
             &mut active_voices,
             sample_bank,
         )?;
+        let mut mix_state = SnapshotMixState {
+            active_voices: &mut active_voices,
+            track_mix_buffer: &mut track_mix_buffer,
+            bus_mix_buffer: &mut bus_mix_buffer,
+            bus_effect_states: &mut bus_effect_states,
+            plugin_processors: &mut plugin_processors,
+        };
         let (master_left, master_right) = mix_snapshot_frame(
             snapshot,
-            &mut active_voices,
-            &mut track_mix_buffer,
-            &mut bus_mix_buffer,
-            &mut bus_effect_states,
+            &mut mix_state,
+            frame % frames_per_cycle,
+            frames_per_cycle,
         );
 
         rendered.push(master_left.clamp(-1.0, 1.0));
@@ -253,6 +262,7 @@ pub fn render_routing_snapshot_to_stem_wavs(
                 .transpose()
         })
         .collect::<Result<Vec<_>, _>>()?;
+    let mut plugin_processors = plugin_processors_for_snapshot(snapshot);
 
     let mut track_stems =
         vec![
@@ -265,6 +275,7 @@ pub fn render_routing_snapshot_to_stem_wavs(
     ];
 
     for frame in 0..total_frames {
+        begin_plugin_cycle_if_needed(frame, frames_per_cycle, &mut plugin_processors);
         activate_due_snapshot_voices(
             frame,
             frames_per_cycle,
@@ -272,14 +283,23 @@ pub fn render_routing_snapshot_to_stem_wavs(
             &mut active_voices,
             sample_bank,
         )?;
+        let mut mix_state = SnapshotMixState {
+            active_voices: &mut active_voices,
+            track_mix_buffer: &mut track_mix_buffer,
+            bus_mix_buffer: &mut bus_mix_buffer,
+            bus_effect_states: &mut bus_effect_states,
+            plugin_processors: &mut plugin_processors,
+        };
+        let mut stem_frame = SnapshotStemFrame {
+            tracks: &mut track_stem_frame,
+            buses: &mut bus_stem_frame,
+        };
         mix_snapshot_frame_with_stems(
             snapshot,
-            &mut active_voices,
-            &mut track_mix_buffer,
-            &mut bus_mix_buffer,
-            &mut bus_effect_states,
-            &mut track_stem_frame,
-            &mut bus_stem_frame,
+            &mut mix_state,
+            &mut stem_frame,
+            frame % frames_per_cycle,
+            frames_per_cycle,
         );
 
         for (index, buffer) in track_stems.iter_mut().enumerate() {
@@ -294,6 +314,22 @@ pub fn render_routing_snapshot_to_stem_wavs(
         }
     }
 
+    write_rendered_stem_wavs(
+        snapshot,
+        output_dir,
+        &track_stems,
+        &bus_stems,
+        include_buses,
+    )
+}
+
+fn write_rendered_stem_wavs(
+    snapshot: &RoutingSnapshot,
+    output_dir: &Path,
+    track_stems: &[Vec<i32>],
+    bus_stems: &[Vec<i32>],
+    include_buses: bool,
+) -> Result<Vec<PathBuf>, OfflineRenderError> {
     let mut written_paths = Vec::new();
     for track in snapshot.tracks() {
         if track.source().is_unbound() || track.muted() {
@@ -369,16 +405,35 @@ fn activate_due_snapshot_voices(
     Ok(())
 }
 
+struct SnapshotMixState<'a> {
+    active_voices: &'a mut [Option<ActiveVoice>],
+    track_mix_buffer: &'a mut [(f32, f32)],
+    bus_mix_buffer: &'a mut [(f32, f32)],
+    bus_effect_states: &'a mut [Option<BusEffectState>],
+    plugin_processors: &'a mut [Option<PluginProcessor>],
+}
+
+struct SnapshotStemFrame<'a> {
+    tracks: &'a mut [(f32, f32)],
+    buses: &'a mut [(f32, f32)],
+}
+
 fn mix_snapshot_frame(
     snapshot: &RoutingSnapshot,
-    active_voices: &mut [Option<ActiveVoice>],
-    track_mix_buffer: &mut [(f32, f32)],
-    bus_mix_buffer: &mut [(f32, f32)],
-    bus_effect_states: &mut [Option<BusEffectState>],
+    state: &mut SnapshotMixState<'_>,
+    local_frame: u64,
+    frames_per_cycle: u64,
 ) -> (f32, f32) {
-    track_mix_buffer.fill((0.0, 0.0));
-    bus_mix_buffer.fill((0.0, 0.0));
-    mix_offline_voices_into_tracks(active_voices, track_mix_buffer);
+    state.track_mix_buffer.fill((0.0, 0.0));
+    state.bus_mix_buffer.fill((0.0, 0.0));
+    mix_offline_voices_into_tracks(state.active_voices, state.track_mix_buffer);
+    mix_offline_plugins_into_tracks(
+        snapshot,
+        state.plugin_processors,
+        state.track_mix_buffer,
+        local_frame,
+        frames_per_cycle,
+    );
 
     let mut master_left = 0.0_f32;
     let mut master_right = 0.0_f32;
@@ -386,7 +441,7 @@ fn mix_snapshot_frame(
     for track in snapshot.tracks() {
         let track_index = usize::try_from(track.id().get())
             .unwrap_or_else(|_| panic!("track id did not fit in usize"));
-        let (track_left, track_right) = track_mix_buffer[track_index];
+        let (track_left, track_right) = state.track_mix_buffer[track_index];
         let track_left = track_left * track.level();
         let track_right = track_right * track.level();
 
@@ -402,7 +457,7 @@ fn mix_snapshot_frame(
         for send in track.sends() {
             let bus_index = usize::try_from(send.bus_id().get())
                 .unwrap_or_else(|_| panic!("bus id did not fit in usize"));
-            let (bus_left, bus_right) = &mut bus_mix_buffer[bus_index];
+            let (bus_left, bus_right) = &mut state.bus_mix_buffer[bus_index];
             *bus_left = track_left.mul_add(send.level(), *bus_left);
             *bus_right = track_right.mul_add(send.level(), *bus_right);
         }
@@ -415,8 +470,8 @@ fn mix_snapshot_frame(
 
         let bus_index = usize::try_from(bus.id().get())
             .unwrap_or_else(|_| panic!("bus id did not fit in usize"));
-        let (bus_left, bus_right) = bus_mix_buffer[bus_index];
-        if let Some(effect) = bus_effect_states[bus_index].as_mut() {
+        let (bus_left, bus_right) = state.bus_mix_buffer[bus_index];
+        if let Some(effect) = state.bus_effect_states[bus_index].as_mut() {
             let (wet_left, wet_right) = effect.process_frame(bus_left, bus_right);
             master_left += wet_left;
             master_right += wet_right;
@@ -431,35 +486,40 @@ fn mix_snapshot_frame(
 
 fn mix_snapshot_frame_with_stems(
     snapshot: &RoutingSnapshot,
-    active_voices: &mut [Option<ActiveVoice>],
-    track_mix_buffer: &mut [(f32, f32)],
-    bus_mix_buffer: &mut [(f32, f32)],
-    bus_effect_states: &mut [Option<BusEffectState>],
-    track_stem_frame: &mut [(f32, f32)],
-    bus_stem_frame: &mut [(f32, f32)],
+    state: &mut SnapshotMixState<'_>,
+    stem_frame: &mut SnapshotStemFrame<'_>,
+    local_frame: u64,
+    frames_per_cycle: u64,
 ) {
-    track_mix_buffer.fill((0.0, 0.0));
-    bus_mix_buffer.fill((0.0, 0.0));
-    track_stem_frame.fill((0.0, 0.0));
-    bus_stem_frame.fill((0.0, 0.0));
-    mix_offline_voices_into_tracks(active_voices, track_mix_buffer);
+    state.track_mix_buffer.fill((0.0, 0.0));
+    state.bus_mix_buffer.fill((0.0, 0.0));
+    stem_frame.tracks.fill((0.0, 0.0));
+    stem_frame.buses.fill((0.0, 0.0));
+    mix_offline_voices_into_tracks(state.active_voices, state.track_mix_buffer);
+    mix_offline_plugins_into_tracks(
+        snapshot,
+        state.plugin_processors,
+        state.track_mix_buffer,
+        local_frame,
+        frames_per_cycle,
+    );
 
     for track in snapshot.tracks() {
         let track_index = usize::try_from(track.id().get())
             .unwrap_or_else(|_| panic!("track id did not fit in usize"));
-        let (track_left, track_right) = track_mix_buffer[track_index];
+        let (track_left, track_right) = state.track_mix_buffer[track_index];
         let track_left = track_left * track.level();
         let track_right = track_right * track.level();
 
         if track.muted() {
             continue;
         }
-        track_stem_frame[track_index] = (track_left, track_right);
+        stem_frame.tracks[track_index] = (track_left, track_right);
 
         for send in track.sends() {
             let bus_index = usize::try_from(send.bus_id().get())
                 .unwrap_or_else(|_| panic!("bus id did not fit in usize"));
-            let (bus_left, bus_right) = &mut bus_mix_buffer[bus_index];
+            let (bus_left, bus_right) = &mut state.bus_mix_buffer[bus_index];
             *bus_left = track_left.mul_add(send.level(), *bus_left);
             *bus_right = track_right.mul_add(send.level(), *bus_right);
         }
@@ -472,12 +532,59 @@ fn mix_snapshot_frame_with_stems(
 
         let bus_index = usize::try_from(bus.id().get())
             .unwrap_or_else(|_| panic!("bus id did not fit in usize"));
-        let (bus_left, bus_right) = bus_mix_buffer[bus_index];
-        if let Some(effect) = bus_effect_states[bus_index].as_mut() {
-            bus_stem_frame[bus_index] = effect.process_frame(bus_left, bus_right);
+        let (bus_left, bus_right) = state.bus_mix_buffer[bus_index];
+        if let Some(effect) = state.bus_effect_states[bus_index].as_mut() {
+            stem_frame.buses[bus_index] = effect.process_frame(bus_left, bus_right);
         } else {
-            bus_stem_frame[bus_index] = (bus_left, bus_right);
+            stem_frame.buses[bus_index] = (bus_left, bus_right);
         }
+    }
+}
+
+fn plugin_processors_for_snapshot(snapshot: &RoutingSnapshot) -> Vec<Option<PluginProcessor>> {
+    snapshot
+        .tracks()
+        .iter()
+        .map(|track| match track.source() {
+            TrackSource::Plugin(source) => Some(PluginProcessor::new(source, DEFAULT_SAMPLE_RATE)),
+            TrackSource::Unbound | TrackSource::SamplePattern(_) => None,
+        })
+        .collect()
+}
+
+fn begin_plugin_cycle_if_needed(
+    frame: u64,
+    frames_per_cycle: u64,
+    plugin_processors: &mut [Option<PluginProcessor>],
+) {
+    if !frame.is_multiple_of(frames_per_cycle) {
+        return;
+    }
+    for processor in plugin_processors.iter_mut().flatten() {
+        processor.begin_cycle();
+    }
+}
+
+fn mix_offline_plugins_into_tracks(
+    snapshot: &RoutingSnapshot,
+    plugin_processors: &mut [Option<PluginProcessor>],
+    track_mix_buffer: &mut [(f32, f32)],
+    local_frame: u64,
+    frames_per_cycle: u64,
+) {
+    for track in snapshot.tracks() {
+        let TrackSource::Plugin(source) = track.source() else {
+            continue;
+        };
+        let track_index = usize::try_from(track.id().get())
+            .unwrap_or_else(|_| panic!("track id did not fit in usize"));
+        let Some(processor) = plugin_processors[track_index].as_mut() else {
+            continue;
+        };
+        let (left, right) = processor.process_frame(source, local_frame, frames_per_cycle);
+        let (track_left, track_right) = &mut track_mix_buffer[track_index];
+        *track_left += left;
+        *track_right += right;
     }
 }
 
