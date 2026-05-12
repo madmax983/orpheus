@@ -6,8 +6,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
+use std::sync::mpsc;
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use thiserror::Error;
 
@@ -24,6 +27,7 @@ const SNARE_WAV: &[u8] = include_bytes!("../assets/snare.wav");
 const CLAP_WAV: &[u8] = include_bytes!("../assets/clap.wav");
 const HIHAT_WAV: &[u8] = include_bytes!("../assets/hihat.wav");
 const SAMPLE_MANIFEST_FILE: &str = "samples.ron";
+const DEFAULT_WATCH_INTERVAL: Duration = Duration::from_millis(50);
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlaybackSample {
@@ -343,6 +347,167 @@ pub enum SampleBankError {
     },
 }
 
+/// A non-fatal issue discovered during background sample-library scanning.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SampleLibraryScanError {
+    path: Box<str>,
+    message: Box<str>,
+}
+
+impl SampleLibraryScanError {
+    fn new(path: impl Into<Box<str>>, message: impl Into<Box<str>>) -> Self {
+        Self {
+            path: path.into(),
+            message: message.into(),
+        }
+    }
+
+    fn from_decode(path: &Path, source: &SampleError) -> Self {
+        Self::new(path.display().to_string(), source.to_string())
+    }
+
+    fn from_bank_error(source: &SampleBankError) -> Self {
+        Self::new("", source.to_string())
+    }
+
+    /// The path associated with the scan issue, when one is available.
+    #[must_use]
+    pub const fn path(&self) -> &str {
+        &self.path
+    }
+
+    /// Human-readable issue details suitable for logging.
+    #[must_use]
+    pub const fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+/// A complete sample-bank snapshot published by a background library watcher.
+#[derive(Clone, Debug)]
+pub struct SampleLibraryReload {
+    revision: u64,
+    bank: SampleBank,
+    tokens: Vec<String>,
+    errors: Vec<SampleLibraryScanError>,
+}
+
+impl SampleLibraryReload {
+    fn new(revision: u64, bank: SampleBank, errors: Vec<SampleLibraryScanError>) -> Self {
+        let tokens = bank.available_tokens();
+        Self {
+            revision,
+            bank,
+            tokens,
+            errors,
+        }
+    }
+
+    /// Monotonically increasing revision assigned by the watcher thread.
+    #[must_use]
+    pub const fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    /// Immutable loaded sample-bank snapshot.
+    #[must_use]
+    pub const fn bank(&self) -> &SampleBank {
+        &self.bank
+    }
+
+    /// Tokens available in the published bank.
+    #[must_use]
+    pub fn tokens(&self) -> &[String] {
+        &self.tokens
+    }
+
+    /// Non-fatal scan errors encountered while producing this snapshot.
+    #[must_use]
+    pub fn errors(&self) -> &[SampleLibraryScanError] {
+        &self.errors
+    }
+}
+
+/// Polling configuration for [`SampleLibraryWatcher`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SampleLibraryWatcherConfig {
+    /// How often the background worker checks for local filesystem changes.
+    pub poll_interval: Duration,
+}
+
+impl Default for SampleLibraryWatcherConfig {
+    fn default() -> Self {
+        Self {
+            poll_interval: DEFAULT_WATCH_INTERVAL,
+        }
+    }
+}
+
+/// Background watcher for a local sample-library directory.
+///
+/// The watcher performs all file-system scans and audio decoding on its worker
+/// thread. Callers receive complete immutable [`SampleBank`] snapshots through
+/// [`Self::try_recv`] and can hand them to the audio engine without blocking the
+/// render thread.
+pub struct SampleLibraryWatcher {
+    reload_rx: mpsc::Receiver<SampleLibraryReload>,
+    stop_tx: mpsc::Sender<()>,
+    worker: Option<thread::JoinHandle<()>>,
+}
+
+impl SampleLibraryWatcher {
+    /// Starts watching `directory` recursively for supported sample changes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SampleBankError`] if the initial directory inventory cannot be
+    /// read.
+    pub fn spawn(
+        directory: impl AsRef<Path>,
+        config: SampleLibraryWatcherConfig,
+    ) -> Result<Self, SampleBankError> {
+        let directory = directory.as_ref().to_path_buf();
+        let initial_inventory = sample_library_inventory(&directory)?;
+        let poll_interval = if config.poll_interval.is_zero() {
+            DEFAULT_WATCH_INTERVAL
+        } else {
+            config.poll_interval
+        };
+        let (reload_tx, reload_rx) = mpsc::channel();
+        let (stop_tx, stop_rx) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            run_sample_library_watcher(
+                &directory,
+                initial_inventory,
+                poll_interval,
+                &reload_tx,
+                &stop_rx,
+            );
+        });
+
+        Ok(Self {
+            reload_rx,
+            stop_tx,
+            worker: Some(worker),
+        })
+    }
+
+    /// Receives one published reload snapshot, if one is currently available.
+    #[must_use]
+    pub fn try_recv(&mut self) -> Option<SampleLibraryReload> {
+        self.reload_rx.try_recv().ok()
+    }
+}
+
+impl Drop for SampleLibraryWatcher {
+    fn drop(&mut self) {
+        let _ = self.stop_tx.send(());
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+    }
+}
+
 /// Loads a sample bank from built-ins plus any supported WAV overrides found in
 /// `directory`.
 ///
@@ -360,51 +525,50 @@ pub enum SampleBankError {
 pub fn load_sample_bank_from_directory(
     directory: impl AsRef<Path>,
 ) -> Result<SampleBank, SampleBankError> {
-    let directory = directory.as_ref();
-    let display_path = directory.display().to_string();
-    let mut entries = fs::read_dir(directory)
-        .map_err(|source| SampleBankError::DirectoryIo {
-            path: display_path.clone().into_boxed_str(),
-            message: match source.kind() {
-                std::io::ErrorKind::NotFound => "file not found".into(),
-                std::io::ErrorKind::PermissionDenied => "permission denied".into(),
-                _ => source.to_string().into_boxed_str(),
-            },
-        })?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|source| SampleBankError::DirectoryIo {
-            path: display_path.clone().into_boxed_str(),
-            message: match source.kind() {
-                std::io::ErrorKind::NotFound => "file not found".into(),
-                std::io::ErrorKind::PermissionDenied => "permission denied".into(),
-                _ => source.to_string().into_boxed_str(),
-            },
-        })?;
-    entries.sort_by_key(std::fs::DirEntry::file_name);
+    load_sample_bank_from_directory_inner(directory.as_ref(), DecodeFailureMode::Strict)
+        .map(|scan| scan.bank)
+}
+
+fn load_sample_bank_from_directory_lossy(
+    directory: &Path,
+) -> Result<SampleDirectoryScan, SampleBankError> {
+    load_sample_bank_from_directory_inner(directory, DecodeFailureMode::CollectErrors)
+}
+
+fn load_sample_bank_from_directory_inner(
+    directory: &Path,
+    decode_failure_mode: DecodeFailureMode,
+) -> Result<SampleDirectoryScan, SampleBankError> {
+    let sample_paths = collect_supported_sample_paths(directory)?;
     let manifest_path = directory.join(SAMPLE_MANIFEST_FILE);
     let manifest = load_optional_manifest(&manifest_path)?;
 
     let mut bank = SampleBank::load_builtin();
     let mut inferred_tokens = BTreeMap::<String, PlaybackSample>::new();
     let mut candidates: BTreeMap<&'static str, (u8, PlaybackSample)> = BTreeMap::new();
+    let mut errors = Vec::new();
 
-    for entry in entries {
-        let path = entry.path();
-        if !path.is_file() || !is_supported_wav_path(&path) {
-            continue;
-        }
+    for path in sample_paths {
         let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
             continue;
         };
-        let sample = load_wav_for_test(&path).map_err(|source| SampleBankError::Decode {
-            path: path.display().to_string().into_boxed_str(),
-            source,
-        })?;
+        let sample = match load_wav_for_test(&path) {
+            Ok(sample) => sample,
+            Err(source) => {
+                handle_decode_error(&path, source, decode_failure_mode, &mut errors)?;
+                continue;
+            }
+        };
         let playback_sample: PlaybackSample = sample.into();
+        let Some(inferred_token) = inferred_token_from_path(directory, &path) else {
+            continue;
+        };
         inferred_tokens
-            .entry(inferred_token_from_stem(stem))
+            .entry(inferred_token)
             .or_insert_with(|| playback_sample.clone());
-        if let Some((token, priority)) = token_from_stem(stem) {
+        if is_top_level_sample_path(directory, &path)
+            && let Some((token, priority)) = token_from_stem(stem)
+        {
             match candidates.get(token) {
                 Some((existing_priority, _)) if *existing_priority <= priority => {}
                 _ => {
@@ -420,11 +584,17 @@ pub fn load_sample_bank_from_directory(
     for (token, (_priority, sample)) in candidates {
         bank.insert_token(token, sample);
     }
-    apply_manifest_tokens(&mut bank, manifest.as_ref(), directory)?;
+    apply_manifest_tokens(
+        &mut bank,
+        manifest.as_ref(),
+        directory,
+        decode_failure_mode,
+        &mut errors,
+    )?;
     apply_manifest_regions(&mut bank, manifest.as_ref(), &manifest_path)?;
     apply_manifest_aliases(&mut bank, manifest.as_ref(), &manifest_path)?;
 
-    Ok(bank)
+    Ok(SampleDirectoryScan { bank, errors })
 }
 
 /// Loads one embedded built-in sample for deterministic tests.
@@ -448,7 +618,7 @@ fn builtin_sample_bytes(name: &str) -> Result<(&'static [u8], &'static str), Sam
     }
 }
 
-fn is_supported_wav_path(path: &Path) -> bool {
+fn is_supported_sample_path(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
         .is_some_and(|extension| matches!(extension.to_ascii_lowercase().as_str(), "wav" | "wave"))
@@ -489,6 +659,8 @@ fn apply_manifest_tokens(
     bank: &mut SampleBank,
     manifest: Option<&SampleManifest>,
     directory: &Path,
+    decode_failure_mode: DecodeFailureMode,
+    errors: &mut Vec<SampleLibraryScanError>,
 ) -> Result<(), SampleBankError> {
     let Some(manifest) = manifest else {
         return Ok(());
@@ -496,10 +668,13 @@ fn apply_manifest_tokens(
 
     for (token, relative_path) in &manifest.tokens {
         let path = directory.join(relative_path);
-        let sample = load_wav_for_test(&path).map_err(|source| SampleBankError::Decode {
-            path: path.display().to_string().into_boxed_str(),
-            source,
-        })?;
+        let sample = match load_wav_for_test(&path) {
+            Ok(sample) => sample,
+            Err(source) => {
+                handle_decode_error(&path, source, decode_failure_mode, errors)?;
+                continue;
+            }
+        };
         bank.insert_token(token, sample.into());
     }
 
@@ -622,10 +797,6 @@ fn resolve_region_target(
     Ok(base.compose_region(region))
 }
 
-fn inferred_token_from_stem(stem: &str) -> String {
-    stem.to_ascii_lowercase()
-}
-
 fn compose_relative_slice(
     base_start: f64,
     base_end: f64,
@@ -637,4 +808,249 @@ fn compose_relative_slice(
         range.mul_add(relative_start, base_start),
         range.mul_add(relative_end, base_start),
     )
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DecodeFailureMode {
+    Strict,
+    CollectErrors,
+}
+
+#[derive(Debug)]
+struct SampleDirectoryScan {
+    bank: SampleBank,
+    errors: Vec<SampleLibraryScanError>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+struct SampleFileFingerprint {
+    path: PathBuf,
+    len: u64,
+    modified_nanos: u128,
+}
+
+fn run_sample_library_watcher(
+    directory: &Path,
+    mut inventory: Vec<SampleFileFingerprint>,
+    poll_interval: Duration,
+    reload_tx: &mpsc::Sender<SampleLibraryReload>,
+    stop_rx: &mpsc::Receiver<()>,
+) {
+    let mut revision = 0_u64;
+    loop {
+        match stop_rx.recv_timeout(poll_interval) {
+            Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+        }
+
+        let next_inventory = match sample_library_inventory(directory) {
+            Ok(next_inventory) => next_inventory,
+            Err(error) => {
+                revision = revision.saturating_add(1);
+                let reload = SampleLibraryReload::new(
+                    revision,
+                    SampleBank::load_builtin(),
+                    vec![SampleLibraryScanError::from_bank_error(&error)],
+                );
+                if reload_tx.send(reload).is_err() {
+                    break;
+                }
+                continue;
+            }
+        };
+
+        if next_inventory == inventory {
+            continue;
+        }
+        inventory = next_inventory;
+        revision = revision.saturating_add(1);
+
+        let reload = match load_sample_bank_from_directory_lossy(directory) {
+            Ok(scan) => SampleLibraryReload::new(revision, scan.bank, scan.errors),
+            Err(error) => SampleLibraryReload::new(
+                revision,
+                SampleBank::load_builtin(),
+                vec![SampleLibraryScanError::from_bank_error(&error)],
+            ),
+        };
+        if reload_tx.send(reload).is_err() {
+            break;
+        }
+    }
+}
+
+fn collect_supported_sample_paths(directory: &Path) -> Result<Vec<PathBuf>, SampleBankError> {
+    let mut paths = Vec::new();
+    collect_supported_sample_paths_into(directory, directory, &mut paths)?;
+    paths.sort();
+    Ok(paths)
+}
+
+fn collect_supported_sample_paths_into(
+    root: &Path,
+    directory: &Path,
+    paths: &mut Vec<PathBuf>,
+) -> Result<(), SampleBankError> {
+    let entries = read_sorted_directory(directory)?;
+    for entry in entries {
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .map_err(|source| directory_io_error(root, &source))?;
+        if file_type.is_dir() {
+            collect_supported_sample_paths_into(root, &path, paths)?;
+        } else if file_type.is_file() && is_supported_sample_path(&path) {
+            paths.push(path);
+        }
+    }
+    Ok(())
+}
+
+fn sample_library_inventory(
+    directory: &Path,
+) -> Result<Vec<SampleFileFingerprint>, SampleBankError> {
+    let mut fingerprints = Vec::new();
+    collect_sample_library_inventory_into(directory, directory, &mut fingerprints)?;
+    let manifest_path = directory.join(SAMPLE_MANIFEST_FILE);
+    if manifest_path.is_file() {
+        fingerprints.push(fingerprint_path(directory, &manifest_path)?);
+    }
+    fingerprints.sort();
+    Ok(fingerprints)
+}
+
+fn collect_sample_library_inventory_into(
+    root: &Path,
+    directory: &Path,
+    fingerprints: &mut Vec<SampleFileFingerprint>,
+) -> Result<(), SampleBankError> {
+    let entries = read_sorted_directory(directory)?;
+    for entry in entries {
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .map_err(|source| directory_io_error(root, &source))?;
+        if file_type.is_dir() {
+            collect_sample_library_inventory_into(root, &path, fingerprints)?;
+        } else if file_type.is_file() && is_supported_sample_path(&path) {
+            fingerprints.push(fingerprint_path(root, &path)?);
+        }
+    }
+    Ok(())
+}
+
+fn read_sorted_directory(directory: &Path) -> Result<Vec<fs::DirEntry>, SampleBankError> {
+    let mut entries = fs::read_dir(directory)
+        .map_err(|source| directory_io_error(directory, &source))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|source| directory_io_error(directory, &source))?;
+    entries.sort_by_key(std::fs::DirEntry::file_name);
+    Ok(entries)
+}
+
+fn directory_io_error(path: &Path, source: &std::io::Error) -> SampleBankError {
+    SampleBankError::DirectoryIo {
+        path: path.display().to_string().into_boxed_str(),
+        message: readable_io_message(source).into_boxed_str(),
+    }
+}
+
+fn readable_io_message(source: &std::io::Error) -> String {
+    match source.kind() {
+        std::io::ErrorKind::NotFound => "file not found".to_owned(),
+        std::io::ErrorKind::PermissionDenied => "permission denied".to_owned(),
+        _ => source.to_string(),
+    }
+}
+
+fn fingerprint_path(root: &Path, path: &Path) -> Result<SampleFileFingerprint, SampleBankError> {
+    let metadata = path
+        .metadata()
+        .map_err(|source| directory_io_error(root, &source))?;
+    let modified_nanos = metadata
+        .modified()
+        .ok()
+        .and_then(system_time_nanos)
+        .unwrap_or(0);
+    Ok(SampleFileFingerprint {
+        path: path
+            .strip_prefix(root)
+            .unwrap_or(path)
+            .components()
+            .filter_map(component_to_path_buf)
+            .collect(),
+        len: metadata.len(),
+        modified_nanos,
+    })
+}
+
+fn system_time_nanos(time: SystemTime) -> Option<u128> {
+    time.duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_nanos())
+}
+
+fn component_to_path_buf(component: Component<'_>) -> Option<PathBuf> {
+    match component {
+        Component::Normal(value) => Some(PathBuf::from(value)),
+        Component::CurDir | Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+            None
+        }
+    }
+}
+
+fn handle_decode_error(
+    path: &Path,
+    source: SampleError,
+    mode: DecodeFailureMode,
+    errors: &mut Vec<SampleLibraryScanError>,
+) -> Result<(), SampleBankError> {
+    match mode {
+        DecodeFailureMode::Strict => Err(SampleBankError::Decode {
+            path: path.display().to_string().into_boxed_str(),
+            source,
+        }),
+        DecodeFailureMode::CollectErrors => {
+            errors.push(SampleLibraryScanError::from_decode(path, &source));
+            Ok(())
+        }
+    }
+}
+
+fn inferred_token_from_path(root: &Path, path: &Path) -> Option<String> {
+    let relative = path.strip_prefix(root).ok()?;
+    let mut components = Vec::new();
+    if let Some(parent) = relative.parent() {
+        for component in parent.components() {
+            if let Component::Normal(value) = component {
+                components.push(sanitize_token_component(value.to_str()?));
+            }
+        }
+    }
+    components.push(sanitize_token_component(path.file_stem()?.to_str()?));
+    Some(components.join("/"))
+}
+
+fn sanitize_token_component(raw: &str) -> String {
+    let mut component = String::with_capacity(raw.len());
+    let mut previous_was_separator = false;
+    for ch in raw.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            component.push(ch.to_ascii_lowercase());
+            previous_was_separator = false;
+        } else if !previous_was_separator {
+            component.push('_');
+            previous_was_separator = true;
+        }
+    }
+    let component = component.trim_matches('_');
+    if component.is_empty() {
+        "sample".to_owned()
+    } else {
+        component.to_owned()
+    }
+}
+
+fn is_top_level_sample_path(root: &Path, path: &Path) -> bool {
+    path.parent().is_some_and(|parent| parent == root)
 }

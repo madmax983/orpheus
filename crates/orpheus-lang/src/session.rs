@@ -20,8 +20,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use orpheus_dsp::{
-    EngineCommand, EngineHandle, PatternUpdate, SampleBank, TransportSnapshot,
-    load_sample_bank_from_directory, render_routing_snapshot_to_stem_wavs,
+    EngineCommand, EngineHandle, PatternUpdate, SampleBank, SampleLibraryWatcher,
+    SampleLibraryWatcherConfig, TransportSnapshot, load_sample_bank_from_directory,
+    render_routing_snapshot_to_stem_wavs,
 };
 use orpheus_pattern::Rational;
 
@@ -58,6 +59,7 @@ pub struct ReplSession {
     engine: EngineHandle,
     sample_bank: SampleBank,
     sample_directory: Option<PathBuf>,
+    sample_watcher: Option<SampleLibraryWatcher>,
     bindings: BTreeMap<String, Value>,
     type_bindings: BTreeMap<String, Type>,
     mixer: MixerState,
@@ -294,6 +296,7 @@ impl ReplSession {
             engine,
             sample_bank: SampleBank::load_builtin(),
             sample_directory: None,
+            sample_watcher: None,
             bindings: BTreeMap::new(),
             type_bindings: BTreeMap::new(),
             mixer: MixerState::default(),
@@ -332,6 +335,7 @@ impl ReplSession {
     /// ```
     pub fn eval_line(&mut self, source: &str) -> Result<String, String> {
         self.apply_midi_note_mappings()?;
+        self.poll_sample_watcher()?;
         if source.starts_with(':') {
             return self.eval_command(source);
         }
@@ -985,6 +989,7 @@ impl ReplSession {
         let available_tokens = sample_bank.available_tokens();
         self.sample_bank = sample_bank.clone();
         self.sample_directory = Some(directory.clone());
+        self.start_sample_watcher(&directory)?;
         self.engine
             .enqueue(EngineCommand::ReplaceSampleBank(sample_bank))
             .map_err(|error| error.to_string())?;
@@ -1030,7 +1035,7 @@ impl ReplSession {
             reserved_names.insert(binding_name.clone());
             stems.push(ImportedStem {
                 binding_name,
-                token: stem.to_ascii_lowercase(),
+                token: sample_token_name(stem),
             });
         }
 
@@ -1055,6 +1060,7 @@ impl ReplSession {
         self.mixer = mixer;
         self.sample_bank = sample_bank.clone();
         self.sample_directory = Some(directory.clone());
+        self.start_sample_watcher(&directory)?;
         self.engine
             .enqueue(EngineCommand::ReplaceSampleBank(sample_bank))
             .map_err(|error| error.to_string())?;
@@ -1181,6 +1187,40 @@ impl ReplSession {
             .enqueue(EngineCommand::StopTransport)
             .map_err(|error| format!("failed to enqueue stop transport command: {error}"))?;
         Ok("transport stopped".to_owned())
+    }
+
+    fn start_sample_watcher(&mut self, directory: &Path) -> Result<(), String> {
+        let watcher = SampleLibraryWatcher::spawn(directory, SampleLibraryWatcherConfig::default())
+            .map_err(|error| error.to_string())?;
+        self.sample_watcher = Some(watcher);
+        Ok(())
+    }
+
+    fn poll_sample_watcher(&mut self) -> Result<(), String> {
+        let Some(watcher) = self.sample_watcher.as_mut() else {
+            return Ok(());
+        };
+        let mut latest = None;
+        while let Some(reload) = watcher.try_recv() {
+            latest = Some(reload);
+        }
+        let Some(reload) = latest else {
+            return Ok(());
+        };
+
+        for issue in reload.errors() {
+            eprintln!(
+                "sample hot reload issue at `{}`: {}",
+                issue.path(),
+                issue.message()
+            );
+        }
+
+        let sample_bank = reload.bank().clone();
+        self.sample_bank = sample_bank.clone();
+        self.engine
+            .enqueue(EngineCommand::ReplaceSampleBank(sample_bank))
+            .map_err(|error| error.to_string())
     }
 
     fn eval_track_command(&mut self, args: &str) -> Result<String, String> {
@@ -1726,6 +1766,7 @@ impl ReplSession {
     #[doc(hidden)]
     pub fn render_test_block_for_tui(&mut self, frames: u64) -> Vec<f32> {
         let _ = self.apply_midi_note_mappings();
+        let _ = self.poll_sample_watcher();
         self.engine.render_test_block(frames)
     }
 
@@ -1996,6 +2037,27 @@ fn stem_binding_name(stem: &str) -> String {
         name.push_str("_stem");
     }
     name
+}
+
+fn sample_token_name(stem: &str) -> String {
+    let mut token = String::with_capacity(stem.len());
+    let mut previous_was_separator = false;
+    for ch in stem.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            token.push(ch.to_ascii_lowercase());
+            previous_was_separator = false;
+        } else if !previous_was_separator {
+            token.push('_');
+            previous_was_separator = true;
+        }
+    }
+
+    let token = token.trim_matches('_');
+    if token.is_empty() {
+        "sample".to_owned()
+    } else {
+        token.to_owned()
+    }
 }
 
 fn is_reserved_routing_name(name: &str) -> bool {
@@ -2763,6 +2825,33 @@ mod tests {
     }
 
     #[test]
+    fn samples_command_hot_reloads_added_files_for_live_playback() {
+        let mut session = ReplSession::new();
+        let directory = temp_directory("repl-hot-reload");
+
+        session.eval_line(":tempo 48000").unwrap();
+        let _ = session.render_test_block_for_tui(1);
+        session
+            .eval_line(&format!(":samples {}", directory.display()))
+            .unwrap();
+        session.eval_line(r#"lead = sample("rim")"#).unwrap();
+
+        let silent = session.render_test_block_for_tui(4);
+        assert!(silent.iter().all(|sample| sample.abs() <= f32::EPSILON));
+
+        let start = std::time::Instant::now();
+        write_wav(directory.join("rim.wav"), &[0.55, 0.0, 0.0, 0.0]);
+        let rendered = wait_for_audible_hot_reload(&mut session, start);
+        let expected = 0.55 * edge_envelope(0, 4);
+
+        assert!(start.elapsed() <= std::time::Duration::from_millis(500));
+        assert!((rendered[0] - expected).abs() < f32::EPSILON);
+        assert!((rendered[1] - expected).abs() < f32::EPSILON);
+
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
     fn reload_samples_command_swaps_sample_bank_at_cycle_boundary() {
         let mut session = ReplSession::new();
         let directory = temp_directory("repl-reload");
@@ -3085,6 +3174,24 @@ mod tests {
             writer.write_sample(*sample).unwrap();
         }
         writer.finalize().unwrap();
+    }
+
+    fn wait_for_audible_hot_reload(
+        session: &mut ReplSession,
+        start: std::time::Instant,
+    ) -> Vec<f32> {
+        loop {
+            let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
+            let rendered = session.render_test_block_for_tui(4);
+            if rendered.iter().any(|sample| sample.abs() > f32::EPSILON) {
+                return rendered;
+            }
+            assert!(
+                start.elapsed() <= std::time::Duration::from_millis(500),
+                "sample hot reload did not become audible in time"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
     }
 
     fn edge_envelope(frame_index: u32, total_frames: u32) -> f32 {
