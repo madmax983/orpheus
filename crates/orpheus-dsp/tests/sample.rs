@@ -1,10 +1,12 @@
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use orpheus_dsp::{
-    SampleBankError, SampleError, load_builtin_sample_for_test, load_sample_bank_from_directory,
+    SampleBankError, SampleError, SampleLibraryReload, SampleLibraryWatcher,
+    SampleLibraryWatcherConfig, load_builtin_sample_for_test, load_sample_bank_from_directory,
     load_wav_for_test,
 };
 
@@ -136,6 +138,71 @@ fn sample_directory_scan_infers_token_names_from_filenames() {
 }
 
 #[test]
+fn sample_directory_scan_recurses_and_uses_relative_token_paths() {
+    let directory = temp_directory("sample-recursive");
+    let drums = directory.join("drums");
+    fs::create_dir_all(&drums).unwrap();
+    write_wav(drums.join("Kick Main.wav"), &[0.33, 0.0, 0.0, 0.0]);
+
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+    let sample = bank.get_by_token("drums/kick_main").unwrap();
+
+    assert!((sample.frames()[0] - 0.33).abs() < f32::EPSILON);
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn sample_library_watcher_loads_new_files_within_latency_budget() {
+    let directory = temp_directory("sample-watcher-add");
+    let mut watcher = watch_fast(&directory);
+    let start = Instant::now();
+
+    write_wav(directory.join("rim.wav"), &[0.44, 0.0, 0.0, 0.0]);
+    let reload = wait_for_reload(&mut watcher, |reload| {
+        reload.bank().get_by_token("rim").is_some()
+    });
+
+    assert!(start.elapsed() <= Duration::from_millis(500));
+    assert!(reload.errors().is_empty());
+    assert!(reload.tokens().contains(&"rim".to_owned()));
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn sample_library_watcher_purges_deleted_samples() {
+    let directory = temp_directory("sample-watcher-delete");
+    write_wav(directory.join("loop.wav"), &[0.12, 0.0, 0.0, 0.0]);
+    let mut watcher = watch_fast(&directory);
+
+    fs::remove_file(directory.join("loop.wav")).unwrap();
+    let reload = wait_for_reload(&mut watcher, |reload| {
+        !reload.tokens().contains(&"loop".to_owned())
+    });
+
+    assert!(reload.bank().get_by_token("loop").is_none());
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn sample_library_watcher_reports_corrupt_files_but_keeps_valid_samples() {
+    let directory = temp_directory("sample-watcher-corrupt");
+    let mut watcher = watch_fast(&directory);
+
+    fs::write(directory.join("broken.wav"), b"not a wav").unwrap();
+    write_wav(directory.join("good.wav"), &[0.66, 0.0, 0.0, 0.0]);
+    let reload = wait_for_reload(&mut watcher, |reload| {
+        reload.bank().get_by_token("good").is_some() && !reload.errors().is_empty()
+    });
+
+    assert!(reload.bank().get_by_token("broken").is_none());
+
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn temp_fixture_uses_system_temp_directory() {
     let path = temp_fixture("fixture.wav");
 
@@ -150,6 +217,32 @@ fn temp_directory(name: &str) -> PathBuf {
     let directory = temp_fixture(name);
     fs::create_dir_all(&directory).unwrap();
     directory
+}
+
+fn watch_fast(directory: &std::path::Path) -> SampleLibraryWatcher {
+    let config = SampleLibraryWatcherConfig {
+        poll_interval: Duration::from_millis(10),
+    };
+    SampleLibraryWatcher::spawn(directory, config).unwrap()
+}
+
+fn wait_for_reload(
+    watcher: &mut SampleLibraryWatcher,
+    predicate: impl Fn(&SampleLibraryReload) -> bool,
+) -> SampleLibraryReload {
+    let deadline = Instant::now() + Duration::from_millis(500);
+    loop {
+        while let Some(reload) = watcher.try_recv() {
+            if predicate(&reload) {
+                return reload;
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "sample watcher did not reload in time"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
 }
 
 fn unique_temp_suffix() -> String {
