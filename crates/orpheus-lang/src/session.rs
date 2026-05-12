@@ -698,85 +698,7 @@ impl ReplSession {
         if !args.trim().is_empty() {
             return Err("usage: :help (no arguments)".to_owned());
         }
-
-        let mut table = comfy_table::Table::new();
-        table.load_preset(comfy_table::presets::UTF8_BORDERS_ONLY);
-        table.set_header(vec![
-            comfy_table::Cell::new("Command")
-                .fg(comfy_table::Color::White)
-                .add_attribute(comfy_table::Attribute::Bold),
-            comfy_table::Cell::new("Description")
-                .fg(comfy_table::Color::White)
-                .add_attribute(comfy_table::Attribute::Bold),
-        ]);
-
-        let commands = [
-            (":env", "List all available bindings in the environment"),
-            (":undo", "Restore the previous compositional session state"),
-            (":redo", "Reapply the most recently undone session state"),
-            (
-                ":explain <binding>",
-                "Explain the internal structure of a pattern or pedal",
-            ),
-            (
-                ":stats <binding>",
-                "Show event density and statistics for a pattern",
-            ),
-            (
-                ":render <binding> <path> <cycles>",
-                "Render a pattern to an audio file (.wav/.flac)",
-            ),
-            (
-                ":export <binding> <path> <cycles>",
-                "Export a pattern to various formats (MIDI, SVG, etc.)",
-            ),
-            (
-                ":export stems <binding> <dir> <cycles>",
-                "Export individual track stems to a directory",
-            ),
-            (
-                ":roll <binding>",
-                "Display an ASCII piano roll of a pattern",
-            ),
-            (":tempo <bpm>", "Set the global tempo in beats per minute"),
-            (
-                ":ref_freq <hz>",
-                "Set the global reference frequency for tuning",
-            ),
-            (
-                ":samples <dir>",
-                "Load additional audio samples from a directory",
-            ),
-            (
-                ":import stems <dir>",
-                "Load stem WAVs as sample patterns and routed tracks",
-            ),
-            (
-                ":reload-samples",
-                "Reload the most recently loaded sample directory",
-            ),
-            (":open <path>", "Open and evaluate an external .ode script"),
-            (":track ...", "Manage mixer tracks (new, bind, level, mute)"),
-            (":bus ...", "Manage mixer buses and effects (new, fx)"),
-            (":send ...", "Manage track effect sends to buses"),
-            (
-                ":mixer",
-                "Display the current state of tracks, buses, and sends",
-            ),
-            (":midi ...", "Manage MIDI inputs and outputs"),
-            (":play", "Start the transport clock"),
-            (":stop", "Stop the transport clock"),
-            (":help", "List available REPL commands and descriptions"),
-            (":quit", "Exit the REPL session"),
-        ];
-
-        for (cmd, desc) in commands {
-            table.add_row(vec![
-                comfy_table::Cell::new(cmd).fg(comfy_table::Color::Cyan),
-                comfy_table::Cell::new(desc).fg(comfy_table::Color::Green),
-            ]);
-        }
-
+        let table = build_help_table();
         Ok(format!(
             "\n\x1b[38;5;14m\x1b[1mREPL Commands:\x1b[0m\n{table}"
         ))
@@ -954,65 +876,31 @@ impl ReplSession {
         cycles: u64,
     ) -> Result<(), String> {
         let export_path = std::path::Path::new(path);
-        if export_path
+        let ext = export_path
             .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
-        {
-            crate::svg::export_sample_pattern_to_svg(pattern, path, cycles)
-                .map_err(|error: crate::EvalError| error.to_string())?;
-        } else if export_path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
-        {
-            crate::html::export_sample_pattern_to_html(pattern, path, cycles)
-                .map_err(|error: crate::EvalError| error.to_string())?;
-        } else if export_path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
-        {
-            crate::export::export_sample_pattern_to_json(pattern, path, cycles)
-                .map_err(|error: crate::EvalError| error.to_string())?;
-        } else if export_path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
-        {
-            crate::export::export_sample_pattern_to_md(pattern, path, cycles)
-                .map_err(|error: crate::EvalError| error.to_string())?;
-        } else if export_path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("srt"))
-        {
-            crate::srt::export_sample_pattern_to_srt(pattern, path, cycles)
-                .map_err(|error: crate::EvalError| error.to_string())?;
-        } else if export_path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("txt"))
-        {
-            crate::txt::export_sample_pattern_to_txt(pattern, path, cycles)
-                .map_err(|error: crate::EvalError| error.to_string())?;
-        } else if export_path.extension().is_some_and(|ext| {
-            ext.eq_ignore_ascii_case("trk") || ext.eq_ignore_ascii_case("tracker")
-        }) {
-            crate::tracker::export_sample_pattern_to_tracker(pattern, path, cycles)
-                .map_err(|error: crate::EvalError| error.to_string())?;
-        } else if export_path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("mid") || ext.eq_ignore_ascii_case("midi"))
-        {
-            crate::midi_export::export_sample_pattern_to_midi(pattern, path, cycles)
-                .map_err(|error: crate::EvalError| error.to_string())?;
-        } else if export_path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("scd"))
-        {
-            crate::supercollider_export::export_sample_pattern_to_supercollider(
+            .and_then(|e| e.to_str())
+            .map(str::to_ascii_lowercase);
+
+        match ext.as_deref() {
+            Some("svg") => crate::svg::export_sample_pattern_to_svg(pattern, path, cycles),
+            Some("html") => crate::html::export_sample_pattern_to_html(pattern, path, cycles),
+            Some("json") => crate::export::export_sample_pattern_to_json(pattern, path, cycles),
+            Some("md") => crate::export::export_sample_pattern_to_md(pattern, path, cycles),
+            Some("srt") => crate::srt::export_sample_pattern_to_srt(pattern, path, cycles),
+            Some("txt") => crate::txt::export_sample_pattern_to_txt(pattern, path, cycles),
+            Some("trk" | "tracker") => {
+                crate::tracker::export_sample_pattern_to_tracker(pattern, path, cycles)
+            }
+            Some("mid" | "midi") => {
+                crate::midi_export::export_sample_pattern_to_midi(pattern, path, cycles)
+            }
+            Some("scd") => crate::supercollider_export::export_sample_pattern_to_supercollider(
                 pattern, path, cycles,
-            )
-            .map_err(|error: crate::EvalError| error.to_string())?;
-        } else {
-            crate::export::export_sample_pattern_to_csv(pattern, path, cycles)
-                .map_err(|error: crate::EvalError| error.to_string())?;
+            ),
+            _ => crate::export::export_sample_pattern_to_csv(pattern, path, cycles),
         }
+        .map_err(|error: crate::EvalError| error.to_string())?;
+
         Ok(())
     }
 
@@ -1022,81 +910,36 @@ impl ReplSession {
         cycles: u64,
     ) -> Result<(), String> {
         let export_path = std::path::Path::new(path);
-        if export_path
+        let ext = export_path
             .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
-        {
-            crate::svg::export_number_pattern_to_svg(pattern, path, cycles)
-                .map_err(|error: crate::EvalError| error.to_string())?;
-        } else if export_path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
-        {
-            crate::html::export_number_pattern_to_html(pattern, path, cycles)
-                .map_err(|error: crate::EvalError| error.to_string())?;
-        } else if export_path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
-        {
-            crate::export::export_number_pattern_to_json(pattern, path, cycles)
-                .map_err(|error: crate::EvalError| error.to_string())?;
-        } else if export_path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
-        {
-            crate::export::export_number_pattern_to_md(pattern, path, cycles)
-                .map_err(|error: crate::EvalError| error.to_string())?;
-        } else if export_path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("srt"))
-        {
-            crate::srt::export_number_pattern_to_srt(pattern, path, cycles)
-                .map_err(|error: crate::EvalError| error.to_string())?;
-        } else if export_path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("txt"))
-        {
-            crate::txt::export_number_pattern_to_txt(pattern, path, cycles)
-                .map_err(|error: crate::EvalError| error.to_string())?;
-        } else if cfg!(feature = "lilypond_export")
-            && export_path
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("ly"))
-        {
+            .and_then(|e| e.to_str())
+            .map(str::to_ascii_lowercase);
+
+        match ext.as_deref() {
+            Some("svg") => crate::svg::export_number_pattern_to_svg(pattern, path, cycles),
+            Some("html") => crate::html::export_number_pattern_to_html(pattern, path, cycles),
+            Some("json") => crate::export::export_number_pattern_to_json(pattern, path, cycles),
+            Some("md") => crate::export::export_number_pattern_to_md(pattern, path, cycles),
+            Some("srt") => crate::srt::export_number_pattern_to_srt(pattern, path, cycles),
+            Some("txt") => crate::txt::export_number_pattern_to_txt(pattern, path, cycles),
             #[cfg(feature = "lilypond_export")]
-            {
+            Some("ly") => {
                 crate::lilypond_export::export_number_pattern_to_lilypond(pattern, path, cycles)
-                    .map_err(|error: crate::EvalError| error.to_string())?;
             }
-        } else if export_path.extension().is_some_and(|ext| {
-            ext.eq_ignore_ascii_case("trk") || ext.eq_ignore_ascii_case("tracker")
-        }) {
-            crate::tracker::export_number_pattern_to_tracker(pattern, path, cycles)
-                .map_err(|error: crate::EvalError| error.to_string())?;
-        } else if export_path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("mid") || ext.eq_ignore_ascii_case("midi"))
-        {
-            crate::midi_export::export_number_pattern_to_midi(pattern, path, cycles)
-                .map_err(|error: crate::EvalError| error.to_string())?;
-        } else if export_path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("abc"))
-        {
-            crate::abc_export::export_number_pattern_to_abc(pattern, path, cycles)
-                .map_err(|error: crate::EvalError| error.to_string())?;
-        } else if export_path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("scd"))
-        {
-            crate::supercollider_export::export_number_pattern_to_supercollider(
+            Some("trk" | "tracker") => {
+                crate::tracker::export_number_pattern_to_tracker(pattern, path, cycles)
+            }
+            Some("mid" | "midi") => {
+                crate::midi_export::export_number_pattern_to_midi(pattern, path, cycles)
+            }
+            Some("abc") => crate::abc_export::export_number_pattern_to_abc(pattern, path, cycles),
+            Some("scd") => crate::supercollider_export::export_number_pattern_to_supercollider(
                 pattern, path, cycles,
-            )
-            .map_err(|error: crate::EvalError| error.to_string())?;
-        } else {
-            crate::export::export_number_pattern_to_csv(pattern, path, cycles)
-                .map_err(|error: crate::EvalError| error.to_string())?;
+            ),
+            _ => crate::export::export_number_pattern_to_csv(pattern, path, cycles),
         }
+        .map_err(|error: crate::EvalError| error.to_string())?;
+
         Ok(())
     }
 
@@ -3577,4 +3420,86 @@ fn export_command_exports_number_pattern_to_supercollider() {
     assert!(contents.contains("60.000.midicps"));
 
     let _ = std::fs::remove_file(path);
+}
+
+fn build_help_table() -> comfy_table::Table {
+    let mut table = comfy_table::Table::new();
+    table.load_preset(comfy_table::presets::UTF8_BORDERS_ONLY);
+    table.set_header(vec![
+        comfy_table::Cell::new("Command")
+            .fg(comfy_table::Color::White)
+            .add_attribute(comfy_table::Attribute::Bold),
+        comfy_table::Cell::new("Description")
+            .fg(comfy_table::Color::White)
+            .add_attribute(comfy_table::Attribute::Bold),
+    ]);
+
+    let commands = [
+        (":env", "List all available bindings in the environment"),
+        (":undo", "Restore the previous compositional session state"),
+        (":redo", "Reapply the most recently undone session state"),
+        (
+            ":explain <binding>",
+            "Explain the internal structure of a pattern or pedal",
+        ),
+        (
+            ":stats <binding>",
+            "Show event density and statistics for a pattern",
+        ),
+        (
+            ":render <binding> <path> <cycles>",
+            "Render a pattern to an audio file (.wav/.flac)",
+        ),
+        (
+            ":export <binding> <path> <cycles>",
+            "Export a pattern to various formats (MIDI, SVG, etc.)",
+        ),
+        (
+            ":export stems <binding> <dir> <cycles>",
+            "Export individual track stems to a directory",
+        ),
+        (
+            ":roll <binding>",
+            "Display an ASCII piano roll of a pattern",
+        ),
+        (":tempo <bpm>", "Set the global tempo in beats per minute"),
+        (
+            ":ref_freq <hz>",
+            "Set the global reference frequency for tuning",
+        ),
+        (
+            ":samples <dir>",
+            "Load additional audio samples from a directory",
+        ),
+        (
+            ":import stems <dir>",
+            "Load stem WAVs as sample patterns and routed tracks",
+        ),
+        (
+            ":reload-samples",
+            "Reload the most recently loaded sample directory",
+        ),
+        (":open <path>", "Open and evaluate an external .ode script"),
+        (":track ...", "Manage mixer tracks (new, bind, level, mute)"),
+        (":bus ...", "Manage mixer buses and effects (new, fx)"),
+        (":send ...", "Manage track effect sends to buses"),
+        (
+            ":mixer",
+            "Display the current state of tracks, buses, and sends",
+        ),
+        (":midi ...", "Manage MIDI inputs and outputs"),
+        (":play", "Start the transport clock"),
+        (":stop", "Stop the transport clock"),
+        (":help", "List available REPL commands and descriptions"),
+        (":quit", "Exit the REPL session"),
+    ];
+
+    for (cmd, desc) in commands {
+        table.add_row(vec![
+            comfy_table::Cell::new(cmd).fg(comfy_table::Color::Cyan),
+            comfy_table::Cell::new(desc).fg(comfy_table::Color::Green),
+        ]);
+    }
+
+    table
 }
