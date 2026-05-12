@@ -122,6 +122,14 @@ pub enum BuiltinKind {
     Hex,
     /// Interprets a numeric string or value as binary.
     Bin,
+    /// Creates a headless VST3 plugin pattern.
+    Vst,
+    /// Creates a headless `AudioUnit` plugin pattern.
+    Au,
+    /// Sends note events into a plugin pattern.
+    Notes,
+    /// Automates a named plugin parameter with normalized values.
+    PluginParam,
 }
 
 impl fmt::Display for BuiltinKind {
@@ -185,6 +193,10 @@ impl fmt::Display for BuiltinKind {
             Self::Tune => "tune",
             Self::Hex => "hex",
             Self::Bin => "bin",
+            Self::Vst => "vst",
+            Self::Au => "au",
+            Self::Notes => "notes",
+            Self::PluginParam => "p",
         };
         write!(f, "{name}")
     }
@@ -542,6 +554,36 @@ struct TuningTable {
     ref_semitone: i32,
 }
 
+/// A headless plugin instrument with cycle-local notes and automation.
+#[derive(Clone, Debug)]
+pub struct PluginPatternValue {
+    source: orpheus_dsp::PluginTrackSource,
+}
+
+impl PluginPatternValue {
+    pub(crate) const fn new(source: orpheus_dsp::PluginTrackSource) -> Self {
+        Self { source }
+    }
+
+    pub(crate) fn with_notes(self, notes: Box<[Event<orpheus_dsp::PluginNote>]>) -> Self {
+        Self {
+            source: self.source.with_notes(notes),
+        }
+    }
+
+    pub(crate) fn with_parameter_lane(self, lane: orpheus_dsp::PluginParameterLane) -> Self {
+        Self {
+            source: self.source.with_parameter_lane(lane),
+        }
+    }
+
+    /// The fully materialized DSP track source for this plugin binding.
+    #[must_use]
+    pub const fn track_source(&self) -> &orpheus_dsp::PluginTrackSource {
+        &self.source
+    }
+}
+
 /// Represents the fundamental unit of an evaluated expression.
 ///
 /// Values can be sample-based audio patterns, raw numerical envelopes, primitive
@@ -594,6 +636,8 @@ pub enum Value {
     Function(FunctionValue),
     /// A validated pedal graph ready for later lowering.
     Pedal(PedalValue),
+    /// A headless plugin instrument ready for mixer routing.
+    PluginPattern(PluginPatternValue),
     /// A static microtonal tuning table used by `tune(...)` to override 12-TET.
     Tuning(TuningValue),
     /// A primitive string value.
@@ -616,6 +660,7 @@ impl fmt::Display for Value {
                 }
             ),
             Self::Pedal(_) => write!(f, "Pedal"),
+            Self::PluginPattern(_) => write!(f, "Plugin"),
             Self::Tuning(_) => write!(f, "Tuning"),
             Self::String(s) => write!(f, "\"{s}\""),
         }
@@ -642,6 +687,7 @@ impl Value {
             | Self::PitchClassSet(_)
             | Self::Function(_)
             | Self::Pedal(_)
+            | Self::PluginPattern(_)
             | Self::Tuning(_)
             | Self::String(_) => None,
         }
@@ -667,6 +713,7 @@ impl Value {
             | Self::Tuning(_)
             | Self::Function(_)
             | Self::Pedal(_)
+            | Self::PluginPattern(_)
             | Self::String(_) => None,
         }
     }
@@ -690,6 +737,7 @@ impl Value {
             | Self::ArpDirection(_)
             | Self::Function(_)
             | Self::Pedal(_)
+            | Self::PluginPattern(_)
             | Self::Tuning(_)
             | Self::String(_) => None,
         }
@@ -710,6 +758,23 @@ impl Value {
             | Self::PitchClassSet(_)
             | Self::Function(_)
             | Self::Pedal(_)
+            | Self::PluginPattern(_)
+            | Self::String(_) => None,
+        }
+    }
+
+    /// Attempts to unwrap the value into a plugin pattern.
+    #[must_use]
+    pub const fn as_plugin_pattern(&self) -> Option<&PluginPatternValue> {
+        match self {
+            Self::PluginPattern(pattern) => Some(pattern),
+            Self::SamplePattern(_)
+            | Self::NumberPattern(_)
+            | Self::ArpDirection(_)
+            | Self::PitchClassSet(_)
+            | Self::Function(_)
+            | Self::Pedal(_)
+            | Self::Tuning(_)
             | Self::String(_) => None,
         }
     }
@@ -733,6 +798,7 @@ impl Value {
             | Self::PitchClassSet(_)
             | Self::Function(_)
             | Self::Pedal(_)
+            | Self::PluginPattern(_)
             | Self::Tuning(_)
             | Self::String(_) => None,
         }
@@ -766,6 +832,7 @@ impl Value {
             | Self::ArpDirection(_)
             | Self::PitchClassSet(_)
             | Self::Function(_)
+            | Self::PluginPattern(_)
             | Self::Tuning(_)
             | Self::String(_) => None,
         }
@@ -794,6 +861,7 @@ impl Value {
             Self::PitchClassSet(_) => "pitch class set",
             Self::Function(_) => "function",
             Self::Pedal(_) => "pedal",
+            Self::PluginPattern(_) => "plugin",
             Self::Tuning(_) => "tuning",
             Self::String(_) => "string",
         }
@@ -1403,6 +1471,7 @@ impl PatternRuntimeValue for SampleEvent {
             | Value::PitchClassSet(_)
             | Value::Function(_)
             | Value::Pedal(_)
+            | Value::PluginPattern(_)
             | Value::Tuning(_)
             | Value::String(_) => Err(EvalError::new(
                 "transform returned an incompatible value; expected Pattern<Sample>",
@@ -1494,6 +1563,7 @@ impl PatternRuntimeValue for f64 {
             | Value::PitchClassSet(_)
             | Value::Function(_)
             | Value::Pedal(_)
+            | Value::PluginPattern(_)
             | Value::Tuning(_)
             | Value::String(_) => Err(EvalError::new(
                 "transform returned an incompatible value; expected Pattern<Number>",

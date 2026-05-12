@@ -87,7 +87,8 @@ pub use types::{
 };
 pub use value::{
     ArpDirectionValue, BuiltinFn, BuiltinKind, GatePatternValue, NumberPatternValue,
-    PitchClassSetValue, SampleEvent, SamplePatternValue, TuningValue, UserFn, Value,
+    PitchClassSetValue, PluginPatternValue, SampleEvent, SamplePatternValue, TuningValue, UserFn,
+    Value,
 };
 
 // Hidden re-exports keep rustdoc examples for internal helpers compiling.

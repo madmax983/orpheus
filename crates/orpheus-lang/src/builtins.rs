@@ -18,7 +18,7 @@ use crate::explain::Explain;
 use crate::midi_input;
 use crate::value::{
     ArpDirectionValue, BuiltinFn, BuiltinKind, FunctionValue, GatePatternValue, NumberPatternValue,
-    PitchClassSetValue, SamplePatternValue, Value,
+    PitchClassSetValue, PluginPatternValue, SamplePatternValue, Value,
 };
 
 /// Checks if an identifier string corresponds to a known built-in audio sample.
@@ -110,6 +110,9 @@ fn lookup_pattern_transform(name: &str) -> Option<Value> {
         "tuning" => Some(builtin_function_value(BuiltinKind::Tuning)),
         "load_scl" => Some(builtin_function_value(BuiltinKind::LoadScl)),
         "tune" => Some(builtin_function_value(BuiltinKind::Tune)),
+        "vst" => Some(builtin_function_value(BuiltinKind::Vst)),
+        "au" => Some(builtin_function_value(BuiltinKind::Au)),
+        "notes" => Some(builtin_function_value(BuiltinKind::Notes)),
         "hex" => Some(builtin_function_value(BuiltinKind::Hex)),
         "bin" => Some(builtin_function_value(BuiltinKind::Bin)),
         _ => None,
@@ -169,6 +172,7 @@ fn lookup_effect(name: &str) -> Option<Value> {
         "jux" => Some(builtin_function_value(BuiltinKind::Jux)),
         "through" => Some(builtin_function_value(BuiltinKind::Through)),
         "cc" | "midi_cc" => Some(builtin_function_value(BuiltinKind::MidiCc)),
+        "p" | "param" => Some(builtin_function_value(BuiltinKind::PluginParam)),
         "chaos" => Some(builtin_function_value(BuiltinKind::Chaos)),
         "palindrome" => Some(builtin_function_value(BuiltinKind::Palindrome)),
         _ => None,
@@ -220,6 +224,7 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
                 | Value::Function(_)
                 | Value::String(_)
                 | Value::Tuning(_)
+                | Value::PluginPattern(_)
                 | Value::Pedal(_) => unreachable!(),
             })
             .collect();
@@ -240,6 +245,7 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
                 | Value::Function(_)
                 | Value::String(_)
                 | Value::Tuning(_)
+                | Value::PluginPattern(_)
                 | Value::Pedal(_) => unreachable!(),
             })
             .collect();
@@ -396,8 +402,12 @@ impl BuiltinKind {
             Self::Tuning => "tuning",
             Self::LoadScl => "load_scl",
             Self::Tune => "tune",
+            Self::Vst => "vst",
+            Self::Au => "au",
+            Self::Notes => "notes",
             Self::Hex => "hex",
             Self::Bin => "bin",
+            Self::PluginParam => "p",
         }
     }
 
@@ -413,6 +423,8 @@ impl BuiltinKind {
             | Self::Palindrome
             | Self::Tuning
             | Self::LoadScl
+            | Self::Vst
+            | Self::Au
             | Self::MidiCc
             | Self::Hex
             | Self::Bin => 1,
@@ -455,8 +467,9 @@ impl BuiltinKind {
             | Self::Jux
             | Self::Through
             | Self::MidiCc
-            | Self::Tune => 2,
-            Self::Hex | Self::Bin => 1,
+            | Self::Tune
+            | Self::Notes => 2,
+            Self::PluginParam => 3,
             Self::Rand => 0,
         }
     }
@@ -519,8 +532,12 @@ impl BuiltinKind {
             Self::Tuning => apply_tuning(args),
             Self::LoadScl => apply_load_scl(args),
             Self::Tune => apply_tune(args),
+            Self::Vst => apply_vst(args),
+            Self::Au => apply_au(args),
+            Self::Notes => apply_plugin_notes(args),
             Self::Hex => apply_hex(args),
             Self::Bin => apply_bin(args),
+            Self::PluginParam => apply_plugin_param(args),
         }
     }
 }
@@ -590,6 +607,7 @@ fn apply_every(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::Function(_)
         | Value::String(_)
         | Value::Tuning(_)
+        | Value::PluginPattern(_)
         | Value::Pedal(_) => Err(EvalError::new(
             "`every` expected a pattern as its final argument",
         )),
@@ -1306,6 +1324,118 @@ fn apply_tune(args: Vec<Value>) -> Result<Value, EvalError> {
     Ok(Value::SamplePattern(pattern.tune(&tuning)))
 }
 
+fn apply_vst(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_plugin_descriptor(args, orpheus_dsp::PluginFormat::Vst3, "vst")
+}
+
+fn apply_au(args: Vec<Value>) -> Result<Value, EvalError> {
+    apply_plugin_descriptor(args, orpheus_dsp::PluginFormat::AudioUnit, "au")
+}
+
+fn apply_plugin_descriptor(
+    args: Vec<Value>,
+    format: orpheus_dsp::PluginFormat,
+    builtin_name: &str,
+) -> Result<Value, EvalError> {
+    let identifier = extract_string(
+        args.into_iter()
+            .next()
+            .ok_or_else(|| EvalError::new(format!("`{builtin_name}` requires a plugin name")))?,
+        builtin_name,
+    )?;
+    let descriptor = orpheus_dsp::PluginDescriptor::try_new(format, identifier)
+        .map_err(|error| EvalError::new(error.to_string()))?;
+    Ok(Value::PluginPattern(PluginPatternValue::new(
+        orpheus_dsp::PluginTrackSource::new(descriptor),
+    )))
+}
+
+fn apply_plugin_notes(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let notes = extract_number_pattern(
+        args.next()
+            .ok_or_else(|| EvalError::new("`notes` requires a note pattern argument"))?,
+        "notes",
+    )?;
+    let plugin = extract_plugin_pattern(
+        args.next()
+            .ok_or_else(|| EvalError::new("`notes` requires a plugin argument"))?,
+        "notes",
+    )?;
+    let note_events = notes.try_query_unit()?;
+    let events = note_events
+        .iter()
+        .map(number_event_to_plugin_note)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Value::PluginPattern(
+        plugin.with_notes(events.into_boxed_slice()),
+    ))
+}
+
+fn apply_plugin_param(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let name = extract_string(
+        args.next()
+            .ok_or_else(|| EvalError::new("`p` requires a parameter name argument"))?,
+        "p",
+    )?;
+    let control = extract_number_pattern(
+        args.next()
+            .ok_or_else(|| EvalError::new("`p` requires a control pattern argument"))?,
+        "p",
+    )?;
+    let plugin = extract_plugin_pattern(
+        args.next()
+            .ok_or_else(|| EvalError::new("`p` requires a plugin argument"))?,
+        "p",
+    )?;
+    let control_events = control.try_query_unit()?;
+    let events = control_events
+        .iter()
+        .map(number_event_to_plugin_parameter)
+        .collect::<Result<Vec<_>, _>>()?;
+    let lane = orpheus_dsp::PluginParameterLane::new(name, events.into_boxed_slice())
+        .map_err(|error| EvalError::new(error.to_string()))?;
+    Ok(Value::PluginPattern(plugin.with_parameter_lane(lane)))
+}
+
+fn number_event_to_plugin_note(
+    event: &orpheus_pattern::Event<f64>,
+) -> Result<orpheus_pattern::Event<orpheus_dsp::PluginNote>, EvalError> {
+    if !event.value.is_finite()
+        || event.value.fract().abs() > f64::EPSILON
+        || !(0.0..=127.0).contains(&event.value)
+    {
+        return Err(EvalError::new(
+            "`notes` requires integer MIDI note numbers within [0, 127]",
+        ));
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let note_number = event.value as u8;
+    Ok(orpheus_pattern::Event {
+        whole: event.whole,
+        part: event.part,
+        value: orpheus_dsp::PluginNote::new(note_number, 1.0)
+            .map_err(|error| EvalError::new(error.to_string()))?,
+    })
+}
+
+fn number_event_to_plugin_parameter(
+    event: &orpheus_pattern::Event<f64>,
+) -> Result<orpheus_pattern::Event<f32>, EvalError> {
+    if !event.value.is_finite() || !(0.0..=1.0).contains(&event.value) {
+        return Err(EvalError::new(
+            "`p` requires normalized parameter values within [0, 1]",
+        ));
+    }
+    #[allow(clippy::cast_possible_truncation)]
+    Ok(orpheus_pattern::Event {
+        whole: event.whole,
+        part: event.part,
+        value: event.value as f32,
+    })
+}
+
 fn extract_tuning(value: Value) -> Result<crate::value::TuningValue, EvalError> {
     match value {
         Value::Tuning(tuning) => Ok(tuning),
@@ -1315,6 +1445,7 @@ fn extract_tuning(value: Value) -> Result<crate::value::TuningValue, EvalError> 
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::Pedal(_)
+        | Value::PluginPattern(_)
         | Value::String(_) => Err(EvalError::new(
             "`tune` expected a tuning value; construct one via `tuning(...)` or `load_scl(\"...\")`",
         )),
@@ -1351,6 +1482,7 @@ fn apply_onset(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::Tuning(_)
+        | Value::PluginPattern(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(
             "`onset` expected a sample pattern as its final argument",
@@ -1405,6 +1537,7 @@ fn apply_slice(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::Tuning(_)
+        | Value::PluginPattern(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(
             "`slice` expected a sample pattern as its final argument",
@@ -1448,6 +1581,7 @@ fn apply_slice_idx(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::Tuning(_)
+        | Value::PluginPattern(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(
             "`slice_idx` expected a sample pattern as its final argument",
@@ -1500,6 +1634,7 @@ fn apply_sample_numeric_control(
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::Tuning(_)
+        | Value::PluginPattern(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(format!(
             "`{builtin_name}` expected a sample pattern as its final argument"
@@ -1579,6 +1714,7 @@ fn extract_unary_pattern_transform(
         | Value::PitchClassSet(_)
         | Value::String(_)
         | Value::Tuning(_)
+        | Value::PluginPattern(_)
         | Value::Pedal(_) => Err(EvalError::new(message)),
     }
 }
@@ -1597,6 +1733,7 @@ fn extract_pattern_gate(
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::Tuning(_)
+        | Value::PluginPattern(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(message)),
     }
@@ -2424,6 +2561,7 @@ fn extract_number_pattern(
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::Tuning(_)
+        | Value::PluginPattern(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(format!(
             "`{builtin_name}` requires a number pattern argument"
@@ -2444,6 +2582,7 @@ fn extract_sample_pattern(
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::Tuning(_)
+        | Value::PluginPattern(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(format!(
             "`{builtin_name}` expected a sample pattern argument"
@@ -2459,9 +2598,29 @@ fn extract_pedal(value: Value, builtin_name: &str) -> Result<crate::pedal::Pedal
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
+        | Value::PluginPattern(_)
         | Value::Tuning(_)
         | Value::String(_) => Err(EvalError::new(format!(
             "`{builtin_name}` requires a pedal argument"
+        ))),
+    }
+}
+
+fn extract_plugin_pattern(
+    value: Value,
+    builtin_name: &str,
+) -> Result<PluginPatternValue, EvalError> {
+    match value {
+        Value::PluginPattern(plugin) => Ok(plugin),
+        Value::SamplePattern(_)
+        | Value::NumberPattern(_)
+        | Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::Pedal(_)
+        | Value::Tuning(_)
+        | Value::String(_) => Err(EvalError::new(format!(
+            "`{builtin_name}` requires a plugin argument"
         ))),
     }
 }
@@ -2478,6 +2637,7 @@ fn extract_constant_number(value: Value, builtin_name: &str) -> Result<f64, Eval
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::Tuning(_)
+        | Value::PluginPattern(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(format!(
             "`{builtin_name}` requires a constant number argument"
@@ -2493,6 +2653,7 @@ fn extract_string(value: Value, builtin_name: &str) -> Result<String, EvalError>
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Tuning(_)
+        | Value::PluginPattern(_)
         | Value::Pedal(_)
         | Value::Function(_) => Err(EvalError::new(format!(
             "`{builtin_name}` requires a string argument"
@@ -2508,6 +2669,7 @@ fn extract_arp_direction(value: &Value) -> Result<ArpDirectionValue, EvalError> 
         | Value::PitchClassSet(_)
         | Value::Function(_)
         | Value::Tuning(_)
+        | Value::PluginPattern(_)
         | Value::Pedal(_)
         | Value::String(_) => Err(EvalError::new(
             "`arp` requires a direction argument like `up`, `down`, `pingpong`, or `updown`",
@@ -2525,6 +2687,7 @@ fn extract_pitch_class_set(value: Value) -> Result<PitchClassSetValue, EvalError
         | Value::NumberPattern(_)
         | Value::ArpDirection(_)
         | Value::Tuning(_)
+        | Value::PluginPattern(_)
         | Value::Pedal(_)
         | Value::Function(_) => Err(EvalError::new(
             "`degrees` requires a pitch class set as its first argument",

@@ -45,6 +45,8 @@ pub enum Type {
     Sample,
     /// A behavior-first pedal graph value.
     Pedal,
+    /// A headless hosted plugin instrument.
+    Plugin,
     /// A discrete musical pitch or frequency representation.
     Note,
     /// A generic numeric value, primarily used for DSP parameters like gain or filter cutoff.
@@ -133,6 +135,7 @@ impl Display for Type {
             Self::Pattern(inner) => write!(formatter, "Pattern<{inner}>"),
             Self::Sample => formatter.write_str("Sample"),
             Self::Pedal => formatter.write_str("Pedal"),
+            Self::Plugin => formatter.write_str("Plugin"),
             Self::Note => formatter.write_str("Note"),
             Self::Number => formatter.write_str("Number"),
             Self::Duration => formatter.write_str("Duration"),
@@ -231,6 +234,7 @@ mod tests {
     fn type_display_formats_correctly() {
         assert_eq!(Type::Sample.to_string(), "Sample");
         assert_eq!(Type::Pedal.to_string(), "Pedal");
+        assert_eq!(Type::Plugin.to_string(), "Plugin");
         assert_eq!(Type::Note.to_string(), "Note");
         assert_eq!(Type::Number.to_string(), "Number");
         assert_eq!(Type::Duration.to_string(), "Duration");

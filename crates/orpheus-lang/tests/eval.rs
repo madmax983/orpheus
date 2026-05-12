@@ -1,10 +1,12 @@
 //! Core integration tests for the language evaluator, verifying that expressions compile down to the correct temporal patterns and audio graphs.
 use std::fs;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use orpheus_lang::{FunctionValue, ReplMode, Value, eval_module, export_sample_pattern_to_json};
 use orpheus_pattern::{Rational, TimeSpan};
 use serde_json::Value as JsonValue;
+
+static EXPORT_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn sample_names(value: &Value) -> Vec<String> {
     value
@@ -34,10 +36,7 @@ fn assert_eval_error_contains(source: &str, mode: ReplMode, expected_fragments: 
 }
 
 fn exported_sample_events(value: &Value, cycle_count: u64) -> Vec<JsonValue> {
-    let unique = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
+    let unique = EXPORT_COUNTER.fetch_add(1, Ordering::Relaxed);
     let path = std::env::temp_dir().join(format!(
         "orpheus-lang-eval-export-{}-{unique}.json",
         std::process::id()

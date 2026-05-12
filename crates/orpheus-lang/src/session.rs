@@ -956,6 +956,7 @@ impl ReplSession {
             | Value::PitchClassSet(_)
             | Value::Function(_)
             | Value::Pedal(_)
+            | Value::PluginPattern(_)
             | Value::Tuning(_)
             | Value::String(_) => {
                 return Err(format!(
@@ -1628,6 +1629,12 @@ impl ReplSession {
     }
 
     fn push_pattern_update(&mut self, name: &str, value: &Value) -> Result<(), String> {
+        if let Value::PluginPattern(_) = value {
+            self.mixer.note_sample_binding(name);
+            self.pattern_display.borrow_mut().last_loaded_pattern_name = Some(name.to_owned());
+            return self.enqueue_mixer_snapshot();
+        }
+
         if let Value::SamplePattern(pattern) = value {
             self.mixer.note_sample_binding(name);
             if self.mixer.has_routing_state() {

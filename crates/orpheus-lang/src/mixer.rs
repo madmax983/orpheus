@@ -642,7 +642,7 @@ fn ensure_sample_binding(
     let value = bindings
         .get(binding_name)
         .ok_or_else(|| format!("no binding named `{binding_name}`"))?;
-    if value.as_sample_pattern().is_some() {
+    if value.as_sample_pattern().is_some() || value.as_plugin_pattern().is_some() {
         Ok(())
     } else {
         Err(format!(
@@ -657,20 +657,28 @@ fn compile_track_source(
     bindings: &BTreeMap<String, Value>,
 ) -> Result<TrackSource, String> {
     ensure_sample_binding(binding_name, bindings)?;
-    let pattern = bindings
+    let value = bindings
         .get(binding_name)
-        .and_then(Value::as_sample_pattern)
         .ok_or_else(|| format!("no binding named `{binding_name}`"))?;
-    let events = pattern.query_unit().map_err(|error| {
-        format!("failed to query unit span for track binding `{binding_name}`: {error}")
+    if let Some(pattern) = value.as_sample_pattern() {
+        let events = pattern.query_unit().map_err(|error| {
+            format!("failed to query unit span for track binding `{binding_name}`: {error}")
+        })?;
+        return Ok(TrackSource::SamplePattern(
+            events
+                .iter()
+                .map(sample_event_to_trigger_event)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        ));
+    }
+    let plugin = value.as_plugin_pattern().ok_or_else(|| {
+        format!(
+            "binding `{binding_name}` is a {} and cannot be assigned to a track",
+            value.kind_name()
+        )
     })?;
-    Ok(TrackSource::SamplePattern(
-        events
-            .iter()
-            .map(sample_event_to_trigger_event)
-            .collect::<Vec<_>>()
-            .into_boxed_slice(),
-    ))
+    Ok(TrackSource::Plugin(plugin.track_source().clone()))
 }
 
 fn sample_event_to_trigger_event(event: &Event<crate::SampleEvent>) -> Event<SampleTrigger> {
