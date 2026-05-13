@@ -26,12 +26,22 @@ use crate::types::{Type, TypeVarId};
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
+    /// Variables for polymorphism
     pub vars: Vec<TypeVarId>,
+    /// The concrete type shape
     pub ty: Type,
 }
 
 impl TypeScheme {
     #[must_use]
+    /// Constructs a monomorphic (non-polymorphic) type scheme.
+    ///
+    /// ## Examples
+    /// ```
+    /// use orpheus_lang::types::env::TypeScheme;
+    /// use orpheus_lang::types::Type;
+    /// let scheme = TypeScheme::monomorphic(Type::Number);
+    /// ```
     pub const fn monomorphic(ty: Type) -> Self {
         Self {
             vars: Vec::new(),
@@ -195,6 +205,17 @@ impl TypeEnv {
         self.entries.get(name)
     }
 
+    /// Returns an iterator over the values of the environment mapping.
+    ///
+    /// ## Examples
+    /// ```
+    /// use orpheus_lang::types::env::TypeEnv;
+    /// use orpheus_lang::types::Type;
+    ///
+    /// let mut env = TypeEnv::default();
+    /// env.insert("foo", Type::Number);
+    /// assert_eq!(env.values().count(), 1);
+    /// ```
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }

@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-05-25 - [Missing Module Missing Docs for Builtins, Env, Loader, Pedal and Value]
+**Confusion:** Various functions, fields and variants inside `builtins.rs`, `loader.rs`, `pedal.rs`, `types/env.rs`, and `value.rs` lacked appropriate documentation and examples, leading to `missing_docs` warnings.
+**Clarification:** Added comprehensive documentation strings, along with `## Examples` executable doctests, for missing parts in `BuiltinFn::new`, `StrictLoadedFile` fields, `ValidatedPedalNode` and `ValidatedPedalBinding` methods, `TypeScheme` and `TypeEnv::values`, as well as `BuiltinKind` variants.

@@ -37,36 +37,67 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Applies an effect periodically based on a counter.
     Every,
+    /// Applies an effect conditionally based on a predicate.
     When,
+    /// Applies an effect randomly with a given probability.
     Sometimes,
+    /// Applies an effect only within a specific time window.
     Within,
+    /// Masks certain events from being evaluated.
     Mask,
+    /// Strums a chord by offsetting its notes in time.
     Strum,
+    /// Rolls or repeats an event multiple times.
     Roll,
+    /// Arpeggiates a chord into a sequence of single notes.
     Arp,
+    /// Inverts a pattern or chord.
     Invert,
+    /// Drops or filters out certain events.
     Drop,
+    /// Constructs a chord from a root note and intervals.
     Chord,
+    /// Generates a Euclidean rhythm pattern.
     Euclid,
+    /// Generates a pattern using an L-system grammar.
     Lsystem,
+    /// Generates a pattern using a Wolfram cellular automaton.
     Wolfram,
+    /// Defines a set of pitch classes for a scale or chord.
     PitchClassSet,
+    /// Specifies degrees of a scale to play.
     Degrees,
+    /// Speeds up the playback of a pattern.
     Fast,
+    /// Slows down the playback of a pattern.
     Slow,
+    /// Shifts a pattern forward or backward in time.
     Shift,
+    /// Reverses the playback order of a pattern.
     Rev,
+    /// Applies a gain (volume) effect.
     Gain,
+    /// Applies a delay effect.
     Delay,
+    /// Controls the time parameter of a delay effect.
     DelayTime,
+    /// Controls the feedback parameter of a delay effect.
     DelayFeedback,
+    /// Applies a high-pass filter effect.
     Hpf,
+    /// Applies a low-pass filter effect.
     Lpf,
+    /// Applies a reverb effect.
     Reverb,
+    /// Controls the room size parameter of a reverb effect.
     ReverbRoom,
+    /// Controls the dampening parameter of a reverb effect.
     ReverbDamp,
+    /// Controls the cutoff frequency of a filter effect.
     Cutoff,
+    /// Applies a chorus effect.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,
