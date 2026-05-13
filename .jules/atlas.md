@@ -56,3 +56,6 @@
 **[Enforce Private Explain Module]
 **Tangle:** The `explain` module in `orpheus-lang/src/lib.rs` and its internal `Explain` trait and `explain_table` function were declared as `pub`, leaking internal REPL table rendering details to the public API.
 **Blueprint:** Changed the visibility of the `Explain` trait and `explain_table` function to `pub(crate)` in `crates/orpheus-lang/src/explain.rs`. Removed the `pub use explain::Explain;` re-export from `crates/orpheus-lang/src/lib.rs` and changed the module declaration to `pub(crate) mod explain;`. This strictly enforces internal encapsulation.
+**[Fix Module Bloat in eval.rs]
+**Tangle:** The `eval.rs` file was suffering from 'The Bloat', running over 1800 lines long. It contained multiple large unexported types and logic sections, such as the `ExplicitValue` execution core and the `MeterContext` structure, that were needlessly entangled with the primary evaluator.
+**Blueprint:** Extracted `ExplicitValue` and its related operations into `crates/orpheus-lang/src/explicit.rs` and `MeterContext` into `crates/orpheus-lang/src/meter.rs`. Used `pub(crate)` module visibility to maintain the encapsulation boundaries while shrinking the main `eval.rs` file to improve maintainability.
