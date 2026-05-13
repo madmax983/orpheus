@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2024-05-30 - Plugin Host Coverage
+**Learning:** Found significant coverage gaps in `crates/orpheus-dsp/src/plugin_host.rs` (~81% before tests, ~90% after). Areas specifically lacking were bounds checking parameters in `process_frame`, handling of negative `Rational` times correctly without panicking, and OS-specific search paths.
+**Action:** Always write tests that intentionally exercise bounds checks or negative values (e.g. negative time offsets) when processing sequences of structural data. Even if the data structure represents "time", negative boundaries might occur during initialization or fuzzing and must not panic.
