@@ -103,6 +103,7 @@ fn lookup_pattern_transform(name: &str) -> Option<Value> {
         "drop" => Some(builtin_function_value(BuiltinKind::Drop)),
         "chord" => Some(builtin_function_value(BuiltinKind::Chord)),
         "euclid" => Some(builtin_function_value(BuiltinKind::Euclid)),
+        "morse" => Some(builtin_function_value(BuiltinKind::Morse)),
         "lsystem" => Some(builtin_function_value(BuiltinKind::Lsystem)),
         "wolfram" => Some(builtin_function_value(BuiltinKind::Wolfram)),
         "pitch_class_set" => Some(builtin_function_value(BuiltinKind::PitchClassSet)),
@@ -360,6 +361,7 @@ impl BuiltinKind {
             Self::Euclid => "euclid",
             Self::Lsystem => "lsystem",
             Self::Wolfram => "wolfram",
+            Self::Morse => "morse",
             Self::PitchClassSet => "pitch_class_set",
             Self::Degrees => "degrees",
             Self::Fast => "fast",
@@ -471,6 +473,7 @@ impl BuiltinKind {
             | Self::Notes => 2,
             Self::PluginParam => 3,
             Self::Rand => 0,
+            Self::Morse => 1,
         }
     }
 
@@ -490,6 +493,7 @@ impl BuiltinKind {
             Self::Euclid => apply_euclid(args),
             Self::Lsystem => apply_lsystem(args),
             Self::Wolfram => apply_wolfram(args),
+            Self::Morse => apply_morse(args),
             Self::PitchClassSet => apply_pitch_class_set(args),
             Self::Degrees => apply_degrees(args),
             Self::Fast => apply_fast(args),
@@ -2739,10 +2743,129 @@ fn apply_bin(args: Vec<Value>) -> Result<Value, EvalError> {
     Ok(Value::NumberPattern(NumberPatternValue::from_nodes(nodes)))
 }
 
+const fn char_to_morse(c: char) -> Option<&'static str> {
+    match c.to_ascii_uppercase() {
+        'A' => Some(".-"),
+        'B' => Some("-..."),
+        'C' => Some("-.-."),
+        'D' => Some("-.."),
+        'E' => Some("."),
+        'F' => Some("..-."),
+        'G' => Some("--."),
+        'H' => Some("...."),
+        'I' => Some(".."),
+        'J' => Some(".---"),
+        'K' => Some("-.-"),
+        'L' => Some(".-.."),
+        'M' => Some("--"),
+        'N' => Some("-."),
+        'O' => Some("---"),
+        'P' => Some(".--."),
+        'Q' => Some("--.-"),
+        'R' => Some(".-."),
+        'S' => Some("..."),
+        'T' => Some("-"),
+        'U' => Some("..-"),
+        'V' => Some("...-"),
+        'W' => Some(".--"),
+        'X' => Some("-..-"),
+        'Y' => Some("-.--"),
+        'Z' => Some("--.."),
+        '0' => Some("-----"),
+        '1' => Some(".----"),
+        '2' => Some("..---"),
+        '3' => Some("...--"),
+        '4' => Some("....-"),
+        '5' => Some("....."),
+        '6' => Some("-...."),
+        '7' => Some("--..."),
+        '8' => Some("---.."),
+        '9' => Some("----."),
+        _ => None,
+    }
+}
+
+fn build_morse_nodes(text: &str) -> Vec<orpheus_pattern::PatternNode<f64>> {
+    let mut units = Vec::new();
+
+    let words = text.split_whitespace();
+    for (i, word) in words.enumerate() {
+        if i > 0 {
+            units.extend(std::iter::repeat(false).take(4));
+        }
+        for (j, c) in word.chars().enumerate() {
+            if let Some(morse) = char_to_morse(c) {
+                if j > 0 {
+                    units.extend(std::iter::repeat(false).take(2));
+                }
+
+                let symbols: Vec<char> = morse.chars().collect();
+                for (k, sym) in symbols.iter().enumerate() {
+                    if *sym == '.' {
+                        units.push(true);
+                    } else if *sym == '-' {
+                        units.push(true);
+                        units.push(true);
+                        units.push(true);
+                    }
+                    if k < symbols.len() - 1 {
+                        units.push(false);
+                    }
+                }
+            }
+        }
+    }
+
+    units
+        .into_iter()
+        .map(|b| {
+            if b {
+                orpheus_pattern::PatternNode::atom(1.0)
+            } else {
+                orpheus_pattern::PatternNode::rest()
+            }
+        })
+        .collect()
+}
+
+fn apply_morse(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let text = extract_string(
+        args.next()
+            .ok_or_else(|| EvalError::new("`morse` requires a text argument"))?,
+        "`morse` text",
+    )?;
+
+    let nodes = build_morse_nodes(&text);
+    if nodes.is_empty() {
+        Ok(Value::NumberPattern(NumberPatternValue::from_nodes(vec![
+            orpheus_pattern::PatternNode::rest(),
+        ])))
+    } else {
+        Ok(Value::NumberPattern(NumberPatternValue::from_nodes(nodes)))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     // use super::*
     use crate::{ReplMode, eval_module};
+
+    #[test]
+    fn morse_generates_rhythm() {
+        let source = "a = morse(\"SOS\")";
+        let module = eval_module(source, ReplMode::Loose).unwrap();
+        let pattern = module.get("a").unwrap().as_number_pattern().unwrap();
+
+        let span = orpheus_pattern::TimeSpan::unit();
+        let events = pattern.try_query(&span).unwrap();
+
+        // SOS is ... --- ...
+        // Our naive builder makes a 3-unit dash as 3 separate `true` nodes, which yields 3 separate events since cycle doesn't merge them.
+        // So 3 (S) + 3x3 (O) + 3 (S) = 15 events.
+        assert_eq!(events.len(), 15);
+        assert!((events[0].value - 1.0).abs() < f64::EPSILON);
+    }
 
     #[test]
     fn jux_applies_transform_and_pans() {
