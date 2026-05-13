@@ -26,11 +26,22 @@ use crate::types::{Type, TypeVarId};
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
+    /// The generalized type variables that are bound by this scheme.
     pub vars: Vec<TypeVarId>,
+    /// The underlying type expression that may reference the bound variables.
     pub ty: Type,
 }
 
 impl TypeScheme {
+    /// Constructs a monomorphic type scheme that binds no type variables.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::types::{TypeScheme, Type};
+    /// let scheme = TypeScheme::monomorphic(Type::Number);
+    /// assert!(scheme.vars.is_empty());
+    /// ```
     #[must_use]
     pub const fn monomorphic(ty: Type) -> Self {
         Self {
@@ -195,6 +206,15 @@ impl TypeEnv {
         self.entries.get(name)
     }
 
+    /// Returns an iterator over all `TypeScheme`s present in the environment.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::types::TypeEnv;
+    /// let env = TypeEnv::with_builtins();
+    /// assert!(env.values().count() > 0);
+    /// ```
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }

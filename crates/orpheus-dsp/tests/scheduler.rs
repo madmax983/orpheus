@@ -1,3 +1,4 @@
+//! Integration tests for `scheduler`.
 use orpheus_dsp::{SampleTrigger, Scheduler, TrackId};
 use orpheus_pattern::{Event, Rational, TimeSpan};
 

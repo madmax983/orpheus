@@ -37,36 +37,253 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Applies a function to the pattern every `N` cycles.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = every 3 (fast 2) (bd hh bd hh)
+    /// ```
     Every,
+    /// Applies a function to the pattern only when a boolean condition is met.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = when (rand < 0.5) (rev) (bd hh)
+    /// ```
     When,
+    /// Randomly applies a function to events in the pattern.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = sometimes (fast 2) (bd hh)
+    /// ```
     Sometimes,
+    /// Applies a function to events that occur within a specific time range.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = within (0.25, 0.75) (fast 2) (bd hh bd hh)
+    /// ```
     Within,
+    /// Silences events in the pattern based on a binary mask.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = mask (1 0 1 0) (bd hh bd hh)
+    /// ```
     Mask,
+    /// Offsets the onset times of notes in a chord to create a strumming effect.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = strum 0.1 (chord "C major")
+    /// ```
     Strum,
+    /// Repeats an event multiple times within its original time span.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = roll 3 bd
+    /// ```
     Roll,
+    /// Arpeggiates a chord pattern into a sequence of individual notes.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = arp "up" (chord "C major")
+    /// ```
     Arp,
+    /// Inverts the pitches of a chord or melody pattern.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = invert 1 (chord "C major")
+    /// ```
     Invert,
+    /// Removes specific events from a pattern.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = drop 1 (bd hh sn hh)
+    /// ```
     Drop,
+    /// Generates a chord pattern from a root note and chord name.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = chord "C major"
+    /// ```
     Chord,
+    /// Generates a Euclidean rhythm pattern.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = euclid 3 8 bd
+    /// ```
     Euclid,
+    /// Generates a pattern using an L-system grammar.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = lsystem 3 "A" (rules "A" "AB" "B" "A")
+    /// ```
     Lsystem,
+    /// Generates a pattern using a 1D Wolfram cellular automaton.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = wolfram 30 bd
+    /// ```
     Wolfram,
+    /// Generates a pattern from a set of pitch classes.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = pitchClassSet (0 4 7)
+    /// ```
     PitchClassSet,
+    /// Maps scale degrees to specific pitches.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = degrees "major" (0 2 4)
+    /// ```
     Degrees,
+    /// Speeds up the playback of a pattern.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = fast 2 (bd hh)
+    /// ```
     Fast,
+    /// Slows down the playback of a pattern.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = slow 2 (bd hh)
+    /// ```
     Slow,
+    /// Shifts the pattern forward or backward in time.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = shift 0.5 (bd hh)
+    /// ```
     Shift,
+    /// Reverses the playback direction of a pattern.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = rev (bd hh)
+    /// ```
     Rev,
+    /// Adjusts the volume of the pattern.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = gain 0.5 (bd hh)
+    /// ```
     Gain,
+    /// Applies a delay effect to the pattern.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = delay 0.5 (bd hh)
+    /// ```
     Delay,
+    /// Sets the delay time for the delay effect.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = delayTime 0.25 (bd hh)
+    /// ```
     DelayTime,
+    /// Sets the feedback amount for the delay effect.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = delayFeedback 0.75 (bd hh)
+    /// ```
     DelayFeedback,
+    /// Applies a high-pass filter to the pattern.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = hpf 1000 (bd hh)
+    /// ```
     Hpf,
+    /// Applies a low-pass filter to the pattern.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = lpf 500 (bd hh)
+    /// ```
     Lpf,
+    /// Applies a reverb effect to the pattern.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = reverb 0.5 (bd hh)
+    /// ```
     Reverb,
+    /// Sets the room size for the reverb effect.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = reverbRoom 0.8 (bd hh)
+    /// ```
     ReverbRoom,
+    /// Sets the damping amount for the reverb effect.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = reverbDamp 0.2 (bd hh)
+    /// ```
     ReverbDamp,
+    /// Sets the cutoff frequency for a filter.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = cutoff 800 (bd hh)
+    /// ```
     Cutoff,
+    /// Applies a chorus effect to the pattern.
+    ///
+    /// ## Examples
+    ///
+    /// ```orpheus
+    /// d1 = chorus 0.5 (bd hh)
+    /// ```
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

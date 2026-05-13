@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-05-20 - [Fixing Missing Value/Loader/Env Documentations]
+**Confusion:** Several public types like `StrictLoadedFile` fields, `TypeScheme`, `TypeEnv::values()`, `BuiltinFn::new`, and `BuiltinFn::with_site_salt` were missing documentation, leading to `missing_docs` warnings and obfuscated API context for language users.
+**Clarification:** Added detailed `///` documentation to all missing public items. Added executable `## Examples` doctests. Hid simple getters using `#[doc(hidden)]` to avoid boilerplate noise.

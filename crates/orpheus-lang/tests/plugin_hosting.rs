@@ -1,3 +1,4 @@
+//! Integration tests for `plugin_hosting`.
 use orpheus_dsp::PluginFormat;
 use orpheus_lang::{ReplMode, ReplSession, eval_module};
 
