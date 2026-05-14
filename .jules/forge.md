@@ -82,3 +82,11 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**Extract Nested Fold Closures to Methods**
+**Learning:** Large `try_fold` or `fold` closures containing extensive logic and matching (e.g., `eval_statements` or `eval_seq_sections_events` in `eval.rs`) can be flattened by extracting the closure body into a dedicated helper method on the struct. This eliminates the "pyramid of doom" caused by inline closure nesting and improves readability without changing the logic.
+**Action:** Extract the body of large iterator closures into private helper methods, passing the accumulator and item as arguments.
+
+**Extracting Guard Clauses Without Duplicating Routing Logic**
+**Learning:** `clippy::too_many_lines` on UI rendering functions or parsing loops (like `build_graph` loops handling `graph_entry`) is often caused by combining control flow (like checking if a result is already present) with logic that builds actual structs.
+**Action:** Extract loop bodies into individual methods (e.g. `process_graph_entry`), isolating the matching logic and modifying state arguments (`&mut result`).

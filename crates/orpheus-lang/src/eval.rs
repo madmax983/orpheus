@@ -267,31 +267,33 @@ impl Evaluator {
     ) -> Result<Option<(String, Value)>, EvalError> {
         statements
             .iter()
-            .try_fold(None, |_, statement| match statement {
-                Stmt::Binding {
-                    name, params, expr, ..
-                } => {
-                    if !params.is_empty() && binding_expr_self_references(name, params, expr) {
-                        return Err(EvalError::new(format!(
-                            "parameterized binding `{name}` cannot contain a self-reference in v1"
-                        )));
-                    }
-                    let value = if params.is_empty() {
-                        self.eval_expr(expr)?
-                    } else {
-                        Value::Function(FunctionValue::User(Arc::new(UserFn {
-                            mode: self.mode,
-                            remaining_params: params.clone(),
-                            body: expr.clone(),
-                            captured_bindings: self.bindings.clone(),
-                            expr_site_salts: self.expr_site_salts.clone(),
-                            depth: self.depth.get(),
-                        })))
-                    };
-                    self.bindings.insert(name.clone(), value.clone());
-                    Ok(Some((name.clone(), value)))
+            .try_fold(None, |_, statement| self.eval_statement(statement))
+    }
+
+    fn eval_statement(&mut self, statement: &Stmt) -> Result<Option<(String, Value)>, EvalError> {
+        match statement {
+            Stmt::Binding { name, params, expr, .. } => {
+                if !params.is_empty() && binding_expr_self_references(name, params, expr) {
+                    return Err(EvalError::new(format!(
+                        "parameterized binding `{name}` cannot contain a self-reference in v1"
+                    )));
                 }
-            })
+                let value = if params.is_empty() {
+                    self.eval_expr(expr)?
+                } else {
+                    Value::Function(FunctionValue::User(Arc::new(UserFn {
+                        mode: self.mode,
+                        remaining_params: params.clone(),
+                        body: expr.clone(),
+                        captured_bindings: self.bindings.clone(),
+                        expr_site_salts: self.expr_site_salts.clone(),
+                        depth: self.depth.get(),
+                    })))
+                };
+                self.bindings.insert(name.clone(), value.clone());
+                Ok(Some((name.clone(), value)))
+            }
+        }
     }
 
     fn eval_expr(&self, expr: &Expr) -> Result<Value, EvalError> {
@@ -580,20 +582,28 @@ impl Evaluator {
 
         let (combined, _) = rest.iter().try_fold(
             (initial_combined, next_offset),
-            |(acc_combined, acc_offset), section| -> Result<(ExplicitValue, i128), EvalError> {
-                let section_events = self.eval_section_events(section, meter, acc_offset)?;
-                let section_length = self.eval_section_length(section, meter)?;
-
-                let next_combined = acc_combined.merge(section_events)?;
-                let next_offset = acc_offset
-                    .checked_add(section_length)
-                    .ok_or_else(|| EvalError::new("section cycle offset overflowed"))?;
-
-                Ok((next_combined, next_offset))
-            },
+            |(acc_combined, acc_offset), section| self.eval_seq_section_fold(acc_combined, acc_offset, section, meter),
         )?;
 
         Ok(combined)
+    }
+
+    fn eval_seq_section_fold(
+        &self,
+        acc_combined: ExplicitValue,
+        acc_offset: i128,
+        section: &Expr,
+        meter: Option<&MeterContext>,
+    ) -> Result<(ExplicitValue, i128), EvalError> {
+        let section_events = self.eval_section_events(section, meter, acc_offset)?;
+        let section_length = self.eval_section_length(section, meter)?;
+
+        let next_combined = acc_combined.merge(section_events)?;
+        let next_offset = acc_offset
+            .checked_add(section_length)
+            .ok_or_else(|| EvalError::new("section cycle offset overflowed"))?;
+
+        Ok((next_combined, next_offset))
     }
 
     fn eval_section_events(

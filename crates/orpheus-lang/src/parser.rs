@@ -570,39 +570,7 @@ fn build_graph(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
     };
 
     for entry_pair in body_pair.into_inner() {
-        match entry_pair.as_rule() {
-            Rule::graph_entry => {
-                let entry = first_inner(entry_pair, "graph entry")?;
-                match entry.as_rule() {
-                    Rule::graph_binding => {
-                        if result.is_some() {
-                            return Err(ParseError::new(format!(
-                                "parse error at line {line}, col {col}: `graph` bindings must appear before the final result expression"
-                            )));
-                        }
-                        bindings.push(build_graph_binding(entry, depth)?);
-                    }
-                    Rule::graph_result => {
-                        if result.is_some() {
-                            return Err(ParseError::new(format!(
-                                "parse error at line {line}, col {col}: `graph` blocks may contain only one result expression"
-                            )));
-                        }
-                        result = Some(build_pipe_expr(first_inner(entry, "graph result")?, depth)?);
-                    }
-                    other => {
-                        return Err(ParseError::new(format!(
-                            "unexpected graph entry while building AST: {other:?}"
-                        )));
-                    }
-                }
-            }
-            other => {
-                return Err(ParseError::new(format!(
-                    "unexpected graph body rule while building AST: {other:?}"
-                )));
-            }
-        }
+        process_graph_entry_pair(entry_pair, &mut bindings, &mut result, depth, line, col)?;
     }
 
     let result = result.ok_or_else(|| {
@@ -614,6 +582,58 @@ fn build_graph(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
         bindings,
         result: Box::new(result),
     })
+}
+
+fn process_graph_entry_pair(
+    entry_pair: Pair<'_, Rule>,
+    bindings: &mut Vec<GraphBinding>,
+    result: &mut Option<Expr>,
+    depth: usize,
+    line: usize,
+    col: usize,
+) -> Result<(), ParseError> {
+    match entry_pair.as_rule() {
+        Rule::graph_entry => {
+            let entry = first_inner(entry_pair, "graph entry")?;
+            process_graph_entry(entry, bindings, result, depth, line, col)
+        }
+        other => Err(ParseError::new(format!(
+            "unexpected graph body rule while building AST: {other:?}"
+        ))),
+    }
+}
+
+fn process_graph_entry(
+    entry: Pair<'_, Rule>,
+    bindings: &mut Vec<GraphBinding>,
+    result: &mut Option<Expr>,
+    depth: usize,
+    line: usize,
+    col: usize,
+) -> Result<(), ParseError> {
+    match entry.as_rule() {
+        Rule::graph_binding => {
+            if result.is_some() {
+                return Err(ParseError::new(format!(
+                    "parse error at line {line}, col {col}: `graph` bindings must appear before the final result expression"
+                )));
+            }
+            bindings.push(build_graph_binding(entry, depth)?);
+            Ok(())
+        }
+        Rule::graph_result => {
+            if result.is_some() {
+                return Err(ParseError::new(format!(
+                    "parse error at line {line}, col {col}: `graph` blocks may contain only one result expression"
+                )));
+            }
+            *result = Some(build_pipe_expr(first_inner(entry, "graph result")?, depth)?);
+            Ok(())
+        }
+        other => Err(ParseError::new(format!(
+            "unexpected graph entry while building AST: {other:?}"
+        ))),
+    }
 }
 
 fn build_graph_binding(pair: Pair<'_, Rule>, depth: usize) -> Result<GraphBinding, ParseError> {
