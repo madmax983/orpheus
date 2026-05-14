@@ -31,7 +31,8 @@ pub const COMMAND_HINTS: [(&str, &str); 17] = [
 ];
 
 /// Shared application state accessible by all pane plugins via `Rc<RefCell<_>>`.
-pub struct SharedState {
+#[allow(clippy::redundant_pub_crate)]
+pub(crate) struct SharedState {
     pub session: ReplSession,
     pub transcript: Vec<String>,
     pub history: Vec<String>,

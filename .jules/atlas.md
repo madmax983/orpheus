@@ -56,3 +56,12 @@
 **[Enforce Private Explain Module]
 **Tangle:** The `explain` module in `orpheus-lang/src/lib.rs` and its internal `Explain` trait and `explain_table` function were declared as `pub`, leaking internal REPL table rendering details to the public API.
 **Blueprint:** Changed the visibility of the `Explain` trait and `explain_table` function to `pub(crate)` in `crates/orpheus-lang/src/explain.rs`. Removed the `pub use explain::Explain;` re-export from `crates/orpheus-lang/src/lib.rs` and changed the module declaration to `pub(crate) mod explain;`. This strictly enforces internal encapsulation.
+**[Fix Leaky Abstraction in SampleBankError]
+**Tangle:** The `SampleBankError` enum in `orpheus-dsp` exposed the inner payload type `SampleLibraryScanError` through a variant but it was missing from the `pub use` re-exports in the crate root, breaking public API boundaries. `SampleLibraryScanError` also lacked a proper `std::error::Error` implementation.
+**Blueprint:** Implemented the `thiserror::Error` trait for `SampleLibraryScanError` to conform to error handling standards, and explicitly re-exported it in `crates/orpheus-dsp/src/lib.rs` to fix the leaky abstraction.
+**[Enforce Private Structs in TUI]
+**Tangle:** The `ReplPlugin`, `BindingsPlugin`, `TransportPlugin` in `crates/orpheus-lang/src/tui/plugins.rs` and `SharedState` in `crates/orpheus-lang/src/tui/state.rs` were declared as `pub struct`, leaking the internal TUI implementation details.
+**Blueprint:** Modified `ReplPlugin`, `BindingsPlugin`, `TransportPlugin`, and `SharedState` to use `pub(crate)` visibility. This prevents leaky abstractions.
+**[Enforce Structural Soundness - End of Shift]
+**Tangle:** None. Conducted a thorough survey of `orpheus-lang`, `orpheus-pattern`, and `orpheus-dsp` looking for remaining architectural issues, god structs, and leaky abstractions. Verified struct and enum visibility (everything intended as internal is `pub(crate)` or re-exported intentionally). Tested across platforms (fixed `VST3` casing). Standardized all errors via `thiserror` (already applied for `SampleBankError` earlier).
+**Blueprint:** Architecture remains sound. The codebase represents a clean, acyclic directed graph with explicitly defined abstractions. No further sweeping structural changes are necessary at this time.
