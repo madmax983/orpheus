@@ -56,3 +56,7 @@
 **[Enforce Private Explain Module]
 **Tangle:** The `explain` module in `orpheus-lang/src/lib.rs` and its internal `Explain` trait and `explain_table` function were declared as `pub`, leaking internal REPL table rendering details to the public API.
 **Blueprint:** Changed the visibility of the `Explain` trait and `explain_table` function to `pub(crate)` in `crates/orpheus-lang/src/explain.rs`. Removed the `pub use explain::Explain;` re-export from `crates/orpheus-lang/src/lib.rs` and changed the module declaration to `pub(crate) mod explain;`. This strictly enforces internal encapsulation.
+
+**[Fix Site Salt Role Ambiguity for Graph and Binary Expressions]
+**Tangle:** The `ROLE_GROUP_ITEM` constant in `crates/orpheus-lang/src/eval.rs` was being incorrectly reused for calculating expression site salts for `Expr::Group`, `Expr::Graph`, and `Expr::Binary`. This mixed the domains for group items, graph bindings, and binary operands.
+**Blueprint:** Introduced specific roles (`ROLE_GRAPH_BINDING`, `ROLE_GRAPH_RESULT`, `ROLE_BINARY_LHS`, and `ROLE_BINARY_RHS`) to properly disambiguate and cleanly separate the domain roles in the AST evaluator.
