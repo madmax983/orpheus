@@ -1503,12 +1503,7 @@ impl PatternRuntimeValue for SampleEvent {
             }
 
             let cluster_events = roll_event_cluster(&events[start_index..index], steps)?;
-            if rolled.len() + cluster_events.len() > 100_000 {
-                return Err(EvalError::new(
-                    "evaluation exceeded the maximum allowed event limit",
-                ));
-            }
-            rolled.extend(cluster_events);
+            extend_events(&mut rolled, cluster_events)?;
         }
 
         sort_events(&mut rolled);
@@ -1584,12 +1579,7 @@ impl PatternRuntimeValue for f64 {
         let mut rolled = Vec::with_capacity(events.len().saturating_mul(steps as usize));
         mutate_event_clusters(&mut events, "roll", |cluster| {
             let cluster_result = roll_event_cluster(cluster, steps)?;
-            if rolled.len() + cluster_result.len() > 100_000 {
-                return Err(EvalError::new(
-                    "evaluation exceeded the maximum allowed event limit",
-                ));
-            }
-            rolled.extend(cluster_result);
+            extend_events(&mut rolled, cluster_result)?;
             Ok(())
         })?;
         sort_events(&mut rolled);
@@ -1623,12 +1613,7 @@ impl PatternRuntimeValue for f64 {
         let mut arped = Vec::with_capacity(events.len());
         mutate_event_clusters(&mut events, "arp", |cluster| {
             let cluster_result = arp_event_cluster(cluster, steps, direction)?;
-            if arped.len() + cluster_result.len() > 100_000 {
-                return Err(EvalError::new(
-                    "evaluation exceeded the maximum allowed event limit",
-                ));
-            }
-            arped.extend(cluster_result);
+            extend_events(&mut arped, cluster_result)?;
             Ok(())
         })?;
         sort_events(&mut arped);
@@ -3753,12 +3738,7 @@ where
     let mut events = Vec::with_capacity(layers.len() * 4);
     for layer in layers {
         let layer_events = layer.try_query(span)?;
-        if events.len() + layer_events.len() > 100_000 {
-            return Err(EvalError::new(
-                "evaluation exceeded the maximum allowed event limit",
-            ));
-        }
-        events.extend(layer_events);
+        extend_events(&mut events, layer_events)?;
     }
     sort_events(&mut events);
     Ok(events)
@@ -4757,12 +4737,7 @@ where
         let local_query = translate_span(&query_slice, &local_offset)?;
         let mut cycle_events = stream.try_query(&local_query)?;
         shift_events(&mut cycle_events, &cycle_offset)?;
-        if events.len() + cycle_events.len() > 100_000 {
-            return Err(EvalError::new(
-                "evaluation exceeded the maximum allowed event limit",
-            ));
-        }
-        events.extend(cycle_events);
+        extend_events(&mut events, cycle_events)?;
     }
 
     sort_events(&mut events);
@@ -4936,12 +4911,7 @@ where
             events.extend(transformed_events);
         } else {
             let slice_events = inner.try_query(&query_slice)?;
-            if events.len() + slice_events.len() > 100_000 {
-                return Err(EvalError::new(
-                    "evaluation exceeded the maximum allowed event limit",
-                ));
-            }
-            events.extend(slice_events);
+            extend_events(&mut events, slice_events)?;
         }
     }
 
@@ -4975,12 +4945,7 @@ where
         let window_span = within_window_span(cycle, start, end)?;
         let Some(window_query) = clip_span(&window_span, &query_slice)? else {
             let slice_events = inner.try_query(&query_slice)?;
-            if events.len() + slice_events.len() > 100_000 {
-                return Err(EvalError::new(
-                    "evaluation exceeded the maximum allowed event limit",
-                ));
-            }
-            events.extend(slice_events);
+            extend_events(&mut events, slice_events)?;
             continue;
         };
 
@@ -4988,12 +4953,7 @@ where
             clip_between(&query_slice, cycle_span.start(), window_span.start())?
         {
             let slice_events = inner.try_query(&before_window)?;
-            if events.len() + slice_events.len() > 100_000 {
-                return Err(EvalError::new(
-                    "evaluation exceeded the maximum allowed event limit",
-                ));
-            }
-            events.extend(slice_events);
+            extend_events(&mut events, slice_events)?;
         }
 
         let absolute_cycle = inner.absolute_cycle(cycle)?;
@@ -5002,22 +4962,12 @@ where
         let mut transformed_events =
             apply_unary_transform(transform, localized)?.try_query(&local_query)?;
         restore_window_localized_events(&mut transformed_events, &window_span)?;
-        if events.len() + transformed_events.len() > 100_000 {
-            return Err(EvalError::new(
-                "evaluation exceeded the maximum allowed event limit",
-            ));
-        }
-        events.extend(transformed_events);
+        extend_events(&mut events, transformed_events)?;
 
         if let Some(after_window) = clip_between(&query_slice, window_span.end(), cycle_span.end())?
         {
             let slice_events = inner.try_query(&after_window)?;
-            if events.len() + slice_events.len() > 100_000 {
-                return Err(EvalError::new(
-                    "evaluation exceeded the maximum allowed event limit",
-                ));
-            }
-            events.extend(slice_events);
+            extend_events(&mut events, slice_events)?;
         }
     }
 
@@ -5081,12 +5031,7 @@ where
                 event.whole = Some(mirror_span_in_cycle(&whole, cycle)?);
             }
         }
-        if events.len() + mirrored_events.len() > 100_000 {
-            return Err(EvalError::new(
-                "evaluation exceeded the maximum allowed event limit",
-            ));
-        }
-        events.extend(mirrored_events);
+        extend_events(&mut events, mirrored_events)?;
     }
 
     sort_events(&mut events);
@@ -5389,6 +5334,19 @@ fn rational_mul_parts(
 
 fn rational_from_parts(numerator: i128, denominator: i128) -> Result<Rational, EvalError> {
     Ok(Rational::checked_from_parts(numerator, denominator)?)
+}
+
+fn extend_events<T>(
+    events: &mut Vec<Event<T>>,
+    new_events: Vec<Event<T>>,
+) -> Result<(), EvalError> {
+    if events.len() + new_events.len() > 100_000 {
+        return Err(EvalError::new(
+            "evaluation exceeded the maximum allowed event limit",
+        ));
+    }
+    events.extend(new_events);
+    Ok(())
 }
 
 fn apply_unary_transform<T>(
