@@ -1874,3 +1874,22 @@ right = sometimes(fast(2), cp hh)";
         assert!((val.try_query_unit().unwrap()[0].value - 42.0).abs() < f64::EPSILON);
     }
 }
+
+#[cfg(test)]
+mod checked_pow10_tests {
+    use super::*;
+
+    #[test]
+    fn checked_pow10_returns_error_on_overflow() {
+        // Find a power of 10 that overflows i128
+        // 10^38 is ~ 100_000_000_000_000_000_000_000_000_000_000_000_000
+        // i128::MAX is ~ 3.4 * 10^38
+        // So 10^39 should definitely overflow
+        let result = checked_pow10(39);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "decimal literal exceeded the supported range"
+        );
+    }
+}
