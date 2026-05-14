@@ -434,14 +434,14 @@ impl MixerState {
 
         let _ = std::fmt::Write::write_fmt(
             &mut output,
-            format_args!("{}\n", "Mixer Tracks:".cyan().bold()),
+            format_args!("{}\n", "🎛️ Mixer Tracks:".cyan().bold()),
         );
         output.push_str(&self.render_summary_tracks_table());
 
         if !self.buses.is_empty() {
             let _ = std::fmt::Write::write_fmt(
                 &mut output,
-                format_args!("\n{}\n", "Mixer Buses:".cyan().bold()),
+                format_args!("\n{}\n", "🚌 Mixer Buses:".cyan().bold()),
             );
             output.push_str(&self.render_summary_buses_table());
         }

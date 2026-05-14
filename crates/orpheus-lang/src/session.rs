@@ -710,7 +710,7 @@ impl ReplSession {
         }
 
         let mut table = comfy_table::Table::new();
-        table.load_preset(comfy_table::presets::UTF8_BORDERS_ONLY);
+        table.load_preset(comfy_table::presets::UTF8_FULL_CONDENSED);
         table.set_header(vec![
             comfy_table::Cell::new("Binding")
                 .fg(comfy_table::Color::White)
@@ -736,7 +736,9 @@ impl ReplSession {
             }
         }
 
-        Ok(format!("\n{table}"))
+        Ok(format!(
+            "\n\x1b[38;5;14m\x1b[1m📦 Environment Bindings:\x1b[0m\n{table}"
+        ))
     }
 
     fn explain_binding(&self, args: &str) -> Result<String, String> {
@@ -3431,7 +3433,7 @@ fn export_command_exports_number_pattern_to_supercollider() {
 
 fn build_help_table() -> comfy_table::Table {
     let mut table = comfy_table::Table::new();
-    table.load_preset(comfy_table::presets::UTF8_BORDERS_ONLY);
+    table.load_preset(comfy_table::presets::UTF8_FULL_CONDENSED);
     table.set_header(vec![
         comfy_table::Cell::new("Command")
             .fg(comfy_table::Color::White)
