@@ -37,36 +37,67 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Applies a function to the pattern every N cycles.
     Every,
+    /// Applies a function conditionally based on a predicate pattern.
     When,
+    /// Applies a function randomly with a specified probability.
     Sometimes,
+    /// Applies a function only within a specific fraction of a cycle.
     Within,
+    /// Silences parts of a pattern using a boolean gate pattern.
     Mask,
+    /// Arpeggiates chords by delaying successive notes.
     Strum,
+    /// Repeats elements within a pattern.
     Roll,
+    /// Arpeggiates chords into melodic sequences.
     Arp,
+    /// Inverts pitches or chords around a center axis.
     Invert,
+    /// Removes specific events from a pattern.
     Drop,
+    /// Generates chords from individual notes or degrees.
     Chord,
+    /// Generates Euclidean rhythms (distributing pulses as evenly as possible).
     Euclid,
+    /// Generates patterns using Lindenmayer systems (L-systems).
     Lsystem,
+    /// Generates patterns using 1D cellular automata.
     Wolfram,
+    /// Constrains notes to a specific scale or pitch collection.
     PitchClassSet,
+    /// Converts scale degrees into exact pitch values.
     Degrees,
+    /// Speeds up the playback of a pattern.
     Fast,
+    /// Slows down the playback of a pattern.
     Slow,
+    /// Shifts the phase/timing of a pattern forwards or backwards.
     Shift,
+    /// Reverses the playback direction of a pattern.
     Rev,
+    /// Adjusts the volume/amplitude of an audio signal.
     Gain,
+    /// A time-based echo effect.
     Delay,
+    /// The time between delay echoes.
     DelayTime,
+    /// The amount of signal fed back into the delay line.
     DelayFeedback,
+    /// High-pass filter, cutting low frequencies.
     Hpf,
+    /// Low-pass filter, cutting high frequencies.
     Lpf,
+    /// A reverberation effect simulating acoustic spaces.
     Reverb,
+    /// The apparent size of the simulated reverb space.
     ReverbRoom,
+    /// The high-frequency damping of the reverb tail.
     ReverbDamp,
+    /// The frequency at which a filter begins to attenuate the signal.
     Cutoff,
+    /// A chorus modulation effect.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

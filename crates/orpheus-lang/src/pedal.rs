@@ -53,13 +53,21 @@ impl Display for SignalKind {
 /// The node categories used by the validated pedal plan.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PedalNodeKind {
+    /// An input parameter provided to the pedal graph from the main audio stream.
     Input,
+    /// A named reference to another node within the graph.
     Reference,
+    /// A static floating-point value.
     Constant,
+    /// A binary mathematical operation (like addition or multiplication).
     Binary,
+    /// A stateful DSP stage (like a filter or oscillator).
     Stage,
+    /// A node that combines multiple audio streams together.
     Mix,
+    /// A recursive routing node that creates a feedback loop in the graph.
     Feedback,
+    /// The final audio output from the pedal graph.
     Output,
 }
 
@@ -115,6 +123,16 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Constructs a new validated pedal node.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "Audio Input");
+    /// assert_eq!(node.summary(), "Audio Input");
+    /// ```
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +148,31 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Gets the operational kind of this DSP node.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "Audio Input");
+    /// assert!(matches!(node.kind(), PedalNodeKind::Input));
+    /// ```
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Gets the human-readable summary string describing this node's action.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "Audio Input");
+    /// assert_eq!(node.summary(), "Audio Input");
+    /// ```
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +187,17 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Binds a validated pedal node to a variable name for routing.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "Audio Input");
+    /// let binding = ValidatedPedalBinding::new("sig_a", node);
+    /// assert_eq!(binding.name(), "sig_a");
+    /// ```
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +206,33 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// Gets the name of the bound signal variable.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "Audio Input");
+    /// let binding = ValidatedPedalBinding::new("sig_a", node);
+    /// assert_eq!(binding.name(), "sig_a");
+    /// ```
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Gets a reference to the underlying DSP node being bound.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "Audio Input");
+    /// let binding = ValidatedPedalBinding::new("sig_a", node);
+    /// assert!(matches!(binding.node().kind(), PedalNodeKind::Input));
+    /// ```
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node

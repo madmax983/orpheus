@@ -260,6 +260,17 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Constructs a new, unapplied built-in function of the specified kind.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{BuiltinKind, BuiltinFn, Value, FunctionValue};
+    ///
+    /// let f = BuiltinFn::new(BuiltinKind::Rev);
+    /// let val = Value::Function(FunctionValue::Builtin(f));
+    /// assert_eq!(val.kind_name(), "function");
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +280,21 @@ impl BuiltinFn {
         }
     }
 
+    /// Attaches a site salt to the built-in function for deterministic randomness.
+    ///
+    /// This is used internally during AST evaluation to give functions like
+    /// `rand` or `sometimes` a stable, repeatable identity based on their
+    /// physical location in the source code.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{BuiltinKind, BuiltinFn, Value, FunctionValue};
+    ///
+    /// let f = BuiltinFn::new(BuiltinKind::Rand).with_site_salt(42);
+    /// let val = Value::Function(FunctionValue::Builtin(f));
+    /// assert_eq!(val.kind_name(), "function");
+    /// ```
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

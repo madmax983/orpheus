@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-05-26 - [Missing DSP Struct and Variant Documentations]
+**Confusion:** Struct fields in `StrictLoadedFile`, `TypeScheme`, `BuiltinFn` and variants in `BuiltinKind` and `PedalNodeKind` lacked documentation, leading to `missing_docs` warnings. `ValidatedPedalNode` and `ValidatedPedalBinding` also lacked clear instantiation examples, leaving users to guess how they are composed.
+**Clarification:** Added detailed `///` documentation blocks explaining the intent and behavior of the `loader` components, the built-in primitive transformations, and the pedal routing components. Attached `# Examples` doctests to bridge the gap between structure declarations and actual runtime construction. Explicitly imported the target types to fix `mismatched types` collisions between `orpheus-lang` and `orpheus-dsp` in the doctests.
