@@ -1395,14 +1395,24 @@ impl ReplSession {
             })
             .collect::<Vec<_>>();
         port_names.sort_unstable();
+
+        let mut table = comfy_table::Table::new();
+        table.load_preset(comfy_table::presets::UTF8_BORDERS_ONLY);
+        table.set_header(vec![comfy_table::Cell::new("MIDI Input Ports")
+            .fg(comfy_table::Color::White)
+            .add_attribute(comfy_table::Attribute::Bold)]);
+
         if port_names.is_empty() {
-            Ok("available MIDI input ports: <none>".to_owned())
+            table.add_row(vec![comfy_table::Cell::new("<none>")
+                .fg(comfy_table::Color::DarkGrey)
+                .add_attribute(comfy_table::Attribute::Italic)]);
         } else {
-            Ok(format!(
-                "available MIDI input ports: {}",
-                port_names.join(", ")
-            ))
+            for name in port_names {
+                table.add_row(vec![comfy_table::Cell::new(name).fg(comfy_table::Color::Green)]);
+            }
         }
+
+        Ok(format!("\n{table}"))
     }
 
     fn connect_midi_input(&mut self, raw_port_name: &str) -> Result<String, String> {
@@ -1482,14 +1492,24 @@ impl ReplSession {
             })
             .collect::<Vec<_>>();
         port_names.sort_unstable();
+
+        let mut table = comfy_table::Table::new();
+        table.load_preset(comfy_table::presets::UTF8_BORDERS_ONLY);
+        table.set_header(vec![comfy_table::Cell::new("MIDI Output Ports")
+            .fg(comfy_table::Color::White)
+            .add_attribute(comfy_table::Attribute::Bold)]);
+
         if port_names.is_empty() {
-            Ok("available MIDI output ports: <none>".to_owned())
+            table.add_row(vec![comfy_table::Cell::new("<none>")
+                .fg(comfy_table::Color::DarkGrey)
+                .add_attribute(comfy_table::Attribute::Italic)]);
         } else {
-            Ok(format!(
-                "available MIDI output ports: {}",
-                port_names.join(", ")
-            ))
+            for name in port_names {
+                table.add_row(vec![comfy_table::Cell::new(name).fg(comfy_table::Color::Green)]);
+            }
         }
+
+        Ok(format!("\n{table}"))
     }
 
     fn connect_midi_output(&mut self, raw_port_name: &str) -> Result<String, String> {
@@ -3219,7 +3239,10 @@ mod tests {
         let mut session = ReplSession::new();
         let result = session.eval_line(":midi list");
         match result {
-            Ok(message) => assert!(message.starts_with("available MIDI output ports: ")),
+            Ok(message) => {
+                assert!(message.contains("MIDI Output Ports"));
+                assert!(message.contains("─")); // comfy-table border char
+            }
             Err(e) => assert!(e.contains("failed to initialize MIDI")),
         }
     }
@@ -3229,7 +3252,10 @@ mod tests {
         let mut session = ReplSession::new();
         let result = session.eval_line(":midi in list");
         match result {
-            Ok(message) => assert!(message.starts_with("available MIDI input ports: ")),
+            Ok(message) => {
+                assert!(message.contains("MIDI Input Ports"));
+                assert!(message.contains("─")); // comfy-table border char
+            }
             Err(e) => assert!(e.contains("failed to initialize MIDI")),
         }
     }
