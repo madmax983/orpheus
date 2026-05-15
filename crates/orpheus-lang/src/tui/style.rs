@@ -456,6 +456,76 @@ mod tests {
     }
 
     #[test]
+    fn should_construct_ui_elements() {
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+        session.eval_line(":stop").unwrap();
+        session.render_test_block_for_tui(1);
+
+        let view = session.transport_view();
+        let mixer = session.mixer_view();
+
+        // Help overlay styles
+        assert_eq!(help_overlay_border_style().fg, Some(Color::Cyan));
+        assert_eq!(help_overlay_footer_style().fg, Some(Color::Gray));
+
+        // Legend & Binding lists
+        let legend = binding_legend_item(&view);
+        assert!(format!("{legend:?}").contains("Legend"));
+
+        // Without active pattern, legend shouldn't show
+        assert!(!should_show_binding_legend(10, 2, &view));
+
+        // Status lines
+        let routing_status = routing_status_line(&mixer);
+        assert!(
+            routing_status
+                .spans
+                .iter()
+                .any(|span| span.content == "live")
+        );
+
+        // Transport Status Line target testing
+        let line = transport_status_line("Transport: ", &view, true);
+        assert!(line.spans.iter().any(|span| span.content == "stopped"));
+        assert!(!line.spans.iter().any(|span| span.content == " -> "));
+
+        session.eval_line("p = bd").unwrap();
+        let view = session.transport_view();
+        let line_with_target = transport_status_line("Transport: ", &view, true);
+        // The transport status line test passes because `include_target=true`
+        // checks `if include_target && let Some(pending_pattern_name) = view.pending_pattern_name()`.
+        // and we just evaled `p = bd`. However, since `pending_pattern_name()` may only resolve to " -> " on format,
+        // let's look for " -> ".
+        assert!(
+            line_with_target
+                .spans
+                .iter()
+                .any(|span| span.content == " -> ")
+        );
+
+        // Show legend logic true case
+        assert!(should_show_binding_legend(10, 2, &view));
+        assert!(!should_show_binding_legend(5, 2, &view)); // Height constraint
+        assert!(!should_show_binding_legend(10, 10, &view)); // Count constraint
+
+        // binding_list_item active/pending cases
+        session.eval_line(":play").unwrap();
+        session.render_test_block_for_tui(1);
+        let view = session.transport_view();
+        let list_item = binding_list_item("p: Pattern".to_string(), &view);
+        assert!(format!("{list_item:?}").contains("[live]"));
+
+        session.eval_line("q = bd sn").unwrap();
+        let view = session.transport_view();
+        let list_item_pending = binding_list_item("q: Pattern".to_string(), &view);
+        assert!(format!("{list_item_pending:?}").contains("[next]"));
+
+        let list_item_unrelated = binding_list_item("unrelated: Pattern".to_string(), &view);
+        assert!(!format!("{list_item_unrelated:?}").contains("[live]"));
+        assert!(!format!("{list_item_unrelated:?}").contains("[next]"));
+    }
+
+    #[test]
     fn should_return_correct_transport_state() {
         let mut session = ReplSession::with_engine(EngineHandle::stub());
 
