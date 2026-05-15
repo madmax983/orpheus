@@ -382,38 +382,40 @@ impl PitchClassSetValue {
         Ok(Self { pitch_classes })
     }
 
-    fn from_slice(pitch_classes: &[i32]) -> Self {
-        Self {
-            pitch_classes: pitch_classes.to_vec(),
-        }
-    }
-
     pub(crate) fn ionian() -> Self {
-        Self::from_slice(&IONIAN_INTERVALS)
+        Self::from(&IONIAN_INTERVALS[..])
     }
 
     pub(crate) fn dorian() -> Self {
-        Self::from_slice(&DORIAN_INTERVALS)
+        Self::from(&DORIAN_INTERVALS[..])
     }
 
     pub(crate) fn phrygian() -> Self {
-        Self::from_slice(&PHRYGIAN_INTERVALS)
+        Self::from(&PHRYGIAN_INTERVALS[..])
     }
 
     pub(crate) fn mixolydian() -> Self {
-        Self::from_slice(&MIXOLYDIAN_INTERVALS)
+        Self::from(&MIXOLYDIAN_INTERVALS[..])
     }
 
     pub(crate) fn aeolian() -> Self {
-        Self::from_slice(&AEOLIAN_INTERVALS)
+        Self::from(&AEOLIAN_INTERVALS[..])
     }
 
     pub(crate) fn minor_pentatonic() -> Self {
-        Self::from_slice(&MINOR_PENTATONIC_INTERVALS)
+        Self::from(&MINOR_PENTATONIC_INTERVALS[..])
     }
 
     pub(crate) fn intervals(&self) -> &[i32] {
         &self.pitch_classes
+    }
+}
+
+impl From<&[i32]> for PitchClassSetValue {
+    fn from(pitch_classes: &[i32]) -> Self {
+        Self {
+            pitch_classes: pitch_classes.to_vec(),
+        }
     }
 }
 
@@ -493,13 +495,10 @@ impl TuningValue {
             }
             previous = *ratio;
         }
-        #[allow(clippy::collapsible_if)]
-        if let Some(last_ratio) = ratios.last() {
-            if *last_ratio >= period + f64::EPSILON {
-                return Err(EvalError::new(
-                    "`tuning` ratios must be strictly less than the period",
-                ));
-            }
+        if ratios.last().is_some_and(|r| *r >= period + f64::EPSILON) {
+            return Err(EvalError::new(
+                "`tuning` ratios must be strictly less than the period",
+            ));
         }
         Ok(Self {
             name: name.into(),
