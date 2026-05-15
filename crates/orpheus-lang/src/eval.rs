@@ -821,12 +821,7 @@ impl Evaluator {
             )));
         }
 
-        match self.mode {
-            ReplMode::Loose => Err(EvalError::new(format!(
-                "unresolved identifier `{name}` in loose mode; placeholder playback is not implemented in Task 5"
-            ))),
-            ReplMode::Strict => Err(EvalError::new(format!("unresolved identifier `{name}`"))),
-        }
+        Err(EvalError::new(format!("unresolved identifier `{name}`")))
     }
 
     fn unsupported_pattern_item_error(items: &[Expr], context: &str) -> Option<EvalError> {
@@ -840,7 +835,7 @@ impl Evaluator {
             Expr::Call { callee, args } => Self::check_unsupported_call(callee, args, context),
             Expr::Ident(name) if matches!(builtin_value(name), Some(Value::Function(_))) => {
                 Some(EvalError::new(format!(
-                    "function `{name}` cannot appear inside a pattern {context} in Task 5; apply transforms with the pipe operator `|>` or call `{name}(..., pattern)` directly"
+                    "function `{name}` cannot appear inside a pattern {context}; apply transforms with the pipe operator `|>` or call `{name}(..., pattern)` directly"
                 )))
             }
             Expr::Stream(_)
@@ -867,7 +862,7 @@ impl Evaluator {
             None
         } else {
             Some(EvalError::new(format!(
-                "function call `{name}` cannot appear inside a pattern {context} in Task 5; apply transforms with the pipe operator `|>` or call `{name}(..., pattern)` directly"
+                "function call `{name}` cannot appear inside a pattern {context}; apply transforms with the pipe operator `|>` or call `{name}(..., pattern)` directly"
             )))
         }
     }
@@ -1227,7 +1222,7 @@ pub fn f64_to_rational(value: f64, context: &str) -> Result<Rational, EvalError>
     let rendered = value.to_string();
     if rendered.contains('e') || rendered.contains('E') {
         return Err(EvalError::new(format!(
-            "{context} must not use scientific notation in Task 12"
+            "{context} must not use scientific notation"
         )));
     }
 
@@ -1594,7 +1589,7 @@ right = sometimes(fast(2), cp hh)";
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().to_string(),
-            "function call `sample` cannot appear inside a pattern sequence in Task 5; apply transforms with the pipe operator `|>` or call `sample(..., pattern)` directly"
+            "function call `sample` cannot appear inside a pattern sequence; apply transforms with the pipe operator `|>` or call `sample(..., pattern)` directly"
         );
     }
 
@@ -1604,7 +1599,7 @@ right = sometimes(fast(2), cp hh)";
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().to_string(),
-            "function `fast` cannot appear inside a pattern sequence in Task 5; apply transforms with the pipe operator `|>` or call `fast(..., pattern)` directly"
+            "function `fast` cannot appear inside a pattern sequence; apply transforms with the pipe operator `|>` or call `fast(..., pattern)` directly"
         );
     }
 
@@ -1680,7 +1675,7 @@ right = sometimes(fast(2), cp hh)";
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().to_string(),
-            "function call `sample` cannot appear inside a pattern group in Task 5; apply transforms with the pipe operator `|>` or call `sample(..., pattern)` directly"
+            "function call `sample` cannot appear inside a pattern group; apply transforms with the pipe operator `|>` or call `sample(..., pattern)` directly"
         );
     }
 
@@ -1690,7 +1685,7 @@ right = sometimes(fast(2), cp hh)";
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().to_string(),
-            "function `fast` cannot appear inside a pattern group in Task 5; apply transforms with the pipe operator `|>` or call `fast(..., pattern)` directly"
+            "function `fast` cannot appear inside a pattern group; apply transforms with the pipe operator `|>` or call `fast(..., pattern)` directly"
         );
     }
 

@@ -2771,10 +2771,7 @@ fn loose_mode_still_rejects_unresolved_identifiers_until_placeholders_exist() {
     assert_eval_error_contains(
         "drums = mystery",
         ReplMode::Loose,
-        &[
-            "unresolved identifier `mystery`",
-            "placeholder playback is not implemented",
-        ],
+        &["unresolved identifier `mystery`"],
     );
 }
 
