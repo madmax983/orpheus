@@ -49,6 +49,14 @@ pub struct SawOsc {
 
 impl SawOsc {
     /// Creates a new saw oscillator.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::SawOsc;
+    ///
+    /// let osc = SawOsc::new(48_000.0);
+    /// ```
     #[must_use]
     pub fn new(sample_rate_hz: f32) -> Self {
         Self {
@@ -63,6 +71,15 @@ impl SawOsc {
     }
 
     /// Produces the next sample at `freq_hz`.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::SawOsc;
+    ///
+    /// let mut osc = SawOsc::new(48_000.0);
+    /// let sample = osc.next_sample(440.0);
+    /// ```
     #[must_use]
     pub fn next_sample(&mut self, freq_hz: f32) -> f32 {
         let step = normalized_step(freq_hz, self.sample_rate_hz);
@@ -82,6 +99,14 @@ pub struct PulseOsc {
 
 impl PulseOsc {
     /// Creates a new pulse oscillator.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::PulseOsc;
+    ///
+    /// let osc = PulseOsc::new(48_000.0);
+    /// ```
     #[must_use]
     pub fn new(sample_rate_hz: f32) -> Self {
         Self {
@@ -96,6 +121,16 @@ impl PulseOsc {
     }
 
     /// Produces the next pulse sample at `freq_hz` and `pulse_width`.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::PulseOsc;
+    ///
+    /// let mut osc = PulseOsc::new(48_000.0);
+    /// // Generate a 440Hz square wave (pulse width 0.5)
+    /// let sample = osc.next_sample(440.0, 0.5);
+    /// ```
     #[must_use]
     pub fn next_sample(&mut self, freq_hz: f32, pulse_width: f32) -> f32 {
         let step = normalized_step(freq_hz, self.sample_rate_hz);
@@ -122,6 +157,14 @@ pub struct TriOsc {
 
 impl TriOsc {
     /// Creates a new triangle oscillator.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::TriOsc;
+    ///
+    /// let osc = TriOsc::new(48_000.0);
+    /// ```
     #[must_use]
     pub fn new(sample_rate_hz: f32) -> Self {
         Self {
@@ -138,6 +181,15 @@ impl TriOsc {
     }
 
     /// Produces the next triangle sample at `freq_hz`.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::TriOsc;
+    ///
+    /// let mut osc = TriOsc::new(48_000.0);
+    /// let sample = osc.next_sample(440.0);
+    /// ```
     #[must_use]
     pub fn next_sample(&mut self, freq_hz: f32) -> f32 {
         let step = normalized_step(freq_hz, self.sample_rate_hz);

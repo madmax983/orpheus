@@ -14,6 +14,14 @@ pub struct LadderFilter {
 
 impl LadderFilter {
     /// Creates a new ladder filter for `sample_rate_hz`.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::LadderFilter;
+    ///
+    /// let filter = LadderFilter::new(48_000.0);
+    /// ```
     #[must_use]
     pub fn new(sample_rate_hz: f32) -> Self {
         Self {
@@ -53,6 +61,16 @@ impl LadderFilter {
     }
 
     /// Processes one sample through the ladder approximation.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::LadderFilter;
+    ///
+    /// let mut filter = LadderFilter::new(48_000.0);
+    /// // Process a 1.0 signal with a 1000Hz cutoff and 0.5 resonance
+    /// let out = filter.process(1.0, 1000.0, 0.5);
+    /// ```
     #[must_use]
     pub fn process(&mut self, input: f32, cutoff_hz: f32, resonance: f32) -> f32 {
         let drive = if input.is_finite() { input } else { 0.0 };

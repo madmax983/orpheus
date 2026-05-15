@@ -16,6 +16,14 @@ pub struct Mix;
 
 impl Mix {
     /// Creates a new linear mixer helper.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::Mix;
+    ///
+    /// let mixer = Mix::new();
+    /// ```
     #[must_use]
     pub const fn new() -> Self {
         Self
@@ -25,6 +33,15 @@ impl Mix {
     pub const fn reset(&mut self) {}
 
     /// Blends between `left` and `right` with a clamped `balance` in `[0, 1]`.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::Mix;
+    ///
+    /// let center = Mix::blend(1.0, -1.0, 0.5);
+    /// assert_eq!(center, 0.0);
+    /// ```
     #[must_use]
     pub fn blend(left: f32, right: f32, balance: f32) -> f32 {
         let clamped = balance.clamp(0.0, 1.0);
@@ -32,6 +49,16 @@ impl Mix {
     }
 
     /// Processes a single blend step.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::Mix;
+    ///
+    /// let mut mixer = Mix::new();
+    /// let out = mixer.process(1.0, -1.0, 0.5);
+    /// assert_eq!(out, 0.0);
+    /// ```
     #[must_use]
     pub fn process(&mut self, left: f32, right: f32, balance: f32) -> f32 {
         Self::blend(left, right, balance)

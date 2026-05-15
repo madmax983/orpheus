@@ -6,6 +6,14 @@ pub struct SoftSat;
 
 impl SoftSat {
     /// Creates a new soft saturation helper.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::SoftSat;
+    ///
+    /// let sat = SoftSat::new();
+    /// ```
     #[must_use]
     pub const fn new() -> Self {
         Self
@@ -15,6 +23,16 @@ impl SoftSat {
     pub const fn reset(&mut self) {}
 
     /// Applies a bounded soft saturation curve.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::SoftSat;
+    ///
+    /// let mut sat = SoftSat::new();
+    /// let out = sat.process(0.5, 2.0);
+    /// assert!(out > 0.5); // Drive increases amplitude before clipping
+    /// ```
     #[must_use]
     pub fn process(&mut self, input: f32, drive: f32) -> f32 {
         let finite_input = if input.is_finite() { input } else { 0.0 };
