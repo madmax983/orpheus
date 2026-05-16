@@ -502,3 +502,56 @@ fn note_duration_frames(event: &Event<PluginNote>, frames_per_cycle: u64) -> u32
 fn midi_note_frequency(note_number: u8) -> f32 {
     440.0 * ((f32::from(note_number) - 69.0) / 12.0).exp2()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use orpheus_pattern::TimeSpan;
+
+    #[test]
+    fn rational_to_frame_offset_handles_negative_numerator() {
+        let rational = Rational::new(-1, 4).unwrap();
+        assert_eq!(rational_to_frame_offset(&rational, 48000), None);
+    }
+
+    #[test]
+    fn rational_to_frame_offset_handles_normal_values() {
+        let rational = Rational::new(1, 4).unwrap();
+        assert_eq!(rational_to_frame_offset(&rational, 48000), Some(12000));
+        let rational = Rational::new(1, 2).unwrap();
+        assert_eq!(rational_to_frame_offset(&rational, 48000), Some(24000));
+    }
+
+    #[test]
+    fn rational_to_frame_offset_handles_overflow() {
+        let rational = Rational::new(i64::MAX, 1).unwrap();
+        assert_eq!(rational_to_frame_offset(&rational, u64::MAX), None);
+    }
+
+    #[test]
+    fn note_duration_frames_calculates_correctly() {
+        let note = Event {
+            whole: None,
+            part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+            value: PluginNote::new(60, 1.0).unwrap(),
+        };
+        assert_eq!(note_duration_frames(&note, 48000), 12000);
+    }
+
+    #[test]
+    fn note_duration_frames_handles_zero_duration() {
+        let note = Event {
+            whole: None,
+            part: TimeSpan::new(Rational::new(1, 4).unwrap(), Rational::new(1, 4).unwrap())
+                .unwrap(),
+            value: PluginNote::new(60, 1.0).unwrap(),
+        };
+        assert_eq!(note_duration_frames(&note, 48000), 1);
+    }
+
+    #[test]
+    fn midi_note_frequency_calculates_correctly() {
+        assert!((midi_note_frequency(69) - 440.0).abs() < f32::EPSILON);
+        assert!((midi_note_frequency(81) - 880.0).abs() < f32::EPSILON);
+    }
+}
