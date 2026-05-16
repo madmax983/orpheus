@@ -400,7 +400,7 @@ impl ReplSession {
     ///
     /// // Bind a pattern.
     /// let response = session.eval_line("notes = 1 2 3").unwrap();
-    /// assert_eq!(response, "bound notes = Pattern<Number>: Pattern<Number>");
+    /// assert_eq!(response, "bound notes = Pattern<Number>");
     ///
     /// // Execute a command.
     /// let response = session.eval_line(":tempo 120").unwrap();
@@ -1812,7 +1812,13 @@ impl ReplSession {
 }
 
 fn success_banner(name: &str, value: &Value, ty: &Type) -> String {
-    format!("bound {name} = {value}: {ty}")
+    let value_str = value.to_string();
+    let type_str = ty.to_string();
+    if value_str == type_str {
+        format!("bound {name} = {value_str}")
+    } else {
+        format!("bound {name} = {value_str}: {type_str}")
+    }
 }
 
 const fn render_usage() -> &'static str {
@@ -2325,11 +2331,11 @@ mod tests {
 
         assert_eq!(
             session.eval_line("drums = bd sn cp sn"),
-            Ok("bound drums = Pattern<Sample>: Pattern<Sample>".to_owned())
+            Ok("bound drums = Pattern<Sample>".to_owned())
         );
         assert_eq!(
             session.eval_line("copy = drums"),
-            Ok("bound copy = Pattern<Sample>: Pattern<Sample>".to_owned())
+            Ok("bound copy = Pattern<Sample>".to_owned())
         );
     }
 
@@ -3130,7 +3136,7 @@ mod tests {
         assert_eq!(session.last_loaded_pattern_name(), Some("song".to_owned()));
         assert_eq!(
             session.eval_line("copy = song"),
-            Ok("bound copy = Pattern<Sample>: Pattern<Sample>".to_owned())
+            Ok("bound copy = Pattern<Sample>".to_owned())
         );
         assert_eq!(
             session.eval_line(":render scratch out.wav 1"),
