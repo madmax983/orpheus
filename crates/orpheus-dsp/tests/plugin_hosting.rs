@@ -13,7 +13,7 @@ fn vst3_descriptor_uses_standard_os_search_paths() {
     assert!(
         paths
             .iter()
-            .any(|path| path.to_string_lossy().contains("VST3")),
+            .any(|path| path.to_string_lossy().to_lowercase().contains("vst3")),
         "expected default VST3 search paths, got {paths:?}"
     );
 }
@@ -83,4 +83,33 @@ fn plugin_processor_processes_frames_without_growing_internal_buffers() {
         before,
         "plugin audio processing must not grow buffers on the render path"
     );
+}
+
+#[test]
+fn plugin_processor_ignores_negative_or_out_of_bounds_events() {
+    let notes = vec![Event {
+        whole: None,
+        part: TimeSpan::new(Rational::new(-1, 4).unwrap(), Rational::new(1, 4).unwrap()).unwrap(),
+        value: PluginNote::new(72, 0.8).unwrap(),
+    }];
+    let gain = PluginParameterLane::new(
+        "Gain",
+        vec![Event {
+            whole: None,
+            part: TimeSpan::new(Rational::new(-1, 8).unwrap(), Rational::new(1, 8).unwrap())
+                .unwrap(),
+            value: 0.25,
+        }]
+        .into_boxed_slice(),
+    )
+    .unwrap();
+    let source = PluginTrackSource::new(PluginDescriptor::audio_unit("TestSynth"))
+        .with_notes(notes.into_boxed_slice())
+        .with_parameter_lanes(vec![gain].into_boxed_slice());
+    let mut processor = PluginProcessor::new(&source, 48_000);
+    processor.begin_cycle();
+
+    let (left, right) = processor.process_frame(&source, 0, 24_000);
+    assert!(left.abs() < f32::EPSILON);
+    assert!(right.abs() < f32::EPSILON);
 }
