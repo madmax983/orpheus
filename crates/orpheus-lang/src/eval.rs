@@ -1056,6 +1056,10 @@ const ROLE_SECTION_PATTERN: u64 = 0x0F;
 const ROLE_SECTION_CYCLES: u64 = 0x10;
 const ROLE_SEQ_SECTION_ITEM: u64 = 0x11;
 const ROLE_GROUP_ITEM: u64 = 0x12;
+const ROLE_GRAPH_BINDING: u64 = 0x13;
+const ROLE_GRAPH_RESULT: u64 = 0x14;
+const ROLE_BINARY_LHS: u64 = 0x15;
+const ROLE_BINARY_RHS: u64 = 0x16;
 
 fn collect_expr_site_salts(module: &Module) -> BTreeMap<usize, u64> {
     let mut salts = BTreeMap::new();
@@ -1096,15 +1100,15 @@ fn record_expr_site_salts(expr: &Expr, seed: u64, salts: &mut BTreeMap<usize, u6
             for (index, binding) in bindings.iter().enumerate() {
                 record_expr_site_salts(
                     &binding.expr,
-                    derive_site_seed(seed, ROLE_GROUP_ITEM, index as u64),
+                    derive_site_seed(seed, ROLE_GRAPH_BINDING, index as u64),
                     salts,
                 );
             }
-            record_expr_site_salts(result, derive_site_seed(seed, ROLE_GROUP_ITEM, 0), salts);
+            record_expr_site_salts(result, derive_site_seed(seed, ROLE_GRAPH_RESULT, 0), salts);
         }
         Expr::Binary { lhs, rhs, .. } => {
-            record_expr_site_salts(lhs, derive_site_seed(seed, ROLE_GROUP_ITEM, 0), salts);
-            record_expr_site_salts(rhs, derive_site_seed(seed, ROLE_GROUP_ITEM, 1), salts);
+            record_expr_site_salts(lhs, derive_site_seed(seed, ROLE_BINARY_LHS, 0), salts);
+            record_expr_site_salts(rhs, derive_site_seed(seed, ROLE_BINARY_RHS, 1), salts);
         }
         Expr::Ident(_) | Expr::Rest | Expr::Number(_) | Expr::String(_) => {}
     }
