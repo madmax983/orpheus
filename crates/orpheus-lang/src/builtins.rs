@@ -260,6 +260,7 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Creates a new un-applied builtin function of the specified kind.
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +270,9 @@ impl BuiltinFn {
         }
     }
 
+    /// Injects a deterministic salt into the function based on its original AST position.
+    /// This ensures multiple instantiations of the same function (like `rand`)
+    /// produce independent outcomes.
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

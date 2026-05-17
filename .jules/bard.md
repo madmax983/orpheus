@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-05-26 - [Missing API Documentation in Value and Environment]
+**Confusion:** Various core types (`BuiltinKind` variants, `BuiltinFn` constructors, `StrictLoadedFile` fields, `ValidatedPedalNode` and `ValidatedPedalBinding` methods, `TypeScheme` and `TypeEnv` fields) lacked documentation, triggering `missing_docs` warnings. This created confusion about their internal roles and semantics.
+**Clarification:** Added missing `///` doc comments across `crates/orpheus-lang/src/value.rs`, `builtins.rs`, `loader.rs`, `pedal.rs`, and `types/env.rs`, adhering to the philosophy of explaining what fields and variants represent in the domain context, successfully silencing all `missing_docs` warnings.

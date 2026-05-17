@@ -115,6 +115,7 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Constructs a new validated pedal node with a specific semantic signal kind.
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +131,13 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Returns the core operational kind (e.g. built-in effect, arithmetic) of this node.
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Returns a human-readable summary of this node used for diagnostics.
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +152,7 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Binds a validated pedal node to a local identifier name.
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +161,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// Returns the name of the binding.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Returns the bound graph node expression.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node

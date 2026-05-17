@@ -26,11 +26,14 @@ use crate::types::{Type, TypeVarId};
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
+    /// The quantified generic type variables bound in this scheme.
     pub vars: Vec<TypeVarId>,
+    /// The underlying type body.
     pub ty: Type,
 }
 
 impl TypeScheme {
+    /// Creates a new type scheme that contains no generic variables, fixing it to a specific type.
     #[must_use]
     pub const fn monomorphic(ty: Type) -> Self {
         Self {
@@ -195,6 +198,7 @@ impl TypeEnv {
         self.entries.get(name)
     }
 
+    /// Returns an iterator over all type schemes currently bound in the environment.
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }
