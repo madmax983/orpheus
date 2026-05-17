@@ -28,28 +28,25 @@ impl HypertilePlugin for ReplPlugin {
     fn render(&self, area: Rect, buf: &mut Buffer, is_focused: bool) {
         let state = self.state.borrow();
 
-        let mut lines = state
-            .transcript
-            .iter()
-            .flat_map(|entry| {
-                let style = if entry.starts_with("> ") {
-                    Style::default().fg(Color::DarkGray)
-                } else if entry.starts_with("\u{2717} ") {
-                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
-                } else if entry.starts_with("\u{26a0}\u{fe0f} ") {
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD)
-                } else if entry.starts_with("\u{2713} ") {
-                    Style::default().fg(Color::Green)
-                } else {
-                    Style::default()
-                };
-                entry
-                    .split('\n')
-                    .map(move |line| Line::styled(line.to_owned(), style))
-            })
-            .collect::<Vec<_>>();
+        let mut lines = Vec::new();
+        for entry in &state.transcript {
+            let style = if entry.starts_with("> ") {
+                Style::default().fg(Color::DarkGray)
+            } else if entry.starts_with("\u{2717} ") {
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+            } else if entry.starts_with("\u{26a0}\u{fe0f} ") {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            } else if entry.starts_with("\u{2713} ") {
+                Style::default().fg(Color::Green)
+            } else {
+                Style::default()
+            };
+            for line in entry.split('\n') {
+                lines.push(Line::styled(line.to_owned(), style));
+            }
+        }
 
         let transport = state.transport_view();
         lines.push(transport_status_line("Transport: ", &transport, true));
@@ -160,10 +157,10 @@ impl BindingsPlugin {
         if bindings.is_empty() {
             vec![ListItem::new("No bindings yet")]
         } else {
-            let mut items = bindings
-                .into_iter()
-                .map(|summary| binding_list_item(summary, &transport))
-                .collect::<Vec<_>>();
+            let mut items = Vec::with_capacity(bindings.len() + 2);
+            for summary in bindings {
+                items.push(binding_list_item(summary, &transport));
+            }
             if should_show_binding_legend(height, items.len(), &transport) {
                 items.push(ListItem::new(""));
                 items.push(binding_legend_item(&transport));

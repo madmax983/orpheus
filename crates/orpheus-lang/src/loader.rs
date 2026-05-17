@@ -232,12 +232,13 @@ fn parse_import_line(line: &str, path: &Path) -> Result<Option<ImportSpec>, Load
         )));
     };
 
-    let parsed_names = names
-        .split(',')
-        .map(str::trim)
-        .filter(|name| !name.is_empty())
-        .map(ToOwned::to_owned)
-        .collect::<Vec<_>>();
+    let mut parsed_names = Vec::new();
+    for name in names.split(',') {
+        let name = name.trim();
+        if !name.is_empty() {
+            parsed_names.push(name.to_owned());
+        }
+    }
     if parsed_names.is_empty() {
         return Err(LoadError::new(format!(
             "{}: import list must name at least one binding",
