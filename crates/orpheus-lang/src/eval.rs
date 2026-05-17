@@ -1479,7 +1479,7 @@ right = sometimes(fast(2), cp hh)";
         let err: super::EvalError = fmt_err.into();
         assert_eq!(
             err.to_string(),
-            "an error occurred when formatting an argument"
+            "failed to format output: check string arguments"
         );
     }
 
@@ -1750,7 +1750,7 @@ right = sometimes(fast(2), cp hh)";
         let eval_err: crate::error::EvalError = fmt_err.into();
         assert_eq!(
             eval_err.to_string(),
-            "an error occurred when formatting an argument"
+            "failed to format output: check string arguments"
         );
 
         let pat_err: orpheus_pattern::PatternError =

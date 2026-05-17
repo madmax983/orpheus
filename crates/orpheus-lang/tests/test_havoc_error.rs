@@ -22,7 +22,7 @@ fn eval_error_from_fmt_error() {
     let err: EvalError = fmt_err.into();
     assert!(
         err.to_string()
-            .contains("an error occurred when formatting an argument")
+            .contains("failed to format output: check string arguments")
     );
 }
 
