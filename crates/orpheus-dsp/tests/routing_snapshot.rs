@@ -1,3 +1,4 @@
+//! Integration tests for `routing_snapshot`.
 use orpheus_dsp::{BusEffectSpec, RoutingError, RoutingSnapshot};
 use orpheus_pattern::Rational;
 

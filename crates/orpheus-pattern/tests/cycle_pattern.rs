@@ -1,3 +1,4 @@
+//! Integration tests for `cycle_pattern`.
 use orpheus_pattern::{CyclePattern, Pattern, PatternNode, Rational, TimeSpan};
 use proptest::prelude::*;
 

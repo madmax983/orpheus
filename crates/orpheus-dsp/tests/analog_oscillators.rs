@@ -1,3 +1,4 @@
+//! Integration tests for `analog_oscillators`.
 use orpheus_dsp::{Noise, PulseOsc, SawOsc, TriOsc};
 
 fn naive_saw_step(sample_rate_hz: f32, freq_hz: f32, sample_count: usize) -> f32 {

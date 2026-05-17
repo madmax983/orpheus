@@ -1,3 +1,4 @@
+//! Integration tests for `pedal_runtime`.
 #![allow(
     clippy::suboptimal_flops,
     clippy::cast_precision_loss,

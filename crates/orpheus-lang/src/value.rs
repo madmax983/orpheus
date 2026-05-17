@@ -37,36 +37,88 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Applies a transformation to the pattern only once every `n` cycles.
+    ///
+    /// # Examples
+    ///
+    /// ```text
+    /// // play the snare normally, but play it fast every 3rd cycle
+    /// // pat = every(3, fast(2), bd sn)
+    /// ```
     Every,
+    /// Applies a transformation to the pattern once every `n` cycles, offset by `m` cycles.
+    ///
+    /// # Examples
+    ///
+    /// ```text
+    /// // play the pattern reversed every 4th cycle, starting on cycle 1
+    /// // pat = when(4, 1, rev, bd sn)
+    /// ```
     When,
+    /// Randomly applies a transformation to events within the pattern (approx 50% chance per event).
     Sometimes,
+    /// Applies a transformation only to events falling within a specific relative sub-interval of the cycle.
     Within,
+    /// Uses a boolean pattern gate to silence corresponding events in the target pattern.
     Mask,
+    /// Delays each note of a chord sequentially to create a strummed effect.
+    ///
+    /// # Examples
+    ///
+    /// ```text
+    /// // strum a C major chord over the span of the cycle
+    /// // pat = strum(chord(0, 0 4 7))
+    /// ```
     Strum,
+    /// Repeats an event's audio trigger multiple times within its original time span.
     Roll,
+    /// Arpeggiates a chord pattern into a sequence of individual notes based on a given direction.
     Arp,
+    /// Inverts a chord voicing upward by octaves, `n` times.
     Invert,
+    /// Drops the bottom `n` notes from a chord voicing.
     Drop,
+    /// Constructs a chord pattern by applying a set of numeric intervals to a root note pattern.
     Chord,
+    /// Generates a Euclidean rhythm pattern of `k` pulses distributed evenly over `n` steps.
     Euclid,
+    /// Generates a pattern using an L-system grammar and a number of iterations.
     Lsystem,
+    /// Generates a pattern based on a 1D Wolfram cellular automaton rule.
     Wolfram,
+    /// Defines a collection of pitch classes (e.g. a scale or mode) for diatonic operations.
     PitchClassSet,
+    /// Maps scale degrees to absolute semitones using a provided pitch class set.
     Degrees,
+    /// Speeds up the playback rate of the pattern by the given factor, fitting more events into the cycle.
     Fast,
+    /// Slows down the playback rate of the pattern by the given factor, stretching events across cycles.
     Slow,
+    /// Translates the pattern backward or forward in time by a given rational offset.
     Shift,
+    /// Reverses the temporal order of events within each cycle.
     Rev,
+    /// Controls the amplitude multiplier (volume) of the audio signal.
     Gain,
+    /// Controls the wet/dry mix of the built-in delay effect.
     Delay,
+    /// Sets the delay time, typically as a fraction of the cycle.
     DelayTime,
+    /// Controls the feedback amount of the delay effect.
     DelayFeedback,
+    /// Controls the cutoff frequency of the built-in High Pass Filter.
     Hpf,
+    /// Controls the cutoff frequency of the built-in Low Pass Filter.
     Lpf,
+    /// Controls the wet/dry mix of the built-in reverb effect.
     Reverb,
+    /// Sets the simulated room size for the reverb effect.
     ReverbRoom,
+    /// Controls the high-frequency damping factor of the reverb effect.
     ReverbDamp,
+    /// An alias for `lpf`, controlling the cutoff frequency of the Low Pass Filter.
     Cutoff,
+    /// Controls the wet/dry mix of the built-in chorus effect.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

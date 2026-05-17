@@ -1,3 +1,4 @@
+//! Integration tests for `havoc`.
 use orpheus_pattern::{CyclePattern, EventStream, Pattern, PatternNode, Rational, TimeSpan};
 
 #[test]

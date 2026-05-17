@@ -1,3 +1,4 @@
+//! Integration tests for `analog_voice`.
 use orpheus_dsp::{AnalogVoice, AnalogVoiceParams, OscShape};
 
 const fn params(shape: OscShape) -> AnalogVoiceParams {

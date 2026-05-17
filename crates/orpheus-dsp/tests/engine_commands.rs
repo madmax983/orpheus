@@ -1,3 +1,4 @@
+//! Integration tests for `engine_commands`.
 use orpheus_dsp::{
     EngineCommand, EngineError, EngineHandle, PatternUpdate, PedalProgram, RoutingSnapshot,
     SampleTrigger, TrackSource, load_builtin_sample_for_test, load_sample_bank_from_directory,

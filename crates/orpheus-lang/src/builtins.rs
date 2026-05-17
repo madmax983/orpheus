@@ -260,6 +260,7 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Creates a new `BuiltinFn` of the specified `BuiltinKind`, starting with no bound arguments.
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +270,7 @@ impl BuiltinFn {
         }
     }
 
+    /// Sets the site salt to determine deterministic random generation for this function.
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

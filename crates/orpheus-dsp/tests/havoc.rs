@@ -1,3 +1,4 @@
+//! Integration tests for `havoc`.
 use loom::sync::Arc;
 use loom::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use loom::thread;

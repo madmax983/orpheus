@@ -1,3 +1,4 @@
+//! Integration tests for `offline_render`.
 #![allow(clippy::needless_range_loop)]
 use std::fs;
 use std::path::{Path, PathBuf};

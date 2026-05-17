@@ -115,6 +115,7 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Creates a new validated pedal node.
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +131,15 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Identifies the structural category of this node (such as a mix, feedback path, or leaf primitive),
+    /// which determines how the pedal compiler will lower it into the underlying Faust-style DSP graph.
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Exposes a human-readable explanation of the node's evaluated function.
+    /// This is used heavily for printing diagnostic visualizations and debugging complex effect topologies.
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +154,9 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Pairs a local identifier with a fully validated pedal node.
+    /// This occurs when a user uses `let foo = ...` inside a pedal block, anchoring
+    /// a sub-graph to a name for later reference.
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +165,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// The local identifier assigned to this signal path, allowing subsequent stages in the pedal to route it as an input.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// The underlying verified DSP structure that this local binding evaluates to.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node
