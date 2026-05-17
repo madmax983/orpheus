@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use std::io::Write;
 use std::path::Path;
 
-use crate::eval::{EvalError, render_span};
+use crate::eval::{Error, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue};
 
 /// Exports a sample pattern's evaluated events to an HTML file.
@@ -30,7 +30,7 @@ use crate::value::{NumberPatternValue, SamplePatternValue};
 ///
 /// # Errors
 ///
-/// Returns [`EvalError`] if pattern querying fails or if the file cannot be written.
+/// Returns [`Error`] if pattern querying fails or if the file cannot be written.
 ///
 /// # Panics
 ///
@@ -40,9 +40,9 @@ pub fn export_sample_pattern_to_html(
     pattern: &SamplePatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,
-) -> Result<(), EvalError> {
+) -> Result<(), crate::Error> {
     if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
+        return Err(Error::new("exporting requires at least one cycle"));
     }
 
     let span = render_span(cycle_count)?;
@@ -98,7 +98,7 @@ pub fn export_sample_pattern_to_html(
         let lane_idx = sample_list
             .iter()
             .position(|s| *s == sample)
-            .ok_or_else(|| EvalError::new(format!("sample '{sample}' not found in lane list")))?;
+            .ok_or_else(|| Error::new(format!("sample '{sample}' not found in lane list")))?;
         #[allow(clippy::cast_precision_loss)]
         let y = (lane_idx as f64).mul_add(lane_height, 40.0) + 5.0;
 
@@ -140,14 +140,14 @@ pub fn export_sample_pattern_to_html(
 ///
 /// # Errors
 ///
-/// Returns [`EvalError`] if pattern querying fails or if the file cannot be written.
+/// Returns [`Error`] if pattern querying fails or if the file cannot be written.
 pub fn export_number_pattern_to_html(
     pattern: &NumberPatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,
-) -> Result<(), EvalError> {
+) -> Result<(), crate::Error> {
     if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
+        return Err(Error::new("exporting requires at least one cycle"));
     }
 
     let span = render_span(cycle_count)?;

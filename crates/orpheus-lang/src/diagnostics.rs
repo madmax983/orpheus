@@ -2,7 +2,7 @@
 //!
 //! This module defines the error types emitted during the earlier phases of
 //! Orpheus code processing: parsing, type inference, and module loading.
-//! These errors are distinct from runtime evaluation errors ([`crate::EvalError`]),
+//! These errors are distinct from runtime evaluation errors ([`crate::Error`]),
 //! which only occur after successful compilation.
 
 use thiserror::Error;

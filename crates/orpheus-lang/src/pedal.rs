@@ -28,7 +28,7 @@ use comfy_table::Cell;
 use crossterm::style::Stylize;
 
 use crate::ast::{BinaryOp, Expr, GraphBinding};
-use crate::error::EvalError;
+use crate::error::Error;
 use crate::explain::Explain;
 
 /// The coarse signal domain understood by the pedal DSL.
@@ -262,7 +262,7 @@ impl GraphCompiler<'_> {
         &self,
         expr: &Expr,
         allow_output: bool,
-    ) -> Result<ValidatedPedalNode, EvalError> {
+    ) -> Result<ValidatedPedalNode, crate::Error> {
         match expr {
             Expr::Ident(name) => self.compile_ident(name, allow_output),
             Expr::Number(value) => Ok(ValidatedPedalNode::new(
@@ -292,7 +292,7 @@ impl GraphCompiler<'_> {
             | Expr::Section { .. }
             | Expr::SeqSections(_)
             | Expr::Group(_)
-            | Expr::Rest => Err(EvalError::new(
+            | Expr::Rest => Err(Error::new(
                 "pedal graphs only support local names, literals, binary control/audio expressions, stage calls, and pipes in Task 3",
             )),
         }
@@ -302,7 +302,7 @@ impl GraphCompiler<'_> {
         &self,
         name: &str,
         allow_output: bool,
-    ) -> Result<ValidatedPedalNode, EvalError> {
+    ) -> Result<ValidatedPedalNode, crate::Error> {
         if let Some(kind) = self.resolved_signals.get(name) {
             return Ok(ValidatedPedalNode::new(
                 kind.clone(),
@@ -317,19 +317,19 @@ impl GraphCompiler<'_> {
                 PedalNodeKind::Input,
                 "input",
             )),
-            "output" if allow_output => Err(EvalError::new(
+            "output" if allow_output => Err(Error::new(
                 "`output` must receive an audio signal as the pedal graph final result",
             )),
-            "output" => Err(EvalError::new(
+            "output" => Err(Error::new(
                 "`output` may only appear in the pedal graph final result",
             )),
             _ if self.binding_names.contains(name) => {
                 let owner = self.current_binding.unwrap_or("result");
-                Err(EvalError::new(format!(
+                Err(Error::new(format!(
                     "implicit cycle: `{owner}` references `{name}` before it is defined; use `feedback(...)` for recursive pedal paths"
                 )))
             }
-            _ => Err(EvalError::new(format!("unbound local signal `{name}`"))),
+            _ => Err(Error::new(format!("unbound local signal `{name}`"))),
         }
     }
 
@@ -338,9 +338,9 @@ impl GraphCompiler<'_> {
         lhs: &Expr,
         op: BinaryOp,
         rhs: &Expr,
-    ) -> Result<ValidatedPedalNode, EvalError> {
+    ) -> Result<ValidatedPedalNode, crate::Error> {
         if op == BinaryOp::Assign {
-            return Err(EvalError::new(
+            return Err(Error::new(
                 "named pedal parameters are only valid inside stage calls",
             ));
         }
@@ -379,10 +379,10 @@ impl GraphCompiler<'_> {
                     format!("({audio} * {control})"),
                 ))
             }
-            (BinaryOp::Add, _, _) => Err(EvalError::new(
+            (BinaryOp::Add, _, _) => Err(Error::new(
                 "`+` inside pedal graphs requires either two audio signals or two control expressions",
             )),
-            (BinaryOp::Mul, _, _) => Err(EvalError::new(
+            (BinaryOp::Mul, _, _) => Err(Error::new(
                 "`*` inside pedal graphs requires control*control or audio*control operands",
             )),
             (BinaryOp::Assign, _, _) => unreachable!(),
@@ -394,11 +394,11 @@ impl GraphCompiler<'_> {
         lhs: ValidatedPedalNode,
         rhs: &Expr,
         allow_output: bool,
-    ) -> Result<ValidatedPedalNode, EvalError> {
+    ) -> Result<ValidatedPedalNode, crate::Error> {
         match rhs {
             Expr::Ident(name) => self.compile_named_stage(name, &[], Some(lhs), allow_output),
             Expr::Call { callee, args } => self.compile_call(callee, args, Some(lhs), allow_output),
-            _ => Err(EvalError::new(
+            _ => Err(Error::new(
                 "pedal graph pipe targets must be stage names or stage calls",
             )),
         }
@@ -410,9 +410,9 @@ impl GraphCompiler<'_> {
         args: &[Expr],
         piped_input: Option<ValidatedPedalNode>,
         allow_output: bool,
-    ) -> Result<ValidatedPedalNode, EvalError> {
+    ) -> Result<ValidatedPedalNode, crate::Error> {
         let Expr::Ident(name) = callee else {
-            return Err(EvalError::new(
+            return Err(Error::new(
                 "pedal graph stage calls require a simple stage identifier",
             ));
         };
@@ -425,9 +425,9 @@ impl GraphCompiler<'_> {
         args: &[Expr],
         piped_input: Option<ValidatedPedalNode>,
         allow_output: bool,
-    ) -> Result<ValidatedPedalNode, EvalError> {
+    ) -> Result<ValidatedPedalNode, crate::Error> {
         if name == "output" && piped_input.is_none() {
-            return Err(EvalError::new(
+            return Err(Error::new(
                 "`output` may only appear as the pedal graph final pipe target",
             ));
         }
@@ -450,13 +450,13 @@ impl GraphCompiler<'_> {
             } = arg
             {
                 let Expr::Ident(param_name) = lhs.as_ref() else {
-                    return Err(EvalError::new(
+                    return Err(Error::new(
                         "named pedal parameters require an identifier on the left-hand side",
                     ));
                 };
                 let compiled = self.compile_named_argument_value(param_name, rhs)?;
                 if compiled.signal_kind() == &SignalKind::Audio {
-                    return Err(EvalError::new(format!(
+                    return Err(Error::new(format!(
                         "parameter `{param_name}` on `{name}` cannot be driven by an audio signal in Task 3"
                     )));
                 }
@@ -479,7 +479,7 @@ impl GraphCompiler<'_> {
         &self,
         param_name: &str,
         expr: &Expr,
-    ) -> Result<ValidatedPedalNode, EvalError> {
+    ) -> Result<ValidatedPedalNode, crate::Error> {
         if let Expr::Ident(name) = expr {
             if let Some(kind) = self.resolved_signals.get(name) {
                 return Ok(ValidatedPedalNode::new(
@@ -498,7 +498,7 @@ impl GraphCompiler<'_> {
                     name,
                 ));
             }
-            return Err(EvalError::new(format!("unbound local signal `{name}`")));
+            return Err(Error::new(format!("unbound local signal `{name}`")));
         }
 
         self.compile_expr(expr, false)
@@ -508,7 +508,7 @@ impl GraphCompiler<'_> {
         &self,
         args: &[Expr],
         piped_input: Option<ValidatedPedalNode>,
-    ) -> Result<ValidatedPedalNode, EvalError> {
+    ) -> Result<ValidatedPedalNode, crate::Error> {
         let mut scoped_signals = self.resolved_signals.clone();
         if let Some(current_binding) = self.current_binding {
             scoped_signals.insert(current_binding.to_owned(), SignalKind::Audio);
@@ -533,13 +533,13 @@ impl GraphCompiler<'_> {
             } = arg
             {
                 let Expr::Ident(param_name) = lhs.as_ref() else {
-                    return Err(EvalError::new(
+                    return Err(Error::new(
                         "named pedal parameters require an identifier on the left-hand side",
                     ));
                 };
                 let compiled = scoped.compile_named_argument_value(param_name, rhs)?;
                 if compiled.signal_kind() == &SignalKind::Audio {
-                    return Err(EvalError::new(format!(
+                    return Err(Error::new(format!(
                         "parameter `{param_name}` on `feedback` cannot be driven by an audio signal in Task 3"
                     )));
                 }
@@ -556,19 +556,19 @@ impl GraphCompiler<'_> {
         positional: &[ValidatedPedalNode],
         named: &[(String, ValidatedPedalNode)],
         allow_output: bool,
-    ) -> Result<ValidatedPedalNode, EvalError> {
+    ) -> Result<ValidatedPedalNode, crate::Error> {
         if !allow_output {
-            return Err(EvalError::new(
+            return Err(Error::new(
                 "`output` may only appear as the pedal graph final pipe target",
             ));
         }
         if !named.is_empty() || positional.len() != 1 {
-            return Err(EvalError::new(
+            return Err(Error::new(
                 "`output` requires exactly one audio signal as the pedal graph final pipe target",
             ));
         }
         if positional[0].signal_kind() != &SignalKind::Audio {
-            return Err(EvalError::new(
+            return Err(Error::new(
                 "`output` requires an audio signal as the pedal graph final pipe target",
             ));
         }
@@ -583,20 +583,20 @@ impl GraphCompiler<'_> {
     fn compile_mix_stage(
         positional: &[ValidatedPedalNode],
         named: &[(String, ValidatedPedalNode)],
-    ) -> Result<ValidatedPedalNode, EvalError> {
+    ) -> Result<ValidatedPedalNode, crate::Error> {
         if !named.is_empty() {
-            return Err(EvalError::new(
+            return Err(Error::new(
                 "`mix` does not accept named parameters in Task 3",
             ));
         }
         if positional.len() < 2 {
-            return Err(EvalError::new("`mix` requires at least two audio inputs"));
+            return Err(Error::new("`mix` requires at least two audio inputs"));
         }
         if positional
             .iter()
             .any(|node| node.signal_kind() != &SignalKind::Audio)
         {
-            return Err(EvalError::new(
+            return Err(Error::new(
                 "`mix` requires every positional argument to resolve to an audio signal",
             ));
         }
@@ -623,9 +623,9 @@ impl GraphCompiler<'_> {
     fn compile_feedback_stage(
         positional: &[ValidatedPedalNode],
         named: &[(String, ValidatedPedalNode)],
-    ) -> Result<ValidatedPedalNode, EvalError> {
+    ) -> Result<ValidatedPedalNode, crate::Error> {
         if positional.len() != 1 || positional[0].signal_kind() != &SignalKind::Audio {
-            return Err(EvalError::new(
+            return Err(Error::new(
                 "`feedback(...)` requires exactly one audio signal input",
             ));
         }
@@ -652,12 +652,12 @@ impl GraphCompiler<'_> {
         name: &str,
         positional: &[ValidatedPedalNode],
         named: &[(String, ValidatedPedalNode)],
-    ) -> Result<ValidatedPedalNode, EvalError> {
+    ) -> Result<ValidatedPedalNode, crate::Error> {
         if positional
             .iter()
             .any(|node| node.signal_kind() == &SignalKind::Audio)
         {
-            return Err(EvalError::new(format!(
+            return Err(Error::new(format!(
                 "`{name}` cannot take an audio input; it is a control source"
             )));
         }
@@ -672,9 +672,9 @@ impl GraphCompiler<'_> {
     fn compile_env_follow(
         positional: &[ValidatedPedalNode],
         named: &[(String, ValidatedPedalNode)],
-    ) -> Result<ValidatedPedalNode, EvalError> {
+    ) -> Result<ValidatedPedalNode, crate::Error> {
         if positional.len() != 1 || positional[0].signal_kind() != &SignalKind::Audio {
-            return Err(EvalError::new(
+            return Err(Error::new(
                 "`env_follow` requires exactly one audio signal input",
             ));
         }
@@ -690,14 +690,14 @@ impl GraphCompiler<'_> {
         name: &str,
         positional: &[ValidatedPedalNode],
         named: &[(String, ValidatedPedalNode)],
-    ) -> Result<ValidatedPedalNode, EvalError> {
+    ) -> Result<ValidatedPedalNode, crate::Error> {
         let audio_inputs = positional
             .iter()
             .filter(|node| node.signal_kind() == &SignalKind::Audio)
             .count();
 
         match audio_inputs {
-            0 => Err(EvalError::new(format!(
+            0 => Err(Error::new(format!(
                 "`{name}` requires an audio input in Task 3"
             ))),
             1 => Ok(ValidatedPedalNode::new(
@@ -705,7 +705,7 @@ impl GraphCompiler<'_> {
                 PedalNodeKind::Stage,
                 format_stage_summary(name, positional, named),
             )),
-            _ => Err(EvalError::new(format!(
+            _ => Err(Error::new(format!(
                 "`{name}` cannot take multiple audio inputs; use `mix(...)` for branch recombination"
             ))),
         }
@@ -883,13 +883,13 @@ fn format_expr_source_into(expr: &Expr, buf: &mut String) {
 ///
 /// # Errors
 ///
-/// Returns [`EvalError`] when the graph references an undefined local signal,
+/// Returns [`Error`] when the graph references an undefined local signal,
 /// uses `output` outside the final result position, introduces an implicit cycle,
 /// or violates the v1 audio/control classification rules.
 pub fn compile_graph(
     bindings: &[GraphBinding],
     result_expr: &Expr,
-) -> Result<PedalValue, EvalError> {
+) -> Result<PedalValue, crate::Error> {
     let binding_names = bindings
         .iter()
         .map(|binding| binding.name.clone())
@@ -915,7 +915,7 @@ pub fn compile_graph(
     };
     let result = compiler.compile_expr(result_expr, true)?;
     if result.kind() != &PedalNodeKind::Output {
-        return Err(EvalError::new(
+        return Err(Error::new(
             "pedal graphs must route their final result through `output`",
         ));
     }

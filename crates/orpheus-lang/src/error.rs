@@ -5,10 +5,10 @@ use crate::diagnostics::ParseError;
 
 /// Runtime errors that occur while evaluating an Orpheus expression.
 ///
-/// Unlike parser or type-checker errors, `EvalError` occurs during the actual
+/// Unlike parser or type-checker errors, `Error` occurs during the actual
 /// mathematical or temporal execution of the pattern.
 #[derive(Clone, Debug, Eq, PartialEq, Error)]
-pub enum EvalError {
+pub enum Error {
     /// An arbitrary runtime error message string.
     ///
     /// This is a fallback variant for dynamically generated evaluation errors
@@ -63,12 +63,12 @@ pub enum EvalError {
     Pattern(#[from] PatternError),
 }
 
-impl EvalError {
-    /// Creates a new `EvalError` with the given message.
+impl Error {
+    /// Creates a new `Error` with the given message.
     ///
     /// The message explains what went wrong during runtime evaluation.
     ///
-    /// Common causes for `EvalError` include:
+    /// Common causes for `Error` include:
     /// - Out-of-bounds numeric parameters.
     /// - Arithmetic overflow during explicit time-shifts.
     /// - Applying functions to invalid types.
@@ -76,9 +76,9 @@ impl EvalError {
     /// # Examples
     ///
     /// ```
-    /// use orpheus_lang::EvalError;
+    /// use orpheus_lang::Error;
     ///
-    /// let err = EvalError::new("division by zero");
+    /// let err = Error::new("division by zero");
     /// assert_eq!(err.to_string(), "division by zero");
     /// ```
     pub fn new(message: impl Into<Box<str>>) -> Self {
@@ -88,7 +88,7 @@ impl EvalError {
     }
 }
 
-impl From<std::io::Error> for EvalError {
+impl From<std::io::Error> for Error {
     fn from(error: std::io::Error) -> Self {
         let message = match error.kind() {
             std::io::ErrorKind::NotFound => "file not found".to_owned(),
@@ -99,7 +99,7 @@ impl From<std::io::Error> for EvalError {
     }
 }
 
-impl From<std::fmt::Error> for EvalError {
+impl From<std::fmt::Error> for Error {
     fn from(_error: std::fmt::Error) -> Self {
         Self::new("an error occurred when formatting an argument")
     }
@@ -112,21 +112,21 @@ mod tests {
     #[test]
     fn eval_error_from_type_error() {
         let type_err = crate::diagnostics::TypeError::new("mock type error");
-        let err: EvalError = type_err.into();
+        let err: Error = type_err.into();
         assert_eq!(err.to_string(), "mock type error");
     }
 
     #[test]
     fn eval_error_from_load_error() {
         let load_err = crate::diagnostics::LoadError::new("mock load error");
-        let err: EvalError = load_err.into();
+        let err: Error = load_err.into();
         assert_eq!(err.to_string(), "mock load error");
     }
 
     #[test]
     fn eval_error_from_parse_error() {
         let parse_err = crate::diagnostics::ParseError::new("mock parse error");
-        let err: EvalError = parse_err.into();
+        let err: Error = parse_err.into();
         assert_eq!(err.to_string(), "mock parse error");
     }
 }

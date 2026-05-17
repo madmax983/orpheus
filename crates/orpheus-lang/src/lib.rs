@@ -44,7 +44,7 @@ pub use arduino_export::export_number_pattern_to_arduino;
 pub use ascii_roll::render_ascii_roll;
 pub use ast::{BinaryOp, Expr, GraphBinding, Module, Stmt};
 pub use diagnostics::{LoadError, ParseError, TypeError};
-pub use error::EvalError;
+pub use error::Error;
 pub use eval::{eval_module, render_span};
 pub use export::{
     RenderError, export_number_pattern_to_csv, export_number_pattern_to_json,

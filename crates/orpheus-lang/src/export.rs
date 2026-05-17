@@ -11,7 +11,7 @@ use thiserror::Error;
 use orpheus_dsp::{OfflineRenderError, SampleBank, SampleTrigger, render_events_to_file_with_bank};
 use orpheus_pattern::Event;
 
-use crate::eval::{EvalError, render_span};
+use crate::eval::{Error, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue};
 
 /// Errors that can occur during audio rendering or exporting operations.
@@ -24,7 +24,7 @@ use crate::value::{NumberPatternValue, SamplePatternValue};
 /// # Causes
 ///
 /// - [`RenderError::Eval`]: The pattern could not be successfully queried across
-///   the requested time span due to an [`EvalError`] (e.g., invalid arithmetic
+///   the requested time span due to an [`Error`] (e.g., invalid arithmetic
 ///   on the rational time domain).
 /// - [`RenderError::Audio`]: The offline digital signal processing engine failed
 ///   to write the resulting audio file (e.g., I/O permissions or a corrupted
@@ -34,9 +34,9 @@ use crate::value::{NumberPatternValue, SamplePatternValue};
 ///
 /// ```
 /// use orpheus_lang::RenderError;
-/// use orpheus_lang::EvalError;
+/// use orpheus_lang::Error;
 ///
-/// let error = RenderError::Eval(EvalError::new("out of bounds parameter"));
+/// let error = RenderError::Eval(Error::new("out of bounds parameter"));
 ///
 /// match error {
 ///     RenderError::Eval(e) => assert_eq!(e.to_string(), "out of bounds parameter"),
@@ -48,7 +48,7 @@ use crate::value::{NumberPatternValue, SamplePatternValue};
 pub enum RenderError {
     /// An error occurred while evaluating the pattern events.
     #[error(transparent)]
-    Eval(#[from] EvalError),
+    Eval(#[from] Error),
     /// An error occurred during the offline digital signal processing or file writing phase.
     #[error(transparent)]
     Audio(#[from] OfflineRenderError),
@@ -124,9 +124,9 @@ pub fn render_sample_pattern_to_file(
 fn query_sample_pattern_events(
     pattern: &SamplePatternValue,
     cycle_count: u64,
-) -> Result<Vec<Event<crate::value::SampleEvent>>, EvalError> {
+) -> Result<Vec<Event<crate::value::SampleEvent>>, crate::Error> {
     if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
+        return Err(Error::new("exporting requires at least one cycle"));
     }
     let span = render_span(cycle_count)?;
     pattern.try_query(&span)
@@ -135,9 +135,9 @@ fn query_sample_pattern_events(
 fn query_number_pattern_events(
     pattern: &NumberPatternValue,
     cycle_count: u64,
-) -> Result<Vec<Event<f64>>, EvalError> {
+) -> Result<Vec<Event<f64>>, crate::Error> {
     if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
+        return Err(Error::new("exporting requires at least one cycle"));
     }
     let span = render_span(cycle_count)?;
     pattern.try_query(&span)
@@ -148,9 +148,9 @@ fn export_pattern_events_to_csv<T, F>(
     path: impl AsRef<Path>,
     header: &str,
     mut write_event: F,
-) -> Result<(), EvalError>
+) -> Result<(), crate::Error>
 where
-    F: FnMut(&mut std::fs::File, &Event<T>) -> Result<(), EvalError>,
+    F: FnMut(&mut std::fs::File, &Event<T>) -> Result<(), crate::Error>,
 {
     let path = path.as_ref();
     let mut file = std::fs::File::create(path)?;
@@ -168,9 +168,9 @@ fn export_pattern_events_to_md<T, F>(
     path: impl AsRef<Path>,
     header: &str,
     mut write_event: F,
-) -> Result<(), EvalError>
+) -> Result<(), crate::Error>
 where
-    F: FnMut(&mut std::fs::File, &Event<T>) -> Result<(), EvalError>,
+    F: FnMut(&mut std::fs::File, &Event<T>) -> Result<(), crate::Error>,
 {
     let path = path.as_ref();
     let mut file = std::fs::File::create(path)?;
@@ -216,12 +216,12 @@ where
 ///
 /// # Errors
 ///
-/// Returns [`EvalError`] if the cycle count is 0, if pattern querying fails, or if the file cannot be written.
+/// Returns [`Error`] if the cycle count is 0, if pattern querying fails, or if the file cannot be written.
 pub fn export_sample_pattern_to_md(
     pattern: &SamplePatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,
-) -> Result<(), EvalError> {
+) -> Result<(), crate::Error> {
     let events = query_sample_pattern_events(pattern, cycle_count)?;
 
     export_pattern_events_to_md(
@@ -276,12 +276,12 @@ pub fn export_sample_pattern_to_md(
 ///
 /// # Errors
 ///
-/// Returns [`EvalError`] if the cycle count is 0, if pattern querying fails, or if the file cannot be written.
+/// Returns [`Error`] if the cycle count is 0, if pattern querying fails, or if the file cannot be written.
 pub fn export_sample_pattern_to_csv(
     pattern: &SamplePatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,
-) -> Result<(), EvalError> {
+) -> Result<(), crate::Error> {
     let events = query_sample_pattern_events(pattern, cycle_count)?;
 
     export_pattern_events_to_csv(
@@ -326,7 +326,7 @@ fn export_pattern_events_to_json<T, F>(
     kind: &str,
     cycle_count: u64,
     mut event_to_json: F,
-) -> Result<(), EvalError>
+) -> Result<(), crate::Error>
 where
     F: FnMut(&Event<T>) -> String,
 {
@@ -369,13 +369,13 @@ where
 ///
 /// # Errors
 ///
-/// Returns [`EvalError`] if the cycle count is 0, if pattern querying fails, or
+/// Returns [`Error`] if the cycle count is 0, if pattern querying fails, or
 /// if the file cannot be written.
 pub fn export_sample_pattern_to_json(
     pattern: &SamplePatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,
-) -> Result<(), EvalError> {
+) -> Result<(), crate::Error> {
     let events = query_sample_pattern_events(pattern, cycle_count)?;
 
     export_pattern_events_to_json(&events, path, "sample", cycle_count, sample_event_json)
@@ -400,12 +400,12 @@ pub fn export_sample_pattern_to_json(
 ///
 /// # Errors
 ///
-/// Returns [`EvalError`] if the cycle count is 0, if pattern querying fails, or if the file cannot be written.
+/// Returns [`Error`] if the cycle count is 0, if pattern querying fails, or if the file cannot be written.
 pub fn export_number_pattern_to_md(
     pattern: &NumberPatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,
-) -> Result<(), EvalError> {
+) -> Result<(), crate::Error> {
     let events = query_number_pattern_events(pattern, cycle_count)?;
 
     export_pattern_events_to_md(&events, path, "| start | end | value |", |file, event| {
@@ -439,12 +439,12 @@ pub fn export_number_pattern_to_md(
 ///
 /// # Errors
 ///
-/// Returns [`EvalError`] if the cycle count is 0, if pattern querying fails, or if the file cannot be written.
+/// Returns [`Error`] if the cycle count is 0, if pattern querying fails, or if the file cannot be written.
 pub fn export_number_pattern_to_csv(
     pattern: &NumberPatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,
-) -> Result<(), EvalError> {
+) -> Result<(), crate::Error> {
     let events = query_number_pattern_events(pattern, cycle_count)?;
 
     export_pattern_events_to_csv(
@@ -490,13 +490,13 @@ pub fn export_number_pattern_to_csv(
 ///
 /// # Errors
 ///
-/// Returns [`EvalError`] if the cycle count is 0, if pattern querying fails, or
+/// Returns [`Error`] if the cycle count is 0, if pattern querying fails, or
 /// if the file cannot be written.
 pub fn export_number_pattern_to_json(
     pattern: &NumberPatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,
-) -> Result<(), EvalError> {
+) -> Result<(), crate::Error> {
     let events = query_number_pattern_events(pattern, cycle_count)?;
 
     export_pattern_events_to_json(&events, path, "number", cycle_count, number_event_json)
@@ -531,7 +531,7 @@ pub fn render_sample_pattern_to_file_with_bank(
 ) -> Result<(), RenderError> {
     let events = query_sample_pattern_events(pattern, cycle_count).map_err(|e| {
         if e.to_string().contains("exporting requires") {
-            EvalError::new("rendering requires at least one cycle").into()
+            Error::new("rendering requires at least one cycle").into()
         } else {
             RenderError::from(e)
         }
@@ -751,7 +751,7 @@ mod tests {
 
     #[test]
     fn render_error_from_eval_error() {
-        let eval_err = super::EvalError::new("an evaluation error");
+        let eval_err = super::Error::new("an evaluation error");
         let err: super::RenderError = eval_err.into();
         assert_eq!(err.to_string(), "an evaluation error");
     }

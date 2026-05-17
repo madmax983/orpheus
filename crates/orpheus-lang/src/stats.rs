@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
 use crossterm::style::Stylize;
 
-use crate::eval::{EvalError, render_span};
+use crate::eval::{Error, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue, TuningValue};
 
 /// Analyzes a sample pattern's evaluated events and returns a formatted report.
@@ -31,14 +31,14 @@ use crate::value::{NumberPatternValue, SamplePatternValue, TuningValue};
 ///
 /// # Errors
 ///
-/// Returns [`EvalError`] if pattern querying fails or if `cycle_count` is 0.
+/// Returns [`Error`] if pattern querying fails or if `cycle_count` is 0.
 pub fn sample_pattern_stats(
     binding_name: &str,
     pattern: &SamplePatternValue,
     cycle_count: u64,
-) -> Result<String, EvalError> {
+) -> Result<String, crate::Error> {
     if cycle_count == 0 {
-        return Err(EvalError::new("stats requires at least one cycle"));
+        return Err(Error::new("stats requires at least one cycle"));
     }
 
     let span = render_span(cycle_count)?;
@@ -119,14 +119,14 @@ pub fn sample_pattern_stats(
 ///
 /// # Errors
 ///
-/// Returns [`EvalError`] if pattern querying fails or if `cycle_count` is 0.
+/// Returns [`Error`] if pattern querying fails or if `cycle_count` is 0.
 pub fn number_pattern_stats(
     binding_name: &str,
     pattern: &NumberPatternValue,
     cycle_count: u64,
-) -> Result<String, EvalError> {
+) -> Result<String, crate::Error> {
     if cycle_count == 0 {
-        return Err(EvalError::new("stats requires at least one cycle"));
+        return Err(Error::new("stats requires at least one cycle"));
     }
 
     let span = render_span(cycle_count)?;

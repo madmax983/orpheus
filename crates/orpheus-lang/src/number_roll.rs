@@ -9,7 +9,7 @@ use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
 
 use crossterm::style::Stylize;
 
-use crate::eval::{EvalError, render_span};
+use crate::eval::{Error, render_span};
 use crate::value::NumberPatternValue;
 
 /// Renders a number pattern's evaluated events to an ASCII plot string.
@@ -36,19 +36,19 @@ use crate::value::NumberPatternValue;
 ///
 /// # Errors
 ///
-/// Returns [`EvalError`] if pattern querying fails or if `cycle_count` is 0.
+/// Returns [`Error`] if pattern querying fails or if `cycle_count` is 0.
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 pub fn render_ascii_number_roll(
     binding_name: &str,
     pattern: &NumberPatternValue,
     cycle_count: u64,
     steps_per_cycle: u32,
-) -> Result<String, EvalError> {
+) -> Result<String, crate::Error> {
     if cycle_count == 0 {
-        return Err(EvalError::new("rendering requires at least one cycle"));
+        return Err(Error::new("rendering requires at least one cycle"));
     }
     if steps_per_cycle == 0 {
-        return Err(EvalError::new("steps_per_cycle must be greater than zero"));
+        return Err(Error::new("steps_per_cycle must be greater than zero"));
     }
 
     let span = render_span(cycle_count)?;
@@ -62,7 +62,7 @@ pub fn render_ascii_number_roll(
     let total_steps = usize::try_from(cycle_count * u64::from(steps_per_cycle))?;
 
     if total_steps > 100_000 {
-        return Err(EvalError::new(
+        return Err(Error::new(
             "evaluation exceeded the maximum allowed event limit",
         ));
     }

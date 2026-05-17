@@ -15,7 +15,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
-use crate::eval::{EvalError, render_span};
+use crate::eval::{Error, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue};
 
 const TICKS_PER_QUARTER_NOTE: u16 = 480;
@@ -39,34 +39,34 @@ fn write_midi_file(
     path: impl AsRef<Path>,
     events: &[(u32, bool, u8, u8)], // (tick, is_note_on, note, velocity)
     channel: u8,
-) -> Result<(), EvalError> {
+) -> Result<(), crate::Error> {
     let mut file = BufWriter::new(
-        File::create(path).map_err(|e| EvalError::new(&*format!("failed to create file: {e}")))?,
+        File::create(path).map_err(|e| Error::new(&*format!("failed to create file: {e}")))?,
     );
 
     // MThd chunk
     file.write_all(b"MThd")
-        .map_err(|e| EvalError::new(&*e.to_string()))?;
+        .map_err(|e| Error::new(&*e.to_string()))?;
     file.write_all(&[0, 0, 0, 6])
-        .map_err(|e| EvalError::new(&*e.to_string()))?; // length 6
+        .map_err(|e| Error::new(&*e.to_string()))?; // length 6
     file.write_all(&[0, 0])
-        .map_err(|e| EvalError::new(&*e.to_string()))?; // format 0
+        .map_err(|e| Error::new(&*e.to_string()))?; // format 0
     file.write_all(&[0, 1])
-        .map_err(|e| EvalError::new(&*e.to_string()))?; // 1 track
+        .map_err(|e| Error::new(&*e.to_string()))?; // 1 track
     file.write_all(&TICKS_PER_QUARTER_NOTE.to_be_bytes())
-        .map_err(|e| EvalError::new(&*e.to_string()))?;
+        .map_err(|e| Error::new(&*e.to_string()))?;
 
     // MTrk chunk
     let mut track_data = Vec::new();
 
     // Optional: Set tempo (120 BPM = 500,000 microseconds per quarter note)
-    write_vlq(0, &mut track_data).map_err(|e| EvalError::new(&*e.to_string()))?;
+    write_vlq(0, &mut track_data).map_err(|e| Error::new(&*e.to_string()))?;
     track_data.extend_from_slice(&[0xFF, 0x51, 0x03, 0x07, 0xA1, 0x20]);
 
     let mut last_tick = 0;
     for &(tick, is_on, note, velocity) in events {
         let delta = tick.saturating_sub(last_tick);
-        write_vlq(delta, &mut track_data).map_err(|e| EvalError::new(&*e.to_string()))?;
+        write_vlq(delta, &mut track_data).map_err(|e| Error::new(&*e.to_string()))?;
         let ch = channel.clamp(0, 15);
         if is_on {
             track_data.push(0x90 | ch);
@@ -79,19 +79,19 @@ fn write_midi_file(
     }
 
     // End of track
-    write_vlq(0, &mut track_data).map_err(|e| EvalError::new(&*e.to_string()))?;
+    write_vlq(0, &mut track_data).map_err(|e| Error::new(&*e.to_string()))?;
     track_data.extend_from_slice(&[0xFF, 0x2F, 0x00]);
 
     file.write_all(b"MTrk")
-        .map_err(|e| EvalError::new(&*e.to_string()))?;
+        .map_err(|e| Error::new(&*e.to_string()))?;
     file.write_all(
         &u32::try_from(track_data.len())
             .unwrap_or(u32::MAX)
             .to_be_bytes(),
     )
-    .map_err(|e| EvalError::new(&*e.to_string()))?;
+    .map_err(|e| Error::new(&*e.to_string()))?;
     file.write_all(&track_data)
-        .map_err(|e| EvalError::new(&*e.to_string()))?;
+        .map_err(|e| Error::new(&*e.to_string()))?;
 
     Ok(())
 }
@@ -119,14 +119,14 @@ fn write_midi_file(
 /// ```
 ///
 /// # Errors
-/// Returns [`EvalError`] if the export fails or if `cycle_count` is 0.
+/// Returns [`Error`] if the export fails or if `cycle_count` is 0.
 pub fn export_number_pattern_to_midi(
     pattern: &NumberPatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,
-) -> Result<(), EvalError> {
+) -> Result<(), crate::Error> {
     if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
+        return Err(Error::new("exporting requires at least one cycle"));
     }
 
     let span = render_span(cycle_count)?;
@@ -185,14 +185,14 @@ pub fn export_number_pattern_to_midi(
 /// ```
 ///
 /// # Errors
-/// Returns [`EvalError`] if the export fails or if `cycle_count` is 0.
+/// Returns [`Error`] if the export fails or if `cycle_count` is 0.
 pub fn export_sample_pattern_to_midi(
     pattern: &SamplePatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,
-) -> Result<(), EvalError> {
+) -> Result<(), crate::Error> {
     if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
+        return Err(Error::new("exporting requires at least one cycle"));
     }
 
     let span = render_span(cycle_count)?;

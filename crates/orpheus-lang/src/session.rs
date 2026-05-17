@@ -899,7 +899,7 @@ impl ReplSession {
             ),
             _ => crate::export::export_sample_pattern_to_csv(pattern, path, cycles),
         }
-        .map_err(|error: crate::EvalError| error.to_string())?;
+        .map_err(|error: crate::Error| error.to_string())?;
 
         Ok(())
     }
@@ -938,7 +938,7 @@ impl ReplSession {
             ),
             _ => crate::export::export_number_pattern_to_csv(pattern, path, cycles),
         }
-        .map_err(|error: crate::EvalError| error.to_string())?;
+        .map_err(|error: crate::Error| error.to_string())?;
 
         Ok(())
     }

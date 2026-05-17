@@ -6,7 +6,7 @@
 use std::io::Write;
 use std::path::Path;
 
-use crate::eval::{EvalError, render_span};
+use crate::eval::{Error, render_span};
 use crate::value::NumberPatternValue;
 
 /// Standard guitar string tunings (MIDI notes).
@@ -39,15 +39,15 @@ const STRING_TUNINGS: [(&str, f64); 6] = [
 ///
 /// # Errors
 ///
-/// Returns [`EvalError`] if pattern querying fails, cycle count is zero, or if the file cannot be written.
+/// Returns [`Error`] if pattern querying fails, cycle count is zero, or if the file cannot be written.
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 pub fn export_number_pattern_to_guitar_tab(
     pattern: &NumberPatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,
-) -> Result<(), EvalError> {
+) -> Result<(), crate::Error> {
     if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
+        return Err(Error::new("exporting requires at least one cycle"));
     }
 
     let span = render_span(cycle_count)?;
@@ -55,14 +55,14 @@ pub fn export_number_pattern_to_guitar_tab(
     events.sort_by(|a, b| a.part.start().cmp(b.part.start()));
 
     let path = path.as_ref();
-    let mut file = std::fs::File::create(path).map_err(|e| EvalError::new(e.to_string()))?;
+    let mut file = std::fs::File::create(path).map_err(|e| Error::new(e.to_string()))?;
 
     // Resolution: 16 steps per cycle
     let steps_per_cycle = 16_u32;
     let total_steps = usize::try_from(cycle_count * u64::from(steps_per_cycle)).unwrap_or(0);
 
     if total_steps > 100_000 {
-        return Err(EvalError::new(
+        return Err(Error::new(
             "evaluation exceeded the maximum allowed event limit",
         ));
     }

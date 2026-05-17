@@ -4,7 +4,6 @@
 use std::io::Write;
 use std::path::Path;
 
-use crate::error::EvalError;
 use crate::pedal::{PedalNodeKind, PedalValue, SignalKind};
 
 /// Exports a pedal graph's internal evaluated plan to a Graphviz DOT file.
@@ -25,11 +24,11 @@ use crate::pedal::{PedalNodeKind, PedalValue, SignalKind};
 ///
 /// # Errors
 ///
-/// Returns [`EvalError`] if the file cannot be written.
+/// Returns [`Error`] if the file cannot be written.
 pub fn export_pedal_value_to_dot(
     pedal: &PedalValue,
     path: impl AsRef<Path>,
-) -> Result<(), EvalError> {
+) -> Result<(), crate::Error> {
     let path = path.as_ref();
     let mut file = std::fs::File::create(path)?;
 

@@ -6,7 +6,7 @@
 use std::io::Write;
 use std::path::Path;
 
-use crate::eval::{EvalError, render_span};
+use crate::eval::{Error, render_span};
 use crate::value::NumberPatternValue;
 
 /// Converts a MIDI note number into `LilyPond` pitch notation.
@@ -89,14 +89,14 @@ fn duration_to_lilypond(duration: f64) -> String {
 ///
 /// # Errors
 ///
-/// Returns [`EvalError`] if pattern querying fails or if the file cannot be written.
+/// Returns [`Error`] if pattern querying fails or if the file cannot be written.
 pub fn export_number_pattern_to_lilypond(
     pattern: &NumberPatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,
-) -> Result<(), EvalError> {
+) -> Result<(), crate::Error> {
     if cycle_count == 0 {
-        return Err(EvalError::new("exporting requires at least one cycle"));
+        return Err(Error::new("exporting requires at least one cycle"));
     }
 
     let span = render_span(cycle_count)?;
@@ -104,7 +104,7 @@ pub fn export_number_pattern_to_lilypond(
     events.sort_unstable_by(|a, b| a.part.start().cmp(b.part.start()));
 
     let path = path.as_ref();
-    let mut file = std::fs::File::create(path).map_err(|e| EvalError::new(e.to_string()))?;
+    let mut file = std::fs::File::create(path).map_err(|e| Error::new(e.to_string()))?;
 
     writeln!(file, "\\version \"2.24.1\"")?;
     writeln!(file, "\\header {{")?;

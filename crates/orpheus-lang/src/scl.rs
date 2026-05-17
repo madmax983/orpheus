@@ -19,7 +19,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use crate::error::EvalError;
+use crate::error::Error;
 use crate::value::{TUNING_OCTAVE_PERIOD, TuningValue};
 
 /// Errors surfaced while parsing a Scala `.scl` file.
@@ -47,7 +47,7 @@ pub enum SclError {
     Invariant(String),
 }
 
-impl From<SclError> for EvalError {
+impl From<SclError> for Error {
     fn from(error: SclError) -> Self {
         Self::new(error.to_string())
     }
