@@ -128,6 +128,11 @@ fn query_sample_pattern_events(
     if cycle_count == 0 {
         return Err(EvalError::new("exporting requires at least one cycle"));
     }
+    if cycle_count > 100_000 {
+        return Err(EvalError::new(
+            "evaluation exceeded the maximum allowed event limit",
+        ));
+    }
     let span = render_span(cycle_count)?;
     pattern.try_query(&span)
 }
@@ -138,6 +143,11 @@ fn query_number_pattern_events(
 ) -> Result<Vec<Event<f64>>, EvalError> {
     if cycle_count == 0 {
         return Err(EvalError::new("exporting requires at least one cycle"));
+    }
+    if cycle_count > 100_000 {
+        return Err(EvalError::new(
+            "evaluation exceeded the maximum allowed event limit",
+        ));
     }
     let span = render_span(cycle_count)?;
     pattern.try_query(&span)
