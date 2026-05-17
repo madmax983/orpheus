@@ -25,7 +25,6 @@ use core::fmt::{self, Display, Formatter};
 use std::collections::{BTreeMap, BTreeSet};
 
 use comfy_table::Cell;
-use crossterm::style::Stylize;
 
 use crate::ast::{BinaryOp, Expr, GraphBinding};
 use crate::error::EvalError;
@@ -930,9 +929,8 @@ pub fn compile_graph(
 impl Explain for ValidatedPedalPlan {
     fn explain(&self, binding_name: &str) -> String {
         let title = format!(
-            "{} {binding_name}\nTarget Signal Kind: {}",
-            "Pedal Graph Plan:".cyan().bold(),
-            self.signal_kind().to_string().yellow()
+            "Pedal Graph Plan: {binding_name}\nTarget Signal Kind: {}",
+            self.signal_kind()
         );
         let mut table = crate::explain::explain_table(["Binding", "Kind", "Node"]);
 

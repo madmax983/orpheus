@@ -5866,13 +5866,7 @@ mod tests {
 
 impl Explain for FunctionValue {
     fn explain(&self, binding_name: &str) -> String {
-        use crossterm::style::Stylize;
-
-        let title = format!(
-            "{} {}",
-            "Function Plan:".cyan().bold(),
-            binding_name.yellow()
-        );
+        let title = format!("Function Plan: {binding_name}");
 
         let mut table = crate::explain::explain_table(["Property", "Value"]);
 
@@ -5888,12 +5882,10 @@ impl Explain for FunctionValue {
 impl Explain for TuningValue {
     fn explain(&self, binding_name: &str) -> String {
         use comfy_table::{Cell, CellAlignment};
-        use crossterm::style::Stylize;
 
         let title = format!(
-            "{} {binding_name}\nScale: {}\nPeriod: {:.2}\nSteps: {}",
-            "Tuning Table Plan:".cyan().bold(),
-            self.name().to_string().yellow(),
+            "Tuning Table Plan: {binding_name}\nScale: {}\nPeriod: {:.2}\nSteps: {}",
+            self.name(),
             self.period(),
             self.ratios().len()
         );
@@ -5916,13 +5908,8 @@ impl Explain for TuningValue {
 impl Explain for SamplePatternValue {
     fn explain(&self, binding_name: &str) -> String {
         use comfy_table::{Cell, CellAlignment};
-        use crossterm::style::Stylize;
 
-        let title = format!(
-            "{} {}",
-            "Sample Pattern Plan:".cyan().bold(),
-            binding_name.yellow()
-        );
+        let title = format!("Sample Pattern Plan: {binding_name}");
 
         let mut table = crate::explain::explain_table(["Property", "Value"]);
 
@@ -5946,13 +5933,8 @@ impl Explain for SamplePatternValue {
 impl Explain for NumberPatternValue {
     fn explain(&self, binding_name: &str) -> String {
         use comfy_table::{Cell, CellAlignment};
-        use crossterm::style::Stylize;
 
-        let title = format!(
-            "{} {}",
-            "Number Pattern Plan:".cyan().bold(),
-            binding_name.yellow()
-        );
+        let title = format!("Number Pattern Plan: {binding_name}");
 
         let mut table = crate::explain::explain_table(["Property", "Value"]);
 

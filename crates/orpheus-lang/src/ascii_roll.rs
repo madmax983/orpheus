@@ -6,8 +6,6 @@ use std::collections::BTreeMap;
 
 use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
 
-use crossterm::style::Stylize;
-
 use crate::eval::{EvalError, render_span};
 use crate::value::SamplePatternValue;
 
@@ -100,11 +98,7 @@ pub fn render_ascii_roll(
         }
     }
 
-    let title = format!(
-        "{} {binding_name} ({} cycles)",
-        "Pattern Roll:".cyan().bold(),
-        cycle_count.to_string().yellow()
-    );
+    let title = format!("Pattern Roll: {binding_name} ({cycle_count} cycles)");
     let mut table = Table::new();
     table.load_preset(UTF8_BORDERS_ONLY);
 

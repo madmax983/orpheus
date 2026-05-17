@@ -7,7 +7,6 @@
 use std::collections::BTreeSet;
 
 use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
-use crossterm::style::Stylize;
 
 use crate::eval::{EvalError, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue, TuningValue};
@@ -64,11 +63,7 @@ pub fn sample_pattern_stats(
     #[allow(clippy::cast_precision_loss)]
     let density = (total_events as f64) / (cycle_count as f64);
 
-    let title = format!(
-        "{} {binding_name} ({} cycles)",
-        "Pattern Stats:".cyan().bold(),
-        cycle_count.to_string().yellow()
-    );
+    let title = format!("Pattern Stats: {binding_name} ({cycle_count} cycles)");
     let mut table = Table::new();
     table.load_preset(UTF8_BORDERS_ONLY);
 
@@ -166,11 +161,7 @@ pub fn number_pattern_stats(
     #[allow(clippy::cast_precision_loss)]
     let density = (total_events as f64) / (cycle_count as f64);
 
-    let title = format!(
-        "{} {binding_name} ({} cycles)",
-        "Pattern Stats:".cyan().bold(),
-        cycle_count.to_string().yellow()
-    );
+    let title = format!("Pattern Stats: {binding_name} ({cycle_count} cycles)");
     let mut table = Table::new();
     table.load_preset(UTF8_BORDERS_ONLY);
 
@@ -237,11 +228,7 @@ pub fn number_pattern_stats(
 pub fn tuning_stats(binding_name: &str, tuning: &TuningValue) -> String {
     use std::fmt::Write;
 
-    let title = format!(
-        "{} {}",
-        "Tuning Stats:".cyan().bold(),
-        binding_name.yellow()
-    );
+    let title = format!("Tuning Stats: {binding_name}");
 
     let mut table = Table::new();
     table.load_preset(UTF8_BORDERS_ONLY);
