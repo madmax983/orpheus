@@ -799,7 +799,9 @@ fn evaluate_feedback(
     let feedback_signal = tone_hz_bits.map_or(delayed, |cutoff_hz| {
         low_pass
             .as_mut()
-            .expect("feedback tone filter state should exist")
+            .unwrap_or_else(|| {
+                unreachable!("feedback tone filter state should exist when tone hz is present")
+            })
             .process_with_cutoff(delayed, f32::from_bits(*cutoff_hz))
     });
     buffer[*write_index] = sanitize_audio(feedback_signal.mul_add(amount, signal));

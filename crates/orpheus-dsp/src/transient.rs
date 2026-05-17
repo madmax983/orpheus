@@ -54,10 +54,9 @@ pub fn detect_transient_markers(frames: &[f32], sample_rate_hz: u32) -> Arc<[f64
             && index.saturating_sub(previous_peak) < min_gap
         {
             if current > flux[previous_peak] {
-                *markers
-                    .last_mut()
-                    .expect("last peak should exist when replacing a close transient") =
-                    find_transient_start(frames, index);
+                *markers.last_mut().unwrap_or_else(|| {
+                    unreachable!("last peak should exist when replacing a close transient")
+                }) = find_transient_start(frames, index);
                 last_peak = Some(index);
             }
             continue;
