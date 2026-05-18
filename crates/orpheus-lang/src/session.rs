@@ -648,6 +648,16 @@ impl ReplSession {
                     .map_err(|error| error.to_string())?;
                     Ok(format!("\n{}", roll.trim_end()))
                 }
+                crate::value::Value::NumberPattern(pattern) => {
+                    let roll = crate::number_roll::render_ascii_number_roll(
+                        binding_name,
+                        pattern,
+                        cycles,
+                        steps_per_cycle,
+                    )
+                    .map_err(|error| error.to_string())?;
+                    Ok(format!("\n{}", roll.trim_end()))
+                }
                 _ => Err(format!(
                     "binding `{binding_name}` is a {} and cannot be rendered as a roll",
                     value.kind_name()
