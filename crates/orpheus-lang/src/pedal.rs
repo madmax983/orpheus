@@ -115,6 +115,15 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Creates a new `ValidatedPedalNode` tracking its resolved signal kind, structural kind, and a human-readable summary.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalNode, SignalKind};
+    /// // Example usage internal to the engine compiler pipeline:
+    /// // let node = ValidatedPedalNode::new(SignalKind::Audio, kind, "summary");
+    /// ```
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +139,13 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Returns the underlying abstract structural kind representing the operation or node type.
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Returns a human-readable string summary used primarily for debugging or visualizations (like Graphviz exports).
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +160,14 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Constructs a binding associating a string identifier with a validated DSP node.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind};
+    /// // let binding = ValidatedPedalBinding::new("osc", node);
+    /// ```
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +176,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// Returns the string identifier name assigned to this local graph binding.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Returns a reference to the `ValidatedPedalNode` that this binding evaluates to.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node

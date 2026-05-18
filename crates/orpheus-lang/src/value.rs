@@ -37,36 +37,67 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Applies a function to a pattern periodically based on a cycle count interval.
     Every,
+    /// Applies a function to a pattern only when a binary condition pattern is active.
     When,
+    /// Randomly drops events from a pattern based on a probability threshold.
     Sometimes,
+    /// Limits the application of a function to a specific sub-span of the musical cycle.
     Within,
+    /// Filters out events in a base pattern where a boolean mask pattern evaluates to false.
     Mask,
+    /// Arpeggiates a chord over time, delaying successive notes by a tiny duration.
     Strum,
+    /// Rapidly repeats an event multiple times within its original time span.
     Roll,
+    /// Expands chords into arpeggios following a directional sequence (e.g., UP, DOWN).
     Arp,
+    /// Inverts the pitches of a chord or melody around a center axis.
     Invert,
+    /// Removes certain octaves or notes from a complex chord structure.
     Drop,
+    /// Generates a stack of notes simultaneously from a root note and chord quality name.
     Chord,
+    /// Generates Euclidean rhythms distributing `k` pulses evenly across `n` steps.
     Euclid,
+    /// Generates deterministic, self-similar sequences using Lindenmayer systems.
     Lsystem,
+    /// Evaluates 1D cellular automata (like Rule 30) to generate boolean sequences.
     Wolfram,
+    /// A structured set of pitch classes used to constrain and filter melodies.
     PitchClassSet,
+    /// Converts a pattern of scale degrees into absolute pitch values within a tuning.
     Degrees,
+    /// Accelerates a pattern, compressing its temporal duration by a given factor.
     Fast,
+    /// Decelerates a pattern, stretching its temporal duration by a given factor.
     Slow,
+    /// Shifts a pattern forward or backward in time by a given rational fraction of a cycle.
     Shift,
+    /// Reverses the temporal order of events within each cycle.
     Rev,
+    /// Applies a linear amplitude multiplier to audio events.
     Gain,
+    /// Enables the built-in delay line effect for an audio stream.
     Delay,
+    /// Controls the temporal length of the delay effect's echo buffer.
     DelayTime,
+    /// Determines how much of the delay signal is fed back into itself to create repeats.
     DelayFeedback,
+    /// A High-Pass Filter that removes frequencies below a specified cutoff.
     Hpf,
+    /// A Low-Pass Filter that removes frequencies above a specified cutoff.
     Lpf,
+    /// Enables the built-in algorithmic reverb effect for an audio stream.
     Reverb,
+    /// Controls the simulated physical size of the reverb space.
     ReverbRoom,
+    /// Adjusts how quickly high frequencies decay in the simulated reverb space.
     ReverbDamp,
+    /// A general frequency cutoff parameter used by various filters.
     Cutoff,
+    /// Enables the built-in chorus modulation effect to thicken audio streams.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,
