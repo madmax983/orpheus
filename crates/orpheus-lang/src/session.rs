@@ -1099,11 +1099,15 @@ impl ReplSession {
                 Some(stem.binding_name.clone());
         }
 
-        let names = stems
-            .iter()
-            .map(|stem| stem.binding_name.as_str())
-            .collect::<Vec<_>>()
-            .join(", ");
+        // ⚡ Bolt: Eliminate intermediate Vec and String allocations on the hot path.
+        // Avoided `.collect::<Vec<_>>().join(", ")` to prevent unnecessary heap allocations.
+        let mut names = String::with_capacity(stems.len() * 16);
+        for (i, stem) in stems.iter().enumerate() {
+            if i > 0 {
+                names.push_str(", ");
+            }
+            names.push_str(stem.binding_name.as_str());
+        }
         Ok(format!(
             "imported {} stem(s) from `{}` ({names})",
             stems.len(),
@@ -1152,12 +1156,15 @@ impl ReplSession {
             return Err(open_usage().to_owned());
         }
         let loaded = load_file_runtime_strict(path).map_err(|error| error.to_string())?;
-        let binding_names = loaded
-            .type_bindings
-            .keys()
-            .cloned()
-            .collect::<Vec<_>>()
-            .join(", ");
+        // ⚡ Bolt: Eliminate intermediate Vec and String allocations on the hot path.
+        // Avoided `.cloned().collect::<Vec<_>>().join(", ")` to prevent cloning keys and temporary vectors.
+        let mut binding_names = String::with_capacity(loaded.type_bindings.len() * 16);
+        for (i, name) in loaded.type_bindings.keys().enumerate() {
+            if i > 0 {
+                binding_names.push_str(", ");
+            }
+            binding_names.push_str(name);
+        }
         let last_binding_name = loaded.last_binding_name.clone();
 
         self.bindings = loaded.value_bindings;
