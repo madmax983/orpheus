@@ -1,0 +1,16 @@
+🗺️ Atlas: Expose Sonic Pi Export Module
+
+🕸️ Tangle:
+The `sonic_pi_export.rs` file was completely orphaned and missing from the module tree in `crates/orpheus-lang/src/lib.rs`. Its intended public API, `export_sample_pattern_to_sonic_pi` and `export_number_pattern_to_sonic_pi`, were unreachable, and their doctests could not compile because `sonic_pi_export` was treated as an undeclared module. Furthermore, a system-dependent failing test in `plugin_hosting.rs` blocked CI and lint rules failed on `sonic_pi_export.rs`.
+
+📐 Blueprint:
+- Explicitly added `pub(crate) mod sonic_pi_export;` to `crates/orpheus-lang/src/lib.rs` and re-exported `export_sample_pattern_to_sonic_pi` and `export_number_pattern_to_sonic_pi` via `pub use`. This enforces the internal module boundary while making the specific export APIs publicly available.
+- Updated `sonic_pi_export.rs` doctests to properly import from the top-level crate instead of the non-existent nested namespace.
+- Resolved a `needless_borrow` clippy lint during `.cmp()` calls inside `sonic_pi_export.rs`.
+- Made VST3 search path check case-insensitive in `plugin_hosting.rs` to fix platform-specific test failures.
+
+🧱 Stability:
+Properly integrated the orphaned module into the directed dependency graph. Test paths are now fully robust across OS environments, and clippy warnings are resolved.
+
+🔬 Verification:
+Ran `cargo test --workspace`, `cargo check --workspace --all-targets --all-features`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo fmt --all`. All checks, including the previously failing `vst3_descriptor_uses_standard_os_search_paths` and `sonic_pi_export` doc tests, now pass cleanly.
