@@ -1312,6 +1312,9 @@ fn sort_events<T>(events: &mut [Event<T>]) {
 /// Returns an [`EvalError`] if constructing the underlying rational span fails,
 /// which may occur if the `cycle_count` exceeds the representable range.
 pub fn render_span(cycle_count: u64) -> Result<TimeSpan, EvalError> {
+    if cycle_count == 0 {
+        return Err(EvalError::new("rendering requires at least one cycle"));
+    }
     build_span(
         Rational::zero(),
         rational_from_parts(i128::from(cycle_count), 1)?,
@@ -1874,3 +1877,9 @@ right = sometimes(fast(2), cp hh)";
         assert!((val.try_query_unit().unwrap()[0].value - 42.0).abs() < f64::EPSILON);
     }
 }
+
+    #[test]
+    fn render_span_returns_error_when_cycle_count_is_zero() {
+        let err = super::render_span(0).unwrap_err();
+        assert!(err.to_string().contains("rendering requires at least one cycle"));
+    }
