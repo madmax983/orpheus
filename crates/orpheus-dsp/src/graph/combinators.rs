@@ -73,6 +73,22 @@ impl Node for Seq {
 
 /// Creates a sequential composition: `a >> b`.
 ///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::{Node, seq, constant, passthrough};
+///
+/// // `constant` has 0 inputs and 1 output.
+/// let source = constant(0.5);
+/// // `passthrough` has N inputs and N outputs. Here, 1 input and 1 output.
+/// let effect = passthrough(1);
+///
+/// // Sequential composition: outputs of `source` flow into inputs of `effect`.
+/// let mut chain = seq(source, effect).unwrap();
+/// assert_eq!(chain.inputs(), 0);
+/// assert_eq!(chain.outputs(), 1);
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`GraphError::ChannelMismatch`] if `a.outputs() != b.inputs()`.
@@ -135,6 +151,22 @@ impl Node for Par {
 }
 
 /// Creates a parallel composition. Always succeeds.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::{Node, par, constant};
+///
+/// let a = constant(0.5); // 0 inputs, 1 output
+/// let b = constant(0.2); // 0 inputs, 1 output
+///
+/// // Parallel composition: nodes run side-by-side without connecting.
+/// // Total inputs = a.inputs() + b.inputs()
+/// // Total outputs = a.outputs() + b.outputs()
+/// let mut combined = par(a, b);
+/// assert_eq!(combined.inputs(), 0);
+/// assert_eq!(combined.outputs(), 2);
+/// ```
 pub fn par(a: impl Node + 'static, b: impl Node + 'static) -> Par {
     Par {
         a: Box::new(a),
@@ -199,6 +231,22 @@ impl Node for Spl {
 }
 
 /// Creates a split composition: `a <: b`.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::{Node, split, constant, passthrough};
+///
+/// // Source has 1 output
+/// let source = constant(0.5);
+/// // Target has 2 inputs
+/// let target = passthrough(2);
+///
+/// // Split composition duplicates the 1 output of source into the 2 inputs of target.
+/// let mut chain = split(source, target).unwrap();
+/// assert_eq!(chain.inputs(), 0);
+/// assert_eq!(chain.outputs(), 2);
+/// ```
 ///
 /// # Errors
 ///
@@ -292,6 +340,22 @@ impl Node for Mrg {
 }
 
 /// Creates a merge composition: `a :> b`.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::{Node, merge, par, constant, passthrough};
+///
+/// // 2 outputs (parallel constants)
+/// let sources = par(constant(0.5), constant(0.2));
+/// // 1 input (passthrough)
+/// let target = passthrough(1);
+///
+/// // Merge composition sums the 2 outputs of sources into the 1 input of target.
+/// let mut chain = merge(sources, target).unwrap();
+/// assert_eq!(chain.inputs(), 0);
+/// assert_eq!(chain.outputs(), 1);
+/// ```
 ///
 /// # Errors
 ///
@@ -421,6 +485,22 @@ impl Node for Rec {
 }
 
 /// Creates a recursive composition: `body ~ feedback`.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::{Node, feedback, delay_line, passthrough};
+///
+/// // A passthrough node acts as the body (1 in, 1 out).
+/// let body = passthrough(1);
+/// // A 100-sample delay line acts as the feedback path (1 in, 1 out).
+/// let fb = delay_line(100);
+///
+/// // Recursive composition: the body's output feeds back into its input via the delay.
+/// let mut chain = feedback(body, fb).unwrap();
+/// assert_eq!(chain.inputs(), 0); // All 1 inputs of body are fed by feedback (1 out).
+/// assert_eq!(chain.outputs(), 1); // External output is still visible.
+/// ```
 ///
 /// # Errors
 ///

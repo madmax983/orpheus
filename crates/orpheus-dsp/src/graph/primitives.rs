@@ -33,6 +33,16 @@ impl Node for ConstNode {
 }
 
 /// Creates a constant-signal node. 0 inputs, 1 output.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::{Node, constant};
+///
+/// let mut c = constant(0.5);
+/// assert_eq!(c.inputs(), 0);
+/// assert_eq!(c.outputs(), 1);
+/// ```
 #[must_use]
 pub const fn constant(value: f32) -> ConstNode {
     ConstNode { value }
@@ -76,6 +86,16 @@ impl Node for SineNode {
 }
 
 /// Creates a sine oscillator node. 1 input (freq\_hz), 1 output.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::{Node, sine};
+///
+/// let mut osc = sine(44100.0);
+/// assert_eq!(osc.inputs(), 1); // Frequency input
+/// assert_eq!(osc.outputs(), 1);
+/// ```
 #[must_use]
 pub fn sine(sample_rate_hz: f32) -> SineNode {
     SineNode {
@@ -128,6 +148,16 @@ impl Node for DelayNode {
 /// Creates a fixed-length delay node. 1 input, 1 output.
 ///
 /// `delay_samples` must be >= 1 (clamped).
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::{Node, delay_line};
+///
+/// let mut delay = delay_line(44100); // 1 second at 44.1kHz
+/// assert_eq!(delay.inputs(), 1);
+/// assert_eq!(delay.outputs(), 1);
+/// ```
 #[must_use]
 pub fn delay_line(delay_samples: usize) -> DelayNode {
     let delay_samples = delay_samples.max(1);
@@ -173,6 +203,16 @@ impl Node for OnePoleNode {
 }
 
 /// Creates a one-pole low-pass filter node. 2 inputs (audio, cutoff\_hz), 1 output.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::{Node, one_pole};
+///
+/// let mut filter = one_pole(44100.0);
+/// assert_eq!(filter.inputs(), 2); // Input 0: audio, Input 1: cutoff frequency
+/// assert_eq!(filter.outputs(), 1);
+/// ```
 #[must_use]
 pub fn one_pole(sample_rate_hz: f32) -> OnePoleNode {
     OnePoleNode {
@@ -211,6 +251,17 @@ impl Node for PassthroughNode {
 }
 
 /// Creates a passthrough (identity) node with `channels` inputs and outputs.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::{Node, passthrough};
+///
+/// // A stereo passthrough node (2 inputs, 2 outputs).
+/// let mut pass = passthrough(2);
+/// assert_eq!(pass.inputs(), 2);
+/// assert_eq!(pass.outputs(), 2);
+/// ```
 #[must_use]
 pub const fn passthrough(channels: u32) -> PassthroughNode {
     PassthroughNode { channels }
@@ -246,6 +297,17 @@ impl Node for SumNode {
 }
 
 /// Creates a summing node. N inputs, 1 output.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::{Node, sum};
+///
+/// // A node that sums 4 inputs down to a single mono output.
+/// let mut mixer = sum(4);
+/// assert_eq!(mixer.inputs(), 4);
+/// assert_eq!(mixer.outputs(), 1);
+/// ```
 #[must_use]
 pub const fn sum(input_count: u32) -> SumNode {
     SumNode { input_count }
@@ -288,6 +350,18 @@ impl Node for WireNode {
 ///
 /// `mapping[i]` specifies which input channel feeds output channel `i`.
 /// The node requires `max(mapping) + 1` inputs and produces `mapping.len()` outputs.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::{Node, wire};
+///
+/// // A wire that swaps stereo channels:
+/// // Output 0 takes Input 1, Output 1 takes Input 0.
+/// let mut swap = wire(&[1, 0]);
+/// assert_eq!(swap.inputs(), 2);
+/// assert_eq!(swap.outputs(), 2);
+/// ```
 ///
 /// # Panics
 ///
