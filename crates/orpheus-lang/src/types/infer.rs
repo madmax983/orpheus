@@ -49,10 +49,10 @@ pub fn infer_module(source: &str, mode: ReplMode) -> Result<TypedModule, TypeErr
 ///
 /// ```
 /// use std::collections::BTreeMap;
-/// use orpheus_lang::{eval_into_bindings, ReplMode};
+/// use orpheus_lang::{infer_into_bindings, ReplMode};
 ///
 /// let mut env = BTreeMap::new();
-/// eval_into_bindings("x = bd sn", ReplMode::Loose, &mut env).unwrap();
+/// infer_into_bindings("x = bd sn", ReplMode::Loose, &mut env).unwrap();
 /// assert!(env.contains_key("x"));
 /// ```
 ///
