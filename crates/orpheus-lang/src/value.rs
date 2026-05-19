@@ -37,36 +37,67 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Evaluates a function on the nth cycle.
     Every,
+    /// Conditionally applies a function to a pattern.
     When,
+    /// Applies a function to a pattern with a 50% probability.
     Sometimes,
+    /// Applies a function to a specific time span within a cycle.
     Within,
+    /// Uses a gate pattern to filter events from another pattern.
     Mask,
+    /// Delays the onset of events in a pattern to create a strumming effect.
     Strum,
+    /// Divides an event into multiple shorter events.
     Roll,
+    /// Arpeggiates a chord into a sequence of notes.
     Arp,
+    /// Inverts the pitches of a chord or melody.
     Invert,
+    /// Removes the nth note from a chord.
     Drop,
+    /// Constructs a chord from a root note and a list of intervals.
     Chord,
+    /// Generates a Euclidean rhythm pattern.
     Euclid,
+    /// Generates a pattern using an L-system.
     Lsystem,
+    /// Generates a pattern using a Wolfram elementary cellular automaton.
     Wolfram,
+    /// Defines a musical scale or chord as a set of pitch classes.
     PitchClassSet,
+    /// Maps scale degrees to pitches within a specific tuning.
     Degrees,
+    /// Speeds up a pattern by a given multiplier.
     Fast,
+    /// Slows down a pattern by a given multiplier.
     Slow,
+    /// Shifts a pattern forward or backward in time.
     Shift,
+    /// Reverses the order of events in a pattern.
     Rev,
+    /// Adjusts the volume/gain of an event.
     Gain,
+    /// Applies a delay effect to an event.
     Delay,
+    /// Sets the delay time for a delay effect.
     DelayTime,
+    /// Sets the feedback amount for a delay effect.
     DelayFeedback,
+    /// Applies a high-pass filter to an event.
     Hpf,
+    /// Applies a low-pass filter to an event.
     Lpf,
+    /// Applies a reverb effect to an event.
     Reverb,
+    /// Sets the room size parameter for a reverb effect.
     ReverbRoom,
+    /// Sets the damping parameter for a reverb effect.
     ReverbDamp,
+    /// Sets the cutoff frequency for a filter.
     Cutoff,
+    /// Applies a chorus effect to an event.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,
@@ -310,8 +341,26 @@ impl FunctionValue {
 #[derive(Clone, Debug)]
 pub enum GatePatternValue {
     /// A gate pattern that contains sample events.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::eval_module;
+    /// use orpheus_lang::ReplMode;
+    ///
+    /// let bindings = eval_module(r#"mask "bd" "bd sn""#, ReplMode::Loose).unwrap();
+    /// ```
     Sample(SamplePatternValue),
     /// A gate pattern that contains numeric events.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::eval_module;
+    /// use orpheus_lang::ReplMode;
+    ///
+    /// let bindings = eval_module(r#"mask "1 0 1" "bd sn""#, ReplMode::Loose).unwrap();
+    /// ```
     Number(NumberPatternValue),
 }
 
@@ -319,10 +368,37 @@ pub enum GatePatternValue {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ArpDirectionValue {
     /// Ascending order (lowest to highest pitch).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::eval_module;
+    /// use orpheus_lang::ReplMode;
+    ///
+    /// let bindings = eval_module(r#"arp "up" "c'maj""#, ReplMode::Loose).unwrap();
+    /// ```
     Up,
     /// Descending order (highest to lowest pitch).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::eval_module;
+    /// use orpheus_lang::ReplMode;
+    ///
+    /// let bindings = eval_module(r#"arp "down" "c'maj""#, ReplMode::Loose).unwrap();
+    /// ```
     Down,
     /// Ascending then descending order repeatedly.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::eval_module;
+    /// use orpheus_lang::ReplMode;
+    ///
+    /// let bindings = eval_module(r#"arp "pingpong" "c'maj""#, ReplMode::Loose).unwrap();
+    /// ```
     PingPong,
 }
 
