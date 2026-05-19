@@ -5469,10 +5469,60 @@ const fn ceil_rational(value: &Rational) -> i128 {
 mod tests {
     use super::{
         ArpDirectionValue, BuiltinFn, BuiltinKind, FunctionValue, NumberPatternValue, SampleEvent,
-        SamplePatternValue, Value, arp_event_cluster, cycle_span, roll_event_cluster,
+        SamplePatternValue, TuningValue, Value, arp_event_cluster, cycle_span, roll_event_cluster,
         sometimes_applies_on_cycle, strum_event_cluster,
     };
     use orpheus_pattern::{Event, PatternNode, Rational, TimeSpan};
+
+    #[test]
+    fn test_tuning_value_new_success() {
+        let tuning = TuningValue::new("test", vec![1.0, 1.25, 1.5, 1.75], 2.0).unwrap();
+        assert_eq!(<str as AsRef<str>>::as_ref(tuning.name()), "test");
+        assert_eq!(tuning.ratios().len(), 4);
+        assert_eq!(tuning.period(), 2.0);
+    }
+
+    #[test]
+    fn test_tuning_value_rejects_empty_ratios() {
+        let err = TuningValue::new("test", vec![], 2.0).unwrap_err();
+        assert_eq!(err.to_string(), "`tuning` requires at least one ratio");
+    }
+
+    #[test]
+    fn test_tuning_value_rejects_non_1_root() {
+        let err = TuningValue::new("test", vec![1.1, 1.25], 2.0).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "`tuning` ratios must start at 1.0 (1/1 root)"
+        );
+    }
+
+    #[test]
+    fn test_tuning_value_rejects_unordered_ratios() {
+        let err = TuningValue::new("test", vec![1.0, 1.5, 1.25], 2.0).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "`tuning` requires strictly monotone increasing ratios"
+        );
+    }
+
+    #[test]
+    fn test_tuning_value_rejects_ratios_larger_than_period() {
+        let err = TuningValue::new("test", vec![1.0, 1.5, 2.5], 2.0).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "`tuning` ratios must be strictly less than the period"
+        );
+    }
+
+    #[test]
+    fn test_tuning_value_rejects_non_2_period_in_phase_1() {
+        let err = TuningValue::new("test", vec![1.0, 1.5], 3.0).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "`tuning` period must be 2.0 (octave) in Phase 1"
+        );
+    }
 
     fn unary_transform(kind: BuiltinKind, args: Vec<Value>) -> FunctionValue {
         let function = BuiltinFn::new(kind);
