@@ -753,6 +753,7 @@ impl ReplSession {
         match value {
             crate::value::Value::SamplePattern(pattern) => Ok(pattern.explain(binding_name)),
             crate::value::Value::NumberPattern(pattern) => Ok(pattern.explain(binding_name)),
+            crate::value::Value::PluginPattern(plugin) => Ok(plugin.explain(binding_name)),
             crate::value::Value::Function(func) => Ok(func.explain(binding_name)),
             crate::value::Value::Pedal(pedal) => Ok(pedal.explain(binding_name)),
             crate::value::Value::Tuning(tuning) => Ok(tuning.explain(binding_name)),
@@ -2122,6 +2123,8 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    use orpheus_dsp::EngineHandle;
+
     use super::ReplSession;
 
     static UNIQUE_TEMP_ID: AtomicU64 = AtomicU64::new(0);
@@ -3212,6 +3215,16 @@ mod tests {
 
         assert!(plan.contains("Sample Pattern Plan"));
         assert!(plan.contains("drums"));
+    }
+
+    #[test]
+    fn session_explain_returns_plugin_pattern_plan() {
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+        session.eval_line("p = vst(\"Serum\")").unwrap();
+        let plan = session.explain_binding("p").unwrap();
+        assert!(plan.contains("Plugin Pattern Plan"));
+        assert!(plan.contains("Serum"));
+        assert!(plan.contains("Target Plugin"));
     }
 
     #[test]
