@@ -7,14 +7,14 @@
 //! The entry points for type inference are `infer_module` and `infer_into_bindings`,
 //! which evaluate AST sequences against a `TypeEnv` to produce a `TypedModule`.
 
-pub mod env;
+mod env;
 mod infer;
 
 use std::collections::BTreeMap;
 use std::fmt::{self, Display, Formatter};
 
-pub use env::TypeEnv;
-pub use env::TypeScheme;
+
+
 pub use infer::infer_into_bindings;
 pub use infer::infer_module;
 
