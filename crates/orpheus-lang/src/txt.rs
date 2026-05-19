@@ -34,6 +34,8 @@ pub fn export_sample_pattern_to_txt(
     path: impl AsRef<Path>,
     cycle_count: u64,
 ) -> Result<(), EvalError> {
+    use std::fmt::Write;
+
     if cycle_count == 0 {
         return Err(EvalError::new("exporting requires at least one cycle"));
     }
@@ -53,16 +55,18 @@ pub fn export_sample_pattern_to_txt(
         let start = f64::from(event.part.start());
         let end = f64::from(event.part.end());
 
-        let mut params = Vec::new();
-        params.push(format!("gain: {:.2}", event.value.gain()));
-        params.push(format!("pan: {:.2}", event.value.pan()));
-        params.push(format!("rate: {:.2}", event.value.rate()));
+        // ⚡ Bolt: Eliminate multiple intermediate string and `Vec` allocations during export
+        // by pre-allocating a string buffer and formatting values directly into it.
+        let mut params = String::with_capacity(64);
+        let _ = write!(&mut params, "gain: {:.2}", event.value.gain());
+        let _ = write!(&mut params, ", pan: {:.2}", event.value.pan());
+        let _ = write!(&mut params, ", rate: {:.2}", event.value.rate());
 
         if let Some(hpf) = event.value.hpf_cutoff_hz() {
-            params.push(format!("hpf: {hpf:.2}"));
+            let _ = write!(&mut params, ", hpf: {hpf:.2}");
         }
         if let Some(lpf) = event.value.lpf_cutoff_hz() {
-            params.push(format!("lpf: {lpf:.2}"));
+            let _ = write!(&mut params, ", lpf: {lpf:.2}");
         }
 
         writeln!(
@@ -71,7 +75,7 @@ pub fn export_sample_pattern_to_txt(
             start,
             end,
             event.value.sample(),
-            params.join(", ")
+            params
         )?;
     }
 

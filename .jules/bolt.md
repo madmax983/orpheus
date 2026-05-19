@@ -47,3 +47,7 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+**[Eliminating Intermediate Vec for Formatting]**
+**Learning:** Collecting formatted string parameters into a `Vec<String>` and calling `.join(", ")` inside an export loop causes unnecessary vector heap allocations and multiple intermediate string allocations.
+**Action:** Use a pre-allocated `String` buffer with `String::with_capacity()` and append values directly using `write!` (with `use std::fmt::Write;`) instead of joining a `Vec`. Note: ensure the `use std::fmt::Write;` import is placed at the top of the function to avoid `clippy::items_after_statements`.
