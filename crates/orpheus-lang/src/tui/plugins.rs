@@ -336,3 +336,34 @@ impl HypertilePlugin for TransportPlugin {
             .render(area, buf);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tui::state::SharedState;
+    use orpheus_dsp::EngineHandle;
+    use ratatui_hypertile::KeyChord;
+    use ratatui_hypertile::{HypertileEvent, KeyCode, Modifiers};
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    #[test]
+    fn bindings_plugin_handles_page_up_and_down_events() {
+        let state = SharedState::new(EngineHandle::stub());
+        let mut plugin = BindingsPlugin::new(Rc::new(RefCell::new(state)));
+
+        let event_down = HypertileEvent::Key(KeyChord {
+            code: KeyCode::PageDown,
+            modifiers: Modifiers::NONE,
+        });
+        let outcome = plugin.on_event(&event_down);
+        assert_eq!(outcome, EventOutcome::Consumed);
+
+        let event_up = HypertileEvent::Key(KeyChord {
+            code: KeyCode::PageUp,
+            modifiers: Modifiers::NONE,
+        });
+        let outcome = plugin.on_event(&event_up);
+        assert_eq!(outcome, EventOutcome::Consumed);
+    }
+}
