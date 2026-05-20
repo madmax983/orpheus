@@ -115,6 +115,22 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Constructs a validated DSP plan node representing a specific operational block.
+    ///
+    /// This links the abstract syntax structure (`PedalNodeKind`) with its correctly
+    /// inferred topological constraint (`SignalKind`).
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    /// let node = ValidatedPedalNode::new(
+    ///     SignalKind::Control,
+    ///     PedalNodeKind::Input,
+    ///     "CtrlIn"
+    /// );
+    /// assert_eq!(node.summary(), "CtrlIn");
+    /// ```
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +146,13 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Exposes the operational variant (e.g., oscillator, filter) that this node performs.
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Returns a succinct description of the node, primarily used for terminal UI visualizations.
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +167,19 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Pairs an identifier with a fully validated DSP node.
+    ///
+    /// In a pedal graph, let-bindings allow complex recursive or parallel routing
+    /// by giving intermediate audio or control streams a discrete name.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    /// let node = ValidatedPedalNode::new(SignalKind::Control, PedalNodeKind::Input, "in");
+    /// let binding = ValidatedPedalBinding::new("my_signal", node);
+    /// assert_eq!(binding.name(), "my_signal");
+    /// ```
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +188,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// Exposes the identifier used to reference this sub-graph later in the execution plan.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Provides access to the topological node that generates the signal for this binding.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node

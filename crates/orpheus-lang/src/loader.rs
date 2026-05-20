@@ -39,8 +39,14 @@ struct ImportSpec {
 /// ```
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
+    /// The type environment populated after running Hindley-Milner inference
+    /// across the module. This is used by the REPL to display types to the user.
     pub type_bindings: BTreeMap<String, Type>,
+    /// The evaluated state produced by the module. These are the actual patterns
+    /// that can be rendered to audio or dispatched to MIDI.
     pub value_bindings: BTreeMap<String, Value>,
+    /// The trailing binding allows the REPL to automatically focus and play the last
+    /// defined pattern without requiring the user to explicitly type its name.
     pub last_binding_name: Option<String>,
 }
 

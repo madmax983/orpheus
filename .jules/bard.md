@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-05-24 - Do not write getter docs
+**Confusion:** I wrote simple "getter" docs (e.g. `/// Gets the x`) which triggered the Persona constraint against writing useless noise.
+**Clarification:** Docs must explain the *why*, not just repeat the function name. Every public struct/fn must include a `## Examples` header with an executable code block to fulfill the storytelling and TDD criteria.

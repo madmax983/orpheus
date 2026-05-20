@@ -26,11 +26,27 @@ use crate::types::{Type, TypeVarId};
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
+    /// The universally quantified type variables (`t0`, `t1`, etc.) that allow this
+    /// scheme to be instantiated differently at various call sites.
     pub vars: Vec<TypeVarId>,
+    /// The underlying algebraic type structure. When instantiated, the variables inside
+    /// this type are replaced with fresh inference variables.
     pub ty: Type,
 }
 
 impl TypeScheme {
+    /// Creates a rigid scheme that cannot be specialized further.
+    ///
+    /// This is the standard constructor for concrete types like `Number` or `Duration`
+    /// that do not accept polymorphic parameters.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{Type, TypeScheme};
+    /// let scheme = TypeScheme::monomorphic(Type::Number);
+    /// assert!(scheme.vars.is_empty());
+    /// ```
     #[must_use]
     pub const fn monomorphic(ty: Type) -> Self {
         Self {
@@ -195,6 +211,19 @@ impl TypeEnv {
         self.entries.get(name)
     }
 
+    /// Yields a reference to every bound scheme, allowing broad traversal of the type context.
+    ///
+    /// This is commonly used during the final generalization phase of Hindley-Milner inference
+    /// to determine which type variables are free in the active environment.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::TypeEnv;
+    /// let env = TypeEnv::with_builtins();
+    /// let total_bindings = env.values().count();
+    /// assert!(total_bindings > 0);
+    /// ```
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }

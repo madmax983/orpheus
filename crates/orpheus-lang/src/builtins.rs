@@ -260,6 +260,18 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Constructs a base execution frame for a built-in transformation.
+    ///
+    /// This initializes the function with no bound arguments and no structural salt.
+    /// Arguments will be pushed during curried application.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    /// let func = BuiltinFn::new(BuiltinKind::Fast);
+    /// assert_eq!(func.kind, BuiltinKind::Fast);
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +281,20 @@ impl BuiltinFn {
         }
     }
 
+    /// Injects a structural fingerprint to ensure deterministic-but-varied randomness.
+    ///
+    /// When built-ins like `rand` or `sometimes` are evaluated, they require a seed.
+    /// To prevent identical functions in different parts of the AST from producing the
+    /// exact same sequence, the interpreter hashes the AST structure and injects it
+    /// here as a "site salt".
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    /// let func = BuiltinFn::new(BuiltinKind::Sometimes).with_site_salt(42);
+    /// assert_eq!(func.site_salt, Some(42));
+    /// ```
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);
