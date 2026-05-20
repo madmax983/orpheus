@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-05-20 - [Eliminating Getter Noise in UI/Offline APIs]
+**Confusion:** Functions in `crates/orpheus-lang/src/tui/style.rs` and `crates/orpheus-dsp/src/offline.rs` used generic "Returns the..." documentation, failing to explain the *purpose* or *why* these functions exist within the application's domain context.
+**Clarification:** Rewrote the documentations to explain the visual impact of the TUI styling functions and the rationale for returning the generated file paths in the offline render function.

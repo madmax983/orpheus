@@ -208,9 +208,9 @@ pub fn render_routing_snapshot_to_stereo_for_test(
 /// Track stems are written for bound, unmuted tracks. When `include_buses` is
 /// true, bus stems are also written as post-effect stereo files.
 ///
-/// Returns the final deterministic file paths that were generated and written
-/// to the disk output directory. This is useful for providing feedback to the user
-/// about where their rendered stems are located.
+/// This provides the final deterministic file paths that were generated and written
+/// to the disk output directory, enabling the caller to provide immediate
+/// feedback to the user about where their rendered stems are located.
 ///
 /// # Errors
 ///

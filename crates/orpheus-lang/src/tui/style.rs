@@ -91,9 +91,11 @@ pub fn format_transport_status(view: &TransportView) -> &'static str {
     }
 }
 
-/// Returns the visual [`Style`] (color and modifier) associated with the current transport state.
+/// Defines the visual [`Style`] (color and modifier) that corresponds to the current transport state.
 ///
-/// For example, active playback is green, while syncing transitions are cyan.
+/// This function acts as the central mapping for how audio engine states are presented
+/// visually to the user. For example, active playback is green to signify running,
+/// while syncing transitions are cyan to show preparation.
 ///
 /// # Examples
 /// ```
@@ -185,8 +187,10 @@ pub fn routing_status_line(mixer: &MixerView) -> Line<'static> {
     Line::from(vec![Span::raw("Routing: "), status])
 }
 
-/// Returns the [`Style`] used to highlight the currently active (live) pattern binding
-/// in the environment list.
+/// Defines the bold, green [`Style`] used to highlight the currently active (live) pattern
+/// binding in the environment list.
+///
+/// This serves to clearly distinguish the currently playing code from dormant definitions.
 ///
 /// # Examples
 /// ```
@@ -203,10 +207,11 @@ pub fn live_binding_style() -> Style {
         .add_modifier(Modifier::BOLD)
 }
 
-/// Returns the [`Style`] used to highlight a pattern binding that is queued to play next.
+/// Defines the dynamic [`Style`] used to highlight a pattern binding that is queued to play next.
 ///
-/// The specific color changes depending on whether the transport is currently running (syncing)
-/// or stopped (queued).
+/// This provides users with visual confirmation of what will execute at the next cycle boundary.
+/// The color adapts contextually: it uses cyan when transitioning during active playback (syncing),
+/// and blue if the engine is stopped but holding a queue.
 ///
 /// # Examples
 /// ```
@@ -331,7 +336,10 @@ pub fn should_show_binding_legend(
     visible_rows >= MIN_BINDING_LEGEND_ROWS && visible_rows >= binding_count.saturating_add(2)
 }
 
-/// Returns the muted [`Style`] used for keyboard shortcut hints (e.g., `(ESC to close)`).
+/// Defines the muted, dim [`Style`] for unobtrusive keyboard shortcut hints (e.g., `(ESC to close)`).
+///
+/// This style lowers the visual priority of navigation hints so they don't distract
+/// from the primary code and status information.
 ///
 /// # Examples
 /// ```
@@ -348,7 +356,10 @@ pub fn key_legend_style() -> Style {
         .add_modifier(Modifier::DIM)
 }
 
-/// Returns the highlighted [`Style`] used for the outer border of the Help overlay popup.
+/// Defines the cyan, bold [`Style`] for the outer border of the Help overlay popup.
+///
+/// This style draws the user's immediate attention to the modal when it is active,
+/// separating it from the underlying REPL.
 ///
 /// # Examples
 /// ```
@@ -365,7 +376,10 @@ pub fn help_overlay_border_style() -> Style {
         .add_modifier(Modifier::BOLD)
 }
 
-/// Returns the muted [`Style`] used for the footer text in the Help overlay.
+/// Defines the subtle, gray [`Style`] for the footer text in the Help overlay.
+///
+/// This provides a low-contrast anchor for auxiliary text (like scrolling instructions)
+/// without competing with the actual help content.
 ///
 /// # Examples
 /// ```
