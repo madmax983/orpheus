@@ -56,3 +56,6 @@
 **[Enforce Private Explain Module]
 **Tangle:** The `explain` module in `orpheus-lang/src/lib.rs` and its internal `Explain` trait and `explain_table` function were declared as `pub`, leaking internal REPL table rendering details to the public API.
 **Blueprint:** Changed the visibility of the `Explain` trait and `explain_table` function to `pub(crate)` in `crates/orpheus-lang/src/explain.rs`. Removed the `pub use explain::Explain;` re-export from `crates/orpheus-lang/src/lib.rs` and changed the module declaration to `pub(crate) mod explain;`. This strictly enforces internal encapsulation.
+**[Fix Leaky Abstraction in TUI, Mixer, and MIDI Internal Structs]
+**Tangle:** The `MixerState`, `SharedState`, `ReplPlugin`, `BindingsPlugin`, `TransportPlugin`, `MidiNoteEventKind`, and `MidiNoteEvent` structs in `orpheus-lang` were declared as `pub`, unnecessarily exposing them outside the crate. Since their parent modules (`tui`, `mixer`, `midi_input`) are private, using `pub` encapsulates them internally but clippy generates a `redundant_pub_crate` warning if changed to `pub(crate)`.
+**Blueprint:** Modified the structs to be `pub` where clippy complained about `pub(crate)` inside a private module, maintaining encapsulation at the module boundary.
