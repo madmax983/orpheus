@@ -131,6 +131,9 @@ impl PluginNote {
     /// Returns [`PluginHostError::InvalidVelocity`] if `velocity` is not finite
     /// or outside `[0, 1]`.
     pub fn new(note_number: u8, velocity: f32) -> Result<Self, PluginHostError> {
+        if note_number > 127 {
+            return Err(PluginHostError::InvalidNoteNumber);
+        }
         if !velocity.is_finite() || !(0.0..=1.0).contains(&velocity) {
             return Err(PluginHostError::InvalidVelocity);
         }
@@ -501,4 +504,95 @@ fn note_duration_frames(event: &Event<PluginNote>, frames_per_cycle: u64) -> u32
 
 fn midi_note_frequency(note_number: u8) -> f32 {
     440.0 * ((f32::from(note_number) - 69.0) / 12.0).exp2()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plugin_descriptor_rejects_empty_identifier() {
+        assert_eq!(
+            PluginDescriptor::try_new(PluginFormat::Vst3, ""),
+            Err(PluginHostError::EmptyIdentifier)
+        );
+        assert_eq!(
+            PluginDescriptor::try_new(PluginFormat::Vst3, "   "),
+            Err(PluginHostError::EmptyIdentifier)
+        );
+        assert_eq!(
+            PluginDescriptor::try_new(PluginFormat::AudioUnit, "\t\n"),
+            Err(PluginHostError::EmptyIdentifier)
+        );
+    }
+
+    #[test]
+    fn plugin_parameter_lane_rejects_empty_name() {
+        assert_eq!(
+            PluginParameterLane::new("", Box::new([])).unwrap_err(),
+            PluginHostError::EmptyParameterName
+        );
+        assert_eq!(
+            PluginParameterLane::new("   ", Box::new([])).unwrap_err(),
+            PluginHostError::EmptyParameterName
+        );
+    }
+
+    #[test]
+    fn plugin_parameter_lane_rejects_invalid_values() {
+        use orpheus_pattern::{Event, TimeSpan};
+
+        let make_event = |val: f32| Event {
+            whole: None,
+            part: TimeSpan::unit(),
+            value: val,
+        };
+
+        assert_eq!(
+            PluginParameterLane::new("Cutoff", Box::new([make_event(1.5)])).unwrap_err(),
+            PluginHostError::InvalidParameterValue
+        );
+
+        assert_eq!(
+            PluginParameterLane::new("Cutoff", Box::new([make_event(-0.1)])).unwrap_err(),
+            PluginHostError::InvalidParameterValue
+        );
+
+        assert_eq!(
+            PluginParameterLane::new("Cutoff", Box::new([make_event(f32::NAN)])).unwrap_err(),
+            PluginHostError::InvalidParameterValue
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid VST3 plugin descriptor")]
+    fn plugin_descriptor_vst3_panics_on_empty() {
+        let _ = PluginDescriptor::vst3("");
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid AU plugin descriptor")]
+    fn plugin_descriptor_audio_unit_panics_on_empty() {
+        let _ = PluginDescriptor::audio_unit("");
+    }
+
+    #[test]
+    fn plugin_note_rejects_invalid_values() {
+        assert_eq!(
+            PluginNote::new(128, 0.5).unwrap_err(),
+            PluginHostError::InvalidNoteNumber
+        );
+        assert_eq!(
+            PluginNote::new(60, 1.5).unwrap_err(),
+            PluginHostError::InvalidVelocity
+        );
+        assert_eq!(
+            PluginNote::new(60, -0.1).unwrap_err(),
+            PluginHostError::InvalidVelocity
+        );
+        assert_eq!(
+            PluginNote::new(60, f32::NAN).unwrap_err(),
+            PluginHostError::InvalidVelocity
+        );
+    }
 }
