@@ -115,6 +115,22 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Constructs a fully typed, validated node within the DSP compilation phase.
+    ///
+    /// The `summary` is attached as a debug tracing aid (e.g. for DOT graphs).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::SignalKind;
+    /// use orpheus_lang::pedal::{ValidatedPedalNode, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(
+    ///     SignalKind::Control,
+    ///     PedalNodeKind::Constant,
+    ///     "Depth mod",
+    /// );
+    /// ```
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +146,13 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Accesses the underlying algebraic DSP operation for this node.
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Retrieves the debug trace summary indicating how this node was compiled.
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +167,19 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Binds an internal variable name to a specific validated DSP node.
+    ///
+    /// This captures the "let name = expr" assignments present in a `pedal()` block.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::SignalKind;
+    /// use orpheus_lang::pedal::{ValidatedPedalBinding, ValidatedPedalNode, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Control, PedalNodeKind::Constant, "");
+    /// let binding = ValidatedPedalBinding::new("x", node);
+    /// ```
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +188,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// Accesses the local identifier for the bound signal.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Accesses the resolved DSP graph subtree assigned to the variable.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node

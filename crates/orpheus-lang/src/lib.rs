@@ -23,7 +23,7 @@ pub(crate) mod mixer;
 pub(crate) mod number_roll;
 pub(crate) mod osu_export;
 mod parser;
-mod pedal;
+pub mod pedal;
 mod pitch;
 mod repl;
 pub(crate) mod scad_export;
