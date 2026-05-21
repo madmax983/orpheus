@@ -5972,3 +5972,26 @@ impl Explain for NumberPatternValue {
         format!("{title}\n{table}")
     }
 }
+impl Explain for PluginPatternValue {
+    fn explain(&self, binding_name: &str) -> String {
+        use crossterm::style::Stylize;
+
+        let title = format!(
+            "{} {}",
+            "Plugin Pattern Plan:".cyan().bold(),
+            binding_name.yellow()
+        );
+
+        let format_str = match self.source.descriptor().format() {
+            orpheus_dsp::PluginFormat::Vst3 => "VST3",
+            orpheus_dsp::PluginFormat::AudioUnit => "AudioUnit",
+        };
+
+        let mut table = crate::explain::explain_table(["Property", "Value"]);
+        table
+            .add_row(vec!["Format", format_str])
+            .add_row(vec!["Identifier", self.source.descriptor().identifier()]);
+
+        format!("{title}\n{table}")
+    }
+}
