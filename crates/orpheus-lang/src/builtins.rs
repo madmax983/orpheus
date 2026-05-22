@@ -260,6 +260,20 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Constructs a new `BuiltinFn` matching a specific base `BuiltinKind`.
+    ///
+    /// This establishes a function that can be partially applied via bound arguments
+    /// until its signature is fully satisfied, at which point it evaluates into a `Value`.
+    ///
+    /// ## Examples
+    ///
+    /// ```rust
+    /// use orpheus_lang::value::BuiltinKind;
+    /// use orpheus_lang::builtins::BuiltinFn;
+    ///
+    /// let func = BuiltinFn::new(BuiltinKind::Fast);
+    /// assert_eq!(func.kind(), BuiltinKind::Fast);
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +283,20 @@ impl BuiltinFn {
         }
     }
 
+    /// Attaches a site-specific salt (derived from the AST) to seed operations that require
+    /// deterministic uniqueness.
+    ///
+    /// The site salt is passed down the runtime and typically used to isolate `Rand` streams.
+    ///
+    /// ## Examples
+    ///
+    /// ```rust
+    /// use orpheus_lang::value::BuiltinKind;
+    /// use orpheus_lang::builtins::BuiltinFn;
+    ///
+    /// let func = BuiltinFn::new(BuiltinKind::Euclid).with_site_salt(42);
+    /// assert_eq!(func.site_salt(), Some(42));
+    /// ```
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

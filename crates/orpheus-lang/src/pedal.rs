@@ -115,6 +115,20 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Creates a new `ValidatedPedalNode` representing a type-checked DSP stage.
+    ///
+    /// ## Examples
+    ///
+    /// ```rust
+    /// use orpheus_lang::pedal::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(
+    ///     SignalKind::Audio,
+    ///     PedalNodeKind::Wire,
+    ///     "wire"
+    /// );
+    /// assert_eq!(node.summary(), "wire");
+    /// ```
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +144,13 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +165,18 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Constructs a new let-binding within a pedal block, assigning a unique local `name`
+    /// to the target DSP `node`.
+    ///
+    /// ## Examples
+    ///
+    /// ```rust
+    /// use orpheus_lang::pedal::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Wire, "wire");
+    /// let binding = ValidatedPedalBinding::new("my_sig", node);
+    /// assert_eq!(binding.name(), "my_sig");
+    /// ```
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +185,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node

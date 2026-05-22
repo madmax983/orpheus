@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-05-19 - [Missing Value Enum Variant Documentation]
+**Confusion:** The massive `BuiltinKind` enum and the gate pattern enums (`GatePatternValue`, `ArpDirectionValue`) in `value.rs` had dozens of variants missing documentation, leading to `missing_docs` warnings and obfuscated API context for language users.
+**Clarification:** Added detailed `///` documentation to all missing variants describing their musical function rather than just repeating their names. Did not add `## Examples` to `BuiltinKind` since they are often just `BuiltinKind::SomeVariant` and this kind of documentation is considered noise according to Bard's philosophy.

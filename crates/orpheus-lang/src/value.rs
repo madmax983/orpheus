@@ -37,36 +37,67 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Applies a function to every Nth cycle.
     Every,
+    /// Applies a function when a condition is met.
     When,
+    /// Applies a function with a given probability.
     Sometimes,
+    /// Applies a function within a specific time window of a cycle.
     Within,
+    /// Masks a pattern using another boolean pattern.
     Mask,
+    /// Delays events in a chord to create a strumming effect.
     Strum,
+    /// Repeats an event multiple times within its original time span.
     Roll,
+    /// Arpeggiates a chord pattern.
     Arp,
+    /// Inverts the pitches of a chord.
     Invert,
+    /// Drops notes from a chord based on an index.
     Drop,
+    /// Maps a root note and name to a chord structure.
     Chord,
+    /// Generates Euclidean rhythms.
     Euclid,
+    /// Generates patterns using Lindenmayer systems.
     Lsystem,
+    /// Generates patterns using Wolfram elementary cellular automata.
     Wolfram,
+    /// Restricts a pitch pattern to a specific set of pitch classes.
     PitchClassSet,
+    /// Interprets numbers as scale degrees within a given scale.
     Degrees,
+    /// Speeds up a pattern by a given factor.
     Fast,
+    /// Slows down a pattern by a given factor.
     Slow,
+    /// Shifts a pattern forward or backward in time.
     Shift,
+    /// Reverses the time of a pattern within each cycle.
     Rev,
+    /// Modulates the amplitude of events in a pattern.
     Gain,
+    /// Sets the send level to the global delay bus.
     Delay,
+    /// Sets the delay time of the global delay bus.
     DelayTime,
+    /// Sets the feedback amount of the global delay bus.
     DelayFeedback,
+    /// Sets the cutoff frequency of a high-pass filter.
     Hpf,
+    /// Sets the cutoff frequency of a low-pass filter.
     Lpf,
+    /// Sets the send level to the global reverb bus.
     Reverb,
+    /// Sets the room size parameter of the global reverb bus.
     ReverbRoom,
+    /// Sets the damping parameter of the global reverb bus.
     ReverbDamp,
+    /// Sets the cutoff frequency of the primary synth filter.
     Cutoff,
+    /// Sets the send level to the global chorus bus.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

@@ -39,8 +39,11 @@ struct ImportSpec {
 /// ```
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
+    /// The resolved types for all bindings exported by this file.
     pub type_bindings: BTreeMap<String, Type>,
+    /// The resolved runtime values for all bindings exported by this file.
     pub value_bindings: BTreeMap<String, Value>,
+    /// The name of the final binding evaluated in the file, often used as the default pattern if no specific binding is requested.
     pub last_binding_name: Option<String>,
 }
 
