@@ -38,23 +38,21 @@ use crate::export::sample_trigger_from_event;
 /// Creating a new mixer with a custom bus effect and track send:
 ///
 /// ```ignore
+/// // MixerState is internal, but this demonstrates the basic API.
 /// use orpheus_lang::mixer::MixerState;
 /// use orpheus_pattern::Rational;
 ///
 /// let mut mixer = MixerState::default();
-///
 /// // Create a delay bus
 /// mixer.new_bus("fx1").unwrap();
 /// mixer.set_bus_delay("fx1", Rational::new(1, 4), 0.5, 0.8).unwrap();
-///
 /// // Route a track to the bus
 /// mixer.new_track("lead").unwrap();
 /// mixer.set_send("lead", "fx1", 0.6).unwrap();
-///
 /// assert!(mixer.has_routing_state());
 /// ```
 #[derive(Clone, Debug, Default)]
-pub struct MixerState {
+pub(crate) struct MixerState {
     compatibility_main_binding: Option<String>,
     tracks: BTreeMap<String, MixerTrack>,
     buses: BTreeMap<String, MixerBus>,
