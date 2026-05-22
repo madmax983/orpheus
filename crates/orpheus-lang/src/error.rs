@@ -1,3 +1,11 @@
+//! Runtime error definitions for the Orpheus evaluation engine.
+//!
+//! This module defines the `EvalError` enumeration and its implementations, which
+//! encompass all the dynamic failures that can occur when a parsed Abstract Syntax
+//! Tree is actively evaluated into a musical sequence or DSP graph. This is distinct
+//! from parsing or type-checking errors, representing issues like division by zero
+//! in temporal operations or out-of-bounds parameters.
+
 use orpheus_pattern::PatternError;
 use thiserror::Error;
 

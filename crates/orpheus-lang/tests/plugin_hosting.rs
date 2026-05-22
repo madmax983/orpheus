@@ -1,3 +1,9 @@
+//! Integration tests for the external plugin hosting system.
+//!
+//! These tests verify that the language evaluator correctly parses and constructs
+//! definitions for external VST3 plugins, mapping logical parameters like notes
+//! and CC lanes into the `PluginPatternValue` structures expected by the DSP runtime.
+
 use orpheus_dsp::PluginFormat;
 use orpheus_lang::{ReplMode, ReplSession, eval_module};
 

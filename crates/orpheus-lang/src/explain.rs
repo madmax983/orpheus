@@ -1,3 +1,10 @@
+//! Structural explanation traits for the REPL environment.
+//!
+//! This module provides the `Explain` trait, which allows complex, opaque runtime
+//! values (like plugin configurations, stateful graphs, and functions) to render
+//! themselves as human-readable diagnostic tables when queried with the `:explain`
+//! command in the REPL.
+
 #[must_use]
 #[doc(hidden)]
 pub trait Explain {
