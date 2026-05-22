@@ -1645,7 +1645,7 @@ fn apply_sample_numeric_control(
 fn extract_positive_integer_factor(value: Value, builtin_name: &str) -> Result<i64, EvalError> {
     let number = extract_constant_number(value, builtin_name)?;
 
-    if !number.is_finite() || number <= 0.0 || number.fract().abs() > f64::EPSILON {
+    if !number.is_finite() || number <= 0.0 || (number.round() - number).abs() > 1e-9 {
         return Err(EvalError::new(format!(
             "`{builtin_name}` requires a positive integer factor"
         )));
@@ -2268,7 +2268,7 @@ fn extract_inversion_count(value: Value) -> Result<u32, EvalError> {
             "`invert` requires a non-negative whole number",
         ));
     }
-    if number.fract().abs() > f64::EPSILON {
+    if (number.round() - number).abs() > 1e-9 {
         return Err(EvalError::new("`invert` requires a whole number"));
     }
 
@@ -2368,7 +2368,7 @@ where
 }
 
 fn validate_slice_idx_constant(value: f64, segments: u32) -> Result<u32, EvalError> {
-    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
+    if !value.is_finite() || value < 0.0 || (value.round() - value).abs() > 1e-9 {
         return Err(EvalError::new("`slice_idx index` requires a whole number"));
     }
 
@@ -2397,7 +2397,7 @@ fn validate_slice_idx_constant(value: f64, segments: u32) -> Result<u32, EvalErr
 }
 
 fn validate_slice_idx_control_value(value: f64, segments: u32) -> Result<(), EvalError> {
-    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
+    if !value.is_finite() || value < 0.0 || (value.round() - value).abs() > 1e-9 {
         return Err(EvalError::new(
             "`slice_idx` requires whole-number control values",
         ));
@@ -2412,7 +2412,7 @@ fn validate_slice_idx_control_value(value: f64, segments: u32) -> Result<(), Eva
 }
 
 fn validate_onset_index_constant(value: f64) -> Result<u32, EvalError> {
-    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
+    if !value.is_finite() || value < 0.0 || (value.round() - value).abs() > 1e-9 {
         return Err(EvalError::new("`onset index` requires a whole number"));
     }
 
@@ -2437,7 +2437,7 @@ fn validate_onset_index_constant(value: f64) -> Result<u32, EvalError> {
 }
 
 fn validate_onset_index_control_value(value: f64) -> Result<(), EvalError> {
-    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
+    if !value.is_finite() || value < 0.0 || (value.round() - value).abs() > 1e-9 {
         return Err(EvalError::new(
             "`onset` requires whole-number control values",
         ));

@@ -12,3 +12,10 @@ fn test_havoc_tiny_float_meter_panic() {
         "meter beat count must be a positive integer"
     );
 }
+
+#[test]
+fn test_havoc_float_almost_integer_meter() {
+    let source = "notes = meter(1.0000000000000002, 4, at(beat(0), bd))";
+    let res = eval_module(source, ReplMode::Loose);
+    assert!(res.is_ok()); // if it's close to integer, it's accepted.
+}

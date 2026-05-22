@@ -4451,7 +4451,7 @@ where
 }
 
 fn whole_number_from_degree_value(value: f64) -> Result<i32, EvalError> {
-    if !value.is_finite() || value.fract().abs() > f64::EPSILON {
+    if !value.is_finite() || (value.round() - value).abs() > 1e-9 {
         return Err(EvalError::new(
             "`degrees` requires whole-number degree values",
         ));
@@ -4651,7 +4651,7 @@ fn validate_onset_control_events(control_events: &[Event<f64>]) -> Result<(), Ev
 }
 
 fn whole_number_from_slice_idx_value(value: f64) -> Result<u32, EvalError> {
-    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
+    if !value.is_finite() || value < 0.0 || (value.round() - value).abs() > 1e-9 {
         return Err(EvalError::new(
             "`slice_idx` requires whole-number control values",
         ));
@@ -4668,7 +4668,7 @@ fn whole_number_from_slice_idx_value(value: f64) -> Result<u32, EvalError> {
 }
 
 fn whole_number_from_onset_value(value: f64) -> Result<u32, EvalError> {
-    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
+    if !value.is_finite() || value < 0.0 || (value.round() - value).abs() > 1e-9 {
         return Err(EvalError::new(
             "`onset` requires whole-number control values",
         ));
