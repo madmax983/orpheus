@@ -163,13 +163,11 @@ impl Inferencer {
             }
 
             let body_ty = self.infer_expr(expr)?;
-            Ok(Type::curried(
-                param_types
-                    .into_iter()
-                    .map(|ty| self.resolve(ty))
-                    .collect::<Vec<_>>(),
-                self.resolve(body_ty),
-            ))
+            let mut resolved_params = Vec::with_capacity(param_types.len());
+            for ty in param_types {
+                resolved_params.push(self.resolve(ty));
+            }
+            Ok(Type::curried(resolved_params, self.resolve(body_ty)))
         })();
         self.env = saved_env;
         result
@@ -359,10 +357,13 @@ impl Inferencer {
     fn generalize(&self, ty: Type) -> TypeScheme {
         let ty = self.resolve(ty);
         let env_vars = self.free_vars_in_env();
-        let vars = free_type_vars(&ty)
-            .difference(&env_vars)
-            .copied()
-            .collect::<Vec<_>>();
+
+        let free_vars = free_type_vars(&ty);
+        let mut vars = Vec::with_capacity(free_vars.len());
+        for var in free_vars.difference(&env_vars) {
+            vars.push(*var);
+        }
+
         TypeScheme { vars, ty }
     }
 

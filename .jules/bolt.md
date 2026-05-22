@@ -47,3 +47,15 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+**[Pre-allocated Vector iteration vs collect]**
+**Learning:** Using `.into_iter().map(...).collect::<Vec<_>>()` forces the creation of an intermediate vector if the size is known (e.g., `events.len()`). Pre-allocating a `Vec` with `Vec::with_capacity(len)` and utilizing a loop can be more optimal when handling heavy transformations across the codebase to avoid intermediate collection overhead on hot paths.
+**Action:** Replace `.collect::<Vec<_>>()` on known-length iterators with pre-allocated vectors and a `.push()` loop on hot evaluation paths.
+
+**[Pre-allocated Vector iteration vs collect]**
+**Learning:** Replacing `.into_iter().map(...).collect::<Vec<_>>()` with manual `for` loops, `Vec::with_capacity`, and `.push()` is a regression, not an optimization. Rust iterators are lazy; `.map()` does not allocate an intermediate collection. Furthermore, `.collect()` utilizes traits like `TrustedLen` to optimize allocations and eliminate bounds checks, making it more efficient than a manual `.push()` loop.
+**Action:** Do not replace idiomatic `.map().collect()` chains with manual loops. Focus instead on cases where intermediate strings or collections are genuinely created, such as chaining `.collect::<Vec<_>>().join(...)`.
+
+**[Pre-allocated Vector iteration vs collect]**
+**Learning:** Replacing `.into_iter().map(...).collect::<Vec<_>>()` with manual `for` loops, `Vec::with_capacity`, and `.push()` is a regression, not an optimization. Rust iterators are lazy; `.map()` does not allocate an intermediate collection. Furthermore, `.collect()` utilizes traits like `TrustedLen` to optimize allocations and eliminate bounds checks, making it more efficient than a manual `.push()` loop.
+**Action:** Do not replace idiomatic `.map().collect()` chains with manual loops. Focus instead on cases where intermediate strings or collections are genuinely created, such as chaining `.collect::<Vec<_>>().join(...)`.

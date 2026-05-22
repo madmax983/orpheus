@@ -1099,11 +1099,13 @@ impl ReplSession {
                 Some(stem.binding_name.clone());
         }
 
-        let names = stems
-            .iter()
-            .map(|stem| stem.binding_name.as_str())
-            .collect::<Vec<_>>()
-            .join(", ");
+        let mut names = String::with_capacity(stems.len() * 16);
+        for (i, stem) in stems.iter().enumerate() {
+            if i > 0 {
+                names.push_str(", ");
+            }
+            names.push_str(&stem.binding_name);
+        }
         Ok(format!(
             "imported {} stem(s) from `{}` ({names})",
             stems.len(),
@@ -1152,12 +1154,13 @@ impl ReplSession {
             return Err(open_usage().to_owned());
         }
         let loaded = load_file_runtime_strict(path).map_err(|error| error.to_string())?;
-        let binding_names = loaded
-            .type_bindings
-            .keys()
-            .cloned()
-            .collect::<Vec<_>>()
-            .join(", ");
+        let mut binding_names = String::with_capacity(loaded.type_bindings.len() * 16);
+        for (i, key) in loaded.type_bindings.keys().enumerate() {
+            if i > 0 {
+                binding_names.push_str(", ");
+            }
+            binding_names.push_str(key);
+        }
         let last_binding_name = loaded.last_binding_name.clone();
 
         self.bindings = loaded.value_bindings;
@@ -1386,14 +1389,14 @@ impl ReplSession {
         let midi_in = MidiInput::new("orpheus")
             .map_err(|error| format!("failed to initialize MIDI input subsystem: {error}"))?;
         let ports = midi_in.ports();
-        let mut port_names = ports
-            .iter()
-            .map(|port| {
+        let mut port_names = Vec::with_capacity(ports.len());
+        for port in &ports {
+            port_names.push(
                 midi_in
                     .port_name(port)
-                    .unwrap_or_else(|_| "<unreadable port>".to_owned())
-            })
-            .collect::<Vec<_>>();
+                    .unwrap_or_else(|_| "<unreadable port>".to_owned()),
+            );
+        }
         port_names.sort_unstable();
         if port_names.is_empty() {
             Ok("available MIDI input ports: <none>".to_owned())
@@ -1473,14 +1476,14 @@ impl ReplSession {
         let midi_out = MidiOutput::new("orpheus")
             .map_err(|error| format!("failed to initialize MIDI output subsystem: {error}"))?;
         let ports = midi_out.ports();
-        let mut port_names = ports
-            .iter()
-            .map(|port| {
+        let mut port_names = Vec::with_capacity(ports.len());
+        for port in &ports {
+            port_names.push(
                 midi_out
                     .port_name(port)
-                    .unwrap_or_else(|_| "<unreadable port>".to_owned())
-            })
-            .collect::<Vec<_>>();
+                    .unwrap_or_else(|_| "<unreadable port>".to_owned()),
+            );
+        }
         port_names.sort_unstable();
         if port_names.is_empty() {
             Ok("available MIDI output ports: <none>".to_owned())

@@ -664,12 +664,12 @@ fn compile_track_source(
         let events = pattern.query_unit().map_err(|error| {
             format!("failed to query unit span for track binding `{binding_name}`: {error}")
         })?;
+        let mut sample_trigger_events = Vec::with_capacity(events.len());
+        for event in events {
+            sample_trigger_events.push(sample_event_to_trigger_event(&event));
+        }
         return Ok(TrackSource::SamplePattern(
-            events
-                .iter()
-                .map(sample_event_to_trigger_event)
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
+            sample_trigger_events.into_boxed_slice(),
         ));
     }
     let plugin = value.as_plugin_pattern().ok_or_else(|| {

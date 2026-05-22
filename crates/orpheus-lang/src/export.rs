@@ -536,14 +536,15 @@ pub fn render_sample_pattern_to_file_with_bank(
             RenderError::from(e)
         }
     })?;
-    let rendered_events = events
-        .into_iter()
-        .map(|event| Event {
+
+    let mut rendered_events = Vec::with_capacity(events.len());
+    for event in events {
+        rendered_events.push(Event {
             whole: event.whole,
             part: event.part,
             value: sample_trigger_from_event(&event.value),
-        })
-        .collect::<Vec<_>>();
+        });
+    }
 
     render_events_to_file_with_bank(path, &rendered_events, cycle_count, sample_bank)?;
 
