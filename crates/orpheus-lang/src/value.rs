@@ -5972,3 +5972,60 @@ impl Explain for NumberPatternValue {
         format!("{title}\n{table}")
     }
 }
+
+impl Explain for PluginPatternValue {
+    fn explain(&self, binding_name: &str) -> String {
+        use comfy_table::{Cell, CellAlignment};
+        use crossterm::style::Stylize;
+
+        let title = format!(
+            "{} {}",
+            "Plugin Pattern Plan:".cyan().bold(),
+            binding_name.yellow()
+        );
+
+        let mut table = crate::explain::explain_table(["Property", "Value"]);
+
+        let source = self.track_source();
+
+        table.add_row(vec![
+            Cell::new("Format").fg(comfy_table::Color::Cyan),
+            Cell::new(format!("{:?}", source.descriptor().format()))
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        table.add_row(vec![
+            Cell::new("Identifier").fg(comfy_table::Color::Cyan),
+            Cell::new(source.descriptor().identifier())
+                .fg(comfy_table::Color::Green)
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        let notes_count = source.notes().len();
+        table.add_row(vec![
+            Cell::new("Notes Scheduled").fg(comfy_table::Color::Cyan),
+            Cell::new(notes_count.to_string())
+                .fg(if notes_count > 0 {
+                    comfy_table::Color::Green
+                } else {
+                    comfy_table::Color::DarkGrey
+                })
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        let lanes_count = source.parameter_lanes().len();
+        table.add_row(vec![
+            Cell::new("Automation Lanes").fg(comfy_table::Color::Cyan),
+            Cell::new(lanes_count.to_string())
+                .fg(if lanes_count > 0 {
+                    comfy_table::Color::Green
+                } else {
+                    comfy_table::Color::DarkGrey
+                })
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        format!("{title}\n{table}")
+    }
+}
