@@ -502,3 +502,85 @@ fn note_duration_frames(event: &Event<PluginNote>, frames_per_cycle: u64) -> u32
 fn midi_note_frequency(note_number: u8) -> f32 {
     440.0 * ((f32::from(note_number) - 69.0) / 12.0).exp2()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plugin_descriptor_try_new_rejects_empty_identifier() {
+        assert_eq!(
+            PluginDescriptor::try_new(PluginFormat::Vst3, ""),
+            Err(PluginHostError::EmptyIdentifier)
+        );
+        assert_eq!(
+            PluginDescriptor::try_new(PluginFormat::AudioUnit, "   \t\n  "),
+            Err(PluginHostError::EmptyIdentifier)
+        );
+    }
+
+    #[test]
+    fn plugin_note_new_rejects_invalid_velocity() {
+        assert_eq!(
+            PluginNote::new(60, -0.1),
+            Err(PluginHostError::InvalidVelocity)
+        );
+        assert_eq!(
+            PluginNote::new(60, 1.1),
+            Err(PluginHostError::InvalidVelocity)
+        );
+        assert_eq!(
+            PluginNote::new(60, f32::NAN),
+            Err(PluginHostError::InvalidVelocity)
+        );
+        assert_eq!(
+            PluginNote::new(60, f32::INFINITY),
+            Err(PluginHostError::InvalidVelocity)
+        );
+    }
+
+    #[test]
+    fn plugin_parameter_lane_new_rejects_empty_name() {
+        assert_eq!(
+            PluginParameterLane::new("", Box::new([])),
+            Err(PluginHostError::EmptyParameterName)
+        );
+        assert_eq!(
+            PluginParameterLane::new("   \n ", Box::new([])),
+            Err(PluginHostError::EmptyParameterName)
+        );
+    }
+
+    #[test]
+    fn plugin_parameter_lane_new_rejects_invalid_parameter_values() {
+        let events_negative = Box::new([Event {
+            whole: None,
+            part: orpheus_pattern::TimeSpan::unit(),
+            value: -0.1,
+        }]);
+        assert_eq!(
+            PluginParameterLane::new("Gain", events_negative),
+            Err(PluginHostError::InvalidParameterValue)
+        );
+
+        let events_above_one = Box::new([Event {
+            whole: None,
+            part: orpheus_pattern::TimeSpan::unit(),
+            value: 1.1,
+        }]);
+        assert_eq!(
+            PluginParameterLane::new("Gain", events_above_one),
+            Err(PluginHostError::InvalidParameterValue)
+        );
+
+        let events_nan = Box::new([Event {
+            whole: None,
+            part: orpheus_pattern::TimeSpan::unit(),
+            value: f32::NAN,
+        }]);
+        assert_eq!(
+            PluginParameterLane::new("Gain", events_nan),
+            Err(PluginHostError::InvalidParameterValue)
+        );
+    }
+}

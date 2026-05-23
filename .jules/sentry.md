@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2024-05-31 - Plugin Host Error Validation
+**Learning:** Found missing test coverage for `PluginDescriptor::try_new`, `PluginNote::new`, and `PluginParameterLane::new` error cases where `cargo llvm-cov` identified untouched branches on empty identifiers, names, and out-of-bound or non-finite values. Added basic roundtrip test coverage verifying correctly mapped error variants are returned when instantiated with invalid inputs.
+**Action:** Ensure boundary assertions and error branches mapping to explicitly defined error variants in custom structs are routinely tested with corresponding explicit invalid-input regression tests.
