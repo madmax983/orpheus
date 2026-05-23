@@ -49,3 +49,7 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+
+## 2024-05-30 - Add Unreachable Branch Coverage Test
+**Learning:** Found that `format_cycle_position` checks for `frames_per_cycle == 0`, but the `TransportSnapshot` correctly bounds tempo internally to be non-zero (so `frames_per_cycle` will be non-zero in production scenarios). Using an `unsafe` block with `std::mem::zeroed()` effectively covers unreachable / fallback paths that safely recover if given a zeroed byte array or internal logic drifts.
+**Action:** Use `unsafe { std::mem::zeroed() }` combined with `#[allow(unsafe_code)]` to test isolated formatting or UI fallback logic that expects, but realistically shouldn't receive, 0 lengths, without attempting to force the whole engine to accept invalid configurations.

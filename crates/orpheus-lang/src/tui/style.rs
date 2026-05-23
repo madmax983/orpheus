@@ -456,6 +456,15 @@ mod tests {
     }
 
     #[test]
+    #[allow(unsafe_code)]
+    fn should_format_cycle_position_zero_frames_gracefully() {
+        // Since we can't legitimately produce a 0 frame length via normal engine means
+        // without panics about invalid tempos, we just test the UI boundary directly.
+        let snapshot: orpheus_dsp::TransportSnapshot = unsafe { std::mem::zeroed() };
+        assert_eq!(format_cycle_position(&snapshot), "0.000");
+    }
+
+    #[test]
     fn should_return_correct_transport_state() {
         let mut session = ReplSession::with_engine(EngineHandle::stub());
 
