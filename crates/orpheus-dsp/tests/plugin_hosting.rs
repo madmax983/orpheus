@@ -13,7 +13,7 @@ fn vst3_descriptor_uses_standard_os_search_paths() {
     assert!(
         paths
             .iter()
-            .any(|path| path.to_string_lossy().contains("VST3")),
+            .any(|path| path.to_string_lossy().to_ascii_lowercase().contains("vst3")),
         "expected default VST3 search paths, got {paths:?}"
     );
 }
@@ -83,4 +83,25 @@ fn plugin_processor_processes_frames_without_growing_internal_buffers() {
         before,
         "plugin audio processing must not grow buffers on the render path"
     );
+}
+
+#[test]
+fn audio_unit_descriptor_uses_standard_os_search_paths() {
+    let descriptor = PluginDescriptor::audio_unit("TestSynth");
+    let paths = descriptor.search_paths();
+
+    assert_eq!(descriptor.identifier(), "TestSynth");
+    if cfg!(target_os = "macos") {
+        assert!(
+            paths
+                .iter()
+                .any(|path| path.to_string_lossy().contains("Components")),
+            "expected default AudioUnit search paths on macOS, got {paths:?}"
+        );
+    } else {
+        assert!(
+            paths.is_empty(),
+            "expected empty AudioUnit search paths on non-macOS, got {paths:?}"
+        );
+    }
 }
