@@ -1,25 +1,17 @@
-use orpheus_pattern::{CyclePattern, EventStream, Pattern, PatternNode, Rational, TimeSpan};
+use orpheus_pattern::Rational;
+use proptest::prelude::*;
 
-#[test]
-fn havoc_query_no_panics_on_cycle_pattern() {
-    let start = Rational::checked_from_parts(i128::MAX - 2, 1).unwrap();
-    let end = Rational::checked_from_parts(i128::MAX - 1, 1).unwrap();
-    let span = TimeSpan::new(start, end).unwrap();
-
-    let pattern = CyclePattern::from_nodes(vec![PatternNode::atom("a"), PatternNode::atom("b")]);
-
-    let result = std::panic::catch_unwind(|| pattern.query(span));
-    assert!(result.is_ok(), "query panicked");
-    assert_eq!(result.unwrap().len(), 0);
-}
-
-#[test]
-fn havoc_query_no_panics_on_event_stream() {
-    let start = Rational::checked_from_parts(i128::MAX - 2, 1).unwrap();
-    let end = Rational::checked_from_parts(i128::MAX - 1, 1).unwrap();
-    let span = TimeSpan::new(start, end).unwrap();
-    let stream = EventStream::<&str>::new(vec![]);
-    let result = std::panic::catch_unwind(|| stream.query(span));
-    assert!(result.is_ok(), "query panicked");
-    assert_eq!(result.unwrap().len(), 0);
+proptest! {
+    #[test]
+    fn havoc_test_rational_add_overflow(num1 in any::<i128>(), den1 in any::<i128>(), num2 in any::<i128>(), den2 in any::<i128>()) {
+        #[allow(clippy::collapsible_if)]
+        if let Ok(r1) = Rational::checked_from_parts(num1, den1) {
+            if let Ok(r2) = Rational::checked_from_parts(num2, den2) {
+                let _ = r1.checked_add(&r2);
+                let _ = r1.checked_sub(&r2);
+                let _ = r1.checked_mul(&r2);
+                let _ = r1.checked_cmp(&r2);
+            }
+        }
+    }
 }

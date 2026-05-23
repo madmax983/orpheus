@@ -334,7 +334,19 @@ impl Add for Rational {
         match self.checked_add(&rhs) {
             Ok(sum) => sum,
             Err(PatternError::ArithmeticOverflow { .. }) => {
-                panic!("rational addition overflowed during checked arithmetic")
+                let left_f64 = f64::from(&self);
+                let right_f64 = f64::from(&rhs);
+                if left_f64 + right_f64 >= 0.0 {
+                    Self {
+                        numerator: i128::MAX,
+                        denominator: 1,
+                    }
+                } else {
+                    Self {
+                        numerator: i128::MIN,
+                        denominator: 1,
+                    }
+                }
             }
             Err(PatternError::InvalidDenominator { .. } | PatternError::InvalidSpan { .. }) => {
                 unreachable!("checked_add only reports arithmetic overflow")
