@@ -35,7 +35,7 @@ fn offline_render_applies_sample_gain_rate_and_slice() {
             .with_slice(0.25, 1.0),
     }];
 
-    render_events_to_file_with_bank(&path, &events, 1, &bank).unwrap();
+    render_events_to_file_with_bank(&path, events, 1, &bank).unwrap();
 
     let mut reader = hound::WavReader::open(&path).unwrap();
     let samples = reader
@@ -91,7 +91,7 @@ fn offline_render_uses_manifest_region_defaults_and_composes_explicit_slice() {
         value: SampleTrigger::named("amen_tail").with_slice(0.5, 1.0),
     }];
 
-    render_events_to_file_with_bank(&path, &events, 1, &bank).unwrap();
+    render_events_to_file_with_bank(&path, events, 1, &bank).unwrap();
 
     let mut reader = hound::WavReader::open(&path).unwrap();
     let samples = reader
@@ -131,7 +131,7 @@ fn offline_render_applies_sample_pan_balance() {
         value: SampleTrigger::named("vox_ah").with_pan(-1.0),
     }];
 
-    render_events_to_file_with_bank(&path, &events, 1, &bank).unwrap();
+    render_events_to_file_with_bank(&path, events, 1, &bank).unwrap();
 
     let mut reader = hound::WavReader::open(&path).unwrap();
     let samples = reader
@@ -165,7 +165,7 @@ fn offline_render_applies_sample_low_pass_filter() {
         value: SampleTrigger::named("vox_ah").with_lpf_cutoff_hz(cutoff_hz),
     }];
 
-    render_events_to_file_with_bank(&path, &events, 1, &bank).unwrap();
+    render_events_to_file_with_bank(&path, events, 1, &bank).unwrap();
 
     let mut reader = hound::WavReader::open(&path).unwrap();
     let samples = reader
@@ -209,7 +209,7 @@ fn offline_render_applies_edge_ramps_to_sample_playback() {
         value: SampleTrigger::named("vox_ah"),
     }];
 
-    render_events_to_file_with_bank(&path, &events, 1, &bank).unwrap();
+    render_events_to_file_with_bank(&path, events, 1, &bank).unwrap();
 
     let mut reader = hound::WavReader::open(&path).unwrap();
     let samples = reader
@@ -250,7 +250,7 @@ fn offline_render_supports_negative_rate_reverse_playback() {
         value: SampleTrigger::named("vox_ah").with_rate(-1.0),
     }];
 
-    render_events_to_file_with_bank(&path, &events, 1, &bank).unwrap();
+    render_events_to_file_with_bank(&path, events, 1, &bank).unwrap();
 
     let mut reader = hound::WavReader::open(&path).unwrap();
     let samples = reader
@@ -288,7 +288,7 @@ fn offline_render_uses_detected_transient_slices() {
         value: SampleTrigger::named("loop").with_onset(1),
     }];
 
-    render_events_to_file_with_bank(&path, &events, 1, &bank).unwrap();
+    render_events_to_file_with_bank(&path, events, 1, &bank).unwrap();
 
     let mut reader = hound::WavReader::open(&path).unwrap();
     let samples = reader
@@ -363,7 +363,7 @@ fn analog_offline_render_renders_non_silent_audio() {
     }];
     let path = temp_wav_path();
 
-    render_events_to_file_with_bank(&path, &events, 1, &SampleBank::load_builtin()).unwrap();
+    render_events_to_file_with_bank(&path, events, 1, &SampleBank::load_builtin()).unwrap();
 
     let mut reader = hound::WavReader::open(&path).unwrap();
     let samples = reader

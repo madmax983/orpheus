@@ -54,7 +54,7 @@ impl Scheduler {
     ///
     /// Returns an error if the event time is negative or overflows the sample
     /// clock.
-    pub fn schedule_cycle_events<'a, I>(
+    pub fn schedule_cycle_events<I>(
         &mut self,
         track_id: TrackId,
         cycle_start_frame: u64,
@@ -62,7 +62,7 @@ impl Scheduler {
         events: I,
     ) -> Result<(), EngineError>
     where
-        I: IntoIterator<Item = &'a Event<SampleTrigger>>,
+        I: IntoIterator<Item = Event<SampleTrigger>>,
     {
         let iter = events.into_iter();
         let (lower, upper) = iter.size_hint();
@@ -75,7 +75,7 @@ impl Scheduler {
                 .ok_or(EngineError::FrameOverflow)?;
             pending.push(ScheduledTrigger {
                 frame,
-                duration_frames: duration_frames_for_event(event, frames_per_cycle)?,
+                duration_frames: duration_frames_for_event(&event, frames_per_cycle)?,
                 track_id,
                 trigger: event.value.clone(),
                 fallback_voice: VoiceKind::from_token(event.value.token()),

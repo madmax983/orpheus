@@ -81,7 +81,7 @@ pub enum OfflineRenderError {
 /// file cannot be written.
 pub fn render_events_to_file(
     path: impl AsRef<Path>,
-    events: impl IntoIterator<Item = Event<SampleTrigger>>,
+    events: &[Event<SampleTrigger>],
     cycle_count: u64,
 ) -> Result<(), OfflineRenderError> {
     let builtin_bank = SampleBank::load_builtin();
@@ -97,7 +97,7 @@ pub fn render_events_to_file(
 /// file cannot be written.
 pub fn render_events_to_file_with_bank(
     path: impl AsRef<Path>,
-    events: impl IntoIterator<Item = Event<SampleTrigger>>,
+    events: &[Event<SampleTrigger>],
     cycle_count: u64,
     sample_bank: &SampleBank,
 ) -> Result<(), OfflineRenderError> {
@@ -119,7 +119,7 @@ pub fn render_events_to_file_with_bank(
 /// cannot be written.
 pub fn render_events_to_wav(
     path: impl AsRef<Path>,
-    events: impl IntoIterator<Item = Event<SampleTrigger>>,
+    events: &[Event<SampleTrigger>],
     cycle_count: u64,
 ) -> Result<(), OfflineRenderError> {
     let builtin_bank = SampleBank::load_builtin();
@@ -376,7 +376,7 @@ fn schedule_snapshot_cycles(
                     track.id(),
                     cycle_start,
                     frames_per_cycle,
-                    events.iter().cloned(),
+                    events.iter(),
                 )?;
             }
         }
@@ -608,7 +608,7 @@ fn mix_offline_voices_into_tracks(
 }
 
 fn render_events_to_pcm(
-    events: impl IntoIterator<Item = Event<SampleTrigger>>,
+    events: &[Event<SampleTrigger>],
     cycle_count: u64,
     sample_bank: &SampleBank,
 ) -> Result<Vec<i32>, OfflineRenderError> {
@@ -625,7 +625,7 @@ fn render_events_to_pcm(
         .ok_or(EngineError::FrameOverflow)?;
     let total_samples = usize::try_from(total_samples).map_err(|_| EngineError::FrameOverflow)?;
     let mut scheduler = Scheduler::default();
-    scheduler.schedule_cycle_events(TrackId::new(0), 0, frames_per_cycle, events)?;
+    scheduler.schedule_cycle_events(TrackId::new(0), 0, frames_per_cycle, events.iter())?;
 
     let mut active_voices: Vec<Option<ActiveVoice>> =
         (0..MAX_ACTIVE_VOICES).map(|_| None).collect();

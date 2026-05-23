@@ -47,3 +47,7 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+**[Collect to Slice Allocation in Scheduler]
+**Learning:** Using `.collect::<Vec<_>>().into_boxed_slice()` when a sequence only needs to be iterated and passed into a scheduler forces an intermediate heap allocation. Changing the accepting function `schedule_cycle_events` to take an `impl IntoIterator` instead of a strict `&[Event<T>]` allows bypassing the allocation.
+**Action:** Use `impl IntoIterator` on API boundaries when a slice is not strictly needed for indexing, allowing consumers to pass `.into_iter().map(...)` directly.

@@ -25,7 +25,7 @@ fn schedule_cycle_events_converts_rational_offsets_to_sample_frames() {
             TrackId::new(0),
             100,
             64,
-            [&Event {
+            [Event {
                 whole: None,
                 part,
                 value: trigger,
@@ -55,7 +55,7 @@ fn schedule_cycle_events_is_atomic_on_error() {
 
     assert!(
         scheduler
-            .schedule_cycle_events(TrackId::new(0), 0, 64, [&good, &bad])
+            .schedule_cycle_events(TrackId::new(0), 0, 64, [good, bad])
             .is_err()
     );
     assert!(scheduler.drain_due_events(u64::MAX).is_empty());
@@ -73,7 +73,7 @@ fn schedule_cycle_events_accepts_custom_sample_tokens() {
             TrackId::new(0),
             0,
             64,
-            [&Event {
+            [Event {
                 whole: None,
                 part: TimeSpan::new(quarter, half).unwrap(),
                 value: trigger,

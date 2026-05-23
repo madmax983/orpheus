@@ -384,7 +384,7 @@ impl EngineCore {
                     track.id(),
                     self.current_cycle_start_frame,
                     self.frames_per_cycle,
-                    events.iter(),
+                    events.iter().cloned(),
                 )?;
             }
         }
