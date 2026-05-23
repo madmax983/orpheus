@@ -1,0 +1,21 @@
+--- crates/orpheus-lang/src/error.rs
++++ crates/orpheus-lang/src/error.rs
+@@ -107,18 +107,6 @@
+     }
+ }
+
+-impl From<crate::diagnostics::TypeError> for EvalError {
+-    fn from(error: crate::diagnostics::TypeError) -> Self {
+-        Self::Type(error)
+-    }
+-}
+-
+-impl From<crate::diagnostics::LoadError> for EvalError {
+-    fn from(error: crate::diagnostics::LoadError) -> Self {
+-        Self::Load(error)
+-    }
+-}
+-
+ #[cfg(test)]
+ mod tests {
+     use super::*;
