@@ -47,3 +47,6 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+**[Idiomatic For Loops vs try_fold]**
+**Learning:** Using `try_fold` where the accumulator is ignored and solely used for side effects, or for complex stateful accumulations with early returns, is unidiomatic and harms readability. Sometimes, it also incurs minor performance regressions or doesn't optimize as well as a plain `for` loop in hot paths.
+**Action:** Replace unidiomatic `try_fold` operations that execute side-effects or have deeply nested logic with clean, idiomatic `for` loops to flatten the structure.

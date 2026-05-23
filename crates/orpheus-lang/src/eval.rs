@@ -265,9 +265,9 @@ impl Evaluator {
         &mut self,
         statements: &[Stmt],
     ) -> Result<Option<(String, Value)>, EvalError> {
-        statements
-            .iter()
-            .try_fold(None, |_, statement| match statement {
+        let mut last_binding = None;
+        for statement in statements {
+            match statement {
                 Stmt::Binding {
                     name, params, expr, ..
                 } => {
@@ -289,9 +289,11 @@ impl Evaluator {
                         })))
                     };
                     self.bindings.insert(name.clone(), value.clone());
-                    Ok(Some((name.clone(), value)))
+                    last_binding = Some((name.clone(), value));
                 }
-            })
+            }
+        }
+        Ok(last_binding)
     }
 
     fn eval_expr(&self, expr: &Expr) -> Result<Value, EvalError> {
@@ -542,10 +544,11 @@ impl Evaluator {
             return Err(EvalError::new("`stream` requires at least one item"));
         };
 
-        rest.iter()
-            .try_fold(self.eval_explicit_expr(first, meter)?, |acc, item| {
-                acc.merge(self.eval_explicit_expr(item, meter)?)
-            })
+        let mut acc = self.eval_explicit_expr(first, meter)?;
+        for item in rest {
+            acc = acc.merge(self.eval_explicit_expr(item, meter)?)?;
+        }
+        Ok(acc)
     }
 
     fn eval_at_events(
