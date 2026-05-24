@@ -5972,3 +5972,134 @@ impl Explain for NumberPatternValue {
         format!("{title}\n{table}")
     }
 }
+impl Explain for PluginPatternValue {
+    fn explain(&self, binding_name: &str) -> String {
+        use comfy_table::{Cell, CellAlignment};
+        use crossterm::style::Stylize;
+
+        let title = format!(
+            "{} {}",
+            "Plugin Pattern Plan:".cyan().bold(),
+            binding_name.yellow()
+        );
+
+        let mut table = crate::explain::explain_table(["Property", "Value"]);
+
+        table.add_row(vec![
+            Cell::new("Type").fg(comfy_table::Color::Cyan),
+            Cell::new("Plugin Instrument")
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        format!("{title}\n{table}")
+    }
+}
+
+impl Explain for PitchClassSetValue {
+    fn explain(&self, binding_name: &str) -> String {
+        use comfy_table::{Cell, CellAlignment};
+        use crossterm::style::Stylize;
+
+        let title = format!(
+            "{} {}",
+            "Pitch Class Set Plan:".cyan().bold(),
+            binding_name.yellow()
+        );
+
+        let mut table = crate::explain::explain_table(["Property", "Value"]);
+
+        table.add_row(vec![
+            Cell::new("Type").fg(comfy_table::Color::Cyan),
+            Cell::new("Scale/Chord")
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        format!("{title}\n{table}")
+    }
+}
+
+impl Explain for ArpDirectionValue {
+    fn explain(&self, binding_name: &str) -> String {
+        use comfy_table::{Cell, CellAlignment};
+        use crossterm::style::Stylize;
+
+        let title = format!(
+            "{} {}",
+            "Arp Direction Plan:".cyan().bold(),
+            binding_name.yellow()
+        );
+
+        let mut table = crate::explain::explain_table(["Property", "Value"]);
+
+        table.add_row(vec![
+            Cell::new("Type").fg(comfy_table::Color::Cyan),
+            Cell::new("Arpeggiator Direction")
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        format!("{title}\n{table}")
+    }
+}
+impl Explain for Value {
+    fn explain(&self, binding_name: &str) -> String {
+        match self {
+            Self::SamplePattern(val) => val.explain(binding_name),
+            Self::NumberPattern(val) => val.explain(binding_name),
+            Self::ArpDirection(val) => val.explain(binding_name),
+            Self::PitchClassSet(val) => val.explain(binding_name),
+            Self::Function(val) => val.explain(binding_name),
+            Self::Pedal(val) => val.explain(binding_name),
+            Self::PluginPattern(val) => val.explain(binding_name),
+            Self::Tuning(val) => val.explain(binding_name),
+            Self::String(val) => {
+                use comfy_table::{Cell, CellAlignment};
+                use crossterm::style::Stylize;
+
+                let title = format!("{} {}", "String Plan:".cyan().bold(), binding_name.yellow());
+
+                let mut table = crate::explain::explain_table(["Property", "Value"]);
+
+                table.add_row(vec![
+                    Cell::new("Type").fg(comfy_table::Color::Cyan),
+                    Cell::new("String")
+                        .fg(comfy_table::Color::Yellow)
+                        .set_alignment(CellAlignment::Right),
+                ]);
+                table.add_row(vec![
+                    Cell::new("Value").fg(comfy_table::Color::Cyan),
+                    Cell::new(val.to_string())
+                        .fg(comfy_table::Color::Green)
+                        .set_alignment(CellAlignment::Right),
+                ]);
+
+                format!("{title}\n{table}")
+            }
+        }
+    }
+}
+#[cfg(test)]
+mod explain_tests {
+    use super::*;
+    use crate::explain::Explain;
+
+    #[test]
+    fn explain_works_for_new_values() {
+        let plugin_value = Value::PluginPattern(PluginPatternValue::new(
+            orpheus_dsp::PluginTrackSource::new(orpheus_dsp::PluginDescriptor::vst3("Dummy")),
+        ));
+        let explanation = plugin_value.explain("my_plugin");
+        assert!(explanation.contains("Plugin Instrument"));
+
+        let pitch_class_value =
+            Value::PitchClassSet(PitchClassSetValue::new(vec![0, 4, 7]).unwrap());
+        let explanation = pitch_class_value.explain("my_chord");
+        assert!(explanation.contains("Scale/Chord"));
+
+        let arp_direction_value = Value::ArpDirection(ArpDirectionValue::Up);
+        let explanation = arp_direction_value.explain("my_arp_dir");
+        assert!(explanation.contains("Arpeggiator Direction"));
+    }
+}
