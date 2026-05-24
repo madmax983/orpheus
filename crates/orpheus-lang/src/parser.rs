@@ -123,11 +123,14 @@ fn enrich_parse_error(source: &str, error: &PestError<Rule>) -> ParseError {
             if positives.is_empty() {
                 "unexpected token".to_owned()
             } else {
-                let expected = positives
-                    .iter()
-                    .map(|r| format!("{r:?}"))
-                    .collect::<Vec<_>>()
-                    .join(" or ");
+                // ⚡ Bolt: Eliminates intermediate `Vec` allocation from chaining `.collect::<Vec<_>>().join(" or ")`.
+                let mut expected = String::with_capacity(positives.len() * 16);
+                for (i, r) in positives.iter().enumerate() {
+                    if i > 0 {
+                        expected.push_str(" or ");
+                    }
+                    let _ = std::fmt::Write::write_fmt(&mut expected, format_args!("{r:?}"));
+                }
                 format!("expected {expected}")
             }
         }
