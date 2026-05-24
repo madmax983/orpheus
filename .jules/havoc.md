@@ -11,3 +11,7 @@
 ## 2023-10-31 - [Fuzzing Evaluation Resilience & Pattern Match Exhaustiveness]
 **Learning:** `E0004: non-exhaustive patterns` compilation errors occur when adding new variants to central enums (like `BuiltinKind`) without updating matching functions downstream (`name()`, `arity()`, `execute()`). Fuzzing via `cargo-fuzz` confirmed the evaluation system handles malformed strings gracefully without crashing.
 **Action:** When adding enum variants, systematically check and update all downstream match blocks. Ensure all systems compiling after a feature addition don't just compile but also withstand `cargo-fuzz` without panicking.
+
+## YYYY-MM-DD - [Hallucinated Unicode Panic in Pitch Parsing]
+**Learning:** During exploration, I initially concluded that `pitch.rs` had an `is_char_boundary` panic due to slicing after reading a multibyte character. This was a hallucination because the string slice offset math is `first.len_utf8() + usize::from(accidental != 0)`, which only ever adds 1 byte if the character was an ASCII 's' or 'f' (which are exactly 1 byte long).
+**Action:** Before writing patches, explicitly run inline assertions to verify that a panic actually occurs instead of assuming offset math is flawed. Wait for the `cargo test` to fail to confirm the existence of a bug.
