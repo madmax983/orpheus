@@ -1,0 +1,21 @@
+--- crates/orpheus-lang/src/value.rs
++++ crates/orpheus-lang/src/value.rs
+@@ -5399,6 +5399,22 @@
+
+ #[cfg(test)]
+ mod tests {
++    use crate::eval::{ReplMode, Evaluator};
++    use crate::parser::parse_module;
++
++    #[test]
++    fn value_evaluates_pitch_effects() {
++        let module = parse_module("p = bd |> pitch(12)").unwrap();
++        let env = Evaluator::new(ReplMode::Loose, &module).eval_bindings().unwrap();
++        let pat = env.get("p").unwrap().as_sample_pattern().unwrap();
++        let events = pat.try_query_unit().unwrap();
++        assert!((events[0].value.rate() - 2.0).abs() < 1e-9);
++    }
++
+     use super::{
+         escape_markdown_table_cell, extract_root_cycle_length, extract_root_structure,
+         format_value_type,

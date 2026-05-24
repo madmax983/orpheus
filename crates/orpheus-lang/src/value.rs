@@ -3707,6 +3707,24 @@ where
                 apply_control_pattern(inner, control, span, ControlPatternKind::CompressorRatio)
             }
 
+            Self::Pitch { semitones, inner } => apply_value_mutation(inner, span, |value| {
+                *value = value.adjust_rate(semitones_to_rate_multiplier(*semitones));
+            }),
+            Self::PitchPattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::Pitch)
+            }
+            Self::TunedPitch {
+                semitones,
+                tuning,
+                inner,
+            } => apply_value_mutation(inner, span, |value| {
+                *value = value.adjust_rate(semitones_to_tuned_rate(*semitones, tuning));
+            }),
+            Self::TunedPitchPattern {
+                control,
+                tuning,
+                inner,
+            } => apply_tuned_pitch_pattern(inner, control, span, tuning),
             _ => unreachable!("handled in previous try_query stages"),
         }
     }

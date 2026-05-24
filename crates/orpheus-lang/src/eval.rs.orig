@@ -1366,10 +1366,8 @@ mod tests {
                 crate::Stmt::Binding { name, expr, .. } if name == binding_name => Some(expr),
                 crate::Stmt::Binding { .. } => None,
             })
-            .expect("binding should be found in find_call_expr_site_salt test helper");
-        evaluator
-            .expr_site_salt(expr)
-            .expect("expr_site_salt should resolve for test helper")
+            .unwrap();
+        evaluator.expr_site_salt(expr).unwrap()
     }
 
     #[test]

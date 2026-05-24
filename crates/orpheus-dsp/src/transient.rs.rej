@@ -1,0 +1,18 @@
+--- crates/orpheus-dsp/src/transient.rs
++++ crates/orpheus-dsp/src/transient.rs
+@@ -177,3 +177,15 @@
+         assert_eq!(resolve_onset_slice(&[], 0), Some((0.0, 1.0)));
+         assert_eq!(resolve_onset_slice(&[0.1, 0.4], 3), None);
+     }
++
++    #[test]
++    fn detect_transient_markers_prevents_panic_on_close_early_peaks() {
++        let mut frames = vec![0.0_f32; 100];
++        for frame in frames.iter_mut().take(55).skip(50) {
++            *frame = 1.0;
++        }
++        for frame in frames.iter_mut().take(60).skip(55) {
++            *frame = 2.0;
++        }
++        let markers = super::detect_transient_markers(&frames, 1000);
++        assert!(!markers.is_empty());
