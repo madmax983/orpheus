@@ -260,6 +260,17 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Constructs a new primitive built-in function representation of the given kind.
+    ///
+    /// The function is initially unbound (having no arguments applied).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    ///
+    /// let func = BuiltinFn::new(BuiltinKind::Fast);
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +280,18 @@ impl BuiltinFn {
         }
     }
 
+    /// Attaches a site-specific salt to the built-in function.
+    ///
+    /// The salt is typically used for operations that require stable pseudo-randomness
+    /// tied to the call site (like `sometimes` or `rand`).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    ///
+    /// let func = BuiltinFn::new(BuiltinKind::Sometimes).with_site_salt(42);
+    /// ```
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

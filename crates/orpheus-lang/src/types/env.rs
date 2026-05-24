@@ -26,11 +26,27 @@ use crate::types::{Type, TypeVarId};
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
+    /// A list of universally quantified type variables that can be instantiated with concrete types.
     pub vars: Vec<TypeVarId>,
+    /// The underlying type definition that may contain references to the quantified variables.
     pub ty: Type,
 }
 
 impl TypeScheme {
+    /// Creates a new `TypeScheme` that has no quantified variables, representing a concrete, single type.
+    ///
+    /// This is used for types that are not polymorphic, such as a concrete `Sample` or a `Pattern<Number>`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::Type;
+    /// use orpheus_lang::TypeScheme;
+    ///
+    /// let scheme = TypeScheme::monomorphic(Type::Sample);
+    /// assert!(scheme.vars.is_empty());
+    /// assert_eq!(scheme.ty, Type::Sample);
+    /// ```
     #[must_use]
     pub const fn monomorphic(ty: Type) -> Self {
         Self {
@@ -195,6 +211,19 @@ impl TypeEnv {
         self.entries.get(name)
     }
 
+    /// Returns an iterator over all type schemes bound in this environment.
+    ///
+    /// This allows inspection of all defined variables and built-in functions without knowing their names.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::TypeEnv;
+    ///
+    /// let env = TypeEnv::with_builtins();
+    /// let all_schemes: Vec<_> = env.values().collect();
+    /// assert!(!all_schemes.is_empty());
+    /// ```
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }

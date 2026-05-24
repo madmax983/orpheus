@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2026-05-24 - [The "Why" Over "What" in Documentation]
+**Confusion:** Writing getter documentation like `/// Returns the name of the binding` violates the Bard persona's rule against useless noise and simply repeating the function name.
+**Clarification:** Rewrote documentation to focus on *why* the method exists or *how* it is used in the domain context (e.g., `/// Extracts the user-defined string identifier for this binding. Useful for displaying the variable's assignment name in the TUI legend.`), ensuring the actual purpose is explained rather than restating the signature.
