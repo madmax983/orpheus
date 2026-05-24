@@ -82,3 +82,6 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+**[Extracting complex string simulation logic]
+**Learning:** Large algorithmic built-in functions (like `lsystem` and `wolfram`) often combine parsing, string building simulation, and pattern conversion in a single monolithic function, violating the Single Responsibility Principle and reducing readability.
+**Action:** Extract the string simulation component into a standalone, pure function (e.g., `simulate_lsystem`) and the pattern conversion into its own helper. This clearly separates domain logic from language evaluation plumbing.

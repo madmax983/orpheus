@@ -2928,22 +2928,7 @@ mod test_nova {
     }
 }
 
-fn apply_wolfram(args: Vec<Value>) -> Result<Value, EvalError> {
-    let mut args = args.into_iter();
-    let rule = extract_whole_number(
-        args.next()
-            .ok_or_else(|| EvalError::new("`wolfram` requires a rule argument"))?,
-        "`wolfram` rule",
-        false,
-    )?;
-    let steps = extract_whole_number(
-        args.next()
-            .ok_or_else(|| EvalError::new("`wolfram` requires a steps argument"))?,
-        "`wolfram` steps",
-        true,
-    )?;
-    #[allow(clippy::cast_possible_truncation)]
-    let rule_num = rule as u8;
+fn simulate_wolfram(rule_num: u8, steps: u32) -> Vec<orpheus_pattern::PatternNode<f64>> {
     let mut current_state = vec![false; steps as usize];
     if steps > 0 {
         current_state[steps as usize / 2] = true; // center pixel
@@ -2977,6 +2962,27 @@ fn apply_wolfram(args: Vec<Value>) -> Result<Value, EvalError> {
         }
         current_state = next_state;
     }
+    nodes
+}
+
+fn apply_wolfram(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let rule = extract_whole_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`wolfram` requires a rule argument"))?,
+        "`wolfram` rule",
+        false,
+    )?;
+    let steps = extract_whole_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`wolfram` requires a steps argument"))?,
+        "`wolfram` steps",
+        true,
+    )?;
+    #[allow(clippy::cast_possible_truncation)]
+    let rule_num = rule as u8;
+
+    let nodes = simulate_wolfram(rule_num, steps);
 
     Ok(Value::NumberPattern(NumberPatternValue::from_nodes(nodes)))
 }
@@ -2999,6 +3005,63 @@ mod wolfram_tests {
     }
 }
 
+fn parse_lsystem_rules(
+    rules_str: &str,
+) -> Result<std::collections::HashMap<char, String>, EvalError> {
+    let mut rules = std::collections::HashMap::new();
+    for rule in rules_str.split(',') {
+        let parts: Vec<&str> = rule.split(':').collect();
+        if parts.len() == 2 {
+            let key = parts[0].trim().chars().next().ok_or_else(|| {
+                EvalError::new("`lsystem` rules must have a single character key")
+            })?;
+            rules.insert(key, parts[1].trim().to_string());
+        } else if !rule.trim().is_empty() {
+            return Err(EvalError::new(
+                "`lsystem` rules must be formatted as 'A:AB,B:A'",
+            ));
+        }
+    }
+    Ok(rules)
+}
+
+fn simulate_lsystem(
+    axiom: String,
+    iterations: u32,
+    rules: &std::collections::HashMap<char, String>,
+) -> String {
+    let mut current = axiom;
+    for _ in 0..iterations {
+        let mut next = String::new();
+        for c in current.chars() {
+            if let Some(replacement) = rules.get(&c) {
+                next.push_str(replacement);
+            } else {
+                next.push(c);
+            }
+        }
+        current = next;
+    }
+    current
+}
+
+fn char_to_pattern_node(c: char) -> orpheus_pattern::PatternNode<f64> {
+    if c == '~' || c == '_' {
+        orpheus_pattern::PatternNode::rest()
+    } else if c.is_ascii_alphabetic() {
+        let val = if c.is_ascii_uppercase() {
+            c as u8 - b'A'
+        } else {
+            c as u8 - b'a'
+        };
+        orpheus_pattern::PatternNode::atom(f64::from(val))
+    } else if let Some(digit) = c.to_digit(10) {
+        orpheus_pattern::PatternNode::atom(f64::from(digit))
+    } else {
+        orpheus_pattern::PatternNode::rest()
+    }
+}
+
 fn apply_lsystem(args: Vec<Value>) -> Result<Value, EvalError> {
     let mut args = args.into_iter();
     let axiom = extract_string(
@@ -3018,53 +3081,14 @@ fn apply_lsystem(args: Vec<Value>) -> Result<Value, EvalError> {
         "`lsystem` rules",
     )?;
 
-    // Parse rules: "A:AB,B:A"
-    let mut rules = std::collections::HashMap::new();
-    for rule in rules_str.split(',') {
-        let parts: Vec<&str> = rule.split(':').collect();
-        if parts.len() == 2 {
-            let key = parts[0].trim().chars().next().ok_or_else(|| {
-                EvalError::new("`lsystem` rules must have a single character key")
-            })?;
-            rules.insert(key, parts[1].trim().to_string());
-        } else if !rule.trim().is_empty() {
-            return Err(EvalError::new(
-                "`lsystem` rules must be formatted as 'A:AB,B:A'",
-            ));
-        }
-    }
-
-    let mut current = axiom;
-    for _ in 0..iterations {
-        let mut next = String::new();
-        for c in current.chars() {
-            if let Some(replacement) = rules.get(&c) {
-                next.push_str(replacement);
-            } else {
-                next.push(c);
-            }
-        }
-        current = next;
-    }
+    let rules = parse_lsystem_rules(&rules_str)?;
+    let current = simulate_lsystem(axiom, iterations, &rules);
 
     // Convert to nodes. A=0, B=1, C=2, etc. ~ or _ = rest.
     // ⚡ Bolt: Pre-allocate vector capacity to avoid heap reallocation based on exact final string length.
     let mut nodes = Vec::with_capacity(current.len());
     for c in current.chars() {
-        if c == '~' || c == '_' {
-            nodes.push(orpheus_pattern::PatternNode::rest());
-        } else if c.is_ascii_alphabetic() {
-            let val = if c.is_ascii_uppercase() {
-                c as u8 - b'A'
-            } else {
-                c as u8 - b'a'
-            };
-            nodes.push(orpheus_pattern::PatternNode::atom(f64::from(val)));
-        } else if let Some(digit) = c.to_digit(10) {
-            nodes.push(orpheus_pattern::PatternNode::atom(f64::from(digit)));
-        } else {
-            nodes.push(orpheus_pattern::PatternNode::rest());
-        }
+        nodes.push(char_to_pattern_node(c));
     }
 
     Ok(Value::NumberPattern(NumberPatternValue::from_nodes(nodes)))
