@@ -47,3 +47,7 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+**[Intermediate Vector Allocation]**
+**Learning:** Chaining `.collect::<Vec<_>>().join(...)` creates a temporary, short-lived heap allocation. Furthermore, using `write!` for string formatting is substantially slower than `push_str` for simple concatenation.
+**Action:** Eliminate the unnecessary vector allocation by pre-allocating a `String` using `String::with_capacity()` and manually appending to it using a loop and `push_str`. Avoid `write!` when a simple `push_str` suffices.
