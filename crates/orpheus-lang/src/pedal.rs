@@ -115,6 +115,16 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Creates a new validated pedal node wrapping a parsed pedal ast node.
+    ///
+    /// ## Examples
+    /// ```
+    /// use orpheus_lang::ValidatedPedalNode;
+    /// use orpheus_lang::SignalKind;
+    /// use orpheus_lang::PedalNodeKind;
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Empty, "an empty node");
+    /// ```
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +140,33 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Exposes the inner abstract syntax tree representation to allow structural pattern matching on the node.
+    ///
+    /// ## Examples
+    /// ```
+    /// use orpheus_lang::ValidatedPedalNode;
+    /// use orpheus_lang::SignalKind;
+    /// use orpheus_lang::PedalNodeKind;
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Empty, "empty");
+    /// assert_eq!(node.kind(), &PedalNodeKind::Empty);
+    /// ```
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Exposes a human-readable summary of the node's configuration, useful for TUI visualization and logging.
+    ///
+    /// ## Examples
+    /// ```
+    /// use orpheus_lang::ValidatedPedalNode;
+    /// use orpheus_lang::SignalKind;
+    /// use orpheus_lang::PedalNodeKind;
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Empty, "empty summary");
+    /// assert_eq!(node.summary(), "empty summary");
+    /// ```
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +181,14 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Creates a new named pedal binding.
+    ///
+    /// ## Examples
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Empty, "empty");
+    /// let binding = ValidatedPedalBinding::new("my_signal", node);
+    /// ```
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +197,29 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// Provides the identifier used to reference this signal elsewhere in the pedal plan.
+    ///
+    /// ## Examples
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Empty, "empty");
+    /// let binding = ValidatedPedalBinding::new("my_signal", node);
+    /// assert_eq!(binding.name(), "my_signal");
+    /// ```
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Exposes the underlying validated node expression that generates the signal for this binding.
+    ///
+    /// ## Examples
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Empty, "empty");
+    /// let binding = ValidatedPedalBinding::new("my_signal", node);
+    /// let bound_node = binding.node();
+    /// ```
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node

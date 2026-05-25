@@ -260,6 +260,16 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Creates a new built-in function instance from its kind enum.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::BuiltinFn;
+    /// use orpheus_lang::BuiltinKind;
+    ///
+    /// let f = BuiltinFn::new(BuiltinKind::Rev);
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +279,17 @@ impl BuiltinFn {
         }
     }
 
+    /// Attaches a site-specific salt (derived from parser spans) used to deterministically
+    /// seed random number generators for this specific function call.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::BuiltinFn;
+    /// use orpheus_lang::BuiltinKind;
+    ///
+    /// let f = BuiltinFn::new(BuiltinKind::Sometimes).with_site_salt(42);
+    /// ```
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

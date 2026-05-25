@@ -37,36 +37,67 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Plays an event at the beginning of every nth cycle.
     Every,
+    /// Conditionally plays an event based on a boolean or probability pattern.
     When,
+    /// Randomly plays an event with a given probability.
     Sometimes,
+    /// Truncates the inner pattern to only play within a specific time window.
     Within,
+    /// Masks out events in a pattern based on another boolean pattern.
     Mask,
+    /// Arpeggiates a chord by delaying each note by a specified amount.
     Strum,
+    /// Rapidly repeats an event a specified number of times within its duration.
     Roll,
+    /// Arpeggiates a chord based on a direction (up, down, random) and rate.
     Arp,
+    /// Inverts a pitch class set or chord around a central axis.
     Invert,
+    /// Drops the lowest or highest notes from a chord.
     Drop,
+    /// Builds a chord from a root note, a pitch class set, and an inversion.
     Chord,
+    /// Generates Euclidean rhythms.
     Euclid,
+    /// Generates rhythms or melodies using an L-system.
     Lsystem,
+    /// Generates patterns using 1D Wolfram cellular automata.
     Wolfram,
+    /// A set of pitch classes used for chords or scales.
     PitchClassSet,
+    /// Converts scale degrees into exact pitch numbers based on a scale.
     Degrees,
+    /// Speeds up a pattern by a scaling factor.
     Fast,
+    /// Slows down a pattern by a scaling factor.
     Slow,
+    /// Shifts a pattern forward or backward in time.
     Shift,
+    /// Reverses the timeline of a pattern.
     Rev,
+    /// Applies a gain (volume multiplier) effect to the audio.
     Gain,
+    /// The built-in audio delay effect.
     Delay,
+    /// The time between repeats for a delay effect.
     DelayTime,
+    /// The amount of signal fed back into the delay line.
     DelayFeedback,
+    /// High-pass filter effect.
     Hpf,
+    /// Low-pass filter effect.
     Lpf,
+    /// The built-in audio reverberation effect.
     Reverb,
+    /// The room size parameter for the reverb effect.
     ReverbRoom,
+    /// The high-frequency damping parameter for the reverb effect.
     ReverbDamp,
+    /// The cutoff frequency for a filter.
     Cutoff,
+    /// The built-in chorus modulation effect.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

@@ -1,3 +1,5 @@
+//! Tests for `TimeSpan`.
+
 use orpheus_pattern::{PatternError, Rational, TimeSpan};
 
 #[test]

@@ -1,3 +1,5 @@
+//! Tests for the pedal runtime.
+
 #![allow(
     clippy::suboptimal_flops,
     clippy::cast_precision_loss,

@@ -1,3 +1,5 @@
+//! Integration tests for language VST/plugin hosting.
+
 use orpheus_dsp::PluginFormat;
 use orpheus_lang::{ReplMode, ReplSession, eval_module};
 

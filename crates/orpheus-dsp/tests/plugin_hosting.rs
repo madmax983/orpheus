@@ -1,3 +1,5 @@
+//! Tests for VST/plugin hosting.
+
 use orpheus_dsp::{
     PluginDescriptor, PluginNote, PluginParameterLane, PluginProcessor, PluginTrackSource,
     RoutingSnapshot, SampleBank, TrackSource, render_routing_snapshot_to_stereo_for_test,

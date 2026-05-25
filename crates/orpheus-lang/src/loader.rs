@@ -37,10 +37,14 @@ struct ImportSpec {
 ///     last_binding_name: None,
 /// };
 /// ```
+/// A successfully loaded file, complete with its inferred types and value bindings.
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
+    /// The type schemes for all successfully inferred top-level let bindings.
     pub type_bindings: BTreeMap<String, Type>,
+    /// The evaluated runtime values for all successfully evaluated top-level let bindings.
     pub value_bindings: BTreeMap<String, Value>,
+    /// The name of the final binding evaluated in the file, if any. Useful for REPL implicit returns.
     pub last_binding_name: Option<String>,
 }
 

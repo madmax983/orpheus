@@ -1,3 +1,5 @@
+//! Tests for sample playback.
+
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};

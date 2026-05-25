@@ -1,3 +1,5 @@
+//! Tests for cycle patterns.
+
 use orpheus_pattern::{CyclePattern, Pattern, PatternNode, Rational, TimeSpan};
 use proptest::prelude::*;
 

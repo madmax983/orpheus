@@ -1,3 +1,5 @@
+//! Tests for the analog ladder filter.
+
 use orpheus_dsp::LadderFilter;
 
 #[test]

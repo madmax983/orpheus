@@ -1,3 +1,5 @@
+//! Havoc tests for pattern querying.
+
 use orpheus_pattern::{CyclePattern, EventStream, Pattern, PatternNode, Rational, TimeSpan};
 
 #[test]
