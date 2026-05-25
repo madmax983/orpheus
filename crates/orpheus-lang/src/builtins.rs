@@ -260,6 +260,19 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Creates a new, unbound instance of a core built-in function.
+    ///
+    /// The function will initially have no arguments bound to it and will not
+    /// have a site salt assigned.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::builtins::BuiltinFn;
+    /// use orpheus_lang::value::BuiltinKind;
+    ///
+    /// let func = BuiltinFn::new(BuiltinKind::Fast);
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +282,20 @@ impl BuiltinFn {
         }
     }
 
+    /// Assigns a stable site salt to the function for deterministic randomization.
+    ///
+    /// When evaluated, pattern combinators that rely on randomness (like `sometimes` or `rand`)
+    /// use this salt to ensure that their behavior remains consistent across multiple
+    /// executions, as long as the source code location has not changed.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::builtins::BuiltinFn;
+    /// use orpheus_lang::value::BuiltinKind;
+    ///
+    /// let func = BuiltinFn::new(BuiltinKind::Sometimes).with_site_salt(42);
+    /// ```
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

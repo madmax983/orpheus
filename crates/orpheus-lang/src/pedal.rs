@@ -115,6 +115,22 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Creates a new validated pedal node.
+    ///
+    /// This represents a single step in a pedal evaluation plan, detailing both its
+    /// structural kind and the type of signal it produces.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(
+    ///     SignalKind::Audio,
+    ///     PedalNodeKind::Input,
+    ///     "Audio Input"
+    /// );
+    /// ```
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +146,37 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Returns the structural kind of this pedal node.
+    ///
+    /// The kind determines what operation this node performs (e.g., Input, Builtin effect,
+    /// or routing).
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "Input");
+    /// assert!(matches!(node.kind(), PedalNodeKind::Input));
+    /// ```
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Returns a human-readable summary of this node's operation.
+    ///
+    /// This summary is primarily used for formatting visual graphs and debugging
+    /// representations of the pedal plan.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "My Input");
+    /// assert_eq!(node.summary(), "My Input");
+    /// ```
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +191,18 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Binds a validated pedal node to a specific name.
+    ///
+    /// This represents an assignment within a pedal plan, such as `let out = gain(0.5, in)`.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "In");
+    /// let binding = ValidatedPedalBinding::new("my_signal", node);
+    /// ```
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +211,37 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// Returns the name this signal is bound to.
+    ///
+    /// This name can be referenced by subsequent nodes in the pedal plan.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "In");
+    /// let binding = ValidatedPedalBinding::new("out_signal", node);
+    /// assert_eq!(binding.name(), "out_signal");
+    /// ```
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Returns the underlying validated node for this binding.
+    ///
+    /// This gives access to the actual operation and signal type that was bound.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "In");
+    /// let binding = ValidatedPedalBinding::new("sig", node);
+    /// let inner = binding.node();
+    /// ```
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node
