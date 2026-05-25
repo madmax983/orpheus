@@ -11,3 +11,6 @@
 ## 2023-10-31 - [Fuzzing Evaluation Resilience & Pattern Match Exhaustiveness]
 **Learning:** `E0004: non-exhaustive patterns` compilation errors occur when adding new variants to central enums (like `BuiltinKind`) without updating matching functions downstream (`name()`, `arity()`, `execute()`). Fuzzing via `cargo-fuzz` confirmed the evaluation system handles malformed strings gracefully without crashing.
 **Action:** When adding enum variants, systematically check and update all downstream match blocks. Ensure all systems compiling after a feature addition don't just compile but also withstand `cargo-fuzz` without panicking.
+**[Chaos Resilience]**
+**Learning:** Orpheus `eval` logic is extremely resilient against arbitrary garbage input parsing via `proptest`, Loom `Mutex` verification on queues, numerical scaling with `NaN` / `INFINITY`, and infinite-bounds `time_shift` and `drop` and structural evaluation.
+**Action:** Created multiple resilience integration tests showing graceful failure without crashing `unwrap()`. Fixed a minor plugin hosting test failing because of platform-dependent path case issues.
