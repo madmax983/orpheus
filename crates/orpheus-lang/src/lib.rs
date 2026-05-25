@@ -129,3 +129,5 @@ pub enum ReplMode {
 
 pub(crate) mod mermaid;
 pub use mermaid::export_sample_pattern_to_mermaid_gantt;
+#[cfg(test)]
+mod test_plugin_explain;
