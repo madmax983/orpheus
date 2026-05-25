@@ -47,3 +47,6 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+**[String Concat over Collect Join]**
+**Learning:** Using `.map(|x| ...).collect::<Vec<_>>().join(", ")` causes an unnecessary intermediate `Vec` heap allocation.  Replacing it with an pre-allocated `String::with_capacity` and manual push/write iterations is faster, but formatting using `write!` and trait macros might trigger clippy if put after variable declaration within scopes unless handled properly (e.g. `use std::fmt::Write` outside loop or explicit `std::fmt::Write::write_fmt`).
+**Action:** Use pre-allocated Strings and iterators when chaining results to eliminate intermediate vectors. Always prefer zero-cost `IntoIterator` abstractions. Watch out for `#[allow(clippy::items_after_statements)]` constraints when moving trait use declarations.
