@@ -1,0 +1,1 @@
+sed -i 's/crate::value::Value::Tuning(tuning) => Ok(tuning.explain(binding_name)),/crate::value::Value::Tuning(tuning) => Ok(tuning.explain(binding_name)),\n            crate::value::Value::PluginPattern(plugin) => Ok(plugin.explain(binding_name)),/' crates/orpheus-lang/src/session.rs
