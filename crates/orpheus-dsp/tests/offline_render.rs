@@ -764,7 +764,7 @@ fn apply_one_pole_low_pass(input: &[f32], cutoff_hz: f64, sample_rate_hz: u32) -
     input
         .iter()
         .map(|sample| {
-            state += alpha * (f64::from(*sample) - state);
+            state = alpha.mul_add(f64::from(*sample) - state, state);
             state as f32
         })
         .collect()

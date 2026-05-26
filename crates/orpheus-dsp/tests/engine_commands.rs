@@ -764,7 +764,7 @@ fn play_command_restarts_pattern_from_cycle_start_after_stop() {
 fn split_handle_equality_is_reflexive() {
     let (handle, _renderer) = EngineHandle::split_for_test();
 
-    assert!(handle == handle);
+    assert_eq!(handle, handle);
 }
 
 #[test]

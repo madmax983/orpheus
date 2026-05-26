@@ -11,3 +11,9 @@
 ## 2023-10-31 - [Fuzzing Evaluation Resilience & Pattern Match Exhaustiveness]
 **Learning:** `E0004: non-exhaustive patterns` compilation errors occur when adding new variants to central enums (like `BuiltinKind`) without updating matching functions downstream (`name()`, `arity()`, `execute()`). Fuzzing via `cargo-fuzz` confirmed the evaluation system handles malformed strings gracefully without crashing.
 **Action:** When adding enum variants, systematically check and update all downstream match blocks. Ensure all systems compiling after a feature addition don't just compile but also withstand `cargo-fuzz` without panicking.
+
+**[Proving System Resilience with Chaos Tests]**
+**The Trigger:** Extremely large lengths (OOM), cyclic recursion boundaries, negative timing parameters, non-finite values in DSP routines (NaN/Infinity), and random byte garbage parsing.
+**The Stack Trace:** Initially produced recursive evaluation stack overflows, test suite OOM allocations for tracker rendering, parser crashes on unicode boundaries, and floating-point errors propagating into invalid rational allocations.
+**Reproduction:** Run `cargo fuzz run fuzz_target_1`, or `cargo test --test havoc_proptest_crash`.
+**Comment:** We built extensive tests proving boundaries limit scaling allocation (100,000 max tracker frames), evaluation halts on 200 recursion frames, `loom` thread tests show zero data races across `ReplSession::eval_line`, and all public numeric APIs cleanly propagate out-of-range floats rather than panicking on conversion. The system withstood the chaos.
