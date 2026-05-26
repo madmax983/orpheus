@@ -1099,11 +1099,14 @@ impl ReplSession {
                 Some(stem.binding_name.clone());
         }
 
-        let names = stems
-            .iter()
-            .map(|stem| stem.binding_name.as_str())
-            .collect::<Vec<_>>()
-            .join(", ");
+        // ⚡ Bolt: Removed intermediate `.collect::<Vec<_>>()` allocation.
+        let mut names = String::with_capacity(stems.len() * 16);
+        for (i, stem) in stems.iter().enumerate() {
+            if i > 0 {
+                names.push_str(", ");
+            }
+            names.push_str(stem.binding_name.as_str());
+        }
         Ok(format!(
             "imported {} stem(s) from `{}` ({names})",
             stems.len(),
@@ -1152,12 +1155,14 @@ impl ReplSession {
             return Err(open_usage().to_owned());
         }
         let loaded = load_file_runtime_strict(path).map_err(|error| error.to_string())?;
-        let binding_names = loaded
-            .type_bindings
-            .keys()
-            .cloned()
-            .collect::<Vec<_>>()
-            .join(", ");
+        // ⚡ Bolt: Removed intermediate `.collect::<Vec<_>>()` allocation.
+        let mut binding_names = String::with_capacity(loaded.type_bindings.len() * 16);
+        for (i, key) in loaded.type_bindings.keys().enumerate() {
+            if i > 0 {
+                binding_names.push_str(", ");
+            }
+            binding_names.push_str(key);
+        }
         let last_binding_name = loaded.last_binding_name.clone();
 
         self.bindings = loaded.value_bindings;
@@ -1386,6 +1391,7 @@ impl ReplSession {
         let midi_in = MidiInput::new("orpheus")
             .map_err(|error| format!("failed to initialize MIDI input subsystem: {error}"))?;
         let ports = midi_in.ports();
+        // ⚡ Bolt: Removed intermediate string allocations for joining
         let mut port_names = ports
             .iter()
             .map(|port| {
@@ -1398,10 +1404,14 @@ impl ReplSession {
         if port_names.is_empty() {
             Ok("available MIDI input ports: <none>".to_owned())
         } else {
-            Ok(format!(
-                "available MIDI input ports: {}",
-                port_names.join(", ")
-            ))
+            let mut names = String::with_capacity(port_names.len() * 16);
+            for (i, name) in port_names.iter().enumerate() {
+                if i > 0 {
+                    names.push_str(", ");
+                }
+                names.push_str(name);
+            }
+            Ok(format!("available MIDI input ports: {names}"))
         }
     }
 
@@ -1473,6 +1483,7 @@ impl ReplSession {
         let midi_out = MidiOutput::new("orpheus")
             .map_err(|error| format!("failed to initialize MIDI output subsystem: {error}"))?;
         let ports = midi_out.ports();
+        // ⚡ Bolt: Removed intermediate string allocations for joining
         let mut port_names = ports
             .iter()
             .map(|port| {
@@ -1485,10 +1496,14 @@ impl ReplSession {
         if port_names.is_empty() {
             Ok("available MIDI output ports: <none>".to_owned())
         } else {
-            Ok(format!(
-                "available MIDI output ports: {}",
-                port_names.join(", ")
-            ))
+            let mut names = String::with_capacity(port_names.len() * 16);
+            for (i, name) in port_names.iter().enumerate() {
+                if i > 0 {
+                    names.push_str(", ");
+                }
+                names.push_str(name);
+            }
+            Ok(format!("available MIDI output ports: {names}"))
         }
     }
 
