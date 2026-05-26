@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-05-25 - [Missing Module Export Documentation]
+**Confusion:** Various core data structures like `BuiltinFn`, `BuiltinKind`, `StrictLoadedFile`, `ValidatedPedalNode`, `ValidatedPedalBinding`, `TypeScheme`, and `TypeEnv` lacked proper inline documentation, specifically around their constructors and state accessors. This triggered `missing_docs` lints.
+**Clarification:** Added detailed `///` documentation to these structures across `value.rs`, `loader.rs`, `pedal.rs`, and `types/env.rs`, explaining their purpose within the language evaluation pipeline. Added executable `## Examples` (or `text` examples where the constructs are internal) to bridge the usage gap without introducing "getter noise".

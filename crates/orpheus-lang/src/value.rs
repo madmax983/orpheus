@@ -37,36 +37,88 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Applies a function to the pattern only during specific numbered cycles.
+    ///
+    /// ## Examples
+    ///
+    /// ```text
+    /// // Speeds up the hi-hat every 3rd cycle
+    /// // every(3, fast(2), hh)
+    /// ```
     Every,
+    /// Applies a function conditionally based on a rhythmic gate pattern.
+    ///
+    /// ## Examples
+    ///
+    /// ```text
+    /// // Reverses the pattern only when the gate pattern emits a '1'
+    /// // when(1 0 1, rev, bd sn)
+    /// ```
     When,
+    /// Randomly applies a function to events with a certain probability.
     Sometimes,
+    /// Applies a function only to events falling within a specific fractional time window of the cycle.
     Within,
+    /// Silences events that occur when a boolean mask pattern evaluates to false.
     Mask,
+    /// Arpeggiates chords by delaying the onset of their notes relative to one another.
+    ///
+    /// ## Examples
+    ///
+    /// ```text
+    /// // Strum the notes of a chord with a 1/16th note delay
+    /// // strum(1/16, chord(major, c4))
+    /// ```
     Strum,
+    /// Repeats an event multiple times to create a drum roll or ratcheting effect.
     Roll,
+    /// Spreads the notes of a chord across a sequence, playing them one by one.
     Arp,
+    /// Inverts the pitches of a chord or melody around a central pivot point.
     Invert,
+    /// Randomly silences a portion of the events to create a sparser pattern.
     Drop,
+    /// Generates a chord pattern from a root note and a chord type.
     Chord,
+    /// Distributes a number of rhythmic pulses as evenly as possible across a set number of steps.
     Euclid,
+    /// Generates a rhythmic pattern using an L-system grammar string.
     Lsystem,
+    /// Evaluates a 1D cellular automaton rule over time to yield boolean gates.
     Wolfram,
+    /// Constructs a literal scale or pitch-class set from numeric intervals.
     PitchClassSet,
+    /// Selects notes from a pitch-class set by scaling integer degrees.
     Degrees,
+    /// Speeds up a pattern by a specific multiplicative factor.
     Fast,
+    /// Slows down a pattern by a specific multiplicative factor.
     Slow,
+    /// Time-shifts a pattern forward or backward by a rational offset.
     Shift,
+    /// Reverses the flow of time for a pattern within its cycle.
     Rev,
+    /// Attaches an amplitude multiplier to the events.
     Gain,
+    /// Adds an echo effect by applying a delay node to the signal graph.
     Delay,
+    /// Controls the time interval between delay taps.
     DelayTime,
+    /// Controls the amplitude decay of successive delay echoes.
     DelayFeedback,
+    /// Applies a high-pass filter to the signal graph.
     Hpf,
+    /// Applies a low-pass filter to the signal graph.
     Lpf,
+    /// Adds a reverberation effect to the signal graph.
     Reverb,
+    /// Controls the simulated physical size of the reverb environment.
     ReverbRoom,
+    /// Controls the high-frequency absorption within the reverb tail.
     ReverbDamp,
+    /// Adjusts the cutoff frequency for generic resonant filters.
     Cutoff,
+    /// Adds a chorus modulation effect to thicken the audio signal.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

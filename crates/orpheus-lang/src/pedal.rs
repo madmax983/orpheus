@@ -115,6 +115,19 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Creates a validated DSP graph node for the pedal evaluation plan.
+    ///
+    /// This struct wraps the validated signal typing and routing information
+    /// constructed during the type-checking phase of a custom pedal definition.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalNode, SignalKind};
+    ///
+    /// // Example uses an internal construct:
+    /// // let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "in");
+    /// ```
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +143,19 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Exposes the underlying semantic kind of this pedal node.
+    ///
+    /// This is used internally by the compiler to translate abstract plan nodes
+    /// into concrete DSP execution steps (e.g. mapping `Input` to a track source).
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Provides a human-readable summary of the node's function.
+    ///
+    /// Used heavily in diagnostics, REPL output, and graphing tools to describe
+    /// what a particular stage in the pedal chain is doing.
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +170,17 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Constructs a new binding associating a local name with a validated node.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind};
+    ///
+    /// // Example uses internal constructs:
+    /// // let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "in");
+    /// // let binding = ValidatedPedalBinding::new("my_signal", node);
+    /// ```
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +189,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// Returns the local identifier bound to the pedal node.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Returns a reference to the validated AST node payload.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node

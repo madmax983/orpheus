@@ -260,6 +260,18 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Creates a new built-in function instance from a given primitive kind.
+    ///
+    /// This instantiates an uncurried built-in function with no arguments applied.
+    /// It is primarily used internally by the evaluator to initialize standard library functions.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    ///
+    /// let fast_func = BuiltinFn::new(BuiltinKind::Fast);
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +281,20 @@ impl BuiltinFn {
         }
     }
 
+    /// Attaches a deterministic site salt to this function evaluation.
+    ///
+    /// Randomness in Orpheus is deterministic based on the structural location
+    /// of the function call in the AST. The `site_salt` ensures that multiple
+    /// calls to the same random function (e.g. `rand()`) in different places
+    /// yield different values.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    ///
+    /// let rand_func = BuiltinFn::new(BuiltinKind::Rand).with_site_salt(0xDEADBEEF);
+    /// ```
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);
