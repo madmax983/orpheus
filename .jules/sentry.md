@@ -49,3 +49,11 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+
+## 2026-05-26 - Add eval error From test
+**Learning:** Found missing test coverage in `crates/orpheus-lang/src/eval.rs` for `checked_pow10` on large exponents.
+**Action:** Added a unit test to verify that `checked_pow10` properly returns an `EvalError` instead of panicking or wrapping on overflow.
+
+## 2026-05-26 - Add dot_export File Write Error test
+**Learning:** Evaluated code coverage and noticed `export_pedal_value_to_dot` in `crates/orpheus-lang/src/dot_export.rs` was missing a test for when writing a `.dot` file fails (e.g. invalid file path or missing permissions).
+**Action:** Added a unit test to verify that `export_pedal_value_to_dot` returns an `EvalError` correctly when the path is invalid.

@@ -1868,6 +1868,19 @@ right = sometimes(fast(2), cp hh)";
     }
 
     #[test]
+    fn checked_pow10_returns_error_on_overflow() {
+        // 10^40 will overflow i128 since i128::MAX is ~3.4e38
+        let result = super::checked_pow10(40);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("exceeded the supported range")
+        );
+    }
+
+    #[test]
     fn apply_function_value_evaluates_user_function_correctly() {
         let module = eval_module("f x = x\nres = f(42.0)", ReplMode::Loose).unwrap();
         let val = module.get("res").unwrap().as_number_pattern().unwrap();

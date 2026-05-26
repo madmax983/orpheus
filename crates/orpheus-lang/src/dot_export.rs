@@ -163,4 +163,19 @@ mod tests {
         // Make sure `in` wasn't matched inside `input` by verifying we don't have something weird like `in -> in`
         assert!(!content.contains("\"in\" -> \"in\""));
     }
+
+    #[test]
+    fn dot_exporter_returns_eval_error_on_file_write_failure() {
+        let source = "my_graph = graph { wet = input |> clip ; wet |> output }";
+        let module = eval_module(source, ReplMode::Strict).unwrap();
+        let pedal = module.get("my_graph").unwrap().as_pedal().unwrap();
+
+        let invalid_path = Path::new("/this_path_should_definitely_not_exist/test.dot");
+        let result = export_pedal_value_to_dot(pedal, invalid_path);
+        assert!(result.is_err());
+        let err_str = result.unwrap_err().to_string();
+        assert!(
+            err_str.contains("file not found") || err_str.contains("No such file or directory")
+        );
+    }
 }
