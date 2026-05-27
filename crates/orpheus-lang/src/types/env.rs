@@ -26,11 +26,28 @@ use crate::types::{Type, TypeVarId};
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
+    /// A list of generic type variables used in the type.
     pub vars: Vec<TypeVarId>,
+    /// The actual type structure.
     pub ty: Type,
 }
 
 impl TypeScheme {
+    /// Creates a new monomorphic type scheme (a type without any generic variables).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use orpheus_lang::Type;
+    /// # // Mocking the internal TypeScheme for the doctest since `types::env` is private
+    /// # struct TypeScheme { vars: Vec<()>, ty: Type }
+    /// # impl TypeScheme {
+    /// #     pub fn monomorphic(ty: Type) -> Self { Self { vars: vec![], ty } }
+    /// # }
+    /// let scheme = TypeScheme::monomorphic(Type::Number);
+    /// assert_eq!(scheme.vars.len(), 0);
+    /// assert_eq!(scheme.ty, Type::Number);
+    /// ```
     #[must_use]
     pub const fn monomorphic(ty: Type) -> Self {
         Self {
@@ -195,6 +212,7 @@ impl TypeEnv {
         self.entries.get(name)
     }
 
+    /// Returns an iterator over all type schemes contained in this environment.
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }

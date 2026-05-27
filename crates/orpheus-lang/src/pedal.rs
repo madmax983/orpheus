@@ -115,6 +115,7 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Creates a new `ValidatedPedalNode` given its signal kind, operation kind, and a brief description.
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -131,11 +132,13 @@ impl ValidatedPedalNode {
     }
 
     #[must_use]
+    #[doc(hidden)]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
     #[must_use]
+    #[doc(hidden)]
     pub fn summary(&self) -> &str {
         &self.summary
     }
@@ -149,6 +152,7 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Creates a new binding associating a variable name with a pedal node.
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -158,11 +162,13 @@ impl ValidatedPedalBinding {
     }
 
     #[must_use]
+    #[doc(hidden)]
     pub fn name(&self) -> &str {
         &self.name
     }
 
     #[must_use]
+    #[doc(hidden)]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node
     }
