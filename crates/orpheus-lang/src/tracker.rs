@@ -87,24 +87,14 @@ pub fn export_sample_pattern_to_tracker(
 
         if start_step < end_step {
             // Format sample name up to 4 chars
-            let formatted_name = if sample.len() > 4 {
-                sample.chars().take(4).collect::<String>()
-            } else {
-                sample.clone()
-            };
-            grid[start_step][lane_idx] = Some(formatted_name);
+            grid[start_step][lane_idx] = Some(format_short_sample(&sample));
             for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
                 if item[lane_idx].is_none() {
                     item[lane_idx] = Some("====".to_string());
                 }
             }
         } else if start_step < total_steps && grid[start_step][lane_idx].is_none() {
-            let formatted_name = if sample.len() > 4 {
-                sample.chars().take(4).collect::<String>()
-            } else {
-                sample.clone()
-            };
-            grid[start_step][lane_idx] = Some(formatted_name);
+            grid[start_step][lane_idx] = Some(format_short_sample(&sample));
         }
     }
 
@@ -116,11 +106,7 @@ pub fn export_sample_pattern_to_tracker(
     // Print Header
     write!(file, " STEP | TIME  |")?;
     for sample in &sample_list {
-        let padded = if sample.len() > 4 {
-            sample.chars().take(4).collect::<String>()
-        } else {
-            sample.to_string()
-        };
+        let padded = format_short_sample(sample);
         write!(file, " {padded:4} |")?;
     }
     writeln!(file)?;
@@ -151,6 +137,22 @@ pub fn export_sample_pattern_to_tracker(
     }
 
     Ok(())
+}
+
+/// Formats a sample name to a maximum of 4 characters.
+///
+/// **Optimization:** This function avoids the overhead of `.chars().take(4).collect::<String>()`
+/// by pre-allocating a `String` and manually pushing characters in a loop, avoiding intermediate
+/// iterator allocations.
+fn format_short_sample(sample: &str) -> String {
+    if sample.len() <= 4 {
+        return sample.to_string();
+    }
+    let mut s = String::with_capacity(16); // Up to 4 bytes per UTF-8 char
+    for c in sample.chars().take(4) {
+        s.push(c);
+    }
+    s
 }
 
 /// Exports a number pattern's evaluated events to a Tracker text file.
