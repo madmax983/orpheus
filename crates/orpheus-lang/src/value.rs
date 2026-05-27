@@ -5943,6 +5943,59 @@ impl Explain for SamplePatternValue {
     }
 }
 
+impl Explain for PluginPatternValue {
+    fn explain(&self, binding_name: &str) -> String {
+        use comfy_table::{Cell, CellAlignment};
+        use crossterm::style::Stylize;
+
+        let title = format!(
+            "{} {}",
+            "Plugin Pattern Plan:".cyan().bold(),
+            binding_name.yellow()
+        );
+
+        let mut table = crate::explain::explain_table(["Property", "Value"]);
+
+        let source = self.track_source();
+        let descriptor = source.descriptor();
+
+        let format_str = match descriptor.format() {
+            orpheus_dsp::PluginFormat::Vst3 => "VST3",
+            orpheus_dsp::PluginFormat::AudioUnit => "AudioUnit",
+        };
+
+        table.add_row(vec![
+            Cell::new("Format").fg(comfy_table::Color::Cyan),
+            Cell::new(format_str)
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        table.add_row(vec![
+            Cell::new("Identifier").fg(comfy_table::Color::Cyan),
+            Cell::new(descriptor.identifier())
+                .fg(comfy_table::Color::Green)
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        table.add_row(vec![
+            Cell::new("Notes Scheduled").fg(comfy_table::Color::Cyan),
+            Cell::new(source.notes().len().to_string())
+                .fg(comfy_table::Color::Magenta)
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        table.add_row(vec![
+            Cell::new("Parameter Lanes").fg(comfy_table::Color::Cyan),
+            Cell::new(source.parameter_lanes().len().to_string())
+                .fg(comfy_table::Color::Blue)
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        format!("{title}\n{table}")
+    }
+}
+
 impl Explain for NumberPatternValue {
     fn explain(&self, binding_name: &str) -> String {
         use comfy_table::{Cell, CellAlignment};

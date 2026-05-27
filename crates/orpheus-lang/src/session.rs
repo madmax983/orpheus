@@ -753,6 +753,7 @@ impl ReplSession {
         match value {
             crate::value::Value::SamplePattern(pattern) => Ok(pattern.explain(binding_name)),
             crate::value::Value::NumberPattern(pattern) => Ok(pattern.explain(binding_name)),
+            crate::value::Value::PluginPattern(pattern) => Ok(pattern.explain(binding_name)),
             crate::value::Value::Function(func) => Ok(func.explain(binding_name)),
             crate::value::Value::Pedal(pedal) => Ok(pedal.explain(binding_name)),
             crate::value::Value::Tuning(tuning) => Ok(tuning.explain(binding_name)),
@@ -3212,6 +3213,18 @@ mod tests {
 
         assert!(plan.contains("Sample Pattern Plan"));
         assert!(plan.contains("drums"));
+    }
+
+    #[test]
+    fn session_explain_returns_plugin_plan() {
+        let mut session = ReplSession::with_engine(orpheus_dsp::EngineHandle::stub());
+        session.eval_line("vital = vst(\"Vital\")").unwrap();
+        let message = session.eval_line(":explain vital").unwrap();
+
+        assert!(message.contains("Plugin Pattern Plan"));
+        assert!(message.contains("vital"));
+        assert!(message.contains("Vital"));
+        assert!(message.contains("VST3"));
     }
 
     #[test]
