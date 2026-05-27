@@ -9,6 +9,7 @@ workspace = true
 
 [features]
 experimental-gcode = []
+experimental-markov = []
 lilypond_export = []
 
 [dependencies]
