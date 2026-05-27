@@ -562,4 +562,80 @@ mod tests {
         let type_err: TypeError = parse_err.into();
         assert!(type_err.to_string().contains("mock parse error"));
     }
+
+    #[test]
+    fn infer_number_pattern() {
+        let typed = super::infer_module("x = 1 2 3", crate::ReplMode::Loose).unwrap();
+        assert_eq!(
+            typed.type_of("x"),
+            &crate::types::Type::pattern(crate::types::Type::Number)
+        );
+    }
+
+    #[test]
+    fn infer_sample_pattern() {
+        let typed = super::infer_module("x = bd sn", crate::ReplMode::Loose).unwrap();
+        assert_eq!(
+            typed.type_of("x"),
+            &crate::types::Type::pattern(crate::types::Type::Sample)
+        );
+    }
+
+    #[test]
+    fn infer_function() {
+        let typed = super::infer_module("f x = x", crate::ReplMode::Loose).unwrap();
+        let ty = typed.type_of("f");
+        match ty {
+            crate::types::Type::Function(args, ret) => {
+                assert_eq!(args.len(), 1);
+                assert!(matches!(args[0], crate::types::Type::Var(_)));
+                assert!(matches!(**ret, crate::types::Type::Var(_)));
+            }
+            _ => panic!("Expected function type"),
+        }
+    }
+
+    #[test]
+    fn infer_binary_expr_number() {
+        let typed = super::infer_module("x = 1 + 2", crate::ReplMode::Loose).unwrap();
+        assert_eq!(
+            typed.type_of("x"),
+            &crate::types::Type::pattern(crate::types::Type::Number)
+        );
+    }
+
+    #[test]
+    fn infer_type_error_unbound_identifier() {
+        let result = super::infer_module("x = y", crate::ReplMode::Loose);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("unresolved identifier")
+        );
+    }
+
+    #[test]
+    fn infer_type_error_mismatched_binary_operand() {
+        let result = super::infer_module("x = 1 + bd", crate::ReplMode::Loose);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("type mismatch"));
+    }
+
+    #[test]
+    fn infer_type_error_mismatched_function_call() {
+        let result = super::infer_module("f x = x + 1\ny = f(bd)", crate::ReplMode::Loose);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("type mismatch"));
+    }
+
+    #[test]
+    fn infer_into_bindings_preserves_state() {
+        let mut env = std::collections::BTreeMap::new();
+        super::infer_into_bindings("x = 1 2 3", crate::ReplMode::Loose, &mut env).unwrap();
+        assert!(env.contains_key("x"));
+        super::infer_into_bindings("y = x", crate::ReplMode::Loose, &mut env).unwrap();
+        assert!(env.contains_key("y"));
+    }
 }
