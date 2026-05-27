@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2024-05-27 - [Negative values during time/frame offset conversion]
+**Learning:** Functions like `rational_to_frame_offset` that convert analytical time spans into sample offsets need to be robust to out-of-bounds evaluation queries with negative offsets, which can result in `None` due to underflow protections.
+**Action:** When testing engine boundary checks, supply negative start times for sequence events to verify `None` and early returns are handled cleanly without affecting the running engine state.

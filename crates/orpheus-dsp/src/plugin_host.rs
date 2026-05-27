@@ -502,3 +502,542 @@ fn note_duration_frames(event: &Event<PluginNote>, frames_per_cycle: u64) -> u32
 fn midi_note_frequency(note_number: u8) -> f32 {
     440.0 * ((f32::from(note_number) - 69.0) / 12.0).exp2()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use orpheus_pattern::TimeSpan;
+
+    #[test]
+    fn descriptor_rejects_empty_identifier() {
+        assert_eq!(
+            PluginDescriptor::try_new(PluginFormat::Vst3, "   "),
+            Err(PluginHostError::EmptyIdentifier)
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid VST3 plugin descriptor: plugin identifier must not be empty")]
+    fn vst3_panics_on_empty_identifier() {
+        let _ = PluginDescriptor::vst3("  ");
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid AU plugin descriptor: plugin identifier must not be empty")]
+    fn audio_unit_panics_on_empty_identifier() {
+        let _ = PluginDescriptor::audio_unit("");
+    }
+
+    #[test]
+    fn plugin_note_rejects_invalid_velocities() {
+        assert_eq!(
+            PluginNote::new(60, -0.1),
+            Err(PluginHostError::InvalidVelocity)
+        );
+        assert_eq!(
+            PluginNote::new(60, 1.1),
+            Err(PluginHostError::InvalidVelocity)
+        );
+        assert_eq!(
+            PluginNote::new(60, f32::NAN),
+            Err(PluginHostError::InvalidVelocity)
+        );
+        assert_eq!(
+            PluginNote::new(60, f32::INFINITY),
+            Err(PluginHostError::InvalidVelocity)
+        );
+    }
+
+    #[test]
+    fn plugin_note_returns_channel() {
+        let note = PluginNote::new(60, 0.5).unwrap();
+        assert_eq!(note.channel(), 0);
+    }
+
+    #[test]
+    fn parameter_lane_rejects_empty_name() {
+        assert_eq!(
+            PluginParameterLane::new("   ", Box::new([])),
+            Err(PluginHostError::EmptyParameterName)
+        );
+    }
+
+    #[test]
+    fn parameter_lane_rejects_invalid_values() {
+        let event = Event {
+            whole: None,
+            part: TimeSpan::unit(),
+            value: 1.5,
+        };
+        assert_eq!(
+            PluginParameterLane::new("Gain", vec![event].into_boxed_slice()),
+            Err(PluginHostError::InvalidParameterValue)
+        );
+    }
+
+    #[test]
+    fn processor_ignores_excess_parameter_lanes() {
+        let source1 = PluginTrackSource::new(PluginDescriptor::vst3("Test"));
+        let mut processor = PluginProcessor::new(&source1, 48000);
+
+        let lane = PluginParameterLane::new(
+            "Gain",
+            vec![Event {
+                whole: None,
+                part: TimeSpan::unit(),
+                value: 0.5,
+            }].into_boxed_slice()
+        ).unwrap();
+        let source2 = PluginTrackSource::new(PluginDescriptor::vst3("Test"))
+            .with_parameter_lane(lane);
+
+        let _ = processor.process_frame(&source2, 0, 48000);
+    }
+
+    #[test]
+    fn processor_drops_notes_exceeding_max_voices() {
+        let mut notes = Vec::new();
+        for _ in 0..33 {
+            notes.push(Event {
+                whole: None,
+                part: TimeSpan::unit(),
+                value: PluginNote::new(60, 1.0).unwrap(),
+            });
+        }
+        let source = PluginTrackSource::new(PluginDescriptor::vst3("Test"))
+            .with_notes(notes.into_boxed_slice());
+
+        let mut processor = PluginProcessor::new(&source, 48000);
+        let _ = processor.process_frame(&source, 0, 48000);
+
+        let active_voices = processor.voices.iter().filter(|v| v.is_some()).count();
+        assert_eq!(active_voices, MAX_PLUGIN_VOICES);
+    }
+
+    #[test]
+    fn processor_handles_invalid_rational_times() {
+        let mut notes = Vec::new();
+        notes.push(Event {
+            whole: None,
+            part: TimeSpan::new(Rational::new(-1, 1).unwrap(), Rational::new(1, 1).unwrap()).unwrap(),
+            value: PluginNote::new(60, 1.0).unwrap(),
+        });
+        let lane = PluginParameterLane::new(
+            "Gain",
+            vec![Event {
+                whole: None,
+                part: TimeSpan::new(Rational::new(-1, 1).unwrap(), Rational::new(1, 1).unwrap()).unwrap(),
+                value: 0.5,
+            }].into_boxed_slice()
+        ).unwrap();
+        let source = PluginTrackSource::new(PluginDescriptor::vst3("Test"))
+            .with_notes(notes.into_boxed_slice())
+            .with_parameter_lane(lane);
+
+        let mut processor = PluginProcessor::new(&source, 48000);
+        let _ = processor.process_frame(&source, 0, 48000);
+
+        assert_eq!(processor.parameter_values[0], DEFAULT_PLUGIN_GAIN);
+        assert_eq!(processor.parameter_cursors[0], 1);
+        assert_eq!(processor.next_note_index, 1);
+    }
+
+    #[test]
+    fn parameter_events_after_current_frame_are_not_applied() {
+        let lane = PluginParameterLane::new(
+            "Gain",
+            vec![Event {
+                whole: None,
+                part: TimeSpan::new(Rational::new(1, 1).unwrap(), Rational::new(2, 1).unwrap()).unwrap(),
+                value: 0.5,
+            }].into_boxed_slice()
+        ).unwrap();
+        let source = PluginTrackSource::new(PluginDescriptor::vst3("Test"))
+            .with_parameter_lane(lane);
+
+        let mut processor = PluginProcessor::new(&source, 48000);
+
+        // This frame is before the event start time
+        let _ = processor.process_frame(&source, 0, 48000);
+
+        assert_eq!(processor.parameter_values[0], DEFAULT_PLUGIN_GAIN);
+        assert_eq!(processor.parameter_cursors[0], 0);
+    }
+
+    #[test]
+    fn note_events_after_current_frame_are_not_activated() {
+        let mut notes = Vec::new();
+        notes.push(Event {
+            whole: None,
+            part: TimeSpan::new(Rational::new(1, 1).unwrap(), Rational::new(2, 1).unwrap()).unwrap(),
+            value: PluginNote::new(60, 1.0).unwrap(),
+        });
+
+        let source = PluginTrackSource::new(PluginDescriptor::vst3("Test"))
+            .with_notes(notes.into_boxed_slice());
+
+        let mut processor = PluginProcessor::new(&source, 48000);
+
+        // This frame is before the event start time
+        let _ = processor.process_frame(&source, 0, 48000);
+
+        let active_voices = processor.voices.iter().filter(|v| v.is_some()).count();
+        assert_eq!(active_voices, 0);
+        assert_eq!(processor.next_note_index, 0);
+    }
+
+    #[test]
+    fn home_dir_fallback_when_userprofile_unset() {
+        let original_home = std::env::var_os("HOME");
+        let original_userprofile = std::env::var_os("USERPROFILE");
+
+        #[allow(unsafe_code)]
+        unsafe {
+            std::env::remove_var("HOME");
+            std::env::remove_var("USERPROFILE");
+            assert_eq!(home_dir(), None);
+
+            if let Some(home) = original_home {
+                std::env::set_var("HOME", home);
+            }
+            if let Some(userprofile) = original_userprofile {
+                std::env::set_var("USERPROFILE", userprofile);
+            }
+        }
+    }
+
+    #[test]
+    fn default_vst3_paths_contains_valid_paths() {
+        let paths = default_vst3_paths();
+        assert!(!paths.is_empty());
+    }
+
+    #[test]
+    fn default_audio_unit_paths_contains_valid_paths() {
+        let paths = default_audio_unit_paths();
+        if cfg!(target_os = "macos") {
+            assert!(!paths.is_empty());
+        } else {
+            assert!(paths.is_empty());
+        }
+    }
+
+    #[test]
+    fn descriptor_returns_format() {
+        let vst3 = PluginDescriptor::vst3("Test");
+        assert_eq!(vst3.format(), PluginFormat::Vst3);
+        let au = PluginDescriptor::audio_unit("Test");
+        assert_eq!(au.format(), PluginFormat::AudioUnit);
+    }
+
+    #[test]
+    fn default_search_paths_routes_by_format() {
+        let vst3 = default_search_paths(PluginFormat::Vst3);
+        assert_eq!(vst3, default_vst3_paths());
+
+        let au = default_search_paths(PluginFormat::AudioUnit);
+        assert_eq!(au, default_audio_unit_paths());
+    }
+
+    #[test]
+    fn test_os_conditional_paths() {
+        if cfg!(target_os = "windows") {
+            assert!(default_vst3_paths().contains(&PathBuf::from(r"C:\Program Files\Common Files\VST3")));
+        } else if cfg!(target_os = "macos") {
+            assert!(default_vst3_paths().contains(&PathBuf::from("/Library/Audio/Plug-Ins/VST3")));
+            assert!(default_audio_unit_paths().contains(&PathBuf::from("/Library/Audio/Plug-Ins/Components")));
+        } else {
+            assert!(default_vst3_paths().contains(&PathBuf::from("/usr/lib/vst3")));
+            assert!(default_vst3_paths().contains(&PathBuf::from("/usr/local/lib/vst3")));
+            assert!(default_audio_unit_paths().is_empty());
+        }
+    }
+
+    #[test]
+    fn default_vst3_paths_contains_valid_paths_with_no_home() {
+        let original_home = std::env::var_os("HOME");
+        let original_userprofile = std::env::var_os("USERPROFILE");
+
+        #[allow(unsafe_code)]
+        unsafe {
+            std::env::remove_var("HOME");
+            std::env::remove_var("USERPROFILE");
+
+            let paths = default_vst3_paths();
+            assert!(!paths.is_empty());
+
+            let au_paths = default_audio_unit_paths();
+            if cfg!(target_os = "macos") {
+                assert!(!au_paths.is_empty());
+            } else {
+                assert!(au_paths.is_empty());
+            }
+
+            if let Some(home) = original_home {
+                std::env::set_var("HOME", home);
+            }
+            if let Some(userprofile) = original_userprofile {
+                std::env::set_var("USERPROFILE", userprofile);
+            }
+        }
+    }
+
+    #[test]
+    fn default_vst3_paths_contains_valid_paths_with_home() {
+        let original_home = std::env::var_os("HOME");
+        let original_userprofile = std::env::var_os("USERPROFILE");
+
+        #[allow(unsafe_code)]
+        unsafe {
+            std::env::set_var("HOME", "/test/home");
+
+            let paths = default_vst3_paths();
+            assert!(!paths.is_empty());
+
+            let au_paths = default_audio_unit_paths();
+            if cfg!(target_os = "macos") {
+                assert!(!au_paths.is_empty());
+            } else {
+                assert!(au_paths.is_empty());
+            }
+
+            if let Some(home) = original_home {
+                std::env::set_var("HOME", home);
+            } else {
+                std::env::remove_var("HOME");
+            }
+            if let Some(userprofile) = original_userprofile {
+                std::env::set_var("USERPROFILE", userprofile);
+            } else {
+                std::env::remove_var("USERPROFILE");
+            }
+        }
+    }
+
+    #[test]
+    fn default_vst3_paths_contains_valid_paths_with_home_windows() {
+        let original_home = std::env::var_os("HOME");
+        let original_userprofile = std::env::var_os("USERPROFILE");
+
+        #[allow(unsafe_code)]
+        unsafe {
+            std::env::set_var("USERPROFILE", "/test/home");
+
+            let paths = default_vst3_paths();
+            assert!(!paths.is_empty());
+
+            let au_paths = default_audio_unit_paths();
+            if cfg!(target_os = "macos") {
+                assert!(!au_paths.is_empty());
+            } else {
+                assert!(au_paths.is_empty());
+            }
+
+            if let Some(home) = original_home {
+                std::env::set_var("HOME", home);
+            } else {
+                std::env::remove_var("HOME");
+            }
+            if let Some(userprofile) = original_userprofile {
+                std::env::set_var("USERPROFILE", userprofile);
+            } else {
+                std::env::remove_var("USERPROFILE");
+            }
+        }
+    }
+
+    #[test]
+    fn default_audio_unit_paths_with_no_home_macos() {
+        let original_home = std::env::var_os("HOME");
+        let original_userprofile = std::env::var_os("USERPROFILE");
+
+        #[allow(unsafe_code)]
+        unsafe {
+            std::env::remove_var("HOME");
+            std::env::remove_var("USERPROFILE");
+
+            let au_paths = default_audio_unit_paths();
+            if cfg!(target_os = "macos") {
+                assert!(!au_paths.is_empty());
+                assert!(!au_paths.iter().any(|p| p.to_string_lossy().contains("Library/Audio/Plug-Ins/Components") && p.is_relative()));
+            } else {
+                assert!(au_paths.is_empty());
+            }
+
+            if let Some(home) = original_home {
+                std::env::set_var("HOME", home);
+            } else {
+                std::env::remove_var("HOME");
+            }
+            if let Some(userprofile) = original_userprofile {
+                std::env::set_var("USERPROFILE", userprofile);
+            } else {
+                std::env::remove_var("USERPROFILE");
+            }
+        }
+    }
+
+    #[test]
+    fn default_vst3_paths_contains_valid_paths_with_no_home_macos() {
+        let original_home = std::env::var_os("HOME");
+        let original_userprofile = std::env::var_os("USERPROFILE");
+
+        #[allow(unsafe_code)]
+        unsafe {
+            std::env::remove_var("HOME");
+            std::env::remove_var("USERPROFILE");
+
+            let paths = default_vst3_paths();
+            if cfg!(target_os = "macos") {
+                assert!(!paths.is_empty());
+                assert!(!paths.iter().any(|p| p.to_string_lossy().contains("Library/Audio/Plug-Ins/VST3") && p.is_relative()));
+            }
+
+            if let Some(home) = original_home {
+                std::env::set_var("HOME", home);
+            } else {
+                std::env::remove_var("HOME");
+            }
+            if let Some(userprofile) = original_userprofile {
+                std::env::set_var("USERPROFILE", userprofile);
+            } else {
+                std::env::remove_var("USERPROFILE");
+            }
+        }
+    }
+
+    #[test]
+    fn default_vst3_paths_contains_valid_paths_with_no_home_windows() {
+        let original_home = std::env::var_os("HOME");
+        let original_userprofile = std::env::var_os("USERPROFILE");
+
+        #[allow(unsafe_code)]
+        unsafe {
+            std::env::remove_var("HOME");
+            std::env::remove_var("USERPROFILE");
+
+            let paths = default_vst3_paths();
+            if cfg!(target_os = "windows") {
+                assert!(!paths.is_empty());
+            }
+
+            if let Some(home) = original_home {
+                std::env::set_var("HOME", home);
+            } else {
+                std::env::remove_var("HOME");
+            }
+            if let Some(userprofile) = original_userprofile {
+                std::env::set_var("USERPROFILE", userprofile);
+            } else {
+                std::env::remove_var("USERPROFILE");
+            }
+        }
+    }
+}
+    #[test]
+    fn test_plugin_search_paths_environment_fallback() {
+        let original_home = std::env::var_os("HOME");
+        let original_userprofile = std::env::var_os("USERPROFILE");
+
+        #[allow(unsafe_code)]
+        unsafe {
+            // Test 1: No HOME, no USERPROFILE
+            std::env::remove_var("HOME");
+            std::env::remove_var("USERPROFILE");
+            assert_eq!(home_dir(), None);
+
+            let vst3_no_home = default_vst3_paths();
+            assert!(!vst3_no_home.is_empty());
+
+            let au_no_home = default_audio_unit_paths();
+            if cfg!(target_os = "macos") {
+                assert!(!au_no_home.is_empty());
+            } else {
+                assert!(au_no_home.is_empty());
+            }
+
+            // Test 2: USERPROFILE only (fallback)
+            std::env::set_var("USERPROFILE", "/test/userprofile");
+            assert_eq!(home_dir(), Some(PathBuf::from("/test/userprofile")));
+
+            // Test 3: HOME takes precedence
+            std::env::set_var("HOME", "/test/home");
+            assert_eq!(home_dir(), Some(PathBuf::from("/test/home")));
+
+            // Test 4: default_search_paths routing
+            let vst3 = default_search_paths(PluginFormat::Vst3);
+            assert_eq!(vst3, default_vst3_paths());
+
+            let au = default_search_paths(PluginFormat::AudioUnit);
+            assert_eq!(au, default_audio_unit_paths());
+
+            // Restore environment
+            if let Some(home) = original_home {
+                std::env::set_var("HOME", home);
+            } else {
+                std::env::remove_var("HOME");
+            }
+            if let Some(userprofile) = original_userprofile {
+                std::env::set_var("USERPROFILE", userprofile);
+            } else {
+                std::env::remove_var("USERPROFILE");
+            }
+        }
+
+    #[test]
+    fn default_vst3_paths_contains_valid_paths_with_home_linux() {
+        let original_home = std::env::var_os("HOME");
+        let original_userprofile = std::env::var_os("USERPROFILE");
+
+        #[allow(unsafe_code)]
+        unsafe {
+            std::env::set_var("HOME", "/test/home");
+
+            let paths = default_vst3_paths();
+            assert!(!paths.is_empty());
+            if !cfg!(target_os = "windows") && !cfg!(target_os = "macos") {
+                assert!(paths.iter().any(|p| p.to_string_lossy().contains(".vst3")));
+            }
+
+            if let Some(home) = original_home {
+                std::env::set_var("HOME", home);
+            } else {
+                std::env::remove_var("HOME");
+            }
+            if let Some(userprofile) = original_userprofile {
+                std::env::set_var("USERPROFILE", userprofile);
+            } else {
+                std::env::remove_var("USERPROFILE");
+            }
+        }
+    }
+
+    #[test]
+    fn default_vst3_paths_contains_valid_paths_with_no_home_linux() {
+        let original_home = std::env::var_os("HOME");
+        let original_userprofile = std::env::var_os("USERPROFILE");
+
+        #[allow(unsafe_code)]
+        unsafe {
+            std::env::remove_var("HOME");
+            std::env::remove_var("USERPROFILE");
+
+            let paths = default_vst3_paths();
+            if !cfg!(target_os = "windows") && !cfg!(target_os = "macos") {
+                assert!(!paths.is_empty());
+                assert!(!paths.iter().any(|p| p.to_string_lossy().contains(".vst3")));
+            }
+
+            if let Some(home) = original_home {
+                std::env::set_var("HOME", home);
+            } else {
+                std::env::remove_var("HOME");
+            }
+            if let Some(userprofile) = original_userprofile {
+                std::env::set_var("USERPROFILE", userprofile);
+            } else {
+                std::env::remove_var("USERPROFILE");
+            }
+        }
+    }
+}
