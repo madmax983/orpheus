@@ -809,12 +809,12 @@ impl RoutingSnapshotBuilder {
             .iter()
             .filter(|track| track.routes_to_master())
             .map(TrackState::id)
-            .collect::<Vec<_>>();
+            .collect::<Box<[_]>>();
         let master_bus_ids = buses
             .iter()
             .filter(|bus| bus.routes_to_master())
             .map(BusState::id)
-            .collect::<Vec<_>>();
+            .collect::<Box<[_]>>();
 
         for (track, sends) in tracks.iter_mut().zip(track_sends) {
             track.sends = sends.into_boxed_slice();
@@ -823,8 +823,8 @@ impl RoutingSnapshotBuilder {
         Ok(RoutingSnapshot {
             tracks: tracks.into_boxed_slice(),
             buses: buses.into_boxed_slice(),
-            master_track_ids: master_track_ids.into_boxed_slice(),
-            master_bus_ids: master_bus_ids.into_boxed_slice(),
+            master_track_ids,
+            master_bus_ids,
         })
     }
 
