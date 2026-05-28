@@ -44,6 +44,11 @@ pub enum PluginHostError {
 }
 
 /// Immutable description of a plugin instance requested by the language layer.
+///
+/// A descriptor contains the binary format, the unique string identifier, and a
+/// pre-calculated set of OS-specific search paths. By resolving this information
+/// on the main thread, the real-time audio thread avoids performing unsafe
+/// filesystem queries.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PluginDescriptor {
     format: PluginFormat,
@@ -58,6 +63,13 @@ impl PluginDescriptor {
     ///
     /// Panics if `identifier` is empty. Use [`Self::try_new`] when accepting
     /// untrusted user input.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::PluginDescriptor;
+    /// let descriptor = PluginDescriptor::vst3("Serum");
+    /// ```
     #[must_use]
     pub fn vst3(identifier: impl Into<Box<str>>) -> Self {
         Self::try_new(PluginFormat::Vst3, identifier)
@@ -70,6 +82,13 @@ impl PluginDescriptor {
     ///
     /// Panics if `identifier` is empty. Use [`Self::try_new`] when accepting
     /// untrusted user input.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::PluginDescriptor;
+    /// let descriptor = PluginDescriptor::audio_unit("Serum");
+    /// ```
     #[must_use]
     pub fn audio_unit(identifier: impl Into<Box<str>>) -> Self {
         Self::try_new(PluginFormat::AudioUnit, identifier)
@@ -130,6 +149,13 @@ impl PluginNote {
     ///
     /// Returns [`PluginHostError::InvalidVelocity`] if `velocity` is not finite
     /// or outside `[0, 1]`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::PluginNote;
+    /// let note = PluginNote::new(60, 0.8).unwrap();
+    /// ```
     pub fn new(note_number: u8, velocity: f32) -> Result<Self, PluginHostError> {
         if !velocity.is_finite() || !(0.0..=1.0).contains(&velocity) {
             return Err(PluginHostError::InvalidVelocity);
@@ -175,6 +201,19 @@ impl PluginParameterLane {
     /// Returns [`PluginHostError::EmptyParameterName`] for blank names and
     /// [`PluginHostError::InvalidParameterValue`] for non-finite or out-of-range
     /// event values.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::PluginParameterLane;
+    /// use orpheus_pattern::{Event, TimeSpan};
+    /// let event = Event {
+    ///     whole: None,
+    ///     part: TimeSpan::unit(),
+    ///     value: 0.5,
+    /// };
+    /// let lane = PluginParameterLane::new("Cutoff", vec![event].into_boxed_slice()).unwrap();
+    /// ```
     pub fn new(
         name: impl Into<Box<str>>,
         events: Box<[Event<f32>]>,
@@ -206,6 +245,10 @@ impl PluginParameterLane {
 }
 
 /// Fully materialized plugin track input consumed by the render thread.
+///
+/// This serves as the data transfer object passed from the language layer to the
+/// real-time audio thread. It encapsulates the static descriptor of the plugin along
+/// with all dynamic, cycle-local parameter events needed to render the current cycle.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PluginTrackSource {
     descriptor: PluginDescriptor,
@@ -215,6 +258,14 @@ pub struct PluginTrackSource {
 
 impl PluginTrackSource {
     /// Creates a plugin track source with no note or automation events.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::{PluginDescriptor, PluginTrackSource};
+    /// let descriptor = PluginDescriptor::vst3("Serum");
+    /// let source = PluginTrackSource::new(descriptor);
+    /// ```
     #[must_use]
     pub fn new(descriptor: PluginDescriptor) -> Self {
         Self {
@@ -279,6 +330,10 @@ pub struct PluginBufferCapacities {
 }
 
 /// Real-time render state for one headless plugin track.
+///
+/// This struct holds all pre-allocated internal rendering state, allowing the
+/// plugin to be evaluated block-by-block on the audio thread without
+/// incurring lock contention or intermediate memory allocations.
 #[derive(Clone, Debug)]
 pub struct PluginProcessor {
     sample_rate_hz: f32,
@@ -299,6 +354,15 @@ struct PluginVoice {
 
 impl PluginProcessor {
     /// Creates preallocated render state for a plugin track.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::{PluginDescriptor, PluginTrackSource, PluginProcessor};
+    /// let descriptor = PluginDescriptor::vst3("Serum");
+    /// let source = PluginTrackSource::new(descriptor);
+    /// let processor = PluginProcessor::new(&source, 48000);
+    /// ```
     #[must_use]
     #[expect(
         clippy::cast_precision_loss,
