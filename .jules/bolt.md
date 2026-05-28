@@ -47,3 +47,7 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+**[Float-to-Integer String Conversion on Parsing Hot Path]**
+**Learning:** Parsing numeric literals like floats where `split_once('.')` separates the whole and fractional digits followed by `[whole, fractional].concat().parse()` to recombine them creates a massive performance regression. This heap-allocates an intermediate `String`/`Vec` just to parse an integer inside the evaluator.
+**Action:** Parse the `whole` and `fractional` portions separately into independent integers (`unwrap_or(0)`), multiply the whole portion by `10.pow(fractional.len())`, and add them together (`result = whole_num.checked_mul(scale).and_then(|w| w.checked_add(fractional_num))`). This achieves exactly the same result with 0 allocations.
