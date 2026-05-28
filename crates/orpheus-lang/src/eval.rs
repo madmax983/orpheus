@@ -1382,7 +1382,7 @@ right = sometimes(fast(2), cp hh)";
                 sometimes_applies_on_cycle(*cycle, left_salt)
                     != sometimes_applies_on_cycle(*cycle, right_salt)
             })
-            .expect("expected separate call sites to diverge on some cycle");
+            .unwrap();
         let module = eval_module(source, ReplMode::Loose).unwrap();
         let span_cycles = u64::try_from(cycle + 1).unwrap();
         let left_events = sample_events_for_span(module.get("left").unwrap(), span_cycles).unwrap();

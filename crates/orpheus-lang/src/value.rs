@@ -5601,7 +5601,7 @@ mod tests {
             .find(|salt| {
                 sometimes_applies_on_cycle(0, *salt) != sometimes_applies_on_cycle(2, *salt)
             })
-            .expect("expected a salt that differentiates cycle 0 from cycle 2");
+            .unwrap();
         let base = SamplePatternValue::from_nodes(vec![
             PatternNode::atom(SampleEvent::named("bd")),
             PatternNode::atom(SampleEvent::named("sn")),

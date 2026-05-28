@@ -597,7 +597,7 @@ mod tests {
         assert!(Arc::ptr_eq(
             trigger
                 .pedal_program()
-                .expect("sample trigger should expose the pedal program"),
+                .unwrap(),
             pedal_program
         ));
     }

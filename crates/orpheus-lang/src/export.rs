@@ -940,7 +940,7 @@ mod tests {
         let trigger = sample_trigger_from_event(&event);
         let pedal_program = trigger
             .pedal_program()
-            .expect("sample trigger should retain the pedal program");
+            .unwrap();
 
         assert!(pedal_program.source().contains("graph {"));
         assert!(

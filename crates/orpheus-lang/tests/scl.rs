@@ -15,7 +15,7 @@ fn assert_close(actual: f64, expected: f64) {
 fn parses_just_intonation_ratios_from_fixture() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/tuning/just_intonation.scl");
-    let tuning = parse_scala_file(&path).expect("scala file should parse");
+    let tuning = parse_scala_file(&path).unwrap();
 
     assert_eq!(tuning.name(), "just_intonation");
     assert_eq!(tuning.ratios().len(), 12);
@@ -28,7 +28,7 @@ fn parses_just_intonation_ratios_from_fixture() {
 fn parses_cents_lines_into_ratios() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/tuning/cents_example.scl");
-    let tuning = parse_scala_file(&path).expect("scala file with cents should parse");
+    let tuning = parse_scala_file(&path).unwrap();
 
     assert_eq!(tuning.ratios().len(), 3);
     assert_close(tuning.ratios()[0], 1.0);
@@ -46,7 +46,7 @@ fn accepts_integer_entries_as_ratios() {
  5/4\n\
  2\n\
 ";
-    let tuning = parse_scala_source(src, "simple").expect("should parse integer entry");
+    let tuning = parse_scala_source(src, "simple").unwrap();
     assert_close(tuning.ratios()[1], 1.25);
     assert_close(tuning.period(), 2.0);
 }
@@ -80,7 +80,7 @@ mixed\n\
  3/2\n\
  2/1\n\
 ";
-    let tuning = parse_scala_source(src, "mixed").expect("comment-heavy source should parse");
+    let tuning = parse_scala_source(src, "mixed").unwrap();
     assert_eq!(tuning.ratios().len(), 2);
     assert_close(tuning.ratios()[1], 1.5);
     assert_close(tuning.period(), 2.0);

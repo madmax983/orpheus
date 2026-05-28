@@ -89,7 +89,7 @@ impl From<DecodedSample> for PlaybackSample {
 /// let bank = SampleBank::load_builtin();
 ///
 /// // Safely query for a resolved audio buffer.
-/// let kick_buffer = bank.get_by_token("bd").expect("bd is a guaranteed built-in");
+/// let kick_buffer = bank.get_by_token("bd").unwrap();
 ///
 /// // Unknown identifiers degrade gracefully to `None` so the audio thread doesn't panic.
 /// let missing = bank.get_by_token("glitch");

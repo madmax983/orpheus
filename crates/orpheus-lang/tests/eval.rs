@@ -364,7 +364,7 @@ fn pedal_graph_binding_evaluates_to_pedal_value() {
         .get("fx")
         .unwrap()
         .as_pedal()
-        .expect("expected pedal value");
+        .unwrap();
 
     assert!(pedal.format_source().contains("clip(model=silicon_hard)"));
 }
@@ -484,7 +484,7 @@ fn through_preserves_sample_pattern_type_and_attaches_pedal() {
         .get("lead")
         .unwrap()
         .as_sample_pattern()
-        .expect("through should keep a sample pattern");
+        .unwrap();
     let events = pattern.query_unit().unwrap();
 
     assert_eq!(
@@ -498,11 +498,11 @@ fn through_preserves_sample_pattern_type_and_attaches_pedal() {
     let first_program = events[0]
         .value
         .pedal_program()
-        .expect("first event should carry a pedal program");
+        .unwrap();
     let second_program = events[1]
         .value
         .pedal_program()
-        .expect("second event should carry a pedal program");
+        .unwrap();
 
     assert!(std::sync::Arc::ptr_eq(first_program, second_program));
     assert!(
@@ -2975,7 +2975,7 @@ fn sample_rates(module: &std::collections::BTreeMap<String, Value>, binding: &st
 fn tuning_builtin_binds_ratio_list() {
     let env = eval_module("t = tuning(1.0 1.125 1.25 1.5 2.0)", ReplMode::Loose).unwrap();
     let value = env.get("t").unwrap();
-    let tuning = value.as_tuning().expect("binding should be a tuning value");
+    let tuning = value.as_tuning().unwrap();
     let ratios: Vec<f64> = tuning.ratios().to_vec();
     assert_eq!(ratios.len(), 4);
     assert!((ratios[0] - 1.0).abs() < f64::EPSILON);

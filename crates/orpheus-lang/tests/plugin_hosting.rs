@@ -12,7 +12,7 @@ fn vst_plugin_language_primitive_accepts_notes_and_parameter_automation() {
     let plugin = env
         .get("lead")
         .and_then(orpheus_lang::Value::as_plugin_pattern)
-        .expect("lead should evaluate to a plugin pattern");
+        .unwrap();
     let source = plugin.track_source();
 
     assert_eq!(source.descriptor().format(), PluginFormat::Vst3);

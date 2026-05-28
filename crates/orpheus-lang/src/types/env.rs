@@ -393,12 +393,12 @@ mod tests {
         let env = TypeEnv::with_builtins();
 
         // Check monomorphic primitives.
-        let bd_scheme = env.get("bd").expect("missing bd builtin");
+        let bd_scheme = env.get("bd").unwrap();
         assert!(bd_scheme.vars.is_empty());
         assert_eq!(bd_scheme.ty, Type::pattern(Type::Sample));
 
         // Check rand function.
-        let rand_scheme = env.get("rand").expect("missing rand builtin");
+        let rand_scheme = env.get("rand").unwrap();
         assert!(rand_scheme.vars.is_empty());
         assert_eq!(
             rand_scheme.ty,
@@ -406,7 +406,7 @@ mod tests {
         );
 
         // Check polymorphic transforms.
-        let fast_scheme = env.get("fast").expect("missing fast builtin");
+        let fast_scheme = env.get("fast").unwrap();
         assert_eq!(fast_scheme.vars.len(), 1);
         let alpha = fast_scheme.vars[0];
         assert_eq!(
@@ -418,7 +418,7 @@ mod tests {
         );
 
         // Check sample controls.
-        let gain_scheme = env.get("gain").expect("missing gain builtin");
+        let gain_scheme = env.get("gain").unwrap();
         assert!(gain_scheme.vars.is_empty());
         assert_eq!(
             gain_scheme.ty,
