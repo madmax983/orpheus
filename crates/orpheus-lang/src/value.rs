@@ -37,36 +37,67 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Applies a function to a pattern only on specific cycle numbers (e.g. `every 3`).
     Every,
+    /// Conditionally transforms a pattern when an active control signal evaluates to true.
     When,
+    /// Randomly applies a function to events in a pattern with a 50% probability.
     Sometimes,
+    /// Applies a function only within a specific temporal sub-window of each cycle.
     Within,
+    /// Silences events in the right pattern whenever the left pattern is inactive.
     Mask,
+    /// Delays the start times of chords in a pattern by successive fractional amounts.
     Strum,
+    /// Subdivides each event in a pattern into smaller repeated fragments.
     Roll,
+    /// Generates an arpeggio from a chord pattern following a specific directional contour.
     Arp,
+    /// Inverts the voicings of chords within a pattern.
     Invert,
+    /// Selectively removes specific notes from chords in a pattern based on index.
     Drop,
+    /// Constructs a chord progression from a root note and interval structures.
     Chord,
+    /// Distributes a number of active pulses as evenly as possible across a set of steps.
     Euclid,
+    /// Evaluates a Lindenmayer system string rewriting grammar into a temporal sequence.
     Lsystem,
+    /// Generates patterns based on 1D elementary cellular automata rules.
     Wolfram,
+    /// Groups numbers into a mathematical set representing distinct pitch classes.
     PitchClassSet,
+    /// Maps a scale degree to its concrete pitch class using a given scale set.
     Degrees,
+    /// Accelerates a pattern by compressing it into a smaller time fraction.
     Fast,
+    /// Decelerates a pattern by expanding it over a larger time fraction.
     Slow,
+    /// Displaces a pattern forward or backward in time by a rational amount.
     Shift,
+    /// Reverses the temporal order of events within each cycle of a pattern.
     Rev,
+    /// A linear amplitude multiplier applied to an audio signal.
     Gain,
+    /// A time-based echo effect.
     Delay,
+    /// The temporal spacing between successive echoes in a delay line.
     DelayTime,
+    /// The amount of delayed signal fed back into the delay line input.
     DelayFeedback,
+    /// A high-pass filter, attenuating frequencies below its cutoff.
     Hpf,
+    /// A low-pass filter, attenuating frequencies above its cutoff.
     Lpf,
+    /// A reverberation effect simulating acoustic spaces.
     Reverb,
+    /// The simulated physical size of the reverberant room.
     ReverbRoom,
+    /// High-frequency absorption over time in a reverberation effect.
     ReverbDamp,
+    /// The corner frequency for filters (like LPF or HPF), specified in Hz.
     Cutoff,
+    /// A modulation effect creating multiple slightly detuned copies of a signal.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

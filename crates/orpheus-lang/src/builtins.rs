@@ -260,6 +260,14 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Constructs a new [`BuiltinFn`] pointing to the given primitive function.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    /// let func = BuiltinFn::new(BuiltinKind::Fast);
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +277,10 @@ impl BuiltinFn {
         }
     }
 
+    /// Attaches a deterministic site salt for PRNG stability across evaluations.
+    ///
+    /// This ensures functions that use randomization return consistent
+    /// output each time the same script is run.
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);
