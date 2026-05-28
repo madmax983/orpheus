@@ -43,7 +43,7 @@ pub fn map_sample_to_sonic_pi(sample: &str) -> &'static str {
 ///
 /// ```
 /// use orpheus_lang::{ReplMode, eval_module};
-/// use orpheus_lang::sonic_pi_export::export_sample_pattern_to_sonic_pi;
+/// use orpheus_lang::export_sample_pattern_to_sonic_pi;
 ///
 /// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
 /// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
@@ -66,7 +66,7 @@ pub fn export_sample_pattern_to_sonic_pi(
 
     let span = render_span(cycle_count)?;
     let mut events = pattern.try_query(&span)?;
-    events.sort_unstable_by(|a, b| a.part.start().cmp(&b.part.start()));
+    events.sort_unstable_by(|a, b| a.part.start().cmp(b.part.start()));
 
     let path = path.as_ref();
     let mut file = std::fs::File::create(path).map_err(|e| EvalError::new(e.to_string()))?;
@@ -94,7 +94,10 @@ pub fn export_sample_pattern_to_sonic_pi(
         let pan = event.value.pan();
         let rate = event.value.rate();
 
-        writeln!(file, "  sample {sp_sample}, amp: {gain:.3}, pan: {pan:.3}, rate: {rate:.3}")?;
+        writeln!(
+            file,
+            "  sample {sp_sample}, amp: {gain:.3}, pan: {pan:.3}, rate: {rate:.3}"
+        )?;
     }
 
     // Sleep remaining time of the sequence to allow looping
@@ -118,7 +121,7 @@ pub fn export_sample_pattern_to_sonic_pi(
 ///
 /// ```
 /// use orpheus_lang::{ReplMode, eval_module};
-/// use orpheus_lang::sonic_pi_export::export_number_pattern_to_sonic_pi;
+/// use orpheus_lang::export_number_pattern_to_sonic_pi;
 ///
 /// let env = eval_module("x = 60 62 64", ReplMode::Loose).unwrap();
 /// let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
@@ -141,7 +144,7 @@ pub fn export_number_pattern_to_sonic_pi(
 
     let span = render_span(cycle_count)?;
     let mut events = pattern.try_query(&span)?;
-    events.sort_unstable_by(|a, b| a.part.start().cmp(&b.part.start()));
+    events.sort_unstable_by(|a, b| a.part.start().cmp(b.part.start()));
 
     let path = path.as_ref();
     let mut file = std::fs::File::create(path).map_err(|e| EvalError::new(e.to_string()))?;
@@ -205,7 +208,8 @@ mod tests {
         let module = eval_module(source, ReplMode::Loose).unwrap();
         let pattern = module.get("pattern").unwrap().as_sample_pattern().unwrap();
 
-        let path = std::env::temp_dir().join(format!("test_sample_output_{}.rb", unique_temp_suffix()));
+        let path =
+            std::env::temp_dir().join(format!("test_sample_output_{}.rb", unique_temp_suffix()));
         export_sample_pattern_to_sonic_pi(pattern, &path, 1).unwrap();
 
         let content = std::fs::read_to_string(&path).unwrap();
@@ -221,7 +225,8 @@ mod tests {
         let module = eval_module(source, ReplMode::Loose).unwrap();
         let pattern = module.get("pattern").unwrap().as_number_pattern().unwrap();
 
-        let path = std::env::temp_dir().join(format!("test_number_output_{}.rb", unique_temp_suffix()));
+        let path =
+            std::env::temp_dir().join(format!("test_number_output_{}.rb", unique_temp_suffix()));
         export_number_pattern_to_sonic_pi(pattern, &path, 1).unwrap();
 
         let content = std::fs::read_to_string(&path).unwrap();

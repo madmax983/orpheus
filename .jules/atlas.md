@@ -56,3 +56,6 @@
 **[Enforce Private Explain Module]
 **Tangle:** The `explain` module in `orpheus-lang/src/lib.rs` and its internal `Explain` trait and `explain_table` function were declared as `pub`, leaking internal REPL table rendering details to the public API.
 **Blueprint:** Changed the visibility of the `Explain` trait and `explain_table` function to `pub(crate)` in `crates/orpheus-lang/src/explain.rs`. Removed the `pub use explain::Explain;` re-export from `crates/orpheus-lang/src/lib.rs` and changed the module declaration to `pub(crate) mod explain;`. This strictly enforces internal encapsulation.
+**[Enforce Private Sonic Pi Export Module]
+**Tangle:** The `sonic_pi_export` module in `orpheus-lang/src/lib.rs` was absent from the explicit module declarations, but needed to be declared as `pub(crate) mod` to enforce internal boundaries while correctly re-exporting its public API to prevent leaky abstractions.
+**Blueprint:** Added `pub(crate) mod sonic_pi_export;` and `pub use sonic_pi_export::{...};` to `crates/orpheus-lang/src/lib.rs`. Updated the internal doctests to utilize the new public facade boundary, maintaining strict encapsulation without breaking the public interface.
