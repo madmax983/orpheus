@@ -593,25 +593,22 @@ fn apply_every(args: Vec<Value>) -> Result<Value, EvalError> {
         .next()
         .ok_or_else(|| EvalError::new("`every` requires a pattern argument"))?;
 
-    match pattern {
-        Value::SamplePattern(pattern) => {
-            let transform = extract_unary_pattern_transform(transform, "every", "second")?;
-            Ok(Value::SamplePattern(pattern.every(period, transform)))
-        }
-        Value::NumberPattern(pattern) => {
-            let transform = extract_unary_pattern_transform(transform, "every", "second")?;
-            Ok(Value::NumberPattern(pattern.every(period, transform)))
-        }
-        Value::ArpDirection(_)
-        | Value::PitchClassSet(_)
-        | Value::Function(_)
-        | Value::String(_)
-        | Value::Tuning(_)
-        | Value::PluginPattern(_)
-        | Value::Pedal(_) => Err(EvalError::new(
-            "`every` expected a pattern as its final argument",
-        )),
-    }
+    apply_pattern_transform(
+        pattern,
+        |p| {
+            Ok(Value::SamplePattern(p.every(
+                period,
+                extract_unary_pattern_transform(transform.clone(), "every", "second")?,
+            )))
+        },
+        |p| {
+            Ok(Value::NumberPattern(p.every(
+                period,
+                extract_unary_pattern_transform(transform.clone(), "every", "second")?,
+            )))
+        },
+        "every",
+    )
 }
 
 fn apply_when(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -1472,22 +1469,17 @@ fn apply_onset(args: Vec<Value>) -> Result<Value, EvalError> {
         .next()
         .ok_or_else(|| EvalError::new("`onset` requires a pattern argument"))?;
 
-    match pattern {
-        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match index {
-            OnsetIndexControl::Constant(index) => pattern.onset(index),
-            OnsetIndexControl::Pattern(control) => pattern.onset_pattern(*control),
-        })),
-        Value::NumberPattern(_) => Err(EvalError::new("`onset` only applies to sample patterns")),
-        Value::ArpDirection(_)
-        | Value::PitchClassSet(_)
-        | Value::Function(_)
-        | Value::Tuning(_)
-        | Value::PluginPattern(_)
-        | Value::Pedal(_)
-        | Value::String(_) => Err(EvalError::new(
-            "`onset` expected a sample pattern as its final argument",
-        )),
-    }
+    apply_pattern_transform(
+        pattern,
+        |pattern| {
+            Ok(Value::SamplePattern(match &index {
+                OnsetIndexControl::Constant(i) => pattern.onset(*i),
+                OnsetIndexControl::Pattern(control) => pattern.onset_pattern(*control.clone()),
+            }))
+        },
+        |_| Err(EvalError::new("`onset` only applies to sample patterns")),
+        "onset",
+    )
 }
 
 fn apply_rate(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -1517,32 +1509,27 @@ fn apply_slice(args: Vec<Value>) -> Result<Value, EvalError> {
         .next()
         .ok_or_else(|| EvalError::new("`slice` requires a pattern argument"))?;
 
-    match pattern {
-        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match (start, end) {
-            (NumericControl::Constant(start), NumericControl::Constant(end)) => {
-                if start >= end {
-                    return Err(EvalError::new("`slice` requires start < end"));
+    apply_pattern_transform(
+        pattern,
+        |pattern| {
+            Ok(Value::SamplePattern(match (&start, &end) {
+                (NumericControl::Constant(s), NumericControl::Constant(e)) => {
+                    if s >= e {
+                        return Err(EvalError::new("`slice` requires start < end"));
+                    }
+                    pattern.slice(*s, *e)
                 }
-                pattern.slice(start, end)
-            }
-            (start, end) => {
-                let start_pattern = numeric_control_to_pattern(start);
-                let end_pattern = numeric_control_to_pattern(end);
-                validate_slice_control_patterns(&start_pattern, &end_pattern)?;
-                pattern.slice_pattern(start_pattern, end_pattern)
-            }
-        })),
-        Value::NumberPattern(_) => Err(EvalError::new("`slice` only applies to sample patterns")),
-        Value::ArpDirection(_)
-        | Value::PitchClassSet(_)
-        | Value::Function(_)
-        | Value::Tuning(_)
-        | Value::PluginPattern(_)
-        | Value::Pedal(_)
-        | Value::String(_) => Err(EvalError::new(
-            "`slice` expected a sample pattern as its final argument",
-        )),
-    }
+                (s, e) => {
+                    let start_pattern = numeric_control_to_pattern(s.clone());
+                    let end_pattern = numeric_control_to_pattern(e.clone());
+                    validate_slice_control_patterns(&start_pattern, &end_pattern)?;
+                    pattern.slice_pattern(start_pattern, end_pattern)
+                }
+            }))
+        },
+        |_| Err(EvalError::new("`slice` only applies to sample patterns")),
+        "slice",
+    )
 }
 
 #[allow(clippy::unnecessary_wraps)]
@@ -1566,27 +1553,26 @@ fn apply_slice_idx(args: Vec<Value>) -> Result<Value, EvalError> {
         .next()
         .ok_or_else(|| EvalError::new("`slice_idx` requires a pattern argument"))?;
 
-    match pattern {
-        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match index {
-            SliceIndexControl::Constant(index) => {
-                let (start, end) = slice_idx_bounds(index, segments)?;
-                pattern.slice(start, end)
-            }
-            SliceIndexControl::Pattern(control) => pattern.slice_idx_pattern(*control, segments),
-        })),
-        Value::NumberPattern(_) => Err(EvalError::new(
-            "`slice_idx` only applies to sample patterns",
-        )),
-        Value::ArpDirection(_)
-        | Value::PitchClassSet(_)
-        | Value::Function(_)
-        | Value::Tuning(_)
-        | Value::PluginPattern(_)
-        | Value::Pedal(_)
-        | Value::String(_) => Err(EvalError::new(
-            "`slice_idx` expected a sample pattern as its final argument",
-        )),
-    }
+    apply_pattern_transform(
+        pattern,
+        |pattern| {
+            Ok(Value::SamplePattern(match &index {
+                SliceIndexControl::Constant(i) => {
+                    let (start, end) = slice_idx_bounds(*i, segments)?;
+                    pattern.slice(start, end)
+                }
+                SliceIndexControl::Pattern(control) => {
+                    pattern.slice_idx_pattern(*control.clone(), segments)
+                }
+            }))
+        },
+        |_| {
+            Err(EvalError::new(
+                "`slice_idx` only applies to sample patterns",
+            ))
+        },
+        "slice_idx",
+    )
 }
 
 fn apply_pattern_transform(
@@ -1866,6 +1852,7 @@ fn extract_whole_number(
     Ok(integer)
 }
 
+#[derive(Clone)]
 enum NumericControl {
     Constant(f64),
     Pattern(NumberPatternValue),
@@ -2870,13 +2857,12 @@ fn apply_palindrome(args: Vec<Value>) -> Result<Value, EvalError> {
         unreachable!("BuiltinKind::Rev always returns a FunctionValue")
     };
 
-    match pattern {
-        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(pattern.every(2, rev_function))),
-        Value::NumberPattern(pattern) => Ok(Value::NumberPattern(pattern.every(2, rev_function))),
-        _ => Err(EvalError::new(
-            "`palindrome` expects a sample or number pattern",
-        )),
-    }
+    apply_pattern_transform(
+        pattern,
+        |p| Ok(Value::SamplePattern(p.every(2, rev_function.clone()))),
+        |p| Ok(Value::NumberPattern(p.every(2, rev_function.clone()))),
+        "palindrome",
+    )
 }
 
 #[cfg(test)]

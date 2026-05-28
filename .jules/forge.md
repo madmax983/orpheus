@@ -82,3 +82,7 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**[Refactor apply_ pattern match blocks]**
+**Learning:** The apply_ functions for structural pattern combinators in builtins.rs contained repetitive, verbose match blocks over Value returning EvalError for everything except SamplePattern and NumberPattern.
+**Action:** Extracted the core routing logic into a apply_pattern_transform helper function, utilizing closures to safely extract mutable closures, and dramatically flattened the apply_every, apply_when, apply_sometimes, apply_within, apply_mask, apply_roll, apply_fast, apply_slow, apply_shift, apply_rev, and apply_chaos functions.
