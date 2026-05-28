@@ -4782,6 +4782,10 @@ where
         return Ok(Vec::new());
     }
 
+    if period == 0 {
+        return Err(EvalError::new("`every` requires a non-zero period"));
+    }
+
     let period = i128::from(period);
     query_transform_cycles(inner, transform, span, |cycle| {
         cycle.rem_euclid(period) == 0
@@ -4800,6 +4804,10 @@ where
 {
     if span.is_empty() {
         return Ok(Vec::new());
+    }
+
+    if period == 0 {
+        return Err(EvalError::new("`when` requires a non-zero period"));
     }
 
     let period = i128::from(period);
