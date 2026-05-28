@@ -1798,14 +1798,48 @@ impl ReplSession {
         }
     }
 
-    #[doc(hidden)]
+    /// Renders a specific number of frames of audio explicitly for testing TUI visualizations.
+    ///
+    /// This bypasses the normal background real-time audio thread and directly polls
+    /// the DSP engine on the current thread, returning the raw audio buffer. It allows
+    /// terminal UIs or headless tests to visually verify audio output without requiring
+    /// a physical sound card or risking thread race conditions.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// session.eval_line(":track new drums").unwrap();
+    ///
+    /// // Render 64 frames of audio to inspect
+    /// let buffer = session.render_test_block_for_tui(64);
+    /// assert_eq!(buffer.len(), 64 * 2); // Assuming stereo output
+    /// ```
     pub fn render_test_block_for_tui(&mut self, frames: u64) -> Vec<f32> {
         let _ = self.apply_midi_note_mappings();
         let _ = self.poll_sample_watcher();
         self.engine.render_test_block(frames)
     }
 
-    #[doc(hidden)]
+    /// Queries the number of audio frames remaining until the next transport boundary.
+    ///
+    /// This is heavily utilized by the TUI to synchronize visual metronomes, blinking
+    /// cursors, and progress bars with the underlying DSP engine, ensuring the terminal
+    /// display remains exactly in step with the audio being produced.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// let remaining = session.frames_until_boundary_for_tui();
+    /// assert!(remaining > 0);
+    /// ```
     pub fn frames_until_boundary_for_tui(&self) -> u64 {
         self.engine.frames_until_boundary_for_test()
     }

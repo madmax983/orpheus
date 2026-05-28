@@ -822,7 +822,21 @@ impl Value {
         }
     }
 
-    #[doc(hidden)]
+    /// Attempts to unwrap the value into a concrete pedal effect chain.
+    ///
+    /// This is used internally during routing graph compilation to extract pedal
+    /// structures that are bound to track inserts, allowing the audio engine to
+    /// apply user-defined effects (like distortion or delay) to the track's signal.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{Value, PedalValue, SignalKind};
+    /// use orpheus_lang::ast::GraphBinding;
+    ///
+    /// let pedal = Value::Pedal(PedalValue::Identity(SignalKind::Audio));
+    /// assert!(pedal.as_pedal().is_some());
+    /// ```
     #[must_use]
     pub const fn as_pedal(&self) -> Option<&PedalValue> {
         match self {
@@ -1178,7 +1192,20 @@ impl SampleEvent {
         self.slice_end
     }
 
-    #[doc(hidden)]
+    /// The compiled pedal effect chain that should apply to this specific event.
+    ///
+    /// Effect chains can be sequenced alongside notes in patterns, allowing for
+    /// per-step effects (e.g., applying reverb only on the snare hit on the 4th beat).
+    /// This method retrieves that chain for the audio engine to instantiate during playback.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{Value, SampleEvent};
+    ///
+    /// let event = SampleEvent::named("bd");
+    /// assert!(event.pedal_program().is_none());
+    /// ```
     #[must_use]
     pub const fn pedal_program(&self) -> Option<&Arc<orpheus_dsp::PedalProgram>> {
         self.pedal_program.as_ref()
