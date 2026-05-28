@@ -5913,6 +5913,69 @@ impl Explain for TuningValue {
     }
 }
 
+impl Explain for PluginPatternValue {
+    fn explain(&self, binding_name: &str) -> String {
+        use comfy_table::{Cell, CellAlignment};
+        use crossterm::style::Stylize;
+
+        let title = format!(
+            "{} {}",
+            "Plugin Pattern Plan:".cyan().bold(),
+            binding_name.yellow()
+        );
+
+        let mut table = crate::explain::explain_table(["Property", "Value"]);
+
+        let source = self.track_source();
+
+        table.add_row(vec![
+            Cell::new("Format").fg(comfy_table::Color::Cyan),
+            Cell::new(format!("{:?}", source.descriptor().format()))
+                .fg(comfy_table::Color::Green)
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        table.add_row(vec![
+            Cell::new("Name").fg(comfy_table::Color::Cyan),
+            Cell::new(source.descriptor().identifier())
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        table.add_row(vec![
+            Cell::new("Has Notes").fg(comfy_table::Color::Cyan),
+            Cell::new(if source.notes().is_empty() {
+                "false"
+            } else {
+                "true"
+            })
+            .fg(if source.notes().is_empty() {
+                comfy_table::Color::DarkGrey
+            } else {
+                comfy_table::Color::Green
+            })
+            .set_alignment(CellAlignment::Right),
+        ]);
+
+        table.add_row(vec![
+            Cell::new("Has Automation").fg(comfy_table::Color::Cyan),
+            Cell::new(if source.parameter_lanes().is_empty() {
+                "false"
+            } else {
+                "true"
+            })
+            .fg(if source.parameter_lanes().is_empty() {
+                comfy_table::Color::DarkGrey
+            } else {
+                comfy_table::Color::Green
+            })
+            .set_alignment(CellAlignment::Right),
+        ]);
+
+        format!("{title}\n{table}")
+    }
+}
+
 impl Explain for SamplePatternValue {
     fn explain(&self, binding_name: &str) -> String {
         use comfy_table::{Cell, CellAlignment};
