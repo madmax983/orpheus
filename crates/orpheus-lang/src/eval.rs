@@ -1237,20 +1237,32 @@ pub fn f64_to_rational(value: f64, context: &str) -> Result<Rational, EvalError>
 
     let (numerator, denominator) = if let Some((whole, fractional)) = digits.split_once('.') {
         let scale = checked_pow10(fractional.len())?;
-        let combined = [whole, fractional].concat();
-        let numerator = combined
-            .parse::<i128>()
-            .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?;
+        let whole_part = if whole.is_empty() {
+            0_i128
+        } else {
+            whole.parse::<i128>().map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?
+        };
+        let fractional_part = if fractional.is_empty() {
+            0_i128
+        } else {
+            fractional.parse::<i128>().map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?
+        };
+        let numerator = whole_part
+            .abs()
+            .checked_mul(scale)
+            .and_then(|w| w.checked_add(fractional_part))
+            .map(|n| if negative { -n } else { n })
+            .ok_or_else(|| EvalError::new(format!("{context} exceeded the supported range")))?;
         (numerator, scale)
     } else {
         let numerator = digits
             .parse::<i128>()
             .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?;
+        let numerator = if negative { -numerator } else { numerator };
         (numerator, 1_i128)
     };
 
-    let signed_numerator = if negative { -numerator } else { numerator };
-    rational_from_parts(signed_numerator, denominator)
+    rational_from_parts(numerator, denominator)
 }
 
 fn checked_pow10(exponent: usize) -> Result<i128, EvalError> {
