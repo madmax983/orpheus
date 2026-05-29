@@ -39,8 +39,14 @@ struct ImportSpec {
 /// ```
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
+    /// The resolved, concrete type assignments for all statements in the module.
+    /// This ensures subsequent REPL executions correctly typecheck against previously defined names.
     pub type_bindings: BTreeMap<String, Type>,
+    /// The resolved, fully evaluated runtime values for all statements in the module.
+    /// This state is carried forward to allow sequential REPL lines to query bound patterns over time.
     pub value_bindings: BTreeMap<String, Value>,
+    /// The variable name bound in the final evaluated statement, if any.
+    /// This is used to determine which pattern the REPL should automatically activate and preview.
     pub last_binding_name: Option<String>,
 }
 

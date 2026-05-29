@@ -26,11 +26,18 @@ use crate::types::{Type, TypeVarId};
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
+    /// The collection of generic type variables used in this scheme.
+    /// When instantiated, each variable gets mapped to a fresh concrete type.
     pub vars: Vec<TypeVarId>,
+    /// The underlying function or value type containing the generic variables.
     pub ty: Type,
 }
 
 impl TypeScheme {
+    /// Creates a new type scheme with no generic variables.
+    ///
+    /// This is used for types that are fully concrete, like standard audio samples (`bd`, `sn`)
+    /// or simple numbers, which do not change type based on their usage context.
     #[must_use]
     pub const fn monomorphic(ty: Type) -> Self {
         Self {
@@ -195,6 +202,7 @@ impl TypeEnv {
         self.entries.get(name)
     }
 
+    #[doc(hidden)]
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }

@@ -261,6 +261,7 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 
 impl BuiltinFn {
     #[must_use]
+    #[doc(hidden)]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
             kind,
@@ -270,6 +271,7 @@ impl BuiltinFn {
     }
 
     #[must_use]
+    #[doc(hidden)]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);
         self
