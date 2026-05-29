@@ -47,3 +47,6 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+**[Silent Parse Errors in Zero-Cost Abstractions]
+**Learning:** When replacing allocating string concatenations (e.g., `[a, b].concat().parse()`) with zero-cost slice parsing (`a.parse()`, `b.parse()`), using `.unwrap_or(0)` to handle empty slices silently swallows legitimate parse errors for malformed strings that the original code would have caught.
+**Action:** When avoiding string allocations via independent slice parsing, explicitly handle empty slices (`if slice.is_empty() { 0 } else { slice.parse()? }`) and strictly propagate parse errors instead of defaulting to zero.
