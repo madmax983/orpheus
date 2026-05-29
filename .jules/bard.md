@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-05-29 - [Missing Pedal Graph API Documentation (Re-exported Types)]
+**Confusion:** A code review failed because a doctest referenced a type (`PedalNodeKind`) that was assumed to be exported from `orpheus-lang`'s root, but it was actually only internally defined or missing from the `pub use` list in `lib.rs`, leading to `E0432` and `E0308` compilation errors during `cargo test --doc`.
+**Clarification:** Added `PedalNodeKind` to the `pub use pedal::...` exports in `crates/orpheus-lang/src/lib.rs` and updated doctest imports to ensure they can cleanly reference the type from the crate root or explicitly use `orpheus_lang::PedalNodeKind`, ensuring all examples actually compile.

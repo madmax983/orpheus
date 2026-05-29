@@ -260,6 +260,18 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Creates a new built-in function instance.
+    ///
+    /// This initializes a function with a specific `BuiltinKind` (e.g., `Fast`, `Rev`)
+    /// and an empty list of bound arguments, ready for evaluation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    ///
+    /// let fast_fn = BuiltinFn::new(BuiltinKind::Fast);
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +281,19 @@ impl BuiltinFn {
         }
     }
 
+    /// Attaches a site-specific salt for deterministic randomness.
+    ///
+    /// The salt is used to seed PRNGs for functions that exhibit chaotic or
+    /// random behavior (like `sometimes` or `chaos`), ensuring that their
+    /// effects are consistent when re-evaluated at the same position in the code.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    ///
+    /// let chaos_fn = BuiltinFn::new(BuiltinKind::Sometimes).with_site_salt(42);
+    /// ```
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

@@ -53,13 +53,21 @@ impl Display for SignalKind {
 /// The node categories used by the validated pedal plan.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PedalNodeKind {
+    /// An external input signal coming into the DSP graph.
     Input,
+    /// A reference to a previously computed node in the graph.
     Reference,
+    /// A constant control value.
     Constant,
+    /// A binary arithmetic or DSP operation (e.g. addition, multiplication).
     Binary,
+    /// A discrete DSP processing stage (e.g. filter, delay, reverb).
     Stage,
+    /// A node that mixes multiple signals together.
     Mix,
+    /// A structural node representing a feedback loop within the graph.
     Feedback,
+    /// The final output node of the DSP graph.
     Output,
 }
 
@@ -115,6 +123,18 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Constructs a new `ValidatedPedalNode`.
+    ///
+    /// This is used internally during the lowering phase to create verified
+    /// signal processing nodes with attached structural and semantic summaries.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Control, PedalNodeKind::Constant, "Constant(1.0)");
+    /// ```
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +150,19 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Accesses the underlying structural kind of the node.
+    ///
+    /// Exposes whether the node represents an input, constant, parameter, or
+    /// DSP transformation operation within the graph.
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Provides a human-readable summary of the node's function.
+    ///
+    /// Useful for generating UI tooltips or rendering textual graph explanations
+    /// (e.g., via the `:explain` command in the REPL).
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +177,19 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Binds a named variable to a specific validated node.
+    ///
+    /// Used when flattening the AST `let` bindings into a sequence of named
+    /// intermediate signal computations within a DSP plan.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Control, PedalNodeKind::Constant, "Constant(1.0)");
+    /// let binding = ValidatedPedalBinding::new("sig1", node);
+    /// ```
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +198,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// Retrieves the local variable name used for this binding.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Retrieves the structural processing node attached to this binding.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node
