@@ -15,3 +15,10 @@ fn test_havoc_rem_euclid_zero_section() {
     let env = eval_module(source, ReplMode::Loose);
     assert!(env.is_err());
 }
+
+#[test]
+fn test_havoc_when_zero() {
+    let source = "a = when(0.2, 0.1, rev, bd)\nnotes = a";
+    let env = eval_module(source, ReplMode::Loose);
+    assert!(env.is_err());
+}

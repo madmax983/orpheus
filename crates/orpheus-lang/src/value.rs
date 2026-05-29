@@ -3530,9 +3530,12 @@ where
                 semitones,
                 tuning,
                 inner,
-            } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_rate(semitones_to_tuned_rate(*semitones, tuning));
-            }),
+            } => {
+                let rate = semitones_to_tuned_rate(*semitones, tuning)?;
+                apply_value_mutation(inner, span, |value| {
+                    *value = value.adjust_rate(rate);
+                })
+            }
             Self::TunedPitchPattern {
                 control,
                 tuning,
@@ -4404,16 +4407,21 @@ fn semitones_to_rate_multiplier(semitones: f64) -> f64 {
     clippy::cast_precision_loss,
     clippy::cast_sign_loss
 )]
-fn semitones_to_tuned_rate(semitones: f64, table: &TuningTable) -> f64 {
+fn semitones_to_tuned_rate(semitones: f64, table: &TuningTable) -> Result<f64, EvalError> {
     let ratios = table.ratios.as_ref();
     debug_assert!(!ratios.is_empty(), "tuning tables are non-empty");
     // Scale sizes are far below i32::MAX in practice (tens or low hundreds);
     // the wrap warning is suppressed to keep the single-multiply fast path.
     let n = ratios.len() as i32;
     let step = (semitones.round() as i32).saturating_sub(table.ref_semitone);
-    let idx = step.rem_euclid(n) as usize;
-    let octaves = step.div_euclid(n);
-    ratios[idx] * table.period.powi(octaves)
+    let idx = usize::try_from(step.checked_rem_euclid(n).ok_or_else(|| {
+        EvalError::new("`tuning` table has empty ratios resulting in zero division")
+    })?)
+    .map_err(|_| EvalError::new("`tuning` index exceeded range"))?;
+    let octaves = step.checked_div_euclid(n).ok_or_else(|| {
+        EvalError::new("`tuning` table has empty ratios resulting in zero division")
+    })?;
+    Ok(ratios[idx] * table.period.powi(octaves))
 }
 
 fn apply_tuned_pitch_pattern<T>(
@@ -4441,8 +4449,8 @@ where
             let mut new_value = value.clone();
             for control_event in &control_events {
                 if spans_overlap(&control_event.part, part) {
-                    new_value =
-                        new_value.adjust_rate(semitones_to_tuned_rate(control_event.value, tuning));
+                    new_value = new_value
+                        .adjust_rate(semitones_to_tuned_rate(control_event.value, tuning)?);
                 }
             }
             Ok(Some(new_value))
@@ -4480,10 +4488,13 @@ fn map_degree_to_semitones(degree: i32, collection: &PitchClassSetValue) -> Resu
             "`degrees` requires a non-empty pitch class set",
         ));
     }
-    let octave = degree.div_euclid(scale_len);
-    let index = usize::try_from(degree.rem_euclid(scale_len)).map_err(|_| {
-        EvalError::new("`degrees` scale index exceeded the supported evaluator range")
+    let octave = degree.checked_div_euclid(scale_len).ok_or_else(|| {
+        EvalError::new("`degrees` requires a non-empty pitch class set resulting in zero division")
     })?;
+    let index = usize::try_from(degree.checked_rem_euclid(scale_len).ok_or_else(|| {
+        EvalError::new("`degrees` requires a non-empty pitch class set resulting in zero division")
+    })?)
+    .map_err(|_| EvalError::new("`degrees` scale index exceeded the supported evaluator range"))?;
     let semitones = octave
         .checked_mul(12)
         .and_then(|value| value.checked_add(intervals[index]))
@@ -4784,7 +4795,7 @@ where
 
     let period = i128::from(period);
     query_transform_cycles(inner, transform, span, |cycle| {
-        cycle.rem_euclid(period) == 0
+        cycle.checked_rem_euclid(period).unwrap_or(0) == 0
     })
 }
 
@@ -4805,7 +4816,7 @@ where
     let period = i128::from(period);
     let offset = i128::from(offset);
     query_transform_cycles(inner, transform, span, |cycle| {
-        cycle.rem_euclid(period) == offset
+        cycle.checked_rem_euclid(period).unwrap_or(0) == offset
     })
 }
 
