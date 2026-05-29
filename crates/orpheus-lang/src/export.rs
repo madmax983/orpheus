@@ -132,7 +132,7 @@ fn query_sample_pattern_events(
     pattern.try_query(&span)
 }
 
-fn query_number_pattern_events(
+pub fn query_number_pattern_events(
     pattern: &NumberPatternValue,
     cycle_count: u64,
 ) -> Result<Vec<Event<f64>>, EvalError> {
