@@ -5885,6 +5885,50 @@ impl Explain for FunctionValue {
     }
 }
 
+impl Explain for PluginPatternValue {
+    fn explain(&self, binding_name: &str) -> String {
+        use comfy_table::{Cell, CellAlignment};
+        use crossterm::style::Stylize;
+        let title = format!(
+            "{} {}",
+            "Plugin Host Plan:".cyan().bold(),
+            binding_name.yellow()
+        );
+
+        let mut table = crate::explain::explain_table(["Property", "Value"]);
+
+        table.add_row(vec![
+            Cell::new("Format").fg(comfy_table::Color::Cyan),
+            Cell::new(format!("{:?}", self.source.descriptor().format()))
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        table.add_row(vec![
+            Cell::new("Identifier").fg(comfy_table::Color::Cyan),
+            Cell::new(self.source.descriptor().identifier())
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        table.add_row(vec![
+            Cell::new("Total Notes").fg(comfy_table::Color::Cyan),
+            Cell::new(self.source.notes().len().to_string())
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        table.add_row(vec![
+            Cell::new("Parameter Lanes").fg(comfy_table::Color::Cyan),
+            Cell::new(self.source.parameter_lanes().len().to_string())
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        format!("{title}\n{table}")
+    }
+}
+
 impl Explain for TuningValue {
     fn explain(&self, binding_name: &str) -> String {
         use comfy_table::{Cell, CellAlignment};

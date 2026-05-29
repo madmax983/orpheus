@@ -755,6 +755,7 @@ impl ReplSession {
             crate::value::Value::NumberPattern(pattern) => Ok(pattern.explain(binding_name)),
             crate::value::Value::Function(func) => Ok(func.explain(binding_name)),
             crate::value::Value::Pedal(pedal) => Ok(pedal.explain(binding_name)),
+            crate::value::Value::PluginPattern(plugin) => Ok(plugin.explain(binding_name)),
             crate::value::Value::Tuning(tuning) => Ok(tuning.explain(binding_name)),
             _ => Err(format!(
                 "binding `{binding_name}` is a {} and cannot be explained",
@@ -3509,4 +3510,16 @@ fn build_help_table() -> comfy_table::Table {
     }
 
     table
+}
+
+#[test]
+fn session_explain_returns_plugin_plan() {
+    let mut session = ReplSession::new();
+    session.eval_line("inst = vst(\"test\")").unwrap();
+
+    let plan = session.eval_line(":explain inst").unwrap();
+
+    assert!(plan.contains("Plugin Host Plan:"));
+    assert!(plan.contains("inst"));
+    assert!(plan.contains("test"));
 }
