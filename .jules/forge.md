@@ -82,3 +82,7 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**[String concat allocation in numeric parsing]
+**Learning:** Constructing intermediate Strings/Vecs by calling `[a, b].concat()` to join slice data purely to parse an integer invokes a slow, unnecessary heap allocation. However, blindly applying `.abs()` when parsing the slice independently (`whole * scale + frac`) can cause bugs if the negative sign was already stripped from the input string. Code reviewers may also hallucinate the state of variables.
+**Action:** Parse the slice parts independently as integers. Verify if the input string is already pre-stripped of the negative sign. If it is, simply compute `whole * scale + frac` without `.abs()`, and explicitly re-apply the negative sign to the final numerator. Prove mathematical correctness with local scripts before submitting.

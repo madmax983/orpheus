@@ -1237,10 +1237,26 @@ pub fn f64_to_rational(value: f64, context: &str) -> Result<Rational, EvalError>
 
     let (numerator, denominator) = if let Some((whole, fractional)) = digits.split_once('.') {
         let scale = checked_pow10(fractional.len())?;
-        let combined = [whole, fractional].concat();
-        let numerator = combined
-            .parse::<i128>()
-            .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?;
+        let whole_val = if whole.is_empty() {
+            0
+        } else {
+            whole
+                .parse::<i128>()
+                .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?
+        };
+
+        let frac_val = if fractional.is_empty() {
+            0
+        } else {
+            fractional
+                .parse::<i128>()
+                .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?
+        };
+
+        let numerator = whole_val
+            .checked_mul(scale)
+            .and_then(|v| v.checked_add(frac_val))
+            .ok_or_else(|| EvalError::new(format!("{context} exceeded the supported range")))?;
         (numerator, scale)
     } else {
         let numerator = digits
@@ -1813,6 +1829,14 @@ right = sometimes(fast(2), cp hh)";
         let r2 = super::f64_to_rational(-0.75, "test").unwrap();
         assert_eq!(r2.numerator(), -3);
         assert_eq!(r2.denominator(), 4);
+
+        let r3 = super::f64_to_rational(-0.5, "test").unwrap();
+        assert_eq!(r3.numerator(), -1);
+        assert_eq!(r3.denominator(), 2);
+
+        let r4 = super::f64_to_rational(-1.5, "test").unwrap();
+        assert_eq!(r4.numerator(), -3);
+        assert_eq!(r4.denominator(), 2);
     }
 
     #[test]
