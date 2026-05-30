@@ -260,6 +260,10 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Constructs a new, fully unapplied built-in function instance.
+    ///
+    /// This represents the pure identity of a standard library transformation
+    /// before any arguments are bound.
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +273,11 @@ impl BuiltinFn {
         }
     }
 
+    /// Attaches an optional site-specific salt to the built-in function.
+    ///
+    /// The salt is injected by the macro expansion layer to provide unique, deterministic
+    /// pseudo-random behavior for stochastic built-ins like `sometimes` or `rand`, ensuring
+    /// multiple uses in the same expression don't perfectly synchronize.
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

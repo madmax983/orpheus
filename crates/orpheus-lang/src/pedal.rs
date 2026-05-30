@@ -115,6 +115,10 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Constructs a new validated pedal node for the execution plan.
+    ///
+    /// The node encapsulates its signal classification (audio or control) and the
+    /// specific processing stage it represents within the evaluated graph.
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +134,18 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// The fundamental processing action represented by this node.
+    ///
+    /// Differentiates between actual DSP stages, inputs, and final outputs.
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// A human-readable text summary of the node and its immediate arguments.
+    ///
+    /// Used by the REPL explanation engine to present a clean visual tree
+    /// of the planned audio graph.
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +160,10 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Constructs a validated mapping between a variable name and a node.
+    ///
+    /// During evaluation, every `foo = ...` assignment inside a `graph {}` block
+    /// becomes a bound pedal node that can be referenced later.
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +172,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// The local variable name binding this specific pedal node in the graph.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// The fully evaluated node implementation assigned to this binding.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node

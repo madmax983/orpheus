@@ -26,11 +26,20 @@ use crate::types::{Type, TypeVarId};
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
+    /// The collection of generic type variables (`TypeVarId`) bound in this scheme.
+    ///
+    /// For example, `(a) -> a` binds the variable `a`. When the function is applied,
+    /// these abstract variables are replaced with specific, concrete types.
     pub vars: Vec<TypeVarId>,
+    /// The fundamental type signature associated with this scheme.
     pub ty: Type,
 }
 
 impl TypeScheme {
+    /// Constructs a type scheme containing no generic variables.
+    ///
+    /// Monomorphic functions cannot be generalized. They enforce strict type
+    /// constraints over exactly one expected type.
     #[must_use]
     pub const fn monomorphic(ty: Type) -> Self {
         Self {
@@ -195,6 +204,10 @@ impl TypeEnv {
         self.entries.get(name)
     }
 
+    /// Iterates over all type schemes currently active in this environment.
+    ///
+    /// The language server and REPL diagnostic systems use this sequence to
+    /// autocomplete symbols or describe current bounds.
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }

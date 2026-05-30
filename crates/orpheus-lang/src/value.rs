@@ -37,36 +37,81 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Applies a transformation to every Nth cycle of a pattern.
+    ///
+    /// Useful for creating musical variations that resolve over a larger phrasing structure.
     Every,
+    /// Conditionally applies a transformation on specific cycles based on an offset.
+    ///
+    /// Creates complex syncopations by shifting when a variation occurs within a larger phrase.
     When,
+    /// Pseudo-randomly applies a transformation to cycles.
+    ///
+    /// Introduces controlled chaos and organic variation without breaking the core structure.
     Sometimes,
+    /// Applies a transformation only to a specific slice of time within a cycle.
+    ///
+    /// Allows targeting specific beats (like the snare on beat 2) for localized effects.
     Within,
+    /// Filters a pattern using a boolean gate pattern, dropping events where the gate is false/rest.
+    ///
+    /// Essential for rhythmic subtraction and carving grooves out of dense sequences.
     Mask,
+    /// Staggers overlapping notes in a chord slightly in time to simulate a guitar strum.
     Strum,
+    /// Repeats an event multiple times within its original time span.
+    ///
+    /// Used to create drum rolls, ratchets, and granular stutters.
     Roll,
+    /// Arpeggiates overlapping notes in a chord over the specified number of steps.
     Arp,
+    /// Inverts a chord by transposing its lowest notes up an octave.
     Invert,
+    /// Drops the lowest notes of a chord down an octave to create a wider voicing.
     Drop,
+    /// Generates a chord pattern from a root note pattern and a set of intervals.
     Chord,
+    /// Generates a Euclidean rhythm pattern (distributing N pulses evenly over M steps).
     Euclid,
+    /// Generates a pattern using an L-system (Lindenmayer system) string rewriting grammar.
     Lsystem,
+    /// Generates a pattern using a 1D cellular automaton (Wolfram rule).
     Wolfram,
+    /// Defines a collection of pitch classes (a scale or chord) for use with `degrees`.
     PitchClassSet,
+    /// Maps scale degrees (e.g., 0, 1, 2) to actual semitone pitches using a `PitchClassSet`.
+    ///
+    /// Allows composing in a specific key or mode without hardcoding semitone values.
     Degrees,
+    /// Speeds up a pattern by an integer factor.
     Fast,
+    /// Slows down a pattern by an integer factor.
     Slow,
+    /// Shifts a pattern forward or backward in time by a rational amount.
     Shift,
+    /// Reverses a pattern in time.
     Rev,
+    /// Adjusts the volume/amplitude of an audio pattern.
     Gain,
+    /// Controls the wet/dry mix of a delay effect.
     Delay,
+    /// Controls the time interval of a delay effect.
     DelayTime,
+    /// Controls the feedback amount of a delay effect.
     DelayFeedback,
+    /// Controls the cutoff frequency of a High-Pass Filter (HPF).
     Hpf,
+    /// Controls the cutoff frequency of a Low-Pass Filter (LPF).
     Lpf,
+    /// Controls the wet/dry mix of a reverb effect.
     Reverb,
+    /// Controls the simulated room size of a reverb effect.
     ReverbRoom,
+    /// Controls the high-frequency damping of a reverb effect.
     ReverbDamp,
+    /// An alias for `Lpf` cutoff frequency.
     Cutoff,
+    /// Controls the wet/dry mix of a chorus effect.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,
