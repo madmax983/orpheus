@@ -348,7 +348,8 @@ pub enum SampleBankError {
 }
 
 /// A non-fatal issue discovered during background sample-library scanning.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Error)]
+#[error("{path}: {message}")]
 pub struct SampleLibraryScanError {
     path: Box<str>,
     message: Box<str>,
