@@ -39,8 +39,11 @@ struct ImportSpec {
 /// ```
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
+    /// The map of type identifiers to their statically inferred types.
     pub type_bindings: BTreeMap<String, Type>,
+    /// The runtime values associated with each bound identifier.
     pub value_bindings: BTreeMap<String, Value>,
+    /// The name of the final binding in the file, representing the implicit entry point.
     pub last_binding_name: Option<String>,
 }
 

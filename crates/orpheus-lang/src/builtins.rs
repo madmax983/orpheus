@@ -260,6 +260,18 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Instantiates a new built-in function of the given primitive kind.
+    ///
+    /// This establishes a function that expects arguments to be applied to it
+    /// sequentially. Internally it maps to an exact primitive evaluation operation.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    ///
+    /// let func = BuiltinFn::new(BuiltinKind::Fast);
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +281,18 @@ impl BuiltinFn {
         }
     }
 
+    /// Attaches a site salt to the function for random number generation.
+    ///
+    /// This ensures that functions like `sometimes` or `rand` produce deterministic
+    /// but varied outputs depending on exactly where they appear in the source code.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    ///
+    /// let func = BuiltinFn::new(BuiltinKind::Sometimes).with_site_salt(42);
+    /// ```
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

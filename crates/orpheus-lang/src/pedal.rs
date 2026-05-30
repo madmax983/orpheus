@@ -115,6 +115,15 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Creates a new validated node in the pedal plan.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use orpheus_lang::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "Audio Input");
+    /// ```
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +139,17 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Exposes the inner kind of this pedal node.
+    ///
+    /// Used for structural inspection during compilation.
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Provides a human-readable summary of this node.
+    ///
+    /// Useful for logging, debugging, or visualizing the graph.
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +164,16 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Creates a new explicit binding associating a variable name with a node.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use orpheus_lang::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "in");
+    /// let binding = ValidatedPedalBinding::new("my_input", node);
+    /// ```
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +182,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// Provides access to the immutable identifier that maps to the underlying node.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Exposes the resolved node graph that this identifier points to, allowing downward traversal.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node
