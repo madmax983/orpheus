@@ -1032,6 +1032,16 @@ impl ReplSession {
     fn import_command(&mut self, args: &str) -> Result<String, String> {
         let tokens: Vec<_> = args.split_whitespace().collect();
         match tokens.as_slice() {
+            ["csv", binding_name, path @ ..] if !path.is_empty() => {
+                let path_str = path.join(" ");
+                let pattern = crate::csv_import::import_sample_pattern_from_csv(&path_str)
+                    .map_err(|e| format!("failed to import from CSV: {e}"))?;
+                self.bindings.insert(
+                    (*binding_name).to_owned(),
+                    crate::value::Value::SamplePattern(pattern),
+                );
+                Ok(format!("imported `{binding_name}` from `{path_str}`"))
+            }
             ["stems", directory @ ..] if !directory.is_empty() => {
                 self.import_stems(&directory.join(" "))
             }
@@ -1848,7 +1858,7 @@ const fn samples_usage() -> &'static str {
 }
 
 const fn import_usage() -> &'static str {
-    "usage: :import stems <directory>"
+    "usage: :import stems <directory> | :import csv <binding_name> <path>"
 }
 
 const fn track_usage() -> &'static str {

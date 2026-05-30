@@ -1191,7 +1191,7 @@ impl SampleEvent {
     }
 }
 
-trait PatternValueTransform: Sized {
+pub trait PatternValueTransform: Sized {
     fn adjust_gain(&self, factor: f64) -> Self;
     fn adjust_delay_mix(&self, mix: f64) -> Self;
     fn adjust_delay_time(&self, time: f64) -> Self;
