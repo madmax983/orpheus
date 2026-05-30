@@ -98,7 +98,20 @@ where
 
         match session.eval_line(trimmed) {
             Ok(message) => writeln!(stdout, "{}", format!("\u{2713} {message}").green())?,
-            Err(message) => writeln!(stderr, "{}", format!("\u{2717} {message}").red().bold())?,
+            Err(message) => {
+                let formatted = if message.starts_with("parse error at line") {
+                    format!(
+                        "Syntax Error: {}",
+                        message.replace("parse error at line ", "Line ")
+                    )
+                } else if message.starts_with("type mismatch:") {
+                    format!("Type Error: {}", message.replace("type mismatch: ", ""))
+                } else {
+                    format!("Error: {message}")
+                };
+
+                writeln!(stderr, "{}", format!("\u{2717} {formatted}").red().bold())?;
+            }
         }
     }
 
@@ -137,6 +150,6 @@ mod tests {
         run_with_handles(reader, &mut stdout, &mut stderr, &mut session).unwrap();
 
         let stderr_str = String::from_utf8(stderr).unwrap();
-        assert!(stderr_str.contains("\u{2717} parse error"));
+        assert!(stderr_str.contains("\u{2717} Syntax Error:"));
     }
 }
