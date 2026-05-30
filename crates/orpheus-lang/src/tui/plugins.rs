@@ -10,7 +10,7 @@ use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Wrap};
 use ratatui_hypertile::{EventOutcome, HypertileEvent, KeyCode, Modifiers};
 use ratatui_hypertile_extras::HypertilePlugin;
 
-use super::state::SharedState;
+use super::state::{SharedState, TranscriptEntry};
 use super::style::{
     binding_legend_item, binding_list_item, routing_status_line, should_show_binding_legend,
     transport_status_line,
@@ -31,23 +31,31 @@ impl HypertilePlugin for ReplPlugin {
         let mut lines = state
             .transcript
             .iter()
-            .flat_map(|entry| {
-                let style = if entry.starts_with("> ") {
-                    Style::default().fg(Color::DarkGray)
-                } else if entry.starts_with("\u{2717} ") {
-                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
-                } else if entry.starts_with("\u{26a0}\u{fe0f} ") {
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD)
-                } else if entry.starts_with("\u{2713} ") {
-                    Style::default().fg(Color::Green)
-                } else {
-                    Style::default()
+            .flat_map(|entry: &TranscriptEntry| {
+                let (prefix, text, style) = match entry {
+                    TranscriptEntry::Input(t) => {
+                        ("> ", t.as_str(), Style::default().fg(Color::DarkGray))
+                    }
+                    TranscriptEntry::Error(t) => (
+                        "\u{2717} ",
+                        t.as_str(),
+                        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                    ),
+                    TranscriptEntry::Warning(t) => (
+                        "\u{26a0}\u{fe0f} ",
+                        t.as_str(),
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    TranscriptEntry::Success(t) => {
+                        ("\u{2713} ", t.as_str(), Style::default().fg(Color::Green))
+                    }
+                    TranscriptEntry::Plain(t) => ("", t.as_str(), Style::default()),
                 };
-                entry
-                    .split('\n')
-                    .map(move |line| Line::styled(line.to_owned(), style))
+                text.split('\n')
+                    .map(move |line| Line::styled(format!("{prefix}{line}"), style))
+                    .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();
 
