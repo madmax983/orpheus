@@ -2980,17 +2980,10 @@ impl<T> PatternRuntime<T> {
     #[allow(clippy::too_many_lines, clippy::match_same_arms)]
     fn with_tuning(self, table: &TuningTable) -> Self {
         use PatternRuntime::{
-            Arp, Chaos, Chorus, ChorusDepth, ChorusDepthPattern, ChorusPattern, ChorusRate,
-            ChorusRatePattern, Compressor, CompressorPattern, CompressorRatio,
-            CompressorRatioPattern, CompressorThreshold, CompressorThresholdPattern, Cycle,
-            Degrees, Delay, DelayFeedback, DelayFeedbackPattern, DelayPattern, DelayTime,
-            DelayTimePattern, Drive, DrivePattern, Drop, Every, ExplicitCycle, Fast, Gain,
-            GainPattern, Hpf, HpfPattern, Invert, Lpf, LpfPattern, Mask, Onset, OnsetPattern, Pan,
-            PanPattern, Pedal, Pitch, PitchPattern, PulseWidth, PulseWidthPattern, Rand, Rate,
-            RatePattern, Res, ResPattern, Rev, Reverb, ReverbDamp, ReverbDampPattern,
-            ReverbPattern, ReverbRoom, ReverbRoomPattern, Roll, Shift, Slice, SliceIdxPattern,
-            SlicePattern, Slow, Sometimes, Stack, Stream, Strum, Transpose, TransposePattern,
-            TunedPitch, TunedPitchPattern, When, Within,
+            Arp, Chaos, Cycle, Degrees, Drop, Every, ExplicitCycle, Fast, Gain, GainPattern,
+            Invert, Mask, Pitch, PitchPattern, Rand, Rev, Roll, Shift, Slow, Sometimes, Stack,
+            Stream, Strum, Transpose, TransposePattern, TunedPitch, TunedPitchPattern, When,
+            Within,
         };
 
         macro_rules! recurse {
@@ -3145,6 +3138,24 @@ impl<T> PatternRuntime<T> {
                 control,
                 inner: recurse!(inner),
             },
+            _ => self.with_tuning_audio_effect(table),
+        }
+    }
+
+    fn with_tuning_audio_effect(self, table: &TuningTable) -> Self {
+        use PatternRuntime::{
+            Delay, DelayFeedback, DelayFeedbackPattern, DelayPattern, DelayTime, DelayTimePattern,
+            Drive, DrivePattern, Hpf, HpfPattern, Lpf, LpfPattern, Res, ResPattern, Reverb,
+            ReverbDamp, ReverbDampPattern, ReverbPattern, ReverbRoom, ReverbRoomPattern,
+        };
+
+        macro_rules! recurse {
+            ($inner:expr) => {
+                Box::new($inner.with_tuning(table))
+            };
+        }
+
+        match self {
             Delay { mix, inner } => Delay {
                 mix,
                 inner: recurse!(inner),
@@ -3225,6 +3236,27 @@ impl<T> PatternRuntime<T> {
                 control,
                 inner: recurse!(inner),
             },
+            _ => self.with_tuning_modulation_effect(table),
+        }
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn with_tuning_modulation_effect(self, table: &TuningTable) -> Self {
+        use PatternRuntime::{
+            Chorus, ChorusDepth, ChorusDepthPattern, ChorusPattern, ChorusRate, ChorusRatePattern,
+            Compressor, CompressorPattern, CompressorRatio, CompressorRatioPattern,
+            CompressorThreshold, CompressorThresholdPattern, Onset, OnsetPattern, Pan, PanPattern,
+            Pedal, PulseWidth, PulseWidthPattern, Rate, RatePattern, Slice, SliceIdxPattern,
+            SlicePattern,
+        };
+
+        macro_rules! recurse {
+            ($inner:expr) => {
+                Box::new($inner.with_tuning(table))
+            };
+        }
+
+        match self {
             Chorus { mix, inner } => Chorus {
                 mix,
                 inner: recurse!(inner),
@@ -3335,6 +3367,7 @@ impl<T> PatternRuntime<T> {
                 pedal_program,
                 inner: recurse!(inner),
             },
+            _ => unreachable!("handled in previous with_tuning stages"),
         }
     }
 

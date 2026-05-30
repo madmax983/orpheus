@@ -82,3 +82,11 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**[Clippy Enum Glob Use]**
+**Learning:** The project strictly enforces `-D clippy::enum-glob-use` (via `-D warnings`). Using wildcard imports for enum variants (e.g., `use PatternRuntime::*;`) inside functions to shorten match statements will fail the build.
+**Action:** Always explicitly import required enum variants (e.g., `use PatternRuntime::{Fast, Slow};`) instead of using a glob.
+
+**[Refactoring and Unused Imports]**
+**Learning:** When using text-replacement scripts (like Python) to extract portions of large Rust functions, leaving previously used imports in the original scope will trigger `unused_imports` compiler errors under strict `-D warnings` checks.
+**Action:** Ensure refactoring scripts also clean up or regenerate the `use` declarations in the original function block to only include the variants still in use.
