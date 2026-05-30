@@ -37,36 +37,67 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Applies a transformation function conditionally on specific cycle intervals (e.g. every 3rd cycle).
     Every,
+    /// Triggers an effect or transformation conditionally when an underlying boolean condition pattern is true.
     When,
+    /// Applies a transformation sporadically or randomly over time, injecting unpredictable variations.
     Sometimes,
+    /// Constrains a transformation to only occur within a specific fraction of a cycle.
     Within,
+    /// Masks a target pattern with a boolean control pattern, effectively silencing events where the mask is false.
     Mask,
+    /// Strums a chord by offsetting the start times of the individual notes, creating a staggered arpeggio effect.
     Strum,
+    /// Creates a roll or rapid repetition of a single sample, simulating drum rolls or rapid rhythmic subdivisions.
     Roll,
+    /// Arpeggiates a chord pattern into a sequence of individual notes based on a given directional sequence.
     Arp,
+    /// Inverts a melodic line or sequence of pitch classes, flipping them around a tonal center.
     Invert,
+    /// Discards notes or events, creating rests instead. Useful for rhythmic thinning.
     Drop,
+    /// Spawns a chord built upon a root note, creating a cluster of simultaneous pitches based on interval rules.
     Chord,
+    /// Distributes a given number of hits as evenly as possible across a set number of steps, yielding Euclidean rhythms.
     Euclid,
+    /// Generates patterns using an L-system grammar, evaluating axiom and rewrite rules to emit sequences.
     Lsystem,
+    /// Generates patterns driven by a 1-dimensional Wolfram cellular automaton rule.
     Wolfram,
+    /// Evaluates or extracts an unordered set of pitch classes without octave information.
     PitchClassSet,
+    /// Computes scale degrees relative to a given pitch class set, returning precise frequencies or pitch values.
     Degrees,
+    /// Accelerates a pattern, compressing its events into a smaller timeframe.
     Fast,
+    /// Decelerates a pattern, stretching its events out over a longer timeframe.
     Slow,
+    /// Shifts a pattern's events forward or backward in time, displacing them by a specified duration.
     Shift,
+    /// Reverses the temporal order of events within each cycle, playing the pattern backwards.
     Rev,
+    /// Adjusts the volume or amplitude multiplier of an audio signal.
     Gain,
+    /// Applies a simple delay line effect to an audio signal.
     Delay,
+    /// Controls the time interval between echoes in a delay line.
     DelayTime,
+    /// Controls the amount of signal fed back into the delay line, affecting the number of repeating echoes.
     DelayFeedback,
+    /// Applies a high-pass filter, cutting low frequencies below a given cutoff point.
     Hpf,
+    /// Applies a low-pass filter, cutting high frequencies above a given cutoff point.
     Lpf,
+    /// Applies a reverberation effect to an audio signal to simulate an acoustic space.
     Reverb,
+    /// Controls the apparent physical size of the simulated space in a reverberation effect.
     ReverbRoom,
+    /// Controls the high-frequency absorption or dampening factor in a reverberation effect.
     ReverbDamp,
+    /// Specifies the central or corner frequency for standard filters like `Hpf` or `Lpf`.
     Cutoff,
+    /// Applies a chorus modulation effect to thicken an audio signal.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

@@ -1,3 +1,9 @@
+//! Tests for language-level hosting, routing, and parameter manipulation of VST/AU plugins.
+//!
+//! These tests ensure that users can instantiate external plugins from the Orpheus
+//! code layer (e.g. `vst("Serum")`), route MIDI notes into them, and automate their
+//! internal parameters, successfully pushing the result into the DSP engine's live mixer.
+
 use orpheus_dsp::PluginFormat;
 use orpheus_lang::{ReplMode, ReplSession, eval_module};
 

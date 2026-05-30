@@ -260,6 +260,10 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Creates a new built-in function instance.
+    ///
+    /// Initializes an unbound function reference for the given primitive kind.
+    /// Arguments will be accumulated and evaluated dynamically.
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +273,10 @@ impl BuiltinFn {
         }
     }
 
+    /// Associates a site salt with this built-in function to provide consistent randomness.
+    ///
+    /// The site salt allows functions like `rand` or `sometimes` to act deterministically
+    /// within a given cycle when called from the exact same syntactic location in the source.
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

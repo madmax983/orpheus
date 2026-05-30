@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2026-05-30 - [Missing Core Public APIs Documentation]
+**Confusion:** Missing documentation across `value.rs`, `builtins.rs`, `pedal.rs`, `loader.rs` and `types/env.rs` was confusing users on how to use `BuiltinFn::new`, `TypeScheme::monomorphic`, `ValidatedPedalNode::new` and caused compiler warnings.
+**Clarification:** Added narrative context, avoided getter noise, and included explicit `## Examples` doctests for all public structs and functions, successfully meeting the strict "Bard" persona criteria.

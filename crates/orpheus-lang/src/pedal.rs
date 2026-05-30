@@ -115,6 +115,10 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Constructs a new validated node representing a stage in the audio or control graph.
+    ///
+    /// The node captures the structural kind (e.g. `Stage` or `Output`), the type of signal
+    /// it emits (`Audio` vs `Control`), and a textual summary detailing the operation.
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +134,13 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Identifies the high-level operational kind of the node, such as an active processing stage or a pass-through output.
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Provides a pre-rendered string summarizing the node's function and arguments (e.g. `chorus(model=soft)`).
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +155,7 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Constructs a new validated binding, associating a local name with a compiled pedal node.
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +164,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// Retrieves the local variable name associated with this binding in the graph plan.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Retrieves a reference to the underlying validated node structure.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node
