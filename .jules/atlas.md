@@ -56,3 +56,6 @@
 **[Enforce Private Explain Module]
 **Tangle:** The `explain` module in `orpheus-lang/src/lib.rs` and its internal `Explain` trait and `explain_table` function were declared as `pub`, leaking internal REPL table rendering details to the public API.
 **Blueprint:** Changed the visibility of the `Explain` trait and `explain_table` function to `pub(crate)` in `crates/orpheus-lang/src/explain.rs`. Removed the `pub use explain::Explain;` re-export from `crates/orpheus-lang/src/lib.rs` and changed the module declaration to `pub(crate) mod explain;`. This strictly enforces internal encapsulation.
+**[Enforce Public Structure inside Private Module]
+**Tangle:** The `style` module in `orpheus-lang/src/tui/mod.rs` was declared as `pub(crate) mod`, which triggers `clippy::redundant_pub_crate` because the parent module `tui` is private. It had an `#[allow(clippy::redundant_pub_crate)]` on it.
+**Blueprint:** Modified `style` module to use `pub` visibility instead of `pub(crate)`, and removed the allow attribute. This satisfies Clippy while correctly maintaining the private boundary since the `tui` module itself is private, making the items effectively crate-visible.
