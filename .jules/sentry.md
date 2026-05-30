@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2026-05-30 - Fix Test Coverage in plugin_host.rs
+**Learning:** Found significant coverage gaps in `crates/orpheus-dsp/src/plugin_host.rs` for `rational_to_frame_offset` and `note_duration_frames` functions, specifically missing tests for negative rational numerator, integer overflow, zero note duration, and duration overflow. Adding these increased confidence significantly. Fixed `test_rational_to_frame_offset_overflow` passing `i128::MAX` instead of `i64::MAX`.
+**Action:** Identify missing tests for boundary values in numeric parsing/translation logic inside core math handling systems.

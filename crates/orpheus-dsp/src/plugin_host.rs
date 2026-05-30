@@ -502,3 +502,58 @@ fn note_duration_frames(event: &Event<PluginNote>, frames_per_cycle: u64) -> u32
 fn midi_note_frequency(note_number: u8) -> f32 {
     440.0 * ((f32::from(note_number) - 69.0) / 12.0).exp2()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_note_duration_frames() {
+        let event = Event {
+            whole: None,
+            part: orpheus_pattern::TimeSpan::new(Rational::zero(), Rational::new(1, 2).unwrap())
+                .unwrap(),
+            value: PluginNote::new(60, 1.0).unwrap(),
+        };
+        let duration = note_duration_frames(&event, 48000);
+        assert_eq!(duration, 24000);
+    }
+
+    #[test]
+    fn test_rational_to_frame_offset_negative_numerator() {
+        let value = Rational::new(-1, 4).unwrap();
+        assert_eq!(rational_to_frame_offset(&value, 48000), None);
+    }
+
+    #[test]
+    fn test_rational_to_frame_offset_overflow() {
+        let value = Rational::new(i64::MAX, 1).unwrap();
+        assert_eq!(rational_to_frame_offset(&value, 48000), None);
+    }
+
+    #[test]
+    fn test_note_duration_frames_zero_duration() {
+        let event = Event {
+            whole: None,
+            part: orpheus_pattern::TimeSpan::new(Rational::zero(), Rational::zero()).unwrap(),
+            value: PluginNote::new(60, 1.0).unwrap(),
+        };
+        let duration = note_duration_frames(&event, 48000);
+        assert_eq!(duration, 1);
+    }
+
+    #[test]
+    fn test_note_duration_frames_overflow() {
+        let event = Event {
+            whole: None,
+            part: orpheus_pattern::TimeSpan::new(
+                Rational::zero(),
+                Rational::new(i64::MAX, 1).unwrap(),
+            )
+            .unwrap(),
+            value: PluginNote::new(60, 1.0).unwrap(),
+        };
+        let duration = note_duration_frames(&event, 1);
+        assert_eq!(duration, u32::MAX);
+    }
+}
