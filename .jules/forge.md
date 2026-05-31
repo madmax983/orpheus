@@ -82,3 +82,7 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**[Title] Splitting Enum matches**
+**Learning:** Breaking a large exhaustive `match` statement into multiple helper methods with catch-all arms (`_ =>`) destroys Rust's compile-time exhaustiveness checking. This turns compile-time safety into runtime panics if new variants are added.
+**Action:** Never split an exhaustive enum `match` across multiple methods using catch-all arms. If a `match` must be long to be exhaustive, leave it intact and apply `#[allow(clippy::too_many_lines)]`.

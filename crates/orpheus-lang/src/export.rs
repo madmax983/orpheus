@@ -121,6 +121,96 @@ pub fn render_sample_pattern_to_file(
     render_sample_pattern_to_file_with_bank(pattern, path, cycle_count, &sample_bank)
 }
 
+fn write_sample_event_md(
+    file: &mut std::fs::File,
+    event: &Event<crate::value::SampleEvent>,
+) -> Result<(), EvalError> {
+    let start_float = f64::from(event.part.start());
+    let end_float = f64::from(event.part.end());
+    let hpf = event
+        .value
+        .hpf_cutoff_hz()
+        .map_or_else(|| "-".to_owned(), |v| format!("{v:.2}"));
+    let lpf = event
+        .value
+        .lpf_cutoff_hz()
+        .map_or_else(|| "-".to_owned(), |v| format!("{v:.2}"));
+    writeln!(
+        file,
+        "| {:.3} | {:.3} | {} | {:.2} | {:.2} | {:.2} | {} | {} |",
+        start_float,
+        end_float,
+        event.value.sample(),
+        event.value.gain(),
+        event.value.pan(),
+        event.value.rate(),
+        hpf,
+        lpf
+    )?;
+    Ok(())
+}
+
+fn write_sample_event_csv(
+    file: &mut std::fs::File,
+    event: &Event<crate::value::SampleEvent>,
+) -> Result<(), EvalError> {
+    let start_float = f64::from(event.part.start());
+    let end_float = f64::from(event.part.end());
+    let hpf = event
+        .value
+        .hpf_cutoff_hz()
+        .map_or_else(String::new, |v| format!("{v:.6}"));
+    let lpf = event
+        .value
+        .lpf_cutoff_hz()
+        .map_or_else(String::new, |v| format!("{v:.6}"));
+    writeln!(
+        file,
+        "{},{},{:.6},{},{},{:.6},{},{:.6},{:.6},{:.6},{},{}",
+        event.part.start().numerator(),
+        event.part.start().denominator(),
+        start_float,
+        event.part.end().numerator(),
+        event.part.end().denominator(),
+        end_float,
+        event.value.sample(),
+        event.value.gain(),
+        event.value.pan(),
+        event.value.rate(),
+        hpf,
+        lpf
+    )?;
+    Ok(())
+}
+
+fn write_number_event_md(file: &mut std::fs::File, event: &Event<f64>) -> Result<(), EvalError> {
+    let start_float = f64::from(event.part.start());
+    let end_float = f64::from(event.part.end());
+    writeln!(
+        file,
+        "| {:.3} | {:.3} | {:.3} |",
+        start_float, end_float, event.value
+    )?;
+    Ok(())
+}
+
+fn write_number_event_csv(file: &mut std::fs::File, event: &Event<f64>) -> Result<(), EvalError> {
+    let start_float = f64::from(event.part.start());
+    let end_float = f64::from(event.part.end());
+    writeln!(
+        file,
+        "{},{},{:.6},{},{},{:.6},{:.6}",
+        event.part.start().numerator(),
+        event.part.start().denominator(),
+        start_float,
+        event.part.end().numerator(),
+        event.part.end().denominator(),
+        end_float,
+        event.value
+    )?;
+    Ok(())
+}
+
 fn query_sample_pattern_events(
     pattern: &SamplePatternValue,
     cycle_count: u64,
@@ -228,31 +318,7 @@ pub fn export_sample_pattern_to_md(
         &events,
         path,
         "| start | end | sample | gain | pan | rate | hpf | lpf |",
-        |file, event| {
-            let start_float = f64::from(event.part.start());
-            let end_float = f64::from(event.part.end());
-            let hpf = event
-                .value
-                .hpf_cutoff_hz()
-                .map_or_else(|| "-".to_owned(), |v| format!("{v:.2}"));
-            let lpf = event
-                .value
-                .lpf_cutoff_hz()
-                .map_or_else(|| "-".to_owned(), |v| format!("{v:.2}"));
-            writeln!(
-                file,
-                "| {:.3} | {:.3} | {} | {:.2} | {:.2} | {:.2} | {} | {} |",
-                start_float,
-                end_float,
-                event.value.sample(),
-                event.value.gain(),
-                event.value.pan(),
-                event.value.rate(),
-                hpf,
-                lpf
-            )?;
-            Ok(())
-        },
+        write_sample_event_md,
     )
 }
 
@@ -288,35 +354,7 @@ pub fn export_sample_pattern_to_csv(
         &events,
         path,
         "start_num,start_den,start_float,end_num,end_den,end_float,sample,gain,pan,rate,hpf_cutoff_hz,lpf_cutoff_hz",
-        |file, event| {
-            let start_float = f64::from(event.part.start());
-            let end_float = f64::from(event.part.end());
-            let hpf = event
-                .value
-                .hpf_cutoff_hz()
-                .map_or_else(String::new, |v| format!("{v:.6}"));
-            let lpf = event
-                .value
-                .lpf_cutoff_hz()
-                .map_or_else(String::new, |v| format!("{v:.6}"));
-            writeln!(
-                file,
-                "{},{},{:.6},{},{},{:.6},{},{:.6},{:.6},{:.6},{},{}",
-                event.part.start().numerator(),
-                event.part.start().denominator(),
-                start_float,
-                event.part.end().numerator(),
-                event.part.end().denominator(),
-                end_float,
-                event.value.sample(),
-                event.value.gain(),
-                event.value.pan(),
-                event.value.rate(),
-                hpf,
-                lpf
-            )?;
-            Ok(())
-        },
+        write_sample_event_csv,
     )
 }
 
@@ -408,16 +446,12 @@ pub fn export_number_pattern_to_md(
 ) -> Result<(), EvalError> {
     let events = query_number_pattern_events(pattern, cycle_count)?;
 
-    export_pattern_events_to_md(&events, path, "| start | end | value |", |file, event| {
-        let start_float = f64::from(event.part.start());
-        let end_float = f64::from(event.part.end());
-        writeln!(
-            file,
-            "| {:.3} | {:.3} | {:.3} |",
-            start_float, end_float, event.value
-        )?;
-        Ok(())
-    })
+    export_pattern_events_to_md(
+        &events,
+        path,
+        "| start | end | value |",
+        write_number_event_md,
+    )
 }
 
 /// Exports a number pattern's evaluated events to a CSV file.
@@ -451,22 +485,7 @@ pub fn export_number_pattern_to_csv(
         &events,
         path,
         "start_num,start_den,start_float,end_num,end_den,end_float,value",
-        |file, event| {
-            let start_float = f64::from(event.part.start());
-            let end_float = f64::from(event.part.end());
-            writeln!(
-                file,
-                "{},{},{:.6},{},{},{:.6},{:.6}",
-                event.part.start().numerator(),
-                event.part.start().denominator(),
-                start_float,
-                event.part.end().numerator(),
-                event.part.end().denominator(),
-                end_float,
-                event.value
-            )?;
-            Ok(())
-        },
+        write_number_event_csv,
     )
 }
 
