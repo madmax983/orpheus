@@ -260,6 +260,19 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Constructs a new, unapplied built-in function of the specified kind.
+    ///
+    /// This creates the base function representation before any arguments
+    /// have been curried. It is primarily used during the initial population
+    /// of the standard library environment.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    ///
+    /// let func = BuiltinFn::new(BuiltinKind::Every);
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +282,20 @@ impl BuiltinFn {
         }
     }
 
+    /// Attaches an evaluation site salt to this built-in function.
+    ///
+    /// The salt is used for deterministic randomness tied to the specific AST
+    /// node where the function was called. This ensures that random operations
+    /// (like `sometimes`) produce the same results across recompilations of
+    /// identical expressions, but differ from other instances of `sometimes`.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    ///
+    /// let func = BuiltinFn::new(BuiltinKind::Sometimes).with_site_salt(42);
+    /// ```
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

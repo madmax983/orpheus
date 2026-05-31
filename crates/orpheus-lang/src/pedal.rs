@@ -115,6 +115,19 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Creates a new validated pedal node.
+    ///
+    /// The node encapsulates the kind of signal it produces (audio or control),
+    /// the specific operation it represents (e.g., an oscillator), and a human-readable
+    /// summary for UI display or debugging.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Constant, "0.5");
+    /// ```
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +143,18 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Returns the specific operation or construct this node represents.
+    ///
+    /// This is used during compilation to determine how to translate this node
+    /// into target DSP instructions.
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Returns a brief, human-readable summary of the node's function.
+    ///
+    /// For example, `sin` or `* 0.5`.
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +169,19 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Binds a validated pedal node to a variable name.
+    ///
+    /// This represents an intermediate local assignment within a pedal plan,
+    /// enabling reuse of signals and preventing combinatorial explosion in DSP graphs.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Constant, "0.5");
+    /// let binding = ValidatedPedalBinding::new("my_const", node);
+    /// ```
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +190,16 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// The string identifier bound to the pedal node.
+    ///
+    /// This is the name used by subsequent nodes in the plan to reference
+    /// this computed signal.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// The validated pedagogical graph node computing the value.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node

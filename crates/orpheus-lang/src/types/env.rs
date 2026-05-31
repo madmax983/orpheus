@@ -26,11 +26,25 @@ use crate::types::{Type, TypeVarId};
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
+    /// Universally quantified type variables.
     pub vars: Vec<TypeVarId>,
+    /// The underlying type.
     pub ty: Type,
 }
 
 impl TypeScheme {
+    /// Creates a monomorphic type scheme.
+    ///
+    /// Monomorphic type schemes contain no universally quantified type variables
+    /// (e.g., they operate on a concrete type, like `Pattern<Sample>`).
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{Type, TypeScheme};
+    ///
+    /// let scheme = TypeScheme::monomorphic(Type::Sample);
+    /// ```
     #[must_use]
     pub const fn monomorphic(ty: Type) -> Self {
         Self {
@@ -195,6 +209,10 @@ impl TypeEnv {
         self.entries.get(name)
     }
 
+    /// Returns an iterator over all type schemes in the environment.
+    ///
+    /// This is useful for inspecting the environment or running global transformations
+    /// across all defined mappings.
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }
