@@ -978,6 +978,12 @@ mod tests {
             .to_string(),
             "rendering requires at least one cycle"
         );
+        assert_eq!(
+            super::export_sample_pattern_to_md(pat, "test.md", 0)
+                .unwrap_err()
+                .to_string(),
+            "exporting requires at least one cycle"
+        );
 
         let module = eval_module("pat = 1 2", ReplMode::Loose).unwrap();
         let pat = module.get("pat").unwrap().as_number_pattern().unwrap();
@@ -990,6 +996,12 @@ mod tests {
         );
         assert_eq!(
             super::export_number_pattern_to_json(pat, "test.json", 0)
+                .unwrap_err()
+                .to_string(),
+            "exporting requires at least one cycle"
+        );
+        assert_eq!(
+            super::export_number_pattern_to_md(pat, "test.md", 0)
                 .unwrap_err()
                 .to_string(),
             "exporting requires at least one cycle"

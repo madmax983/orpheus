@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2024-05-31 - Fix export zero cycle unwrap missing tests
+**Learning:** Evaluated export handlers for Markdown and CSV, and discovered a gap in tests where `export_sample_pattern_to_md` and `export_number_pattern_to_md` did not have tests confirming that zero `cycle_count` inputs resulted in the expected `exporting requires at least one cycle` error rather than panicking or misbehaving. The tests for json and csv existed in `export.rs` but were completely missing for markdown formats.
+**Action:** Ensure boundary assertions and error branches in common data extraction patterns (like exporting media patterns) have corresponding regression tests written across all format implementations, rather than relying on one format's tests to cover the identical logic structure everywhere.
