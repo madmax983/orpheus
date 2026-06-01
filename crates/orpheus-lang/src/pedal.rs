@@ -115,6 +115,18 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Constructs a fully verified node within a pedal processing graph.
+    ///
+    /// Validation ensures that the signal kind (Audio, Control) correctly matches the DSP capabilities
+    /// of the node variant.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Passthrough, "identity");
+    /// ```
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +142,14 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Exposes the specific DSP capability or structural operation this node performs.
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Provides a human-readable description of the node's function, crucial for visualizing
+    /// the pedal graph in text or graphical UIs without needing to reverse engineer its parameters.
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +164,16 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Associates a specific pedal node with a variable name within the pedal's `let` scope.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Passthrough, "identity");
+    /// let binding = ValidatedPedalBinding::new("my_signal", node);
+    /// ```
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +182,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// The variable identifier used in the pedal block to refer to this signal's output.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// The verified DSP node whose output is captured by this binding.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node

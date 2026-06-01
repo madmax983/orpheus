@@ -37,36 +37,67 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Plays a pattern every N cycles.
     Every,
+    /// Plays a pattern based on a boolean condition.
     When,
+    /// Plays a pattern randomly based on a probability.
     Sometimes,
+    /// Applies a function within a specific time segment of the cycle.
     Within,
+    /// Masks one pattern using the structure of another.
     Mask,
+    /// Delays the playback of notes within a chord for a strumming effect.
     Strum,
+    /// Rapidly repeats an event multiple times per cycle.
     Roll,
+    /// Arpeggiates chords into individual melodic notes.
     Arp,
+    /// Inverts chord voicings up or down.
     Invert,
+    /// Drops notes from a chord pattern.
     Drop,
+    /// Builds a chord based on a root note and intervals.
     Chord,
+    /// Generates Euclidean rhythmic patterns.
     Euclid,
+    /// Generates patterns using L-systems (Lindenmayer systems).
     Lsystem,
+    /// Generates patterns using elementary cellular automata.
     Wolfram,
+    /// Sets or modifies the pitch class set of an event.
     PitchClassSet,
+    /// Selects notes from a scale by their degree.
     Degrees,
+    /// Speeds up the playback of a pattern.
     Fast,
+    /// Slows down the playback of a pattern.
     Slow,
+    /// Shifts a pattern forward or backward in time.
     Shift,
+    /// Reverses the events in a pattern.
     Rev,
+    /// Applies a volume gain change.
     Gain,
+    /// Enables and routes a delay effect.
     Delay,
+    /// Sets the delay time (in ms or musical divisions).
     DelayTime,
+    /// Sets the delay feedback amount.
     DelayFeedback,
+    /// Applies a High Pass Filter cutoff frequency.
     Hpf,
+    /// Applies a Low Pass Filter cutoff frequency.
     Lpf,
+    /// Enables and routes a reverb effect.
     Reverb,
+    /// Sets the room size of the reverb.
     ReverbRoom,
+    /// Sets the high-frequency damping of the reverb.
     ReverbDamp,
+    /// Alias for Lpf cutoff frequency.
     Cutoff,
+    /// Enables a chorus effect.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

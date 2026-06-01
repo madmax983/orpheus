@@ -260,6 +260,19 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Instantiates a new built-in function representation based on its fundamental kind.
+    ///
+    /// This is used internally during language evaluation to map parsed ast nodes (e.g. `roll`, `every`)
+    /// into their concrete runtime execution functions.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::value::{BuiltinKind, BuiltinFn};
+    ///
+    /// let func = BuiltinFn::new(BuiltinKind::Roll);
+    /// assert_eq!(func.kind(), BuiltinKind::Roll);
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +282,19 @@ impl BuiltinFn {
         }
     }
 
+    /// Seeds the built-in function with a deterministic location hash from the source code.
+    ///
+    /// Why is this necessary? Random-based functions (like `sometimes` or `choose`) need to be
+    /// reproducible. If we didn't inject a site-specific salt, two identical `sometimes` calls
+    /// would produce the exact same sequence of pseudo-random choices across the cycle!
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::value::{BuiltinKind, BuiltinFn};
+    ///
+    /// let func = BuiltinFn::new(BuiltinKind::Sometimes).with_site_salt(42);
+    /// ```
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

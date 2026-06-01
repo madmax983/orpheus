@@ -26,11 +26,20 @@ use crate::types::{Type, TypeVarId};
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
+    /// The set of generic type variables (e.g. `a`, `b`) that are universally quantified.
+    /// During inference, these are instantiated with fresh variables at each use site, allowing
+    /// polymorphic functions like `sometimes` to work on both `Sample` and `Number` patterns.
     pub vars: Vec<TypeVarId>,
+
+    /// The core structural type, which may reference the quantified variables.
     pub ty: Type,
 }
 
 impl TypeScheme {
+    /// Promotes a concrete type into a scheme without any polymorphic variables.
+    ///
+    /// This is used for standard bindings like a specific sample pattern or a number literal,
+    /// where its type does not adapt to different calling contexts.
     #[must_use]
     pub const fn monomorphic(ty: Type) -> Self {
         Self {
@@ -195,6 +204,9 @@ impl TypeEnv {
         self.entries.get(name)
     }
 
+    /// Provides sequential access to all currently registered type schemes in the environment.
+    /// This is particularly useful when dumping the environment state during debugging or
+    /// building auto-completion features in the REPL.
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }

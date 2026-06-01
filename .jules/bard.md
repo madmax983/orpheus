@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-06-01 - [Bard Persona Documentation Quality]
+**Confusion:** Submitting PRs with generic, auto-generated-style comments (e.g., `/// Gets the x`, `/// Creates a new...`) for public functions directly violates the Bard persona's core constraint and will fail code review.
+**Clarification:** Always write rich, storytelling-style docstrings explaining *why* a property or function exists (its context/purpose) and include executable doctests for public methods, avoiding trivial mechanical descriptions.

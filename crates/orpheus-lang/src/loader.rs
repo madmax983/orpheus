@@ -39,8 +39,17 @@ struct ImportSpec {
 /// ```
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
+    /// The comprehensive map of all top-level types resolved within this file.
+    /// Used during phase 2 type inference to cross-reference dependencies between files.
     pub type_bindings: BTreeMap<String, Type>,
+
+    /// The concrete runtime values (patterns, pedals, functions) mapped to their binding names.
+    /// These are instantiated during the final evaluation phase after all types have passed.
     pub value_bindings: BTreeMap<String, Value>,
+
+    /// Tracks the identifier of the most recently declared binding.
+    /// Essential for the REPL environment, which often wants to immediately play the last thing
+    /// the user typed, even if they didn't explicitly return it.
     pub last_binding_name: Option<String>,
 }
 
