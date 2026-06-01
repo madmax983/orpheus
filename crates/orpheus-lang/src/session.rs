@@ -897,6 +897,9 @@ impl ReplSession {
             Some("scd") => crate::supercollider_export::export_sample_pattern_to_supercollider(
                 pattern, path, cycles,
             ),
+            Some("ps1") => {
+                crate::powershell_export::export_sample_pattern_to_powershell(pattern, path, cycles)
+            }
             _ => crate::export::export_sample_pattern_to_csv(pattern, path, cycles),
         }
         .map_err(|error: crate::EvalError| error.to_string())?;
@@ -936,6 +939,9 @@ impl ReplSession {
             Some("scd") => crate::supercollider_export::export_number_pattern_to_supercollider(
                 pattern, path, cycles,
             ),
+            Some("ps1") => {
+                crate::powershell_export::export_number_pattern_to_powershell(pattern, path, cycles)
+            }
             _ => crate::export::export_number_pattern_to_csv(pattern, path, cycles),
         }
         .map_err(|error: crate::EvalError| error.to_string())?;
@@ -3407,6 +3413,34 @@ mod supercollider_integration_tests {
 
         let _ = std::fs::remove_file(path);
     }
+}
+
+#[test]
+fn export_command_exports_a_bound_pattern_to_powershell() {
+    let mut session = ReplSession::with_engine(EngineHandle::stub());
+    session.eval_line("song = bd sn").unwrap();
+    let path = std::env::temp_dir().join(format!("orpheus-export-{}.ps1", 1_234_578));
+    let message = session
+        .eval_line(&format!(":export song {} 2", path.display()))
+        .unwrap();
+    assert!(message.contains("exported `song`"));
+
+    let contents = std::fs::read_to_string(path).unwrap();
+    assert!(contents.contains("# Orpheus PowerShell Export"));
+}
+
+#[test]
+fn export_command_exports_number_pattern_to_powershell() {
+    let mut session = ReplSession::with_engine(EngineHandle::stub());
+    session.eval_line("notes = 60 62 64").unwrap();
+    let path = std::env::temp_dir().join("orpheus-export-num-1_234_578.ps1");
+    let message = session
+        .eval_line(&format!(":export notes {} 1", path.display()))
+        .unwrap();
+    assert!(message.contains("exported `notes`"));
+
+    let contents = std::fs::read_to_string(path).unwrap();
+    assert!(contents.contains("# Orpheus PowerShell Export"));
 }
 
 #[test]

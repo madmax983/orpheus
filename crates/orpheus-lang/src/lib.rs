@@ -128,4 +128,5 @@ pub enum ReplMode {
 }
 
 pub(crate) mod mermaid;
+pub(crate) mod powershell_export;
 pub use mermaid::export_sample_pattern_to_mermaid_gantt;
