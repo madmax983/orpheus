@@ -46,9 +46,23 @@ fn run() -> anyhow::Result<()> {
         CliAction::Run(path) => path,
     };
 
-    let (engine, _stream, warning) = match start_live_audio() {
+    let (engine, _stream, raw_error) = match start_live_audio() {
         Ok((engine, stream)) => (engine, Some(stream), None),
-        Err(error) => {
+        Err(error) => (EngineHandle::stub(), None, Some(error)),
+    };
+
+    if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
+        let warning = raw_error.map(|error| {
+            let mut message = format!("Audio Output Disabled:\n  {error}");
+            for cause in error.chain().skip(1) {
+                use std::fmt::Write;
+                let _ = write!(&mut message, "\n  -> {cause}");
+            }
+            message
+        });
+        orpheus_lang::run_with_engine_and_path(engine, startup_path.as_deref(), warning)?;
+    } else {
+        let warning = raw_error.map(|error| {
             let mut message = format!(
                 "{}\n  {}",
                 "Audio Output Disabled:".yellow().bold(),
@@ -63,13 +77,8 @@ fn run() -> anyhow::Result<()> {
                     cause.to_string().dark_grey()
                 );
             }
-            (EngineHandle::stub(), None, Some(message))
-        }
-    };
-
-    if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
-        orpheus_lang::run_with_engine_and_path(engine, startup_path.as_deref(), warning)?;
-    } else {
+            message
+        });
         orpheus_lang::run_stdio_with_engine_and_path(engine, startup_path.as_deref(), warning)?;
     }
     Ok(())
