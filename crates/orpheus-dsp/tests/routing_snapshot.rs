@@ -1,3 +1,7 @@
+//! Test suite for `routing_snapshot.rs` module functionality.
+//!
+//! Verifies correct execution of the `routing_snapshot.rs` tests.
+
 use orpheus_dsp::{BusEffectSpec, RoutingError, RoutingSnapshot};
 use orpheus_pattern::Rational;
 

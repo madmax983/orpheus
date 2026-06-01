@@ -1,3 +1,8 @@
+//! Tests for the asynchronous `EngineCommand` messaging system.
+//!
+//! Verifies thread-safe operations like loading samples, triggering patterns,
+//! handling snapshots, and dynamic DSP updates on the engine thread.
+
 use orpheus_dsp::{
     EngineCommand, EngineError, EngineHandle, PatternUpdate, PedalProgram, RoutingSnapshot,
     SampleTrigger, TrackSource, load_builtin_sample_for_test, load_sample_bank_from_directory,

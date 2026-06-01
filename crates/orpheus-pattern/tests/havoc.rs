@@ -1,3 +1,7 @@
+//! Test suite for `havoc.rs` module functionality.
+//!
+//! Verifies correct execution of the `havoc.rs` tests.
+
 use orpheus_pattern::{CyclePattern, EventStream, Pattern, PatternNode, Rational, TimeSpan};
 
 #[test]

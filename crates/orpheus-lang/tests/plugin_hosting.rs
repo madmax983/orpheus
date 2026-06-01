@@ -1,3 +1,8 @@
+//! Tests for language bindings controlling external VST/AU plugins.
+//!
+//! Validates parsing, type-checking, and evaluation of plugin primitives (`vst`, `au`)
+//! and their interaction with pattern streams (e.g., `notes` and `p`).
+
 use orpheus_dsp::PluginFormat;
 use orpheus_lang::{ReplMode, ReplSession, eval_module};
 

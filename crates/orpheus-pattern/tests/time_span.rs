@@ -1,3 +1,7 @@
+//! Test suite for `time_span.rs` module functionality.
+//!
+//! Verifies correct execution of the `time_span.rs` tests.
+
 use orpheus_pattern::{PatternError, Rational, TimeSpan};
 
 #[test]

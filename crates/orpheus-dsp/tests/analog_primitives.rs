@@ -1,3 +1,7 @@
+//! Test suite for `analog_primitives.rs` module functionality.
+//!
+//! Verifies correct execution of the `analog_primitives.rs` tests.
+
 use orpheus_dsp::{Gain, LadderFilter, Mix, PhaseAccumulator, PulseOsc, SawOsc, SoftSat};
 
 #[test]

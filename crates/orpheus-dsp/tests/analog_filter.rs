@@ -1,3 +1,7 @@
+//! Test suite for `analog_filter.rs` module functionality.
+//!
+//! Verifies correct execution of the `analog_filter.rs` tests.
+
 use orpheus_dsp::LadderFilter;
 
 #[test]

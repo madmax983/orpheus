@@ -1,3 +1,7 @@
+//! Test suite for `cycle_pattern.rs` module functionality.
+//!
+//! Verifies correct execution of the `cycle_pattern.rs` tests.
+
 use orpheus_pattern::{CyclePattern, Pattern, PatternNode, Rational, TimeSpan};
 use proptest::prelude::*;
 

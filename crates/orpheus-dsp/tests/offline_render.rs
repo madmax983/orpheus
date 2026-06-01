@@ -1,3 +1,8 @@
+//! Tests for the Offline Renderer engine functionality.
+//!
+//! Evaluates pattern rendering and exact cycle translation out-of-real-time,
+//! verifying correct audio file output format mapping without live soundcard constraints.
+
 #![allow(clippy::needless_range_loop)]
 use std::fs;
 use std::path::{Path, PathBuf};

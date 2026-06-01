@@ -1,3 +1,7 @@
+//! Test suite for `stream.rs` module functionality.
+//!
+//! Verifies correct execution of the `stream.rs` tests.
+
 use orpheus_pattern::{Event, EventStream, Pattern, Rational, TimeSpan};
 
 fn rational(numerator: i64, denominator: i64) -> Rational {

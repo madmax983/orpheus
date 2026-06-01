@@ -1,3 +1,7 @@
+//! Test suite for `scheduler.rs` module functionality.
+//!
+//! Verifies correct execution of the `scheduler.rs` tests.
+
 use orpheus_dsp::{SampleTrigger, Scheduler, TrackId};
 use orpheus_pattern::{Event, Rational, TimeSpan};
 

@@ -1,3 +1,8 @@
+//! Tests for external VST/AU audio plugin hosting and parameter synchronization.
+//!
+//! Evaluates the loading, automation, and bypassing of third-party plugins within
+//! the DSP graph context.
+
 use orpheus_dsp::{
     PluginDescriptor, PluginNote, PluginParameterLane, PluginProcessor, PluginTrackSource,
     RoutingSnapshot, SampleBank, TrackSource, render_routing_snapshot_to_stereo_for_test,

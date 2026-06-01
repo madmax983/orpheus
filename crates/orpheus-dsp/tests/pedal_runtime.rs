@@ -1,3 +1,8 @@
+//! Tests for the Virtual Analog Pedal DSP execution runtime.
+//!
+//! Validates audio graph processing and node state management behavior for effects
+//! configured through the dynamic pedal programming API.
+
 #![allow(
     clippy::suboptimal_flops,
     clippy::cast_precision_loss,

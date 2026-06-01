@@ -1,3 +1,8 @@
+//! Havoc testing suite for DSP operations.
+//!
+//! Validates concurrency properties and fuzzes inputs to ensure DSP algorithms
+//! can survive chaotic or high-load conditions without panicking.
+
 use loom::sync::Arc;
 use loom::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use loom::thread;

@@ -1,3 +1,7 @@
+//! Test suite for `analog_voice.rs` module functionality.
+//!
+//! Verifies correct execution of the `analog_voice.rs` tests.
+
 use orpheus_dsp::{AnalogVoice, AnalogVoiceParams, OscShape};
 
 const fn params(shape: OscShape) -> AnalogVoiceParams {

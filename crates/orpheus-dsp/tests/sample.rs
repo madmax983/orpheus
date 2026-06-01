@@ -1,3 +1,7 @@
+//! Test suite for `sample.rs` module functionality.
+//!
+//! Verifies correct execution of the `sample.rs` tests.
+
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
