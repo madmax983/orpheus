@@ -129,4 +129,63 @@ mod tests {
         let err: EvalError = parse_err.into();
         assert_eq!(err.to_string(), "mock parse error");
     }
+
+    #[test]
+    fn eval_error_from_io_error() {
+        let io_err = std::io::Error::other("mock io error");
+        let err: EvalError = io_err.into();
+        assert_eq!(err.to_string(), "mock io error");
+
+        let not_found_err = std::io::Error::new(std::io::ErrorKind::NotFound, "mock io error");
+        let err: EvalError = not_found_err.into();
+        assert_eq!(err.to_string(), "file not found");
+
+        let permission_denied_err =
+            std::io::Error::new(std::io::ErrorKind::PermissionDenied, "mock io error");
+        let err: EvalError = permission_denied_err.into();
+        assert_eq!(err.to_string(), "permission denied");
+    }
+
+    #[test]
+    fn eval_error_from_fmt_error() {
+        let fmt_err = std::fmt::Error;
+        let err: EvalError = fmt_err.into();
+        assert_eq!(
+            err.to_string(),
+            "an error occurred when formatting an argument"
+        );
+    }
+
+    #[test]
+    fn eval_error_from_try_from_int_error() {
+        let int_err: Result<u8, _> = 256u16.try_into();
+        let err: EvalError = int_err.unwrap_err().into();
+        assert_eq!(
+            err.to_string(),
+            "out of range integral type conversion attempted"
+        );
+    }
+
+    #[test]
+    fn eval_error_from_parse_int_error() {
+        let int_err: Result<u8, _> = "abc".parse();
+        let err: EvalError = int_err.unwrap_err().into();
+        assert_eq!(err.to_string(), "invalid digit found in string");
+    }
+
+    #[test]
+    fn eval_error_from_pattern_error() {
+        use orpheus_pattern::PatternError;
+        let pattern_err = PatternError::InvalidDenominator { denominator: 0 };
+        let err: EvalError = pattern_err.into();
+        assert_eq!(err.to_string(), "rational denominator cannot be zero");
+    }
+
+    #[test]
+    fn eval_error_from_pitch_literal_error() {
+        use crate::pitch::PitchLiteralError;
+        let pitch_err = PitchLiteralError::new("mock pitch error");
+        let err: EvalError = pitch_err.into();
+        assert_eq!(err.to_string(), "mock pitch error");
+    }
 }
