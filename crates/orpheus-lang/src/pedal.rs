@@ -115,6 +115,7 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Constructs a new validated node representing a safe operation in the pedal graph.
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +131,34 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Returns the structural operation that this node represents.
+    ///
+    /// This is used heavily by the compilation phase to map the AST onto actual DSP processors.
+    ///
+    /// ## Examples
+    ///
+    /// ```rust
+    /// use orpheus_lang::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "Audio Input");
+    /// assert_eq!(*node.kind(), PedalNodeKind::Input);
+    /// ```
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Returns a human-readable description of what this node computes.
+    ///
+    /// This string is exposed in the `explain` module, letting users inspect what
+    /// a complex pedal graph is doing under the hood without looking at the AST.
+    ///
+    /// ## Examples
+    ///
+    /// ```rust
+    /// use orpheus_lang::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "Audio Input");
+    /// assert_eq!(node.summary(), "Audio Input");
+    /// ```
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +173,7 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Pairs a variable name with its validated node operation.
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +182,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// The local variable name referencing this signal.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// The actual graph operation assigned to this variable.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node
