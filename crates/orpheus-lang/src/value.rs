@@ -5972,3 +5972,42 @@ impl Explain for NumberPatternValue {
         format!("{title}\n{table}")
     }
 }
+
+impl Explain for PluginPatternValue {
+    fn explain(&self, binding_name: &str) -> String {
+        use crossterm::style::Stylize;
+        let title = format!("{} {}", "Plugin Plan:".cyan().bold(), binding_name.yellow());
+
+        let mut table = crate::explain::explain_table(["Property", "Value"]);
+        let source = self.track_source();
+        let desc = source.descriptor();
+
+        let format_str = match desc.format() {
+            orpheus_dsp::PluginFormat::Vst3 => "VST3",
+            orpheus_dsp::PluginFormat::AudioUnit => "AudioUnit",
+        };
+
+        table.add_row(vec![
+            comfy_table::Cell::new("Format").fg(comfy_table::Color::Cyan),
+            comfy_table::Cell::new(format_str).fg(comfy_table::Color::White),
+        ]);
+
+        table.add_row(vec![
+            comfy_table::Cell::new("Identifier").fg(comfy_table::Color::Cyan),
+            comfy_table::Cell::new(desc.identifier()).fg(comfy_table::Color::Yellow),
+        ]);
+
+        table.add_row(vec![
+            comfy_table::Cell::new("Scheduled Notes").fg(comfy_table::Color::Cyan),
+            comfy_table::Cell::new(source.notes().len().to_string()).fg(comfy_table::Color::Green),
+        ]);
+
+        table.add_row(vec![
+            comfy_table::Cell::new("Parameter Lanes").fg(comfy_table::Color::Cyan),
+            comfy_table::Cell::new(source.parameter_lanes().len().to_string())
+                .fg(comfy_table::Color::Green),
+        ]);
+
+        format!("{title}\n{table}")
+    }
+}
