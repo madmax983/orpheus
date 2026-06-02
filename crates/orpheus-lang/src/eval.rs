@@ -1235,21 +1235,36 @@ pub fn f64_to_rational(value: f64, context: &str) -> Result<Rational, EvalError>
         .strip_prefix('-')
         .map_or((false, rendered.as_str()), |rest| (true, rest));
 
-    let (numerator, denominator) = if let Some((whole, fractional)) = digits.split_once('.') {
-        let scale = checked_pow10(fractional.len())?;
-        let combined = [whole, fractional].concat();
-        let numerator = combined
-            .parse::<i128>()
-            .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?;
-        (numerator, scale)
-    } else {
-        let numerator = digits
-            .parse::<i128>()
-            .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?;
-        (numerator, 1_i128)
-    };
+    let (numerator_magnitude, denominator) =
+        if let Some((whole, fractional)) = digits.split_once('.') {
+            let scale = checked_pow10(fractional.len())?;
+            let whole_part = whole
+                .parse::<i128>()
+                .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?;
+            let frac_part = if fractional.is_empty() {
+                0
+            } else {
+                fractional.parse::<i128>().map_err(|_| {
+                    EvalError::new(format!("{context} exceeded the supported range"))
+                })?
+            };
+            let numerator_magnitude = whole_part
+                .checked_mul(scale)
+                .and_then(|w| w.checked_add(frac_part))
+                .ok_or_else(|| EvalError::new(format!("{context} exceeded the supported range")))?;
+            (numerator_magnitude, scale)
+        } else {
+            let numerator_magnitude = digits
+                .parse::<i128>()
+                .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?;
+            (numerator_magnitude, 1_i128)
+        };
 
-    let signed_numerator = if negative { -numerator } else { numerator };
+    let signed_numerator = if negative {
+        -numerator_magnitude
+    } else {
+        numerator_magnitude
+    };
     rational_from_parts(signed_numerator, denominator)
 }
 

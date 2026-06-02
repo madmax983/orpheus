@@ -47,3 +47,6 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+**[String concat allocation in numeric parsing]
+**Learning:** Constructing intermediate Strings/Vecs by calling `[a, b].concat()` to join slice data purely to parse an integer invokes a slow, unnecessary heap allocation. However, blindly applying `.abs()` when parsing the slice independently (`whole * scale + frac`) can cause bugs if the negative sign was already stripped from the input string.
+**Action:** Parse the slice parts independently as integers. Verify if the input string is already pre-stripped of the negative sign. If it is, simply compute `whole * scale + frac` without `.abs()`, and explicitly re-apply the negative sign to the final numerator.
