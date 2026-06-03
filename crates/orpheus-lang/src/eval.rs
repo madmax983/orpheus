@@ -1873,4 +1873,31 @@ right = sometimes(fast(2), cp hh)";
         let val = module.get("res").unwrap().as_number_pattern().unwrap();
         assert!((val.try_query_unit().unwrap()[0].value - 42.0).abs() < f64::EPSILON);
     }
+
+    #[test]
+    fn extract_constant_number_rational_handles_number_pattern() {
+        use orpheus_pattern::{Event, TimeSpan};
+        let event = Event {
+            whole: None,
+            part: TimeSpan::unit(),
+            value: 42.0,
+        };
+        let val = crate::value::Value::NumberPattern(
+            crate::value::NumberPatternValue::from_events(vec![event]),
+        );
+        let res = super::extract_constant_number_rational(val, "expected number");
+        let r = res.unwrap();
+        assert_eq!(r.numerator(), 42);
+        assert_eq!(r.denominator(), 1);
+    }
+
+    #[test]
+    fn extract_constant_number_rational_returns_error_on_non_number() {
+        let val = crate::value::Value::String("hello".into());
+        let res = super::extract_constant_number_rational(val, "expected number");
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "expected number must resolve to a constant number"
+        );
+    }
 }
