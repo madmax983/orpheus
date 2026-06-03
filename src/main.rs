@@ -49,19 +49,10 @@ fn run() -> anyhow::Result<()> {
     let (engine, _stream, warning) = match start_live_audio() {
         Ok((engine, stream)) => (engine, Some(stream), None),
         Err(error) => {
-            let mut message = format!(
-                "{}\n  {}",
-                "Audio Output Disabled:".yellow().bold(),
-                error.to_string().red()
-            );
+            let mut message = format!("{}\n  {error}", "Audio Output Disabled:".yellow().bold());
             for cause in error.chain().skip(1) {
                 use std::fmt::Write;
-                let _ = write!(
-                    &mut message,
-                    "\n  {} {}",
-                    "->".dark_grey(),
-                    cause.to_string().dark_grey()
-                );
+                let _ = write!(&mut message, "\n  -> {cause}");
             }
             (EngineHandle::stub(), None, Some(message))
         }
@@ -99,9 +90,10 @@ fn startup_path_from_args(args: impl IntoIterator<Item = OsString>) -> anyhow::R
             Ok(CliAction::Run(Some(PathBuf::from(path))))
         }
         _ => Err(anyhow!(
-            "{} orpheus {}",
+            "unexpected arguments found\n\n{} orpheus {}\n\nFor more information, try {}.",
             "Usage:".green().bold(),
-            "[path/to/song.ode]".cyan()
+            "[PATH]".cyan(),
+            "'--help'".green()
         )),
     }
 }
@@ -252,6 +244,6 @@ mod tests {
         let args = vec![OsString::from("file1.ode"), OsString::from("file2.ode")];
         let error = startup_path_from_args(args).unwrap_err();
         assert!(error.to_string().contains("orpheus"));
-        assert!(error.to_string().contains("[path/to/song.ode]"));
+        assert!(error.to_string().contains("[PATH]"));
     }
 }

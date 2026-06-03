@@ -293,7 +293,7 @@ impl GraphCompiler<'_> {
             | Expr::SeqSections(_)
             | Expr::Group(_)
             | Expr::Rest => Err(EvalError::new(
-                "pedal graphs only support local names, literals, binary control/audio expressions, stage calls, and pipes in Task 3",
+                "pedal graphs only support local names, literals, binary control/audio expressions, stage calls, and pipes",
             )),
         }
     }
@@ -457,7 +457,7 @@ impl GraphCompiler<'_> {
                 let compiled = self.compile_named_argument_value(param_name, rhs)?;
                 if compiled.signal_kind() == &SignalKind::Audio {
                     return Err(EvalError::new(format!(
-                        "parameter `{param_name}` on `{name}` cannot be driven by an audio signal in Task 3"
+                        "parameter `{param_name}` on `{name}` cannot be driven by an audio signal"
                     )));
                 }
                 named.push((param_name.clone(), compiled));
@@ -540,7 +540,7 @@ impl GraphCompiler<'_> {
                 let compiled = scoped.compile_named_argument_value(param_name, rhs)?;
                 if compiled.signal_kind() == &SignalKind::Audio {
                     return Err(EvalError::new(format!(
-                        "parameter `{param_name}` on `feedback` cannot be driven by an audio signal in Task 3"
+                        "parameter `{param_name}` on `feedback` cannot be driven by an audio signal"
                     )));
                 }
                 named.push((param_name.clone(), compiled));
@@ -585,9 +585,7 @@ impl GraphCompiler<'_> {
         named: &[(String, ValidatedPedalNode)],
     ) -> Result<ValidatedPedalNode, EvalError> {
         if !named.is_empty() {
-            return Err(EvalError::new(
-                "`mix` does not accept named parameters in Task 3",
-            ));
+            return Err(EvalError::new("`mix` does not accept named parameters"));
         }
         if positional.len() < 2 {
             return Err(EvalError::new("`mix` requires at least two audio inputs"));
@@ -697,9 +695,7 @@ impl GraphCompiler<'_> {
             .count();
 
         match audio_inputs {
-            0 => Err(EvalError::new(format!(
-                "`{name}` requires an audio input in Task 3"
-            ))),
+            0 => Err(EvalError::new(format!("`{name}` requires an audio input"))),
             1 => Ok(ValidatedPedalNode::new(
                 SignalKind::Audio,
                 PedalNodeKind::Stage,

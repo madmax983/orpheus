@@ -45,7 +45,7 @@ fn startup_ode_argument_preloads_bindings_for_repl_commands() {
 }
 
 #[test]
-fn startup_ode_argument_accepts_multi_binding_phase5_example() {
+fn startup_ode_argument_accepts_multi_binding_example() {
     let song = docs_example("phase5_escape_hatch.ode");
     let output = std::env::temp_dir().join(format!(
         "orpheus-phase5-startup-{}.wav",
