@@ -1,0 +1,42 @@
+--- crates/orpheus-lang/src/types/infer.rs
++++ crates/orpheus-lang/src/types/infer.rs
+@@ -152,19 +152,24 @@
+             )));
+         }
+
+-        let saved_env = self.env.clone();
+         let result = (|| {
+             let mut param_types = Vec::with_capacity(params.len());
++            let mut previous_vars = Vec::with_capacity(params.len());
+             for param in params {
+                 let ty = self.fresh_var_type();
+-                self.env
++                let previous = self.env
+                     .insert(param.clone(), TypeScheme::monomorphic(ty.clone()));
++                previous_vars.push((param.clone(), previous));
+                 param_types.push(ty);
+             }
+
+-            let body_ty = self.infer_expr(expr)?;
++            let body_result = self.infer_expr(expr);
++
++            for (param, previous) in previous_vars.into_iter().rev() {
++                if let Some(prev) = previous {
++                    self.env.insert(param, prev);
++                } else {
++                    self.env.remove(&param);
++                }
++            }
++
++            let body_ty = body_result?;
+             Ok(Type::curried(
+                 param_types
+                     .into_iter()
+@@ -172,7 +177,6 @@
+                     .collect::<Vec<_>>(),
+                 self.resolve(body_ty),
+             ))
+         })();
+-        self.env = saved_env;
+         result
+     }
