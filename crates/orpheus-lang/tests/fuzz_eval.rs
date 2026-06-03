@@ -99,3 +99,28 @@ proptest! {
         assert!(result.is_ok(), "query_unit panicked for input: {s}");
     }
 }
+
+proptest! {
+    #[test]
+    fn query_every_when_does_not_panic(s in float_literal_strategy()) {
+        let source = format!("pattern = every({s}, rev, bd sn)\npattern2 = when({s}, {s}, rev, bd sn)");
+
+        let result = panic::catch_unwind(|| {
+            let Ok(mut values) = eval_module(&source, ReplMode::Loose) else {
+                return; // parse errors and eval errors on fuzz strings are expected
+            };
+            if let Some(val) = values.remove("pattern") {
+                if let Some(pat) = val.as_sample_pattern() {
+                    let _ = pat.query_unit();
+                }
+            }
+            if let Some(val) = values.remove("pattern2") {
+                if let Some(pat) = val.as_sample_pattern() {
+                    let _ = pat.query_unit();
+                }
+            }
+        });
+
+        assert!(result.is_ok(), "query_every/when panicked for input: {s}");
+    }
+}
