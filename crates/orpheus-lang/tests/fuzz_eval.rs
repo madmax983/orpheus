@@ -98,4 +98,12 @@ proptest! {
         // If there was a panic, this assertion will fail.
         assert!(result.is_ok(), "query_unit panicked for input: {s}");
     }
+
+    #[test]
+    fn f64_to_rational_does_not_panic(v in proptest::num::f64::ANY) {
+        let result = panic::catch_unwind(|| {
+            let _ = orpheus_lang::f64_to_rational(v, "fuzzing test");
+        });
+        assert!(result.is_ok(), "f64_to_rational panicked for input: {v}");
+    }
 }

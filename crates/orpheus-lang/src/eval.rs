@@ -1237,10 +1237,26 @@ pub fn f64_to_rational(value: f64, context: &str) -> Result<Rational, EvalError>
 
     let (numerator, denominator) = if let Some((whole, fractional)) = digits.split_once('.') {
         let scale = checked_pow10(fractional.len())?;
-        let combined = [whole, fractional].concat();
-        let numerator = combined
-            .parse::<i128>()
-            .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?;
+        let w = if whole.is_empty() {
+            0_i128
+        } else {
+            whole
+                .parse::<i128>()
+                .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?
+        };
+        let f = if fractional.is_empty() {
+            0_i128
+        } else {
+            fractional
+                .parse::<i128>()
+                .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?
+        };
+
+        let numerator = w
+            .checked_mul(scale)
+            .and_then(|val| val.checked_add(f))
+            .ok_or_else(|| EvalError::new(format!("{context} exceeded the supported range")))?;
+
         (numerator, scale)
     } else {
         let numerator = digits
