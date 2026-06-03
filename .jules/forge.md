@@ -82,3 +82,6 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+**[Title] Extracted `with_builtins` in `env.rs`
+**Learning:** The `TypeEnv::with_builtins` constructor was a massive "God Function" stretching over 100 lines due to manual insertion of dozens of standard library functions, types, and samples. While technically functional, this obscured the structure of the default environment and violated the "Nesting is the mind-killer/Functions over 50 lines" philosophy. When attempting to extract these, using Python scripts to inject new methods into the `impl TypeEnv` block caused `unused_imports` issues or duplication errors if applied incorrectly.
+**Action:** When refactoring massive initialization blocks like `with_builtins`, group the insertions by domain (e.g., `install_samples`, `install_music_theory`) into separate, private helper functions. Append these helper functions outside the main `impl` block as free functions taking `&mut TypeEnv` to simplify the patch process and maintain a flat, readable core function.
