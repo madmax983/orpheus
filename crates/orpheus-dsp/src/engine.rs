@@ -520,27 +520,27 @@ impl EngineCore {
         let mut bus_effect_states = Vec::with_capacity(self.active_routing.buses().len());
 
         for bus in self.active_routing.buses() {
-            let state = match bus.effect() {
-                Some(spec) => {
-                    let preserved = old_routing
-                        .buses()
-                        .iter()
-                        .position(|old_bus| {
-                            old_bus.name() == bus.name()
-                                && bus_effect_specs_match(old_bus.effect(), Some(spec))
-                        })
-                        .and_then(|index| old_bus_effect_states[index].take());
-                    match preserved {
-                        Some(mut state) => {
-                            state.sync_timing(spec, self.frames_per_cycle)?;
-                            Some(state)
-                        }
-                        None => Some(BusEffectState::from_spec(spec, self.frames_per_cycle)?),
-                    }
-                }
-                None => None,
+            let Some(spec) = bus.effect() else {
+                bus_effect_states.push(None);
+                continue;
             };
-            bus_effect_states.push(state);
+
+            let preserved = old_routing
+                .buses()
+                .iter()
+                .position(|old_bus| {
+                    old_bus.name() == bus.name()
+                        && bus_effect_specs_match(old_bus.effect(), Some(spec))
+                })
+                .and_then(|index| old_bus_effect_states[index].take());
+
+            let state = if let Some(mut state) = preserved {
+                state.sync_timing(spec, self.frames_per_cycle)?;
+                state
+            } else {
+                BusEffectState::from_spec(spec, self.frames_per_cycle)?
+            };
+            bus_effect_states.push(Some(state));
         }
 
         self.bus_effect_states = bus_effect_states;

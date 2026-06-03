@@ -82,3 +82,7 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**[Identifying Deep Nesting]**
+**Learning:** Relying solely on function line count to find 'Pyramid of Doom' code smells is ineffective, as flat functions with many `match` arms also have high line counts.
+**Action:** When searching for deeply nested code to refactor, use a script to evaluate indentation levels (e.g., finding lines with 20+ leading spaces) to accurately pinpoint true pyramids of doom.
