@@ -394,4 +394,56 @@ mod tests {
         };
         assert!(binding_expr_self_references("foo", &[], &shadowing_rhs));
     }
+    #[test]
+    fn test_references_ident_pipe() {
+        let expr = Expr::Pipe {
+            lhs: Box::new(Expr::Ident("foo".to_string())),
+            rhs: Box::new(Expr::Number(42.0)),
+        };
+        assert!(expr.references_ident("foo"));
+        assert!(!expr.references_ident("bar"));
+
+        let expr2 = Expr::Pipe {
+            lhs: Box::new(Expr::Number(42.0)),
+            rhs: Box::new(Expr::Ident("foo".to_string())),
+        };
+        assert!(expr2.references_ident("foo"));
+        assert!(!expr2.references_ident("bar"));
+    }
+
+    #[test]
+    fn test_references_ident_binary() {
+        let expr = Expr::Binary {
+            lhs: Box::new(Expr::Ident("foo".to_string())),
+            op: BinaryOp::Add,
+            rhs: Box::new(Expr::Number(42.0)),
+        };
+        assert!(expr.references_ident("foo"));
+        assert!(!expr.references_ident("bar"));
+
+        let expr2 = Expr::Binary {
+            lhs: Box::new(Expr::Number(42.0)),
+            op: BinaryOp::Add,
+            rhs: Box::new(Expr::Ident("foo".to_string())),
+        };
+        assert!(expr2.references_ident("foo"));
+        assert!(!expr2.references_ident("bar"));
+    }
+
+    #[test]
+    fn test_references_ident_call() {
+        let expr = Expr::Call {
+            callee: Box::new(Expr::Ident("foo".to_string())),
+            args: vec![Expr::Number(42.0)],
+        };
+        assert!(expr.references_ident("foo"));
+        assert!(!expr.references_ident("bar"));
+
+        let expr2 = Expr::Call {
+            callee: Box::new(Expr::Ident("func".to_string())),
+            args: vec![Expr::Ident("foo".to_string())],
+        };
+        assert!(expr2.references_ident("foo"));
+        assert!(!expr2.references_ident("bar"));
+    }
 }
