@@ -152,16 +152,21 @@ impl Inferencer {
             )));
         }
 
-        let saved_env = self.env.clone();
-        let result = (|| {
-            let mut param_types = Vec::with_capacity(params.len());
-            for param in params {
-                let ty = self.fresh_var_type();
-                self.env
-                    .insert(param.clone(), TypeScheme::monomorphic(ty.clone()));
-                param_types.push(ty);
-            }
+        // ⚡ Bolt: Optimization - Shadow and restore `self.env` in-place
+        // instead of cloning the entire `BTreeMap` environment, to prevent
+        // O(|Env|) memory allocations per parameter scope.
+        let mut previous_bindings = Vec::with_capacity(params.len());
+        let mut param_types = Vec::with_capacity(params.len());
+        for param in params {
+            let ty = self.fresh_var_type();
+            let prev = self
+                .env
+                .insert(param.clone(), TypeScheme::monomorphic(ty.clone()));
+            previous_bindings.push((param.clone(), prev));
+            param_types.push(ty);
+        }
 
+        let result = (|| {
             let body_ty = self.infer_expr(expr)?;
             Ok(Type::curried(
                 param_types
@@ -171,7 +176,15 @@ impl Inferencer {
                 self.resolve(body_ty),
             ))
         })();
-        self.env = saved_env;
+
+        for (param, prev) in previous_bindings.into_iter().rev() {
+            if let Some(prev_scheme) = prev {
+                self.env.insert(param, prev_scheme);
+            } else {
+                self.env.remove(&param);
+            }
+        }
+
         result
     }
 
