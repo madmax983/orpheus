@@ -152,26 +152,38 @@ impl Inferencer {
             )));
         }
 
-        let saved_env = self.env.clone();
-        let result = (|| {
-            let mut param_types = Vec::with_capacity(params.len());
-            for param in params {
-                let ty = self.fresh_var_type();
-                self.env
-                    .insert(param.clone(), TypeScheme::monomorphic(ty.clone()));
-                param_types.push(ty);
-            }
+        let mut saved_bindings = Vec::with_capacity(params.len());
+        let mut param_types = Vec::with_capacity(params.len());
 
-            let body_ty = self.infer_expr(expr)?;
-            Ok(Type::curried(
+        for param in params {
+            let ty = self.fresh_var_type();
+            // ⚡ Bolt: Temporarily shadow parameters and store previous values to avoid O(N) deep clone of environment
+            let old_val = self
+                .env
+                .insert(param.clone(), TypeScheme::monomorphic(ty.clone()));
+            saved_bindings.push((param.clone(), old_val));
+            param_types.push(ty);
+        }
+
+        let result = self.infer_expr(expr).map(|body_ty| {
+            Type::curried(
                 param_types
                     .into_iter()
                     .map(|ty| self.resolve(ty))
                     .collect::<Vec<_>>(),
                 self.resolve(body_ty),
-            ))
-        })();
-        self.env = saved_env;
+            )
+        });
+
+        // ⚡ Bolt: Restore explicitly saved previous values instead of overwriting with full clone.
+        // We must iterate in reverse to properly unwind any duplicate parameter shadows.
+        for (param, old_val) in saved_bindings.into_iter().rev() {
+            if let Some(old_val) = old_val {
+                self.env.insert(param, old_val);
+            } else {
+                self.env.remove(&param);
+            }
+        }
         result
     }
 
