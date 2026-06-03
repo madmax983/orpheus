@@ -26,28 +26,40 @@ pub struct ReplPlugin {
 
 impl HypertilePlugin for ReplPlugin {
     fn render(&self, area: Rect, buf: &mut Buffer, is_focused: bool) {
+        use crate::tui::state::TranscriptEntry;
         let state = self.state.borrow();
-
         let mut lines = state
             .transcript
             .iter()
             .flat_map(|entry| {
-                let style = if entry.starts_with("> ") {
-                    Style::default().fg(Color::DarkGray)
-                } else if entry.starts_with("\u{2717} ") {
-                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
-                } else if entry.starts_with("\u{26a0}\u{fe0f} ") {
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD)
-                } else if entry.starts_with("\u{2713} ") {
-                    Style::default().fg(Color::Green)
-                } else {
-                    Style::default()
+                let (prefix, text, style) = match entry {
+                    TranscriptEntry::Input(text) => {
+                        ("> ", text, Style::default().fg(Color::DarkGray))
+                    }
+                    TranscriptEntry::Error(text) => (
+                        "",
+                        text,
+                        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                    ),
+                    TranscriptEntry::Warning(text) => (
+                        "\u{26a0}\u{fe0f} ",
+                        text,
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    TranscriptEntry::Success(text) => ("", text, Style::default().fg(Color::Green)),
                 };
-                entry
-                    .split('\n')
-                    .map(move |line| Line::styled(line.to_owned(), style))
+                text.split('\n').enumerate().map(move |(i, line)| {
+                    if i == 0 {
+                        Line::from(vec![
+                            Span::styled(prefix, style),
+                            Span::styled(line.to_owned(), style),
+                        ])
+                    } else {
+                        Line::styled(format!("  {line}"), style)
+                    }
+                })
             })
             .collect::<Vec<_>>();
 
@@ -304,14 +316,14 @@ impl HypertilePlugin for TransportPlugin {
         if let Some((message, is_error)) = &state.status_message {
             lines.push(Line::raw(""));
             let (prefix, bg, fg) = if *is_error {
-                ("\u{2717} Failed", Color::Red, Color::White)
+                (" Error ", Color::Red, Color::White)
             } else {
-                ("\u{2713} Success", Color::Green, Color::Black)
+                (" Success ", Color::Green, Color::Black)
             };
 
             lines.push(Line::from(vec![
                 Span::styled(
-                    format!(" {prefix} "),
+                    prefix,
                     Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
