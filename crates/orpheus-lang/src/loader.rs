@@ -39,8 +39,11 @@ struct ImportSpec {
 /// ```
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
+    /// The final inferred type schemes for all successfully evaluated top-level definitions in the file.
     pub type_bindings: BTreeMap<String, Type>,
+    /// The materialized runtime values (often patterns or built-ins) for all evaluated top-level definitions.
     pub value_bindings: BTreeMap<String, Value>,
+    /// The name of the final binding evaluated in the file, if any exist. This is useful for returning the primary artifact of a script.
     pub last_binding_name: Option<String>,
 }
 

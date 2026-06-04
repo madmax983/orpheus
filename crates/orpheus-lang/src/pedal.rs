@@ -116,6 +116,7 @@ pub struct ValidatedPedalNode {
 
 impl ValidatedPedalNode {
     #[must_use]
+    #[doc(hidden)]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
             signal_kind,
@@ -130,11 +131,13 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -150,6 +153,7 @@ pub struct ValidatedPedalBinding {
 
 impl ValidatedPedalBinding {
     #[must_use]
+    #[doc(hidden)]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
             name: name.into(),
@@ -157,11 +161,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node

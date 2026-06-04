@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-05-19 - [Missing Internal Structural Documentation]
+**Confusion:** Internal properties like `TypeScheme::monomorphic`, fields of `StrictLoadedFile`, internal pedal construction methods, and variants for `BuiltinKind` lacked documentation or explicit visibility control (`#[doc(hidden)]`). This triggered documentation linters and cluttered generated API docs with boilerplate, failing Bard's philosophy of ensuring the crate documentation tells an accurate and readable story.
+**Clarification:** Explicitly applied `#[doc(hidden)]` to noisy internal boilerplate methods (like `ValidatedPedalNode::new` and getters) and `TypeScheme` constructors. Added meaningful `///` documentation for core data structs (`TypeScheme`, `StrictLoadedFile`) and all previously undocumented `BuiltinKind` variants detailing their specific musical functions, ensuring the generated docs are clean and descriptive.
