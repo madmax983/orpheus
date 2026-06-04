@@ -118,7 +118,7 @@ pub fn eval_into_bindings(
 struct Evaluator {
     mode: ReplMode,
     bindings: BTreeMap<String, Value>,
-    expr_site_salts: BTreeMap<usize, u64>,
+    expr_site_salts: std::sync::Arc<BTreeMap<usize, u64>>,
     depth: std::cell::Cell<usize>,
 }
 
@@ -251,7 +251,7 @@ impl Evaluator {
         Self {
             mode,
             bindings,
-            expr_site_salts: collect_expr_site_salts(module),
+            expr_site_salts: std::sync::Arc::new(collect_expr_site_salts(module)),
             depth: std::cell::Cell::new(0),
         }
     }

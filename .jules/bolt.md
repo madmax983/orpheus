@@ -47,3 +47,11 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+**[Arc Auto-Dereferencing in Refactors]**
+**Learning:** When wrapping an immutable field `T` in `Arc<T>` (e.g., to reduce cloning overhead), read-only call sites typically do not require manual updates because `Arc` implements `Deref<Target=T>`.
+**Action:** During performance refactors involving `Arc`, rely on Rust's auto-dereferencing for immutable accesses and use `cargo build` to pinpoint only those specific call-sites that strictly require mutability or explicit type signatures.
+
+**[Handling Code Review Speculation]**
+**Learning:** Code reviews may hypothetically speculate that a refactor (e.g., wrapping a type in `Arc`) will cause compilation errors at call-sites, even when Rust's auto-dereferencing handles it seamlessly.
+**Action:** If a code review warns of potential compilation errors without citing an actual failure, immediately run `cargo build` or `cargo test` to definitively prove correctness before attempting to manually "fix" non-existent issues.
