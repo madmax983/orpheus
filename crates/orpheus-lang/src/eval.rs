@@ -118,7 +118,9 @@ pub fn eval_into_bindings(
 struct Evaluator {
     mode: ReplMode,
     bindings: BTreeMap<String, Value>,
-    expr_site_salts: BTreeMap<usize, u64>,
+    /// ⚡ Bolt: Wraps AST site salts in an `Arc` to avoid expensive O(N) deep cloning
+    /// of the map every time a closure or `UserFn` captures the environment on the hot path.
+    expr_site_salts: Arc<BTreeMap<usize, u64>>,
     depth: std::cell::Cell<usize>,
 }
 
@@ -251,7 +253,7 @@ impl Evaluator {
         Self {
             mode,
             bindings,
-            expr_site_salts: collect_expr_site_salts(module),
+            expr_site_salts: Arc::new(collect_expr_site_salts(module)),
             depth: std::cell::Cell::new(0),
         }
     }
@@ -1872,5 +1874,19 @@ right = sometimes(fast(2), cp hh)";
         let module = eval_module("f x = x\nres = f(42.0)", ReplMode::Loose).unwrap();
         let val = module.get("res").unwrap().as_number_pattern().unwrap();
         assert!((val.try_query_unit().unwrap()[0].value - 42.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_evaluator_uses_arc_for_salts() {
+        use crate::ast::Module;
+        use std::sync::Arc;
+        let module = Module { statements: vec![] };
+        let evaluator = Evaluator::new(ReplMode::Loose, &module);
+
+        // Verifying that the type is an Arc by testing its exact strong count behavior.
+        assert_eq!(Arc::strong_count(&evaluator.expr_site_salts), 1);
+
+        let _salts_clone = evaluator.expr_site_salts.clone();
+        assert_eq!(Arc::strong_count(&evaluator.expr_site_salts), 2);
     }
 }

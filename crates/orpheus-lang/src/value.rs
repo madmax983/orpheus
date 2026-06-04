@@ -241,7 +241,9 @@ pub struct UserFn {
     pub(crate) remaining_params: Vec<String>,
     pub(crate) body: Expr,
     pub(crate) captured_bindings: BTreeMap<String, Value>,
-    pub(crate) expr_site_salts: BTreeMap<usize, u64>,
+    /// ⚡ Bolt: Using `Arc` here drops the overhead of cloning the context from O(N) to O(1)
+    /// during function application and execution.
+    pub(crate) expr_site_salts: std::sync::Arc<BTreeMap<usize, u64>>,
     pub(crate) depth: usize,
 }
 
