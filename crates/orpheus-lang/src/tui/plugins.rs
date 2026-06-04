@@ -32,22 +32,32 @@ impl HypertilePlugin for ReplPlugin {
             .transcript
             .iter()
             .flat_map(|entry| {
-                let style = if entry.starts_with("> ") {
-                    Style::default().fg(Color::DarkGray)
-                } else if entry.starts_with("\u{2717} ") {
-                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
-                } else if entry.starts_with("\u{26a0}\u{fe0f} ") {
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD)
-                } else if entry.starts_with("\u{2713} ") {
-                    Style::default().fg(Color::Green)
-                } else {
-                    Style::default()
+                let (style, content) = match entry {
+                    crate::tui::state::TranscriptEntry::Input(_) => {
+                        (Style::default().fg(Color::DarkGray), entry.to_string())
+                    }
+                    crate::tui::state::TranscriptEntry::Error(_) => (
+                        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                        entry.to_string(),
+                    ),
+                    crate::tui::state::TranscriptEntry::Warning(_) => (
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
+                        entry.to_string(),
+                    ),
+                    crate::tui::state::TranscriptEntry::Success(_) => {
+                        (Style::default().fg(Color::Green), entry.to_string())
+                    }
+                    crate::tui::state::TranscriptEntry::Info(_) => {
+                        (Style::default(), entry.to_string())
+                    }
                 };
-                entry
+
+                content
                     .split('\n')
-                    .map(move |line| Line::styled(line.to_owned(), style))
+                    .map(|line| Line::styled(line.to_owned(), style))
+                    .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();
 

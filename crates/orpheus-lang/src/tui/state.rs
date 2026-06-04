@@ -30,10 +30,32 @@ pub const COMMAND_HINTS: [(&str, &str); 17] = [
     (":undo", ":undo"),
 ];
 
+/// A strongly-typed representation of a single log entry in the TUI transcript.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TranscriptEntry {
+    Input(String),
+    Success(String),
+    Error(String),
+    Warning(String),
+    Info(String),
+}
+
+impl std::fmt::Display for TranscriptEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Input(msg) => write!(f, "> {msg}"),
+            Self::Success(msg) => write!(f, "\u{2713} {msg}"),
+            Self::Error(msg) => write!(f, "\u{2717} {msg}"),
+            Self::Warning(msg) => write!(f, "\u{26a0}\u{fe0f} {msg}"),
+            Self::Info(msg) => write!(f, "{msg}"),
+        }
+    }
+}
+
 /// Shared application state accessible by all pane plugins via `Rc<RefCell<_>>`.
 pub struct SharedState {
     pub session: ReplSession,
-    pub transcript: Vec<String>,
+    pub transcript: Vec<TranscriptEntry>,
     pub history: Vec<String>,
     pub history_index: Option<usize>,
     pub status_message: Option<(String, bool)>,
@@ -55,11 +77,11 @@ impl SharedState {
         warning: Option<String>,
     ) -> Self {
         let mut transcript = vec![
-            "Interactive shell ready.".to_owned(),
-            "Press Esc to quit (layout mode).".to_owned(),
+            TranscriptEntry::Info("Interactive shell ready.".to_owned()),
+            TranscriptEntry::Info("Press Esc to quit (layout mode).".to_owned()),
         ];
         if let Some(msg) = warning {
-            transcript.push(format!("\u{26a0}\u{fe0f} {msg}"));
+            transcript.push(TranscriptEntry::Warning(msg));
         }
         let mut state = Self {
             session: ReplSession::with_engine(engine),
@@ -75,8 +97,8 @@ impl SharedState {
         };
         if let Some(path) = startup_path {
             match state.session.open_file(path) {
-                Ok(message) => state.transcript.push(format!("\u{2713} {message}")),
-                Err(message) => state.transcript.push(format!("\u{2717} {message}")),
+                Ok(message) => state.transcript.push(TranscriptEntry::Success(message)),
+                Err(message) => state.transcript.push(TranscriptEntry::Error(message)),
             }
         }
         state
@@ -104,10 +126,10 @@ impl SharedState {
         }
 
         self.clear_status_message();
-        self.transcript.push(format!("> {line}"));
+        self.transcript.push(TranscriptEntry::Input(line.clone()));
         match self.session.eval_line(&line) {
-            Ok(message) => self.transcript.push(format!("\u{2713} {message}")),
-            Err(message) => self.transcript.push(format!("\u{2717} {message}")),
+            Ok(message) => self.transcript.push(TranscriptEntry::Success(message)),
+            Err(message) => self.transcript.push(TranscriptEntry::Error(message)),
         }
     }
 
