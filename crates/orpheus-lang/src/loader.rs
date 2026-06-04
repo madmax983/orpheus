@@ -39,8 +39,11 @@ struct ImportSpec {
 /// ```
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
+    /// Global variable types populated during parsing, allowing the typechecker to verify bindings against previously evaluated declarations.
     pub type_bindings: BTreeMap<String, Type>,
+    /// Evaluated runtime values associated with the bindings, holding the actual patterns or structures produced by evaluating expressions.
     pub value_bindings: BTreeMap<String, Value>,
+    /// Keeps track of the most recently evaluated binding name to supply default targets for REPL commands like `play` when no identifier is explicitly provided.
     pub last_binding_name: Option<String>,
 }
 

@@ -116,6 +116,17 @@ pub struct ValidatedPedalNode {
 
 impl ValidatedPedalNode {
     #[must_use]
+    /// Instantiates a raw pedal node containing effect processing data.
+    ///
+    /// This exists to separate the declaration of an audio effect node from its
+    /// actual evaluation context or named binding.
+    ///
+    /// ## Examples
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Compressor, "compressor");
+    /// ```
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
             signal_kind,
@@ -131,11 +142,13 @@ impl ValidatedPedalNode {
     }
 
     #[must_use]
+    /// Identifies the underlying effect category (e.g., Compressor, Reverb) to guide audio routing.
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
     #[must_use]
+    /// Returns a human-readable summary of the node's configuration for UI display.
     pub fn summary(&self) -> &str {
         &self.summary
     }
@@ -150,6 +163,18 @@ pub struct ValidatedPedalBinding {
 
 impl ValidatedPedalBinding {
     #[must_use]
+    /// Creates a new fully configured pedal value wrapping a validated node.
+    ///
+    /// This binding is what typically lives in the language environment after a let-binding,
+    /// associating an effect definition with an identifier so it can be applied to patterns.
+    ///
+    /// ## Examples
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Compressor, "compressor");
+    /// let binding = ValidatedPedalBinding::new("mycomp", node);
+    /// ```
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
             name: name.into(),
@@ -158,11 +183,13 @@ impl ValidatedPedalBinding {
     }
 
     #[must_use]
+    /// Exposes the variable name this effect is bound to in the evaluation environment.
     pub fn name(&self) -> &str {
         &self.name
     }
 
     #[must_use]
+    /// Provides immutable access to the underlying validated effect node for evaluation.
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node
     }

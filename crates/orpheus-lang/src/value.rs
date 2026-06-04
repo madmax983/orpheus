@@ -37,36 +37,67 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Applies a function to the pattern only on cycles that are a multiple of `n`.
     Every,
+    /// Conditionally applies a transformation function to events that satisfy a boolean predicate.
     When,
+    /// Applies a transformation to events randomly with a 50% probability.
     Sometimes,
+    /// Applies a transformation only to events that fall within a specific phase of the cycle.
     Within,
+    /// Uses a boolean pattern to mute (silence) events where the mask is false.
     Mask,
+    /// Delays events in a chord or sequence by progressively increasing amounts of time.
     Strum,
+    /// Subdivides each event into smaller, repeated events to create a stutter or roll effect.
     Roll,
+    /// Arpeggiates chords by playing their individual notes in sequence.
     Arp,
+    /// Inverts the pitches of a pattern around a central axis.
     Invert,
+    /// Randomly removes events from a pattern with a specified probability.
     Drop,
+    /// Expands single notes into full chords based on a specified chord type (e.g., 'major').
     Chord,
+    /// Generates rhythmic patterns using the Euclidean algorithm (distributing `k` pulses over `n` steps).
     Euclid,
+    /// Generates sequences using an L-system grammar and a set of rewrite rules.
     Lsystem,
+    /// Generates cellular automata sequences based on a Wolfram rule number.
     Wolfram,
+    /// Constrains pitches to a specific set of pitch classes.
     PitchClassSet,
+    /// Quantizes pitches to a specified musical scale.
     Degrees,
+    /// Speeds up a pattern by a given factor.
     Fast,
+    /// Slows down a pattern by a given factor.
     Slow,
+    /// Shifts a pattern forward or backward in time.
     Shift,
+    /// Reverses a pattern within each cycle.
     Rev,
+    /// Adjusts the volume/amplitude of the audio.
     Gain,
+    /// Adds an echo effect to the audio.
     Delay,
+    /// Sets the time between delay echoes.
     DelayTime,
+    /// Controls how much of the delayed signal is fed back into the delay line.
     DelayFeedback,
+    /// A high-pass filter that removes frequencies below a cutoff point.
     Hpf,
+    /// A low-pass filter that removes frequencies above a cutoff point.
     Lpf,
+    /// Adds artificial reverberation to simulate playing in a physical space.
     Reverb,
+    /// Controls the simulated room size for the reverb effect.
     ReverbRoom,
+    /// Controls the amount of high-frequency damping in the reverb effect.
     ReverbDamp,
+    /// The primary cutoff frequency for generic audio filters.
     Cutoff,
+    /// An effect that creates a thicker sound by mixing the signal with a delayed, pitch-modulated copy.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

@@ -261,6 +261,18 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 
 impl BuiltinFn {
     #[must_use]
+    /// Creates a new built-in function descriptor of the given kind.
+    ///
+    /// This exists to separate the declaration of built-in logic from
+    /// dynamic user-defined functions during evaluation.
+    ///
+    /// ## Examples
+    /// ```
+    /// use orpheus_lang::builtins::BuiltinFn;
+    /// use orpheus_lang::value::BuiltinKind;
+    ///
+    /// let builtin = BuiltinFn::new(BuiltinKind::Fast);
+    /// ```
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
             kind,
@@ -270,6 +282,15 @@ impl BuiltinFn {
     }
 
     #[must_use]
+    /// Injects a site-specific salt to modify the deterministic behavior (like random seeding).
+    ///
+    /// ## Examples
+    /// ```
+    /// use orpheus_lang::builtins::BuiltinFn;
+    /// use orpheus_lang::value::BuiltinKind;
+    ///
+    /// let builtin = BuiltinFn::new(BuiltinKind::Sometimes).with_site_salt(42);
+    /// ```
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);
         self
