@@ -47,3 +47,6 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+**[Optimizing Environment Clones during Inference]**
+**Learning:** Deep cloning the entire type environment (`self.env.clone()`) to extend an inner scope in a type checker or interpreter is an `O(|Env|)` operation that creates a massive performance bottleneck.
+**Action:** Replace full environment cloning with an `O(|Params|)` shadow-and-restore approach: temporarily `insert` new bindings, save their previous values, and explicitly restore/remove them afterward in reverse order, ensuring restoration happens even if the scope returns an error.

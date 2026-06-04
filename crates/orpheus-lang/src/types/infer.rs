@@ -152,27 +152,40 @@ impl Inferencer {
             )));
         }
 
-        let saved_env = self.env.clone();
-        let result = (|| {
-            let mut param_types = Vec::with_capacity(params.len());
-            for param in params {
-                let ty = self.fresh_var_type();
-                self.env
-                    .insert(param.clone(), TypeScheme::monomorphic(ty.clone()));
-                param_types.push(ty);
-            }
+        // ⚡ Bolt: Avoid an O(|Env|) heap allocation from cloning `self.env` during parameterized bindings
+        // by pushing and popping shadowing mappings on the existing environment `BTreeMap`.
+        let mut previous_shadows = Vec::with_capacity(params.len());
+        let mut param_types = Vec::with_capacity(params.len());
+        for param in params {
+            let ty = self.fresh_var_type();
+            let previous = self
+                .env
+                .insert(param.clone(), TypeScheme::monomorphic(ty.clone()));
+            previous_shadows.push((param.clone(), previous));
+            param_types.push(ty);
+        }
 
-            let body_ty = self.infer_expr(expr)?;
-            Ok(Type::curried(
-                param_types
-                    .into_iter()
-                    .map(|ty| self.resolve(ty))
-                    .collect::<Vec<_>>(),
-                self.resolve(body_ty),
-            ))
-        })();
-        self.env = saved_env;
-        result
+        let body_ty = self.infer_expr(expr);
+
+        // ⚡ Bolt: Iterate through our parameters backwards so that if they duplicate
+        // a name, we pop them in the right order (last pushed, first popped).
+        for (param, previous) in previous_shadows.into_iter().rev() {
+            if let Some(previous) = previous {
+                self.env.insert(param, previous);
+            } else {
+                self.env.remove(&param);
+            }
+        }
+
+        let body_ty = body_ty?;
+
+        Ok(Type::curried(
+            param_types
+                .into_iter()
+                .map(|ty| self.resolve(ty))
+                .collect::<Vec<_>>(),
+            self.resolve(body_ty),
+        ))
     }
 
     fn infer_expr(&mut self, expr: &Expr) -> Result<Type, TypeError> {
