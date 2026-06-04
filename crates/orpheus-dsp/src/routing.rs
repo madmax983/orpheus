@@ -947,40 +947,52 @@ impl RoutingSnapshotBuilder {
             let to_track = track_index(tracks, &pending_route.to_name);
             let to_bus = bus_index(buses, &pending_route.to_name);
 
-            if from_track.is_some() {
-                if to_bus.is_some() {
+            match (
+                from_track.is_some(),
+                from_bus.is_some(),
+                to_track.is_some(),
+                to_bus.is_some(),
+            ) {
+                (true, _, _, true) => {
                     return Err(RoutingError::TrackToBusRouteRequiresSend {
                         from: pending_route.from_name,
                         to: pending_route.to_name,
                     });
-                } else if to_track.is_some() {
+                }
+                (true, _, true, _) => {
                     return Err(RoutingError::TrackToTrackRoute {
                         from: pending_route.from_name,
                         to: pending_route.to_name,
                     });
                 }
-                return Err(RoutingError::UnknownBus {
-                    name: pending_route.to_name,
-                });
-            } else if let Some(_bus_index) = from_bus {
-                if to_bus.is_some() {
+                (true, _, _, _) => {
+                    return Err(RoutingError::UnknownBus {
+                        name: pending_route.to_name,
+                    });
+                }
+                (_, true, _, true) => {
                     return Err(RoutingError::BusToBusRoute {
                         from: pending_route.from_name,
                         to: pending_route.to_name,
                     });
-                } else if to_track.is_some() {
+                }
+                (_, true, true, _) => {
                     return Err(RoutingError::BusToTrackRoute {
                         from: pending_route.from_name,
                         to: pending_route.to_name,
                     });
                 }
-                return Err(RoutingError::UnknownBus {
-                    name: pending_route.to_name,
-                });
+                (_, true, _, _) => {
+                    return Err(RoutingError::UnknownBus {
+                        name: pending_route.to_name,
+                    });
+                }
+                _ => {
+                    return Err(RoutingError::UnknownTrack {
+                        name: pending_route.from_name,
+                    });
+                }
             }
-            return Err(RoutingError::UnknownTrack {
-                name: pending_route.from_name,
-            });
         }
 
         Ok(())
