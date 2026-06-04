@@ -650,6 +650,17 @@ fn render_events_to_pcm(
     Ok(rendered)
 }
 
+fn format_hound_error(source: &hound::Error) -> Box<str> {
+    match source {
+        hound::Error::IoError(io_err) => match io_err.kind() {
+            std::io::ErrorKind::NotFound => "file not found".into(),
+            std::io::ErrorKind::PermissionDenied => "permission denied".into(),
+            _ => io_err.to_string().into_boxed_str(),
+        },
+        _ => source.to_string().into_boxed_str(),
+    }
+}
+
 fn write_wav(path: &Path, samples: &[i32]) -> Result<(), OfflineRenderError> {
     let path_string = path.display().to_string();
     let spec = hound::WavSpec {
@@ -661,14 +672,7 @@ fn write_wav(path: &Path, samples: &[i32]) -> Result<(), OfflineRenderError> {
     let mut writer =
         hound::WavWriter::create(path, spec).map_err(|source| OfflineRenderError::WavIo {
             path: path_string.clone().into_boxed_str(),
-            message: match &source {
-                hound::Error::IoError(io_err) => match io_err.kind() {
-                    std::io::ErrorKind::NotFound => "file not found".into(),
-                    std::io::ErrorKind::PermissionDenied => "permission denied".into(),
-                    _ => io_err.to_string().into_boxed_str(),
-                },
-                _ => source.to_string().into_boxed_str(),
-            },
+            message: format_hound_error(&source),
         })?;
 
     for sample in samples {
@@ -678,14 +682,7 @@ fn write_wav(path: &Path, samples: &[i32]) -> Result<(), OfflineRenderError> {
             }))
             .map_err(|source| OfflineRenderError::WavIo {
                 path: path_string.clone().into_boxed_str(),
-                message: match &source {
-                    hound::Error::IoError(io_err) => match io_err.kind() {
-                        std::io::ErrorKind::NotFound => "file not found".into(),
-                        std::io::ErrorKind::PermissionDenied => "permission denied".into(),
-                        _ => io_err.to_string().into_boxed_str(),
-                    },
-                    _ => source.to_string().into_boxed_str(),
-                },
+                message: format_hound_error(&source),
             })?;
     }
 
@@ -693,14 +690,7 @@ fn write_wav(path: &Path, samples: &[i32]) -> Result<(), OfflineRenderError> {
         .finalize()
         .map_err(|source| OfflineRenderError::WavIo {
             path: path_string.into_boxed_str(),
-            message: match &source {
-                hound::Error::IoError(io_err) => match io_err.kind() {
-                    std::io::ErrorKind::NotFound => "file not found".into(),
-                    std::io::ErrorKind::PermissionDenied => "permission denied".into(),
-                    _ => io_err.to_string().into_boxed_str(),
-                },
-                _ => source.to_string().into_boxed_str(),
-            },
+            message: format_hound_error(&source),
         })?;
     Ok(())
 }

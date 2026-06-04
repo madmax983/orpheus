@@ -82,3 +82,8 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+\n**[Refactoring Error Formatting into Helpers]**\n**Learning:** Duplicating nested error matching logic across multiple mapping closures () violates DRY principles and creates pyramids of doom.\n**Action:** Extract the  blocks used to format errors (like  handling) into a single standalone helper function (e.g., ) and pass the result inside the closures.
+
+**[Refactoring Error Formatting into Helpers]**
+**Learning:** Duplicating nested error matching logic across multiple mapping closures (`map_err`) violates DRY principles and creates pyramids of doom.
+**Action:** Extract the `match` blocks used to format errors (like `hound::Error` handling) into a single standalone helper function (e.g., `format_hound_error`) and pass the result inside the closures.
