@@ -56,3 +56,7 @@
 **[Enforce Private Explain Module]
 **Tangle:** The `explain` module in `orpheus-lang/src/lib.rs` and its internal `Explain` trait and `explain_table` function were declared as `pub`, leaking internal REPL table rendering details to the public API.
 **Blueprint:** Changed the visibility of the `Explain` trait and `explain_table` function to `pub(crate)` in `crates/orpheus-lang/src/explain.rs`. Removed the `pub use explain::Explain;` re-export from `crates/orpheus-lang/src/lib.rs` and changed the module declaration to `pub(crate) mod explain;`. This strictly enforces internal encapsulation.
+
+**[Fix Leaky Abstraction in ValidatedPedalPlan and GatePatternValue Enums]
+**Tangle:** The `ValidatedPedalPlan` and `Value` enums in `orpheus-lang` were public and exposed inner payload types like `ValidatedPedalBinding`, `ValidatedPedalNode`, `PedalNodeKind`, and `GatePatternValue` as part of their variants. However, these inner types were either private or not re-exported in the crate's `lib.rs`, creating a leaky abstraction where consumers could not explicitly name the types of the values they extracted or the compiler complained about privacy.
+**Blueprint:** Explicitly re-exported `GatePatternValue`, `ValidatedPedalBinding`, `ValidatedPedalNode` and `PedalNodeKind` from the `value` and `pedal` modules inside `crates/orpheus-lang/src/lib.rs` to ensure all publicly reachable types are fully nameable and privacy boundaries are respected.
