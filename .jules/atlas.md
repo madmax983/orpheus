@@ -56,3 +56,6 @@
 **[Enforce Private Explain Module]
 **Tangle:** The `explain` module in `orpheus-lang/src/lib.rs` and its internal `Explain` trait and `explain_table` function were declared as `pub`, leaking internal REPL table rendering details to the public API.
 **Blueprint:** Changed the visibility of the `Explain` trait and `explain_table` function to `pub(crate)` in `crates/orpheus-lang/src/explain.rs`. Removed the `pub use explain::Explain;` re-export from `crates/orpheus-lang/src/lib.rs` and changed the module declaration to `pub(crate) mod explain;`. This strictly enforces internal encapsulation.
+**Cross-Platform VST3 Search Paths Test**
+**Tangle:** The `orpheus-dsp` crate's `PluginDescriptor::search_paths()` returns platform-specific paths (e.g. `VST3` on Windows, `vst3` on Linux). However, `crates/orpheus-dsp/tests/plugin_hosting.rs` strictly checked for the uppercase `VST3` string, causing test failures on Linux systems.
+**Blueprint:** Refactored the test assertion to `.to_lowercase().contains("vst3")` to ensure cross-platform test stability without modifying the core domain logic's platform-specific path resolution.
