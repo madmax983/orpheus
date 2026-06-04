@@ -584,6 +584,53 @@ impl PluginPatternValue {
     }
 }
 
+impl Explain for PluginPatternValue {
+    fn explain(&self, binding_name: &str) -> String {
+        use comfy_table::{Cell, CellAlignment};
+        use crossterm::style::Stylize;
+
+        let title = format!(
+            "{} {}",
+            "Plugin Pattern Plan:".cyan().bold(),
+            binding_name.yellow()
+        );
+
+        let mut table = crate::explain::explain_table(["Property", "Value"]);
+
+        let format_str = match self.source.descriptor().format() {
+            orpheus_dsp::PluginFormat::Vst3 => "VST3",
+            orpheus_dsp::PluginFormat::AudioUnit => "AudioUnit",
+        };
+
+        table.add_row(vec![
+            Cell::new("Type").fg(comfy_table::Color::Cyan),
+            Cell::new(format!("{format_str} Instrument"))
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ]);
+        table.add_row(vec![
+            Cell::new("Identifier").fg(comfy_table::Color::Cyan),
+            Cell::new(self.source.descriptor().identifier())
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ]);
+        table.add_row(vec![
+            Cell::new("Scheduled Notes").fg(comfy_table::Color::Cyan),
+            Cell::new(self.source.notes().len().to_string())
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ]);
+        table.add_row(vec![
+            Cell::new("Automation Lanes").fg(comfy_table::Color::Cyan),
+            Cell::new(self.source.parameter_lanes().len().to_string())
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        format!("{title}\n{table}")
+    }
+}
+
 /// Represents the fundamental unit of an evaluated expression.
 ///
 /// Values can be sample-based audio patterns, raw numerical envelopes, primitive
