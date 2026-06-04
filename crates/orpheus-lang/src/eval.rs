@@ -1868,6 +1868,70 @@ right = sometimes(fast(2), cp hh)";
     }
 
     #[test]
+    fn extract_constant_number_value_returns_error_on_multiple_events() {
+        use orpheus_pattern::{Event, Rational, TimeSpan};
+        let event1 = Event {
+            whole: None,
+            part: TimeSpan::new(Rational::zero(), Rational::new(1, 2).unwrap()).unwrap(),
+            value: 42.0,
+        };
+        let event2 = Event {
+            whole: None,
+            part: TimeSpan::new(Rational::new(1, 2).unwrap(), Rational::one()).unwrap(),
+            value: 12.0,
+        };
+        let val = crate::value::Value::NumberPattern(
+            crate::value::NumberPatternValue::from_events(vec![event1, event2]),
+        );
+        let res = super::extract_constant_number_value(val, "expected constant number");
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "expected a constant number pattern over the unit cycle"
+        );
+    }
+
+    #[test]
+    fn extract_constant_number_rational_returns_error_on_non_number() {
+        let val = crate::value::Value::String("hello".into());
+        let res = super::extract_constant_number_rational(val, "expected number");
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "expected number must resolve to a constant number"
+        );
+    }
+
+    #[test]
+    fn extract_constant_number_rational_returns_error_on_invalid_float() {
+        use orpheus_pattern::{Event, TimeSpan};
+        let event = Event {
+            whole: None,
+            part: TimeSpan::unit(),
+            value: f64::INFINITY,
+        };
+        let val = crate::value::Value::NumberPattern(
+            crate::value::NumberPatternValue::from_events(vec![event]),
+        );
+        let res = super::extract_constant_number_rational(val, "expected number");
+        assert!(res.unwrap_err().to_string().contains("must be finite"));
+    }
+
+    #[test]
+    fn extract_constant_number_rational_handles_valid_number() {
+        use orpheus_pattern::{Event, TimeSpan};
+        let event = Event {
+            whole: None,
+            part: TimeSpan::unit(),
+            value: 1.5,
+        };
+        let val = crate::value::Value::NumberPattern(
+            crate::value::NumberPatternValue::from_events(vec![event]),
+        );
+        let res = super::extract_constant_number_rational(val, "expected number").unwrap();
+        assert_eq!(res.numerator(), 3);
+        assert_eq!(res.denominator(), 2);
+    }
+
+    #[test]
     fn apply_function_value_evaluates_user_function_correctly() {
         let module = eval_module("f x = x\nres = f(42.0)", ReplMode::Loose).unwrap();
         let val = module.get("res").unwrap().as_number_pattern().unwrap();
