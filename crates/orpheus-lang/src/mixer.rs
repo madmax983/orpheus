@@ -561,12 +561,13 @@ impl MixerState {
         let mut builder = RoutingSnapshot::builder();
 
         if !self.has_explicit_bound_tracks() {
-            builder = match self.compatibility_main_binding.as_deref() {
-                Some(binding_name) => builder
+            if let Some(binding_name) = self.compatibility_main_binding.as_deref() {
+                builder = builder
                     .track_with_source("main", compile_track_source(binding_name, bindings)?)
-                    .route("main", "master"),
-                None => builder.main_track(),
-            };
+                    .route("main", "master");
+            } else {
+                builder = builder.main_track();
+            }
         }
 
         for bus_name in self.buses.keys() {
@@ -574,9 +575,10 @@ impl MixerState {
         }
 
         for (track_name, track) in &self.tracks {
-            let source = match track.binding_name.as_deref() {
-                Some(binding_name) => compile_track_source(binding_name, bindings)?,
-                None => TrackSource::Unbound,
+            let source = if let Some(binding_name) = track.binding_name.as_deref() {
+                compile_track_source(binding_name, bindings)?
+            } else {
+                TrackSource::Unbound
             };
             builder = builder
                 .track_with_source_and_mix(
@@ -587,9 +589,7 @@ impl MixerState {
                     track.muted,
                 )
                 .route(track_name.as_str(), "master");
-        }
 
-        for (track_name, track) in &self.tracks {
             for (bus_name, level) in &track.sends {
                 builder = builder.send(track_name.as_str(), bus_name.as_str(), *level);
             }

@@ -82,3 +82,11 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**[Flattening Iterator try_fold]**
+**Learning:** `try_fold` loops with an initial `None` accumulator where the loop completely ignores the incoming accumulator parameter (`|_, statement|`) are semantically equivalent to a simple `for` loop that mutates a local `last_item` variable, but they add unnecessary closure nesting.
+**Action:** Unroll such iterator chains into standard `for` loops to flatten the nesting and make state mutation explicit and readable.
+
+**[Refactoring Unnecessary Intermediate Variables and Redundant Iteration]**
+**Learning:** When a module sequentially iterates over a collection twice to populate a builder pattern (e.g., creating tracks then adding sends), it can often be combined into a single pass if the builder's API supports chained or order-independent operations.
+**Action:** Look for back-to-back iterations over the same collection that mutate the same builder and merge them to reduce algorithmic passes and cognitive overhead.
