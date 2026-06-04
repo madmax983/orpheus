@@ -129,4 +129,53 @@ mod tests {
         let err: EvalError = parse_err.into();
         assert_eq!(err.to_string(), "mock parse error");
     }
+
+    #[test]
+    fn eval_error_from_try_from_int_error() {
+        let try_from_err: std::num::TryFromIntError = u8::try_from(256u16).unwrap_err();
+        let err: EvalError = try_from_err.into();
+        assert_eq!(
+            err.to_string(),
+            "out of range integral type conversion attempted"
+        );
+    }
+
+    #[test]
+    fn eval_error_from_parse_int_error() {
+        let parse_int_err: std::num::ParseIntError = "not_an_int".parse::<i32>().unwrap_err();
+        let err: EvalError = parse_int_err.into();
+        assert_eq!(err.to_string(), "invalid digit found in string");
+    }
+
+    #[test]
+    fn eval_error_from_io_error() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let err: EvalError = io_err.into();
+        assert_eq!(err.to_string(), "file not found");
+
+        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied");
+        let err: EvalError = io_err.into();
+        assert_eq!(err.to_string(), "permission denied");
+
+        let io_err = std::io::Error::other("custom io error");
+        let err: EvalError = io_err.into();
+        assert_eq!(err.to_string(), "custom io error");
+    }
+
+    #[test]
+    fn eval_error_from_fmt_error() {
+        let fmt_err = std::fmt::Error;
+        let err: EvalError = fmt_err.into();
+        assert_eq!(
+            err.to_string(),
+            "an error occurred when formatting an argument"
+        );
+    }
+
+    #[test]
+    fn eval_error_from_pattern_error() {
+        let pattern_err = orpheus_pattern::PatternError::InvalidDenominator { denominator: 0 };
+        let err: EvalError = pattern_err.into();
+        assert_eq!(err.to_string(), "rational denominator cannot be zero");
+    }
 }
