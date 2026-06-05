@@ -6,53 +6,13 @@
 
 use std::io::Write;
 use std::path::Path;
-use thiserror::Error;
 
-use orpheus_dsp::{OfflineRenderError, SampleBank, SampleTrigger, render_events_to_file_with_bank};
+use orpheus_dsp::{SampleBank, SampleTrigger, render_events_to_file_with_bank};
 use orpheus_pattern::Event;
 
+use crate::error::RenderError;
 use crate::eval::{EvalError, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue};
-
-/// Errors that can occur during audio rendering or exporting operations.
-///
-/// This error is returned when exporting patterns to audio files (like WAV).
-/// It can either stem from runtime evaluation failures (e.g., trying to render a
-/// pattern with out-of-bounds parameters) or from the audio engine failing to
-/// process and write the PCM data to disk.
-///
-/// # Causes
-///
-/// - [`RenderError::Eval`]: The pattern could not be successfully queried across
-///   the requested time span due to an [`EvalError`] (e.g., invalid arithmetic
-///   on the rational time domain).
-/// - [`RenderError::Audio`]: The offline digital signal processing engine failed
-///   to write the resulting audio file (e.g., I/O permissions or a corrupted
-///   sample bank).
-///
-/// # Examples
-///
-/// ```
-/// use orpheus_lang::RenderError;
-/// use orpheus_lang::EvalError;
-///
-/// let error = RenderError::Eval(EvalError::new("out of bounds parameter"));
-///
-/// match error {
-///     RenderError::Eval(e) => assert_eq!(e.to_string(), "out of bounds parameter"),
-///     RenderError::Audio(_) => unreachable!(),
-/// }
-/// ```
-
-#[derive(Debug, Error)]
-pub enum RenderError {
-    /// An error occurred while evaluating the pattern events.
-    #[error(transparent)]
-    Eval(#[from] EvalError),
-    /// An error occurred during the offline digital signal processing or file writing phase.
-    #[error(transparent)]
-    Audio(#[from] OfflineRenderError),
-}
 
 /// Helper function to convert a `SampleEvent` from the evaluation phase into a
 /// `SampleTrigger` for the DSP rendering phase.

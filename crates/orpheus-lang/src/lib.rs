@@ -44,10 +44,10 @@ pub use arduino_export::export_number_pattern_to_arduino;
 pub use ascii_roll::render_ascii_roll;
 pub use ast::{BinaryOp, Expr, GraphBinding, Module, Stmt};
 pub use diagnostics::{LoadError, ParseError, TypeError};
-pub use error::EvalError;
+pub use error::{EvalError, RenderError};
 pub use eval::{eval_module, render_span};
 pub use export::{
-    RenderError, export_number_pattern_to_csv, export_number_pattern_to_json,
+    export_number_pattern_to_csv, export_number_pattern_to_json,
     export_number_pattern_to_md, export_sample_pattern_to_csv, export_sample_pattern_to_json,
     export_sample_pattern_to_md, render_sample_pattern_to_file,
     render_sample_pattern_to_file_with_bank, render_sample_pattern_to_wav,

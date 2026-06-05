@@ -1,7 +1,48 @@
+use orpheus_dsp::OfflineRenderError;
 use orpheus_pattern::PatternError;
 use thiserror::Error;
 
 use crate::diagnostics::ParseError;
+
+/// Errors that can occur during audio rendering or exporting operations.
+///
+/// This error is returned when exporting patterns to audio files (like WAV).
+/// It can either stem from runtime evaluation failures (e.g., trying to render a
+/// pattern with out-of-bounds parameters) or from the audio engine failing to
+/// process and write the PCM data to disk.
+///
+/// # Causes
+///
+/// - [`RenderError::Eval`]: The pattern could not be successfully queried across
+///   the requested time span due to an [`EvalError`] (e.g., invalid arithmetic
+///   on the rational time domain).
+/// - [`RenderError::Audio`]: The offline digital signal processing engine failed
+///   to write the resulting audio file (e.g., I/O permissions or a corrupted
+///   sample bank).
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::RenderError;
+/// use orpheus_lang::EvalError;
+///
+/// let error = RenderError::Eval(EvalError::new("out of bounds parameter"));
+///
+/// match error {
+///     RenderError::Eval(e) => assert_eq!(e.to_string(), "out of bounds parameter"),
+///     RenderError::Audio(_) => unreachable!(),
+/// }
+/// ```
+
+#[derive(Debug, Error)]
+pub enum RenderError {
+    /// An error occurred while evaluating the pattern events.
+    #[error(transparent)]
+    Eval(#[from] EvalError),
+    /// An error occurred during the offline digital signal processing or file writing phase.
+    #[error(transparent)]
+    Audio(#[from] OfflineRenderError),
+}
 
 /// Runtime errors that occur while evaluating an Orpheus expression.
 ///
@@ -128,5 +169,21 @@ mod tests {
         let parse_err = crate::diagnostics::ParseError::new("mock parse error");
         let err: EvalError = parse_err.into();
         assert_eq!(err.to_string(), "mock parse error");
+    }
+
+    #[test]
+    fn render_error_formats_eval_error() {
+        let err: RenderError = EvalError::new("render failed").into();
+        assert_eq!(err.to_string(), "render failed");
+    }
+
+    #[test]
+    fn render_error_formats_audio_error() {
+        let dsp_err = orpheus_dsp::OfflineRenderError::InvalidCycleCount;
+        let err: RenderError = dsp_err.into();
+        assert_eq!(
+            err.to_string(),
+            "offline rendering requires at least one cycle"
+        );
     }
 }

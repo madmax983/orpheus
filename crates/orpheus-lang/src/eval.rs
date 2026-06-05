@@ -1425,20 +1425,6 @@ right = sometimes(fast(2), cp hh)";
         assert_eq!(err.to_string(), "syntax error");
     }
 
-    #[test]
-    fn render_error_formats_eval_error() {
-        let err = crate::RenderError::Eval(super::EvalError::new("render failed"));
-        assert_eq!(err.to_string(), "render failed");
-    }
-
-    #[test]
-    fn render_error_formats_audio_error() {
-        let err = crate::RenderError::Audio(orpheus_dsp::OfflineRenderError::InvalidCycleCount);
-        assert_eq!(
-            err.to_string(),
-            "offline rendering requires at least one cycle"
-        );
-    }
 
     #[test]
     fn eval_error_from_parse_error() {

@@ -614,7 +614,7 @@ impl ReplSession {
         };
 
         render_sample_pattern_to_file_with_bank(pattern, &path, cycles, &self.sample_bank)
-            .map_err(|error: crate::export::RenderError| error.to_string())?;
+            .map_err(|error: crate::error::RenderError| error.to_string())?;
         Ok(format!(
             "rendered `{binding_name}` to `{path}` ({cycles} cycle(s))"
         ))

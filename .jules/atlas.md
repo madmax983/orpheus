@@ -56,3 +56,7 @@
 **[Enforce Private Explain Module]
 **Tangle:** The `explain` module in `orpheus-lang/src/lib.rs` and its internal `Explain` trait and `explain_table` function were declared as `pub`, leaking internal REPL table rendering details to the public API.
 **Blueprint:** Changed the visibility of the `Explain` trait and `explain_table` function to `pub(crate)` in `crates/orpheus-lang/src/explain.rs`. Removed the `pub use explain::Explain;` re-export from `crates/orpheus-lang/src/lib.rs` and changed the module declaration to `pub(crate) mod explain;`. This strictly enforces internal encapsulation.
+
+**[Extracted RenderError]**
+**Tangle:** `RenderError` was defined in `export.rs` but tightly coupled with `EvalError` in `error.rs` and `OfflineRenderError` in `orpheus_dsp`. This creates a scattered understanding of errors across the domain boundary between `lang` and `dsp`.
+**Blueprint:** Moved `RenderError` to a centralized `error.rs` module, keeping all top-level language and rendering errors together to form a clearer API surface and decouple `export.rs` from defining fundamental application state errors.
