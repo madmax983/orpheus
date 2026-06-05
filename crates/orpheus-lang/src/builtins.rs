@@ -260,6 +260,9 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Creates a new `BuiltinFn` of the specified `BuiltinKind`.
+    ///
+    /// The newly created function will have no bound arguments and no site salt.
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +272,10 @@ impl BuiltinFn {
         }
     }
 
+    /// Attaches a site salt to the `BuiltinFn`.
+    ///
+    /// This is used to disambiguate the PRNG state for probabilistic functions
+    /// (like `sometimes`) when they are called multiple times in the same program.
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

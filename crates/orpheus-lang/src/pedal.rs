@@ -115,6 +115,22 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Instantiates a semantically verified node ready for the audio graph.
+    ///
+    /// This prevents malformed subgraphs (e.g., control rates routed to audio rates)
+    /// from passing further down the compiler pipeline.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(
+    ///     SignalKind::Audio,
+    ///     PedalNodeKind::Input,
+    ///     "Live Microphone"
+    /// );
+    /// ```
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +146,19 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Inspects the specific computational role of this audio node.
+    ///
+    /// This is typically used during graph compilation to determine what
+    /// DSP implementation should be instantiated for this node.
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Retrieves the human-readable summary of the node's function.
+    ///
+    /// This text is primarily surfaced in terminal UI visualizations
+    /// to provide a description of the generated FX chain.
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +173,19 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Associates a user-defined identifier with a verified audio node.
+    ///
+    /// Used by the lowering compiler to track named signal flows and
+    /// prevent "undefined variable" errors in complex FX chains.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "Mic");
+    /// let binding = ValidatedPedalBinding::new("vocal_bus", node);
+    /// ```
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +194,19 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// Accesses the string identifier used to reference this binding.
+    ///
+    /// This is the key used in symbol tables during the lowering phase to
+    /// resolve variable references within the FX chain back to concrete nodes.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Accesses the semantic audio node associated with this binding.
+    ///
+    /// Allows the compiler to traverse the node's properties (like its
+    /// expected signal rate and computational kind) when evaluating references.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node

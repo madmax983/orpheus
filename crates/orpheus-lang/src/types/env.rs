@@ -26,11 +26,14 @@ use crate::types::{Type, TypeVarId};
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
+    /// The generic type variables bound in this scheme.
     pub vars: Vec<TypeVarId>,
+    /// The underlying type, which may contain references to the bound type variables.
     pub ty: Type,
 }
 
 impl TypeScheme {
+    /// Creates a monomorphic (non-generic) `TypeScheme` from a concrete `Type`.
     #[must_use]
     pub const fn monomorphic(ty: Type) -> Self {
         Self {
@@ -195,6 +198,11 @@ impl TypeEnv {
         self.entries.get(name)
     }
 
+    /// Iterates over all bound type signatures in the current scope.
+    ///
+    /// This is heavily utilized by the REPL interface to dynamically introspect
+    /// the environment state and display the available functions and their signatures
+    /// to the user in a readable format.
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }
