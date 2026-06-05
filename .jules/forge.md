@@ -82,3 +82,6 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+**[Refactoring Method Signatures to Context Structs]
+**Learning:** Changing a method signature to take a Context struct (e.g., `&mut EvalContext`) instead of individual arguments without updating the method body causes `cannot find value` errors because the local variables no longer exist in the immediate scope.
+**Action:** When extracting parameter lists into a Context struct, comprehensively update all internal references within the method body to access the variables through the context instance (e.g., `ctx.input`).
