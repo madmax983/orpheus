@@ -877,6 +877,20 @@ impl Evaluator {
         items: &[Expr],
         meter: Option<&MeterContext>,
     ) -> Result<Option<Vec<PatternNode<SampleEvent>>>, EvalError> {
+        if self.depth.get() > 200 {
+            return Err(EvalError::new("evaluation recursion limit exceeded"));
+        }
+        self.depth.set(self.depth.get() + 1);
+        let result = self.collect_sample_nodes_impl(items, meter);
+        self.depth.set(self.depth.get() - 1);
+        result
+    }
+
+    fn collect_sample_nodes_impl(
+        &self,
+        items: &[Expr],
+        meter: Option<&MeterContext>,
+    ) -> Result<Option<Vec<PatternNode<SampleEvent>>>, EvalError> {
         let mut nodes = Vec::with_capacity(items.len());
         for item in items {
             let Some(node) = self.try_sample_node(item, meter)? else {
@@ -925,6 +939,19 @@ impl Evaluator {
     }
 
     fn collect_number_nodes(
+        &self,
+        items: &[Expr],
+    ) -> Result<Option<Vec<PatternNode<f64>>>, EvalError> {
+        if self.depth.get() > 200 {
+            return Err(EvalError::new("evaluation recursion limit exceeded"));
+        }
+        self.depth.set(self.depth.get() + 1);
+        let result = self.collect_number_nodes_impl(items);
+        self.depth.set(self.depth.get() - 1);
+        result
+    }
+
+    fn collect_number_nodes_impl(
         &self,
         items: &[Expr],
     ) -> Result<Option<Vec<PatternNode<f64>>>, EvalError> {
@@ -1872,5 +1899,29 @@ right = sometimes(fast(2), cp hh)";
         let module = eval_module("f x = x\nres = f(42.0)", ReplMode::Loose).unwrap();
         let val = module.get("res").unwrap().as_number_pattern().unwrap();
         assert!((val.try_query_unit().unwrap()[0].value - 42.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_havoc_ast_group_nesting_evaluator_limit() {
+        // 👺 Havoc: Bypass parser limits and construct an arbitrarily deep AST group
+        let mut expr = crate::Expr::Ident("bd".to_string());
+        for _ in 0..300 {
+            expr = crate::Expr::Group(vec![expr]);
+        }
+
+        let evaluator = Evaluator {
+            mode: crate::ReplMode::Loose,
+            bindings: std::collections::BTreeMap::new(),
+            expr_site_salts: std::collections::BTreeMap::new(),
+            depth: std::cell::Cell::new(0),
+        };
+
+        let result = evaluator.eval_expr(&expr);
+
+        assert!(result.is_err(), "Expected recursion limit error");
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "evaluation recursion limit exceeded"
+        );
     }
 }

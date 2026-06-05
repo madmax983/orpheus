@@ -11,3 +11,6 @@
 ## 2023-10-31 - [Fuzzing Evaluation Resilience & Pattern Match Exhaustiveness]
 **Learning:** `E0004: non-exhaustive patterns` compilation errors occur when adding new variants to central enums (like `BuiltinKind`) without updating matching functions downstream (`name()`, `arity()`, `execute()`). Fuzzing via `cargo-fuzz` confirmed the evaluation system handles malformed strings gracefully without crashing.
 **Action:** When adding enum variants, systematically check and update all downstream match blocks. Ensure all systems compiling after a feature addition don't just compile but also withstand `cargo-fuzz` without panicking.
+## 2026-06-05 - [Evaluator State Leak via Early Return]
+**Learning:** Manually incrementing and decrementing internal state (like `self.depth.set(...)`) around code that uses the `?` operator can create a state leak if the inner logic returns early with an `Err`. The decrement step will be bypassed, leaving the internal state permanently corrupted for subsequent REPL invocations.
+**Action:** Either wrap the fallible inner logic inside a separate `_impl` helper function and perform the state changes around its call, or use a RAII Drop guard (e.g., `DepthGuard`) to guarantee state restoration on all control flow paths.
