@@ -562,4 +562,107 @@ mod tests {
         let type_err: TypeError = parse_err.into();
         assert!(type_err.to_string().contains("mock parse error"));
     }
+    use crate::ReplMode;
+    use crate::ast::Expr;
+
+    #[test]
+    fn test_infer_pattern_items_empty() {
+        let mut type_checker = Inferencer::new(ReplMode::Strict);
+        let items: Vec<Expr> = vec![];
+        let result = type_checker.infer_pattern_items(&items, "test context");
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "test context cannot be empty"
+        );
+    }
+
+    #[test]
+    fn test_infer_pattern_items_type_mismatch() {
+        let mut type_checker = Inferencer::new(ReplMode::Strict);
+        let items = vec![Expr::Number(1.0), Expr::Ident("bd".to_string())];
+        let result = type_checker.infer_pattern_items(&items, "test context");
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("test context must all have the same type")
+        );
+    }
+
+    #[test]
+    fn test_occurs_check_error() {
+        let mut type_checker = Inferencer::new(ReplMode::Strict);
+        let var1 = type_checker.fresh_var_type();
+        let Type::Var(_var_id) = var1 else {
+            panic!("expected var")
+        };
+        let result = type_checker.unify(var1.clone(), Type::pattern(var1));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("occurs within"));
+    }
+
+    #[test]
+    fn test_try_loose_coercion_number_to_pattern() {
+        let type_checker = Inferencer::new(ReplMode::Loose);
+        let result = type_checker.try_loose_coercion(&Type::Number, &Type::pattern(Type::Number));
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_infer_unresolved_ident() {
+        let mut type_checker = Inferencer::new(ReplMode::Strict);
+        let expr = Expr::Ident("unknown_var".to_string());
+        let result = type_checker.infer_expr(&expr);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("unresolved identifier")
+        );
+    }
+
+    #[test]
+    fn test_try_loose_coercion_pattern_to_number() {
+        let type_checker = Inferencer::new(ReplMode::Loose);
+        let result = type_checker.try_loose_coercion(&Type::pattern(Type::Number), &Type::Number);
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_try_loose_coercion_strict_mode() {
+        let type_checker = Inferencer::new(ReplMode::Strict);
+        let result = type_checker.try_loose_coercion(&Type::Number, &Type::pattern(Type::Number));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_unify_function_arity_mismatch() {
+        let mut type_checker = Inferencer::new(ReplMode::Strict);
+        let f1 = Type::function(vec![Type::Number], Type::Number);
+        let f2 = Type::function(vec![Type::Number, Type::Number], Type::Number);
+        let result = type_checker.unify(f1, f2);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("function arity mismatch")
+        );
+    }
+
+    #[test]
+    fn test_apply_argument_error() {
+        let mut type_checker = Inferencer::new(ReplMode::Strict);
+        let result = type_checker.apply_argument(Type::Number, Type::Number);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("attempted to call a non-function value")
+        );
+    }
 }

@@ -49,3 +49,10 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2024-05-23 - [ALSA Development Headers Dependency]
+**Learning:** Building audio-related crates like `alsa-sys` requires ALSA development headers on Debian/Ubuntu systems. Failing to have these causes `pkg-config exited with status code 1` errors during compilation.
+**Action:** Run `sudo apt-get update && sudo apt-get install -y libasound2-dev` if `alsa-sys` fails to compile due to missing `alsa` pkg-config.
+
+## 2024-05-23 - [Appending Test Modules]
+**Learning:** Blindly appending `#[cfg(test)] mod tests { ... }` to the end of a file can cause `error[E0428]: the name 'tests' is defined multiple times` if the file already contains a test module.
+**Action:** Always check if a `mod tests` block already exists in the file (e.g., using `grep` or `tail`) before adding new tests. If it exists, append the new test functions inside the existing block rather than creating a new module.
