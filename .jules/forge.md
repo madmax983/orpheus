@@ -82,3 +82,7 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**[Extract Statement Evaluation to Helper Method]**
+**Learning:** In the `eval_statements` function, passing a closure to `try_fold` that contains a massive `match` statement on AST elements like `Stmt` can trigger excessive line lengths and nesting. Extracting the closure logic to a private `eval_statement` method on the `Evaluator` reduces cognitive load, flattens the structure, and keeps code self-documenting.
+**Action:** When a method processes elements of a slice using `iter().fold` or `iter().try_fold` where the closure body performs complex pattern matching, extract the body of the closure into its own descriptive method like `process_element` or `eval_statement`.
