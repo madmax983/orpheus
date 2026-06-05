@@ -47,3 +47,7 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+**[Type Environment Shadowing/Restoration]**
+**Learning:** When optimizing away deep clones of `BTreeMap` environments during inference by reusing a single mutable environment, simply removing (`remove`) inserted parameters at the end breaks variable shadowing. Furthermore, iterating forwards during restoration fails to properly unwind duplicate parameter shadows.
+**Action:** Ensure `insert` returns the previous value (`Option<TypeScheme>`) and explicitly restore the previous value (or remove if `None`) by iterating over the saved bindings in *reverse* order (`.rev()`) after the inner scope completes.
