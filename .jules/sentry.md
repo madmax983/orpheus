@@ -49,3 +49,7 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+
+## 2024-06-25 - Improve coverage in ast.rs
+**Learning:** Found coverage gaps in `crates/orpheus-lang/src/ast.rs` for `references_ident` across several AST traversal nodes (e.g., `Pipe`, `Binary`, `Call`). Added tests to ensure all `Expr` enum variants correctly traverse when checking for identifier references.
+**Action:** When adding or refactoring recursive AST methods, ensure comprehensive unit tests cover traversal logic for all node variants to avoid shadowing bugs or false negatives.
