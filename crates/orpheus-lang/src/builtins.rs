@@ -105,6 +105,7 @@ fn lookup_pattern_transform(name: &str) -> Option<Value> {
         "euclid" => Some(builtin_function_value(BuiltinKind::Euclid)),
         "lsystem" => Some(builtin_function_value(BuiltinKind::Lsystem)),
         "wolfram" => Some(builtin_function_value(BuiltinKind::Wolfram)),
+        "conway" => Some(builtin_function_value(BuiltinKind::Conway)),
         "pitch_class_set" => Some(builtin_function_value(BuiltinKind::PitchClassSet)),
         "degrees" => Some(builtin_function_value(BuiltinKind::Degrees)),
         "tuning" => Some(builtin_function_value(BuiltinKind::Tuning)),
@@ -360,6 +361,7 @@ impl BuiltinKind {
             Self::Euclid => "euclid",
             Self::Lsystem => "lsystem",
             Self::Wolfram => "wolfram",
+            Self::Conway => "conway",
             Self::PitchClassSet => "pitch_class_set",
             Self::Degrees => "degrees",
             Self::Fast => "fast",
@@ -436,6 +438,7 @@ impl BuiltinKind {
             | Self::Chord
             | Self::Euclid
             | Self::Wolfram
+            | Self::Conway
             | Self::Degrees
             | Self::Fast
             | Self::Slow
@@ -490,6 +493,7 @@ impl BuiltinKind {
             Self::Euclid => apply_euclid(args),
             Self::Lsystem => apply_lsystem(args),
             Self::Wolfram => apply_wolfram(args),
+            Self::Conway => apply_conway(args),
             Self::PitchClassSet => apply_pitch_class_set(args),
             Self::Degrees => apply_degrees(args),
             Self::Fast => apply_fast(args),
@@ -2928,6 +2932,83 @@ mod test_nova {
     }
 }
 
+fn apply_conway(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let size = extract_whole_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`conway` requires a size argument"))?,
+        "`conway` size",
+        true,
+    )?;
+    let steps = extract_whole_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`conway` requires a steps argument"))?,
+        "`conway` steps",
+        true,
+    )?;
+
+    if size > 64 {
+        return Err(EvalError::new("`conway` size cannot exceed 64"));
+    }
+
+    let size = size as usize;
+    let mut current_state = vec![vec![false; size]; size];
+
+    // Initialize a simple glider or random seed
+    if size >= 3 {
+        current_state[1][0] = true;
+        current_state[2][1] = true;
+        current_state[0][2] = true;
+        current_state[1][2] = true;
+        current_state[2][2] = true;
+    }
+
+    let mut nodes = Vec::with_capacity(steps as usize * size * size);
+    for _ in 0..steps {
+        for row in &current_state {
+            for &cell in row {
+                if cell {
+                    nodes.push(orpheus_pattern::PatternNode::atom(1.0));
+                } else {
+                    nodes.push(orpheus_pattern::PatternNode::rest());
+                }
+            }
+        }
+
+        let mut next_state = vec![vec![false; size]; size];
+        for y in 0..size {
+            for x in 0..size {
+                let mut neighbors = 0;
+                for dy in [-1_isize, 0, 1] {
+                    for dx in [-1_isize, 0, 1] {
+                        if dy == 0 && dx == 0 {
+                            continue;
+                        }
+                        #[allow(clippy::cast_possible_wrap)]
+                        let y_isize = y as isize;
+                        #[allow(clippy::cast_possible_wrap)]
+                        let x_isize = x as isize;
+                        #[allow(clippy::cast_possible_wrap)]
+                        let size_isize = size as isize;
+
+                        let ny = (y_isize + dy).rem_euclid(size_isize) as usize;
+                        let nx = (x_isize + dx).rem_euclid(size_isize) as usize;
+                        if current_state[ny][nx] {
+                            neighbors += 1;
+                        }
+                    }
+                }
+                let alive = current_state[y][x];
+                if neighbors == 3 || (alive && neighbors == 2) {
+                    next_state[y][x] = true;
+                }
+            }
+        }
+        current_state = next_state;
+    }
+
+    Ok(Value::NumberPattern(NumberPatternValue::from_nodes(nodes)))
+}
 fn apply_wolfram(args: Vec<Value>) -> Result<Value, EvalError> {
     let mut args = args.into_iter();
     let rule = extract_whole_number(

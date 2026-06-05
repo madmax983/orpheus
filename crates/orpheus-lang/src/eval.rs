@@ -1874,3 +1874,17 @@ right = sometimes(fast(2), cp hh)";
         assert!((val.try_query_unit().unwrap()[0].value - 42.0).abs() < f64::EPSILON);
     }
 }
+
+#[test]
+fn eval_conway_generates_game_of_life_pattern() {
+    let source = "pattern = conway(3, 2)";
+    let env = eval_module(source, ReplMode::Loose).unwrap();
+    let pattern = env.get("pattern").unwrap().as_number_pattern().unwrap();
+    let events = pattern.query_unit();
+    // 3x3 grid = 9 cells per step, 2 steps = 18 elements.
+    // Alive cells:
+    // Step 0: 5 alive
+    // Step 1: will have some number of alive cells.
+    // From manual python simulation, there are 5 active events out of the 18 total steps.
+    assert_eq!(events.len(), 5);
+}
