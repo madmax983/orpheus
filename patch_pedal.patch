@@ -1,0 +1,19 @@
+--- crates/orpheus-dsp/src/pedal/runtime.rs
++++ crates/orpheus-dsp/src/pedal/runtime.rs
+@@ -1246,6 +1246,16 @@
+         );
+     }
+
++    #[test]
++    #[should_panic(expected = "neutral tone bypasses filter state")]
++    fn test_process_tone_panics_on_neutral_model() {
++        let low_pass = LowPassState::new(44100.0);
++        let high_pass = HighPassState::new(44100.0);
++        let mut ctx = StageContext { input: 0.5, node_values: &[], index: 0, node_states: &mut [NodeState::Tone { low_pass, high_pass }] };
++        let stage = PedalStage::Tone { input: NodeRef::Input, cutoff_hz: NodeRef::Input, resonance: NodeRef::Input, model: ToneModel::Neutral };
++        let _ = stage.process_tone(&mut ctx);
++    }
++
+     #[test]
+     fn pedal_runtime_compresses_peaks_and_adds_makeup_gain() {
+         let mut nodes = NodeArena::new();

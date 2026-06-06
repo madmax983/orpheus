@@ -1054,3 +1054,21 @@ fn sanitize_token_component(raw: &str) -> String {
 fn is_top_level_sample_path(root: &Path, path: &Path) -> bool {
     path.parent().is_some_and(|parent| parent == root)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sample::DecodedSample;
+
+    #[test]
+    #[should_panic(expected = "decoded samples are constrained to mono or stereo")]
+    fn test_playback_sample_from_decoded_panics_on_unsupported_channels() {
+        let sample = DecodedSample {
+            frames: vec![0.0, 0.0, 0.0],
+            channels: 3,
+            sample_rate_hz: 44100,
+        };
+
+        let _ = PlaybackSample::from(sample);
+    }
+}

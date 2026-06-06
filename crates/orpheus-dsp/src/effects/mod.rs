@@ -100,3 +100,19 @@ impl BusEffectState {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[should_panic(expected = "bus effect state kind must match the hosted spec")]
+    fn test_bus_effect_sync_timing_panics_on_mismatched_spec() {
+        let reverb_spec = crate::ReverbSpec::new(0.5, 0.5, 0.5);
+        let mut state = BusEffectState::Reverb(crate::effects::reverb::ReverbState::new(&reverb_spec));
+        let delay_spec = crate::DelaySpec::new(orpheus_pattern::Rational::one(), 0.5, 0.5);
+        let spec = BusEffectSpec::Delay(delay_spec);
+
+        let _ = state.sync_timing(&spec, 88200);
+    }
+}

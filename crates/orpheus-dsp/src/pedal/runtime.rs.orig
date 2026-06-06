@@ -1245,16 +1245,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "neutral tone bypasses filter state")]
-    fn test_process_tone_panics_on_neutral_model() {
-        let low_pass = LowPassState::new(44100.0);
-        let high_pass = HighPassState::new(44100.0);
-        let mut ctx = StageContext { input: 0.5, node_values: &[], index: 0, node_states: &mut [NodeState::Tone { low_pass, high_pass }] };
-        let stage = PedalStage::Tone { input: NodeRef::Input, cutoff_hz: NodeRef::Input, resonance: NodeRef::Input, model: ToneModel::Neutral };
-        let _ = stage.process_tone(&mut ctx);
-    }
-
-    #[test]
     fn should_sanitize_non_negative() {
         assert!((sanitize_non_negative(1.0) - 1.0).abs() < f32::EPSILON);
         assert!((sanitize_non_negative(-1.0) - 0.0).abs() < f32::EPSILON);

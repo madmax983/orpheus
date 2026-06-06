@@ -1,0 +1,44 @@
+--- crates/orpheus-dsp/src/voice.rs
++++ crates/orpheus-dsp/src/voice.rs
+@@ -974,27 +974,18 @@
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+-    use crate::sample_trigger::SampleTrigger;
+-    use orpheus_pattern::rational::Rational;
+-    use orpheus_pattern::timespan::TimeSpan;
+-    use orpheus_pattern::event::Event;
++    use crate::command::SampleTrigger;
+
+     #[test]
+     #[should_panic(expected = "analog voices should not enter the drum synth path")]
+     fn test_next_drum_synth_sample_panics_on_analog_voices() {
+         let mut frame_index = 0;
+         let mut noise_state = 0;
+
+-        let _ = Voice::next_drum_synth_sample(
++        let _ = next_drum_synth_sample(
+             VoiceKind::AnalogSaw,
+             &mut frame_index,
+             100,
+             44100.0,
+             &mut noise_state,
+         );
+     }
+
+     #[test]
+     #[should_panic(expected = "drum voices do not produce analog voice parameters")]
+     fn test_analog_voice_params_panics_on_drum_voices() {
+-        let trigger = SampleTrigger::new(
+-            "dummy",
+-            &Event {
+-                part: TimeSpan::new(Rational::zero(), Rational::one()).unwrap(),
+-                whole: None,
+-                value: "dummy".to_string(),
+-            },
+-        ).unwrap();
++        let trigger = SampleTrigger::named("dummy");
+
+         let _ = analog_voice_params(VoiceKind::KickLike, &trigger, 440.0);
+     }
+ }
