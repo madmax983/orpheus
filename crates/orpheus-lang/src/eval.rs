@@ -1868,6 +1868,31 @@ right = sometimes(fast(2), cp hh)";
     }
 
     #[test]
+    fn extract_constant_number_rational_handles_number_pattern() {
+        use orpheus_pattern::{Event, TimeSpan};
+        let event = Event {
+            whole: None,
+            part: TimeSpan::unit(),
+            value: 42.0,
+        };
+        let val = crate::value::Value::NumberPattern(
+            crate::value::NumberPatternValue::from_events(vec![event]),
+        );
+        let res = super::extract_constant_number_rational(val, "expected rational");
+        assert_eq!(res.unwrap().numerator(), 42);
+    }
+
+    #[test]
+    fn extract_constant_number_rational_returns_error_on_non_number() {
+        let val = crate::value::Value::String("hello".into());
+        let res = super::extract_constant_number_rational(val, "expected rational");
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "expected rational must resolve to a constant number"
+        );
+    }
+
+    #[test]
     fn apply_function_value_evaluates_user_function_correctly() {
         let module = eval_module("f x = x\nres = f(42.0)", ReplMode::Loose).unwrap();
         let val = module.get("res").unwrap().as_number_pattern().unwrap();

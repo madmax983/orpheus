@@ -49,3 +49,7 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+
+## 2024-06-06 - Extract Functions Error Coverage
+**Learning:** Found missing test coverage for `extract_constant_number_rational` failure paths when extracting concrete types from dynamic `Value` variants.
+**Action:** Always verify `extract_...` functions have comprehensive error tests (e.g., passing a `String` when expecting a `NumberPattern`) when refactoring or adding tests.
