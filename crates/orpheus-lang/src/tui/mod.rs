@@ -9,6 +9,7 @@ mod plugins;
 mod state;
 #[allow(clippy::redundant_pub_crate)]
 pub(crate) mod style;
+pub mod transcript;
 
 use std::cell::RefCell;
 use std::io;

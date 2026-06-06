@@ -15,6 +15,7 @@ use super::style::{
     binding_legend_item, binding_list_item, routing_status_line, should_show_binding_legend,
     transport_status_line,
 };
+use super::transcript::TranscriptEntry;
 
 // ---------------------------------------------------------------------------
 // REPL Plugin
@@ -32,22 +33,37 @@ impl HypertilePlugin for ReplPlugin {
             .transcript
             .iter()
             .flat_map(|entry| {
-                let style = if entry.starts_with("> ") {
-                    Style::default().fg(Color::DarkGray)
-                } else if entry.starts_with("\u{2717} ") {
-                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
-                } else if entry.starts_with("\u{26a0}\u{fe0f} ") {
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD)
-                } else if entry.starts_with("\u{2713} ") {
-                    Style::default().fg(Color::Green)
-                } else {
-                    Style::default()
+                let (style, lines) = match entry {
+                    TranscriptEntry::Command(cmd) => (
+                        Style::default().fg(Color::DarkGray),
+                        vec![format!("> {cmd}")],
+                    ),
+                    TranscriptEntry::Error(msg) => (
+                        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                        msg.split('\n')
+                            .map(|s| format!("\u{2717} {s}"))
+                            .collect::<Vec<_>>(),
+                    ),
+                    TranscriptEntry::Warning(msg) => (
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
+                        msg.split('\n')
+                            .map(|s| format!("\u{26a0}\u{fe0f} {s}"))
+                            .collect::<Vec<_>>(),
+                    ),
+                    TranscriptEntry::Success(msg) => (
+                        Style::default().fg(Color::Green),
+                        msg.split('\n')
+                            .map(|s| format!("\u{2713} {s}"))
+                            .collect::<Vec<_>>(),
+                    ),
+                    TranscriptEntry::Info(msg) => (
+                        Style::default(),
+                        msg.split('\n').map(String::from).collect::<Vec<_>>(),
+                    ),
                 };
-                entry
-                    .split('\n')
-                    .map(move |line| Line::styled(line.to_owned(), style))
+                lines.into_iter().map(move |line| Line::styled(line, style))
             })
             .collect::<Vec<_>>();
 
