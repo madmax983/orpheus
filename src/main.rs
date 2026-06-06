@@ -49,20 +49,22 @@ fn run() -> anyhow::Result<()> {
     let (engine, _stream, warning) = match start_live_audio() {
         Ok((engine, stream)) => (engine, Some(stream), None),
         Err(error) => {
-            let mut message = format!(
-                "{}\n  {}",
-                "Audio Output Disabled:".yellow().bold(),
-                error.to_string().red()
-            );
+            let mut table = comfy_table::Table::new();
+            table.load_preset(comfy_table::presets::UTF8_BORDERS_ONLY);
+            table.set_header(vec![
+                comfy_table::Cell::new("Audio Output Disabled:")
+                    .fg(comfy_table::Color::Yellow)
+                    .add_attribute(comfy_table::Attribute::Bold),
+            ]);
+            table.add_row(vec![
+                comfy_table::Cell::new(error.to_string()).fg(comfy_table::Color::Red),
+            ]);
             for cause in error.chain().skip(1) {
-                use std::fmt::Write;
-                let _ = write!(
-                    &mut message,
-                    "\n  {} {}",
-                    "->".dark_grey(),
-                    cause.to_string().dark_grey()
-                );
+                table.add_row(vec![
+                    comfy_table::Cell::new(format!("-> {cause}")).fg(comfy_table::Color::DarkGrey),
+                ]);
             }
+            let message = table.to_string();
             (EngineHandle::stub(), None, Some(message))
         }
     };
