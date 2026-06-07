@@ -3,6 +3,7 @@
 pub(crate) mod abc_export;
 pub(crate) mod arduino_export;
 pub(crate) mod ascii_roll;
+pub(crate) mod chuck_export;
 mod ast;
 mod builtins;
 mod diagnostics;
@@ -42,6 +43,7 @@ mod value;
 pub use abc_export::export_number_pattern_to_abc;
 pub use arduino_export::export_number_pattern_to_arduino;
 pub use ascii_roll::render_ascii_roll;
+pub use chuck_export::{export_number_pattern_to_chuck, export_sample_pattern_to_chuck};
 pub use ast::{BinaryOp, Expr, GraphBinding, Module, Stmt};
 pub use diagnostics::{LoadError, ParseError, TypeError};
 pub use error::EvalError;
