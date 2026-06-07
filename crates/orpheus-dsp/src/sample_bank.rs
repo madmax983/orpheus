@@ -546,7 +546,7 @@ fn load_sample_bank_from_directory_inner(
     let mut bank = SampleBank::load_builtin();
     let mut inferred_tokens = BTreeMap::<String, PlaybackSample>::new();
     let mut candidates: BTreeMap<&'static str, (u8, PlaybackSample)> = BTreeMap::new();
-    let mut errors = Vec::new();
+    let mut errors = Vec::with_capacity(4);
 
     for path in sample_paths {
         let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
@@ -880,7 +880,7 @@ fn run_sample_library_watcher(
 }
 
 fn collect_supported_sample_paths(directory: &Path) -> Result<Vec<PathBuf>, SampleBankError> {
-    let mut paths = Vec::new();
+    let mut paths = Vec::with_capacity(128);
     collect_supported_sample_paths_into(directory, directory, &mut paths)?;
     paths.sort();
     Ok(paths)
@@ -909,7 +909,7 @@ fn collect_supported_sample_paths_into(
 fn sample_library_inventory(
     directory: &Path,
 ) -> Result<Vec<SampleFileFingerprint>, SampleBankError> {
-    let mut fingerprints = Vec::new();
+    let mut fingerprints = Vec::with_capacity(128);
     collect_sample_library_inventory_into(directory, directory, &mut fingerprints)?;
     let manifest_path = directory.join(SAMPLE_MANIFEST_FILE);
     if manifest_path.is_file() {

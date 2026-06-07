@@ -53,7 +53,7 @@ pub fn parse_module(source: &str) -> Result<Module, ParseError> {
         return parse_single_binding_module(source, 1);
     }
 
-    let mut statements = Vec::new();
+    let mut statements = Vec::with_capacity(chunks.len());
     for (start_line, chunk) in chunks {
         let module = parse_single_binding_module(&chunk, start_line)?;
         statements.extend(module.statements);
@@ -346,7 +346,7 @@ fn build_binding_head(pair: Pair<'_, Rule>) -> Result<(String, Vec<String>), Par
         .map(|identifier| identifier.as_str().to_owned())
         .ok_or_else(|| ParseError::new("missing binding name"))?;
     let mut seen = BTreeSet::new();
-    let mut params = Vec::new();
+    let mut params = Vec::with_capacity(identifiers.size_hint().0);
 
     for identifier in identifiers {
         let param = identifier.as_str().to_owned();
