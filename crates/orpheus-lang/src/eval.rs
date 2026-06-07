@@ -1348,7 +1348,7 @@ mod tests {
 
     fn sample_names_in_cycle(events: &[Event<SampleEvent>], cycle: i128) -> Vec<String> {
         let cycle_start = Rational::checked_from_parts(cycle, 1).unwrap();
-        let cycle_end = Rational::checked_from_parts(cycle + 1, 1).unwrap();
+        let cycle_end = Rational::checked_from_parts(cycle.checked_add(1).unwrap(), 1).unwrap();
         events
             .iter()
             .filter(|event| event.part.start() >= &cycle_start && event.part.end() <= &cycle_end)

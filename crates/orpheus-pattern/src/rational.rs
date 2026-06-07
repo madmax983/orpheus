@@ -4,7 +4,6 @@
 //! repeating patterns.
 
 use core::cmp::Ordering;
-use core::ops::Add;
 
 use crate::PatternError;
 
@@ -317,29 +316,6 @@ impl Rational {
             numerator: normalized_numerator,
             denominator: normalized_denominator,
         })
-    }
-}
-
-/// Adds two rationals.
-///
-/// # Panics
-///
-/// Panics if the exact sum cannot be represented in the bounded `i128`
-/// runtime representation. Use [`Rational::checked_add`] to handle that case
-/// explicitly.
-impl Add for Rational {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        match self.checked_add(&rhs) {
-            Ok(sum) => sum,
-            Err(PatternError::ArithmeticOverflow { .. }) => {
-                panic!("rational addition overflowed during checked arithmetic")
-            }
-            Err(PatternError::InvalidDenominator { .. } | PatternError::InvalidSpan { .. }) => {
-                unreachable!("checked_add only reports arithmetic overflow")
-            }
-        }
     }
 }
 
