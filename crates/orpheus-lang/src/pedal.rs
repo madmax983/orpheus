@@ -115,6 +115,8 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Creates a new structurally validated node representing a specific step
+    /// in an effects graph.
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +132,14 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Returns the underlying specific operation (like Delay or Chorus) this node performs.
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Returns a human-readable summary of this specific node's parameters or structure,
+    /// useful for debugging or UI display.
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +154,7 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Constructs a new validated variable binding (like `x = delay(s)`) inside the pedal graph.
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +163,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// The string identifier that this node is assigned to within the block.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Retrieves the validated operation that makes up the right hand side of this assignment.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node

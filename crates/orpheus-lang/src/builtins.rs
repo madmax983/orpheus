@@ -260,6 +260,18 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Creates a new, unbound `BuiltinFn` of the given kind.
+    ///
+    /// This represents a primitive function that hasn't been fully applied to
+    /// its arguments yet. It uses `None` for the evaluation site salt.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    ///
+    /// let fast_builtin = BuiltinFn::new(BuiltinKind::Fast);
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +281,10 @@ impl BuiltinFn {
         }
     }
 
+    /// Returns a copy of this `BuiltinFn` with the provided structural evaluation
+    /// site salt applied. This is used by the runtime to ensure that AST-level
+    /// caching (like `expr_site_salts`) can distinguish different invocations of
+    /// the same built-in logic in different parts of the syntax tree.
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);
