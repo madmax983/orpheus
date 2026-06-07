@@ -32,24 +32,24 @@ pub const COMMAND_HINTS: [(&str, &str); 17] = [
 
 /// Shared application state accessible by all pane plugins via `Rc<RefCell<_>>`.
 pub struct SharedState {
-    pub session: ReplSession,
-    pub transcript: Vec<String>,
-    pub history: Vec<String>,
-    pub history_index: Option<usize>,
-    pub status_message: Option<(String, bool)>,
-    pub status_expires_at: Option<Instant>,
-    pub input: String,
-    pub cursor_index: usize,
-    pub show_help: bool,
-    pub should_quit: bool,
+    pub(crate) session: ReplSession,
+    pub(crate) transcript: Vec<String>,
+    pub(crate) history: Vec<String>,
+    pub(crate) history_index: Option<usize>,
+    pub(crate) status_message: Option<(String, bool)>,
+    pub(crate) status_expires_at: Option<Instant>,
+    pub(crate) input: String,
+    pub(crate) cursor_index: usize,
+    pub(crate) show_help: bool,
+    pub(crate) should_quit: bool,
 }
 
 impl SharedState {
-    pub fn new(engine: EngineHandle) -> Self {
+    pub(crate) fn new(engine: EngineHandle) -> Self {
         Self::with_startup(engine, None, None)
     }
 
-    pub fn with_startup(
+    pub(crate) fn with_startup(
         engine: EngineHandle,
         startup_path: Option<&Path>,
         warning: Option<String>,
@@ -82,7 +82,7 @@ impl SharedState {
         state
     }
 
-    pub fn submit_line(&mut self) {
+    pub(crate) fn submit_line(&mut self) {
         let line = self.input.trim().to_owned();
         self.input.clear();
         self.cursor_index = 0;
@@ -111,7 +111,7 @@ impl SharedState {
         }
     }
 
-    pub fn toggle_transport_hotkey(&mut self) {
+    pub(crate) fn toggle_transport_hotkey(&mut self) {
         let command = if self.session.transport_snapshot().is_playing() {
             ":stop"
         } else {
@@ -120,11 +120,11 @@ impl SharedState {
         self.run_status_command(command);
     }
 
-    pub fn undo_session_change(&mut self) {
+    pub(crate) fn undo_session_change(&mut self) {
         self.run_status_command(":undo");
     }
 
-    pub fn redo_session_change(&mut self) {
+    pub(crate) fn redo_session_change(&mut self) {
         self.run_status_command(":redo");
     }
 
@@ -135,17 +135,17 @@ impl SharedState {
         }
     }
 
-    pub fn set_status_message(&mut self, message: impl Into<String>, is_error: bool) {
+    pub(crate) fn set_status_message(&mut self, message: impl Into<String>, is_error: bool) {
         self.status_message = Some((message.into(), is_error));
         self.status_expires_at = Some(Instant::now() + STATUS_TOAST_TTL);
     }
 
-    pub fn clear_status_message(&mut self) {
+    pub(crate) fn clear_status_message(&mut self) {
         self.status_message = None;
         self.status_expires_at = None;
     }
 
-    pub fn clear_status_if_expired(&mut self, now: Instant) {
+    pub(crate) fn clear_status_if_expired(&mut self, now: Instant) {
         if self
             .status_expires_at
             .is_some_and(|expires_at| now >= expires_at)
@@ -154,23 +154,23 @@ impl SharedState {
         }
     }
 
-    pub fn transport_view(&self) -> TransportView {
+    pub(crate) fn transport_view(&self) -> TransportView {
         self.session.transport_view()
     }
 
-    pub fn mixer_view(&self) -> MixerView {
+    pub(crate) fn mixer_view(&self) -> MixerView {
         self.session.mixer_view()
     }
 
     // --- Input editing ---
 
-    pub fn insert_character(&mut self, character: char) {
+    pub(crate) fn insert_character(&mut self, character: char) {
         self.input.insert(self.cursor_index, character);
         self.cursor_index += character.len_utf8();
         self.history_index = None;
     }
 
-    pub fn backspace(&mut self) {
+    pub(crate) fn backspace(&mut self) {
         if self.cursor_index == 0 {
             return;
         }
@@ -180,7 +180,7 @@ impl SharedState {
         self.history_index = None;
     }
 
-    pub fn delete(&mut self) {
+    pub(crate) fn delete(&mut self) {
         if self.cursor_index >= self.input.len() {
             return;
         }
@@ -189,19 +189,19 @@ impl SharedState {
         self.history_index = None;
     }
 
-    pub fn move_cursor_left(&mut self) {
+    pub(crate) fn move_cursor_left(&mut self) {
         self.cursor_index = previous_char_boundary(&self.input, self.cursor_index);
     }
 
-    pub fn move_cursor_right(&mut self) {
+    pub(crate) fn move_cursor_right(&mut self) {
         self.cursor_index = next_char_boundary(&self.input, self.cursor_index);
     }
 
-    pub fn move_cursor_previous_word(&mut self) {
+    pub(crate) fn move_cursor_previous_word(&mut self) {
         self.cursor_index = previous_word_boundary(&self.input, self.cursor_index);
     }
 
-    pub fn move_cursor_next_word(&mut self) {
+    pub(crate) fn move_cursor_next_word(&mut self) {
         self.cursor_index = next_word_boundary(&self.input, self.cursor_index);
     }
 
@@ -213,7 +213,7 @@ impl SharedState {
         self.cursor_index = self.input.len();
     }
 
-    pub fn kill_to_end(&mut self) {
+    pub(crate) fn kill_to_end(&mut self) {
         if self.cursor_index >= self.input.len() {
             return;
         }
@@ -221,7 +221,7 @@ impl SharedState {
         self.history_index = None;
     }
 
-    pub fn kill_to_start(&mut self) {
+    pub(crate) fn kill_to_start(&mut self) {
         if self.cursor_index == 0 {
             return;
         }
@@ -230,7 +230,7 @@ impl SharedState {
         self.history_index = None;
     }
 
-    pub fn delete_previous_word(&mut self) {
+    pub(crate) fn delete_previous_word(&mut self) {
         if self.cursor_index == 0 {
             return;
         }
@@ -240,12 +240,12 @@ impl SharedState {
         self.history_index = None;
     }
 
-    pub fn clear_transcript(&mut self) {
+    pub(crate) fn clear_transcript(&mut self) {
         self.transcript.clear();
         self.set_status_message("transcript cleared", false);
     }
 
-    pub fn toggle_help(&mut self) {
+    pub(crate) fn toggle_help(&mut self) {
         self.show_help = !self.show_help;
         let message = if self.show_help {
             "help overlay shown"
@@ -255,12 +255,12 @@ impl SharedState {
         self.set_status_message(message, false);
     }
 
-    pub fn close_help(&mut self) {
+    pub(crate) fn close_help(&mut self) {
         self.show_help = false;
         self.set_status_message("help overlay hidden", false);
     }
 
-    pub fn recall_previous_history(&mut self) {
+    pub(crate) fn recall_previous_history(&mut self) {
         let Some(next_index) = self.history_index.map_or_else(
             || self.history.len().checked_sub(1),
             |index| index.checked_sub(1),
@@ -272,7 +272,7 @@ impl SharedState {
         self.cursor_index = self.input.len();
     }
 
-    pub fn recall_next_history(&mut self) {
+    pub(crate) fn recall_next_history(&mut self) {
         let Some(current) = self.history_index else {
             return;
         };
@@ -288,7 +288,7 @@ impl SharedState {
         self.cursor_index = self.input.len();
     }
 
-    pub fn complete_input(&mut self) {
+    pub(crate) fn complete_input(&mut self) {
         if !self.input.starts_with(':') {
             return;
         }
@@ -304,12 +304,12 @@ impl SharedState {
         self.history_index = None;
     }
 
-    pub fn display_input_with_cursor(&self) -> String {
+    pub(crate) fn display_input_with_cursor(&self) -> String {
         let (left, right) = self.input.split_at(self.cursor_index);
         format!("{left}|{right}")
     }
 
-    pub fn input_hint(&self) -> String {
+    pub(crate) fn input_hint(&self) -> String {
         if self.input.is_empty() {
             return "Hint: Tab completes commands. Up/Down recalls history.".to_owned();
         }

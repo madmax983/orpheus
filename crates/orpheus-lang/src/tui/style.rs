@@ -38,20 +38,8 @@ pub enum UiTransportState {
 /// This provides the logic to transition between states like [`UiTransportState::Playing`]
 /// and [`UiTransportState::Syncing`].
 ///
-/// # Examples
-/// ```
-/// use orpheus_lang::ReplSession;
-/// use orpheus_dsp::EngineHandle;
-/// use orpheus_lang::{transport_state, UiTransportState};
-///
-/// let mut session = ReplSession::with_engine(EngineHandle::stub());
-/// session.eval_line(":stop").unwrap();
-/// session.render_test_block_for_tui(1);
-/// let view = session.transport_view();
-/// assert_eq!(transport_state(&view), UiTransportState::Stopped);
-/// ```
 #[must_use]
-pub fn transport_state(view: &TransportView) -> UiTransportState {
+pub(crate) fn transport_state(view: &TransportView) -> UiTransportState {
     if view.pending_pattern_name().is_some() {
         if view.snapshot().has_pending_pattern() && view.snapshot().is_playing() {
             UiTransportState::Syncing
