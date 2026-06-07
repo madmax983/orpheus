@@ -5972,3 +5972,80 @@ impl Explain for NumberPatternValue {
         format!("{title}\n{table}")
     }
 }
+
+#[cfg(test)]
+mod additional_sentry_tests {
+    use super::*;
+
+    #[test]
+    fn apply_control_pattern_empty_control_events_returns_unmodified_source_events() {
+        let base = SamplePatternValue::from_nodes(vec![
+            crate::value::PatternNode::atom(crate::value::SampleEvent::named("bd")),
+            crate::value::PatternNode::atom(crate::value::SampleEvent::named("sn")),
+        ]);
+        let control = NumberPatternValue::from_events(vec![]);
+        let pattern = SamplePatternValue {
+            pattern: crate::value::PatternRuntime::PanPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(base.pattern),
+            },
+        };
+        let span = orpheus_pattern::TimeSpan::unit();
+        let events = pattern.try_query(&span).unwrap();
+        assert_eq!(events.len(), 2);
+    }
+
+    #[test]
+    fn test_apply_value_mutation_empty_events_returns_empty() {
+        let base = SamplePatternValue::from_events(vec![]);
+        let span = orpheus_pattern::TimeSpan::unit();
+        let events = crate::value::apply_value_mutation(&base.pattern, &span, |v| {
+            let _ = v;
+        })
+        .unwrap();
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn test_control_pattern_kind_validation_accepts_valid_values() {
+        let test_cases = vec![
+            (crate::value::ControlPatternKind::Gain, 0.5f64),
+            (crate::value::ControlPatternKind::DelayMix, 0.5f64),
+            (crate::value::ControlPatternKind::DelayTime, 0.5f64),
+            (crate::value::ControlPatternKind::DelayFeedback, 0.5f64),
+            (crate::value::ControlPatternKind::Hpf, 500.0f64),
+            (crate::value::ControlPatternKind::Lpf, 500.0f64),
+            (crate::value::ControlPatternKind::ReverbMix, 0.5f64),
+            (crate::value::ControlPatternKind::ReverbRoom, 0.5f64),
+            (crate::value::ControlPatternKind::ReverbDamp, 0.5f64),
+            (crate::value::ControlPatternKind::Res, 0.5f64),
+            (crate::value::ControlPatternKind::Drive, 0.5f64),
+            (crate::value::ControlPatternKind::ChorusMix, 0.5f64),
+            (crate::value::ControlPatternKind::ChorusDepth, 0.5f64),
+            (crate::value::ControlPatternKind::ChorusRate, 0.5f64),
+            (crate::value::ControlPatternKind::PulseWidth, 0.5f64),
+            (crate::value::ControlPatternKind::Pan, 0.5f64),
+            (crate::value::ControlPatternKind::CompressorMix, 0.5f64),
+            (
+                crate::value::ControlPatternKind::CompressorThreshold,
+                -10.0f64,
+            ),
+            (crate::value::ControlPatternKind::CompressorRatio, 2.0f64),
+            (crate::value::ControlPatternKind::Pitch, 1.0f64),
+            (crate::value::ControlPatternKind::Rate, 1.0f64),
+            (crate::value::ControlPatternKind::Transpose, 1.0f64),
+        ];
+
+        for (kind, val) in test_cases {
+            assert!(kind.validate(val).is_ok());
+        }
+    }
+
+    #[test]
+    fn test_eval_error_from_pattern_error() {
+        // use an explicit error mapping so `into()` works properly without `new()` method.
+        let eval_err: crate::error::EvalError =
+            orpheus_pattern::PatternError::InvalidDenominator { denominator: 0 }.into();
+        assert!(eval_err.to_string().contains("denominator cannot be zero"));
+    }
+}

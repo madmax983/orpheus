@@ -1873,4 +1873,32 @@ right = sometimes(fast(2), cp hh)";
         let val = module.get("res").unwrap().as_number_pattern().unwrap();
         assert!((val.try_query_unit().unwrap()[0].value - 42.0).abs() < f64::EPSILON);
     }
+
+    #[test]
+    fn test_eval_error_from_parse_error() {
+        let err = crate::diagnostics::ParseError::new("expected identifier".to_string());
+        let eval_err: crate::error::EvalError = err.into();
+        assert_eq!(eval_err.to_string(), "expected identifier");
+    }
+
+    #[test]
+    fn test_eval_error_from_load_error() {
+        let err = crate::diagnostics::LoadError::new("failed to load file".to_string());
+        let eval_err: crate::error::EvalError = err.into();
+        assert_eq!(eval_err.to_string(), "failed to load file");
+    }
+
+    #[test]
+    fn test_eval_error_from_type_error() {
+        let err = crate::diagnostics::TypeError::new("expected string but got number".to_string());
+        let eval_err: crate::error::EvalError = err.into();
+        assert_eq!(eval_err.to_string(), "expected string but got number");
+    }
+
+    #[test]
+    fn test_type_error_from_parse_error() {
+        let err = crate::diagnostics::ParseError::new("parse error details".to_string());
+        let type_err: crate::diagnostics::TypeError = err.into();
+        assert_eq!(type_err.to_string(), "parse error details");
+    }
 }
