@@ -82,9 +82,7 @@ pub use txt::{export_number_pattern_to_txt, export_sample_pattern_to_txt};
 pub(crate) mod dot_export;
 pub use dot_export::export_pedal_value_to_dot;
 pub use scl::{SclError, parse_scala_file, parse_scala_source};
-pub use types::{
-    Type, TypeEnv, TypeScheme, TypeVarId, TypedModule, infer_into_bindings, infer_module,
-};
+pub use types::{Type, TypeVarId, TypedModule, infer_into_bindings, infer_module};
 pub use value::{
     ArpDirectionValue, BuiltinFn, BuiltinKind, GatePatternValue, NumberPatternValue,
     PitchClassSetValue, PluginPatternValue, SampleEvent, SamplePatternValue, TuningValue, UserFn,
