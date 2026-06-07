@@ -260,6 +260,16 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Creates a new `BuiltinFn` of the given kind with no bound arguments.
+    ///
+    /// ## Examples
+    ///
+    /// ```rust
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    ///
+    /// let func = BuiltinFn::new(BuiltinKind::Every);
+    /// assert_eq!(*func.kind(), BuiltinKind::Every);
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +279,7 @@ impl BuiltinFn {
         }
     }
 
+    /// Sets the site salt for this builtin function, which is used for deterministic randomness.
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

@@ -37,36 +37,67 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Applies a transformation to every Nth cycle of a pattern.
     Every,
+    /// Applies a transformation when a condition is met.
     When,
+    /// Randomly applies a transformation with a 50% probability per cycle.
     Sometimes,
+    /// Applies a transformation to a specific time span within a cycle.
     Within,
+    /// Masks a pattern with a boolean pattern, dropping events where the mask is false.
     Mask,
+    /// Applies a delay offset to elements within a chord or cluster to simulate strumming.
     Strum,
+    /// Rolls (repeats) an event multiple times within its original duration.
     Roll,
+    /// Arpeggiates a chord into a sequence of individual notes.
     Arp,
+    /// Inverts a numeric pattern around a center axis.
     Invert,
+    /// Drops the Nth event from a pattern.
     Drop,
+    /// Applies chord structures to root notes.
     Chord,
+    /// Generates Euclidean rhythms.
     Euclid,
+    /// Generates sequences using Lindenmayer systems (L-systems).
     Lsystem,
+    /// Generates sequences using Wolfram elementary cellular automata.
     Wolfram,
+    /// Generates sequences based on pitch class sets.
     PitchClassSet,
+    /// Maps scale degrees to frequencies or notes.
     Degrees,
+    /// Speeds up a pattern by a given factor.
     Fast,
+    /// Slows down a pattern by a given factor.
     Slow,
+    /// Shifts a pattern forward or backward in time.
     Shift,
+    /// Reverses the events within each cycle of a pattern.
     Rev,
+    /// Applies a volume gain multiplier to the pattern.
     Gain,
+    /// Applies a delay effect to the audio pattern.
     Delay,
+    /// Delay time parameter, scaling the distance between echoes.
     DelayTime,
+    /// Delay feedback, determining how many times the echo repeats.
     DelayFeedback,
+    /// High-pass filter, allowing frequencies above the cutoff to pass.
     Hpf,
+    /// Low-pass filter, allowing frequencies below the cutoff to pass.
     Lpf,
+    /// Reverb effect, simulating the acoustic space of a physical room.
     Reverb,
+    /// Room size parameter, controlling the apparent physical size of the reverb's acoustic space.
     ReverbRoom,
+    /// Damping parameter, absorbing high frequencies to simulate softer room materials.
     ReverbDamp,
+    /// Cutoff frequency, the threshold where a filter begins to attenuate the signal.
     Cutoff,
+    /// Chorus effect, thickening the sound by modulating delayed copies of the signal.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

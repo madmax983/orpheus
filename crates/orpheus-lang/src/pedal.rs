@@ -115,6 +115,19 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Constructs a validated processing node for a pedal graph.
+    ///
+    /// Validated nodes guarantee that their input and output signals map correctly to the
+    /// rest of the graph architecture, allowing safe traversal during DSP synthesis.
+    ///
+    /// ## Examples
+    ///
+    /// ```rust
+    /// use orpheus_lang::{PedalNodeKind, SignalKind, ValidatedPedalNode};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "Audio Input");
+    /// assert_eq!(node.summary(), "Audio Input");
+    /// ```
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +143,37 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Exposes the underlying structural category of this node.
+    ///
+    /// This allows the synthesis engine to branch correctly when compiling the node graph
+    /// down into raw DSP components.
+    ///
+    /// ## Examples
+    ///
+    /// ```rust
+    /// use orpheus_lang::{PedalNodeKind, SignalKind, ValidatedPedalNode};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Control, PedalNodeKind::Output, "Out");
+    /// assert!(matches!(node.kind(), PedalNodeKind::Output));
+    /// ```
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Provides a human-readable description of the node.
+    ///
+    /// Used by exporters (like Graphviz DOT) to render intuitive diagram labels
+    /// representing the DSP layout.
+    ///
+    /// ## Examples
+    ///
+    /// ```rust
+    /// use orpheus_lang::{PedalNodeKind, SignalKind, ValidatedPedalNode};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Effect, "Reverb (Wet: 0.5)");
+    /// assert_eq!(node.summary(), "Reverb (Wet: 0.5)");
+    /// ```
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +188,20 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Binds a validated processing node to a human-readable identifier.
+    ///
+    /// This forms the intermediate representation used when compiling pedal expressions like `x = input |> delay`.
+    /// The string name becomes the key that subsequent routing operations reference.
+    ///
+    /// ## Examples
+    ///
+    /// ```rust
+    /// use orpheus_lang::{PedalNodeKind, SignalKind, ValidatedPedalBinding, ValidatedPedalNode};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "Input");
+    /// let binding = ValidatedPedalBinding::new("my_input", node);
+    /// assert_eq!(binding.name(), "my_input");
+    /// ```
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +210,37 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// Retrieves the string identifier used to map routing edges to this specific step
+    /// within the pedal plan graph.
+    ///
+    /// ## Examples
+    ///
+    /// ```rust
+    /// use orpheus_lang::{PedalNodeKind, SignalKind, ValidatedPedalBinding, ValidatedPedalNode};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "Input");
+    /// let binding = ValidatedPedalBinding::new("oscillator", node);
+    /// assert_eq!(binding.name(), "oscillator");
+    /// ```
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Accesses the underlying validated processing node encapsulated by this binding.
+    ///
+    /// This allows the synthesis builder to extract the structural `node().kind()` when resolving
+    /// the edges mapped to `name()`.
+    ///
+    /// ## Examples
+    ///
+    /// ```rust
+    /// use orpheus_lang::{PedalNodeKind, SignalKind, ValidatedPedalBinding, ValidatedPedalNode};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "Input");
+    /// let binding = ValidatedPedalBinding::new("oscillator", node);
+    /// assert!(matches!(binding.node().kind(), PedalNodeKind::Input));
+    /// ```
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node

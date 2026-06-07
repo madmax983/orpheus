@@ -26,11 +26,28 @@ use crate::types::{Type, TypeVarId};
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
+    /// The universal type variables bound by this scheme (the `forall` part).
     pub vars: Vec<TypeVarId>,
+    /// The underlying type.
     pub ty: Type,
 }
 
 impl TypeScheme {
+    /// Constructs a monomorphic type scheme.
+    ///
+    /// Monomorphic types contain no universal type variables (`forall`), meaning their exact structure is
+    /// completely known and fixed at compilation time. The majority of user-facing variables evaluated in
+    /// Orpheus will decay into monomorphic types.
+    ///
+    /// ## Examples
+    ///
+    /// ```rust
+    /// use orpheus_lang::{Type, TypeScheme};
+    ///
+    /// let scheme = TypeScheme::monomorphic(Type::Number);
+    /// assert_eq!(scheme.vars.len(), 0);
+    /// assert_eq!(scheme.ty, Type::Number);
+    /// ```
     #[must_use]
     pub const fn monomorphic(ty: Type) -> Self {
         Self {
@@ -195,6 +212,20 @@ impl TypeEnv {
         self.entries.get(name)
     }
 
+    /// Yields all inferred type schemes currently present in the typing environment.
+    ///
+    /// Used by the REPL to display the types of variables bound in the current session, allowing users
+    /// to reflect on the active state of their environment.
+    ///
+    /// ## Examples
+    ///
+    /// ```rust
+    /// use orpheus_lang::TypeEnv;
+    ///
+    /// let env = TypeEnv::with_builtins();
+    /// let mut vals = env.values();
+    /// assert!(vals.next().is_some());
+    /// ```
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }
