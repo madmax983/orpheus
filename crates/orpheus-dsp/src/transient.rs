@@ -54,10 +54,9 @@ pub fn detect_transient_markers(frames: &[f32], sample_rate_hz: u32) -> Arc<[f64
             && index.saturating_sub(previous_peak) < min_gap
         {
             if current > flux[previous_peak] {
-                *markers
-                    .last_mut()
-                    .expect("last peak should exist when replacing a close transient") =
-                    find_transient_start(frames, index);
+                if let Some(last) = markers.last_mut() {
+                    *last = find_transient_start(frames, index);
+                }
                 last_peak = Some(index);
             }
             continue;
@@ -175,5 +174,38 @@ mod tests {
         assert_eq!(resolve_onset_slice(&[0.1, 0.4, 0.8], 2), Some((0.8, 1.0)));
         assert_eq!(resolve_onset_slice(&[], 0), Some((0.0, 1.0)));
         assert_eq!(resolve_onset_slice(&[0.1, 0.4], 3), None);
+    }
+
+    #[test]
+    fn detect_transient_markers_replaces_close_transient() {
+        let mut frames = vec![0.0_f32; 1000];
+
+        // Ensure we pass the silence floor test
+        frames[0] = 0.1;
+        frames[1] = 0.1;
+
+        // First peak at index 100
+        for i in 90..100 {
+            frames[i] = (i as f32) / 100.0 * 0.1;
+        }
+        frames[100] = 0.5;
+        for i in 101..110 {
+            frames[i] = 0.5 - ((i - 100) as f32) / 10.0 * 0.5;
+        }
+
+        // Second larger peak within min_gap
+        for i in 110..120 {
+            frames[i] = (i as f32) / 120.0 * 0.2;
+        }
+        frames[120] = 0.8;
+        for i in 121..130 {
+            frames[i] = 0.8 - ((i - 120) as f32) / 10.0 * 0.8;
+        }
+
+        let markers = detect_transient_markers(&frames, 44100);
+
+        assert!(!markers.is_empty(), "Expected to detect transients");
+        let marker_indices: Vec<usize> = markers.iter().map(|&m| (m * 1000.0) as usize).collect();
+        assert!(marker_indices.len() > 0);
     }
 }

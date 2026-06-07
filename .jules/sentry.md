@@ -49,3 +49,10 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2024-06-07 - [Transient Detection Panic]
+**Learning:** `last_mut().expect(...)` on `markers` can panic if the vector is empty, even when we expect logic to guarantee it isn't, due to edge case input data (like sparse or carefully crafted attack buffers).
+**Action:** Replace `expect` with `if let Some(last) = markers.last_mut()` or safely check vector length to avoid panicking during runtime DSP operations.
+
+## 2024-06-07 - [Test Flakiness: VST3 Search Paths]
+**Learning:** The test for VST3 search paths can fail on Linux if the casing of the path string doesn't match exactly (e.g. `vst3` instead of `VST3`).
+**Action:** Use `.to_uppercase().contains("VST3")` or case-insensitive matching to ensure cross-platform test resilience.
