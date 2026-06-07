@@ -60,8 +60,18 @@ pub fn run_stdio_with_engine_and_path(
 
     if let Some(path) = startup_path {
         match session.open_file(path) {
-            Ok(msg) => writeln!(stdout, "{}", format!("\u{2713} {msg}").green())?,
-            Err(msg) => writeln!(stderr, "{}", format!("\u{2717} {msg}").red().bold())?,
+            Ok(msg) => writeln!(
+                stdout,
+                "{} {}",
+                " \u{2713} ".on_green().black().bold(),
+                msg.green()
+            )?,
+            Err(msg) => writeln!(
+                stderr,
+                "{} {}",
+                " \u{2717} ".on_red().white().bold(),
+                msg.red().bold()
+            )?,
         }
     }
 
@@ -97,8 +107,18 @@ where
         }
 
         match session.eval_line(trimmed) {
-            Ok(message) => writeln!(stdout, "{}", format!("\u{2713} {message}").green())?,
-            Err(message) => writeln!(stderr, "{}", format!("\u{2717} {message}").red().bold())?,
+            Ok(message) => writeln!(
+                stdout,
+                "{} {}",
+                " \u{2713} ".on_green().black().bold(),
+                message.green()
+            )?,
+            Err(message) => writeln!(
+                stderr,
+                "{} {}",
+                " \u{2717} ".on_red().white().bold(),
+                message.red().bold()
+            )?,
         }
     }
 
@@ -122,7 +142,8 @@ mod tests {
         let stdout_str = String::from_utf8(stdout).unwrap();
         let stderr_str = String::from_utf8(stderr).unwrap();
 
-        assert!(stdout_str.contains("\u{2713} bound a"));
+        assert!(stdout_str.contains(" \u{2713} "));
+        assert!(stdout_str.contains("bound a"));
         assert_eq!(stderr_str, "");
     }
 
@@ -137,6 +158,7 @@ mod tests {
         run_with_handles(reader, &mut stdout, &mut stderr, &mut session).unwrap();
 
         let stderr_str = String::from_utf8(stderr).unwrap();
-        assert!(stderr_str.contains("\u{2717} parse error"));
+        assert!(stderr_str.contains(" \u{2717} "));
+        assert!(stderr_str.contains("parse error"));
     }
 }

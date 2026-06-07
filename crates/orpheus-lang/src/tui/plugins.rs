@@ -32,22 +32,78 @@ impl HypertilePlugin for ReplPlugin {
             .transcript
             .iter()
             .flat_map(|entry| {
+                let mut is_error = false;
+                let mut is_success = false;
+
                 let style = if entry.starts_with("> ") {
                     Style::default().fg(Color::DarkGray)
-                } else if entry.starts_with("\u{2717} ") {
+                } else if entry.starts_with("\u{2717} Failed:") {
+                    is_error = true;
                     Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
                 } else if entry.starts_with("\u{26a0}\u{fe0f} ") {
                     Style::default()
                         .fg(Color::Yellow)
                         .add_modifier(Modifier::BOLD)
-                } else if entry.starts_with("\u{2713} ") {
+                } else if entry.starts_with("\u{2713} Success:") {
+                    is_success = true;
                     Style::default().fg(Color::Green)
                 } else {
                     Style::default()
                 };
-                entry
-                    .split('\n')
-                    .map(move |line| Line::styled(line.to_owned(), style))
+
+                let entry_str = if is_error {
+                    entry
+                        .strip_prefix("\u{2717} Failed:")
+                        .unwrap_or(entry)
+                        .trim()
+                } else if is_success {
+                    entry
+                        .strip_prefix("\u{2713} Success:")
+                        .unwrap_or(entry)
+                        .trim()
+                } else {
+                    entry
+                };
+
+                if is_error {
+                    let mut split_lines = entry_str.split('\n');
+                    let first_line = split_lines.next().unwrap_or("");
+                    let mut lines = vec![Line::from(vec![
+                        Span::styled(
+                            " \u{2717} ",
+                            Style::default()
+                                .bg(Color::Red)
+                                .fg(Color::White)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            format!(" {first_line}"),
+                            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                        ),
+                    ])];
+                    lines.extend(split_lines.map(|s| Line::styled(format!("   {s}"), Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))));
+                    lines
+                } else if is_success {
+                    let mut split_lines = entry_str.split('\n');
+                    let first_line = split_lines.next().unwrap_or("");
+                    let mut lines = vec![Line::from(vec![
+                        Span::styled(
+                            " \u{2713} ",
+                            Style::default()
+                                .bg(Color::Green)
+                                .fg(Color::Black)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(format!(" {first_line}"), Style::default().fg(Color::Green)),
+                    ])];
+                    lines.extend(split_lines.map(|s| Line::styled(format!("   {s}"), Style::default().fg(Color::Green))));
+                    lines
+                } else {
+                    entry_str
+                        .split('\n')
+                        .map(|s| Line::styled(s.to_owned(), style))
+                        .collect::<Vec<_>>()
+                }
             })
             .collect::<Vec<_>>();
 

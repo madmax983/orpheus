@@ -17,10 +17,20 @@ use orpheus_dsp::EngineHandle;
 
 fn main() {
     if let Err(error) = run() {
-        eprintln!("{} {}", "\u{2717} Failed:".red().bold(), error);
+        eprintln!();
+        eprintln!(
+            "  {} {}",
+            " \u{2717} Failed ".on_red().white().bold(),
+            error.to_string().white().bold()
+        );
         for cause in error.chain().skip(1) {
-            eprintln!("  {} {}", "->".dark_grey(), cause);
+            eprintln!(
+                "     {} {}",
+                "->".dark_grey(),
+                cause.to_string().dark_grey()
+            );
         }
+        eprintln!();
         std::process::exit(1);
     }
 }
@@ -50,20 +60,27 @@ fn run() -> anyhow::Result<()> {
         Ok((engine, stream)) => (engine, Some(stream), None),
         Err(error) => {
             let mut message = format!(
-                "{}\n  {}",
-                "Audio Output Disabled:".yellow().bold(),
-                error.to_string().red()
+                "{} {}\n",
+                " \u{26a0}\u{fe0f} Audio Output Disabled "
+                    .on_yellow()
+                    .black()
+                    .bold(),
+                error.to_string().yellow()
             );
             for cause in error.chain().skip(1) {
                 use std::fmt::Write;
-                let _ = write!(
+                let _ = writeln!(
                     &mut message,
-                    "\n  {} {}",
+                    "     {} {}",
                     "->".dark_grey(),
                     cause.to_string().dark_grey()
                 );
             }
-            (EngineHandle::stub(), None, Some(message))
+            (
+                EngineHandle::stub(),
+                None,
+                Some(message.trim_end().to_owned()),
+            )
         }
     };
 
@@ -157,7 +174,12 @@ fn start_live_audio() -> anyhow::Result<(EngineHandle, Stream)> {
                 }
             },
             |error| {
-                eprintln!("{} {}", "\u{2717} Audio stream error:".red().bold(), error);
+                eprintln!();
+                eprintln!(
+                    "  {} {}",
+                    " \u{2717} Audio stream error ".on_red().white().bold(),
+                    error.to_string().white().bold()
+                );
             },
             None,
         )
