@@ -2703,6 +2703,12 @@ fn apply_hex(args: Vec<Value>) -> Result<Value, EvalError> {
         "`hex` string",
     )?;
 
+    if text.len() > 100_000 {
+        return Err(EvalError::new(
+            "evaluation exceeded the maximum allowed event limit",
+        ));
+    }
+
     let mut nodes = Vec::new();
     for ch in text.chars() {
         if let Some(val) = ch.to_digit(16) {
@@ -2726,6 +2732,12 @@ fn apply_bin(args: Vec<Value>) -> Result<Value, EvalError> {
             .ok_or_else(|| EvalError::new("`bin` requires a string argument"))?,
         "`bin` string",
     )?;
+
+    if text.len() > 100_000 {
+        return Err(EvalError::new(
+            "evaluation exceeded the maximum allowed event limit",
+        ));
+    }
 
     let mut nodes = Vec::new();
     for ch in text.chars() {
@@ -2942,6 +2954,13 @@ fn apply_wolfram(args: Vec<Value>) -> Result<Value, EvalError> {
         "`wolfram` steps",
         true,
     )?;
+
+    if (steps as usize).saturating_mul(steps as usize) > 100_000 {
+        return Err(EvalError::new(
+            "evaluation exceeded the maximum allowed event limit",
+        ));
+    }
+
     #[allow(clippy::cast_possible_truncation)]
     let rule_num = rule as u8;
     let mut current_state = vec![false; steps as usize];
@@ -3018,6 +3037,12 @@ fn apply_lsystem(args: Vec<Value>) -> Result<Value, EvalError> {
         "`lsystem` rules",
     )?;
 
+    if iterations > 100_000 {
+        return Err(EvalError::new(
+            "evaluation exceeded the maximum allowed event limit",
+        ));
+    }
+
     // Parse rules: "A:AB,B:A"
     let mut rules = std::collections::HashMap::new();
     for rule in rules_str.split(',') {
@@ -3044,11 +3069,22 @@ fn apply_lsystem(args: Vec<Value>) -> Result<Value, EvalError> {
                 next.push(c);
             }
         }
+        if next.len() > 100_000 {
+            return Err(EvalError::new(
+                "evaluation exceeded the maximum allowed event limit",
+            ));
+        }
         current = next;
     }
 
     // Convert to nodes. A=0, B=1, C=2, etc. ~ or _ = rest.
     // ⚡ Bolt: Pre-allocate vector capacity to avoid heap reallocation based on exact final string length.
+    if current.len() > 100_000 {
+        return Err(EvalError::new(
+            "evaluation exceeded the maximum allowed event limit",
+        ));
+    }
+
     let mut nodes = Vec::with_capacity(current.len());
     for c in current.chars() {
         if c == '~' || c == '_' {

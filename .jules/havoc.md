@@ -11,3 +11,6 @@
 ## 2023-10-31 - [Fuzzing Evaluation Resilience & Pattern Match Exhaustiveness]
 **Learning:** `E0004: non-exhaustive patterns` compilation errors occur when adding new variants to central enums (like `BuiltinKind`) without updating matching functions downstream (`name()`, `arity()`, `execute()`). Fuzzing via `cargo-fuzz` confirmed the evaluation system handles malformed strings gracefully without crashing.
 **Action:** When adding enum variants, systematically check and update all downstream match blocks. Ensure all systems compiling after a feature addition don't just compile but also withstand `cargo-fuzz` without panicking.
+**[Builtin Allocation OOM vulnerabilities]**
+**Learning:** Hardcoded 100_000 limits prevent capacity overflows and memory exhaustion in `eval`, `stack` and basic patterns, however several built-ins (`wolfram`, `lsystem`, `hex`, `bin`) perform allocations based directly on input without bounds checks.
+**Action:** When evaluating functions allocating buffers proportional to arguments, bounds check against max limits (e.g. `100_000`) before creating and expanding `Vec` instances to prevent OOM panics.
