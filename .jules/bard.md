@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-05-18 - [Missing Getter Context Documentation]
+**Confusion:** I initially applied `#[doc(hidden)]` to getters (`signal_kind`, `kind`, `summary`, `name`, `node`) on `ValidatedPedalNode` and `ValidatedPedalBinding` because I thought they were "Getter noise" according to the Bard philosophy. However, since the underlying fields are private, hiding the getters removed the only way for developers to interact with the properties.
+**Clarification:** Removed the `#[doc(hidden)]` attribute and instead added meaningful, context-aware `///` documentation that explains the architectural role of each getter in the DSP graph, rather than just restating its name.
