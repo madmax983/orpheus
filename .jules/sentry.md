@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2025-06-08 - [Testing Panic Paths inside Struct Helpers]
+**Learning:** Functions like `analog_voice_params` and methods like `ActiveVoice::next_drum_synth_sample` contain `unreachable!` panic points to prevent logical contradictions (e.g., drum voices trying to parse analog synth params). However, if these helpers are strictly private and their callers enforce the invariant (e.g. via `kind.is_drum_voice()`), it's impossible to trigger the panic from outside the module.
+**Action:** When an `unreachable!` or `should_panic` test is needed for a private helper function, the test must be placed directly within the same file (e.g. `#[cfg(test)] mod tests` at the bottom of the source file) rather than in the `tests/` integration directory.

@@ -516,4 +516,11 @@ mod tests {
         let f2: f64 = ref_r.into();
         assert_eq!(f2, 0.5);
     }
+
+    #[test]
+    #[should_panic(expected = "rational addition overflowed during checked arithmetic")]
+    fn add_panics_on_overflow() {
+        let max_val = Rational::checked_normalize(i128::MAX, 1).unwrap();
+        let _ = max_val + max_val;
+    }
 }
