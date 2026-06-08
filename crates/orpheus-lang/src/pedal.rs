@@ -115,6 +115,21 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Constructs an intermediary node in the verified audio effects graph.
+    ///
+    /// This is instantiated during the secondary compilation pass when the AST
+    /// is converted into a directed graph for the DSP engine. It guarantees that
+    /// the node's inputs and outputs have already been type-checked and validated
+    /// against cyclic dependencies, meaning it is safe to execute on the real-time thread.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use orpheus_lang::SignalKind;
+    ///
+    /// // ValidatedPedalNode and PedalNodeKind are internal, but conceptually:
+    /// // let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Mix, "mix(bd, sn)");
+    /// ```
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -124,17 +139,19 @@ impl ValidatedPedalNode {
         }
     }
 
-    #[doc(hidden)]
+    #[allow(missing_docs)]
     #[must_use]
     pub const fn signal_kind(&self) -> &SignalKind {
         &self.signal_kind
     }
 
+    #[allow(missing_docs)]
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    #[allow(missing_docs)]
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +166,22 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Links a human-readable identifier to a validated DSP graph node.
+    ///
+    /// During live-coding, effects chains can become deeply nested and difficult to manage.
+    /// Bindings allow users to extract sub-graphs into named variables. This struct securely
+    /// maintains that linkage in the AST mapping so that subsequent references to the identifier
+    /// dynamically inject the validated node without requiring recompilation of the entire tree.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use orpheus_lang::SignalKind;
+    ///
+    /// // ValidatedPedalBinding is internal, but conceptually:
+    /// // let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Mix, "mix()");
+    /// // let binding = ValidatedPedalBinding::new("my_reverb", node);
+    /// ```
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +190,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    #[allow(missing_docs)]
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    #[allow(missing_docs)]
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node
@@ -187,7 +222,7 @@ impl ValidatedPedalPlan {
         }
     }
 
-    #[doc(hidden)]
+    #[allow(missing_docs)]
     #[must_use]
     pub const fn signal_kind(&self) -> &SignalKind {
         &self.signal_kind

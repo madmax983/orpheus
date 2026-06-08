@@ -37,36 +37,67 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Higher-order function that maps a transformation over the entire span of a musical cycle.
     Every,
+    /// Higher-order function that applies a transformation exclusively to events occurring within a specified rhythmic window.
     When,
+    /// Higher-order stochastic function that randomly executes a transformation on individual events based on a probability threshold.
     Sometimes,
+    /// Temporally isolates a transformation, ensuring its effects only alter the pattern within a precise fractional time-slice of the cycle.
     Within,
+    /// Rhythmic gating mechanism that silences or attenuates the pattern based on a secondary structural sequence.
     Mask,
+    /// Articulates block chords by progressively delaying the onset of stacked pitches, simulating a guitarist's sweep.
     Strum,
+    /// Percussive subdivision technique that fractures a single long event into a flurry of rapidly repeating micro-events.
     Roll,
+    /// Sequences vertically stacked chord tones into ascending or descending melodic lines over elapsed time.
     Arp,
+    /// Melodic manipulation that flips the intervallic relationships of a pitch sequence around a central axis.
     Invert,
+    /// Stochastic thinning mechanism that nondeterministically culls events from a dense pattern to create space.
     Drop,
+    /// Constructs a vertical sonority by stacking specific intervals atop a defined root pitch.
     Chord,
+    /// Generates maximally even rhythmic distributions (Bjorklund's algorithm), distributing *N* pulses across *K* steps.
     Euclid,
+    /// Generative expansion algorithm that grows complex sequences from a simple axiom via iterative string rewriting rules.
     Lsystem,
+    /// Generates binary rhythms derived from the rule-based states of 1D cellular automata.
     Wolfram,
+    /// Groups unordered collections of pitches, enabling mathematical set-theory transformations independent of rhythm.
     PitchClassSet,
+    /// Projects abstract scale degrees onto concrete musical frequencies, mediated by the current tuning scale context.
     Degrees,
+    /// Temporal compression operation that multiplies the density of pattern playback (e.g., playing twice as fast in the same cycle time).
     Fast,
+    /// Temporal expansion operation that divides the density of pattern playback.
     Slow,
+    /// Phase manipulation that shifts the entirety of the pattern forward or backward across the cycle boundary.
     Shift,
+    /// Inverts the onset and duration of events within a cycle to play the structural sequence backwards.
     Rev,
+    /// DSP primitive that applies linear amplitude scaling to an audio signal before hitting the master bus.
     Gain,
+    /// DSP primitive that instantiates an echo effect by storing and repeating the incoming audio signal.
     Delay,
+    /// DSP parameter controlling the temporal distance between consecutive delay taps, typically locked to tempo subdivisions.
     DelayTime,
+    /// DSP parameter dictating the percentage of the delayed signal that is continuously fed back into the delay line.
     DelayFeedback,
+    /// DSP filter topology that attenuates frequencies below a threshold while allowing higher frequencies to pass.
     Hpf,
+    /// DSP filter topology that attenuates frequencies above a threshold while allowing lower frequencies to pass.
     Lpf,
+    /// DSP primitive that places the audio signal in a simulated acoustic space, diffusing reflections over time.
     Reverb,
+    /// DSP parameter determining the modeled physical volume of the algorithmic reverberator space.
     ReverbRoom,
+    /// DSP parameter controlling the high-frequency attenuation characteristics applied to the reverb tail over time.
     ReverbDamp,
+    /// DSP parameter defining the primary corner or corner frequency (in Hz) for spectral shaping tools like filters.
     Cutoff,
+    /// DSP primitive that duplicates the signal and modulates its delay time to create a thicker, subtly detuned texture.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

@@ -260,6 +260,21 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Creates an unevaluated function placeholder waiting for arguments.
+    ///
+    /// The AST uses this during the evaluation phase when a built-in symbol is referenced
+    /// but not yet fully invoked (e.g., `let x = fast`). It tracks the specific core primitive
+    /// being targeted so it can dynamically validate arity and dispatch the correct Rust logic
+    /// once the user provides the arguments.
+    ///
+    /// # Examples
+    ///
+    /// ```compile_fail
+    /// use orpheus_lang::BuiltinKind;
+    ///
+    /// // BuiltinFn is internal, so this fails to compile in public docs
+    /// let func = BuiltinFn::new(BuiltinKind::Fast);
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +284,22 @@ impl BuiltinFn {
         }
     }
 
+    /// Injects a deterministic salt into the function's context for repeatable randomization.
+    ///
+    /// Live-coding requires that functions like `rand` or `sometimes` behave unpredictably
+    /// *musically*, but deterministically *computationally*. By hashing the syntactic location
+    /// of the function call in the AST (the "site salt"), this ensures that re-evaluating the
+    /// same script produces identical pseudo-random sequences, preventing patterns from mutating
+    /// wildly upon every keystroke.
+    ///
+    /// # Examples
+    ///
+    /// ```compile_fail
+    /// use orpheus_lang::BuiltinKind;
+    ///
+    /// // BuiltinFn is internal, so this fails to compile in public docs
+    /// let func = BuiltinFn::new(BuiltinKind::Sometimes).with_site_salt(42);
+    /// ```
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

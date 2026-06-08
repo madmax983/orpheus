@@ -26,11 +26,32 @@ use crate::types::{Type, TypeVarId};
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
+    /// Represents the universally quantified type variables (`forall a, b. ...`) for polymorphism.
+    ///
+    /// Keeping these generic identifiers explicitly tracked allows functions like `jux` or `every`
+    /// to operate on both numeric and sample patterns seamlessly. During instantiation, these variables
+    /// are replaced with fresh inference variables to ensure safe structural typing across different call sites.
     pub vars: Vec<TypeVarId>,
+
+    /// The concrete structural signature of the type, defining what shapes of data it accepts or returns.
     pub ty: Type,
 }
 
 impl TypeScheme {
+    /// Creates a rigid, non-polymorphic type scheme for primitive values.
+    ///
+    /// This is an optimization for simpler values (like bare numbers or static samples) that
+    /// do not require the overhead of generic variable instantiation. By sidestepping the unification
+    /// engine's generalization pass, it significantly reduces allocations during real-time AST evaluation.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use orpheus_lang::Type;
+    ///
+    /// // TypeScheme is an internal inference structure:
+    /// // let scheme = TypeScheme::monomorphic(Type::Sample);
+    /// ```
     #[must_use]
     pub const fn monomorphic(ty: Type) -> Self {
         Self {
@@ -195,6 +216,12 @@ impl TypeEnv {
         self.entries.get(name)
     }
 
+    /// Provides access to the collection of inferred typings bound within the current execution scope.
+    ///
+    /// This iterator is heavily utilized during the closure-capture phase. When an anonymous function
+    /// is defined, the system must traverse the known typings to securely package external variables into
+    /// the closure's state, preventing unresolved symbol errors when the closure is executed out of context.
+    #[allow(missing_docs)]
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }

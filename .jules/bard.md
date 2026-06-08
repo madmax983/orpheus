@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-06-07 - [Missing Documentation Surfaced via Rustdoc Flags]
+**Confusion:** The user reported missing documentation warnings, but standard `cargo doc` did not fail.
+**Clarification:** Passed `RUSTDOCFLAGS="-D missing_docs"` explicitly to `cargo doc --no-deps --workspace` to ensure all undocumented items surface as build errors. Found gaps in `builtins.rs`, `loader.rs`, `pedal.rs`, `types/env.rs`, and `value.rs`, and added descriptive `///` comments to fix the undocumented methods, fields, and enum variants.

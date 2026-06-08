@@ -39,8 +39,27 @@ struct ImportSpec {
 /// ```
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
+    /// The global type environment inferred during the strict evaluation phase.
+    ///
+    /// This acts as the source of truth for the type checker, mapping module-level
+    /// identifiers to their verified polymorphic type schemes. It is necessary for
+    /// preventing runtime crashes by statically verifying that connected signal paths
+    /// (e.g., passing control signals into audio inputs) are valid before playback begins.
     pub type_bindings: BTreeMap<String, Type>,
+
+    /// The fully materialized, delayed computations representing the song's musical patterns.
+    ///
+    /// Once the AST is evaluated, the resulting values (typically `SamplePattern`s or
+    /// `NumberPattern`s) are cached here. The audio engine orchestrator queries this map
+    /// dynamically to schedule events on the DSP thread over time.
     pub value_bindings: BTreeMap<String, Value>,
+
+    /// Tracks the identifier of the final assignment in the file to establish a default target.
+    ///
+    /// In live-coding, users often redefine variables rapidly. By tracking the last assignment,
+    /// the REPL or orchestrator can intelligently assume what the user is currently working on
+    /// and automatically direct its output to the main audio bus without requiring explicit
+    /// routing commands.
     pub last_binding_name: Option<String>,
 }
 
