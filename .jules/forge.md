@@ -82,3 +82,7 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**[Flatten `if let` with let-else Guard Clauses]**
+**Learning:** `if let` statements that return `Err` in the `else` branch and perform logic in the `if let` block result in unnecessary nesting.
+**Action:** Invert the structure to `let ... else { return Err(...) }` to flatten the logic and conform to Forge's "guard clause" philosophy, keeping the happy path un-nested.
