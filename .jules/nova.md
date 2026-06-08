@@ -1,0 +1,3 @@
+**[Bash Script Generation Security]
+**Learning:** When dynamically generating shell scripts (e.g., bash exporters) that interpolate variable values into shell commands (like `echo`), wrapping the interpolated values in double quotes (e.g., `echo "[+] Trigger: {sample}"`) exposes the generated script to shell injection vulnerabilities if the variable contains shell metacharacters.
+**Action:** Always wrap interpolated dynamic or user inputs in single quotes (e.g., `echo '[+] Trigger: {sample}'`) when writing shell script generators to ensure special characters are treated strictly as literal strings by the shell.
