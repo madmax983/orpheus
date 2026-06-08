@@ -47,3 +47,7 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+**[Wrapping Maps in Arc]**
+**Learning:** Wrapping a heavily-cloned immutable map like `BTreeMap` in an `Arc` converts expensive O(N) deep copies into O(1) atomic reference count increments.
+**Action:** When identifying struct members that are cloned often but not mutated, wrap them in `Arc` and provide documentation on why it's there.

@@ -118,7 +118,8 @@ pub fn eval_into_bindings(
 struct Evaluator {
     mode: ReplMode,
     bindings: BTreeMap<String, Value>,
-    expr_site_salts: BTreeMap<usize, u64>,
+    /// We wrap this immutable AST metadata map in an `Arc` to avoid expensive deep copies during evaluator scoping and closure creation, reducing operations to O(1) atomics.
+    expr_site_salts: Arc<BTreeMap<usize, u64>>,
     depth: std::cell::Cell<usize>,
 }
 
@@ -1057,7 +1058,7 @@ const ROLE_SECTION_CYCLES: u64 = 0x10;
 const ROLE_SEQ_SECTION_ITEM: u64 = 0x11;
 const ROLE_GROUP_ITEM: u64 = 0x12;
 
-fn collect_expr_site_salts(module: &Module) -> BTreeMap<usize, u64> {
+fn collect_expr_site_salts(module: &Module) -> Arc<BTreeMap<usize, u64>> {
     let mut salts = BTreeMap::new();
     for (index, statement) in module.statements.iter().enumerate() {
         match statement {
@@ -1067,7 +1068,7 @@ fn collect_expr_site_salts(module: &Module) -> BTreeMap<usize, u64> {
             }
         }
     }
-    salts
+    Arc::new(salts)
 }
 
 fn record_expr_site_salts(expr: &Expr, seed: u64, salts: &mut BTreeMap<usize, u64>) {
