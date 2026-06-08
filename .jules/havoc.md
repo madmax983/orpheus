@@ -11,3 +11,11 @@
 ## 2023-10-31 - [Fuzzing Evaluation Resilience & Pattern Match Exhaustiveness]
 **Learning:** `E0004: non-exhaustive patterns` compilation errors occur when adding new variants to central enums (like `BuiltinKind`) without updating matching functions downstream (`name()`, `arity()`, `execute()`). Fuzzing via `cargo-fuzz` confirmed the evaluation system handles malformed strings gracefully without crashing.
 **Action:** When adding enum variants, systematically check and update all downstream match blocks. Ensure all systems compiling after a feature addition don't just compile but also withstand `cargo-fuzz` without panicking.
+
+**[Evaluating ASTs Early Return Leak]**
+**The Trigger:** When the AST evaluator `eval_expr_in_meter` increments the `depth` using `self.depth.set(self.depth.get() + 1)`, it expects to decrement it at the end of the block. But if the evaluation fails midway and early-returns via `?`, the decrement never fires! This permanently drops the recursion limit until the REPL halts.
+**The Fix:** Added an RAII `DepthGuard` that implements `Drop` to automatically decrement `self.depth` upon scope exit, regardless of whether it succeeds or early-returns with an error.
+
+**[Cross-Platform Path Assertions]**
+**The Trigger:** `vst3_descriptor_uses_standard_os_search_paths` expects `VST3` but on Linux systems like Debian/Ubuntu the actual standard path is `/usr/lib/vst3`.
+**The Fix:** Changed the assertion to `.to_lowercase().contains("vst3")`.
