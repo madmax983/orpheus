@@ -82,3 +82,6 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+**[Avoid Unnecessary Wrapper Methods for Clippy Suppression]**
+**Learning:** Extracting a large method body into an artificially suffixed `_method` function merely to suppress `clippy::too_many_lines` creates unnecessary indirection and worsens readability.
+**Action:** When applying `#[allow(clippy::too_many_lines)]`, place it directly on the original function or method signature if splitting the logic further is not feasible, rather than creating a dummy wrapper function.
