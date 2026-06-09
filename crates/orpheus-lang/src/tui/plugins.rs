@@ -304,7 +304,7 @@ impl HypertilePlugin for TransportPlugin {
         if let Some((message, is_error)) = &state.status_message {
             lines.push(Line::raw(""));
             let (prefix, bg, fg) = if *is_error {
-                ("\u{2717} Failed", Color::Red, Color::White)
+                ("\u{2717} Error", Color::Red, Color::White)
             } else {
                 ("\u{2713} Success", Color::Green, Color::Black)
             };

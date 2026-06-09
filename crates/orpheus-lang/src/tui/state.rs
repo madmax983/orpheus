@@ -59,7 +59,7 @@ impl SharedState {
             "Press Esc to quit (layout mode).".to_owned(),
         ];
         if let Some(msg) = warning {
-            transcript.push(format!("\u{26a0}\u{fe0f} {msg}"));
+            transcript.push(msg);
         }
         let mut state = Self {
             session: ReplSession::with_engine(engine),
@@ -76,7 +76,7 @@ impl SharedState {
         if let Some(path) = startup_path {
             match state.session.open_file(path) {
                 Ok(message) => state.transcript.push(format!("\u{2713} {message}")),
-                Err(message) => state.transcript.push(format!("\u{2717} {message}")),
+                Err(message) => state.transcript.push(format!("\u{2717} Error: {message}")),
             }
         }
         state

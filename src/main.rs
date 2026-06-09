@@ -17,7 +17,7 @@ use orpheus_dsp::EngineHandle;
 
 fn main() {
     if let Err(error) = run() {
-        eprintln!("{} {}", "\u{2717} Failed:".red().bold(), error);
+        eprintln!("{} {}", "\u{2717} Error:".red().bold(), error);
         for cause in error.chain().skip(1) {
             eprintln!("  {} {}", "->".dark_grey(), cause);
         }
@@ -50,7 +50,8 @@ fn run() -> anyhow::Result<()> {
         Ok((engine, stream)) => (engine, Some(stream), None),
         Err(error) => {
             let mut message = format!(
-                "{}\n  {}",
+                "{} {}\n  {}",
+                "\u{26A0}\u{FE0F}".yellow(),
                 "Audio Output Disabled:".yellow().bold(),
                 error.to_string().red()
             );
