@@ -11,3 +11,10 @@
 ## 2023-10-31 - [Fuzzing Evaluation Resilience & Pattern Match Exhaustiveness]
 **Learning:** `E0004: non-exhaustive patterns` compilation errors occur when adding new variants to central enums (like `BuiltinKind`) without updating matching functions downstream (`name()`, `arity()`, `execute()`). Fuzzing via `cargo-fuzz` confirmed the evaluation system handles malformed strings gracefully without crashing.
 **Action:** When adding enum variants, systematically check and update all downstream match blocks. Ensure all systems compiling after a feature addition don't just compile but also withstand `cargo-fuzz` without panicking.
+
+**[Bounds Checking Unbounded Allocations]**
+**Learning:** Functions evaluating L-Systems, binary, or hexadecimal strings generate sequences based on their input length. Unbounded user string lengths can trigger out-of-memory errors.
+**Action:** I've added a hard limit checking `if next.len() > 100_000` inside `hex`, `bin`, and `lsystem` builtins.
+
+**[State Leaks on Early Returns]**
+**Learning:** I investigated the potential memory state leaks using `Cell` for `depth` across `?` operators. I found that `eval_expr_in_meter` modifies `depth` but delegates to `eval_expr_in_meter_impl` inside a standard block, ensuring the depth is decremented correctly and no early return skips it.

@@ -2703,6 +2703,11 @@ fn apply_hex(args: Vec<Value>) -> Result<Value, EvalError> {
         "`hex` string",
     )?;
 
+    if text.len() > 100_000 {
+        return Err(EvalError::new(
+            "`hex` string length exceeded evaluator limit",
+        ));
+    }
     let mut nodes = Vec::new();
     for ch in text.chars() {
         if let Some(val) = ch.to_digit(16) {
@@ -2727,6 +2732,11 @@ fn apply_bin(args: Vec<Value>) -> Result<Value, EvalError> {
         "`bin` string",
     )?;
 
+    if text.len() > 100_000 {
+        return Err(EvalError::new(
+            "`bin` string length exceeded evaluator limit",
+        ));
+    }
     let mut nodes = Vec::new();
     for ch in text.chars() {
         if ch == '1' {
@@ -3039,8 +3049,18 @@ fn apply_lsystem(args: Vec<Value>) -> Result<Value, EvalError> {
         let mut next = String::new();
         for c in current.chars() {
             if let Some(replacement) = rules.get(&c) {
+                if next.len().saturating_add(replacement.len()) > 100_000 {
+                    return Err(EvalError::new(
+                        "`lsystem` string length exceeded evaluator limit",
+                    ));
+                }
                 next.push_str(replacement);
             } else {
+                if next.len().saturating_add(1) > 100_000 {
+                    return Err(EvalError::new(
+                        "`lsystem` string length exceeded evaluator limit",
+                    ));
+                }
                 next.push(c);
             }
         }
