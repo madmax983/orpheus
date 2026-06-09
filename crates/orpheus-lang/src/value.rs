@@ -241,7 +241,8 @@ pub struct UserFn {
     pub(crate) remaining_params: Vec<String>,
     pub(crate) body: Expr,
     pub(crate) captured_bindings: BTreeMap<String, Value>,
-    pub(crate) expr_site_salts: BTreeMap<usize, u64>,
+    /// We wrap `expr_site_salts` in an `Arc` to avoid $O(N)$ heap allocations whenever a `UserFn` is cloned.
+    pub(crate) expr_site_salts: Arc<BTreeMap<usize, u64>>,
     pub(crate) depth: usize,
 }
 

@@ -118,7 +118,8 @@ pub fn eval_into_bindings(
 struct Evaluator {
     mode: ReplMode,
     bindings: BTreeMap<String, Value>,
-    expr_site_salts: BTreeMap<usize, u64>,
+    /// We wrap `expr_site_salts` in an `Arc` to avoid $O(N)$ heap allocations whenever an `Evaluator` is cloned.
+    expr_site_salts: std::sync::Arc<BTreeMap<usize, u64>>,
     depth: std::cell::Cell<usize>,
 }
 
@@ -1057,7 +1058,7 @@ const ROLE_SECTION_CYCLES: u64 = 0x10;
 const ROLE_SEQ_SECTION_ITEM: u64 = 0x11;
 const ROLE_GROUP_ITEM: u64 = 0x12;
 
-fn collect_expr_site_salts(module: &Module) -> BTreeMap<usize, u64> {
+fn collect_expr_site_salts(module: &Module) -> std::sync::Arc<BTreeMap<usize, u64>> {
     let mut salts = BTreeMap::new();
     for (index, statement) in module.statements.iter().enumerate() {
         match statement {
@@ -1067,7 +1068,7 @@ fn collect_expr_site_salts(module: &Module) -> BTreeMap<usize, u64> {
             }
         }
     }
-    salts
+    std::sync::Arc::new(salts)
 }
 
 fn record_expr_site_salts(expr: &Expr, seed: u64, salts: &mut BTreeMap<usize, u64>) {
