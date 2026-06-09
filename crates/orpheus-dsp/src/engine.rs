@@ -805,7 +805,10 @@ impl RenderEngine {
     }
 }
 
-/// UI-side command producer for the current minimal engine slice.
+/// An opaque, safe UI-side handle to the audio DSP render engine.
+///
+/// Provides methods for the front-end (like the TUI or REPL session) to queue
+/// commands (like binding patterns, changing tempo, updating mixer routing) to the background audio thread.
 #[derive(Debug)]
 pub struct EngineHandle {
     command_tx: Producer<EngineCommand>,

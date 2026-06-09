@@ -330,7 +330,9 @@ impl BusState {
     }
 }
 
-/// Read-only track view exposed by a routing snapshot.
+/// An opaque, safe UI-side read-only handle to a track's mixer routing configuration.
+///
+/// Intended to be used by the front-end to safely display track volume levels, mutes, and bound pattern names without acquiring locks on the real-time audio thread.
 #[derive(Clone, Copy, Debug)]
 pub struct TrackView<'a> {
     state: &'a TrackState,
@@ -393,7 +395,9 @@ impl<'a> TrackView<'a> {
     }
 }
 
-/// Read-only bus view exposed by a routing snapshot.
+/// An opaque, safe UI-side read-only handle to an FX bus mixer routing configuration.
+///
+/// Intended to be used by the front-end to safely display bus processing effects and global volume levels without acquiring locks on the real-time audio thread.
 #[derive(Clone, Copy, Debug)]
 pub struct BusView<'a> {
     state: &'a BusState,

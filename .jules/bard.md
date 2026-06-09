@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2026-06-09 - [Missing TUI Plugin and Session View Documentation]
+**Confusion:** Various core public interface structs for the TUI environment across `orpheus-lang` and `orpheus-dsp` lacked documentation. This includes structs like `ReplPlugin`, `BindingsPlugin`, `TransportPlugin`, `EngineHandle`, `TrackView`, and `BusView`. Because these structures drive the interactive terminal and are deeply integrated with the DSP audio engine, users were left without context of *why* these exist, preventing them from understanding the architecture.
+**Clarification:** Added narrative `///` documentation blocks explaining the functional purpose of these interface structs. Documented how the plugins drive the ratatui TUI, and how the DSP engine handles safely expose data to the front-end without locking the audio thread. Fix intra-doc links for `ReplSession` references.

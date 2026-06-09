@@ -145,7 +145,7 @@ impl HypertilePlugin for ReplPlugin {
 /// The pattern bindings view plugin for the TUI.
 ///
 /// Displays a scrolling list of all currently active and pending pattern
-/// bindings within the active [`crate::session::ReplSession`].
+/// bindings within the active [`ReplSession`].
 pub struct BindingsPlugin {
     pub state: Rc<RefCell<SharedState>>,
     scroll: Cell<usize>,
