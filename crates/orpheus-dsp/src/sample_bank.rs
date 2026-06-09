@@ -54,7 +54,7 @@ impl From<DecodedSample> for PlaybackSample {
             2 => sample
                 .frames
                 .chunks_exact(2)
-                .map(|channel_pair| (channel_pair[0] + channel_pair[1]) * 0.5)
+                .map(|channel_pair| f32::midpoint(channel_pair[0], channel_pair[1]))
                 .collect(),
             _ => unreachable!("decoded samples are constrained to mono or stereo"),
         };

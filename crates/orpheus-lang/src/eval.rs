@@ -303,13 +303,19 @@ impl Evaluator {
         expr: &Expr,
         meter: Option<&MeterContext>,
     ) -> Result<Value, EvalError> {
+        struct DepthGuard<'a>(&'a std::cell::Cell<usize>);
+        impl Drop for DepthGuard<'_> {
+            fn drop(&mut self) {
+                self.0.set(self.0.get() - 1);
+            }
+        }
+
         if self.depth.get() > 200 {
             return Err(EvalError::new("evaluation recursion limit exceeded"));
         }
         self.depth.set(self.depth.get() + 1);
-        let result = self.eval_expr_in_meter_impl(expr, meter);
-        self.depth.set(self.depth.get() - 1);
-        result
+        let _guard = DepthGuard(&self.depth);
+        self.eval_expr_in_meter_impl(expr, meter)
     }
     fn eval_expr_in_meter_impl(
         &self,
@@ -1872,5 +1878,28 @@ right = sometimes(fast(2), cp hh)";
         let module = eval_module("f x = x\nres = f(42.0)", ReplMode::Loose).unwrap();
         let val = module.get("res").unwrap().as_number_pattern().unwrap();
         assert!((val.try_query_unit().unwrap()[0].value - 42.0).abs() < f64::EPSILON);
+    }
+}
+
+#[cfg(test)]
+mod havoc_tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    /// 👺 Havoc: Tests that an evaluation failure inside the meter evaluation loop
+    /// does not cause a permanent state leak in the Evaluator's recursion depth tracking.
+    #[test]
+    fn test_eval_expr_in_meter_state_leak() {
+        let source_err = "x = seq_sections(section(bd, fast(1, 2)))";
+        let parsed_err = crate::parser::parse_module(source_err).unwrap();
+        let mut evaluator = Evaluator::with_bindings(crate::ReplMode::Loose, BTreeMap::new(), &parsed_err);
+
+        let depth_start = evaluator.depth.get();
+        // This will return an Err inside eval_expr_in_meter_impl.
+        // It must NOT bypass the depth decrementation!
+        let _ = evaluator.eval_statements(&parsed_err.statements);
+        let depth_end = evaluator.depth.get();
+
+        assert_eq!(depth_start, depth_end, "Depth leaked during early evaluation exit!");
     }
 }

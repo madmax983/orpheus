@@ -419,7 +419,7 @@ impl EngineCore {
             if frame.len() >= 2 {
                 frame[1] = right;
             }
-            let mono_fill = (left + right) * 0.5;
+            let mono_fill = f32::midpoint(left, right);
             for sample in frame.iter_mut().skip(2) {
                 *sample = mono_fill;
             }
