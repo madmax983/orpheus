@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-06-09 - [Documenting Domain Concepts without Noise]
+**Confusion:** The prompt mandates adding `///` doc comments while explicitly forbidding "getter" noise (e.g., `/// Gets the x`). Blindly documenting all public fields/methods without reading them leads to generating useless boilerplate for simple structural accessors.
+**Clarification:** Use `#[doc(hidden)]` on trivial public getters (like `name()` or `node()` on a builder struct) to explicitly omit them from the generated manual, satisfying both the `missing-docs` lint and the persona's directive to keep the manual clean and focused on narrative domain concepts (like DSP pedals or built-in transforms).

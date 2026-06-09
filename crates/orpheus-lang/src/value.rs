@@ -37,36 +37,67 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Applies a transformation function to every Nth cycle of a pattern.
     Every,
+    /// Applies a transformation function only when a given condition pattern evaluates to true.
     When,
+    /// Randomly applies a transformation function to events based on a probability threshold.
     Sometimes,
+    /// Applies a transformation function strictly within a specific relative time window of a cycle.
     Within,
+    /// Silences events in the primary pattern if the secondary boolean pattern is false.
     Mask,
+    /// Shifts simultaneous events in a chord or collection forward in time to create a strumming effect.
     Strum,
+    /// Divides an event into multiple rapid subdivisions (e.g., drum rolls or trills).
     Roll,
+    /// Arpeggiates a chord pattern into a sequential melodic pattern.
     Arp,
+    /// Inverts pitches or values around a central axis.
     Invert,
+    /// Randomly drops events from a pattern based on a probability threshold.
     Drop,
+    /// Constructs a chord pattern from a base pitch and a list of intervals.
     Chord,
+    /// Generates Euclidean rhythms by distributing N pulses over M steps.
     Euclid,
+    /// Generates patterns using deterministic Lindenmayer system string rewriting rules.
     Lsystem,
+    /// Generates patterns using 1D elementary cellular automata rules (e.g., Rule 30).
     Wolfram,
+    /// Represents an unordered collection of unique pitch classes (for set theory composition).
     PitchClassSet,
+    /// Maps scale degrees into concrete pitches within a given key or mode.
     Degrees,
+    /// Scales the flow of time by a factor, making a pattern play faster.
     Fast,
+    /// Scales the flow of time by a factor, making a pattern play slower.
     Slow,
+    /// Translates a pattern forward or backward in time.
     Shift,
+    /// Reverses the temporal order of events within each cycle.
     Rev,
+    /// Applies an amplitude multiplier to the signal.
     Gain,
+    /// Applies a delay effect to the audio signal.
     Delay,
+    /// Controls the time interval of the delay effect.
     DelayTime,
+    /// Controls the feedback amount of the delay effect.
     DelayFeedback,
+    /// Applies a high-pass filter to the audio signal.
     Hpf,
+    /// Applies a low-pass filter to the audio signal.
     Lpf,
+    /// Applies a reverberation effect to the audio signal.
     Reverb,
+    /// Controls the simulated room size of the reverb effect.
     ReverbRoom,
+    /// Controls the high-frequency damping of the reverb effect.
     ReverbDamp,
+    /// Controls the cutoff frequency for low-pass or high-pass filters.
     Cutoff,
+    /// Applies a chorus modulation effect to the audio signal.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

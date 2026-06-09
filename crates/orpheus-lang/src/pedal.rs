@@ -115,6 +115,9 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Constructs a new type-checked node for the pedal chain.
+    ///
+    /// The resulting node guarantees that inputs match the required `signal_kind`.
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +133,13 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Inspects the concrete kind of DSP node this represents.
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Provides a textual summary for the UI and debugging.
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +154,7 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Constructs a bound identifier for an intermediate node in a pedal definition.
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +163,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node

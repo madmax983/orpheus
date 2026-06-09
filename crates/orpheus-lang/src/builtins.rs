@@ -260,6 +260,19 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Constructs a new, unbound representation of a core language built-in.
+    ///
+    /// The resulting function requires further evaluation against arguments to produce
+    /// a final runtime value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::value::BuiltinKind;
+    /// use orpheus_lang::builtins::BuiltinFn;
+    ///
+    /// let reverse_fn = BuiltinFn::new(BuiltinKind::Rev);
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +282,11 @@ impl BuiltinFn {
         }
     }
 
+    /// Associates a specific syntax tree source location salt with this built-in.
+    ///
+    /// This is primarily used by built-ins that rely on deterministically randomized
+    /// or mutable state (like `sometimes` or `lsystem`) to ensure they behave consistently
+    /// based on where they appear in the source code rather than temporal execution order.
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

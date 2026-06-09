@@ -39,8 +39,12 @@ struct ImportSpec {
 /// ```
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
+    /// Inferred static types for all top-level bindings in the file.
     pub type_bindings: BTreeMap<String, Type>,
+    /// The fully evaluated runtime values bound in the file.
     pub value_bindings: BTreeMap<String, Value>,
+    /// The identifier name of the very last binding declared in the file.
+    /// This is used to return a default playback target if the user executes the file directly.
     pub last_binding_name: Option<String>,
 }
 
