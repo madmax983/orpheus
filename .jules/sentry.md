@@ -49,3 +49,7 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+
+## 2024-06-09 - [Testing Unreachable Paths in voice.rs]
+**Learning:** Found untested `unreachable!()` panic paths in `crates/orpheus-dsp/src/voice.rs` where an invalid `VoiceKind` enum variant would cause a panic. `ActiveVoice::next_drum_synth_sample` panicked if given `AnalogSaw`, and `analog_voice_params` panicked if given `KickLike`. Adding unit tests with `#[should_panic]` confirms these safety boundaries.
+**Action:** Always verify `unreachable!()` or other explicitly modeled failure states to ensure they correctly guard API boundaries and prevent runtime logic errors.
