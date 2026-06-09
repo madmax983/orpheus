@@ -593,13 +593,25 @@ fn apply_every(args: Vec<Value>) -> Result<Value, EvalError> {
         .next()
         .ok_or_else(|| EvalError::new("`every` requires a pattern argument"))?;
 
-    let transform = extract_unary_pattern_transform(transform, "every", "second")?;
-    apply_pattern_transform(
-        pattern,
-        |p| Ok(Value::SamplePattern(p.every(period, transform.clone()))),
-        |p| Ok(Value::NumberPattern(p.every(period, transform.clone()))),
-        "every",
-    )
+    match pattern {
+        Value::SamplePattern(pattern) => {
+            let transform = extract_unary_pattern_transform(transform, "every", "second")?;
+            Ok(Value::SamplePattern(pattern.every(period, transform)))
+        }
+        Value::NumberPattern(pattern) => {
+            let transform = extract_unary_pattern_transform(transform, "every", "second")?;
+            Ok(Value::NumberPattern(pattern.every(period, transform)))
+        }
+        Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::String(_)
+        | Value::Tuning(_)
+        | Value::PluginPattern(_)
+        | Value::Pedal(_) => Err(EvalError::new(
+            "`every` expected a pattern as its final argument",
+        )),
+    }
 }
 
 fn apply_when(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -628,21 +640,20 @@ fn apply_when(args: Vec<Value>) -> Result<Value, EvalError> {
         .next()
         .ok_or_else(|| EvalError::new("`when` requires a pattern argument"))?;
 
-    let transform = extract_unary_pattern_transform(transform, "when", "third")?;
     apply_pattern_transform(
         pattern,
         |p| {
             Ok(Value::SamplePattern(p.when(
                 period,
                 offset,
-                transform.clone(),
+                extract_unary_pattern_transform(transform.clone(), "when", "third")?,
             )))
         },
         |p| {
             Ok(Value::NumberPattern(p.when(
                 period,
                 offset,
-                transform.clone(),
+                extract_unary_pattern_transform(transform.clone(), "when", "third")?,
             )))
         },
         "when",
@@ -658,12 +669,12 @@ fn apply_jux(args: Vec<Value>) -> Result<Value, EvalError> {
         .next()
         .ok_or_else(|| EvalError::new("`jux` requires a pattern argument"))?;
 
-    let transform_fn = extract_unary_pattern_transform(transform, "jux", "first")?;
     apply_pattern_transform(
         pattern,
         |pattern_val| {
+            let transform_fn = extract_unary_pattern_transform(transform.clone(), "jux", "first")?;
             let transformed_val = apply_function_value(
-                transform_fn.clone(),
+                transform_fn,
                 vec![Value::SamplePattern(pattern_val.clone())],
             )?;
             let Value::SamplePattern(transformed_pattern_val) = transformed_val else {
@@ -692,18 +703,19 @@ fn apply_sometimes(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError>
         .next()
         .ok_or_else(|| EvalError::new("`sometimes` requires a pattern argument"))?;
 
-    let transform = extract_unary_pattern_transform(transform, "sometimes", "first")?;
     apply_pattern_transform(
         pattern,
         |p| {
-            Ok(Value::SamplePattern(
-                p.sometimes_with_site_salt(transform.clone(), site_salt),
-            ))
+            Ok(Value::SamplePattern(p.sometimes_with_site_salt(
+                extract_unary_pattern_transform(transform.clone(), "sometimes", "first")?,
+                site_salt,
+            )))
         },
         |p| {
-            Ok(Value::NumberPattern(
-                p.sometimes_with_site_salt(transform.clone(), site_salt),
-            ))
+            Ok(Value::NumberPattern(p.sometimes_with_site_salt(
+                extract_unary_pattern_transform(transform.clone(), "sometimes", "first")?,
+                site_salt,
+            )))
         },
         "sometimes",
     )
@@ -732,21 +744,20 @@ fn apply_within(args: Vec<Value>) -> Result<Value, EvalError> {
         .next()
         .ok_or_else(|| EvalError::new("`within` requires a pattern argument"))?;
 
-    let transform = extract_unary_pattern_transform(transform, "within", "third")?;
     apply_pattern_transform(
         pattern,
         |p| {
             Ok(Value::SamplePattern(p.within(
                 start,
                 end,
-                transform.clone(),
+                extract_unary_pattern_transform(transform.clone(), "within", "third")?,
             )))
         },
         |p| {
             Ok(Value::NumberPattern(p.within(
                 start,
                 end,
-                transform.clone(),
+                extract_unary_pattern_transform(transform.clone(), "within", "third")?,
             )))
         },
         "within",

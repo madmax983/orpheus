@@ -82,3 +82,7 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**Extracting closures that clone variables inside apply_pattern_transform**
+**Learning:** `clippy::too_many_lines` or simple logic duplication can occur when functions extract or clone common state deep inside multiple closures passed to a higher order function like `apply_pattern_transform`. Extracting the shared state processing (e.g. `extract_unary_pattern_transform`) before the closure simplifies the closures and makes the function body clearer and DRY.
+**Action:** When working with closures in refactoring, hoist common extraction logic or value cloning outside the closure where possible to avoid repetitive operations and keep closures focused.
