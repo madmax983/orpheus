@@ -260,6 +260,18 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Creates a new built-in function instance of the specified kind.
+    ///
+    /// This establishes the base primitive (e.g., `Gain`, `Every`) before any
+    /// arguments or execution salts are applied.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    ///
+    /// let func = BuiltinFn::new(BuiltinKind::Gain);
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +281,20 @@ impl BuiltinFn {
         }
     }
 
+    /// Attaches an execution site salt to the built-in function.
+    ///
+    /// Why does this exist? Stateful transformations (like L-systems or randomness)
+    /// need to know *where* they were invoked in the AST to maintain stable
+    /// states across live-coding re-evaluations. The `site_salt` acts as a unique
+    /// identifier for that specific call site.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    ///
+    /// let func = BuiltinFn::new(BuiltinKind::Sometimes).with_site_salt(42);
+    /// ```
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

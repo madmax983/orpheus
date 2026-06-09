@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2026-05-18 - [Fixing Missing Component Documentation]
+**Confusion:** Several core types like `BuiltinKind` variants, `BuiltinFn` primitives, `StrictLoadedFile` properties, `ValidatedPedalNode` logic, and `TypeScheme` details were entirely undocumented. This obscured their domain specific functionality for users exploring the code and tripped `missing_docs` compiler warnings.
+**Clarification:** Added extensive narrative `///` documentation to `BuiltinKind` describing what each transformation musically does. Provided executable `## Examples` for constructors and stateful logic across `orpheus-lang` components (`BuiltinFn`, `StrictLoadedFile`, `ValidatedPedalNode`, `ValidatedPedalBinding`, `TypeScheme`, `TypeEnv`) explaining *why* they exist and how they are used, thus making the underlying compiler model understandable to readers.

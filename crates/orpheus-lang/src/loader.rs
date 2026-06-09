@@ -39,8 +39,12 @@ struct ImportSpec {
 /// ```
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
+    /// The resolved type environment mappings from the loaded file.
     pub type_bindings: BTreeMap<String, Type>,
+    /// The resolved runtime value bindings mapping variable names to their computed values.
     pub value_bindings: BTreeMap<String, Value>,
+    /// The name of the most recently declared variable binding in the file.
+    /// Used by tools like the REPL to implicitly target the last definition.
     pub last_binding_name: Option<String>,
 }
 
