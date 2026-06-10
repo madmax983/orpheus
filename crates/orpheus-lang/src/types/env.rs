@@ -195,6 +195,19 @@ impl TypeEnv {
         self.entries.get(name)
     }
 
+    /// Returns an iterator over all `TypeScheme` values currently in the environment.
+    ///
+    /// Useful for debugging type contexts or extracting all instantiated bindings.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::TypeEnv;
+    ///
+    /// let env = TypeEnv::with_builtins();
+    /// let schemes: Vec<_> = env.values().collect();
+    /// assert!(!schemes.is_empty());
+    /// ```
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }

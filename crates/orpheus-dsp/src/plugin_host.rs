@@ -304,6 +304,22 @@ impl PluginProcessor {
         clippy::cast_precision_loss,
         reason = "supported audio sample rates are exactly representable as f32"
     )]
+    /// Creates a new parameterized plugin track configuration mapped to real DSP limits.
+    ///
+    /// It extracts parameter mappings from the given track source such as gain, and pre-allocates
+    /// structural audio buffers corresponding to the sample rate for graph synchronization.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::{PluginTrackSource, PluginDescriptor, TrackId, ParameterLane};
+    /// use orpheus_dsp::PluginTrack;
+    ///
+    /// let descriptor = PluginDescriptor { id: "test".into(), name: "test".into() };
+    /// let mut source = PluginTrackSource::new(descriptor);
+    /// let track = PluginTrack::new(&source, 48000);
+    /// assert_eq!(track.gain_lane_index(), None);
+    /// ```
     pub fn new(source: &PluginTrackSource, sample_rate_hz: u32) -> Self {
         let parameter_count = source.parameter_lanes().len();
         let gain_lane_index = source

@@ -204,6 +204,23 @@ impl ActiveVoice {
         clippy::cast_sign_loss,
         clippy::cast_precision_loss
     )]
+    /// Creates a synthesized voice context from a scheduled sample playback event.
+    ///
+    /// It handles sample-rate conversion, envelopes, and audio effect synchronization to ensure the
+    /// voice lifecycle aligns with the global transport and playback graph without glitching.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::{Voice, TrackId, PlaybackSample, SampleTrigger};
+    ///
+    /// let track_id = TrackId::from(0);
+    /// let sample = PlaybackSample::stub();
+    /// let trigger = SampleTrigger::default();
+    ///
+    /// let voice = Voice::from_sample(track_id, &sample, 44100, 1024, &trigger);
+    /// assert_eq!(voice.track_id(), track_id);
+    /// ```
     pub fn from_sample(
         track_id: TrackId,
         sample: &PlaybackSample,

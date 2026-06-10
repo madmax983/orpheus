@@ -7,13 +7,18 @@ use std::sync::{Mutex, OnceLock};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 
+/// Represents the kind of a MIDI note event (either note on or note off).
 pub enum MidiNoteEventKind {
+    /// A MIDI note on event.
     On,
+    /// A MIDI note off event.
     Off,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-
+/// Represents a parsed MIDI note event containing pitch, velocity, and channel information.
+///
+/// Used by the runtime to inject external MIDI keyboard events into the evaluation context.
 pub struct MidiNoteEvent {
     pub note: u8,
     pub velocity: u8,
@@ -51,6 +56,19 @@ pub fn reset_state_for_test() {
     }
 }
 
+/// Retrieves the normalized value of a specific MIDI continuous controller (CC).
+///
+/// Returns a value between `0.0` and `1.0` representing the current state of the given controller.
+/// Used for mapping hardware knobs and sliders to pattern parameters.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::midi_input;
+///
+/// let cc_val = midi_input::cc_normalized(1); // Mod wheel
+/// assert!(cc_val >= 0.0 && cc_val <= 1.0);
+/// ```
 pub fn cc_normalized(controller: u8) -> f64 {
     state()
         .cc_values
@@ -61,6 +79,23 @@ pub fn cc_normalized(controller: u8) -> f64 {
         })
 }
 
+/// Updates the global MIDI input state from a raw MIDI message.
+///
+/// This function parses 3-byte MIDI messages (Note On, Note Off, Control Change)
+/// and updates the shared state accessed by `cc_normalized` and `drain_note_events`.
+///
+/// # Panics
+///
+/// Panics if the internal shared state mutex is poisoned.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::midi_input;
+///
+/// // Simulate a Note On message: channel 1, note 60, velocity 100
+/// midi_input::update_from_message(&[0x90, 60, 100]);
+/// ```
 pub fn update_from_message(message: &[u8]) {
     if message.is_empty() {
         return;
@@ -100,6 +135,25 @@ pub fn update_from_message(message: &[u8]) {
     }
 }
 
+/// Drains all accumulated MIDI note events since the last call.
+///
+/// This is used by the language runtime engine to flush new notes per-cycle
+/// and convert them into live performance events.
+///
+/// # Panics
+///
+/// Panics if the internal shared state mutex is poisoned.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::midi_input;
+///
+/// let notes = midi_input::drain_note_events();
+/// for note in notes {
+///     println!("Received note: {}", note.note);
+/// }
+/// ```
 pub fn drain_note_events() -> Vec<MidiNoteEvent> {
     state()
         .note_events

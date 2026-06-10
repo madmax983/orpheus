@@ -36,3 +36,9 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-05-26 - [Missing DSP and MIDI Event Documentation]
+**Confusion:** Functions spanning DSP (`Voice::from_sample`, `PluginTrack::new`, `resolve_onset_slice`) and MIDI interface (`MidiNoteEvent`, `cc_normalized`, `update_from_message`, `drain_note_events`) were missing documentation, which confused users looking to interact directly with internal track allocation or midi controls and led to `missing_docs` violations.
+**Clarification:** Added extensive narrative and `///` documentation blocks explaining how each works within the Orpheus ecosystem. Included `## Examples` doctests for each missing struct and function demonstrating successful implementations, and fully resolving `missing_docs` warnings.
+## 2024-05-26 - [Missing TUI and State Documentation]
+**Confusion:** The TUI state structures (`SharedState` and its initialization) were missing documentation, alongside missing types like `TypeScheme::values` iteration and OpenSCAD export.
+**Clarification:** Documented `SharedState` and `SharedState::new` focusing on their role as the single source of truth for the UI plugin system. Documented `TypeScheme::values` iterator. Did not document the remaining internal REPL plugin commands and UI state methods since they are not intended for public library consumption (they are just exposed due to workspace layout).

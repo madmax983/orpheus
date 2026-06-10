@@ -31,6 +31,10 @@ pub const COMMAND_HINTS: [(&str, &str); 17] = [
 ];
 
 /// Shared application state accessible by all pane plugins via `Rc<RefCell<_>>`.
+/// Shared state for the TUI, wrapped in `Rc<RefCell<>>` and accessed by individual pane plugins.
+///
+/// Contains the session runtime, user inputs, history, and command transcript. It serves as the
+/// single source of truth for the terminal interface without dictating how that state is drawn.
 pub struct SharedState {
     pub session: ReplSession,
     pub transcript: Vec<String>,
@@ -45,6 +49,19 @@ pub struct SharedState {
 }
 
 impl SharedState {
+    /// Creates a new `SharedState` initializing the REPL session connected to the audio engine.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::EngineHandle;
+    /// use orpheus_lang::tui::SharedState;
+    ///
+    /// let engine = EngineHandle::stub();
+    /// let state = SharedState::new(engine);
+    /// assert!(state.input.is_empty());
+    /// ```
+    #[must_use]
     pub fn new(engine: EngineHandle) -> Self {
         Self::with_startup(engine, None, None)
     }

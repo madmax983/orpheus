@@ -20,6 +20,11 @@ use super::style::{
 // REPL Plugin
 // ---------------------------------------------------------------------------
 
+/// Renders the main read-eval-print-loop interface pane.
+///
+/// This plugin visualizes the history of evaluated commands and the current command line input
+/// field from the shared state. It is an internal workspace detail mapped directly to UI regions.
+#[doc(hidden)]
 pub struct ReplPlugin {
     pub state: Rc<RefCell<SharedState>>,
 }
@@ -138,6 +143,11 @@ impl HypertilePlugin for ReplPlugin {
 // Bindings Plugin
 // ---------------------------------------------------------------------------
 
+/// Renders the currently active pattern bindings list.
+///
+/// Provides a real-time list of what patterns are mapped to what channel keys,
+/// supporting scrolling and selection updates.
+#[doc(hidden)]
 pub struct BindingsPlugin {
     pub state: Rc<RefCell<SharedState>>,
     scroll: Cell<usize>,
@@ -243,6 +253,11 @@ impl HypertilePlugin for BindingsPlugin {
 // Transport Plugin
 // ---------------------------------------------------------------------------
 
+/// Renders the active playback transport properties and mixer levels.
+///
+/// This provides a quick visual summary of the audio engine state including phase, bpm,
+/// and live volume indicators directly drawn from `SharedState`.
+#[doc(hidden)]
 pub struct TransportPlugin {
     pub state: Rc<RefCell<SharedState>>,
 }

@@ -101,6 +101,23 @@ pub fn rebase_transient_markers(markers: &[f64], start: f64, end: f64) -> Arc<[f
     )
 }
 
+/// Resolves the temporal slice bounds for a given onset index from a list of onset markers.
+///
+/// This function returns a tuple `(start_time, end_time)` representing the duration of the
+/// sample slice identified by `onset_index`. It is used by the language runtime when evaluating
+/// the `chop` effect to cut samples rhythmically.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::transient;
+///
+/// let markers = vec![0.0, 0.5, 1.2];
+/// assert_eq!(transient::resolve_onset_slice(&markers, 0), Some((0.0, 0.5)));
+/// assert_eq!(transient::resolve_onset_slice(&markers, 1), Some((0.5, 1.2)));
+/// assert_eq!(transient::resolve_onset_slice(&markers, 2), None);
+/// ```
+#[must_use]
 pub fn resolve_onset_slice(markers: &[f64], onset_index: u32) -> Option<(f64, f64)> {
     if markers.is_empty() {
         return (onset_index == 0).then_some((0.0, 1.0));
