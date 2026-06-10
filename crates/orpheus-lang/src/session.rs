@@ -72,6 +72,13 @@ pub struct ReplSession {
     tempo_bpm: f32,
     reference_frequency_hz: f32,
     history: SessionHistory,
+    pub sample_reload_errors: Vec<SampleReloadError>,
+}
+
+#[derive(Clone, Debug)]
+pub struct SampleReloadError {
+    pub path: String,
+    pub message: String,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -343,6 +350,14 @@ impl MixerView {
 }
 
 impl ReplSession {
+    pub fn take_sample_reload_errors(&mut self) -> Option<Vec<SampleReloadError>> {
+        if self.sample_reload_errors.is_empty() {
+            None
+        } else {
+            Some(std::mem::take(&mut self.sample_reload_errors))
+        }
+    }
+
     #[cfg(test)]
     fn new() -> Self {
         Self::with_engine(EngineHandle::stub())
@@ -377,6 +392,7 @@ impl ReplSession {
             tempo_bpm,
             reference_frequency_hz: DEFAULT_ANALOG_BASE_FREQUENCY_HZ,
             history: SessionHistory::default(),
+            sample_reload_errors: Vec::new(),
         }
     }
 
@@ -1238,11 +1254,10 @@ impl ReplSession {
         };
 
         for issue in reload.errors() {
-            eprintln!(
-                "sample hot reload issue at `{}`: {}",
-                issue.path(),
-                issue.message()
-            );
+            self.sample_reload_errors.push(SampleReloadError {
+                path: issue.path().to_owned(),
+                message: issue.message().to_owned(),
+            });
         }
 
         let sample_bank = reload.bank().clone();

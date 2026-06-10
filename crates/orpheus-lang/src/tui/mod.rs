@@ -264,6 +264,18 @@ where
         {
             let mut state = shared.borrow_mut();
             state.clear_status_if_expired(Instant::now());
+
+            if let Some(errors) = state.session.take_sample_reload_errors() {
+                for error in errors {
+                    let msg = format!(
+                        "sample hot reload issue at `{}`: {}",
+                        error.path, error.message
+                    );
+                    state.transcript.push(format!("[Warn] {msg}"));
+                    state.set_status_message(msg, true);
+                }
+            }
+
             if state.should_quit {
                 break;
             }
