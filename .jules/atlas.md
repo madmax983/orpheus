@@ -56,3 +56,7 @@
 **[Enforce Private Explain Module]
 **Tangle:** The `explain` module in `orpheus-lang/src/lib.rs` and its internal `Explain` trait and `explain_table` function were declared as `pub`, leaking internal REPL table rendering details to the public API.
 **Blueprint:** Changed the visibility of the `Explain` trait and `explain_table` function to `pub(crate)` in `crates/orpheus-lang/src/explain.rs`. Removed the `pub use explain::Explain;` re-export from `crates/orpheus-lang/src/lib.rs` and changed the module declaration to `pub(crate) mod explain;`. This strictly enforces internal encapsulation.
+
+**[Avoid Unnecessary Wrapper Methods for Clippy Suppression]
+**Tangle:** The `try_query` methods on runtime pattern variants (`try_query_transform`, `try_query_audio_effect`, `try_query_modulation_effect`) in `orpheus-lang/src/value.rs` were implemented as wrapper methods calling inner `_method` variants simply to suppress `clippy::too_many_lines`, adding unnecessary indirection and violating project guidelines.
+**Blueprint:** Inlined the inner logic back into the original methods and placed `#[allow(clippy::too_many_lines)]` directly on their definitions, flattening the abstraction and improving readability.`
