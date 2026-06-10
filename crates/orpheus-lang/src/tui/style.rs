@@ -442,6 +442,14 @@ mod tests {
     use orpheus_dsp::EngineHandle;
 
     #[test]
+    fn should_format_cycle_position_when_frames_per_cycle_is_zero() {
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+        let _ = session.eval_line("tempo = 0");
+        let snapshot = session.transport_snapshot();
+        assert_eq!(format_cycle_position(&snapshot), "0.000");
+    }
+
+    #[test]
     fn should_format_cycle_position_and_tempo() {
         let mut session = ReplSession::with_engine(EngineHandle::stub());
 

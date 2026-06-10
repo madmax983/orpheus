@@ -49,3 +49,7 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+
+## 2024-06-25 - Python Code Injection Duplication
+**Learning:** Using `content.replace(search, replace)` in Python injection scripts without limiting the replacement count can accidentally duplicate injected code if the search string is matched multiple times.
+**Action:** Always use `content.replace(search, replace, 1)` or explicit index slicing (`content[:idx] + ...`) when injecting blocks of code to guarantee only a single replacement occurs.
