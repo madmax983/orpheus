@@ -887,6 +887,10 @@ impl ReplSession {
             Some("json") => crate::export::export_sample_pattern_to_json(pattern, path, cycles),
             Some("md") => crate::export::export_sample_pattern_to_md(pattern, path, cycles),
             Some("srt") => crate::srt::export_sample_pattern_to_srt(pattern, path, cycles),
+            #[cfg(feature = "experimental-blender")]
+            Some("py") => {
+                crate::blender_export::export_sample_pattern_to_blender(pattern, path, cycles)
+            }
             Some("txt") => crate::txt::export_sample_pattern_to_txt(pattern, path, cycles),
             Some("trk" | "tracker") => {
                 crate::tracker::export_sample_pattern_to_tracker(pattern, path, cycles)
@@ -921,6 +925,10 @@ impl ReplSession {
             Some("json") => crate::export::export_number_pattern_to_json(pattern, path, cycles),
             Some("md") => crate::export::export_number_pattern_to_md(pattern, path, cycles),
             Some("srt") => crate::srt::export_number_pattern_to_srt(pattern, path, cycles),
+            #[cfg(feature = "experimental-blender")]
+            Some("py") => {
+                crate::blender_export::export_number_pattern_to_blender(pattern, path, cycles)
+            }
             Some("txt") => crate::txt::export_number_pattern_to_txt(pattern, path, cycles),
             #[cfg(feature = "lilypond_export")]
             Some("ly") => {
