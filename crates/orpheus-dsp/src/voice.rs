@@ -970,3 +970,32 @@ fn snap_slice_boundary(boundary: f64) -> f64 {
         boundary
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::SampleTrigger;
+
+    #[test]
+    #[should_panic(expected = "analog voices should not enter the drum synth path")]
+    fn drum_synth_panics_on_analog_voice() {
+        let mut noise_state = 0;
+        let mut frame_index = 0;
+        let duration_frames = 100;
+        let sample_rate_hz = 48000.0;
+        let _ = ActiveVoice::next_drum_synth_sample(
+            VoiceKind::AnalogSaw,
+            &mut frame_index,
+            duration_frames,
+            sample_rate_hz,
+            &mut noise_state,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "drum voices do not produce analog voice parameters")]
+    fn analog_voice_params_panics_on_drum_voice() {
+        let trigger = SampleTrigger::named("bd");
+        let _ = analog_voice_params(VoiceKind::KickLike, &trigger, 440.0);
+    }
+}
