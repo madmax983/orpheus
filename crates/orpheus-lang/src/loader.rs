@@ -39,8 +39,11 @@ struct ImportSpec {
 /// ```
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
+    /// The fully inferred type bindings for all top-level statements.
     pub type_bindings: BTreeMap<String, Type>,
+    /// The fully evaluated runtime values for all top-level statements.
     pub value_bindings: BTreeMap<String, Value>,
+    /// The name of the final binding, used by the REPL to make a pattern active automatically.
     pub last_binding_name: Option<String>,
 }
 

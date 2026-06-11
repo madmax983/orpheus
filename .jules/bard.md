@@ -36,3 +36,7 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+
+## 2024-06-11 - [Missing Core Types and Builtins Documentation]
+**Confusion:** Core types like `TypeScheme` and `StrictLoadedFile` alongside critical enum `BuiltinKind` lacked documentation describing their fundamental purpose in the execution environment, which triggered `missing_docs` warnings. Furthermore, public accessors like `kind`, `summary`, `name`, and `node` in the Pedal node module lacked context as to why they were useful for the execution graph or REPL rendering.
+**Clarification:** Re-wrote the docs to explicitly explain the architectural *why* rather than repeating the signature (e.g., instead of "Returns the kind," explained "Exposes the active processing stage or routing configuration for this node, allowing the execution graph to determine how to route audio through it."). Injected executable doctests for getters and constructors.

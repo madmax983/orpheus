@@ -37,36 +37,67 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Injects a rhythmic variation by forcefully applying an operation only when the cycle count modulo N is zero. This breaks repetitive loops and adds predictability over long time horizons.
     Every,
+    /// A logical gate that acts as a bouncer, allowing pattern transformations to occur strictly when a provided control pattern evaluates to true at a specific moment in time.
     When,
+    /// Introduces chaos by flipping a weighted coin for each event. If the coin lands on heads, the transformation applies, allowing patterns to degrade or glitch unpredictably.
     Sometimes,
+    /// Isolates a microscopic window of time within a cycle (e.g., from phase 0.25 to 0.5) and exclusively mutates events that fall inside that window, leaving the rest of the cycle untouched.
     Within,
+    /// Implements a subtractive silencer. If the masking pattern evaluates to false during an event's lifespan, that event is completely erased from existence.
     Mask,
+    /// Simulates the physical action of a guitarist strumming across strings by taking a vertical stack of notes (a chord) and horizontally slanting them across time by a microscopic delay factor.
     Strum,
+    /// Takes a singular, monolithic event and violently shatters it into N equally-spaced microscopic fragments, simulating drum rolls or granular stutters.
     Roll,
+    /// Generates an arpeggiated sequence from a chord.
     Arp,
+    /// Inverts a musical chord.
     Invert,
+    /// Drops notes from a chord voicing.
     Drop,
+    /// Constructs a pitch class set based on a chord string.
     Chord,
+    /// Distributes N events evenly over M steps (Euclidean rhythm).
     Euclid,
+    /// Generates patterns using Lindenmayer systems.
     Lsystem,
+    /// Generates patterns using Elementary Cellular Automata.
     Wolfram,
+    /// Represents a set of pitches, often built from scale degrees.
     PitchClassSet,
+    /// Maps scale degrees to pitch classes.
     Degrees,
+    /// Accelerates a pattern by a multiplier.
     Fast,
+    /// Decelerates a pattern by a multiplier.
     Slow,
+    /// Shifts a pattern forward or backward in time.
     Shift,
+    /// Reverses the phase of a pattern.
     Rev,
+    /// Adjusts the volume of a pattern.
     Gain,
+    /// Applies a delay effect to a pattern.
     Delay,
+    /// Sets the time interval for the delay effect.
     DelayTime,
+    /// Sets the feedback amount for the delay effect.
     DelayFeedback,
+    /// Applies a High-Pass Filter with a specified cutoff.
     Hpf,
+    /// Applies a Low-Pass Filter with a specified cutoff.
     Lpf,
+    /// Applies a reverb effect to a pattern.
     Reverb,
+    /// Sets the room size for the reverb effect.
     ReverbRoom,
+    /// Sets the damping amount for the reverb effect.
     ReverbDamp,
+    /// Sets the cutoff frequency for filters.
     Cutoff,
+    /// Applies a chorus effect to a pattern.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

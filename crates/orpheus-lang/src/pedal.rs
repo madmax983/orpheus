@@ -116,6 +116,15 @@ pub struct ValidatedPedalNode {
 
 impl ValidatedPedalNode {
     #[must_use]
+    /// Validates and constructs a `PedalNode` instance.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "Input");
+    /// ```
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
             signal_kind,
@@ -131,11 +140,31 @@ impl ValidatedPedalNode {
     }
 
     #[must_use]
+    /// Exposes the active processing stage or routing configuration for this node, allowing the execution graph to determine how to route audio through it.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "Input");
+    /// assert_eq!(node.kind(), &PedalNodeKind::Input);
+    /// ```
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
     #[must_use]
+    /// Returns the human-readable summary of the node's purpose, primarily used to render an intuitive visual representation of the pedal graph in the terminal UI.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "My Cool Input");
+    /// assert_eq!(node.summary(), "My Cool Input");
+    /// ```
     pub fn summary(&self) -> &str {
         &self.summary
     }
@@ -150,6 +179,17 @@ pub struct ValidatedPedalBinding {
 
 impl ValidatedPedalBinding {
     #[must_use]
+    /// Binds a validated processing node to a user-defined variable name within a pedal graph program.
+    /// This enables subsequent nodes to reference the output of this node by name.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "Input");
+    /// let binding = ValidatedPedalBinding::new("in", node);
+    /// ```
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
             name: name.into(),
@@ -158,11 +198,33 @@ impl ValidatedPedalBinding {
     }
 
     #[must_use]
+    /// Retrieves the variable name assigned to this binding, which allows other parts of the graph to look up this node by its textual identifier.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "Input");
+    /// let binding = ValidatedPedalBinding::new("my_node", node);
+    /// assert_eq!(binding.name(), "my_node");
+    /// ```
     pub fn name(&self) -> &str {
         &self.name
     }
 
     #[must_use]
+    /// Accesses the underlying validated node definition bound to this name, essential for connecting the logical name to the actual DSP processing logic.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "Input");
+    /// let binding = ValidatedPedalBinding::new("my_node", node.clone());
+    /// assert_eq!(binding.node(), &node);
+    /// ```
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node
     }

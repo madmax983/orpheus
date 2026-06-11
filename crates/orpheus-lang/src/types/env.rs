@@ -26,12 +26,23 @@ use crate::types::{Type, TypeVarId};
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
+    /// The universally quantified type variables scoped to this scheme.
     pub vars: Vec<TypeVarId>,
+    /// The underlying poly-type definition.
     pub ty: Type,
 }
 
 impl TypeScheme {
     #[must_use]
+    /// Freezes a type into a monomorphic state. This means the type is fully concrete (like a `Sample` or `Number`) and cannot morph or adapt to different contexts, unlike a polymorphic function that accepts `Any`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{TypeScheme, Type};
+    ///
+    /// let strict_audio_type = TypeScheme::monomorphic(Type::Sample);
+    /// ```
     pub const fn monomorphic(ty: Type) -> Self {
         Self {
             vars: Vec::new(),
@@ -195,6 +206,16 @@ impl TypeEnv {
         self.entries.get(name)
     }
 
+    /// Exposes a stream of all resolved type definitions currently active in memory. This is critical for the REPL environment, enabling the editor to analyze and display type signatures for everything the user has evaluated so far.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::TypeEnv;
+    ///
+    /// let env = TypeEnv::default();
+    /// assert_eq!(env.values().count(), 0);
+    /// ```
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }

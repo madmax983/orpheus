@@ -261,6 +261,16 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 
 impl BuiltinFn {
     #[must_use]
+    /// Ignites a new computational unit representing a native language capability. This acts as the bridge between abstract user syntax (like `fast 2`) and the underlying Rust DSP graph execution.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::BuiltinFn;
+    /// use orpheus_lang::BuiltinKind;
+    ///
+    /// let volume_control = BuiltinFn::new(BuiltinKind::Gain);
+    /// ```
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
             kind,
@@ -270,6 +280,16 @@ impl BuiltinFn {
     }
 
     #[must_use]
+    /// Attaches a PRNG seed (site salt) to the built-in function instance for deterministic randomness.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::BuiltinFn;
+    /// use orpheus_lang::BuiltinKind;
+    ///
+    /// let builtin = BuiltinFn::new(BuiltinKind::Sometimes).with_site_salt(42);
+    /// ```
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);
         self
