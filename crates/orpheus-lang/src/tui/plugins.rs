@@ -79,6 +79,12 @@ impl HypertilePlugin for ReplPlugin {
     }
 
     fn on_event(&mut self, event: &HypertileEvent) -> EventOutcome {
+        let mut state = self.state.borrow_mut();
+        for warning in state.session.drain_warnings() {
+            state.transcript.push(format!("\u{26a0}\u{fe0f} {warning}"));
+        }
+        drop(state);
+
         let HypertileEvent::Key(chord) = event else {
             return EventOutcome::Ignored;
         };
@@ -213,6 +219,12 @@ impl HypertilePlugin for BindingsPlugin {
     }
 
     fn on_event(&mut self, event: &HypertileEvent) -> EventOutcome {
+        let mut state = self.state.borrow_mut();
+        for warning in state.session.drain_warnings() {
+            state.transcript.push(format!("\u{26a0}\u{fe0f} {warning}"));
+        }
+        drop(state);
+
         let HypertileEvent::Key(chord) = event else {
             return EventOutcome::Ignored;
         };

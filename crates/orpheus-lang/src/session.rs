@@ -72,6 +72,7 @@ pub struct ReplSession {
     tempo_bpm: f32,
     reference_frequency_hz: f32,
     history: SessionHistory,
+    pending_warnings: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -359,6 +360,10 @@ impl ReplSession {
     /// let engine = EngineHandle::stub();
     /// let session = ReplSession::with_engine(engine);
     /// ```
+    pub fn drain_warnings(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.pending_warnings)
+    }
+
     pub fn with_engine(engine: EngineHandle) -> Self {
         let tempo_bpm = engine.transport_snapshot().tempo_bpm();
         Self {
@@ -377,6 +382,7 @@ impl ReplSession {
             tempo_bpm,
             reference_frequency_hz: DEFAULT_ANALOG_BASE_FREQUENCY_HZ,
             history: SessionHistory::default(),
+            pending_warnings: Vec::new(),
         }
     }
 
@@ -1238,11 +1244,11 @@ impl ReplSession {
         };
 
         for issue in reload.errors() {
-            eprintln!(
+            self.pending_warnings.push(format!(
                 "sample hot reload issue at `{}`: {}",
                 issue.path(),
                 issue.message()
-            );
+            ));
         }
 
         let sample_bank = reload.bank().clone();
