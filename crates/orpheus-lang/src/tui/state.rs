@@ -133,6 +133,9 @@ impl SharedState {
             Ok(message) => self.set_status_message(message, false),
             Err(error) => self.set_status_message(error, true),
         }
+        for warning in self.session.pending_warnings.drain(..) {
+            self.transcript.push(format!("\u{26A0} {warning}"));
+        }
     }
 
     pub fn set_status_message(&mut self, message: impl Into<String>, is_error: bool) {
