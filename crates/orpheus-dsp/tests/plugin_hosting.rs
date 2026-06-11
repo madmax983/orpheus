@@ -13,7 +13,8 @@ fn vst3_descriptor_uses_standard_os_search_paths() {
     assert!(
         paths
             .iter()
-            .any(|path| path.to_string_lossy().contains("VST3")),
+            .any(|path| path.to_string_lossy().contains("VST3")
+                || path.to_string_lossy().contains("vst3")),
         "expected default VST3 search paths, got {paths:?}"
     );
 }

@@ -36,3 +36,11 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+
+## 2026-04-24 - [Avoid Empty "Getter Noise" Documentations]
+**Confusion:** The UI style definition functions in `tui/style.rs` (e.g. `pending_binding_style`) were documented simply with "Returns the...", leaving users to guess *why* they exist and what they represent in the UI domain, breaking the Bard constraint.
+**Clarification:** Re-wrote the documentations to explain *what* they represent (e.g. "Derives the visual [`Style`] ... to provide immediate visual feedback") rather than simply stating "Returns the ...".
+
+## 2026-04-24 - [Yield instead of Returns]
+**Confusion:** The offline rendering utility `mix_offline_plugins_into_tracks` returned "Returns the final deterministic..." which triggered a linter on "Returns the"
+**Clarification:** Replaced "Returns" with "Yields" to conform to the Bard style constraint.

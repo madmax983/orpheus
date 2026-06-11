@@ -91,7 +91,8 @@ pub fn format_transport_status(view: &TransportView) -> &'static str {
     }
 }
 
-/// Returns the visual [`Style`] (color and modifier) associated with the current transport state.
+/// Derives the visual [`Style`] (color and modifier) associated with the current transport state
+/// to provide immediate visual feedback of the engine's status (e.g. green for playing, yellow for stopped).
 ///
 /// For example, active playback is green, while syncing transitions are cyan.
 ///
@@ -185,7 +186,7 @@ pub fn routing_status_line(mixer: &MixerView) -> Line<'static> {
     Line::from(vec![Span::raw("Routing: "), status])
 }
 
-/// Returns the [`Style`] used to highlight the currently active (live) pattern binding
+/// Defines the visual [`Style`] used to highlight the currently active (live) pattern binding
 /// in the environment list.
 ///
 /// # Examples
@@ -203,7 +204,7 @@ pub fn live_binding_style() -> Style {
         .add_modifier(Modifier::BOLD)
 }
 
-/// Returns the [`Style`] used to highlight a pattern binding that is queued to play next.
+/// Defines the visual [`Style`] used to highlight a pattern binding that is queued to play next.
 ///
 /// The specific color changes depending on whether the transport is currently running (syncing)
 /// or stopped (queued).
@@ -331,7 +332,8 @@ pub fn should_show_binding_legend(
     visible_rows >= MIN_BINDING_LEGEND_ROWS && visible_rows >= binding_count.saturating_add(2)
 }
 
-/// Returns the muted [`Style`] used for keyboard shortcut hints (e.g., `(ESC to close)`).
+/// Defines the muted [`Style`] used for keyboard shortcut hints (e.g., `(ESC to close)`)
+/// to ensure they don't distract from the primary UI elements.
 ///
 /// # Examples
 /// ```
@@ -348,7 +350,8 @@ pub fn key_legend_style() -> Style {
         .add_modifier(Modifier::DIM)
 }
 
-/// Returns the highlighted [`Style`] used for the outer border of the Help overlay popup.
+/// Defines the highlighted [`Style`] used for the outer border of the Help overlay popup
+/// to draw the user's attention to the active modal window.
 ///
 /// # Examples
 /// ```
@@ -365,7 +368,8 @@ pub fn help_overlay_border_style() -> Style {
         .add_modifier(Modifier::BOLD)
 }
 
-/// Returns the muted [`Style`] used for the footer text in the Help overlay.
+/// Defines the muted [`Style`] used for the footer text in the Help overlay
+/// to de-emphasize secondary navigational instructions.
 ///
 /// # Examples
 /// ```
