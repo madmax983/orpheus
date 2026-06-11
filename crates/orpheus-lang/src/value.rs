@@ -1183,40 +1183,34 @@ impl SampleEvent {
     pub const fn pedal_program(&self) -> Option<&Arc<orpheus_dsp::PedalProgram>> {
         self.pedal_program.as_ref()
     }
-
-    fn clone_with(&self, mutate: impl FnOnce(&mut Self)) -> Self {
-        let mut cloned = self.clone();
-        mutate(&mut cloned);
-        cloned
-    }
 }
 
 trait PatternValueTransform: Sized {
-    fn adjust_gain(&self, factor: f64) -> Self;
-    fn adjust_delay_mix(&self, mix: f64) -> Self;
-    fn adjust_delay_time(&self, time: f64) -> Self;
-    fn adjust_delay_feedback(&self, feedback: f64) -> Self;
-    fn adjust_hpf(&self, cutoff_hz: f64) -> Self;
-    fn adjust_lpf(&self, cutoff_hz: f64) -> Self;
-    fn adjust_reverb_mix(&self, mix: f64) -> Self;
-    fn adjust_reverb_room(&self, room: f64) -> Self;
-    fn adjust_reverb_damp(&self, damp: f64) -> Self;
-    fn adjust_chorus_mix(&self, mix: f64) -> Self;
-    fn adjust_chorus_depth(&self, depth: f64) -> Self;
-    fn adjust_chorus_rate(&self, rate: f64) -> Self;
-    fn adjust_compressor_mix(&self, mix: f64) -> Self;
-    fn adjust_compressor_threshold(&self, threshold: f64) -> Self;
-    fn adjust_compressor_ratio(&self, ratio: f64) -> Self;
-    fn adjust_resonance(&self, resonance: f64) -> Self;
-    fn adjust_drive(&self, drive: f64) -> Self;
-    fn adjust_pulse_width(&self, pulse_width: f64) -> Self;
-    fn adjust_pan(&self, amount: f64) -> Self;
-    fn adjust_rate(&self, factor: f64) -> Self;
-    fn adjust_onset(&self, onset_index: u32) -> Self;
-    fn adjust_slice(&self, start: f64, end: f64) -> Self;
-    fn attach_pedal_program(&self, pedal_program: &Arc<orpheus_dsp::PedalProgram>) -> Self;
-    fn map_degrees(&self, collection: &PitchClassSetValue) -> Result<Self, EvalError>;
-    fn transpose_semitones(&self, semitones: f64) -> Result<Self, EvalError>;
+    fn adjust_gain(&mut self, factor: f64);
+    fn adjust_delay_mix(&mut self, mix: f64);
+    fn adjust_delay_time(&mut self, time: f64);
+    fn adjust_delay_feedback(&mut self, feedback: f64);
+    fn adjust_hpf(&mut self, cutoff_hz: f64);
+    fn adjust_lpf(&mut self, cutoff_hz: f64);
+    fn adjust_reverb_mix(&mut self, mix: f64);
+    fn adjust_reverb_room(&mut self, room: f64);
+    fn adjust_reverb_damp(&mut self, damp: f64);
+    fn adjust_chorus_mix(&mut self, mix: f64);
+    fn adjust_chorus_depth(&mut self, depth: f64);
+    fn adjust_chorus_rate(&mut self, rate: f64);
+    fn adjust_compressor_mix(&mut self, mix: f64);
+    fn adjust_compressor_threshold(&mut self, threshold: f64);
+    fn adjust_compressor_ratio(&mut self, ratio: f64);
+    fn adjust_resonance(&mut self, resonance: f64);
+    fn adjust_drive(&mut self, drive: f64);
+    fn adjust_pulse_width(&mut self, pulse_width: f64);
+    fn adjust_pan(&mut self, amount: f64);
+    fn adjust_rate(&mut self, factor: f64);
+    fn adjust_onset(&mut self, onset_index: u32);
+    fn adjust_slice(&mut self, start: f64, end: f64);
+    fn attach_pedal_program(&mut self, pedal_program: &Arc<orpheus_dsp::PedalProgram>);
+    fn map_degrees(&mut self, collection: &PitchClassSetValue) -> Result<(), EvalError>;
+    fn transpose_semitones(&mut self, semitones: f64) -> Result<(), EvalError>;
 }
 
 trait PatternRuntimeValue: Clone + PatternValueTransform + Send + Sync + fmt::Debug + Sized {
@@ -1238,110 +1232,108 @@ trait PatternRuntimeValue: Clone + PatternValueTransform + Send + Sync + fmt::De
 }
 
 impl PatternValueTransform for SampleEvent {
-    fn adjust_gain(&self, factor: f64) -> Self {
-        self.clone_with(|event| event.gain *= factor)
+    fn adjust_gain(&mut self, factor: f64) {
+        self.gain *= factor;
     }
 
-    fn adjust_delay_mix(&self, mix: f64) -> Self {
-        self.clone_with(|event| event.delay_mix = mix)
+    fn adjust_delay_mix(&mut self, mix: f64) {
+        self.delay_mix = mix;
     }
 
-    fn adjust_delay_time(&self, time: f64) -> Self {
-        self.clone_with(|event| event.delay_time = time)
+    fn adjust_delay_time(&mut self, time: f64) {
+        self.delay_time = time;
     }
 
-    fn adjust_delay_feedback(&self, feedback: f64) -> Self {
-        self.clone_with(|event| event.delay_feedback = feedback)
+    fn adjust_delay_feedback(&mut self, feedback: f64) {
+        self.delay_feedback = feedback;
     }
 
-    fn adjust_hpf(&self, cutoff_hz: f64) -> Self {
-        self.clone_with(|event| event.hpf_cutoff_hz = Some(cutoff_hz))
+    fn adjust_hpf(&mut self, cutoff_hz: f64) {
+        self.hpf_cutoff_hz = Some(cutoff_hz);
     }
 
-    fn adjust_lpf(&self, cutoff_hz: f64) -> Self {
-        self.clone_with(|event| event.lpf_cutoff_hz = Some(cutoff_hz))
+    fn adjust_lpf(&mut self, cutoff_hz: f64) {
+        self.lpf_cutoff_hz = Some(cutoff_hz);
     }
 
-    fn adjust_reverb_mix(&self, mix: f64) -> Self {
-        self.clone_with(|event| event.reverb_mix = mix)
+    fn adjust_reverb_mix(&mut self, mix: f64) {
+        self.reverb_mix = mix;
     }
 
-    fn adjust_reverb_room(&self, room: f64) -> Self {
-        self.clone_with(|event| event.reverb_room = room)
+    fn adjust_reverb_room(&mut self, room: f64) {
+        self.reverb_room = room;
     }
 
-    fn adjust_reverb_damp(&self, damp: f64) -> Self {
-        self.clone_with(|event| event.reverb_damp = damp)
+    fn adjust_reverb_damp(&mut self, damp: f64) {
+        self.reverb_damp = damp;
     }
 
-    fn adjust_chorus_mix(&self, mix: f64) -> Self {
-        self.clone_with(|event| event.chorus_mix = mix)
+    fn adjust_chorus_mix(&mut self, mix: f64) {
+        self.chorus_mix = mix;
     }
 
-    fn adjust_chorus_depth(&self, depth: f64) -> Self {
-        self.clone_with(|event| event.chorus_depth = depth)
+    fn adjust_chorus_depth(&mut self, depth: f64) {
+        self.chorus_depth = depth;
     }
 
-    fn adjust_chorus_rate(&self, rate: f64) -> Self {
-        self.clone_with(|event| event.chorus_rate = rate)
+    fn adjust_chorus_rate(&mut self, rate: f64) {
+        self.chorus_rate = rate;
     }
 
-    fn adjust_compressor_mix(&self, mix: f64) -> Self {
-        self.clone_with(|event| event.compressor_mix = mix)
+    fn adjust_compressor_mix(&mut self, mix: f64) {
+        self.compressor_mix = mix;
     }
 
-    fn adjust_compressor_threshold(&self, threshold: f64) -> Self {
-        self.clone_with(|event| event.compressor_threshold = threshold)
+    fn adjust_compressor_threshold(&mut self, threshold: f64) {
+        self.compressor_threshold = threshold;
     }
 
-    fn adjust_compressor_ratio(&self, ratio: f64) -> Self {
-        self.clone_with(|event| event.compressor_ratio = ratio)
+    fn adjust_compressor_ratio(&mut self, ratio: f64) {
+        self.compressor_ratio = ratio;
     }
 
-    fn adjust_resonance(&self, resonance: f64) -> Self {
-        self.clone_with(|event| event.resonance = resonance)
+    fn adjust_resonance(&mut self, resonance: f64) {
+        self.resonance = resonance;
     }
 
-    fn adjust_drive(&self, drive: f64) -> Self {
-        self.clone_with(|event| event.drive = drive)
+    fn adjust_drive(&mut self, drive: f64) {
+        self.drive = drive;
     }
 
-    fn adjust_pulse_width(&self, pulse_width: f64) -> Self {
-        self.clone_with(|event| event.pulse_width = pulse_width)
+    fn adjust_pulse_width(&mut self, pulse_width: f64) {
+        self.pulse_width = pulse_width;
     }
 
-    fn adjust_pan(&self, amount: f64) -> Self {
-        self.clone_with(|event| event.pan = (event.pan + amount).clamp(-1.0, 1.0))
+    fn adjust_pan(&mut self, amount: f64) {
+        self.pan = (self.pan + amount).clamp(-1.0, 1.0);
     }
 
-    fn adjust_rate(&self, factor: f64) -> Self {
-        self.clone_with(|event| event.rate *= factor)
+    fn adjust_rate(&mut self, factor: f64) {
+        self.rate *= factor;
     }
 
-    fn adjust_onset(&self, onset_index: u32) -> Self {
-        self.clone_with(|event| event.onset_index = Some(onset_index))
+    fn adjust_onset(&mut self, onset_index: u32) {
+        self.onset_index = Some(onset_index);
     }
 
-    fn adjust_slice(&self, start: f64, end: f64) -> Self {
-        self.clone_with(|event| {
-            let current_start = event.slice_start;
-            let current_range = event.slice_end - current_start;
-            event.slice_start = current_range.mul_add(start, current_start);
-            event.slice_end = current_range.mul_add(end, current_start);
-        })
+    fn adjust_slice(&mut self, start: f64, end: f64) {
+        let current_start = self.slice_start;
+        let current_range = self.slice_end - current_start;
+        self.slice_start = current_range.mul_add(start, current_start);
+        self.slice_end = current_range.mul_add(end, current_start);
     }
 
-    fn attach_pedal_program(&self, pedal_program: &Arc<orpheus_dsp::PedalProgram>) -> Self {
-        self.clone_with(|event| event.pedal_program = Some(pedal_program.clone()))
+    fn attach_pedal_program(&mut self, pedal_program: &Arc<orpheus_dsp::PedalProgram>) {
+        self.pedal_program = Some(pedal_program.clone());
     }
 
-    fn map_degrees(&self, _collection: &PitchClassSetValue) -> Result<Self, EvalError> {
+    fn map_degrees(&mut self, _collection: &PitchClassSetValue) -> Result<(), EvalError> {
         Err(EvalError::new(
             "internal evaluator error: degree mapping only applies to number patterns",
         ))
     }
 
-    fn transpose_semitones(&self, _semitones: f64) -> Result<Self, EvalError> {
+    fn transpose_semitones(&mut self, _semitones: f64) -> Result<(), EvalError> {
         Err(EvalError::new(
             "internal evaluator error: transposition only applies to number patterns",
         ))
@@ -1349,107 +1341,63 @@ impl PatternValueTransform for SampleEvent {
 }
 
 impl PatternValueTransform for f64 {
-    fn adjust_gain(&self, _factor: f64) -> Self {
-        *self
-    }
+    fn adjust_gain(&mut self, _factor: f64) {}
 
-    fn adjust_delay_mix(&self, _mix: f64) -> Self {
-        *self
-    }
+    fn adjust_delay_mix(&mut self, _mix: f64) {}
 
-    fn adjust_delay_time(&self, _time: f64) -> Self {
-        *self
-    }
+    fn adjust_delay_time(&mut self, _time: f64) {}
 
-    fn adjust_delay_feedback(&self, _feedback: f64) -> Self {
-        *self
-    }
+    fn adjust_delay_feedback(&mut self, _feedback: f64) {}
 
-    fn adjust_hpf(&self, _cutoff_hz: f64) -> Self {
-        *self
-    }
+    fn adjust_hpf(&mut self, _cutoff_hz: f64) {}
 
-    fn adjust_lpf(&self, _cutoff_hz: f64) -> Self {
-        *self
-    }
+    fn adjust_lpf(&mut self, _cutoff_hz: f64) {}
 
-    fn adjust_reverb_mix(&self, _mix: f64) -> Self {
-        *self
-    }
+    fn adjust_reverb_mix(&mut self, _mix: f64) {}
 
-    fn adjust_reverb_room(&self, _room: f64) -> Self {
-        *self
-    }
+    fn adjust_reverb_room(&mut self, _room: f64) {}
 
-    fn adjust_reverb_damp(&self, _damp: f64) -> Self {
-        *self
-    }
+    fn adjust_reverb_damp(&mut self, _damp: f64) {}
 
-    fn adjust_chorus_mix(&self, _mix: f64) -> Self {
-        *self
-    }
+    fn adjust_chorus_mix(&mut self, _mix: f64) {}
 
-    fn adjust_chorus_depth(&self, _depth: f64) -> Self {
-        *self
-    }
+    fn adjust_chorus_depth(&mut self, _depth: f64) {}
 
-    fn adjust_chorus_rate(&self, _rate: f64) -> Self {
-        *self
-    }
+    fn adjust_chorus_rate(&mut self, _rate: f64) {}
 
-    fn adjust_compressor_mix(&self, _mix: f64) -> Self {
-        *self
-    }
+    fn adjust_compressor_mix(&mut self, _mix: f64) {}
 
-    fn adjust_compressor_threshold(&self, _threshold: f64) -> Self {
-        *self
-    }
+    fn adjust_compressor_threshold(&mut self, _threshold: f64) {}
 
-    fn adjust_compressor_ratio(&self, _ratio: f64) -> Self {
-        *self
-    }
+    fn adjust_compressor_ratio(&mut self, _ratio: f64) {}
 
-    fn adjust_resonance(&self, _resonance: f64) -> Self {
-        *self
-    }
+    fn adjust_resonance(&mut self, _resonance: f64) {}
 
-    fn adjust_drive(&self, _drive: f64) -> Self {
-        *self
-    }
+    fn adjust_drive(&mut self, _drive: f64) {}
 
-    fn adjust_pulse_width(&self, _pulse_width: f64) -> Self {
-        *self
-    }
+    fn adjust_pulse_width(&mut self, _pulse_width: f64) {}
 
-    fn adjust_pan(&self, _amount: f64) -> Self {
-        *self
-    }
+    fn adjust_pan(&mut self, _amount: f64) {}
 
-    fn adjust_rate(&self, _factor: f64) -> Self {
-        *self
-    }
+    fn adjust_rate(&mut self, _factor: f64) {}
 
-    fn adjust_onset(&self, _onset_index: u32) -> Self {
-        *self
-    }
+    fn adjust_onset(&mut self, _onset_index: u32) {}
 
-    fn adjust_slice(&self, _start: f64, _end: f64) -> Self {
-        *self
-    }
+    fn adjust_slice(&mut self, _start: f64, _end: f64) {}
 
-    fn attach_pedal_program(&self, _pedal_program: &Arc<orpheus_dsp::PedalProgram>) -> Self {
-        *self
-    }
+    fn attach_pedal_program(&mut self, _pedal_program: &Arc<orpheus_dsp::PedalProgram>) {}
 
-    fn map_degrees(&self, collection: &PitchClassSetValue) -> Result<Self, EvalError> {
+    fn map_degrees(&mut self, collection: &PitchClassSetValue) -> Result<(), EvalError> {
         let degree = whole_number_from_degree_value(*self)?;
-        map_degree_to_semitones(degree, collection)
+        *self = map_degree_to_semitones(degree, collection)?;
+        Ok(())
     }
 
-    fn transpose_semitones(&self, semitones: f64) -> Result<Self, EvalError> {
+    fn transpose_semitones(&mut self, semitones: f64) -> Result<(), EvalError> {
         let value = *self + semitones;
         if value.is_finite() {
-            Ok(value)
+            *self = value;
+            Ok(())
         } else {
             Err(EvalError::new(
                 "`transpose` produced a non-finite numeric value",
@@ -3515,13 +3463,13 @@ where
             Self::Shift { offset, inner } => query_shift(inner, offset, span),
             Self::Rev { inner } => query_rev(inner, span),
             Self::Gain { factor, inner } => {
-                apply_value_mutation(inner, span, |value| *value = value.adjust_gain(*factor))
+                apply_value_mutation(inner, span, |value| value.adjust_gain(*factor))
             }
             Self::GainPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Gain)
             }
             Self::Pitch { semitones, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_rate(semitones_to_rate_multiplier(*semitones));
+                value.adjust_rate(semitones_to_rate_multiplier(*semitones));
             }),
             Self::PitchPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Pitch)
@@ -3531,7 +3479,7 @@ where
                 tuning,
                 inner,
             } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_rate(semitones_to_tuned_rate(*semitones, tuning));
+                value.adjust_rate(semitones_to_tuned_rate(*semitones, tuning));
             }),
             Self::TunedPitchPattern {
                 control,
@@ -3539,17 +3487,17 @@ where
                 inner,
             } => apply_tuned_pitch_pattern(inner, control, span, tuning),
             Self::Rate { factor, inner } => {
-                apply_value_mutation(inner, span, |value| *value = value.adjust_rate(*factor))
+                apply_value_mutation(inner, span, |value| value.adjust_rate(*factor))
             }
             Self::RatePattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Rate)
             }
             Self::Onset { onset_index, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_onset(*onset_index);
+                value.adjust_onset(*onset_index);
             }),
             Self::OnsetPattern { control, inner } => apply_onset_pattern(inner, control, span),
             Self::Slice { start, end, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_slice(*start, *end);
+                value.adjust_slice(*start, *end);
             }),
             Self::SlicePattern {
                 start_control,
@@ -3565,7 +3513,7 @@ where
                 pedal_program,
                 inner,
             } => apply_value_mutation(inner, span, |value| {
-                *value = value.attach_pedal_program(pedal_program);
+                value.attach_pedal_program(pedal_program);
             }),
             Self::Rand { site_salt } => query_rand(*site_salt, span),
             _ => self.try_query_audio_effect(span),
@@ -3580,61 +3528,61 @@ where
     fn try_query_audio_effect_method(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
         match self {
             Self::Delay { mix, inner } => {
-                apply_value_mutation(inner, span, |value| *value = value.adjust_delay_mix(*mix))
+                apply_value_mutation(inner, span, |value| value.adjust_delay_mix(*mix))
             }
             Self::DelayPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::DelayMix)
             }
             Self::DelayTime { time, inner } => {
-                apply_value_mutation(inner, span, |value| *value = value.adjust_delay_time(*time))
+                apply_value_mutation(inner, span, |value| value.adjust_delay_time(*time))
             }
             Self::DelayTimePattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::DelayTime)
             }
             Self::DelayFeedback { feedback, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_delay_feedback(*feedback);
+                value.adjust_delay_feedback(*feedback);
             }),
             Self::DelayFeedbackPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::DelayFeedback)
             }
             Self::Hpf { cutoff_hz, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_hpf(*cutoff_hz);
+                value.adjust_hpf(*cutoff_hz);
             }),
             Self::HpfPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Hpf)
             }
             Self::Lpf { cutoff_hz, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_lpf(*cutoff_hz);
+                value.adjust_lpf(*cutoff_hz);
             }),
             Self::LpfPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Lpf)
             }
             Self::Reverb { mix, inner } => {
-                apply_value_mutation(inner, span, |value| *value = value.adjust_reverb_mix(*mix))
+                apply_value_mutation(inner, span, |value| value.adjust_reverb_mix(*mix))
             }
             Self::ReverbPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::ReverbMix)
             }
             Self::ReverbRoom { room, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_reverb_room(*room);
+                value.adjust_reverb_room(*room);
             }),
             Self::ReverbRoomPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::ReverbRoom)
             }
             Self::ReverbDamp { damp, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_reverb_damp(*damp);
+                value.adjust_reverb_damp(*damp);
             }),
             Self::ReverbDampPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::ReverbDamp)
             }
             Self::Res { resonance, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_resonance(*resonance);
+                value.adjust_resonance(*resonance);
             }),
             Self::ResPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Res)
             }
             Self::Drive { drive, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_drive(*drive);
+                value.adjust_drive(*drive);
             }),
             Self::DrivePattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Drive)
@@ -3654,44 +3602,44 @@ where
     ) -> Result<Vec<Event<T>>, EvalError> {
         match self {
             Self::Chorus { mix, inner } => {
-                apply_value_mutation(inner, span, |value| *value = value.adjust_chorus_mix(*mix))
+                apply_value_mutation(inner, span, |value| value.adjust_chorus_mix(*mix))
             }
             Self::ChorusPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::ChorusMix)
             }
             Self::ChorusDepth { depth, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_chorus_depth(*depth);
+                value.adjust_chorus_depth(*depth);
             }),
             Self::ChorusDepthPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::ChorusDepth)
             }
             Self::ChorusRate { rate, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_chorus_rate(*rate);
+                value.adjust_chorus_rate(*rate);
             }),
             Self::ChorusRatePattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::ChorusRate)
             }
             Self::PulseWidth { pulse_width, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_pulse_width(*pulse_width);
+                value.adjust_pulse_width(*pulse_width);
             }),
             Self::PulseWidthPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::PulseWidth)
             }
             Self::Pan { amount, inner } => {
-                apply_value_mutation(inner, span, |value| *value = value.adjust_pan(*amount))
+                apply_value_mutation(inner, span, |value| value.adjust_pan(*amount))
             }
             Self::PanPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Pan)
             }
             Self::Compressor { mix, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_compressor_mix(*mix);
+                value.adjust_compressor_mix(*mix);
             }),
             Self::CompressorPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::CompressorMix)
             }
             Self::CompressorThreshold { threshold, inner } => {
                 apply_value_mutation(inner, span, |value| {
-                    *value = value.adjust_compressor_threshold(*threshold);
+                    value.adjust_compressor_threshold(*threshold);
                 })
             }
             Self::CompressorThresholdPattern { control, inner } => apply_control_pattern(
@@ -3701,7 +3649,7 @@ where
                 ControlPatternKind::CompressorThreshold,
             ),
             Self::CompressorRatio { ratio, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_compressor_ratio(*ratio);
+                value.adjust_compressor_ratio(*ratio);
             }),
             Self::CompressorRatioPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::CompressorRatio)
@@ -3735,11 +3683,11 @@ fn apply_value_transform<T, F>(
 ) -> Result<Vec<Event<T>>, EvalError>
 where
     T: PatternRuntimeValue,
-    F: FnMut(&T) -> Result<T, EvalError>,
+    F: FnMut(&mut T) -> Result<(), EvalError>,
 {
     let mut events = inner.try_query(span)?;
     for event in &mut events {
-        event.value = transform(&event.value)?;
+        transform(&mut event.value)?;
     }
     Ok(events)
 }
@@ -4055,31 +4003,36 @@ enum ControlPatternKind {
 }
 
 impl ControlPatternKind {
-    fn apply<T: PatternRuntimeValue>(self, value: &T, control_val: f64) -> Result<T, EvalError> {
+    fn apply<T: PatternRuntimeValue>(
+        self,
+        value: &mut T,
+        control_val: f64,
+    ) -> Result<(), EvalError> {
         match self {
-            Self::Gain => Ok(value.adjust_gain(control_val)),
-            Self::DelayMix => Ok(value.adjust_delay_mix(control_val)),
-            Self::DelayTime => Ok(value.adjust_delay_time(control_val)),
-            Self::DelayFeedback => Ok(value.adjust_delay_feedback(control_val)),
-            Self::Hpf => Ok(value.adjust_hpf(control_val)),
-            Self::Lpf => Ok(value.adjust_lpf(control_val)),
-            Self::ReverbMix => Ok(value.adjust_reverb_mix(control_val)),
-            Self::ReverbRoom => Ok(value.adjust_reverb_room(control_val)),
-            Self::ReverbDamp => Ok(value.adjust_reverb_damp(control_val)),
-            Self::Res => Ok(value.adjust_resonance(control_val)),
-            Self::Drive => Ok(value.adjust_drive(control_val)),
-            Self::ChorusMix => Ok(value.adjust_chorus_mix(control_val)),
-            Self::ChorusDepth => Ok(value.adjust_chorus_depth(control_val)),
-            Self::ChorusRate => Ok(value.adjust_chorus_rate(control_val)),
-            Self::PulseWidth => Ok(value.adjust_pulse_width(control_val)),
-            Self::Pan => Ok(value.adjust_pan(control_val)),
-            Self::CompressorMix => Ok(value.adjust_compressor_mix(control_val)),
-            Self::CompressorThreshold => Ok(value.adjust_compressor_threshold(control_val)),
-            Self::CompressorRatio => Ok(value.adjust_compressor_ratio(control_val)),
-            Self::Pitch => Ok(value.adjust_rate(semitones_to_rate_multiplier(control_val))),
-            Self::Rate => Ok(value.adjust_rate(control_val)),
-            Self::Transpose => value.transpose_semitones(control_val),
+            Self::Gain => value.adjust_gain(control_val),
+            Self::DelayMix => value.adjust_delay_mix(control_val),
+            Self::DelayTime => value.adjust_delay_time(control_val),
+            Self::DelayFeedback => value.adjust_delay_feedback(control_val),
+            Self::Hpf => value.adjust_hpf(control_val),
+            Self::Lpf => value.adjust_lpf(control_val),
+            Self::ReverbMix => value.adjust_reverb_mix(control_val),
+            Self::ReverbRoom => value.adjust_reverb_room(control_val),
+            Self::ReverbDamp => value.adjust_reverb_damp(control_val),
+            Self::Res => value.adjust_resonance(control_val),
+            Self::Drive => value.adjust_drive(control_val),
+            Self::ChorusMix => value.adjust_chorus_mix(control_val),
+            Self::ChorusDepth => value.adjust_chorus_depth(control_val),
+            Self::ChorusRate => value.adjust_chorus_rate(control_val),
+            Self::PulseWidth => value.adjust_pulse_width(control_val),
+            Self::Pan => value.adjust_pan(control_val),
+            Self::CompressorMix => value.adjust_compressor_mix(control_val),
+            Self::CompressorThreshold => value.adjust_compressor_threshold(control_val),
+            Self::CompressorRatio => value.adjust_compressor_ratio(control_val),
+            Self::Pitch => value.adjust_rate(semitones_to_rate_multiplier(control_val)),
+            Self::Rate => value.adjust_rate(control_val),
+            Self::Transpose => value.transpose_semitones(control_val)?,
         }
+        Ok(())
     }
 
     fn validate(self, value: f64) -> Result<(), EvalError> {
@@ -4383,7 +4336,7 @@ where
             let mut new_value = value.clone();
             for control_event in &control_events {
                 if spans_overlap(&control_event.part, part) {
-                    new_value = kind.apply(&new_value, control_event.value)?;
+                    kind.apply(&mut new_value, control_event.value)?;
                 }
             }
             Ok(Some(new_value))
@@ -4441,8 +4394,7 @@ where
             let mut new_value = value.clone();
             for control_event in &control_events {
                 if spans_overlap(&control_event.part, part) {
-                    new_value =
-                        new_value.adjust_rate(semitones_to_tuned_rate(control_event.value, tuning));
+                    new_value.adjust_rate(semitones_to_tuned_rate(control_event.value, tuning));
                 }
             }
             Ok(Some(new_value))
@@ -4535,9 +4487,11 @@ where
                 ));
             }
 
-            Ok(Some(
-                value.clone().adjust_slice(relative_start, relative_end),
-            ))
+            Ok(Some({
+                let mut new_val = value.clone();
+                new_val.adjust_slice(relative_start, relative_end);
+                new_val
+            }))
         },
     )
 }
@@ -4572,7 +4526,7 @@ where
                             "`slice_idx` control index exceeded the supported evaluator range",
                         )
                     })?) / f64::from(segments);
-                    new_value = new_value.adjust_slice(slice_start, slice_end);
+                    new_value.adjust_slice(slice_start, slice_end);
                 }
             }
             Ok(Some(new_value))
@@ -4602,8 +4556,7 @@ where
             let mut new_value = value.clone();
             for control_event in &control_events {
                 if spans_overlap(&control_event.part, part) {
-                    new_value =
-                        new_value.adjust_onset(whole_number_from_onset_value(control_event.value)?);
+                    new_value.adjust_onset(whole_number_from_onset_value(control_event.value)?);
                 }
             }
             Ok(Some(new_value))

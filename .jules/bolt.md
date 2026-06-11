@@ -47,3 +47,7 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+**[In-Place Pattern Value Transformations]**
+**Learning:** `SampleEvent` clones in chained `PatternValueTransform` mutations like `adjust_gain` or `adjust_pan` allocate heavily on hot evaluation paths because they replicate underlying types containing `String` or other heap data.
+**Action:** Changed the `PatternValueTransform` trait to use `&mut self` and return `()` instead of returning a cloned `Self`.
