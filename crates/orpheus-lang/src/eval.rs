@@ -303,13 +303,23 @@ impl Evaluator {
         expr: &Expr,
         meter: Option<&MeterContext>,
     ) -> Result<Value, EvalError> {
+        struct DepthGuard<'a> {
+            depth: &'a std::cell::Cell<usize>,
+        }
+        impl Drop for DepthGuard<'_> {
+            fn drop(&mut self) {
+                self.depth.set(self.depth.get() - 1);
+            }
+        }
+
         if self.depth.get() > 200 {
             return Err(EvalError::new("evaluation recursion limit exceeded"));
         }
+
         self.depth.set(self.depth.get() + 1);
-        let result = self.eval_expr_in_meter_impl(expr, meter);
-        self.depth.set(self.depth.get() - 1);
-        result
+        let _guard = DepthGuard { depth: &self.depth };
+
+        self.eval_expr_in_meter_impl(expr, meter)
     }
     fn eval_expr_in_meter_impl(
         &self,
