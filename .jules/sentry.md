@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2024-05-24 - Avoid Trivial Test-Only Code
+**Learning:** Writing tests for test-only infrastructure (e.g., `#[cfg(test)] impl PartialEq`) or simple compiler-derived traits violates Sentry's strict directive to never test trivial code. This artificially inflates coverage without improving confidence in production logic.
+**Action:** When acting as Sentry, strictly target production business logic, complex `match` branches, and error paths. Do not test `#[cfg(test)]` helpers or compiler-derived traits.

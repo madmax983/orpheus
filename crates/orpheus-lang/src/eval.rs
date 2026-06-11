@@ -1873,4 +1873,17 @@ right = sometimes(fast(2), cp hh)";
         let val = module.get("res").unwrap().as_number_pattern().unwrap();
         assert!((val.try_query_unit().unwrap()[0].value - 42.0).abs() < f64::EPSILON);
     }
+
+    #[test]
+    fn append_unsorted_shifted_handles_error() {
+        use orpheus_pattern::Rational;
+        let mut explicit_sample = super::ExplicitValue::Sample(vec![]);
+        let explicit_number = super::ExplicitValue::Number(vec![]);
+        let offset = Rational::new(1, 1).unwrap();
+        let res = explicit_sample.append_unsorted_shifted(&explicit_number, &offset);
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "explicit-time items must all resolve to the same pattern kind"
+        );
+    }
 }
