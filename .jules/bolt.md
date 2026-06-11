@@ -47,3 +47,11 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+**[String Slicing Optimization]**
+**Learning:** Formatting strings via `.chars().take(4).collect::<String>()` allocates a new `String` on the heap for every element in hot paths like the tracker export grid generation. Using `char_indices().nth(N)` to find the byte boundary and returning a string slice (`&str`) avoids all intermediate allocations.
+**Action:** When a truncated string is required, compute the byte slice boundary dynamically and return `&str` from the original string instead of allocating a new one.
+
+**[Defer Formatting until I/O]**
+**Learning:** Using `format!("{:7.2}", val)` to store strings in intermediate representation structures (like a grid vector) creates many unnecessary heap allocations per iteration.
+**Action:** Store the raw value (e.g., `f64`) in intermediate data structures and defer `format!` or `write!` macros until the exact moment of I/O string serialization.

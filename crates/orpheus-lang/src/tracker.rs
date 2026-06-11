@@ -63,10 +63,10 @@ pub fn export_sample_pattern_to_tracker(
     // Create a grid of dimensions: [total_steps][sample_list.len()]
     // Each cell will optionally contain a formatted string of the sample name (if triggered)
     // or the delay/continuation character.
-    let mut grid: Vec<Vec<Option<String>>> = vec![vec![None; sample_list.len()]; total_steps];
+    let mut grid: Vec<Vec<Option<&str>>> = vec![vec![None; sample_list.len()]; total_steps];
 
     for event in &events {
-        let sample = event.value.sample().to_string();
+        let sample = event.value.sample();
         let lane_idx = sample_list
             .iter()
             .position(|s| *s == sample)
@@ -87,23 +87,27 @@ pub fn export_sample_pattern_to_tracker(
 
         if start_step < end_step {
             // Format sample name up to 4 chars
-            let formatted_name = if sample.len() > 4 {
-                sample.chars().take(4).collect::<String>()
-            } else {
-                sample.clone()
-            };
+            let end_idx = event
+                .value
+                .sample()
+                .char_indices()
+                .nth(4)
+                .map_or_else(|| event.value.sample().len(), |(i, _)| i);
+            let formatted_name = &event.value.sample()[..end_idx];
             grid[start_step][lane_idx] = Some(formatted_name);
             for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
                 if item[lane_idx].is_none() {
-                    item[lane_idx] = Some("====".to_string());
+                    item[lane_idx] = Some("====");
                 }
             }
         } else if start_step < total_steps && grid[start_step][lane_idx].is_none() {
-            let formatted_name = if sample.len() > 4 {
-                sample.chars().take(4).collect::<String>()
-            } else {
-                sample.clone()
-            };
+            let end_idx = event
+                .value
+                .sample()
+                .char_indices()
+                .nth(4)
+                .map_or_else(|| event.value.sample().len(), |(i, _)| i);
+            let formatted_name = &event.value.sample()[..end_idx];
             grid[start_step][lane_idx] = Some(formatted_name);
         }
     }
@@ -116,11 +120,11 @@ pub fn export_sample_pattern_to_tracker(
     // Print Header
     write!(file, " STEP | TIME  |")?;
     for sample in &sample_list {
-        let padded = if sample.len() > 4 {
-            sample.chars().take(4).collect::<String>()
-        } else {
-            sample.to_string()
-        };
+        let end_idx = sample
+            .char_indices()
+            .nth(4)
+            .map_or_else(|| sample.len(), |(i, _)| i);
+        let padded = &sample[..end_idx];
         write!(file, " {padded:4} |")?;
     }
     writeln!(file)?;
@@ -194,7 +198,8 @@ pub fn export_number_pattern_to_tracker(
         ));
     }
 
-    let mut grid: Vec<Option<String>> = vec![None; total_steps];
+    // Store values as f64 (or a marker for continuation) to avoid allocating intermediate Strings
+    let mut grid: Vec<Option<Result<f64, ()>>> = vec![None; total_steps];
 
     for event in &events {
         let start_f64 = f64::from(event.part.start());
@@ -207,17 +212,16 @@ pub fn export_number_pattern_to_tracker(
 
         let start_step = start_step.min(total_steps);
         let end_step = end_step.min(total_steps);
-        let val_str = format!("{:7.2}", event.value);
 
         if start_step < end_step {
-            grid[start_step] = Some(val_str);
+            grid[start_step] = Some(Ok(event.value));
             for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
                 if item.is_none() {
-                    *item = Some("=======".to_string());
+                    *item = Some(Err(())); // Continuation marker
                 }
             }
         } else if start_step < total_steps && grid[start_step].is_none() {
-            grid[start_step] = Some(val_str);
+            grid[start_step] = Some(Ok(event.value));
         }
     }
 
@@ -239,7 +243,10 @@ pub fn export_number_pattern_to_tracker(
         write!(file, " {cycle_num:02}:{sub_step:02} | {time:4.2} |")?;
 
         if let Some(val) = &grid[step] {
-            write!(file, " {val} |")?;
+            match val {
+                Ok(v) => write!(file, " {v:7.2} |")?,
+                Err(()) => write!(file, " ======= |")?,
+            }
         } else {
             write!(file, " ------- |")?;
         }
