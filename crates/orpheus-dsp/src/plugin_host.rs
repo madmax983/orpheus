@@ -502,3 +502,54 @@ fn note_duration_frames(event: &Event<PluginNote>, frames_per_cycle: u64) -> u32
 fn midi_note_frequency(note_number: u8) -> f32 {
     440.0 * ((f32::from(note_number) - 69.0) / 12.0).exp2()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use orpheus_pattern::{Event, Rational, TimeSpan};
+
+    #[test]
+    fn test_plugin_processor_apply_due_parameter_events_future_event() {
+        let mut source = PluginTrackSource::new(PluginDescriptor::vst3("test"));
+        let valid_events = vec![Event {
+            whole: None,
+            part: orpheus_pattern::TimeSpan::new(
+                Rational::new(1, 1).unwrap(),
+                Rational::new(5, 4).unwrap(),
+            )
+            .unwrap(),
+            value: 0.5,
+        }]
+        .into_boxed_slice();
+        let lane = PluginParameterLane::new("param", valid_events).unwrap();
+        source = source.with_parameter_lane(lane);
+
+        let mut processor = PluginProcessor::new(&source, 44100);
+        processor.apply_due_parameter_events(&source, 0, 44100);
+
+        assert_eq!(processor.parameter_values[0], 1.0);
+        assert_eq!(processor.parameter_cursors[0], 0);
+    }
+
+    #[test]
+    fn test_plugin_processor_activate_due_notes_future_event() {
+        let mut source = PluginTrackSource::new(PluginDescriptor::vst3("test"));
+        let valid_events = vec![Event {
+            whole: None,
+            part: orpheus_pattern::TimeSpan::new(
+                Rational::new(1, 1).unwrap(),
+                Rational::new(5, 4).unwrap(),
+            )
+            .unwrap(),
+            value: PluginNote::new(60, 1.0).unwrap(),
+        }]
+        .into_boxed_slice();
+        source = source.with_notes(valid_events);
+
+        let mut processor = PluginProcessor::new(&source, 44100);
+        processor.activate_due_notes(&source, 0, 44100);
+
+        assert_eq!(processor.next_note_index, 0);
+        assert!(processor.voices.iter().all(|v| v.is_none()));
+    }
+}
