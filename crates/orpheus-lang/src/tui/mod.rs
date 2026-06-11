@@ -263,6 +263,7 @@ where
     loop {
         {
             let mut state = shared.borrow_mut();
+            state.tick();
             state.clear_status_if_expired(Instant::now());
             if state.should_quit {
                 break;

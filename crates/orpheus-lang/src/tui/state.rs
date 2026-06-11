@@ -82,6 +82,13 @@ impl SharedState {
         state
     }
 
+    pub fn tick(&mut self) {
+        let warnings = self.session.poll_background_tasks();
+        for warning in warnings {
+            self.transcript.push(format!("\u{26a0}\u{fe0f} {warning}"));
+        }
+    }
+
     pub fn submit_line(&mut self) {
         let line = self.input.trim().to_owned();
         self.input.clear();

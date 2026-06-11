@@ -72,6 +72,7 @@ pub struct ReplSession {
     tempo_bpm: f32,
     reference_frequency_hz: f32,
     history: SessionHistory,
+    pending_warnings: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -377,6 +378,7 @@ impl ReplSession {
             tempo_bpm,
             reference_frequency_hz: DEFAULT_ANALOG_BASE_FREQUENCY_HZ,
             history: SessionHistory::default(),
+            pending_warnings: Vec::new(),
         }
     }
 
@@ -406,9 +408,25 @@ impl ReplSession {
     /// let response = session.eval_line(":tempo 120").unwrap();
     /// assert_eq!(response, "tempo set to 120 BPM");
     /// ```
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn drain_warnings(&mut self) -> Vec<String> {
+        let mut warnings = Vec::new();
+        std::mem::swap(&mut self.pending_warnings, &mut warnings);
+        warnings
+    }
+
+    pub fn poll_background_tasks(&mut self) -> Vec<String> {
+        if let Err(err) = self.poll_sample_watcher() {
+            self.pending_warnings
+                .push(format!("background task error: {err}"));
+        }
+        self.drain_warnings()
+    }
+
+    #[allow(clippy::missing_errors_doc)]
     pub fn eval_line(&mut self, source: &str) -> Result<String, String> {
         self.apply_midi_note_mappings()?;
-        self.poll_sample_watcher()?;
+        let _ = self.poll_background_tasks();
         if source.starts_with(':') {
             return self.eval_command(source);
         }
@@ -1238,11 +1256,11 @@ impl ReplSession {
         };
 
         for issue in reload.errors() {
-            eprintln!(
+            self.pending_warnings.push(format!(
                 "sample hot reload issue at `{}`: {}",
                 issue.path(),
                 issue.message()
-            );
+            ));
         }
 
         let sample_bank = reload.bank().clone();
