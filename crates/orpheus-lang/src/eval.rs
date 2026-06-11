@@ -1180,21 +1180,19 @@ fn expr_key(expr: &Expr) -> usize {
 }
 
 fn extract_constant_number_value(value: Value, context: &str) -> Result<f64, EvalError> {
-    if let Value::NumberPattern(pattern) = value {
-        pattern.constant_value()
-    } else {
-        Err(EvalError::new(format!(
+    let Value::NumberPattern(pattern) = value else {
+        return Err(EvalError::new(format!(
             "{context} must resolve to a constant number"
-        )))
-    }
+        )));
+    };
+    pattern.constant_value()
 }
 
 fn extract_string_value(value: Value, message: &str) -> Result<String, EvalError> {
-    if let Value::String(string) = value {
-        Ok(string.to_string())
-    } else {
-        Err(EvalError::new(message))
-    }
+    let Value::String(string) = value else {
+        return Err(EvalError::new(message.to_string()));
+    };
+    Ok(string.to_string())
 }
 
 fn extract_constant_number_rational(value: Value, context: &str) -> Result<Rational, EvalError> {
