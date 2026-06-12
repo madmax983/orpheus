@@ -44,6 +44,15 @@ pub enum PluginHostError {
 }
 
 /// Immutable description of a plugin instance requested by the language layer.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::PluginDescriptor;
+///
+/// let descriptor = PluginDescriptor::vst3("Serum");
+/// assert_eq!(descriptor.identifier(), "Serum");
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PluginDescriptor {
     format: PluginFormat,
@@ -116,6 +125,16 @@ impl PluginDescriptor {
 }
 
 /// A single MIDI note event delivered to a plugin instrument.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::PluginNote;
+///
+/// let note = PluginNote::new(60, 0.8).unwrap();
+/// assert_eq!(note.note_number(), 60);
+/// assert_eq!(note.velocity(), 0.8);
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PluginNote {
     note_number: u8,
@@ -161,6 +180,17 @@ impl PluginNote {
 }
 
 /// A named host-automation lane for a plugin parameter.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::PluginParameterLane;
+/// use orpheus_pattern::{Event, Rational, TimeSpan};
+///
+/// let part = TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap();
+/// let lane = PluginParameterLane::new("Cutoff", vec![Event { whole: None, part, value: 0.5 }].into_boxed_slice()).unwrap();
+/// assert_eq!(lane.events().len(), 1);
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct PluginParameterLane {
     name: Box<str>,
@@ -206,6 +236,15 @@ impl PluginParameterLane {
 }
 
 /// Fully materialized plugin track input consumed by the render thread.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::{PluginDescriptor, PluginTrackSource};
+///
+/// let descriptor = PluginDescriptor::vst3("Serum");
+/// let source = PluginTrackSource::new(descriptor);
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct PluginTrackSource {
     descriptor: PluginDescriptor,
@@ -279,6 +318,16 @@ pub struct PluginBufferCapacities {
 }
 
 /// Real-time render state for one headless plugin track.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::{PluginDescriptor, PluginTrackSource, PluginProcessor};
+///
+/// let descriptor = PluginDescriptor::vst3("Serum");
+/// let source = PluginTrackSource::new(descriptor);
+/// let mut processor = PluginProcessor::new(&source, 48_000);
+/// ```
 #[derive(Clone, Debug)]
 pub struct PluginProcessor {
     sample_rate_hz: f32,
