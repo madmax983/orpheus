@@ -264,6 +264,9 @@ where
         {
             let mut state = shared.borrow_mut();
             state.clear_status_if_expired(Instant::now());
+            for warning in state.session.drain_pending_warnings() {
+                state.set_status_message(warning, true);
+            }
             if state.should_quit {
                 break;
             }
