@@ -115,6 +115,17 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Creates a new validated pedal node containing signal type information and its descriptive summary.
+    ///
+    /// This constructor is intended for language frontends to construct a semantic node that has been verified against the current scope.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Reference("source".to_string()), "Reads from source");
+    /// ```
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +141,17 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Returns the structural kind of this validated pedal node.
+    ///
+    /// This is used during compilation to determine if the node is a primitive, a reference, or a control flow block.
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Returns a descriptive summary explaining what this node does.
+    ///
+    /// This summary is heavily used in TUI inspection views to show the developer the inferred structure of the pedal graph without printing massive raw AST dumps.
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +166,18 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Creates a new bound pedal node with the given name.
+    ///
+    /// This binds a validated node to a specific local identifier so that later nodes in the graph can reference it.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Reference("input".to_string()), "Input ref");
+    /// let binding = ValidatedPedalBinding::new("filtered", node);
+    /// ```
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +186,17 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// Returns the assigned name of this bound pedal node.
+    ///
+    /// The name acts as the unique identifier within the graph's scope block for downstream references.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Returns the underlying validated pedal node for this binding.
+    ///
+    /// Useful when the graph compiler needs to inspect the actual DSP operation rather than just the binding identifier.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node

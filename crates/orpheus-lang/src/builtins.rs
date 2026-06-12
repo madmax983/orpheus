@@ -260,6 +260,17 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Creates a new built-in function descriptor of the given kind.
+    ///
+    /// This encapsulates the kind of computation required when the function is eventually applied.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::value::{BuiltinFn, BuiltinKind};
+    ///
+    /// let rev_fn = BuiltinFn::new(BuiltinKind::Rev);
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +280,17 @@ impl BuiltinFn {
         }
     }
 
+    /// Binds a unique site salt to the built-in function for deterministic randomness.
+    ///
+    /// The salt ensures that pure random functions (like `sometimes`) produce the exact same sequence of choices every time the script is re-evaluated, keeping composition stable.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::value::{BuiltinFn, BuiltinKind};
+    ///
+    /// let random_fn = BuiltinFn::new(BuiltinKind::Sometimes).with_site_salt(42);
+    /// ```
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

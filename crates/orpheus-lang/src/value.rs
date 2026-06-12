@@ -37,36 +37,67 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Executes a function on every Nth cycle, commonly used for rhythmic variations.
     Every,
+    /// Conditionally executes a function if a boolean pattern condition is met.
     When,
+    /// Randomly applies a function to events with a given probability, useful for generative fills.
     Sometimes,
+    /// Applies a function to events within a specific fractional time span of a cycle.
     Within,
+    /// Masks events in a pattern using a boolean pattern, effectively muting parts of a sequence.
     Mask,
+    /// Strums chords or grouped events across a short time span, creating a harp-like arpeggiation.
     Strum,
+    /// Rolls (repeats) an event rapidly over its active duration, like a drum roll.
     Roll,
+    /// Arpeggiates chords into melodic sequences based on a direction and rate.
     Arp,
+    /// Inverts chord voicings, shifting the lowest notes up an octave.
     Invert,
+    /// Drops the nth note from chords, useful for thinning out dense harmonies.
     Drop,
+    /// Constructs chords based on a root note pattern and a given structure.
     Chord,
+    /// Generates Euclidean rhythms based on hits distributed across a number of steps.
     Euclid,
+    /// Generates patterns using L-systems, suitable for fractal-like melodic evolution.
     Lsystem,
+    /// Generates patterns using 1D cellular automata, introducing deterministic chaos.
     Wolfram,
+    /// Constructs a pitch class set to act as a harmonic palette.
     PitchClassSet,
+    /// Maps diatonic scale degrees to a specific pitch class set or scale.
     Degrees,
+    /// Speeds up a pattern's playback rate without changing its cycle length.
     Fast,
+    /// Slows down a pattern's playback rate.
     Slow,
+    /// Shifts a pattern forward or backward in time by a rational offset.
     Shift,
+    /// Reverses a pattern in time over its original cycle boundaries.
     Rev,
+    /// Applies a gain multiplier to audio events, adjusting their volume.
     Gain,
+    /// Applies a delay effect to audio events.
     Delay,
+    /// Sets the delay time for the delay effect in fractional cycle lengths.
     DelayTime,
+    /// Sets the delay feedback ratio for the delay effect.
     DelayFeedback,
+    /// Applies a high-pass filter to audio events.
     Hpf,
+    /// Applies a low-pass filter to audio events.
     Lpf,
+    /// Applies a reverb effect to audio events to simulate acoustic spaces.
     Reverb,
+    /// Sets the reverb room size parameter.
     ReverbRoom,
+    /// Sets the reverb damping parameter to simulate high-frequency absorption.
     ReverbDamp,
+    /// Sets the filter cutoff frequency for resonant filters.
     Cutoff,
+    /// Applies a chorus effect to thicken audio signals.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,
