@@ -47,3 +47,7 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+## 2024-06-12 - Remove intermediate string allocations in txt exports using BufWriter
+**Learning:** Writing directly to a `std::fs::File` (e.g., using `write!` or `writeln!` in a loop) causes a system call for every write operation, severely impacting performance. Furthermore, formatting values into temporary `Vec<String>` and `String` buffers before writing them causes redundant heap allocations per loop iteration.
+**Action:** Always wrap `File` instances in `std::io::BufWriter::new(file)` when performing multiple write operations. Replace temporary vector buffers and `format!` strings with sequential `write!` and `writeln!` calls directed into the `BufWriter` to eliminate intermediate allocations.
