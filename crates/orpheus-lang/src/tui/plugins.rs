@@ -160,10 +160,10 @@ impl BindingsPlugin {
         if bindings.is_empty() {
             vec![ListItem::new("No bindings yet")]
         } else {
-            let mut items = bindings
-                .into_iter()
-                .map(|summary| binding_list_item(summary, &transport))
-                .collect::<Vec<_>>();
+            let mut items = Vec::with_capacity(bindings.len() + 2);
+            for summary in bindings {
+                items.push(binding_list_item(summary, &transport));
+            }
             if should_show_binding_legend(height, items.len(), &transport) {
                 items.push(ListItem::new(""));
                 items.push(binding_legend_item(&transport));
