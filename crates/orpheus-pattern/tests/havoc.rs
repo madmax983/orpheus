@@ -1,4 +1,4 @@
-use orpheus_pattern::{CyclePattern, EventStream, Pattern, PatternNode, Rational, TimeSpan};
+use orpheus_pattern::*;
 
 #[test]
 fn havoc_query_no_panics_on_cycle_pattern() {

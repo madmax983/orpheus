@@ -3,7 +3,14 @@ use orpheus_pattern::{PatternError, Rational, TimeSpan};
 #[test]
 fn rational_thirds_sum_exactly_to_one() {
     let third = Rational::new(1, 3).unwrap();
-    assert_eq!(third + third + third, Rational::one());
+    assert_eq!(
+        third
+            .checked_add(&third)
+            .unwrap()
+            .checked_add(&third)
+            .unwrap(),
+        Rational::one()
+    );
 }
 
 #[test]
