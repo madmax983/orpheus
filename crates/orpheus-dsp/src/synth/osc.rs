@@ -188,3 +188,54 @@ impl Noise {
         normalized.mul_add(2.0, -1.0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_sample_rate_handles_non_finite_values() {
+        assert_eq!(sanitize_sample_rate(f32::NAN), 48_000.0);
+        assert_eq!(sanitize_sample_rate(f32::INFINITY), 48_000.0);
+        assert_eq!(sanitize_sample_rate(f32::NEG_INFINITY), 48_000.0);
+        assert_eq!(sanitize_sample_rate(-100.0), 48_000.0);
+        assert_eq!(sanitize_sample_rate(0.0), 48_000.0);
+        assert_eq!(sanitize_sample_rate(44_100.0), 44_100.0);
+    }
+
+    #[test]
+    fn normalized_step_handles_non_finite_freq() {
+        assert_eq!(normalized_step(f32::NAN, 48_000.0), 0.0);
+        assert_eq!(normalized_step(f32::INFINITY, 48_000.0), 0.0);
+        assert_eq!(normalized_step(f32::NEG_INFINITY, 48_000.0), 0.0);
+        assert_eq!(normalized_step(-440.0, 48_000.0), 0.0);
+        assert_eq!(normalized_step(0.0, 48_000.0), 0.0);
+    }
+
+    #[test]
+    fn saw_osc_next_sample_handles_non_finite_freq() {
+        let mut osc = SawOsc::new(48_000.0);
+        let sample1 = osc.next_sample(f32::NAN);
+        let sample2 = osc.next_sample(f32::INFINITY);
+        assert!(sample1.is_finite());
+        assert!(sample2.is_finite());
+    }
+
+    #[test]
+    fn pulse_osc_next_sample_handles_non_finite_freq() {
+        let mut osc = PulseOsc::new(48_000.0);
+        let sample1 = osc.next_sample(f32::NAN, 0.5);
+        let sample2 = osc.next_sample(f32::INFINITY, 0.5);
+        assert!(sample1.is_finite());
+        assert!(sample2.is_finite());
+    }
+
+    #[test]
+    fn tri_osc_next_sample_handles_non_finite_freq() {
+        let mut osc = TriOsc::new(48_000.0);
+        let sample1 = osc.next_sample(f32::NAN);
+        let sample2 = osc.next_sample(f32::INFINITY);
+        assert!(sample1.is_finite());
+        assert!(sample2.is_finite());
+    }
+}

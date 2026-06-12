@@ -94,3 +94,39 @@ impl LadderFilter {
         self.stage4
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ladder_filter_handles_non_finite_sample_rate() {
+        let f = LadderFilter::new(f32::NAN);
+        assert_eq!(f.sample_rate_hz, 48_000.0);
+        let f = LadderFilter::new(f32::INFINITY);
+        assert_eq!(f.sample_rate_hz, 48_000.0);
+        let f = LadderFilter::new(-100.0);
+        assert_eq!(f.sample_rate_hz, 48_000.0);
+    }
+
+    #[test]
+    fn ladder_filter_cutoff_coefficient_handles_non_finite_cutoff() {
+        let f = LadderFilter::new(48_000.0);
+        assert_eq!(f.cutoff_coefficient(f32::NAN), 0.0);
+    }
+
+    #[test]
+    fn ladder_filter_process_handles_non_finite_inputs() {
+        let mut f = LadderFilter::new(48_000.0);
+        let out = f.process(f32::NAN, 1000.0, 0.5);
+        assert!(out.is_finite());
+
+        let mut f = LadderFilter::new(48_000.0);
+        let out = f.process(1.0, f32::NAN, 0.5);
+        assert!(out.is_finite());
+
+        let mut f = LadderFilter::new(48_000.0);
+        let out = f.process(1.0, 1000.0, f32::NAN);
+        assert!(out.is_finite());
+    }
+}
