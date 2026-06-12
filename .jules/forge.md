@@ -82,3 +82,7 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+## 2024-06-12 - Flatten Engine DSP Loops
+**Learning:** `mix_routed_voices` contained 7 levels of nesting and handled voices, plugins, tracks, and buses simultaneously.
+**Action:** Always flatten massive DSP loop coordinators into private helper functions with clear domain scopes (e.g. `mix_active_voices`, `sum_buses_to_master`) to reduce cognitive load and simplify bounds checking.

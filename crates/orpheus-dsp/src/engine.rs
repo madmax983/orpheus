@@ -581,20 +581,36 @@ impl EngineCore {
         self.track_mix_buffer.fill((0.0, 0.0));
         self.bus_mix_buffer.fill((0.0, 0.0));
 
+        self.mix_active_voices();
+        self.mix_track_plugins();
+
+        let mut master_left = 0.0_f32;
+        let mut master_right = 0.0_f32;
+
+        self.sum_tracks_to_master_and_buses(&mut master_left, &mut master_right);
+        self.sum_buses_to_master(&mut master_left, &mut master_right);
+
+        (master_left.clamp(-1.0, 1.0), master_right.clamp(-1.0, 1.0))
+    }
+
+    fn mix_active_voices(&mut self) {
         for slot in &mut self.active_voices {
-            if let Some(voice) = slot.as_mut() {
-                if let Some((voice_left, voice_right)) = voice.next_stereo_frame() {
-                    let track_index = usize::try_from(voice.track_id().get())
-                        .unwrap_or_else(|_| panic!("track id did not fit in usize"));
-                    let (left, right) = &mut self.track_mix_buffer[track_index];
-                    *left += voice_left;
-                    *right += voice_right;
-                } else {
-                    *slot = None;
-                }
+            let Some(voice) = slot.as_mut() else {
+                continue;
+            };
+            if let Some((voice_left, voice_right)) = voice.next_stereo_frame() {
+                let track_index = usize::try_from(voice.track_id().get())
+                    .unwrap_or_else(|_| panic!("track id did not fit in usize"));
+                let (left, right) = &mut self.track_mix_buffer[track_index];
+                *left += voice_left;
+                *right += voice_right;
+            } else {
+                *slot = None;
             }
         }
+    }
 
+    fn mix_track_plugins(&mut self) {
         let local_frame = self
             .current_frame
             .saturating_sub(self.current_cycle_start_frame);
@@ -613,10 +629,9 @@ impl EngineCore {
             *left += plugin_left;
             *right += plugin_right;
         }
+    }
 
-        let mut master_left = 0.0_f32;
-        let mut master_right = 0.0_f32;
-
+    fn sum_tracks_to_master_and_buses(&mut self, master_left: &mut f32, master_right: &mut f32) {
         for track in self.active_routing.tracks() {
             let track_index = usize::try_from(track.id().get())
                 .unwrap_or_else(|_| panic!("track id did not fit in usize"));
@@ -629,8 +644,8 @@ impl EngineCore {
             }
 
             if track.routes_to_master() {
-                master_left += track_left;
-                master_right += track_right;
+                *master_left += track_left;
+                *master_right += track_right;
             }
 
             for send in track.sends() {
@@ -641,7 +656,9 @@ impl EngineCore {
                 *bus_right = track_right.mul_add(send.level(), *bus_right);
             }
         }
+    }
 
+    fn sum_buses_to_master(&mut self, master_left: &mut f32, master_right: &mut f32) {
         for bus in self.active_routing.buses() {
             if !bus.routes_to_master() {
                 continue;
@@ -652,15 +669,13 @@ impl EngineCore {
             let (bus_left, bus_right) = self.bus_mix_buffer[bus_index];
             if let Some(effect) = self.bus_effect_states[bus_index].as_mut() {
                 let (wet_left, wet_right) = effect.process_frame(bus_left, bus_right);
-                master_left += wet_left;
-                master_right += wet_right;
+                *master_left += wet_left;
+                *master_right += wet_right;
             } else {
-                master_left += bus_left;
-                master_right += bus_right;
+                *master_left += bus_left;
+                *master_right += bus_right;
             }
         }
-
-        (master_left.clamp(-1.0, 1.0), master_right.clamp(-1.0, 1.0))
     }
 }
 
