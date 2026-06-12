@@ -182,30 +182,12 @@ mod tests {
     }
 
     #[test]
-    fn export_cycle_count_zero_returns_error() {
-        let module = eval_module("pat = 1 2", ReplMode::Loose).unwrap();
-        let pat = module.get("pat").unwrap().as_number_pattern().unwrap();
-
-        assert_eq!(
-            super::render_ascii_number_roll("pat", pat, 0, 8)
-                .unwrap_err()
-                .to_string(),
-            "rendering requires at least one cycle"
-        );
-    }
-}
-#[cfg(test)]
-mod test_zero_cycle {
-    use super::*;
-    use crate::{ReplMode, eval_module};
-
-    #[test]
     fn render_number_roll_zero_cycles() {
-        let source = "pattern = fast(2, 1 2)";
+        let source = "pattern = 1 2 3";
         let module = eval_module(source, ReplMode::Loose).unwrap();
         let pattern = module.get("pattern").unwrap().as_number_pattern().unwrap();
 
-        let err = render_ascii_number_roll("pattern", pattern, 0, 16).unwrap_err();
+        let err = super::render_ascii_number_roll("pattern", pattern, 0, 8).unwrap_err();
         assert_eq!(err.to_string(), "rendering requires at least one cycle");
     }
 }

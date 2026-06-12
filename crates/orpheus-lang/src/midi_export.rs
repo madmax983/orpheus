@@ -311,52 +311,24 @@ mod tests {
     }
 
     #[test]
-    fn export_cycle_count_zero_returns_error() {
-        let module = eval_module("pat = bd sn", ReplMode::Loose).unwrap();
-        let pat = module.get("pat").unwrap().as_sample_pattern().unwrap();
-
-        assert_eq!(
-            super::export_sample_pattern_to_midi(pat, "test.mid", 0)
-                .unwrap_err()
-                .to_string(),
-            "exporting requires at least one cycle"
-        );
-
-        let module = eval_module("pat = 60 62", ReplMode::Loose).unwrap();
-        let pat = module.get("pat").unwrap().as_number_pattern().unwrap();
-
-        assert_eq!(
-            super::export_number_pattern_to_midi(pat, "test.mid", 0)
-                .unwrap_err()
-                .to_string(),
-            "exporting requires at least one cycle"
-        );
-    }
-}
-#[cfg(test)]
-mod test_zero_cycle {
-    use super::*;
-    use crate::{ReplMode, eval_module};
-
-    #[test]
     fn export_sample_pattern_zero_cycles() {
-        let source = "pattern = fast(2, bd sn)";
+        let source = "pattern = bd sn";
         let module = eval_module(source, ReplMode::Loose).unwrap();
         let pattern = module.get("pattern").unwrap().as_sample_pattern().unwrap();
-        let path = std::env::temp_dir().join("test_zero_sample.mid");
+        let path = std::env::temp_dir().join("test_zero_sample.midi");
 
-        let err = export_sample_pattern_to_midi(pattern, &path, 0).unwrap_err();
+        let err = super::export_sample_pattern_to_midi(pattern, &path, 0).unwrap_err();
         assert_eq!(err.to_string(), "exporting requires at least one cycle");
     }
 
     #[test]
     fn export_number_pattern_zero_cycles() {
-        let source = "pattern = fast(2, 1 2)";
+        let source = "pattern = 1 2 3";
         let module = eval_module(source, ReplMode::Loose).unwrap();
         let pattern = module.get("pattern").unwrap().as_number_pattern().unwrap();
-        let path = std::env::temp_dir().join("test_zero_number.mid");
+        let path = std::env::temp_dir().join("test_zero_number.midi");
 
-        let err = export_number_pattern_to_midi(pattern, &path, 0).unwrap_err();
+        let err = super::export_number_pattern_to_midi(pattern, &path, 0).unwrap_err();
         assert_eq!(err.to_string(), "exporting requires at least one cycle");
     }
 }

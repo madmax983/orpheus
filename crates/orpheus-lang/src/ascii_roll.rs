@@ -163,24 +163,6 @@ mod tests {
     }
 
     #[test]
-    fn export_cycle_count_zero_returns_error() {
-        let module = eval_module("pat = bd sn", ReplMode::Loose).unwrap();
-        let pat = module.get("pat").unwrap().as_sample_pattern().unwrap();
-
-        assert_eq!(
-            super::render_ascii_roll("pat", pat, 0, 8)
-                .unwrap_err()
-                .to_string(),
-            "rendering requires at least one cycle"
-        );
-    }
-}
-#[cfg(test)]
-mod test_zero_cycle {
-    use super::*;
-    use crate::{ReplMode, eval_module};
-
-    #[test]
     fn render_ascii_roll_zero_cycles() {
         let source = "pattern = fast(2, bd sn)";
         let module = eval_module(source, ReplMode::Loose).unwrap();

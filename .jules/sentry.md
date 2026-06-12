@@ -29,9 +29,6 @@
 ## 2026-04-16 - Export zero-cycle count tests
 **Learning:** Evaluated export handlers for HTML, Markdown, CSV, Tracker, text, and other formatters. While logic safely catches zero `cycle_count` conditions with `EvalError` across the `export.rs` functions, dedicated unit tests verifying this error outcome were only added to some files and entirely missing in `html.rs`, `mermaid.rs`, `osu_export.rs`, `scad_export.rs`, `sonic_pi_export.rs`, and `svg.rs`.
 **Action:** Ensure boundary assertions and error branches in common data extraction patterns (like exporting media patterns) have corresponding regression tests written across all format implementations, rather than relying on one format's tests to cover the identical logic structure everywhere.
-## 2024-06-25 - Export zero-cycle count tests
-**Learning:** Evaluated export handlers for HTML, Markdown, CSV, Tracker, text, and other formatters. While logic safely catches zero `cycle_count` conditions with `EvalError` across the `export.rs` functions, dedicated unit tests verifying this error outcome were only added to some files and entirely missing in `ascii_roll.rs`, `number_roll.rs`, `midi_export.rs`, and `srt.rs`.
-**Action:** Ensure boundary assertions and error branches in common data extraction patterns (like exporting media patterns) have corresponding regression tests written across all format implementations, rather than relying on one format's tests to cover the identical logic structure everywhere.
 ## 2025-05-02 - Eliminate unwrap() using stable Rust constructs
 **Learning:** Replacing `.unwrap()` with `if let Some` and `&&` (let chains) is an unstable Rust feature. Using it causes the compiler to reject the build.
 **Action:** Always use either nested `if` statements with `#[allow(clippy::collapsible_if)]` or modern iterator methods like `.is_some_and(...)` when safely unpacking values conditionally on stable Rust.
@@ -49,3 +46,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2024-06-25 - Export zero-cycle count tests
+**Learning:** Evaluated export handlers for HTML, Markdown, CSV, Tracker, text, and other formatters. While logic safely catches zero `cycle_count` conditions with `EvalError` across the `export.rs` functions, dedicated unit tests verifying this error outcome were only added to some files and entirely missing in `ascii_roll.rs`, `number_roll.rs`, `midi_export.rs`, and `srt.rs`.
+**Action:** Ensure boundary assertions and error branches in common data extraction patterns (like exporting media patterns) have corresponding regression tests written across all format implementations, rather than relying on one format's tests to cover the identical logic structure everywhere.
