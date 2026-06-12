@@ -56,3 +56,10 @@
 **[Enforce Private Explain Module]
 **Tangle:** The `explain` module in `orpheus-lang/src/lib.rs` and its internal `Explain` trait and `explain_table` function were declared as `pub`, leaking internal REPL table rendering details to the public API.
 **Blueprint:** Changed the visibility of the `Explain` trait and `explain_table` function to `pub(crate)` in `crates/orpheus-lang/src/explain.rs`. Removed the `pub use explain::Explain;` re-export from `crates/orpheus-lang/src/lib.rs` and changed the module declaration to `pub(crate) mod explain;`. This strictly enforces internal encapsulation.
+
+**[Enforce Private Type Inference Environment]
+**Tangle:** The `TypeEnv` and `TypeScheme` structs in `orpheus-lang/src/types/env.rs` were declared as `pub struct`, unnecessarily leaking the internal type-checker abstractions to the public API where only `TypedModule` is expected to be consumed.
+**Blueprint:** Modified `TypeEnv` and `TypeScheme` (and their respective methods) to use `pub(crate)` visibility instead. This reinforces strong module boundaries and correctly encapsulates the language's inference engine implementation details.
+**[Enforce Public Structure inside Private Module]
+**Tangle:** The `TypeScheme` and `TypeEnv` structs in `orpheus-lang/src/types/env.rs` were declared as `pub(crate) struct`, which triggers `clippy::redundant_pub_crate` because the parent module `env` is private.
+**Blueprint:** Modified `TypeScheme` and `TypeEnv` to use `pub` visibility instead of `pub(crate)`. This satisfies Clippy while correctly maintaining the private boundary since the module itself is private, making the items effectively crate-visible.
