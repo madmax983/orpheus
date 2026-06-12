@@ -189,12 +189,34 @@ impl TypeEnv {
     /// Returns `Some(&TypeScheme)` if the name exists, which can then be instantiated
     /// to yield a concrete `Type` during inference. Returns `None` if the name is unbound.
     ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::TypeEnv;
+    ///
+    /// let env = TypeEnv::with_builtins();
+    /// let bd_scheme = env.get("bd");
+    /// assert!(bd_scheme.is_some());
+    /// ```
     #[must_use]
-    #[doc(hidden)]
     pub fn get(&self, name: &str) -> Option<&TypeScheme> {
         self.entries.get(name)
     }
 
+    /// Iterates over all the type schemes in this environment.
+    ///
+    /// This is typically used by diagnostic tools or when dumping the active
+    /// environment to inspect available bindings and their types.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::TypeEnv;
+    ///
+    /// let env = TypeEnv::with_builtins();
+    /// let num_builtins = env.values().count();
+    /// assert!(num_builtins > 0);
+    /// ```
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }

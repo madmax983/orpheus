@@ -85,7 +85,19 @@ pub struct PedalGraph {
 }
 
 impl PedalGraph {
-    #[doc(hidden)]
+    /// Creates a new source-level pedal graph wrapper.
+    ///
+    /// This is used during the parsing phase to capture the raw text of a pedal expression
+    /// (e.g. `(chorus 0.5 | delay 0.2)`) before it is fully compiled into an executable DSP graph.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::PedalGraph;
+    ///
+    /// let graph = PedalGraph::new("(chorus 0.5 | delay 0.2)");
+    /// assert_eq!(graph.source(), "(chorus 0.5 | delay 0.2)");
+    /// ```
     #[must_use]
     pub fn new(source: impl Into<String>) -> Self {
         Self {
@@ -93,13 +105,19 @@ impl PedalGraph {
         }
     }
 
-    #[doc(hidden)]
+    /// Accesses the raw source string of the pedal expression.
+    ///
+    /// This is useful when the pedal expression needs to be logged, displayed in the REPL,
+    /// or passed down to the audio thread for evaluation.
     #[must_use]
     pub fn source(&self) -> &str {
         &self.source
     }
 
-    #[doc(hidden)]
+    /// Returns a cloned copy of the raw source string.
+    ///
+    /// Used primarily when the source text needs to be embedded into an error message
+    /// or exported to a different format without managing lifetime bounds.
     #[must_use]
     pub fn format_source(&self) -> String {
         self.source.clone()
@@ -243,7 +261,10 @@ impl PedalValue {
         &self.plan
     }
 
-    #[doc(hidden)]
+    /// Returns a cloned copy of the raw source string.
+    ///
+    /// Used primarily when the source text needs to be embedded into an error message
+    /// or exported to a different format without managing lifetime bounds.
     #[must_use]
     pub fn format_source(&self) -> String {
         self.graph.format_source()
