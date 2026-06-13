@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2026-05-12 - [Testing Evaluator Builtins]
+**Learning:** Testing error paths for internal built-in functions (e.g., `apply_slice`, `apply_every` in `builtins.rs`) via script evaluation (`eval_module`) often fails prematurely due to parser restrictions or sequence typechecking constraints.
+**Action:** When testing internal evaluator built-ins, bypass the parser by directly constructing the required `Value` arguments (e.g., `Value::NumberPattern(...)`) and invoking the `apply_*` functions directly.

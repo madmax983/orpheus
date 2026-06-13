@@ -3165,4 +3165,62 @@ mod hex_bin_error_tests {
             "`bin` requires a string argument"
         );
     }
+
+    #[test]
+    fn test_apply_slice_error_start_ge_end() {
+        let args = vec![
+            Value::NumberPattern(NumberPatternValue::constant(1.0)),
+            Value::NumberPattern(NumberPatternValue::constant(0.0)),
+            Value::SamplePattern(SamplePatternValue::from_nodes(vec![])),
+        ];
+        let result = apply_slice(args);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("start < end"));
+    }
+
+    #[test]
+    fn test_apply_every_error_invalid_pattern() {
+        let args = vec![
+            Value::NumberPattern(NumberPatternValue::constant(2.0)),
+            Value::Function(FunctionValue::Builtin(BuiltinFn::new(BuiltinKind::Rev))),
+            Value::String(std::sync::Arc::from("bd")),
+        ];
+        let result = apply_every(args);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("expected a pattern")
+        );
+    }
+
+    #[test]
+    fn test_apply_sometimes_error_invalid_pattern() {
+        let args = vec![
+            Value::Function(FunctionValue::Builtin(BuiltinFn::new(BuiltinKind::Rev))),
+            Value::String(std::sync::Arc::from("bd")),
+        ];
+        let result = apply_sometimes(args, 0);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("expected a pattern")
+        );
+    }
+
+    #[test]
+    fn test_apply_tuning_error_empty_list() {
+        let args = vec![Value::NumberPattern(NumberPatternValue::from_nodes(vec![]))];
+        let result = apply_tuning(args);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("at least one ratio value")
+        );
+    }
 }
