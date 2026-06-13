@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-06-13 - [Eliminating Getter Noise in UI and Offline APIs]
+**Confusion:** Functions in `tui/style.rs` and `offline.rs` were documented with "Returns the...", which violates the Bard philosophy of explaining *why* a function exists and introduces "getter noise" to the public API docs.
+**Clarification:** Rewrote these documentation comments to use active verbs (like "Determines" or "Provides") to better explain what the functions do in the context of the domain, eliminating the getter noise.

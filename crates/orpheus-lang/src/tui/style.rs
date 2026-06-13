@@ -91,7 +91,7 @@ pub fn format_transport_status(view: &TransportView) -> &'static str {
     }
 }
 
-/// Returns the visual [`Style`] (color and modifier) associated with the current transport state.
+/// Determines the visual [`Style`] (color and modifier) associated with the current transport state.
 ///
 /// For example, active playback is green, while syncing transitions are cyan.
 ///
@@ -185,7 +185,7 @@ pub fn routing_status_line(mixer: &MixerView) -> Line<'static> {
     Line::from(vec![Span::raw("Routing: "), status])
 }
 
-/// Returns the [`Style`] used to highlight the currently active (live) pattern binding
+/// Determines the [`Style`] used to highlight the currently active (live) pattern binding
 /// in the environment list.
 ///
 /// # Examples
@@ -203,7 +203,7 @@ pub fn live_binding_style() -> Style {
         .add_modifier(Modifier::BOLD)
 }
 
-/// Returns the [`Style`] used to highlight a pattern binding that is queued to play next.
+/// Determines the [`Style`] used to highlight a pattern binding that is queued to play next.
 ///
 /// The specific color changes depending on whether the transport is currently running (syncing)
 /// or stopped (queued).
@@ -331,7 +331,7 @@ pub fn should_show_binding_legend(
     visible_rows >= MIN_BINDING_LEGEND_ROWS && visible_rows >= binding_count.saturating_add(2)
 }
 
-/// Returns the muted [`Style`] used for keyboard shortcut hints (e.g., `(ESC to close)`).
+/// Provides the muted [`Style`] used for keyboard shortcut hints (e.g., `(ESC to close)`).
 ///
 /// # Examples
 /// ```
@@ -348,7 +348,7 @@ pub fn key_legend_style() -> Style {
         .add_modifier(Modifier::DIM)
 }
 
-/// Returns the highlighted [`Style`] used for the outer border of the Help overlay popup.
+/// Provides the highlighted [`Style`] used for the outer border of the Help overlay popup.
 ///
 /// # Examples
 /// ```
@@ -365,7 +365,7 @@ pub fn help_overlay_border_style() -> Style {
         .add_modifier(Modifier::BOLD)
 }
 
-/// Returns the muted [`Style`] used for the footer text in the Help overlay.
+/// Provides the muted [`Style`] used for the footer text in the Help overlay.
 ///
 /// # Examples
 /// ```
