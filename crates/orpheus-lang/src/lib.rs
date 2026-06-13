@@ -5,6 +5,8 @@ pub(crate) mod arduino_export;
 pub(crate) mod ascii_roll;
 mod ast;
 mod builtins;
+#[cfg(feature = "experimental-css")]
+pub(crate) mod css_export;
 mod diagnostics;
 mod error;
 mod eval;
@@ -43,6 +45,8 @@ pub use abc_export::export_number_pattern_to_abc;
 pub use arduino_export::export_number_pattern_to_arduino;
 pub use ascii_roll::render_ascii_roll;
 pub use ast::{BinaryOp, Expr, GraphBinding, Module, Stmt};
+#[cfg(feature = "experimental-css")]
+pub use css_export::{export_number_pattern_to_css, export_sample_pattern_to_css};
 pub use diagnostics::{LoadError, ParseError, TypeError};
 pub use error::EvalError;
 pub use eval::{eval_module, render_span};
