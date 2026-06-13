@@ -82,3 +82,6 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+**[Title] Refactor PatternRuntime::with_tuning match using helper**
+**Learning:** `clippy::too_many_lines` on a massive `match` over enum variants (like `PatternRuntime::with_tuning` matching ~70 variants) can be fixed by pulling out common chunks (e.g. audio effects) into a separate helper method, allowing `_ => self.with_tuning_audio_effect(table)` as a fallback.
+**Action:** When a method matching a huge enum grows too large, extract groups of variants (like audio effects, modulation, etc.) into helper methods.

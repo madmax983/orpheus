@@ -2978,19 +2978,16 @@ enum PatternRuntime<T> {
 
 impl<T> PatternRuntime<T> {
     #[allow(clippy::too_many_lines, clippy::match_same_arms)]
-    fn with_tuning(self, table: &TuningTable) -> Self {
+    #[allow(clippy::too_many_lines)]
+    fn with_tuning_audio_effect(self, table: &TuningTable) -> Self {
         use PatternRuntime::{
-            Arp, Chaos, Chorus, ChorusDepth, ChorusDepthPattern, ChorusPattern, ChorusRate,
-            ChorusRatePattern, Compressor, CompressorPattern, CompressorRatio,
-            CompressorRatioPattern, CompressorThreshold, CompressorThresholdPattern, Cycle,
-            Degrees, Delay, DelayFeedback, DelayFeedbackPattern, DelayPattern, DelayTime,
-            DelayTimePattern, Drive, DrivePattern, Drop, Every, ExplicitCycle, Fast, Gain,
-            GainPattern, Hpf, HpfPattern, Invert, Lpf, LpfPattern, Mask, Onset, OnsetPattern, Pan,
-            PanPattern, Pedal, Pitch, PitchPattern, PulseWidth, PulseWidthPattern, Rand, Rate,
-            RatePattern, Res, ResPattern, Rev, Reverb, ReverbDamp, ReverbDampPattern,
-            ReverbPattern, ReverbRoom, ReverbRoomPattern, Roll, Shift, Slice, SliceIdxPattern,
-            SlicePattern, Slow, Sometimes, Stack, Stream, Strum, Transpose, TransposePattern,
-            TunedPitch, TunedPitchPattern, When, Within,
+            Chorus, ChorusDepth, ChorusDepthPattern, ChorusPattern, ChorusRate, ChorusRatePattern,
+            Compressor, CompressorPattern, CompressorRatio, CompressorRatioPattern,
+            CompressorThreshold, CompressorThresholdPattern, Delay, DelayFeedback,
+            DelayFeedbackPattern, DelayPattern, DelayTime, DelayTimePattern, Drive, DrivePattern,
+            Hpf, HpfPattern, Lpf, LpfPattern, Pan, PanPattern, PulseWidth, PulseWidthPattern, Res,
+            ResPattern, Reverb, ReverbDamp, ReverbDampPattern, ReverbPattern, ReverbRoom,
+            ReverbRoomPattern,
         };
 
         macro_rules! recurse {
@@ -3000,151 +2997,6 @@ impl<T> PatternRuntime<T> {
         }
 
         match self {
-            Pitch { semitones, inner } => TunedPitch {
-                semitones,
-                tuning: table.clone(),
-                inner: recurse!(inner),
-            },
-            PitchPattern { control, inner } => TunedPitchPattern {
-                control,
-                tuning: table.clone(),
-                inner: recurse!(inner),
-            },
-            TunedPitch {
-                semitones, inner, ..
-            } => TunedPitch {
-                semitones,
-                tuning: table.clone(),
-                inner: recurse!(inner),
-            },
-            TunedPitchPattern { control, inner, .. } => TunedPitchPattern {
-                control,
-                tuning: table.clone(),
-                inner: recurse!(inner),
-            },
-            Cycle(c) => Cycle(c),
-            Stream(s) => Stream(s),
-            ExplicitCycle {
-                origin_cycle,
-                stream,
-            } => ExplicitCycle {
-                origin_cycle,
-                stream,
-            },
-            Rand { site_salt } => Rand { site_salt },
-            Stack(layers) => Stack(
-                layers
-                    .into_iter()
-                    .map(|layer| layer.with_tuning(table))
-                    .collect(),
-            ),
-            Every {
-                period,
-                transform,
-                inner,
-            } => Every {
-                period,
-                transform,
-                inner: recurse!(inner),
-            },
-            When {
-                period,
-                offset,
-                transform,
-                inner,
-            } => When {
-                period,
-                offset,
-                transform,
-                inner: recurse!(inner),
-            },
-            Sometimes {
-                site_salt,
-                transform,
-                inner,
-            } => Sometimes {
-                site_salt,
-                transform,
-                inner: recurse!(inner),
-            },
-            Within {
-                start,
-                end,
-                transform,
-                inner,
-            } => Within {
-                start,
-                end,
-                transform,
-                inner: recurse!(inner),
-            },
-            Mask { gate, inner } => Mask {
-                gate,
-                inner: recurse!(inner),
-            },
-            Strum { inner } => Strum {
-                inner: recurse!(inner),
-            },
-            Roll { steps, inner } => Roll {
-                steps,
-                inner: recurse!(inner),
-            },
-            Arp {
-                steps,
-                direction,
-                inner,
-            } => Arp {
-                steps,
-                direction,
-                inner: recurse!(inner),
-            },
-            Invert { count, inner } => Invert {
-                count,
-                inner: recurse!(inner),
-            },
-            Drop { count, inner } => Drop {
-                count,
-                inner: recurse!(inner),
-            },
-            Degrees { collection, inner } => Degrees {
-                collection,
-                inner: recurse!(inner),
-            },
-            Transpose { semitones, inner } => Transpose {
-                semitones,
-                inner: recurse!(inner),
-            },
-            TransposePattern { control, inner } => TransposePattern {
-                control,
-                inner: recurse!(inner),
-            },
-            Fast { factor, inner } => Fast {
-                factor,
-                inner: recurse!(inner),
-            },
-            Slow { factor, inner } => Slow {
-                factor,
-                inner: recurse!(inner),
-            },
-            Shift { offset, inner } => Shift {
-                offset,
-                inner: recurse!(inner),
-            },
-            Rev { inner } => Rev {
-                inner: recurse!(inner),
-            },
-            Chaos { site_salt, inner } => Chaos {
-                site_salt,
-                inner: recurse!(inner),
-            },
-            Gain { factor, inner } => Gain {
-                factor,
-                inner: recurse!(inner),
-            },
-            GainPattern { control, inner } => GainPattern {
-                control,
-                inner: recurse!(inner),
-            },
             Delay { mix, inner } => Delay {
                 mix,
                 inner: recurse!(inner),
@@ -3289,6 +3141,165 @@ impl<T> PatternRuntime<T> {
                 control,
                 inner: recurse!(inner),
             },
+
+            _ => self, // Should not be reachable with proper routing, but safe fallback
+        }
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn with_tuning(self, table: &TuningTable) -> Self {
+        use PatternRuntime::{
+            Arp, Chaos, Cycle, Degrees, Drop, Every, ExplicitCycle, Fast, Gain, GainPattern,
+            Invert, Mask, Pitch, PitchPattern, Rand, Rev, Roll, Shift, Slow, Sometimes, Stack,
+            Stream, Strum, Transpose, TransposePattern, TunedPitch, TunedPitchPattern, When,
+            Within, Rate, RatePattern, Onset, OnsetPattern, Slice, SlicePattern, SliceIdxPattern, Pedal,
+        };
+
+        macro_rules! recurse {
+            ($inner:expr) => {
+                Box::new($inner.with_tuning(table))
+            };
+        }
+
+        match self {
+            Pitch { semitones, inner }
+            | TunedPitch {
+                semitones, inner, ..
+            } => TunedPitch {
+                semitones,
+                tuning: table.clone(),
+                inner: recurse!(inner),
+            },
+            PitchPattern { control, inner } | TunedPitchPattern { control, inner, .. } => {
+                TunedPitchPattern {
+                    control,
+                    tuning: table.clone(),
+                    inner: recurse!(inner),
+                }
+            }
+            Cycle(c) => Cycle(c),
+            Stream(s) => Stream(s),
+            ExplicitCycle {
+                origin_cycle,
+                stream,
+            } => ExplicitCycle {
+                origin_cycle,
+                stream,
+            },
+            Rand { site_salt } => Rand { site_salt },
+            Stack(layers) => Stack(
+                layers
+                    .into_iter()
+                    .map(|layer| layer.with_tuning(table))
+                    .collect(),
+            ),
+            Every {
+                period,
+                transform,
+                inner,
+            } => Every {
+                period,
+                transform,
+                inner: recurse!(inner),
+            },
+            When {
+                period,
+                offset,
+                transform,
+                inner,
+            } => When {
+                period,
+                offset,
+                transform,
+                inner: recurse!(inner),
+            },
+            Sometimes {
+                site_salt,
+                transform,
+                inner,
+            } => Sometimes {
+                site_salt,
+                transform,
+                inner: recurse!(inner),
+            },
+            Within {
+                start,
+                end,
+                transform,
+                inner,
+            } => Within {
+                start,
+                end,
+                transform,
+                inner: recurse!(inner),
+            },
+            Mask { gate, inner } => Mask {
+                gate,
+                inner: recurse!(inner),
+            },
+            Strum { inner } => Strum {
+                inner: recurse!(inner),
+            },
+            Roll { steps, inner } => Roll {
+                steps,
+                inner: recurse!(inner),
+            },
+            Arp {
+                steps,
+                direction,
+                inner,
+            } => Arp {
+                steps,
+                direction,
+                inner: recurse!(inner),
+            },
+            Invert { count, inner } => Invert {
+                count,
+                inner: recurse!(inner),
+            },
+            Drop { count, inner } => Drop {
+                count,
+                inner: recurse!(inner),
+            },
+            Degrees { collection, inner } => Degrees {
+                collection,
+                inner: recurse!(inner),
+            },
+            Transpose { semitones, inner } => Transpose {
+                semitones,
+                inner: recurse!(inner),
+            },
+            TransposePattern { control, inner } => TransposePattern {
+                control,
+                inner: recurse!(inner),
+            },
+            Fast { factor, inner } => Fast {
+                factor,
+                inner: recurse!(inner),
+            },
+            Slow { factor, inner } => Slow {
+                factor,
+                inner: recurse!(inner),
+            },
+            Shift { offset, inner } => Shift {
+                offset,
+                inner: recurse!(inner),
+            },
+            Rev { inner } => Rev {
+                inner: recurse!(inner),
+            },
+            Chaos { site_salt, inner } => Chaos {
+                site_salt,
+                inner: recurse!(inner),
+            },
+            Gain { factor, inner } => Gain {
+                factor,
+                inner: recurse!(inner),
+            },
+            GainPattern { control, inner } => GainPattern {
+                control,
+                inner: recurse!(inner),
+            },
             Rate { factor, inner } => Rate {
                 factor,
                 inner: recurse!(inner),
@@ -3335,6 +3346,7 @@ impl<T> PatternRuntime<T> {
                 pedal_program,
                 inner: recurse!(inner),
             },
+            _ => self.with_tuning_audio_effect(table),
         }
     }
 
