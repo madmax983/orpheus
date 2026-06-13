@@ -82,3 +82,7 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**[Refactor PatternRuntime redundant method wrappers]**
+**Learning:** `PatternRuntime` had redundant `_method` wrappers (`try_query_transform_method`, etc.) whose sole purpose was to hold `#[allow(clippy::too_many_lines)]` attributes. This introduces unnecessary nesting and violates the "Flatten the structure" philosophy.
+**Action:** When a method wrapper exists solely to hold a clippy suppression for a massive match statement, inline the wrapper directly into the caller and apply the clippy suppression directly to the unified method.
