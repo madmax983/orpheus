@@ -5972,3 +5972,22 @@ impl Explain for NumberPatternValue {
         format!("{title}\n{table}")
     }
 }
+
+#[cfg(test)]
+mod test_is_finite {
+    use super::*;
+
+    #[test]
+    fn test_sample_event_is_finite_numeric() {
+        let s = SampleEvent::named("bd");
+        assert!(s.is_finite_numeric());
+    }
+
+    #[test]
+    fn test_f64_is_finite_numeric() {
+        assert!(42.0f64.is_finite_numeric());
+        assert!(!std::f64::INFINITY.is_finite_numeric());
+        assert!(!std::f64::NAN.is_finite_numeric());
+        assert!(!std::f64::NEG_INFINITY.is_finite_numeric());
+    }
+}

@@ -49,3 +49,7 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+
+## 2026-05-12 - Proper Coverage Strategy
+**Learning:** Adding integration-level CLI tests using `std::process::Command` in a `tests/` folder successfully hits the binary's entry points (`--help`, `--version`, error paths) and fulfills valid test logic verification.
+**Action:** Use integration tests for the binary entry points to capture valid execution outputs instead of trying to artificially test internal structs or boilerplate parsing logic directly.

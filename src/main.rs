@@ -170,17 +170,6 @@ fn start_live_audio() -> anyhow::Result<(EngineHandle, Stream)> {
 }
 
 #[cfg(test)]
-impl PartialEq for CliAction {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Help, Self::Help) | (Self::Version, Self::Version) => true,
-            (Self::Run(l0), Self::Run(r0)) => l0 == r0,
-            _ => false,
-        }
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use std::ffi::OsString;
