@@ -36,6 +36,15 @@ impl Node for SawNode {
 }
 
 /// Creates a band-limited saw oscillator node. 1 input (freq\_hz), 1 output.
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::graph::{saw, Node};
+///
+/// let mut osc = saw(44100.0);
+/// assert_eq!(osc.inputs(), 1);
+/// assert_eq!(osc.outputs(), 1);
+/// ```
 #[must_use]
 pub fn saw(sample_rate_hz: f32) -> SawNode {
     SawNode {
@@ -73,6 +82,15 @@ impl Node for PulseNode {
 }
 
 /// Creates a band-limited pulse oscillator node. 2 inputs (freq\_hz, pw), 1 output.
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::graph::{pulse, Node};
+///
+/// let mut osc = pulse(44100.0);
+/// assert_eq!(osc.inputs(), 2); // frequency and pulse width
+/// assert_eq!(osc.outputs(), 1);
+/// ```
 #[must_use]
 pub fn pulse(sample_rate_hz: f32) -> PulseNode {
     PulseNode {
@@ -109,6 +127,15 @@ impl Node for TriNode {
 }
 
 /// Creates a triangle oscillator node. 1 input (freq\_hz), 1 output.
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::graph::{tri, Node};
+///
+/// let mut osc = tri(44100.0);
+/// assert_eq!(osc.inputs(), 1);
+/// assert_eq!(osc.outputs(), 1);
+/// ```
 #[must_use]
 pub fn tri(sample_rate_hz: f32) -> TriNode {
     TriNode {
@@ -145,6 +172,15 @@ impl Node for NoiseNode {
 }
 
 /// Creates a deterministic white noise node. 0 inputs, 1 output.
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::graph::{noise, Node};
+///
+/// let mut osc = noise(42);
+/// assert_eq!(osc.inputs(), 0);
+/// assert_eq!(osc.outputs(), 1);
+/// ```
 #[must_use]
 pub const fn noise(seed: u32) -> NoiseNode {
     NoiseNode {
@@ -184,6 +220,15 @@ impl Node for LadderFilterNode {
 }
 
 /// Creates a ladder filter node. 3 inputs (audio, cutoff\_hz, resonance), 1 output.
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::graph::{ladder_filter, Node};
+///
+/// let mut filter = ladder_filter(44100.0);
+/// assert_eq!(filter.inputs(), 3); // audio, cutoff, resonance
+/// assert_eq!(filter.outputs(), 1);
+/// ```
 #[must_use]
 pub fn ladder_filter(sample_rate_hz: f32) -> LadderFilterNode {
     LadderFilterNode {
@@ -221,6 +266,15 @@ impl Node for GainNode {
 }
 
 /// Creates a gain node. 2 inputs (audio, amount), 1 output.
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::graph::{gain_node, Node};
+///
+/// let mut amp = gain_node();
+/// assert_eq!(amp.inputs(), 2); // audio, gain level
+/// assert_eq!(amp.outputs(), 1);
+/// ```
 #[must_use]
 pub const fn gain_node() -> GainNode {
     GainNode { gain: Gain::new() }
@@ -256,6 +310,15 @@ impl Node for SoftSatNode {
 }
 
 /// Creates a soft saturation node. 2 inputs (audio, drive), 1 output.
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::graph::{soft_sat, Node};
+///
+/// let mut sat = soft_sat();
+/// assert_eq!(sat.inputs(), 2);
+/// assert_eq!(sat.outputs(), 1);
+/// ```
 #[must_use]
 pub const fn soft_sat() -> SoftSatNode {
     SoftSatNode {

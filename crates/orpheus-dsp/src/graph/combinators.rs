@@ -76,6 +76,15 @@ impl Node for Seq {
 /// # Errors
 ///
 /// Returns [`GraphError::ChannelMismatch`] if `a.outputs() != b.inputs()`.
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::graph::{seq, constant, gain_node, Node};
+///
+/// // Create a node that outputs 0.5, and sequence it into a gain node.
+/// // The gain node needs 2 inputs, but the constant only outputs 1, so this fails.
+/// assert!(seq(constant(0.5), gain_node()).is_err());
+/// ```
 pub fn seq(a: impl Node + 'static, b: impl Node + 'static) -> Result<Seq, GraphError> {
     let a = Box::new(a);
     let b = Box::new(b);
@@ -135,6 +144,15 @@ impl Node for Par {
 }
 
 /// Creates a parallel composition. Always succeeds.
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::graph::{par, constant, sine, Node};
+///
+/// let parallel = par(constant(0.5), sine(44100.0));
+/// assert_eq!(parallel.inputs(), 1); // 0 from constant + 1 from sine
+/// assert_eq!(parallel.outputs(), 2); // 1 from constant + 1 from sine
+/// ```
 pub fn par(a: impl Node + 'static, b: impl Node + 'static) -> Par {
     Par {
         a: Box::new(a),
@@ -204,6 +222,16 @@ impl Node for Spl {
 ///
 /// Returns [`GraphError::EmptySplitSource`] if `a.outputs() == 0`.
 /// Returns [`GraphError::ChannelMismatch`] if `!b.inputs().is_multiple_of(a.outputs())`.
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::graph::{split, constant, sum, Node};
+///
+/// // Split 1 output into 3 inputs of the sum node
+/// let split_node = split(constant(0.5), sum(3)).unwrap();
+/// assert_eq!(split_node.inputs(), 0);
+/// assert_eq!(split_node.outputs(), 1);
+/// ```
 pub fn split(a: impl Node + 'static, b: impl Node + 'static) -> Result<Spl, GraphError> {
     let a = Box::new(a);
     let b = Box::new(b);
@@ -297,6 +325,16 @@ impl Node for Mrg {
 ///
 /// Returns [`GraphError::EmptyMergeTarget`] if `b.inputs() == 0`.
 /// Returns [`GraphError::ChannelMismatch`] if `!a.outputs().is_multiple_of(b.inputs())`.
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::graph::{merge, passthrough, gain_node, Node};
+///
+/// // Merge 4 inputs down to 2 outputs before feeding to the gain node
+/// let merge_node = merge(passthrough(4), gain_node()).unwrap();
+/// assert_eq!(merge_node.inputs(), 4);
+/// assert_eq!(merge_node.outputs(), 1);
+/// ```
 pub fn merge(a: impl Node + 'static, b: impl Node + 'static) -> Result<Mrg, GraphError> {
     let a = Box::new(a);
     let b = Box::new(b);
@@ -426,6 +464,17 @@ impl Node for Rec {
 ///
 /// Returns [`GraphError::InvalidRecursive`] if `fb.inputs() > body.outputs()`
 /// or `fb.outputs() > body.inputs()`.
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::graph::{feedback, delay_line, gain_node, pipe, Node};
+///
+/// // Create a simple feedback delay
+/// // Body: delay + gain (needs 2 inputs: audio + gain; outputs 1: audio)
+/// // Feedback: delay (needs 1 input; outputs 1)
+/// let delay = pipe(delay_line(22050), gain_node()).unwrap();
+/// let echo = feedback(delay, delay_line(22050)).unwrap();
+/// ```
 pub fn feedback(body: impl Node + 'static, fb: impl Node + 'static) -> Result<Rec, GraphError> {
     let body = Box::new(body);
     let feedback = Box::new(fb);

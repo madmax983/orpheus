@@ -30,6 +30,15 @@ use super::primitives::passthrough;
 /// # Errors
 ///
 /// Returns [`GraphError::ChannelMismatch`] if `a.outputs() > b.inputs()`.
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::graph::{pipe, sine, gain_node, Node};
+///
+/// let chain = pipe(sine(44100.0), gain_node()).unwrap();
+/// assert_eq!(chain.inputs(), 2); // sine freq + gain level
+/// assert_eq!(chain.outputs(), 1);
+/// ```
 pub fn pipe(a: impl Node + 'static, b: impl Node + 'static) -> Result<Seq, GraphError> {
     let a_outs = a.outputs();
     let b_ins = b.inputs();
@@ -147,6 +156,16 @@ impl Node for Bind {
 /// # Errors
 ///
 /// Returns [`GraphError::ChannelMismatch`] if any binding index is out of range.
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::graph::{bind, sine, Node};
+///
+/// // Bind the frequency input of the sine wave to a constant 440 Hz
+/// let fixed_sine = bind(sine(44100.0), &[(0, 440.0)]).unwrap();
+/// assert_eq!(fixed_sine.inputs(), 0);
+/// assert_eq!(fixed_sine.outputs(), 1);
+/// ```
 pub fn bind(node: impl Node + 'static, bindings: &[(u32, f32)]) -> Result<Bind, GraphError> {
     let node = Box::new(node);
     let n_inputs = node.inputs();

@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-06-13 - [Missing Doctests on Graph Combinators and Primitives]
+**Confusion:** The `orpheus-dsp` graph API (`primitives`, `helpers`, `adapters`, `combinators`) lacked executable `## Examples` for instantiating and composing nodes, causing confusion for developers trying to build custom audio graphs programmatically.
+**Clarification:** Added executable `## Examples` doctests to all module functions showing exactly how to instantiate and link nodes, ensuring compilation via `cargo test`.
