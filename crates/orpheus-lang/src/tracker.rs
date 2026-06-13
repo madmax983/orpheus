@@ -108,7 +108,8 @@ pub fn export_sample_pattern_to_tracker(
         }
     }
 
-    let mut file = std::fs::File::create(path)?;
+    let file = std::fs::File::create(path)?;
+    let mut file = std::io::BufWriter::new(file);
     writeln!(file, "Orpheus Tracker Export")?;
     writeln!(file, "Cycles: {cycle_count}, Resolution: 1/16")?;
     writeln!(file, "=========================================")?;
@@ -117,7 +118,10 @@ pub fn export_sample_pattern_to_tracker(
     write!(file, " STEP | TIME  |")?;
     for sample in &sample_list {
         let padded = if sample.len() > 4 {
-            sample.chars().take(4).collect::<String>()
+            sample
+                .char_indices()
+                .nth(4)
+                .map_or_else(|| sample.to_string(), |(i, _)| sample[..i].to_string())
         } else {
             sample.to_string()
         };
@@ -221,7 +225,8 @@ pub fn export_number_pattern_to_tracker(
         }
     }
 
-    let mut file = std::fs::File::create(path)?;
+    let file = std::fs::File::create(path)?;
+    let mut file = std::io::BufWriter::new(file);
     writeln!(file, "Orpheus Tracker Export")?;
     writeln!(file, "Cycles: {cycle_count}, Resolution: 1/16")?;
     writeln!(file, "=========================================")?;
