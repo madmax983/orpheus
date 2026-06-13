@@ -82,3 +82,11 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**Refactoring redundant `match pattern` inside eval_seq_sections_events**
+**Learning:** `eval_seq_sections_events` used to start with a verbose fold handling the `initial_offset` independently with multiple mutable references. By directly passing `0` to the first evaluation, you can avoid allocating `initial_offset` completely and directly fold starting from the evaluated output and length, simplifying the `try_fold` block.
+**Action:** Remove redundant zero-initialization let bindings prior to iterators/folds if they are only used to kickstart the fold, and place the literals directly into the initialization arguments.
+
+**[Flatten pattern application]**
+**Learning:** Repetitive `match pattern { Value::SamplePattern(p) => ... Value::NumberPattern(p) => ... _ => Err(...) }` blocks can be aggressively refactored using higher-order functions like `apply_pattern_transform` to flatten the codebase without changing any logical outcomes.
+**Action:** Whenever multiple functions implement the exact same matching boilerplate, write an abstraction that takes closures to handle the unique parts, reducing overall line count significantly.

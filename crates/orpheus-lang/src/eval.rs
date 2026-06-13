@@ -571,15 +571,11 @@ impl Evaluator {
             ));
         };
 
-        let initial_offset = 0_i128;
-        let initial_combined = self.eval_section_events(first, meter, initial_offset)?;
+        let initial_combined = self.eval_section_events(first, meter, 0)?;
         let initial_length = self.eval_section_length(first, meter)?;
-        let next_offset = initial_offset
-            .checked_add(initial_length)
-            .ok_or_else(|| EvalError::new("section cycle offset overflowed"))?;
 
         let (combined, _) = rest.iter().try_fold(
-            (initial_combined, next_offset),
+            (initial_combined, initial_length),
             |(acc_combined, acc_offset), section| -> Result<(ExplicitValue, i128), EvalError> {
                 let section_events = self.eval_section_events(section, meter, acc_offset)?;
                 let section_length = self.eval_section_length(section, meter)?;
