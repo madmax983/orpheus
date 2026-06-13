@@ -354,6 +354,13 @@ fn render_frame(
     shared: &Rc<RefCell<SharedState>>,
     workspace: &mut WorkspaceRuntime,
 ) {
+    {
+        let mut state = shared.borrow_mut();
+        for warning in state.session.drain_warnings() {
+            state.transcript.push(format!("\u{26a0}\u{fe0f} {warning}"));
+        }
+    }
+
     let [body, footer] = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(1), Constraint::Length(1)])

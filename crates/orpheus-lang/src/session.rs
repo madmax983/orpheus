@@ -62,6 +62,7 @@ pub struct ReplSession {
     sample_bank: SampleBank,
     sample_directory: Option<PathBuf>,
     sample_watcher: Option<SampleLibraryWatcher>,
+    pending_warnings: Vec<String>,
     bindings: BTreeMap<String, Value>,
     type_bindings: BTreeMap<String, Type>,
     mixer: MixerState,
@@ -281,6 +282,13 @@ impl TransportView {
     }
 }
 
+impl ReplSession {
+    /// Returns any pending warnings, draining them from the session state.
+    pub fn drain_warnings(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.pending_warnings)
+    }
+}
+
 impl MixerView {
     /// Indicates whether there are uncommitted routing changes waiting to be applied at the next cycle boundary.
     ///
@@ -367,6 +375,7 @@ impl ReplSession {
             sample_bank: SampleBank::load_builtin(),
             sample_directory: None,
             sample_watcher: None,
+            pending_warnings: Vec::new(),
             bindings: BTreeMap::new(),
             type_bindings: BTreeMap::new(),
             mixer: MixerState::default(),
@@ -1238,11 +1247,11 @@ impl ReplSession {
         };
 
         for issue in reload.errors() {
-            eprintln!(
+            self.pending_warnings.push(format!(
                 "sample hot reload issue at `{}`: {}",
                 issue.path(),
                 issue.message()
-            );
+            ));
         }
 
         let sample_bank = reload.bank().clone();
