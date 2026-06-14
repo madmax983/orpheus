@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-06-14 - Missing Documentation and doctests for RoutingSnapshot
+**Confusion:** The core struct `RoutingSnapshot` inside `routing.rs` lacked a doctest example, leaving it unclear how one constructs or expects to interact with it.
+**Clarification:** Added a concrete doctest `## Examples` block demonstrating how to use `RoutingSnapshot::builder()` and assert on the built `RoutingSnapshot`.

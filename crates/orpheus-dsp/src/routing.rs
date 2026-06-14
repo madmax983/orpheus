@@ -593,6 +593,18 @@ pub enum RoutingError {
 }
 
 /// Immutable routing snapshot consumed by the render thread.
+///
+/// # Examples
+/// ```
+/// use orpheus_dsp::RoutingSnapshot;
+///
+/// let snapshot = RoutingSnapshot::builder()
+///     .track("drums")
+///     .build()
+///     .unwrap();
+///
+/// assert_eq!(snapshot.track_count(), 1);
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct RoutingSnapshot {
     tracks: Box<[TrackState]>,
