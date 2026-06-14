@@ -82,3 +82,11 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**[Refactoring Pattern: Cascading Matches]**
+**Learning:** Extracting large `match` expressions into helper methods chained with `.or_else(|_| ...)` on `Result<T, E>` is dangerous because it swallows valid internal evaluation errors, conflating them with "variant not matched".
+**Action:** Use `Result<Option<T>, E>` for the helper methods. Cascade through them using `if let Some(val) = helper()? { return Ok(val); }` to correctly propagate internal errors while continuing the search if the variant doesn't match.
+
+**[Clippy: semicolon_if_nothing_returned in Closures]**
+**Learning:** Adding a trailing semicolon to a single-expression closure (e.g., `|x| *x = 1;`) to satisfy `clippy::semicolon_if_nothing_returned` turns it into a statement, causing a compilation error if not wrapped in braces.
+**Action:** Wrap the statement in a block `|x| { *x = 1; }` when adding semicolons to unit-returning closures to satisfy both the Rust compiler and Clippy.
