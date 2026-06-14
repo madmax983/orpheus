@@ -22,6 +22,7 @@ pest_derive = "2.8.6"
 ratatui.workspace = true
 ratatui-hypertile.workspace = true
 ratatui-hypertile-extras.workspace = true
+strip-ansi-escapes = "0.2.1"
 thiserror.workspace = true
 
 [dev-dependencies]

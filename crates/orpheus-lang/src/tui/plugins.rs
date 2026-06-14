@@ -45,9 +45,12 @@ impl HypertilePlugin for ReplPlugin {
                 } else {
                     Style::default()
                 };
-                entry
+                let clean_entry =
+                    String::from_utf8_lossy(&strip_ansi_escapes::strip(entry)).into_owned();
+                clean_entry
                     .split('\n')
                     .map(move |line| Line::styled(line.to_owned(), style))
+                    .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();
 
