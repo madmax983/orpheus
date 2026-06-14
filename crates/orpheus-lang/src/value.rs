@@ -5788,6 +5788,11 @@ mod tests {
         let test_cases = vec![
             (ControlPatternKind::Gain, f64::NAN, "finite"),
             (ControlPatternKind::Gain, f64::INFINITY, "finite"),
+            (ControlPatternKind::Res, f64::NAN, "finite"),
+            (ControlPatternKind::Res, -0.1, "[0, 1]"),
+            (ControlPatternKind::Res, 1.1, "[0, 1]"),
+            (ControlPatternKind::Drive, f64::NAN, "finite"),
+            (ControlPatternKind::Drive, -0.1, "non-negative"),
             (ControlPatternKind::DelayMix, f64::NAN, "finite"),
             (ControlPatternKind::DelayMix, -0.1, "[0, 1]"),
             (ControlPatternKind::DelayMix, 1.1, "[0, 1]"),

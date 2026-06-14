@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2024-06-25 - ControlPatternKind Validation Tests
+**Learning:** Found that `ControlPatternKind::Res` and `ControlPatternKind::Drive` validation rules were untested in `test_control_pattern_kind_validation_rejects_invalid_values` inside `crates/orpheus-lang/src/value.rs`, despite logic existing in `validate_res` and `validate_drive`.
+**Action:** When adding or verifying control pattern logic, ensure that corresponding test cases for all enum variants exist in table-driven tests.
