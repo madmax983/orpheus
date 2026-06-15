@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2025-06-15 - [Refactoring clip_span edge cases]
+**Learning:** Adding explicit regression tests and gracefully handling bounds overlapping edge cases is crucial to maintain safety against `unwrap()`.
+**Action:** Created `clip_span_returns_none_when_non_overlapping` and `clip_span_returns_intersection_when_overlapping` to assure bounds testing in `orpheus-lang/src/value.rs` works and refactored plugin host descriptor searching to correctly test using `.to_lowercase()`.

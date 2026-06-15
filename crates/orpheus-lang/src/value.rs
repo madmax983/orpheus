@@ -5783,6 +5783,32 @@ mod tests {
     }
 
     #[test]
+    fn clip_span_returns_none_when_non_overlapping() {
+        let span1 = TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap();
+        let span2 = TimeSpan::new(Rational::new(1, 2).unwrap(), Rational::one()).unwrap();
+
+        let result = super::clip_span(&span1, &span2).unwrap();
+        assert_eq!(result, None);
+
+        // Adjacent spans also do not overlap because they are half-open [start, end)
+        let span3 =
+            TimeSpan::new(Rational::new(1, 4).unwrap(), Rational::new(1, 2).unwrap()).unwrap();
+        let result_adjacent = super::clip_span(&span1, &span3).unwrap();
+        assert_eq!(result_adjacent, None);
+    }
+
+    #[test]
+    fn clip_span_returns_intersection_when_overlapping() {
+        let span1 = TimeSpan::new(Rational::zero(), Rational::new(3, 4).unwrap()).unwrap();
+        let span2 = TimeSpan::new(Rational::new(1, 4).unwrap(), Rational::one()).unwrap();
+
+        let result = super::clip_span(&span1, &span2).unwrap();
+        let expected =
+            TimeSpan::new(Rational::new(1, 4).unwrap(), Rational::new(3, 4).unwrap()).unwrap();
+        assert_eq!(result, Some(expected));
+    }
+
+    #[test]
     fn test_control_pattern_kind_validation_rejects_invalid_values() {
         use super::ControlPatternKind;
         let test_cases = vec![

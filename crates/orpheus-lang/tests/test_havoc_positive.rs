@@ -12,3 +12,14 @@ fn test_havoc_tiny_float_meter_panic() {
         "meter beat count must be a positive integer"
     );
 }
+
+#[test]
+fn test_havoc_large_section_cycle_count_evaluator_limits() {
+    let source = "notes = seq_sections(section(bd, 1025))";
+    let res = eval_module(source, ReplMode::Loose);
+    let err = res.unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "section cycle count exceeded the maximum allowed bound of 1024"
+    );
+}
