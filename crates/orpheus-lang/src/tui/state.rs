@@ -109,6 +109,9 @@ impl SharedState {
             Ok(message) => self.transcript.push(format!("\u{2713} {message}")),
             Err(message) => self.transcript.push(format!("\u{2717} {message}")),
         }
+        for warning in self.session.take_pending_warnings() {
+            self.transcript.push(format!("\u{26a0} [Warn] {warning}"));
+        }
     }
 
     pub fn toggle_transport_hotkey(&mut self) {
@@ -132,6 +135,9 @@ impl SharedState {
         match self.session.eval_line(command) {
             Ok(message) => self.set_status_message(message, false),
             Err(error) => self.set_status_message(error, true),
+        }
+        for warning in self.session.take_pending_warnings() {
+            self.transcript.push(format!("\u{26a0} [Warn] {warning}"));
         }
     }
 

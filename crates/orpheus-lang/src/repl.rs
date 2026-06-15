@@ -100,6 +100,14 @@ where
             Ok(message) => writeln!(stdout, "{}", format!("\u{2713} {message}").green())?,
             Err(message) => writeln!(stderr, "{}", format!("\u{2717} {message}").red().bold())?,
         }
+
+        for warning in session.take_pending_warnings() {
+            writeln!(
+                stderr,
+                "{}",
+                format!("\u{26a0} [Warn] {warning}").yellow().bold()
+            )?;
+        }
     }
 
     Ok(())

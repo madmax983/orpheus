@@ -72,6 +72,7 @@ pub struct ReplSession {
     tempo_bpm: f32,
     reference_frequency_hz: f32,
     history: SessionHistory,
+    pending_warnings: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -377,6 +378,7 @@ impl ReplSession {
             tempo_bpm,
             reference_frequency_hz: DEFAULT_ANALOG_BASE_FREQUENCY_HZ,
             history: SessionHistory::default(),
+            pending_warnings: Vec::new(),
         }
     }
 
@@ -1146,6 +1148,10 @@ impl ReplSession {
     /// let mut session = ReplSession::with_engine(EngineHandle::stub());
     /// session.open_file("song.ode").unwrap();
     /// ```
+    pub fn take_pending_warnings(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.pending_warnings)
+    }
+
     pub fn open_file(&mut self, path: impl AsRef<Path>) -> Result<String, String> {
         let path = path.as_ref();
         if path.as_os_str().is_empty() {
@@ -1238,11 +1244,11 @@ impl ReplSession {
         };
 
         for issue in reload.errors() {
-            eprintln!(
-                "sample hot reload issue at `{}`: {}",
+            self.pending_warnings.push(format!(
+                "Failed to reload sample '{}': {}",
                 issue.path(),
                 issue.message()
-            );
+            ));
         }
 
         let sample_bank = reload.bank().clone();
