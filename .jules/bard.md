@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-06-15 - [Eliminating Getter Noise in UI Styling API]
+**Confusion:** The documentation for styling functions in `crates/orpheus-lang/src/tui/style.rs` frequently used the "Returns the..." anti-pattern (e.g. `/// Returns the visual [Style]...`), acting as useless noise that did not explain the semantic purpose behind the styles. Additionally, several module-level files like `error.rs`, `explain.rs`, `state.rs`, and `plugins.rs` were completely missing `//!` module-level documentation describing their high-level intent.
+**Clarification:** Rewrote the function documentation in `style.rs` to replace "Returns the..." with verbs like "Determines" and "Defines", emphasizing the semantic mapping from state to visual representation. Added descriptive `//!` module-level documentation to `error.rs`, `explain.rs`, `tui/state.rs`, and `tui/plugins.rs` to clarify their architectural purpose within the TUI and language layers.

@@ -1,3 +1,6 @@
+//! Error types for the Orpheus language and runtime.
+//!
+//! Provides structured error representations for parsing, evaluation, and runtime failures.
 use orpheus_pattern::PatternError;
 use thiserror::Error;
 

@@ -1,3 +1,6 @@
+//! Explanatory formatting for internal types and errors.
+//!
+//! Aids in creating user-friendly, descriptive outputs in the REPL and terminal UI.
 #[must_use]
 #[doc(hidden)]
 pub trait Explain {

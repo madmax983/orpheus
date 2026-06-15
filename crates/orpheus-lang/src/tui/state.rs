@@ -1,3 +1,6 @@
+//! Shared state management for the Terminal User Interface.
+//!
+//! Contains the application state accessible across various plugins.
 use std::path::Path;
 use std::time::{Duration, Instant};
 

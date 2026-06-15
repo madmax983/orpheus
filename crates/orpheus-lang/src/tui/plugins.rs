@@ -1,3 +1,6 @@
+//! UI plugin definitions for the Terminal User Interface.
+//!
+//! Contains individual components such as REPL, Bindings, and Transport views.
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
