@@ -341,7 +341,8 @@ impl Evaluator {
                 "rest markers can only appear inside pattern sequences",
             )),
             Expr::Number(value) => Ok(Value::NumberPattern(NumberPatternValue::constant(*value))),
-            Expr::String(value) => Ok(Value::String(value.clone().into())),
+            // ⚡ Bolt: Use `value.as_str().into()` to avoid an intermediate String allocation when converting to Arc<str>.
+            Expr::String(value) => Ok(Value::String(value.as_str().into())),
             Expr::Graph { bindings, result } => compile_graph(bindings, result).map(Value::Pedal),
             Expr::Binary { .. } => Err(EvalError::new(
                 "binary pedal expressions are parsed but not yet executable in evaluation",

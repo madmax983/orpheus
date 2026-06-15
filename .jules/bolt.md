@@ -47,3 +47,6 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+## Optimize Arc<str> Allocation for String Expressions
+**Learning:** Using `value.clone().into()` to convert a `&String` to an `Arc<str>` results in two heap allocations. First, `clone()` allocates an intermediate `String`. Second, converting a `String` to `Arc<str>` allocates the `ArcInner` and copies the string bytes into it since it cannot reuse the string buffer directly due to the reference counters.
+**Action:** Always use `value.as_str().into()` to avoid the intermediate `String` allocation, directly allocating the `Arc` and copying the bytes once.
