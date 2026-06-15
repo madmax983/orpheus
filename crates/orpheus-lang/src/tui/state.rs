@@ -1,3 +1,10 @@
+//! Shared application state for the ratatui-hypertile interface.
+//!
+//! This module defines the `SharedState` container which holds the core
+//! `ReplSession` along with TUI-specific state like the input prompt,
+//! command history, and transient status toasts. It acts as the central
+//! source of truth for all active UI plugins.
+
 use std::path::Path;
 use std::time::{Duration, Instant};
 

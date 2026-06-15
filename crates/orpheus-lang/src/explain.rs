@@ -1,3 +1,10 @@
+//! Internal formatting trait for generating human-readable REPL summaries.
+//!
+//! This module defines the [`Explain`] trait used by the `:explain <binding>`
+//! command. It allows complex structures like graphs, pedals, and AST components
+//! to pretty-print themselves into tabular or descriptive string layouts
+//! appropriate for terminal display.
+
 #[must_use]
 #[doc(hidden)]
 pub trait Explain {

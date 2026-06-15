@@ -1,3 +1,11 @@
+//! Interactive UI plugins for the Orpheus live-coding session.
+//!
+//! This module implements the `ratatui_hypertile_extras::HypertilePlugin` trait
+//! for the various panes available in the interface:
+//! - **REPL:** The main input prompt and scrolling output transcript.
+//! - **Bindings:** A live view of evaluated variables and their types.
+//! - **Transport:** System status, current active/pending patterns, and keyboard shortcuts.
+
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 

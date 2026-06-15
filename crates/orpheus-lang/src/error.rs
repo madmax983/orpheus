@@ -1,3 +1,10 @@
+//! Runtime evaluation error representation.
+//!
+//! This module defines [`EvalError`], the unified error type representing
+//! failures that occur during pattern execution, file loading, or type
+//! inference. It bridges lower-level parsing or temporal errors into
+//! a single, printable failure domain for the REPL to display to the user.
+
 use orpheus_pattern::PatternError;
 use thiserror::Error;
 
@@ -7,6 +14,27 @@ use crate::diagnostics::ParseError;
 ///
 /// Unlike parser or type-checker errors, `EvalError` occurs during the actual
 /// mathematical or temporal execution of the pattern.
+///
+/// ## Recovery
+///
+/// When an `EvalError` is encountered, the REPL session state is fully preserved.
+/// You can correct the syntax or logic error and re-evaluate the line without needing
+/// to restart the session or reset the mixer state.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_lang::{EvalError, ReplMode, eval_module};
+///
+/// // Example of an evaluation error due to a missing binding:
+/// let result = eval_module("x = nonexistent_variable", ReplMode::Strict);
+/// assert!(result.is_err());
+///
+/// // The error implements `Display` for direct presentation to the user:
+/// if let Err(e) = result {
+///     println!("Error: {e}");
+/// }
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq, Error)]
 pub enum EvalError {
     /// An arbitrary runtime error message string.
