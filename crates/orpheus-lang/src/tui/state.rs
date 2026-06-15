@@ -603,4 +603,70 @@ mod tests {
         let text = "🚀 def";
         previous_word_boundary(text, 1);
     }
+
+    #[test]
+    fn test_shared_state_complete_input() {
+        let engine = EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+
+        // Does nothing if it doesn't start with ':'
+        state.input = "play".to_string();
+        state.complete_input();
+        assert_eq!(state.input, "play");
+
+        // Completes to command
+        state.input = ":pla".to_string();
+        state.complete_input();
+        assert_eq!(state.input, ":play");
+        assert_eq!(state.cursor_index, 5);
+
+        // Completes to command with usage hint if there are arguments
+        state.input = ":expl".to_string();
+        state.complete_input();
+        assert_eq!(state.input, ":explain ");
+        assert_eq!(state.cursor_index, 9);
+    }
+
+    #[test]
+    fn test_shared_state_display_input_with_cursor() {
+        let engine = EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+
+        state.input = "hello".to_string();
+        state.cursor_index = 2;
+        assert_eq!(state.display_input_with_cursor(), "he|llo");
+
+        state.cursor_index = 5;
+        assert_eq!(state.display_input_with_cursor(), "hello|");
+
+        state.cursor_index = 0;
+        assert_eq!(state.display_input_with_cursor(), "|hello");
+    }
+
+    #[test]
+    fn test_shared_state_input_hint() {
+        let engine = EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+
+        assert_eq!(
+            state.input_hint(),
+            "Hint: Tab completes commands. Up/Down recalls history."
+        );
+
+        state.input = ":e".to_string();
+        // Since :e matches multiple things (e.g. :explain, :export), it doesn't show a specific command hint yet.
+        assert_eq!(
+            state.input_hint(),
+            "Hint: Tab completes commands. Up/Down recalls history."
+        );
+
+        state.input = ":expla".to_string();
+        assert_eq!(state.input_hint(), "Hint: Tab -> :explain <binding>");
+
+        state.input = "something".to_string();
+        assert_eq!(
+            state.input_hint(),
+            "Hint: Tab completes commands. Up/Down recalls history."
+        );
+    }
 }

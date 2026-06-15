@@ -49,3 +49,7 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+
+## 2024-06-25 - Improve TUI State complete_input coverage
+**Learning:** Evaluated the coverage for `crates/orpheus-lang/src/tui/state.rs` and noticed `complete_input`, `display_input_with_cursor` and `input_hint` lacked direct test coverage despite having tests for other terminal-simulated interactions (like cursor navigation). Testing these UI formatting pure state functions ensures we don't accidentally regress command autocompletion hints in the TUI without a full frontend integration test.
+**Action:** Add isolated unit tests covering input modification handlers and helper hint formatters alongside the history and cursor movement tests for `SharedState`.
