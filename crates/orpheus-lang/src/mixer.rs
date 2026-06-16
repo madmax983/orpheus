@@ -365,7 +365,8 @@ impl MixerState {
         }
 
         for row in track_rows {
-            let mut spans = Vec::new();
+            // ⚡ Bolt: Pre-allocate capacity based on row size to eliminate dynamic vector resizing overhead on the hot UI render loop.
+            let mut spans = Vec::with_capacity(row.len() * 2);
             for (i, col) in row.into_iter().enumerate() {
                 let padding = col_widths[i].saturating_sub(col.content.len());
                 let padded_content = format!("{}{}", col.content, " ".repeat(padding));
@@ -416,7 +417,8 @@ impl MixerState {
         }
 
         for row in bus_rows {
-            let mut spans = Vec::new();
+            // ⚡ Bolt: Pre-allocate capacity based on row size to eliminate dynamic vector resizing overhead on the hot UI render loop.
+            let mut spans = Vec::with_capacity(row.len() * 2);
             for (i, col) in row.into_iter().enumerate() {
                 let padding = bus_col_widths[i].saturating_sub(col.content.len());
                 let padded_content = format!("{}{}", col.content, " ".repeat(padding));
