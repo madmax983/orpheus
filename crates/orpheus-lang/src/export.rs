@@ -328,9 +328,10 @@ fn export_pattern_events_to_json<T, F>(
     mut event_to_json: F,
 ) -> Result<(), EvalError>
 where
-    F: FnMut(&Event<T>) -> String,
+    F: FnMut(&mut dyn std::io::Write, &Event<T>) -> Result<(), EvalError>,
 {
-    let mut file = std::fs::File::create(path.as_ref())?;
+    let file = std::fs::File::create(path.as_ref())?;
+    let mut file = std::io::BufWriter::new(file);
 
     writeln!(file, "{{")
         .and_then(|()| writeln!(file, "  \"kind\": \"{kind}\","))
@@ -341,7 +342,7 @@ where
         if i > 0 {
             writeln!(file, ",")?;
         }
-        write!(file, "{}", event_to_json(event))?;
+        event_to_json(&mut file, event)?;
     }
 
     writeln!(file, "\n  ]").and_then(|()| writeln!(file, "}}"))?;
@@ -378,7 +379,9 @@ pub fn export_sample_pattern_to_json(
 ) -> Result<(), EvalError> {
     let events = query_sample_pattern_events(pattern, cycle_count)?;
 
-    export_pattern_events_to_json(&events, path, "sample", cycle_count, sample_event_json)
+    export_pattern_events_to_json(&events, path, "sample", cycle_count, |w, e| {
+        sample_event_json(w, e)
+    })
 }
 
 /// Exports a number pattern's evaluated events to a Markdown file.
@@ -499,7 +502,9 @@ pub fn export_number_pattern_to_json(
 ) -> Result<(), EvalError> {
     let events = query_number_pattern_events(pattern, cycle_count)?;
 
-    export_pattern_events_to_json(&events, path, "number", cycle_count, number_event_json)
+    export_pattern_events_to_json(&events, path, "number", cycle_count, |w, e| {
+        number_event_json(w, e)
+    })
 }
 
 /// Renders a sample pattern to a deterministic stereo audio file using the
@@ -615,35 +620,41 @@ pub fn escape_json_string(s: &str) -> String {
     escaped
 }
 
-fn append_event_time_json<T>(s: &mut String, event: &Event<T>) {
-    let _ = writeln!(
+fn append_event_time_json<T>(
+    s: &mut dyn std::io::Write,
+    event: &Event<T>,
+) -> Result<(), EvalError> {
+    writeln!(
         s,
         "      \"start_num\": {},",
         event.part.start().numerator()
-    );
-    let _ = writeln!(
+    )?;
+    writeln!(
         s,
         "      \"start_den\": {},",
         event.part.start().denominator()
-    );
-    let _ = writeln!(
+    )?;
+    writeln!(
         s,
         "      \"start_float\": {:.6},",
         f64::from(event.part.start())
-    );
-    let _ = writeln!(s, "      \"end_num\": {},", event.part.end().numerator());
-    let _ = writeln!(s, "      \"end_den\": {},", event.part.end().denominator());
-    let _ = writeln!(
+    )?;
+    writeln!(s, "      \"end_num\": {},", event.part.end().numerator())?;
+    writeln!(s, "      \"end_den\": {},", event.part.end().denominator())?;
+    writeln!(
         s,
         "      \"end_float\": {:.6},",
         f64::from(event.part.end())
-    );
+    )?;
+    Ok(())
 }
 
-fn sample_event_json(event: &Event<crate::value::SampleEvent>) -> String {
-    let mut s = String::new();
-    s.push_str("    {\n");
-    append_event_time_json(&mut s, event);
+fn sample_event_json(
+    s: &mut dyn std::io::Write,
+    event: &Event<crate::value::SampleEvent>,
+) -> Result<(), EvalError> {
+    writeln!(s, "    {{")?;
+    append_event_time_json(s, event)?;
 
     let sample = escape_json_string(event.value.sample());
     let gain = event.value.gain();
@@ -667,34 +678,33 @@ fn sample_event_json(event: &Event<crate::value::SampleEvent>) -> String {
     let slice_start = event.value.slice_start();
     let slice_end = event.value.slice_end();
 
-    let _ = write!(
+    write!(
         s,
         "      \"sample\": \"{sample}\",\n      \"gain\": {gain:.6},\n      \"pan\": {pan:.6},\n      \"rate\": {rate:.6},\n      \"delay_mix\": {delay_mix:.6},\n      \"delay_time\": {delay_time:.6},\n      \"delay_feedback\": {delay_feedback:.6},\n      \"reverb_mix\": {reverb_mix:.6},\n      \"reverb_room\": {reverb_room:.6},\n      \"reverb_damp\": {reverb_damp:.6},\n      \"chorus_mix\": {chorus_mix:.6},\n      \"chorus_depth\": {chorus_depth:.6},\n      \"chorus_rate\": {chorus_rate:.6},\n      \"compressor_mix\": {compressor_mix:.6},\n      \"compressor_threshold\": {compressor_threshold:.6},\n      \"compressor_ratio\": {compressor_ratio:.6},\n      \"resonance\": {resonance:.6},\n      \"drive\": {drive:.6},\n      \"pulse_width\": {pulse_width:.6},\n      \"slice_start\": {slice_start:.6},\n      \"slice_end\": {slice_end:.6},\n"
-    );
+    )?;
 
     if let Some(hpf) = event.value.hpf_cutoff_hz() {
-        let _ = writeln!(s, "      \"hpf_cutoff_hz\": {hpf:.6},");
+        writeln!(s, "      \"hpf_cutoff_hz\": {hpf:.6},")?;
     } else {
-        s.push_str("      \"hpf_cutoff_hz\": null,\n");
+        writeln!(s, "      \"hpf_cutoff_hz\": null,")?;
     }
 
     if let Some(lpf) = event.value.lpf_cutoff_hz() {
-        let _ = writeln!(s, "      \"lpf_cutoff_hz\": {lpf:.6}");
+        writeln!(s, "      \"lpf_cutoff_hz\": {lpf:.6}")?;
     } else {
-        s.push_str("      \"lpf_cutoff_hz\": null\n");
+        writeln!(s, "      \"lpf_cutoff_hz\": null")?;
     }
 
-    s.push_str("    }");
-    s
+    write!(s, "    }}")?;
+    Ok(())
 }
 
-fn number_event_json(event: &Event<f64>) -> String {
-    let mut s = String::new();
-    s.push_str("    {\n");
-    append_event_time_json(&mut s, event);
-    let _ = writeln!(s, "      \"value\": {:.6}", event.value);
-    s.push_str("    }");
-    s
+fn number_event_json(s: &mut dyn std::io::Write, event: &Event<f64>) -> Result<(), EvalError> {
+    writeln!(s, "    {{")?;
+    append_event_time_json(s, event)?;
+    writeln!(s, "      \"value\": {:.6}", event.value)?;
+    write!(s, "    }}")?;
+    Ok(())
 }
 
 #[cfg(test)]
