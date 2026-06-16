@@ -76,7 +76,7 @@ impl SharedState {
         if let Some(path) = startup_path {
             match state.session.open_file(path) {
                 Ok(message) => state.transcript.push(format!("\u{2713} {message}")),
-                Err(message) => state.transcript.push(format!("\u{2717} {message}")),
+                Err(message) => state.transcript.push(format!("\u{274c} {message}")),
             }
         }
         state
@@ -107,7 +107,7 @@ impl SharedState {
         self.transcript.push(format!("> {line}"));
         match self.session.eval_line(&line) {
             Ok(message) => self.transcript.push(format!("\u{2713} {message}")),
-            Err(message) => self.transcript.push(format!("\u{2717} {message}")),
+            Err(message) => self.transcript.push(format!("\u{274c} {message}")),
         }
     }
 

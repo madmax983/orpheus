@@ -55,13 +55,13 @@ pub fn run_stdio_with_engine_and_path(
     let mut stderr = stderr.lock();
 
     if let Some(msg) = warning {
-        writeln!(stderr, "{}", format!("[Warn] {msg}").yellow().bold())?;
+        writeln!(stderr, "{}", format!("\u{26a0}\u{fe0f} {msg}").yellow().bold())?;
     }
 
     if let Some(path) = startup_path {
         match session.open_file(path) {
             Ok(msg) => writeln!(stdout, "{}", format!("\u{2713} {msg}").green())?,
-            Err(msg) => writeln!(stderr, "{}", format!("\u{2717} {msg}").red().bold())?,
+            Err(msg) => writeln!(stderr, "{}", format!("\u{274c} {msg}").red().bold())?,
         }
     }
 
@@ -98,7 +98,7 @@ where
 
         match session.eval_line(trimmed) {
             Ok(message) => writeln!(stdout, "{}", format!("\u{2713} {message}").green())?,
-            Err(message) => writeln!(stderr, "{}", format!("\u{2717} {message}").red().bold())?,
+            Err(message) => writeln!(stderr, "{}", format!("\u{274c} {message}").red().bold())?,
         }
     }
 
@@ -137,6 +137,6 @@ mod tests {
         run_with_handles(reader, &mut stdout, &mut stderr, &mut session).unwrap();
 
         let stderr_str = String::from_utf8(stderr).unwrap();
-        assert!(stderr_str.contains("\u{2717} parse error"));
+        assert!(stderr_str.contains("\u{274c} parse error"));
     }
 }
