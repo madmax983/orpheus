@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2025-02-27 - Test Coverage and Unreachable Panics
+**Learning:** If an `expect()` or `unwrap()` panic is structurally unreachable due to surrounding logic guarantees, do not attempt to cover it with a fake `#[should_panic]` test. Unreachable code is safe from panics and does not require explicit coverage.
+**Action:** Remove or skip `#[should_panic]` tests that require overriding internal logic guarantees with a literal `panic!()` call to succeed.

@@ -1235,6 +1235,27 @@ mod tests {
     use core::f32;
 
     #[test]
+    #[should_panic(expected = "feedback tone filter state should exist")]
+    fn evaluate_feedback_panics_if_filter_state_is_missing() {
+        let mut node_states = vec![NodeState::Feedback {
+            buffer: vec![0.5; 48],
+            write_index: 0,
+            low_pass: None, // Missing filter state
+        }];
+        let mut ctx = EvalContext {
+            node_states: &mut node_states,
+            node_values: &[0.0],
+            sample_rate_hz: 48000.0,
+            sample_step: 0,
+            index: 0,
+            input: 0.0,
+        };
+
+        let bits = 1000.0f32.to_bits();
+        evaluate_feedback(&mut ctx, NodeRef::Input, NodeRef::Input, 100, Some(&bits));
+    }
+
+    #[test]
     fn should_sanitize_audio() {
         assert!((sanitize_audio(1.0) - 1.0).abs() < f32::EPSILON);
         assert!((sanitize_audio(-1.0) - -1.0).abs() < f32::EPSILON);
