@@ -82,3 +82,11 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**[Rust: Option Handling]**
+**Learning:** Deep nesting of `if let Some(x)` and `if condition` goes against the 'flattening' philosophy.
+**Action:** Use `Option::is_some_and(|val| condition)` to maintain a clean, flat structure.
+
+**[Refactoring: Borrow Checker in Match Arms]**
+**Learning:** When refactoring large `match` expressions to fix `clippy::too_many_lines`, consolidating context structs that contain mutable references (e.g., `&mut [T]`) before the match statement causes borrow checker 'moved value' errors on branches that don't use them.
+**Action:** Instantiate context structs locally within the specific match arms that actually require them.

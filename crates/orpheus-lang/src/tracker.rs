@@ -9,6 +9,7 @@ use std::path::Path;
 
 use crate::eval::{EvalError, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue};
+use orpheus_pattern::Event;
 
 /// Exports a sample pattern's evaluated events to a Tracker text file.
 ///
@@ -60,53 +61,7 @@ pub fn export_sample_pattern_to_tracker(
         ));
     }
 
-    // Create a grid of dimensions: [total_steps][sample_list.len()]
-    // Each cell will optionally contain a formatted string of the sample name (if triggered)
-    // or the delay/continuation character.
-    let mut grid: Vec<Vec<Option<String>>> = vec![vec![None; sample_list.len()]; total_steps];
-
-    for event in &events {
-        let sample = event.value.sample().to_string();
-        let lane_idx = sample_list
-            .iter()
-            .position(|s| *s == sample)
-            .ok_or_else(|| {
-                crate::EvalError::new(format!("sample '{sample}' not found in lane list"))
-            })?;
-
-        let start_f64 = f64::from(event.part.start());
-        let end_f64 = f64::from(event.part.end());
-
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let start_step = (start_f64 * f64::from(steps_per_cycle)).round() as usize;
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let end_step = (end_f64 * f64::from(steps_per_cycle)).round() as usize;
-
-        let start_step = start_step.min(total_steps);
-        let end_step = end_step.min(total_steps);
-
-        if start_step < end_step {
-            // Format sample name up to 4 chars
-            let formatted_name = if sample.len() > 4 {
-                sample.chars().take(4).collect::<String>()
-            } else {
-                sample.clone()
-            };
-            grid[start_step][lane_idx] = Some(formatted_name);
-            for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
-                if item[lane_idx].is_none() {
-                    item[lane_idx] = Some("====".to_string());
-                }
-            }
-        } else if start_step < total_steps && grid[start_step][lane_idx].is_none() {
-            let formatted_name = if sample.len() > 4 {
-                sample.chars().take(4).collect::<String>()
-            } else {
-                sample.clone()
-            };
-            grid[start_step][lane_idx] = Some(formatted_name);
-        }
-    }
+    let grid = populate_sample_grid(&events, &sample_list, total_steps, steps_per_cycle)?;
 
     let mut file = std::fs::File::create(path)?;
     writeln!(file, "Orpheus Tracker Export")?;
@@ -194,32 +149,7 @@ pub fn export_number_pattern_to_tracker(
         ));
     }
 
-    let mut grid: Vec<Option<String>> = vec![None; total_steps];
-
-    for event in &events {
-        let start_f64 = f64::from(event.part.start());
-        let end_f64 = f64::from(event.part.end());
-
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let start_step = (start_f64 * f64::from(steps_per_cycle)).round() as usize;
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let end_step = (end_f64 * f64::from(steps_per_cycle)).round() as usize;
-
-        let start_step = start_step.min(total_steps);
-        let end_step = end_step.min(total_steps);
-        let val_str = format!("{:7.2}", event.value);
-
-        if start_step < end_step {
-            grid[start_step] = Some(val_str);
-            for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
-                if item.is_none() {
-                    *item = Some("=======".to_string());
-                }
-            }
-        } else if start_step < total_steps && grid[start_step].is_none() {
-            grid[start_step] = Some(val_str);
-        }
-    }
+    let grid = populate_number_grid(&events, total_steps, steps_per_cycle);
 
     let mut file = std::fs::File::create(path)?;
     writeln!(file, "Orpheus Tracker Export")?;
@@ -247,6 +177,96 @@ pub fn export_number_pattern_to_tracker(
     }
 
     Ok(())
+}
+
+fn populate_sample_grid(
+    events: &[Event<crate::value::SampleEvent>],
+    sample_list: &[&str],
+    total_steps: usize,
+    steps_per_cycle: u32,
+) -> Result<Vec<Vec<Option<String>>>, EvalError> {
+    // Create a grid of dimensions: [total_steps][sample_list.len()]
+    // Each cell will optionally contain a formatted string of the sample name (if triggered)
+    // or the delay/continuation character.
+    let mut grid: Vec<Vec<Option<String>>> = vec![vec![None; sample_list.len()]; total_steps];
+
+    for event in events {
+        let sample = event.value.sample().to_string();
+        let lane_idx = sample_list
+            .iter()
+            .position(|s| *s == sample)
+            .ok_or_else(|| EvalError::new(format!("sample '{sample}' not found in lane list")))?;
+
+        let start_f64 = f64::from(event.part.start());
+        let end_f64 = f64::from(event.part.end());
+
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let start_step = (start_f64 * f64::from(steps_per_cycle)).round() as usize;
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let end_step = (end_f64 * f64::from(steps_per_cycle)).round() as usize;
+
+        let start_step = start_step.min(total_steps);
+        let end_step = end_step.min(total_steps);
+
+        if start_step < end_step {
+            // Format sample name up to 4 chars
+            let formatted_name = if sample.len() > 4 {
+                sample.chars().take(4).collect::<String>()
+            } else {
+                sample.clone()
+            };
+            grid[start_step][lane_idx] = Some(formatted_name);
+            for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
+                if item[lane_idx].is_none() {
+                    item[lane_idx] = Some("====".to_string());
+                }
+            }
+        } else if start_step < total_steps && grid[start_step][lane_idx].is_none() {
+            let formatted_name = if sample.len() > 4 {
+                sample.chars().take(4).collect::<String>()
+            } else {
+                sample.clone()
+            };
+            grid[start_step][lane_idx] = Some(formatted_name);
+        }
+    }
+
+    Ok(grid)
+}
+
+fn populate_number_grid(
+    events: &[Event<f64>],
+    total_steps: usize,
+    steps_per_cycle: u32,
+) -> Vec<Option<String>> {
+    let mut grid: Vec<Option<String>> = vec![None; total_steps];
+
+    for event in events {
+        let start_f64 = f64::from(event.part.start());
+        let end_f64 = f64::from(event.part.end());
+
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let start_step = (start_f64 * f64::from(steps_per_cycle)).round() as usize;
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let end_step = (end_f64 * f64::from(steps_per_cycle)).round() as usize;
+
+        let start_step = start_step.min(total_steps);
+        let end_step = end_step.min(total_steps);
+        let val_str = format!("{:7.2}", event.value);
+
+        if start_step < end_step {
+            grid[start_step] = Some(val_str);
+            for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
+                if item.is_none() {
+                    *item = Some("=======".to_string());
+                }
+            }
+        } else if start_step < total_steps && grid[start_step].is_none() {
+            grid[start_step] = Some(val_str);
+        }
+    }
+
+    grid
 }
 
 #[cfg(test)]

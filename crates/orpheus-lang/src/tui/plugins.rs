@@ -28,44 +28,8 @@ impl HypertilePlugin for ReplPlugin {
     fn render(&self, area: Rect, buf: &mut Buffer, is_focused: bool) {
         let state = self.state.borrow();
 
-        let mut lines = state
-            .transcript
-            .iter()
-            .flat_map(|entry| {
-                let style = if entry.starts_with("> ") {
-                    Style::default().fg(Color::DarkGray)
-                } else if entry.starts_with("\u{2717} ") {
-                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
-                } else if entry.starts_with("\u{26a0}\u{fe0f} ") {
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD)
-                } else if entry.starts_with("\u{2713} ") {
-                    Style::default().fg(Color::Green)
-                } else {
-                    Style::default()
-                };
-                entry
-                    .split('\n')
-                    .map(move |line| Line::styled(line.to_owned(), style))
-            })
-            .collect::<Vec<_>>();
-
-        let transport = state.transport_view();
-        lines.push(transport_status_line("Transport: ", &transport, true));
-        lines.push(Line::from(vec![
-            Span::styled(
-                "> ",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(state.display_input_with_cursor()),
-        ]));
-        lines.push(Line::styled(
-            state.input_hint(),
-            Style::default().fg(Color::DarkGray),
-        ));
+        let mut lines = build_transcript_lines(&state);
+        build_repl_status(&mut lines, &state);
 
         let mut block = Block::default().title("REPL").borders(Borders::ALL);
         if is_focused {
@@ -253,77 +217,10 @@ impl HypertilePlugin for TransportPlugin {
         let transport = state.transport_view();
         let mixer = state.mixer_view();
 
-        let mut lines = vec![Line::from(vec![
-            Span::raw("Pattern: "),
-            Span::styled(
-                transport.active_pattern_name().unwrap_or("none"),
-                crate::tui::style::live_binding_style(),
-            ),
-        ])];
-        if let Some(pending_pattern_name) = transport.pending_pattern_name() {
-            lines.push(Line::from(vec![
-                Span::raw("Next: "),
-                Span::styled(
-                    pending_pattern_name.to_owned(),
-                    crate::tui::style::pending_binding_style(&transport),
-                ),
-            ]));
-        }
-        lines.push(routing_status_line(&mixer));
-        if !mixer.tui_summary().is_empty() {
-            lines.push(Line::raw(""));
-            for line in mixer.tui_summary() {
-                lines.push(line.clone());
-            }
-        }
-        let key_style = Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD);
-        let desc_style = Style::default().fg(Color::DarkGray);
-
-        let legend = [
-            ("Undo", "Ctrl-Z / Ctrl-Y"),
-            ("Space", "toggle (empty input)"),
-            ("Open", ":open <path>"),
-            ("Transport", ":play / :stop"),
-            ("Mixer", ":track / :bus new|fx / :send / :mixer"),
-            ("Set", ":tempo <bpm>"),
-            ("Render", ":render <binding> <path> [cyc]"),
-            ("Export", ":export <bind> <path> [cyc] | stems"),
-            ("Import", ":import stems <dir>"),
-            ("Analyze", ":roll / :stats / :explain"),
-            ("Help", "?"),
-        ];
-
-        for (key, desc) in legend {
-            lines.push(Line::from(vec![
-                Span::styled(format!("{key:<9} "), key_style),
-                Span::styled(format!(": {desc}"), desc_style),
-            ]));
-        }
-        if let Some((message, is_error)) = &state.status_message {
-            lines.push(Line::raw(""));
-            let (prefix, bg, fg) = if *is_error {
-                ("\u{2717} Failed", Color::Red, Color::White)
-            } else {
-                ("\u{2713} Success", Color::Green, Color::Black)
-            };
-
-            lines.push(Line::from(vec![
-                Span::styled(
-                    format!(" {prefix} "),
-                    Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(
-                    format!(" {message} "),
-                    Style::default().bg(Color::DarkGray).fg(Color::White),
-                ),
-            ]));
-        }
-        lines.push(Line::from(vec![
-            Span::styled(format!("{:<9} ", "Quit"), key_style),
-            Span::styled(": Esc or :quit", desc_style),
-        ]));
+        let mut lines = Vec::new();
+        build_transport_status(&mut lines, &transport, &mixer);
+        build_legend(&mut lines);
+        build_status_message(&mut lines, &state);
 
         let mut block = Block::default().title("Transport").borders(Borders::ALL);
         if is_focused {
@@ -335,4 +232,140 @@ impl HypertilePlugin for TransportPlugin {
             .wrap(Wrap { trim: false })
             .render(area, buf);
     }
+}
+
+fn build_transcript_lines(state: &crate::tui::state::SharedState) -> Vec<Line<'static>> {
+    state
+        .transcript
+        .iter()
+        .flat_map(|entry| {
+            let style = if entry.starts_with("> ") {
+                Style::default().fg(Color::DarkGray)
+            } else if entry.starts_with("\u{2717} ") {
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+            } else if entry.starts_with("\u{26a0}\u{fe0f} ") {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            } else if entry.starts_with("\u{2713} ") {
+                Style::default().fg(Color::Green)
+            } else {
+                Style::default()
+            };
+            entry
+                .split('\n')
+                .map(move |line| Line::styled(line.to_owned(), style))
+        })
+        .collect::<Vec<_>>()
+}
+
+fn build_repl_status(lines: &mut Vec<Line<'static>>, state: &crate::tui::state::SharedState) {
+    let transport = state.transport_view();
+    lines.push(transport_status_line("Transport: ", &transport, true));
+    lines.push(Line::from(vec![
+        Span::styled(
+            "> ",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(state.display_input_with_cursor()),
+    ]));
+    lines.push(Line::styled(
+        state.input_hint(),
+        Style::default().fg(Color::DarkGray),
+    ));
+}
+
+fn build_transport_status(
+    lines: &mut Vec<Line<'static>>,
+    transport: &crate::session::TransportView,
+    mixer: &crate::session::MixerView,
+) {
+    lines.push(Line::from(vec![
+        Span::raw("Pattern: "),
+        Span::styled(
+            transport.active_pattern_name().unwrap_or("none").to_owned(),
+            crate::tui::style::live_binding_style(),
+        ),
+    ]));
+
+    if let Some(pending_pattern_name) = transport.pending_pattern_name() {
+        lines.push(Line::from(vec![
+            Span::raw("Next: "),
+            Span::styled(
+                pending_pattern_name.to_owned(),
+                crate::tui::style::pending_binding_style(transport),
+            ),
+        ]));
+    }
+
+    lines.push(routing_status_line(mixer));
+
+    if !mixer.tui_summary().is_empty() {
+        lines.push(Line::raw(""));
+        for line in mixer.tui_summary() {
+            lines.push(line.clone());
+        }
+    }
+}
+
+fn build_legend(lines: &mut Vec<Line<'static>>) {
+    let key_style = Style::default()
+        .fg(Color::Cyan)
+        .add_modifier(Modifier::BOLD);
+    let desc_style = Style::default().fg(Color::DarkGray);
+
+    let legend = [
+        ("Undo", "Ctrl-Z / Ctrl-Y"),
+        ("Space", "toggle (empty input)"),
+        ("Open", ":open <path>"),
+        ("Transport", ":play / :stop"),
+        ("Mixer", ":track / :bus new|fx / :send / :mixer"),
+        ("Set", ":tempo <bpm>"),
+        ("Render", ":render <binding> <path> [cyc]"),
+        ("Export", ":export <bind> <path> [cyc] | stems"),
+        ("Import", ":import stems <dir>"),
+        ("Analyze", ":roll / :stats / :explain"),
+        ("Help", "?"),
+    ];
+
+    for (key, desc) in legend {
+        lines.push(Line::from(vec![
+            Span::styled(format!("{key:<9} "), key_style),
+            Span::styled(format!(": {desc}"), desc_style),
+        ]));
+    }
+}
+
+fn build_status_message(lines: &mut Vec<Line<'static>>, state: &crate::tui::state::SharedState) {
+    if let Some((message, is_error)) = &state.status_message {
+        lines.push(Line::raw(""));
+        let (prefix, bg, fg) = if *is_error {
+            ("\u{2717} Failed", Color::Red, Color::White)
+        } else {
+            ("\u{2713} Success", Color::Green, Color::Black)
+        };
+
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!(" {prefix} "),
+                Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!(" {message} "),
+                Style::default().bg(Color::DarkGray).fg(Color::White),
+            ),
+        ]));
+    }
+
+    let key_style = Style::default()
+        .fg(Color::Cyan)
+        .add_modifier(Modifier::BOLD);
+    let desc_style = Style::default().fg(Color::DarkGray);
+
+    lines.push(Line::from(vec![
+        Span::styled(format!("{:<9} ", "Quit"), key_style),
+        Span::styled(": Esc or :quit", desc_style),
+    ]));
 }

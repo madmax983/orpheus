@@ -2977,7 +2977,7 @@ enum PatternRuntime<T> {
 }
 
 impl<T> PatternRuntime<T> {
-    #[allow(clippy::too_many_lines, clippy::match_same_arms)]
+    #[allow(clippy::too_many_lines)]
     fn with_tuning(self, table: &TuningTable) -> Self {
         use PatternRuntime::{
             Arp, Chaos, Chorus, ChorusDepth, ChorusDepthPattern, ChorusPattern, ChorusRate,
@@ -3000,28 +3000,21 @@ impl<T> PatternRuntime<T> {
         }
 
         match self {
-            Pitch { semitones, inner } => TunedPitch {
-                semitones,
-                tuning: table.clone(),
-                inner: recurse!(inner),
-            },
-            PitchPattern { control, inner } => TunedPitchPattern {
-                control,
-                tuning: table.clone(),
-                inner: recurse!(inner),
-            },
-            TunedPitch {
+            Pitch { semitones, inner }
+            | TunedPitch {
                 semitones, inner, ..
             } => TunedPitch {
                 semitones,
                 tuning: table.clone(),
                 inner: recurse!(inner),
             },
-            TunedPitchPattern { control, inner, .. } => TunedPitchPattern {
-                control,
-                tuning: table.clone(),
-                inner: recurse!(inner),
-            },
+            PitchPattern { control, inner } | TunedPitchPattern { control, inner, .. } => {
+                TunedPitchPattern {
+                    control,
+                    tuning: table.clone(),
+                    inner: recurse!(inner),
+                }
+            }
             Cycle(c) => Cycle(c),
             Stream(s) => Stream(s),
             ExplicitCycle {
@@ -3135,6 +3128,14 @@ impl<T> PatternRuntime<T> {
             },
             Chaos { site_salt, inner } => Chaos {
                 site_salt,
+                inner: recurse!(inner),
+            },
+            Rate { factor, inner } => Rate {
+                factor,
+                inner: recurse!(inner),
+            },
+            RatePattern { control, inner } => RatePattern {
+                control,
                 inner: recurse!(inner),
             },
             Gain { factor, inner } => Gain {
@@ -3286,14 +3287,6 @@ impl<T> PatternRuntime<T> {
                 inner: recurse!(inner),
             },
             CompressorRatioPattern { control, inner } => CompressorRatioPattern {
-                control,
-                inner: recurse!(inner),
-            },
-            Rate { factor, inner } => Rate {
-                factor,
-                inner: recurse!(inner),
-            },
-            RatePattern { control, inner } => RatePattern {
                 control,
                 inner: recurse!(inner),
             },
@@ -3486,11 +3479,6 @@ where
     }
 
     fn try_query_transform(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
-        self.try_query_transform_method(span)
-    }
-
-    #[allow(clippy::too_many_lines)]
-    fn try_query_transform_method(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
         match self {
             Self::Roll { steps, inner } => T::roll_events(inner.try_query(span)?, *steps),
             Self::Strum { inner } => T::strum_events(inner.try_query(span)?),
@@ -3520,6 +3508,13 @@ where
             Self::GainPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Gain)
             }
+            Self::Rand { site_salt } => query_rand(*site_salt, span),
+            _ => self.try_query_pitch_and_time(span),
+        }
+    }
+
+    fn try_query_pitch_and_time(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
+        match self {
             Self::Pitch { semitones, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_rate(semitones_to_rate_multiplier(*semitones));
             }),
@@ -3567,7 +3562,6 @@ where
             } => apply_value_mutation(inner, span, |value| {
                 *value = value.attach_pedal_program(pedal_program);
             }),
-            Self::Rand { site_salt } => query_rand(*site_salt, span),
             _ => self.try_query_audio_effect(span),
         }
     }
