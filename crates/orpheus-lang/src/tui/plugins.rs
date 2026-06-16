@@ -31,24 +31,7 @@ impl HypertilePlugin for ReplPlugin {
         let mut lines = state
             .transcript
             .iter()
-            .flat_map(|entry| {
-                let style = if entry.starts_with("> ") {
-                    Style::default().fg(Color::DarkGray)
-                } else if entry.starts_with("\u{2717} ") {
-                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
-                } else if entry.starts_with("\u{26a0}\u{fe0f} ") {
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD)
-                } else if entry.starts_with("\u{2713} ") {
-                    Style::default().fg(Color::Green)
-                } else {
-                    Style::default()
-                };
-                entry
-                    .split('\n')
-                    .map(move |line| Line::styled(line.to_owned(), style))
-            })
+            .flat_map(|entry| crate::tui::style::format_transcript_lines(entry))
             .collect::<Vec<_>>();
 
         let transport = state.transport_view();

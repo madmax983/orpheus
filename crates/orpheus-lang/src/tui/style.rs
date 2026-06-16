@@ -13,6 +13,31 @@ use crate::session::{MixerView, TransportView};
 
 const MIN_BINDING_LEGEND_ROWS: usize = 6;
 
+/// Formats a raw transcript entry (with embedded terminal color escapes) into styled
+/// `ratatui` `Line`s, ensuring that terminal color codes are stripped before rendering.
+pub fn format_transcript_lines(entry: &str) -> Vec<Line<'static>> {
+    let stripped_bytes = strip_ansi_escapes::strip(entry);
+    let stripped = String::from_utf8(stripped_bytes).unwrap_or_else(|_| entry.to_owned());
+
+    let style = if stripped.starts_with("> ") {
+        Style::default().fg(Color::DarkGray)
+    } else if stripped.starts_with("\u{2717} ") {
+        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+    } else if stripped.starts_with("\u{26a0}\u{fe0f} ") {
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
+    } else if stripped.starts_with("\u{2713} ") {
+        Style::default().fg(Color::Green)
+    } else {
+        Style::default()
+    };
+    stripped
+        .split('\n')
+        .map(|line| Line::styled(line.to_owned(), style))
+        .collect()
+}
+
 /// Represents the high-level semantic status of the audio transport from the user's perspective.
 ///
 /// While the underlying DSP engine only knows if it is "playing" or "stopped", the UI
