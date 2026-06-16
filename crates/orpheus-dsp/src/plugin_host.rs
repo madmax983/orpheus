@@ -4,6 +4,11 @@
 //! real-time-safe render facade. The built-in processor is deterministic and
 //! headless, which lets the mixer, scheduler, and language integration prove the
 //! contract before a vendor SDK backend is attached.
+//!
+//! This module solves the "Black Box" of plugin hosting by strictly separating the configuration
+//! (descriptors, notes, and parameter lanes) from the stateful execution (the processor). This
+//! allows Orpheus to schedule and reason about third-party audio graphs in pure, functional time
+//! before crossing the FFI boundary to interact with the actual plugin binaries.
 
 use std::path::PathBuf;
 
@@ -53,6 +58,14 @@ pub struct PluginDescriptor {
 
 impl PluginDescriptor {
     /// Creates a VST3 descriptor resolved against the platform's standard paths.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::PluginDescriptor;
+    ///
+    /// let desc = PluginDescriptor::vst3("Serum");
+    /// ```
     ///
     /// # Panics
     ///
@@ -126,6 +139,16 @@ pub struct PluginNote {
 impl PluginNote {
     /// Creates a normalized note event on MIDI channel 1.
     ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::PluginNote;
+    ///
+    /// let note = PluginNote::new(60, 0.8).unwrap();
+    /// assert_eq!(note.note_number(), 60);
+    /// assert_eq!(note.velocity(), 0.8);
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns [`PluginHostError::InvalidVelocity`] if `velocity` is not finite
@@ -169,6 +192,20 @@ pub struct PluginParameterLane {
 
 impl PluginParameterLane {
     /// Creates a parameter automation lane using normalized values.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::{Event, TimeSpan};
+    /// use orpheus_dsp::PluginParameterLane;
+    ///
+    /// let event = Event {
+    ///     whole: None,
+    ///     part: TimeSpan::unit(),
+    ///     value: 0.5,
+    /// };
+    /// let lane = PluginParameterLane::new("Cutoff", vec![event].into_boxed_slice()).unwrap();
+    /// ```
     ///
     /// # Errors
     ///
@@ -215,6 +252,15 @@ pub struct PluginTrackSource {
 
 impl PluginTrackSource {
     /// Creates a plugin track source with no note or automation events.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::{PluginDescriptor, PluginTrackSource};
+    ///
+    /// let descriptor = PluginDescriptor::vst3("Serum");
+    /// let source = PluginTrackSource::new(descriptor);
+    /// ```
     #[must_use]
     pub fn new(descriptor: PluginDescriptor) -> Self {
         Self {
@@ -299,6 +345,16 @@ struct PluginVoice {
 
 impl PluginProcessor {
     /// Creates preallocated render state for a plugin track.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::{PluginDescriptor, PluginProcessor, PluginTrackSource};
+    ///
+    /// let descriptor = PluginDescriptor::vst3("Serum");
+    /// let source = PluginTrackSource::new(descriptor);
+    /// let processor = PluginProcessor::new(&source, 48_000);
+    /// ```
     #[must_use]
     #[expect(
         clippy::cast_precision_loss,

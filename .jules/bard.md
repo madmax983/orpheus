@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-05-26 - [Missing Plugin Host Example Documentation]
+**Confusion:** The complex structs and methods within `plugin_host.rs` (like `PluginDescriptor::vst3`, `PluginNote::new`, `PluginParameterLane::new`, `PluginTrackSource::new`, and `PluginProcessor::new`) were entirely missing executable doctests. This represents a "Missing Link" gap, making it difficult for developers to understand how to correctly instantiate these objects for VST3/AU integration.
+**Clarification:** Added comprehensive executable `## Examples` doctest blocks to the core constructors across `plugin_host.rs` to clearly demonstrate successful instantiation and usage patterns within the headless audio graph.
