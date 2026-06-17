@@ -82,3 +82,7 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+## 2024-06-17 - [Refactoring clippy::too_many_lines on massive matches]
+**Learning:** Extracting large enum `match` blocks into separate methods (like `try_query_transform` calling `try_query_transform_method`) just to apply `#[allow(clippy::too_many_lines)]` adds redundant indirection and hurts readability without solving the underlying structure.
+**Action:** If a large enum match cannot be logically broken down further, apply `#[allow(clippy::too_many_lines)]` directly to the original method instead of creating a useless single-call helper method.
