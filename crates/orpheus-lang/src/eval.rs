@@ -1629,6 +1629,26 @@ right = sometimes(fast(2), cp hh)";
     }
 
     #[test]
+    fn eval_seq_sections_empty_returns_error() {
+        let result = eval_module("x = seq_sections()", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "`seq_sections` requires at least one section"
+        );
+    }
+
+    #[test]
+    fn eval_section_events_exceeds_max_cycles() {
+        let result = eval_module("x = seq_sections(section(bd, 2000))", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "section cycle count exceeded the maximum allowed bound of 1024"
+        );
+    }
+
+    #[test]
     fn eval_meter_without_beat() {
         let result = eval_module("x = beat(0)", ReplMode::Strict);
         assert!(result.is_err());
