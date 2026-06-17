@@ -120,6 +120,18 @@ impl LoadError {
     }
 }
 
+impl From<ParseError> for LoadError {
+    fn from(error: ParseError) -> Self {
+        Self::new(error.to_string())
+    }
+}
+
+impl From<TypeError> for LoadError {
+    fn from(error: TypeError) -> Self {
+        Self::new(error.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,5 +159,19 @@ mod tests {
         let parse_err = ParseError::new("mock parse error");
         let type_err: TypeError = parse_err.into();
         assert_eq!(type_err.to_string(), "mock parse error");
+    }
+
+    #[test]
+    fn load_error_from_parse_error() {
+        let parse_err = ParseError::new("mock parse error");
+        let load_err: LoadError = parse_err.into();
+        assert_eq!(load_err.to_string(), "mock parse error");
+    }
+
+    #[test]
+    fn load_error_from_type_error() {
+        let type_err = TypeError::new("mock type error");
+        let load_err: LoadError = type_err.into();
+        assert_eq!(load_err.to_string(), "mock type error");
     }
 }

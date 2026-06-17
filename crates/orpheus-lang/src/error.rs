@@ -129,4 +129,65 @@ mod tests {
         let err: EvalError = parse_err.into();
         assert_eq!(err.to_string(), "mock parse error");
     }
+
+    #[test]
+    fn eval_error_from_pitch_literal_error() {
+        let err: EvalError = crate::pitch::PitchLiteralError::new("mock pitch error").into();
+        assert_eq!(err.to_string(), "mock pitch error");
+    }
+
+    #[test]
+    fn eval_error_from_try_from_int_error() {
+        let try_from_int_err = u8::try_from(256_u16).unwrap_err();
+        let err: EvalError = try_from_int_err.into();
+        assert_eq!(
+            err.to_string(),
+            "out of range integral type conversion attempted"
+        );
+    }
+
+    #[test]
+    fn eval_error_from_parse_int_error() {
+        let parse_int_err = "abc".parse::<u8>().unwrap_err();
+        let err: EvalError = parse_int_err.into();
+        assert_eq!(err.to_string(), "invalid digit found in string");
+    }
+
+    #[test]
+    fn eval_error_from_pattern_error() {
+        let pattern_err = orpheus_pattern::PatternError::InvalidDenominator { denominator: 0 };
+        let err: EvalError = pattern_err.into();
+        assert_eq!(err.to_string(), "rational denominator cannot be zero");
+    }
+
+    #[test]
+    fn eval_error_from_io_error_not_found() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "mock");
+        let err: EvalError = io_err.into();
+        assert_eq!(err.to_string(), "file not found");
+    }
+
+    #[test]
+    fn eval_error_from_io_error_permission_denied() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "mock");
+        let err: EvalError = io_err.into();
+        assert_eq!(err.to_string(), "permission denied");
+    }
+
+    #[test]
+    fn eval_error_from_io_error_other() {
+        let io_err = std::io::Error::other("other io error");
+        let err: EvalError = io_err.into();
+        assert_eq!(err.to_string(), "other io error");
+    }
+
+    #[test]
+    fn eval_error_from_fmt_error() {
+        let fmt_err = std::fmt::Error;
+        let err: EvalError = fmt_err.into();
+        assert_eq!(
+            err.to_string(),
+            "an error occurred when formatting an argument"
+        );
+    }
 }
