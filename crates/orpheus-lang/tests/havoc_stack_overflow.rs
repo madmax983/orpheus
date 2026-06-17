@@ -30,3 +30,37 @@ fn test_havoc_stack_overflow_meter_eval() {
         );
     }
 }
+
+#[test]
+fn test_havoc_nested_seq_eval() {
+    let mut source = "bd".to_string();
+    for _ in 0..1000 {
+        source = format!("{} {}", source, "bd");
+    }
+    source = format!("notes = {}", source);
+
+    let result = eval_module(&source, ReplMode::Loose);
+    // Either parse error or eval error, but not a stack overflow
+    if let Err(e) = result {
+        // Ok
+        let _ = e;
+    }
+}
+
+#[test]
+fn test_havoc_nested_pipe_eval() {
+    let mut source = "bd".to_string();
+    for _ in 0..300 {
+        source = format!("{} |> fast(2)", source);
+    }
+    source = format!("notes = {}", source);
+
+    let result = eval_module(&source, ReplMode::Loose);
+    // Either parse error or eval error, but not a stack overflow
+    if let Err(e) = result {
+        assert!(
+            e.to_string().contains("exceeded") || e.to_string().contains("limit"),
+            "Unexpected error: {e}"
+        );
+    }
+}
