@@ -20,12 +20,12 @@ use crate::types::{Type, TypeVarId};
 ///
 /// ```
 /// use orpheus_lang::Type;
-/// use orpheus_lang::TypeScheme;
+/// // Internal details are not part of the public API.
 ///
-/// let scheme = TypeScheme::monomorphic(Type::Sample);
+/// // let scheme = crate::TypeScheme::monomorphic(crate::Type::Sample);
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TypeScheme {
+pub(crate) struct TypeScheme {
     pub vars: Vec<TypeVarId>,
     pub ty: Type,
 }
@@ -48,12 +48,12 @@ impl TypeScheme {
 /// # Examples
 ///
 /// ```
-/// use orpheus_lang::TypeEnv;
+/// // Internal details are not part of the public API.
 ///
-/// let env = TypeEnv::with_builtins();
+/// // let env = crate::TypeEnv::with_builtins();
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TypeEnv {
+pub(crate) struct TypeEnv {
     entries: BTreeMap<String, TypeScheme>,
 }
 
