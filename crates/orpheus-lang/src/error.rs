@@ -129,4 +129,44 @@ mod tests {
         let err: EvalError = parse_err.into();
         assert_eq!(err.to_string(), "mock parse error");
     }
+
+    #[test]
+    fn eval_error_from_io_error() {
+        let not_found = std::io::Error::new(std::io::ErrorKind::NotFound, "oops");
+        let err: EvalError = not_found.into();
+        assert_eq!(err.to_string(), "file not found");
+
+        let permission_denied = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "oops");
+        let err2: EvalError = permission_denied.into();
+        assert_eq!(err2.to_string(), "permission denied");
+
+        let other_err = std::io::Error::other("custom error message");
+        let err3: EvalError = other_err.into();
+        assert_eq!(err3.to_string(), "custom error message");
+    }
+
+    #[test]
+    fn eval_error_from_fmt_error() {
+        let fmt_err = std::fmt::Error;
+        let err: EvalError = fmt_err.into();
+        assert_eq!(
+            err.to_string(),
+            "an error occurred when formatting an argument"
+        );
+    }
+
+    #[test]
+    fn eval_error_from_parse_int_error() {
+        let err: Result<i32, _> = "not_a_number".parse();
+        let eval_err: EvalError = err.unwrap_err().into();
+        assert!(eval_err.to_string().contains("invalid digit"));
+    }
+
+    #[test]
+    fn eval_error_from_pitch_literal_error() {
+        use crate::pitch::PitchLiteralError;
+        let pitch_err = PitchLiteralError::new("invalid pitch literal".to_owned());
+        let eval_err: EvalError = pitch_err.into();
+        assert_eq!(eval_err.to_string(), "invalid pitch literal");
+    }
 }
