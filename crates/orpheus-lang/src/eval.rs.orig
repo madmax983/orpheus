@@ -856,12 +856,11 @@ impl Evaluator {
     }
 
     fn check_unsupported_call(callee: &Expr, args: &[Expr], context: &str) -> Option<EvalError> {
-        let Expr::Ident(name) = callee else {
-            return Some(EvalError::new(format!(
-                "function call `call` cannot appear inside a pattern {context} in Task 5; apply transforms with the pipe operator `|>` or call `call(..., pattern)` directly"
-            )));
+        let name = if let Expr::Ident(name) = callee {
+            name.as_str()
+        } else {
+            "call"
         };
-        let name = name.as_str();
 
         if name == "sample" && args.len() == 1 {
             None

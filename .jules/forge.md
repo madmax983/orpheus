@@ -82,3 +82,11 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**Refactoring iter.try_fold**
+**Learning:** Functions that fold an iterator into a result and have too many lines can be refactored by pulling out the initial state setup and turning a `while` or direct `.split_first()` followed by `.iter().try_fold()` into an `.iter()` mapping and then `.try_fold()`. This flattens the method.
+**Action:** When a method with fold logic gets too long, separate the iterator instantiation and initial state creation from the fold itself.
+
+**Refactoring `clippy::too_many_lines` on match blocks**
+**Learning:** `clippy::too_many_lines` on enum match arms often requires careful extraction.
+**Action:** Ensure that any specific bindings inside the arms are handled with `matches!` or `if let`.
