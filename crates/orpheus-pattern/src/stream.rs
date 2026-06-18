@@ -33,7 +33,7 @@ impl<T> EventStream<T> {
     /// ```
     #[must_use]
     pub fn new(mut events: Vec<Event<T>>) -> Self {
-        events.sort_by(|left, right| {
+        events.sort_unstable_by(|left, right| {
             left.part
                 .start()
                 .cmp(right.part.start())

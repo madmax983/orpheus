@@ -944,7 +944,7 @@ fn read_sorted_directory(directory: &Path) -> Result<Vec<fs::DirEntry>, SampleBa
         .map_err(|source| directory_io_error(directory, &source))?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|source| directory_io_error(directory, &source))?;
-    entries.sort_by_key(std::fs::DirEntry::file_name);
+    entries.sort_unstable_by_key(std::fs::DirEntry::file_name);
     Ok(entries)
 }
 

@@ -87,7 +87,7 @@ pub fn export_pedal_value_to_dot(
     valid_names.push("input".to_string());
 
     // Sort names by length descending so that we match longest names first to prevent partial matches
-    valid_names.sort_by_key(|b| std::cmp::Reverse(b.len()));
+    valid_names.sort_unstable_by_key(|b| std::cmp::Reverse(b.len()));
 
     for binding in plan.bindings() {
         let summary = binding.node().summary();

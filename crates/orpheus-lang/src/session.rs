@@ -2045,7 +2045,7 @@ fn collect_stem_wav_paths(directory: &Path) -> Result<Vec<PathBuf>, String> {
         }
     }
 
-    paths.sort_by(|left, right| left.file_name().cmp(&right.file_name()));
+    paths.sort_unstable_by(|left, right| left.file_name().cmp(&right.file_name()));
     Ok(paths)
 }
 
