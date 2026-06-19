@@ -47,6 +47,10 @@ pub enum PatternNode<T> {
 impl<T> PatternNode<T> {
     /// Creates an atomic pattern node.
     ///
+    /// Atoms are the fundamental leaf nodes of a pattern tree. When evaluated, an atom
+    /// produces exactly one event that spans the entirety of the subdivision allocated
+    /// to it by its parent.
+    ///
     /// # Examples
     ///
     /// ```
@@ -60,12 +64,39 @@ impl<T> PatternNode<T> {
     }
 
     /// Creates a rest node.
+    ///
+    /// A rest occupies its allocated subdivision without producing an event. It is
+    /// essential for creating syncopation, off-beats, and sparse rhythms within a
+    /// denser grid.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::PatternNode;
+    ///
+    /// let silence: PatternNode<&str> = PatternNode::rest();
+    /// ```
     #[must_use]
     pub const fn rest() -> Self {
         Self::Rest
     }
 
     /// Creates a grouped subdivision node.
+    ///
+    /// Groups enable complex, nested temporal structures like polyrhythms. A group takes
+    /// its allocated span of time and divides it equally among its child nodes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::PatternNode;
+    ///
+    /// // This group will squeeze two kick drums into the space of one beat.
+    /// let fast_kicks = PatternNode::group(vec![
+    ///     PatternNode::atom("bd"),
+    ///     PatternNode::atom("bd"),
+    /// ]);
+    /// ```
     #[must_use]
     pub const fn group(nodes: Vec<Self>) -> Self {
         Self::Group(nodes)
@@ -80,6 +111,24 @@ pub struct CyclePattern<T> {
 
 impl<T> CyclePattern<T> {
     /// Creates a cycle pattern from root nodes.
+    ///
+    /// The provided root nodes equally subdivide the fundamental unit cycle (`[0, 1)`).
+    /// Because `CyclePattern` represents an infinite, repeating musical structure, these
+    /// nodes will be automatically re-evaluated for cycle `[1, 2)`, `[2, 3)`, and so on.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::{CyclePattern, PatternNode};
+    ///
+    /// // A simple 4-on-the-floor beat where each kick drum occupies 1/4 of the cycle.
+    /// let beat = CyclePattern::from_nodes(vec![
+    ///     PatternNode::atom("bd"),
+    ///     PatternNode::atom("bd"),
+    ///     PatternNode::atom("bd"),
+    ///     PatternNode::atom("bd"),
+    /// ]);
+    /// ```
     #[must_use]
     pub const fn from_nodes(nodes: Vec<PatternNode<T>>) -> Self {
         Self { nodes }
