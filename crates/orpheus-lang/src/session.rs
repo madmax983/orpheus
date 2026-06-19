@@ -449,13 +449,7 @@ impl ReplSession {
             "explain" => self.explain_binding(args),
             "help" => Self::help_command(args),
             "env" => self.env_command(args),
-            "export" => {
-                if args.starts_with("stems") {
-                    self.export_stems(args)
-                } else {
-                    self.export_binding(args)
-                }
-            }
+            "export" => self.export_command(args),
             "tempo" => self.eval_mutating_command(|session| session.set_tempo(args)),
             "ref_freq" => self.eval_mutating_command(|session| session.set_ref_freq(args)),
             "samples" => self.eval_mutating_command(|session| session.load_sample_directory(args)),
@@ -472,6 +466,14 @@ impl ReplSession {
             "play" => self.play_transport(args),
             "stop" => self.stop_transport(args),
             other => Err(format!("unknown REPL command `:{other}`")),
+        }
+    }
+
+    fn export_command(&self, args: &str) -> Result<String, String> {
+        if args.starts_with("stems") {
+            self.export_stems(args)
+        } else {
+            self.export_binding(args)
         }
     }
 

@@ -578,6 +578,16 @@ impl Evaluator {
             .checked_add(initial_length)
             .ok_or_else(|| EvalError::new("section cycle offset overflowed"))?;
 
+        self.fold_seq_sections_events(rest, meter, initial_combined, next_offset)
+    }
+
+    fn fold_seq_sections_events(
+        &self,
+        rest: &[Expr],
+        meter: Option<&MeterContext>,
+        initial_combined: ExplicitValue,
+        next_offset: i128,
+    ) -> Result<ExplicitValue, EvalError> {
         let (combined, _) = rest.iter().try_fold(
             (initial_combined, next_offset),
             |(acc_combined, acc_offset), section| -> Result<(ExplicitValue, i128), EvalError> {

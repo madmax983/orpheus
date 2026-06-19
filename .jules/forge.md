@@ -82,3 +82,11 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**Fixing Test Failures for Refactoring Safety**
+**Learning:** In order to safely apply the Red-Green-Refactor cycle, the existing test suite must be fully Green before refactoring begins. Fixing simple cross-platform flaky tests (like case-sensitivity of "VST3" paths on Linux) is a necessary prerequisite to ensure refactoring does not introduce regressions.
+**Action:** When blocked by a flaky or environment-specific test failure that prevents verifying a refactor, it is appropriate to fix the test first before making structural changes.
+
+**Refactoring `clippy::too_many_lines` on match-heavy orchestrator functions**
+**Learning:** Functions like `eval_expr_in_meter_impl` or `eval_command` that route many AST variants or string commands to inner methods can trigger `clippy::too_many_lines`. Even if the actual execution lines are short, the sheer number of match arms causes the warning.
+**Action:** Extract large portions of the match block (such as separating audio effect queries from transformations) into separate private helper methods or extract them identically and suppress `too_many_lines` on the extracted method to keep the main orchestration function flat and readable.
