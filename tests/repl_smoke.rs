@@ -49,7 +49,7 @@ fn repl_accepts_pattern_and_reports_success() {
         .assert()
         .success()
         .stdout(contains(
-            "\u{2713} bound drums = Pattern<Sample>: Pattern<Sample>",
+            "\u{2713} bound drums: Pattern<Sample>",
         ));
 }
 
@@ -82,10 +82,10 @@ fn repl_reuses_prior_bindings_across_lines() {
         .assert()
         .success()
         .stdout(contains(
-            "\u{2713} bound drums = Pattern<Sample>: Pattern<Sample>",
+            "\u{2713} bound drums: Pattern<Sample>",
         ))
         .stdout(contains(
-            "\u{2713} bound copy = Pattern<Sample>: Pattern<Sample>",
+            "\u{2713} bound copy: Pattern<Sample>",
         ));
 }
 
@@ -97,7 +97,7 @@ fn repl_prints_inferred_function_types() {
         .assert()
         .success()
         .stdout(contains(
-            "\u{2713} bound warp = Function(Builtin): Function(",
+            "\u{2713} bound warp: Function(",
         ));
 }
 
