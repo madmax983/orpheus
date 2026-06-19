@@ -365,10 +365,9 @@ impl MixerState {
         }
 
         for row in track_rows {
-            let mut spans = Vec::new();
+            let mut spans = Vec::with_capacity(row.len() * 2);
             for (i, col) in row.into_iter().enumerate() {
-                let padding = col_widths[i].saturating_sub(col.content.len());
-                let padded_content = format!("{}{}", col.content, " ".repeat(padding));
+                let padded_content = format!("{:<width$}", col.content, width = col_widths[i]);
                 spans.push(Span::styled(padded_content, col.style));
                 if i < 4 {
                     spans.push(Span::raw(" │ "));
@@ -416,10 +415,9 @@ impl MixerState {
         }
 
         for row in bus_rows {
-            let mut spans = Vec::new();
+            let mut spans = Vec::with_capacity(row.len() * 2);
             for (i, col) in row.into_iter().enumerate() {
-                let padding = bus_col_widths[i].saturating_sub(col.content.len());
-                let padded_content = format!("{}{}", col.content, " ".repeat(padding));
+                let padded_content = format!("{:<width$}", col.content, width = bus_col_widths[i]);
                 spans.push(Span::styled(padded_content, col.style));
                 if i < 1 {
                     spans.push(Span::raw(" │ "));
