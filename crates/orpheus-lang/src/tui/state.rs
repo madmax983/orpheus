@@ -31,6 +31,13 @@ pub const COMMAND_HINTS: [(&str, &str); 17] = [
 ];
 
 /// Shared application state accessible by all pane plugins via `Rc<RefCell<_>>`.
+///
+/// This state structure serves as the central data store for the live-coding interface.
+/// It contains the underlying `ReplSession` (which holds the audio graph and variables),
+/// as well as UI-specific state like the command history, input buffer, and transcript.
+///
+/// Because Orpheus utilizes a plugin-based UI architecture, `SharedState` is typically
+/// wrapped in `Rc<RefCell<SharedState>>` so multiple panes can read and mutate it.
 pub struct SharedState {
     pub session: ReplSession,
     pub transcript: Vec<String>,

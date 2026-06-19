@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2026-05-25 - [Missing Documentation for Core Language Components]
+**Confusion:** Critical components like `SharedState` for the TUI, `apply_function_value` for runtime evaluation, and `RoutingSnapshotBuilder` for audio routing lacked adequate module-level or struct-level documentation and examples, leading to poor developer experience.
+**Clarification:** Added detailed struct-level documentation for `SharedState`, `RoutingSnapshotBuilder` and `TrackState` explaining their purpose. Added `## Examples` to `RoutingSnapshotBuilder` and clarified the description of `apply_function_value` to bridge the abstraction gap.

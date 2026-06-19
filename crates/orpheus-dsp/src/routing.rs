@@ -201,6 +201,10 @@ impl ReverbSpec {
 }
 
 /// A track node in the routing snapshot.
+///
+/// Holds the runtime configuration for a single audio track, including its unique ID,
+/// volume level, stereo panning, mute status, and any active send routes to buses.
+/// It also specifies the `TrackSource`, determining where the track's audio originates.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TrackState {
     id: TrackId,
@@ -664,6 +668,26 @@ impl RoutingSnapshot {
 }
 
 /// Builder for a phase-1 routing snapshot.
+///
+/// This builder follows the builder pattern to construct a deterministic `RoutingSnapshot`
+/// used by the audio rendering engine. It handles defining tracks, buses, their input sources,
+/// and effect send routes safely.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::RoutingSnapshot;
+///
+/// let builder = RoutingSnapshot::builder()
+///     .track("drums")
+///     .bus("reverb")
+///     .send("drums", "reverb", 0.5)
+///     .main_track();
+///
+/// let snapshot = builder.build().unwrap();
+/// assert_eq!(snapshot.track_count(), 2); // "drums" and "main"
+/// assert_eq!(snapshot.bus_count(), 1);
+/// ```
 #[derive(Clone, Debug, Default)]
 pub struct RoutingSnapshotBuilder {
     tracks: Vec<PendingTrack>,

@@ -962,7 +962,11 @@ impl Evaluator {
 /// This handles both built-in primitive transformations (like `fast`) and
 /// custom user-defined closures. If the number of arguments provided is
 /// less than the function's arity, it returns a new, curried `FunctionValue`
-/// with the provided arguments bound.
+/// Applies arguments to a function value, returning either the computed result or a new curried function.
+///
+/// If the function is a `Builtin`, it is executed natively. If it is a `User` function, its internal environment
+/// is captured. In both cases, if fewer arguments are provided than the function's arity, a new `Value::Function`
+/// is returned with the arguments partially applied.
 ///
 /// # Parameters
 /// - `function`: The [`FunctionValue`] (built-in or user-defined) to invoke.
