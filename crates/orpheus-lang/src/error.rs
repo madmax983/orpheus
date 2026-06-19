@@ -129,4 +129,11 @@ mod tests {
         let err: EvalError = parse_err.into();
         assert_eq!(err.to_string(), "mock parse error");
     }
+
+    #[test]
+    fn eval_error_from_scl_error() {
+        let scl_err = crate::scl::SclError::Header("mock header error".into());
+        let err: EvalError = scl_err.into();
+        assert_eq!(err.to_string(), "malformed Scala header: mock header error");
+    }
 }
