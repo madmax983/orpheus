@@ -365,10 +365,11 @@ impl MixerState {
         }
 
         for row in track_rows {
-            let mut spans = Vec::new();
+            // ⚡ Bolt: Pre-allocate capacity for UI spans (5 columns + 4 separators)
+            let mut spans = Vec::with_capacity(9);
             for (i, col) in row.into_iter().enumerate() {
-                let padding = col_widths[i].saturating_sub(col.content.len());
-                let padded_content = format!("{}{}", col.content, " ".repeat(padding));
+                // ⚡ Bolt: Use built-in format specifier for padding to avoid temporary String allocations
+                let padded_content = format!("{:<width$}", col.content, width = col_widths[i]);
                 spans.push(Span::styled(padded_content, col.style));
                 if i < 4 {
                     spans.push(Span::raw(" │ "));
@@ -416,10 +417,11 @@ impl MixerState {
         }
 
         for row in bus_rows {
-            let mut spans = Vec::new();
+            // ⚡ Bolt: Pre-allocate capacity for UI spans (2 columns + 1 separator)
+            let mut spans = Vec::with_capacity(3);
             for (i, col) in row.into_iter().enumerate() {
-                let padding = bus_col_widths[i].saturating_sub(col.content.len());
-                let padded_content = format!("{}{}", col.content, " ".repeat(padding));
+                // ⚡ Bolt: Use built-in format specifier for padding to avoid temporary String allocations
+                let padded_content = format!("{:<width$}", col.content, width = bus_col_widths[i]);
                 spans.push(Span::styled(padded_content, col.style));
                 if i < 1 {
                     spans.push(Span::raw(" │ "));
