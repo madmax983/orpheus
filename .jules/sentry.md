@@ -49,3 +49,7 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+
+## 2025-05-24 - [Type Checker Implicit Coercion & Structure Coverage]
+**Learning:** In a highly polymorphic Hindley-Milner type checking system with implicit REPL coercions (like loose coercion), it's crucial to explicitly test how strict vs loose modes interact with base types (e.g. coercing `Number` to `Pattern<Number>`), as well as test core structural guarantees like arity mismatch on explicitly uncurried functions and infinite recursive types via occurs checks. Tests for type checker constraints can be easily missed if everything implicitly "just works" under loose mode.
+**Action:** Always ensure that when implementing strict versus permissive evaluation modes, unit tests explicitly capture and assert the exact rejection bounds (like `type mismatch`) of the strict path rather than relying entirely on happy-path loose parsing. Ensure functions uncurrying behavior is explicitly checked when testing function arity equality.

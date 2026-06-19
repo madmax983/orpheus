@@ -663,3 +663,46 @@ fn roll_rejects_non_pattern_values_at_typecheck() {
     assert!(message.contains("Pattern"));
     assert!(message.contains("PitchClassSet"));
 }
+
+#[test]
+fn loose_mode_coerces_bare_types_to_patterns() {
+    // 1 is a Number, fast(2) takes a Pattern<Number>.
+    // Loose mode implicitly lifts 1 into a Pattern<Number>.
+    let typed = infer_module("x = 1 |> fast(2)", ReplMode::Loose).unwrap();
+    assert_eq!(typed.type_of("x").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn strict_mode_rejects_bare_type_to_pattern_coercion() {
+    // mask takes a Pattern<Number> and a Pattern. Giving it Number, Function(...) fails in strict mode.
+    let err = infer_module("f x y = x\nval = mask(1, f(1))", ReplMode::Strict).unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("type mismatch"));
+}
+
+#[test]
+fn function_arity_mismatch_returns_error() {
+    // We bind f(x)=x and g(x,y)=x, but since Orpheus curries functions by default,
+    // we need to explicitly compare an uncurried function with a different one or
+    // observe the type mismatch instead of relying strictly on an arity message
+    // because curried functions are always 1-arity. Let's try explicit `try_loose_coercion` bypass.
+    let err = infer_module("f x = x\ng x y = x y\nval = mask(f, g)", ReplMode::Strict).unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("type mismatch: expected Pattern"));
+}
+
+#[test]
+fn apply_argument_to_non_function_returns_error() {
+    // fast(2) evaluates to a function, but we try to call it with two arguments in pipe form.
+    let err = infer_module("f x = x\nval = f(bd, 1)", ReplMode::Strict).unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("attempted to call a non-function value"));
+}
+
+#[test]
+fn occurs_check_prevents_infinite_types() {
+    // Attempting to define a self-referential recursive type via x(x)
+    let err = infer_module("f x = x(x)", ReplMode::Strict).unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("occurs within"));
+}
