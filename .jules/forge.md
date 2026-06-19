@@ -82,3 +82,10 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+**[Inline redundant try_query methods]**
+**Learning:** `clippy::too_many_lines` is sometimes resolved by putting a `#[allow(clippy::too_many_lines)]` on a private `try_query_method` that is simply called by a public `try_query` wrapper. This unnecessary indirection hurts readability and flattens the call stack unnecessarily.
+**Action:** Inline the `_method` inner bodies directly into the calling wrapper functions to remove the indirection and apply the `clippy::too_many_lines` suppression directly to the single resulting method.
+
+**[clippy::match_same_arms via broad use blocks]**
+**Learning:** `clippy::match_same_arms` can sometimes be triggered if the enum variants are imported via a massive `use Enum::{...}` block, rather than using `Self::Variant` directly inside the `match` statement.
+**Action:** Remove broad `use` blocks inside `impl` scopes and use `Self::Variant` to adhere to idiomatic Rust, which can resolve `match_same_arms` and `use_self` warnings simultaneously.
