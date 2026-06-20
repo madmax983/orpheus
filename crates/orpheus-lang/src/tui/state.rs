@@ -107,7 +107,15 @@ impl SharedState {
         self.transcript.push(format!("> {line}"));
         match self.session.eval_line(&line) {
             Ok(message) => self.transcript.push(format!("\u{2713} {message}")),
-            Err(message) => self.transcript.push(format!("\u{2717} {message}")),
+            Err(message) => {
+                let mut formatted = message.as_str();
+                formatted = formatted
+                    .strip_prefix("EvalError: ")
+                    .or_else(|| formatted.strip_prefix("ParseError: "))
+                    .or_else(|| formatted.strip_prefix("LoadError: "))
+                    .unwrap_or(formatted);
+                self.transcript.push(format!("\u{2717} {formatted}"));
+            }
         }
     }
 
@@ -131,7 +139,15 @@ impl SharedState {
     fn run_status_command(&mut self, command: &str) {
         match self.session.eval_line(command) {
             Ok(message) => self.set_status_message(message, false),
-            Err(error) => self.set_status_message(error, true),
+            Err(error) => {
+                let mut formatted = error.as_str();
+                formatted = formatted
+                    .strip_prefix("EvalError: ")
+                    .or_else(|| formatted.strip_prefix("ParseError: "))
+                    .or_else(|| formatted.strip_prefix("LoadError: "))
+                    .unwrap_or(formatted);
+                self.set_status_message(formatted.to_string(), true);
+            }
         }
     }
 

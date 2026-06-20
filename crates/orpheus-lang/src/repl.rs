@@ -98,7 +98,14 @@ where
 
         match session.eval_line(trimmed) {
             Ok(message) => writeln!(stdout, "{}", format!("\u{2713} {message}").green())?,
-            Err(message) => writeln!(stderr, "{}", format!("\u{2717} {message}").red().bold())?,
+            Err(message) => {
+                let formatted = message
+                    .strip_prefix("EvalError: ")
+                    .or_else(|| message.strip_prefix("ParseError: "))
+                    .or_else(|| message.strip_prefix("LoadError: "))
+                    .unwrap_or(message.as_str());
+                writeln!(stderr, "{}", format!("\u{2717} {formatted}").red().bold())?;
+            }
         }
     }
 

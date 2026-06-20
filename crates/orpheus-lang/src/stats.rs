@@ -6,7 +6,7 @@
 
 use std::collections::BTreeSet;
 
-use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
+use comfy_table::{Cell, CellAlignment};
 use crossterm::style::Stylize;
 
 use crate::eval::{EvalError, render_span};
@@ -69,8 +69,7 @@ pub fn sample_pattern_stats(
         "Pattern Stats:".cyan().bold(),
         cycle_count.to_string().yellow()
     );
-    let mut table = Table::new();
-    table.load_preset(UTF8_BORDERS_ONLY);
+    let mut table = crate::explain::explain_table(["Metric", "Value"]);
 
     table.add_row(vec![
         Cell::new("Total Events")
@@ -171,8 +170,7 @@ pub fn number_pattern_stats(
         "Pattern Stats:".cyan().bold(),
         cycle_count.to_string().yellow()
     );
-    let mut table = Table::new();
-    table.load_preset(UTF8_BORDERS_ONLY);
+    let mut table = crate::explain::explain_table(["Metric", "Value"]);
 
     table.add_row(vec![
         Cell::new("Total Events")
@@ -243,8 +241,7 @@ pub fn tuning_stats(binding_name: &str, tuning: &TuningValue) -> String {
         binding_name.yellow()
     );
 
-    let mut table = Table::new();
-    table.load_preset(UTF8_BORDERS_ONLY);
+    let mut table = crate::explain::explain_table(["Metric", "Value"]);
 
     table.add_row(vec![
         Cell::new("Name")

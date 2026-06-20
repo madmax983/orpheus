@@ -709,16 +709,7 @@ impl ReplSession {
             return Err("usage: :env (no arguments)".to_owned());
         }
 
-        let mut table = comfy_table::Table::new();
-        table.load_preset(comfy_table::presets::UTF8_BORDERS_ONLY);
-        table.set_header(vec![
-            comfy_table::Cell::new("Binding")
-                .fg(comfy_table::Color::White)
-                .add_attribute(comfy_table::Attribute::Bold),
-            comfy_table::Cell::new("Type")
-                .fg(comfy_table::Color::White)
-                .add_attribute(comfy_table::Attribute::Bold),
-        ]);
+        let mut table = crate::explain::explain_table(["Binding", "Type"]);
 
         let summaries = self.binding_summaries();
         if summaries.is_empty() {
