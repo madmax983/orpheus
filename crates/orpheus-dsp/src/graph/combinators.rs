@@ -9,6 +9,7 @@
 
 use std::fmt;
 
+use smallvec::SmallVec;
 use super::node::{GraphError, Node};
 
 /// Ensure every buffer in the vec is at least `min_len` long.
@@ -52,14 +53,15 @@ impl Node for Seq {
     fn process(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], frames: usize) {
         grow_scratch(&mut self.scratch_data, frames);
 
-        let mut scratch_mut: Vec<&mut [f32]> = self
+        let mut scratch_mut: SmallVec<[&mut [f32]; 32]> = self
             .scratch_data
             .iter_mut()
             .map(|v| &mut v[..frames])
             .collect();
         self.a.process(inputs, &mut scratch_mut, frames);
+drop(scratch_mut);
 
-        let scratch_ref: Vec<&[f32]> = self.scratch_data.iter().map(|v| &v[..frames]).collect();
+        let scratch_ref: SmallVec<[&[f32]; 32]> = self.scratch_data.iter().map(|v| &v[..frames]).collect();
         self.b.process(&scratch_ref, outputs, frames);
     }
     fn reset(&mut self) {
@@ -174,16 +176,17 @@ impl Node for Spl {
     fn process(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], frames: usize) {
         grow_scratch(&mut self.scratch_data, frames);
 
-        let mut scratch_mut: Vec<&mut [f32]> = self
+        let mut scratch_mut: SmallVec<[&mut [f32]; 32]> = self
             .scratch_data
             .iter_mut()
             .map(|v| &mut v[..frames])
             .collect();
         self.a.process(inputs, &mut scratch_mut, frames);
+drop(scratch_mut);
 
         let a_outs = self.a.outputs() as usize;
         let b_ins = self.b.inputs() as usize;
-        let b_input_refs: Vec<&[f32]> = (0..b_ins)
+        let b_input_refs: SmallVec<[&[f32]; 32]> = (0..b_ins)
             .map(|i| &self.scratch_data[i % a_outs][..frames])
             .collect();
 
@@ -259,12 +262,13 @@ impl Node for Mrg {
         grow_scratch(&mut self.a_scratch, frames);
         grow_scratch(&mut self.sum_scratch, frames);
 
-        let mut a_mut: Vec<&mut [f32]> = self
+        let mut a_mut: SmallVec<[&mut [f32]; 32]> = self
             .a_scratch
             .iter_mut()
             .map(|v| &mut v[..frames])
             .collect();
         self.a.process(inputs, &mut a_mut, frames);
+drop(a_mut);
 
         for (g, sum_buf) in self.sum_scratch.iter_mut().enumerate() {
             sum_buf[..frames].fill(0.0);
@@ -276,7 +280,7 @@ impl Node for Mrg {
             }
         }
 
-        let sum_refs: Vec<&[f32]> = self.sum_scratch.iter().map(|v| &v[..frames]).collect();
+        let sum_refs: SmallVec<[&[f32]; 32]> = self.sum_scratch.iter().map(|v| &v[..frames]).collect();
         self.b.process(&sum_refs, outputs, frames);
     }
     fn reset(&mut self) {
@@ -385,13 +389,14 @@ impl Node for Rec {
             }
 
             // Process body for 1 frame.
-            let body_in_refs: Vec<&[f32]> =
+            let body_in_refs: SmallVec<[&[f32]; 32]> =
                 self.body_in_scratch[..m].iter().map(|v| &v[..1]).collect();
-            let mut body_out_refs: Vec<&mut [f32]> = self.body_out_scratch[..n]
+            let mut body_out_refs: SmallVec<[&mut [f32]; 32]> = self.body_out_scratch[..n]
                 .iter_mut()
                 .map(|v| &mut v[..1])
                 .collect();
             self.body.process(&body_in_refs, &mut body_out_refs, 1);
+drop(body_out_refs);
 
             // Copy body outputs to external outputs.
             for (ch, out) in outputs.iter_mut().enumerate().take(n) {
@@ -399,13 +404,14 @@ impl Node for Rec {
             }
 
             // Process feedback: reads first p body outputs, produces q outputs.
-            let fb_in_refs: Vec<&[f32]> =
+            let fb_in_refs: SmallVec<[&[f32]; 32]> =
                 self.body_out_scratch[..p].iter().map(|v| &v[..1]).collect();
-            let mut fb_out_refs: Vec<&mut [f32]> = self.fb_out_scratch[..q]
+            let mut fb_out_refs: SmallVec<[&mut [f32]; 32]> = self.fb_out_scratch[..q]
                 .iter_mut()
                 .map(|v| &mut v[..1])
                 .collect();
             self.feedback.process(&fb_in_refs, &mut fb_out_refs, 1);
+drop(fb_out_refs);
 
             // Store feedback output in delay buffer for next frame.
             for ch in 0..q {

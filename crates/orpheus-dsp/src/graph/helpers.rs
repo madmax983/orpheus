@@ -6,6 +6,7 @@
 use std::fmt;
 
 use super::combinators::{Seq, par, seq};
+use smallvec::SmallVec;
 use super::node::{GraphError, Node};
 use super::primitives::passthrough;
 
@@ -114,7 +115,7 @@ impl Node for Bind {
         }
 
         // Process the inner node with the fully-assembled input.
-        let input_refs: Vec<&[f32]> = self.full_input.iter().map(|v| &v[..frames]).collect();
+        let input_refs: SmallVec<[&[f32]; 32]> = self.full_input.iter().map(|v| &v[..frames]).collect();
         self.inner.process(&input_refs, outputs, frames);
     }
 

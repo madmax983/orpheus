@@ -15,6 +15,7 @@ orpheus-pattern.workspace = true
 rtrb.workspace = true
 thiserror.workspace = true
 loom.workspace = true
+smallvec = "1.11"
 
 [dev-dependencies]
 loom.workspace = true
