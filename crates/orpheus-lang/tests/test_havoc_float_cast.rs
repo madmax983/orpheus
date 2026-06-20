@@ -11,3 +11,14 @@ fn test_havoc_float_cast() {
         "meter beat count exceeded the supported range"
     );
 }
+
+#[test]
+fn test_havoc_float_cast_time() {
+    let source = "x = shift(10000000000000000000000000000000000000000000000000.0, bd)";
+    assert!(eval_module(source, ReplMode::Loose).is_err());
+
+    let source = "x = meter(4, 4, at(10000000000000000000000000000000000000000000000000.0, bd))";
+    assert!(eval_module(source, ReplMode::Loose).is_err());
+
+    assert!(orpheus_lang::f64_to_rational(10000000000000000000000000000000000000000000000000.0, "test").is_err());
+}

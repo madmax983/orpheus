@@ -1224,6 +1224,10 @@ pub fn f64_to_rational(value: f64, context: &str) -> Result<Rational, EvalError>
         return Err(EvalError::new(format!("{context} must be finite")));
     }
 
+    if value.abs() > 1e12 {
+        return Err(EvalError::new(format!("{context} exceeded the supported range")));
+    }
+
     let rendered = value.to_string();
     if rendered.contains('e') || rendered.contains('E') {
         return Err(EvalError::new(format!(
