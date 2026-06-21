@@ -51,8 +51,6 @@ impl HypertilePlugin for ReplPlugin {
             })
             .collect::<Vec<_>>();
 
-        let transport = state.transport_view();
-        lines.push(transport_status_line("Transport: ", &transport, true));
         lines.push(Line::from(vec![
             Span::styled(
                 "> ",
@@ -253,16 +251,17 @@ impl HypertilePlugin for TransportPlugin {
         let transport = state.transport_view();
         let mixer = state.mixer_view();
 
-        let mut lines = vec![Line::from(vec![
-            Span::raw("Pattern: "),
+        let mut lines = vec![transport_status_line("Status:    ", &transport, false)];
+        lines.push(Line::from(vec![
+            Span::raw("Pattern:   "),
             Span::styled(
                 transport.active_pattern_name().unwrap_or("none"),
                 crate::tui::style::live_binding_style(),
             ),
-        ])];
+        ]));
         if let Some(pending_pattern_name) = transport.pending_pattern_name() {
             lines.push(Line::from(vec![
-                Span::raw("Next: "),
+                Span::raw("Next:      "),
                 Span::styled(
                     pending_pattern_name.to_owned(),
                     crate::tui::style::pending_binding_style(&transport),

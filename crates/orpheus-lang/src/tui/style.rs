@@ -182,7 +182,7 @@ pub fn routing_status_line(mixer: &MixerView) -> Line<'static> {
     } else {
         Span::styled("live", Style::default().fg(Color::Green))
     };
-    Line::from(vec![Span::raw("Routing: "), status])
+    Line::from(vec![Span::raw("Routing:   "), status])
 }
 
 /// Returns the [`Style`] used to highlight the currently active (live) pattern binding

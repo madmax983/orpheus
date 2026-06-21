@@ -17,14 +17,14 @@ fn tui_boots_and_renders_initial_frame() {
     assert!(larger_frame.contains("Space"));
     assert!(larger_frame.contains("empty input"));
     assert!(larger_frame.contains("Hint: Tab completes commands."));
-    assert!(larger_frame.contains("Pattern: none"));
+    assert!(larger_frame.contains("Pattern:   none"));
 
     // Footer shows transport metrics.
     assert!(larger_frame.contains("120 BPM"));
     assert!(larger_frame.contains("0.000"));
 
     // REPL pane shows transport status.
-    assert!(larger_frame.contains("Transport: playing"));
+    assert!(larger_frame.contains("Status:    playing"));
 
     // Footer shows mode indicator (starts in INPUT mode).
     assert!(larger_frame.contains("INPUT"));
