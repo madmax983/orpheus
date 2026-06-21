@@ -38,7 +38,7 @@ fn plugin_bindings_can_be_loaded_into_the_live_mixer() {
         .unwrap();
     let rendered = session.render_test_block_for_tui(256);
 
-    assert_eq!(message, "bound lead = Plugin: Plugin");
+    assert_eq!(message, "bound lead = Plugin(Serum (VST3)): Plugin");
     assert!(
         rendered.iter().any(|sample| sample.abs() > 0.0001),
         "plugin binding should render through the standard mixer path"

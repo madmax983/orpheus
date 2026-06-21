@@ -23,6 +23,15 @@ pub enum PluginFormat {
     AudioUnit,
 }
 
+impl std::fmt::Display for PluginFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Vst3 => write!(f, "VST3"),
+            Self::AudioUnit => write!(f, "AU"),
+        }
+    }
+}
+
 /// Errors raised while constructing immutable plugin-host data.
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
 pub enum PluginHostError {
@@ -112,6 +121,12 @@ impl PluginDescriptor {
     #[must_use]
     pub fn search_paths(&self) -> &[PathBuf] {
         &self.search_paths
+    }
+}
+
+impl std::fmt::Display for PluginDescriptor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} ({})", self.identifier, self.format)
     }
 }
 
@@ -264,6 +279,12 @@ impl PluginTrackSource {
     #[must_use]
     pub fn parameter_lanes(&self) -> &[PluginParameterLane] {
         &self.parameter_lanes
+    }
+}
+
+impl std::fmt::Display for PluginTrackSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.descriptor)
     }
 }
 

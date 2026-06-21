@@ -660,7 +660,7 @@ impl fmt::Display for Value {
                 }
             ),
             Self::Pedal(_) => write!(f, "Pedal"),
-            Self::PluginPattern(_) => write!(f, "Plugin"),
+            Self::PluginPattern(p) => write!(f, "Plugin({})", p.track_source()),
             Self::Tuning(_) => write!(f, "Tuning"),
             Self::String(s) => write!(f, "\"{s}\""),
         }
