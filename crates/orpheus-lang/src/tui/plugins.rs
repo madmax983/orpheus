@@ -20,6 +20,10 @@ use super::style::{
 // REPL Plugin
 // ---------------------------------------------------------------------------
 
+/// The `ReplPlugin` provides the interactive command-line interface within the terminal.
+///
+/// It handles text input, cursor movement, history recall, and transcript rendering.
+/// It acts as the primary user interaction point for live-coding sessions.
 pub struct ReplPlugin {
     pub state: Rc<RefCell<SharedState>>,
 }
@@ -138,6 +142,10 @@ impl HypertilePlugin for ReplPlugin {
 // Bindings Plugin
 // ---------------------------------------------------------------------------
 
+/// The `BindingsPlugin` displays the currently active variables and functions in the session environment.
+///
+/// It renders a scrollable list of bindings, showing their names and indicating
+/// whether they are currently playing or pending in the audio transport.
 pub struct BindingsPlugin {
     pub state: Rc<RefCell<SharedState>>,
     scroll: Cell<usize>,
@@ -243,6 +251,10 @@ impl HypertilePlugin for BindingsPlugin {
 // Transport Plugin
 // ---------------------------------------------------------------------------
 
+/// The `TransportPlugin` displays the current status of the audio engine and mixer.
+///
+/// It renders the active playing pattern, pending patterns, master volume,
+/// mixer routing summaries, and a legend of available keyboard shortcuts.
 pub struct TransportPlugin {
     pub state: Rc<RefCell<SharedState>>,
 }

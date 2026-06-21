@@ -71,6 +71,19 @@ pub use crate::error::EvalError;
 ///
 /// **Recovery:** Catch the error and print its message to the user. Errors are
 /// designed to be human-readable and pinpoint syntax or runtime issues (like missing variables).
+/// Evaluates a source module directly into a set of bindings.
+///
+/// It does this by evaluating the given source code and tracking variable assignments in
+/// a `BTreeMap`.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module};
+///
+/// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
+/// assert!(env.contains_key("x"));
+/// ```
 pub fn eval_module(source: &str, mode: ReplMode) -> Result<BTreeMap<String, Value>, EvalError> {
     let parsed = parse_module(source)?;
     Evaluator::new(mode, &parsed).eval_module(&parsed)
@@ -1219,6 +1232,23 @@ fn extract_constant_number_rational(value: Value, context: &str) -> Result<Ratio
 /// # Errors
 ///
 /// Returns an [`EvalError`] if the float is not finite, uses scientific notation, or cannot be parsed.
+/// Converts a 64-bit floating point number into an exact rational number representation.
+///
+/// This avoids floating-point precision drift during continuous time evaluation.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::f64_to_rational;
+///
+/// let r = f64_to_rational(1.5, "test").unwrap();
+/// assert_eq!(r.numerator(), 3);
+/// assert_eq!(r.denominator(), 2);
+/// ```
+///
+/// # Errors
+///
+/// Returns an [`EvalError`] if the float is not finite, uses scientific notation, or cannot be parsed.
 pub fn f64_to_rational(value: f64, context: &str) -> Result<Rational, EvalError> {
     if !value.is_finite() {
         return Err(EvalError::new(format!("{context} must be finite")));
@@ -1293,6 +1323,24 @@ fn sort_events<T>(events: &mut [Event<T>]) {
     });
 }
 
+/// Creates a `TimeSpan` spanning from cycle 0 to the specified `cycle_count`.
+///
+/// This specifies a half-open time interval `[0, cycle_count)`.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::render_span;
+///
+/// let span = render_span(4).unwrap();
+/// assert_eq!(span.start().numerator(), 0);
+/// assert_eq!(span.end().numerator(), 4);
+/// ```
+///
+/// # Errors
+///
+/// Returns an [`EvalError`] if constructing the underlying rational span fails,
+/// which may occur if the `cycle_count` exceeds the representable range.
 /// Creates a `TimeSpan` spanning from cycle 0 to the specified `cycle_count`.
 ///
 /// This specifies a half-open time interval `[0, cycle_count)`.

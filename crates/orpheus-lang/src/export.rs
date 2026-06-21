@@ -56,6 +56,17 @@ pub enum RenderError {
 
 /// Helper function to convert a `SampleEvent` from the evaluation phase into a
 /// `SampleTrigger` for the DSP rendering phase.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::sample_trigger_from_event;
+/// use orpheus_lang::value::SampleEvent;
+///
+/// let event = SampleEvent::new("bd");
+/// let trigger = sample_trigger_from_event(&event);
+/// assert_eq!(trigger.name(), "bd");
+/// ```
 pub fn sample_trigger_from_event(event: &crate::value::SampleEvent) -> SampleTrigger {
     let mut trigger = SampleTrigger::named(event.sample())
         .with_gain(event.gain())

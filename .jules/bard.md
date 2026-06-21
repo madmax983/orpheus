@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2026-05-19 - [Missing Errors Documentation for Result Types]
+**Confusion:** The documentation for `f64_to_rational` returning a `Result` lacked an explicit `# Errors` section, causing `cargo clippy --workspace --all-targets --all-features -- -D warnings` to fail with `clippy::missing-errors-doc`.
+**Clarification:** Added an explicit `# Errors` section to the `///` documentation blocks of all documented functions returning a `Result` (e.g. `eval_module`, `f64_to_rational`, `render_span`) to satisfy the linter and improve clarity.
