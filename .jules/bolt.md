@@ -47,3 +47,7 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+## 2024-XX-XX - Stack Allocated Graph Combinators
+**Learning:** `Vec::new().collect()` inside a hot DSP processing loop (like the graph combinators `Seq`, `Spl`, `Mrg`, `Rec`) causes unnecessary heap allocations on the hot path, causing measurable overhead. Furthermore, replacing `Vec` with `SmallVec` when gathering mut references into slices works, but one must be careful about borrow checking and ensure the slices are dropped or cleanly isolated before the next mutable borrow happens. Enclosing in braces `{ ... }` isolates the mutable slice lifetimes.
+**Action:** Use `SmallVec` initialized with an on-stack array (e.g. `SmallVec<[&mut [f32]; 8]>`) for temporary slice aggregation in hot loops, and explicitly scope mutable borrows to satisfy the borrow checker.
