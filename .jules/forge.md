@@ -82,3 +82,7 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+## 2024-05-18 - Orchestrator Splitting
+**Learning:** Monolithic orchestrator functions that mix distinct loops over different logical entities (like routing tracks, plugins, and master buses) tend to trigger `clippy::too_many_lines` and violate separation of concerns.
+**Action:** Extract the independent loops of a monolithic orchestrator function into distinct, descriptive private helper functions (e.g., `process_active_voices`, `process_plugin_tracks`) without altering the logic.
