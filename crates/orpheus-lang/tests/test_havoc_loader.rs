@@ -7,3 +7,9 @@ fn loader_reports_missing_file_as_error() {
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("file not found"));
 }
+
+#[test]
+fn loader_reports_directory_as_error() {
+    let result = load_file_strict(".");
+    assert!(result.is_err());
+}

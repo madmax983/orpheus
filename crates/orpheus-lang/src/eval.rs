@@ -1827,6 +1827,25 @@ right = sometimes(fast(2), cp hh)";
     }
 
     #[test]
+    fn f64_to_rational_handles_large_floats() {
+        // Rust's formatting expands some large values out completely which can exceed supported range,
+        // but moderately large values should parse fine.
+        let r = super::f64_to_rational(1000000000000.0, "test").unwrap();
+        assert_eq!(r.numerator(), 1000000000000);
+        assert_eq!(r.denominator(), 1);
+    }
+
+    #[test]
+    fn f64_to_rational_handles_scientific_notation_error() {
+        // Rust's formatting expands some large values out completely.
+        // Let's find one that does use 'e'.
+        let err = super::f64_to_rational(f64::MIN_POSITIVE, "test").unwrap_err();
+        assert!(
+            err.to_string().contains("scientific notation") || err.to_string().contains("range")
+        );
+    }
+
+    #[test]
     fn extract_string_value_handles_strings() {
         let val = crate::value::Value::String("hello".into());
         let res = super::extract_string_value(val, "error");

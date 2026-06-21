@@ -49,3 +49,11 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+
+## 2024-05-27 - [Execution Plan Completeness: Standalone Testing Step]
+**Learning:** Omitting an explicit step to run relevant tests, or bundling test commands as a sub-bullet within a code modification step, violates the Completeness Rule.
+**Action:** Always insert a dedicated, standalone step to run the workspace tests (e.g., `cargo test`) immediately before the pre-commit step.
+
+## 2024-05-27 - [Test Hygiene: Temporary Artifacts]
+**Learning:** Tests that write to or interact with the file system using hardcoded file names in the working directory can leave behind orphaned artifacts, polluting the repository.
+**Action:** When writing tests that export files or artifacts, always use `std::env::temp_dir()` to generate paths and clean up the file at the end of the test.
