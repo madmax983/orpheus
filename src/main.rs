@@ -52,7 +52,7 @@ fn run() -> anyhow::Result<()> {
             let mut message = format!(
                 "{}\n  {}",
                 "Audio Output Disabled:".yellow().bold(),
-                error.to_string().red()
+                error.to_string()
             );
             for cause in error.chain().skip(1) {
                 use std::fmt::Write;
