@@ -47,3 +47,6 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+**[Optimizing Text Export String Building]**
+**Learning:** Using `params.push(format!("..."))` and then `params.join(", ")` in the inner loop of `export_sample_pattern_to_txt` introduces unnecessary `Vec` and `String` heap allocations on the hot path.
+**Action:** Use a pre-allocated string buffer (`String::with_capacity`) and the `std::fmt::Write::write_fmt` macro to assemble complex formatted string lists in place. Use `std::io::BufWriter` to wrap the file before writing many individual lines.
