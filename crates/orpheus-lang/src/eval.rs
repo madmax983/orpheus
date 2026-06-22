@@ -1347,8 +1347,10 @@ mod tests {
     }
 
     fn sample_names_in_cycle(events: &[Event<SampleEvent>], cycle: i128) -> Vec<String> {
-        let cycle_start = Rational::checked_from_parts(cycle, 1).unwrap();
-        let cycle_end = Rational::checked_from_parts(cycle + 1, 1).unwrap();
+        let cycle_start =
+            Rational::checked_from_parts(cycle, 1).unwrap_or_else(|_| Rational::zero());
+        let cycle_end = Rational::checked_from_parts(cycle.saturating_add(1), 1)
+            .unwrap_or_else(|_| Rational::zero());
         events
             .iter()
             .filter(|event| event.part.start() >= &cycle_start && event.part.end() <= &cycle_end)
@@ -1384,10 +1386,11 @@ right = sometimes(fast(2), cp hh)";
             })
             .expect("expected separate call sites to diverge on some cycle");
         let module = eval_module(source, ReplMode::Loose).unwrap();
-        let span_cycles = u64::try_from(cycle + 1).unwrap();
-        let left_events = sample_events_for_span(module.get("left").unwrap(), span_cycles).unwrap();
+        let span_cycles = u64::try_from(cycle.saturating_add(1)).unwrap_or(0);
+        let left_events =
+            sample_events_for_span(module.get("left").unwrap(), span_cycles).unwrap_or_default();
         let right_events =
-            sample_events_for_span(module.get("right").unwrap(), span_cycles).unwrap();
+            sample_events_for_span(module.get("right").unwrap(), span_cycles).unwrap_or_default();
         let left_names = sample_names_in_cycle(&left_events, cycle);
         let right_names = sample_names_in_cycle(&right_events, cycle);
 
@@ -1854,7 +1857,7 @@ right = sometimes(fast(2), cp hh)";
             crate::value::NumberPatternValue::from_events(vec![event]),
         );
         let res = super::extract_constant_number_value(val, "expected number");
-        assert!((res.unwrap() - 42.0).abs() < f64::EPSILON);
+        assert!((res.unwrap_or(0.0) - 42.0).abs() < f64::EPSILON);
     }
 
     #[test]

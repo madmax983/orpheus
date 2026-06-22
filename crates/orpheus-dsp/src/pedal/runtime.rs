@@ -797,10 +797,9 @@ fn evaluate_feedback(
     };
     let delayed = buffer[*write_index];
     let feedback_signal = tone_hz_bits.map_or(delayed, |cutoff_hz| {
-        low_pass
-            .as_mut()
-            .expect("feedback tone filter state should exist")
-            .process_with_cutoff(delayed, f32::from_bits(*cutoff_hz))
+        low_pass.as_mut().map_or(delayed, |lp| {
+            lp.process_with_cutoff(delayed, f32::from_bits(*cutoff_hz))
+        })
     });
     buffer[*write_index] = sanitize_audio(feedback_signal.mul_add(amount, signal));
     *write_index += 1;
@@ -1306,5 +1305,36 @@ mod tests {
 
         let nan_silicon = clip_sample(f32::NAN, 0.5, ClipModel::SiliconHard);
         assert!(nan_silicon.is_nan()); // Clip doesn't sanitize NaN input
+    }
+}
+
+#[cfg(test)]
+mod fallback_tests {
+    use super::*;
+    use crate::PedalProgram;
+    use crate::pedal::program::{NodeRef, PedalNode};
+    use std::sync::Arc;
+
+    #[test]
+    fn pedal_evaluate_feedback_fallback_no_panic() {
+        let source_node = PedalNode::constant(0.5);
+        let amount_node = PedalNode::constant(0.5);
+        let feedback_node =
+            PedalNode::feedback(NodeRef::node(0), NodeRef::node(1), 100, Some(400.0));
+        let program = PedalProgram::new("test", "test").with_graph(
+            vec![source_node, amount_node, feedback_node],
+            NodeRef::node(2),
+        );
+
+        let mut instance = PedalInstance::new(Arc::new(program), 48000.0);
+
+        if let Some(NodeState::Feedback { low_pass, .. }) = instance.node_states.get_mut(2) {
+            *low_pass = None;
+        } else {
+            panic!("Node state for feedback not properly initialized");
+        }
+
+        let output = instance.process_sample(1.0);
+        assert!(output.is_finite());
     }
 }

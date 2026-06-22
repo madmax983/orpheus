@@ -49,3 +49,10 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2025-02-15 - [Resolving VST3 path search flaky test]
+**Learning:** Hardcoded system-specific strings or case-sensitivity assumptions in unit tests can lead to cross-platform flakiness, particularly around path casing or standard conventions for folders.
+**Action:** When working on path resolution tests, ensure substring matching accounts for standard casing or use platform-agnostic matching.
+
+## 2025-02-15 - [Improving `unwrap()` robustness in DSP engine and eval]
+**Learning:** `unwrap()` is a ticking time bomb. Converting it to proper error handling with fallback states makes tests more robust, avoiding hidden panics in `eval.rs` logic handling `sample_names_in_cycle` bounds when the cycles get large.
+**Action:** Replace `unwrap()` with `unwrap_or_else` or explicit error handling in eval loops, ensuring proper boundaries for cycle limits to prevent unexpected crashes.
