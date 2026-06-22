@@ -1,0 +1,37 @@
+--- crates/orpheus-lang/src/value.rs
++++ crates/orpheus-lang/src/value.rs
+@@ -3744,22 +3744,8 @@
+ }
+
+ const fn deterministic_prng(site_salt: u64, cycle: i128) -> u64 {
+-    let [
+-        b0,
+-        b1,
+-        b2,
+-        b3,
+-        b4,
+-        b5,
+-        b6,
+-        b7,
+-        b8,
+-        b9,
+-        b10,
+-        b11,
+-        b12,
+-        b13,
+-        b14,
+-        b15,
+-    ] = cycle.to_le_bytes();
+-    let lower = u64::from_le_bytes([b0, b1, b2, b3, b4, b5, b6, b7]);
+-    let upper = u64::from_le_bytes([b8, b9, b10, b11, b12, b13, b14, b15]);
++    let cycle_bytes = cycle.to_le_bytes();
++    // Extract lower and upper 64 bits directly from the byte array.
++    let mut lower_bytes = [0u8; 8];
++    lower_bytes.copy_from_slice(&cycle_bytes[0..8]);
++    let lower = u64::from_le_bytes(lower_bytes);
++
++    let mut upper_bytes = [0u8; 8];
++    upper_bytes.copy_from_slice(&cycle_bytes[8..16]);
++    let upper = u64::from_le_bytes(upper_bytes);
++
+     let mut state = lower ^ upper.rotate_left(32) ^ site_salt.rotate_left(17);

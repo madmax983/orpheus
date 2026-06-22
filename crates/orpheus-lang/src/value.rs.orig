@@ -3338,7 +3338,6 @@ impl<T> PatternRuntime<T> {
         }
     }
 
-    #[allow(clippy::too_many_lines)]
     fn absolute_cycle(&self, cycle: i128) -> Result<i128, EvalError> {
         match self {
             Self::ExplicitCycle { origin_cycle, .. } => origin_cycle
@@ -5415,15 +5414,26 @@ pub const fn sometimes_applies_on_cycle(cycle: i128, site_salt: u64) -> bool {
 }
 
 const fn deterministic_prng(site_salt: u64, cycle: i128) -> u64 {
-    let cycle_bytes = cycle.to_le_bytes();
-    let lower = u64::from_le_bytes([
-        cycle_bytes[0], cycle_bytes[1], cycle_bytes[2], cycle_bytes[3],
-        cycle_bytes[4], cycle_bytes[5], cycle_bytes[6], cycle_bytes[7],
-    ]);
-    let upper = u64::from_le_bytes([
-        cycle_bytes[8], cycle_bytes[9], cycle_bytes[10], cycle_bytes[11],
-        cycle_bytes[12], cycle_bytes[13], cycle_bytes[14], cycle_bytes[15],
-    ]);
+    let [
+        b0,
+        b1,
+        b2,
+        b3,
+        b4,
+        b5,
+        b6,
+        b7,
+        b8,
+        b9,
+        b10,
+        b11,
+        b12,
+        b13,
+        b14,
+        b15,
+    ] = cycle.to_le_bytes();
+    let lower = u64::from_le_bytes([b0, b1, b2, b3, b4, b5, b6, b7]);
+    let upper = u64::from_le_bytes([b8, b9, b10, b11, b12, b13, b14, b15]);
     let mut state = lower ^ upper.rotate_left(32) ^ site_salt.rotate_left(17);
     state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
     state = (state ^ (state >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);

@@ -82,3 +82,11 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**[Refactoring: Integer Casting Warnings]**
+**Learning:** Replacing byte extraction patterns (e.g., `cycle.to_le_bytes()`) with direct `as` casting (e.g., `cycle as u64`) triggers `clippy::cast_possible_truncation` and `clippy::cast_sign_loss` under strict `-D warnings`.
+**Action:** When extracting byte segments from larger integer types, avoid `as` casting. Instead, use `.to_le_bytes()`, manually extract the required elements into a fixed-size array, and use the destination type's `from_le_bytes()`.
+
+**[Refactoring: Bypassing vs Solving]**
+**Learning:** Applying an `#[allow(clippy::too_many_lines)]` attribute to suppress a warning without actually restructuring the code is considered a band-aid, not a refactor, and fails code review.
+**Action:** Always attempt to genuinely fix structural code smells (e.g., by extracting logic into helper functions) rather than simply applying linter suppression attributes.
