@@ -99,3 +99,57 @@ proptest! {
         assert!(result.is_ok(), "query_unit panicked for input: {s}");
     }
 }
+
+proptest! {
+    #[test]
+    fn fuzz_nested_stream_does_not_panic(depth in 100..2000usize) {
+        let result = panic::catch_unwind(|| {
+            let mut pattern = "bd".to_string();
+            for _ in 0..depth {
+                pattern = format!("stream({pattern})");
+            }
+            let source = format!("x = {pattern}");
+            let _ = eval_module(&source, ReplMode::Loose);
+        });
+        assert!(result.is_ok(), "fuzz_nested_stream_does_not_panic panicked for depth: {depth}");
+    }
+
+    #[test]
+    fn fuzz_nested_meter_does_not_panic(depth in 100..2000usize) {
+        let result = panic::catch_unwind(|| {
+            let mut pattern = "bd".to_string();
+            for _ in 0..depth {
+                pattern = format!("meter(4, 4, {pattern})");
+            }
+            let source = format!("x = {pattern}");
+            let _ = eval_module(&source, ReplMode::Loose);
+        });
+        assert!(result.is_ok(), "fuzz_nested_meter_does_not_panic panicked for depth: {depth}");
+    }
+
+    #[test]
+    fn fuzz_nested_at_does_not_panic(depth in 100..2000usize) {
+        let result = panic::catch_unwind(|| {
+            let mut pattern = "bd".to_string();
+            for _ in 0..depth {
+                pattern = format!("at(0, {pattern})");
+            }
+            let source = format!("x = {pattern}");
+            let _ = eval_module(&source, ReplMode::Loose);
+        });
+        assert!(result.is_ok(), "fuzz_nested_at_does_not_panic panicked for depth: {depth}");
+    }
+
+    #[test]
+    fn fuzz_nested_func_does_not_panic(depth in 100..2000usize) {
+        let result = panic::catch_unwind(|| {
+            let mut pattern = "1".to_string();
+            for _ in 0..depth {
+                pattern = format!("f({pattern})");
+            }
+            let source = format!("f x = x\nnotes = {pattern}");
+            let _ = eval_module(&source, ReplMode::Loose);
+        });
+        assert!(result.is_ok(), "fuzz_nested_func_does_not_panic panicked for depth: {depth}");
+    }
+}

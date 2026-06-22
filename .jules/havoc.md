@@ -11,3 +11,8 @@
 ## 2023-10-31 - [Fuzzing Evaluation Resilience & Pattern Match Exhaustiveness]
 **Learning:** `E0004: non-exhaustive patterns` compilation errors occur when adding new variants to central enums (like `BuiltinKind`) without updating matching functions downstream (`name()`, `arity()`, `execute()`). Fuzzing via `cargo-fuzz` confirmed the evaluation system handles malformed strings gracefully without crashing.
 **Action:** When adding enum variants, systematically check and update all downstream match blocks. Ensure all systems compiling after a feature addition don't just compile but also withstand `cargo-fuzz` without panicking.
+## 2026-06-22 - [Havoc: AST Fuzzing & Stress Testing boundaries]
+**The Trigger:** Maliciously deeply nested code like `stream(stream(stream(...)))` and garbage byte injections into the MIDI input parser (`update_from_message([0xFF, 0x00...])`).
+**The Stack Trace:** No panic occurred! The code successfully rejected invalid structures via `Result::Err` and safely discarded incomplete MIDI payloads. However, to formally verify this under intense mutation, we added explicit proptests.
+**Reproduction:** Run `cargo test -p orpheus-lang --test fuzz_eval` and `cargo test -p orpheus-lang --lib midi_input`.
+**Comment:** The codebase is remarkably robust against AST evaluation stack limits and basic fuzzing. We formally encoded these assertions into chaos tests so regression bots catch future weaknesses.
