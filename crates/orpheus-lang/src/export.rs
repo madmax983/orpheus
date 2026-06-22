@@ -564,6 +564,20 @@ pub fn render_sample_pattern_to_file_with_bank(
 /// render_sample_pattern_to_wav(pattern, &path, 2).unwrap();
 /// ```
 ///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_into_bindings, render_sample_pattern_to_wav};
+/// use std::collections::BTreeMap;
+///
+/// let source = "bd sn";
+/// let mut env = BTreeMap::new();
+/// eval_into_bindings(&format!("x = {source}"), ReplMode::Loose, &mut env).unwrap();
+/// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
+///
+/// let temp_dir = std::env::temp_dir();
+/// let file_path = temp_dir.join("test_output.wav");
+/// render_sample_pattern_to_wav(&pattern, &file_path, 1).unwrap();
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`RenderError`] if pattern querying fails, if the offline audio

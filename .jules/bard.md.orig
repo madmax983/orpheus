@@ -36,6 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
-## 2024-05-25 - [Missing Offline Rendering Doctest]
+## 2026-04-28 - [Missing Offline Rendering Doctest]
 **Confusion:** The `render_sample_pattern_to_wav` function in `crates/orpheus-lang/src/export.rs` lacked an executable `## Examples` block demonstrating how to evaluate a pattern and write it out as a WAV file, making it hard to discover for external API consumers.
 **Clarification:** Added a concrete example demonstrating pattern evaluation into a `BTreeMap` environment and writing the resulting `SamplePatternValue` to a temporary WAV file using `render_sample_pattern_to_wav`.
