@@ -1874,3 +1874,36 @@ right = sometimes(fast(2), cp hh)";
         assert!((val.try_query_unit().unwrap()[0].value - 42.0).abs() < f64::EPSILON);
     }
 }
+
+#[cfg(test)]
+mod recursion_tests {
+    use super::ReplMode;
+    #[test]
+    fn test_eval_recursion_limit_exceeded() {
+        use crate::ast::Expr;
+        use crate::value::{FunctionValue, UserFn};
+        use std::collections::BTreeMap;
+        use std::sync::Arc;
+
+        let bindings = BTreeMap::new();
+        let expr_site_salts = BTreeMap::new();
+        let user_fn = UserFn {
+            mode: ReplMode::Loose,
+            body: Expr::Ident("x".to_owned()),
+            remaining_params: vec!["x".to_owned()],
+            captured_bindings: bindings,
+            expr_site_salts,
+            depth: 201, // trigger recursion limit
+        };
+
+        let func_val = FunctionValue::User(Arc::new(user_fn));
+        let args = vec![crate::value::Value::String("test".into())];
+
+        let result = super::apply_function_value(func_val, args);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "evaluation recursion limit exceeded"
+        );
+    }
+}
