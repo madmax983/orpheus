@@ -37,36 +37,67 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Applies a function to the pattern on every nth cycle.
     Every,
+    /// Conditionally applies a function to the pattern.
     When,
+    /// Applies a function to the pattern with a given probability.
     Sometimes,
+    /// Applies a function to a specific time segment within a cycle.
     Within,
+    /// Uses a boolean pattern to silence events where the mask is false.
     Mask,
+    /// Staggers the onset of events within a chord.
     Strum,
+    /// Repeats an event multiple times within its original time span.
     Roll,
+    /// Arpeggiates a chord pattern into a melodic sequence.
     Arp,
+    /// Inverts a chord pattern harmonically.
     Invert,
+    /// Drops specific notes from a chord or pattern.
     Drop,
+    /// Generates a chord pattern from a base note and quality.
     Chord,
+    /// Generates an Euclidean rhythm pattern.
     Euclid,
+    /// Generates a pattern using an L-system string rewriting grammar.
     Lsystem,
+    /// Generates a pattern based on a Wolfram elementary cellular automaton.
     Wolfram,
+    /// Operates on musical pitch class sets.
     PitchClassSet,
+    /// Maps an integer pattern to scale degrees.
     Degrees,
+    /// Speeds up the playback of a pattern.
     Fast,
+    /// Slows down the playback of a pattern.
     Slow,
+    /// Time-shifts a pattern forwards or backwards.
     Shift,
+    /// Reverses the events in a pattern.
     Rev,
+    /// Adjusts the amplitude gain of events in the pattern.
     Gain,
+    /// Controls the overall mix level of the delay effect.
     Delay,
+    /// Controls the time interval between delayed echoes.
     DelayTime,
+    /// Controls the amount of signal fed back into the delay line.
     DelayFeedback,
+    /// Controls the cutoff frequency of the high-pass filter.
     Hpf,
+    /// Controls the cutoff frequency of the low-pass filter.
     Lpf,
+    /// Controls the overall mix level of the reverb effect.
     Reverb,
+    /// Controls the simulated room size of the reverb effect.
     ReverbRoom,
+    /// Controls the high-frequency damping of the reverb effect.
     ReverbDamp,
+    /// Controls the cutoff frequency for generic filters.
     Cutoff,
+    /// Controls the overall mix level of the chorus effect.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

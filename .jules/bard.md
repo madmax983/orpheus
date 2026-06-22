@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-06-21 - [Fix missing docs errors in orpheus-lang]
+**Confusion:** Several missing documentations for types, functions, enum variants were found in `crates/orpheus-lang/src/value.rs`, `crates/orpheus-lang/src/builtins.rs`, `crates/orpheus-lang/src/loader.rs`, `crates/orpheus-lang/src/pedal.rs`, and `crates/orpheus-lang/src/types/env.rs`, which resulted in missing docs warnings and broke the strict `missing_docs` lints.
+**Clarification:** Added appropriate documentation matching the `///` convention to all types and variants reported missing.

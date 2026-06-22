@@ -39,8 +39,25 @@ struct ImportSpec {
 /// ```
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
+    /// Holds the active map of resolved type signatures.
+    ///
+    /// This table tracks structural and aliases type definitions as they are
+    /// loaded into the global scope. It acts as the source of truth during the
+    /// Hindley-Milner type inference pass to validate expressions before they
+    /// are lowered to executable values.
     pub type_bindings: BTreeMap<String, Type>,
+    /// Holds the active map of fully evaluated runtime values.
+    ///
+    /// This table stores the concrete implementations (patterns, functions, numbers)
+    /// mapped to their global identifiers. When an expression like `drums = bd sn`
+    /// is executed, the resulting evaluated pattern is stored here.
     pub value_bindings: BTreeMap<String, Value>,
+    /// Tracks the identifier of the last successful assignment operation.
+    ///
+    /// The REPL environment uses this field to implicitly route audio output.
+    /// When a user evaluates a pattern without explicitly playing it, the engine
+    /// can automatically query this field to start playing the most recently
+    /// bound expression, reducing developer friction.
     pub last_binding_name: Option<String>,
 }
 

@@ -261,6 +261,21 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 
 impl BuiltinFn {
     #[must_use]
+    /// Instantiates a raw primitive function descriptor for the language.
+    ///
+    /// This constructor is primarily used by the parser and AST evaluator to
+    /// bind standard library transformations (like `every` or `fast`) into
+    /// the runtime environment before execution begins.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// // test placeholder
+    ///
+    /// // Create a representation of the `fast` function.
+    ///
+    ///
+    /// ```
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
             kind,
@@ -270,6 +285,20 @@ impl BuiltinFn {
     }
 
     #[must_use]
+    /// Injects a stable cryptographic salt based on the AST call site.
+    ///
+    /// Generative operations (like `sometimes` or `rand`) require deterministic
+    /// behavior across identical code execution. By salting the builtin with
+    /// its syntax tree location, we ensure that random streams are reproducible
+    /// and distinct per-call, even if the same builtin is invoked multiple times.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// // test placeholder
+    ///
+    ///
+    /// ```
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);
         self

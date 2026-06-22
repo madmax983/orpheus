@@ -116,6 +116,21 @@ pub struct ValidatedPedalNode {
 
 impl ValidatedPedalNode {
     #[must_use]
+    /// Constructs a virtual analog processing stage for the audio graph.
+    ///
+    /// Pedal nodes represent atomic units of signal manipulation (like clipping,
+    /// filtering, or delay). This constructor bundles the semantic intent (`kind`),
+    /// structural routing constraints (`signal_kind`), and a human-readable
+    /// explanation of the node's behavior.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    ///
+    ///
+    ///
+    ///
+    /// ```
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
             signal_kind,
@@ -131,11 +146,21 @@ impl ValidatedPedalNode {
     }
 
     #[must_use]
+    /// Exposes the internal algorithmic variant for execution mapping.
+    ///
+    /// This allows the audio engine compiler to traverse the node tree and
+    /// substitute the abstract `PedalNode` with a concrete DSP implementation
+    /// (e.g., mapping `PedalNodeKind::Distortion` to an actual `SoftSatNode`).
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
     #[must_use]
+    /// Provides a narrative description of the node's acoustic properties.
+    ///
+    /// This summary is primarily surfaced in the TUI (Terminal User Interface)
+    /// and documentation generators to help users understand *how* the node
+    /// will affect their audio signal, rather than just its structural type.
     pub fn summary(&self) -> &str {
         &self.summary
     }
@@ -150,6 +175,12 @@ pub struct ValidatedPedalBinding {
 
 impl ValidatedPedalBinding {
     #[must_use]
+    /// Spawns a stateful instantiation of a validated processing graph.
+    ///
+    /// While `PedalNode`s define the static topology of an effect, a `PedalInstance`
+    /// allocates the necessary memory, buffers, and state (like delay lines or
+    /// filter histories) required to actually process live audio streams.
+    ///
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
             name: name.into(),
@@ -158,11 +189,20 @@ impl ValidatedPedalBinding {
     }
 
     #[must_use]
+    /// Exposes the user-defined identifier for this specific effect chain.
+    ///
+    /// The name is used extensively in the REPL session and error reporting
+    /// to trace signal flow issues (e.g., "Channel mismatch in pedal 'My Fuzz'").
     pub fn name(&self) -> &str {
         &self.name
     }
 
     #[must_use]
+    /// Borrows the compiled topology driving this instance.
+    ///
+    /// This provides access to the underlying directed acyclic graph (DAG)
+    /// structure that the engine traverses during the `process_frame` audio
+    /// thread callback.
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node
     }

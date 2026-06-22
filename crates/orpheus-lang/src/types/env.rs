@@ -26,12 +26,36 @@ use crate::types::{Type, TypeVarId};
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
+    /// Holds the polymorphic variables universally quantified over this type.
+    ///
+    /// In Hindley-Milner type systems, a `TypeScheme` allows a function to
+    /// operate generically over multiple types by abstracting them as variables.
+    /// For example, the `id` function has the scheme `forall a. a -> a`, where
+    /// `vars` would contain the single variable ID representing `a`.
     pub vars: Vec<TypeVarId>,
+    /// The concrete structural type bound by this scheme.
+    ///
+    /// This defines the actual shape of the data (like `Number`, `Pattern`, or
+    /// a complex `Function` signature) that the environment will enforce during
+    /// the unification and substitution phases of inference.
     pub ty: Type,
 }
 
 impl TypeScheme {
     #[must_use]
+    /// Wraps a standard type into a rigid scheme lacking generic polymorphism.
+    ///
+    /// Monomorphic types cannot be instantiated with different variable
+    /// substitutions. They represent absolute, concrete data structures like
+    /// an integer literal or a fixed audio sample pattern.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    ///
+    ///
+    /// // let rigid_number = TypeScheme::monomorphic(Type::number());
+    /// ```
     pub const fn monomorphic(ty: Type) -> Self {
         Self {
             vars: Vec::new(),
@@ -195,6 +219,12 @@ impl TypeEnv {
         self.entries.get(name)
     }
 
+    /// Yields an iterator over every type scheme currently tracked in scope.
+    ///
+    /// This is heavily utilized during the "generalization" phase of type
+    /// inference. By inspecting all active schemes, the inferencer can determine
+    /// which unbound type variables are free to be universally quantified into
+    /// generic parameters.
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }
