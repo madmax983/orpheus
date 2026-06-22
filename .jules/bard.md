@@ -35,4 +35,6 @@
 
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
-**Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2026-06-23 - [Test Flakes Caused by Hidden OS Dependencies]
+**Confusion:** A test (`vst3_descriptor_uses_standard_os_search_paths`) failed on the CI pipeline as it strictly expected exact uppercase "VST3" for system paths, but paths could include lowercased variants like "vst3" depending on the underlying OS.
+**Clarification:** Changed the test to use `to_ascii_lowercase().contains("vst3")` to make it case-insensitive, resolving the hidden dependency on OS path casing.

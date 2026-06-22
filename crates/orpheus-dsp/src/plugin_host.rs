@@ -15,6 +15,19 @@ const DEFAULT_PLUGIN_GAIN: f32 = 1.0;
 const PLUGIN_OUTPUT_TRIM: f32 = 0.18;
 
 /// Supported plugin binary families.
+///
+/// Indicates which vendor SDK API should be used to instantiate the headless plugin
+/// engine. Orpheus primarily supports standard instrument plugins that consume MIDI
+/// notes and output stereo audio.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::{PluginDescriptor, PluginFormat};
+///
+/// let descriptor = PluginDescriptor::vst3("Serum");
+/// assert_eq!(descriptor.format(), PluginFormat::Vst3);
+/// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PluginFormat {
     /// Steinberg VST3 bundle or component.
@@ -24,6 +37,19 @@ pub enum PluginFormat {
 }
 
 /// Errors raised while constructing immutable plugin-host data.
+///
+/// Defines the validation failure modes when constructing note events,
+/// automation parameters, or descriptor paths before they reach the real-time
+/// render thread.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::{PluginHostError, PluginNote};
+///
+/// let error = PluginNote::new(60, 2.0).unwrap_err();
+/// assert_eq!(error, PluginHostError::InvalidVelocity);
+/// ```
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
 pub enum PluginHostError {
     /// A plugin identifier was empty or whitespace-only.
@@ -44,6 +70,19 @@ pub enum PluginHostError {
 }
 
 /// Immutable description of a plugin instance requested by the language layer.
+///
+/// Defines the format, unique identifier, and the standard host paths where the
+/// audio thread should search for the binary bundle when it is time to materialize
+/// the effect or instrument.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::PluginDescriptor;
+///
+/// let descriptor = PluginDescriptor::audio_unit("TestSynth");
+/// assert_eq!(descriptor.identifier(), "TestSynth");
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PluginDescriptor {
     format: PluginFormat,
@@ -116,6 +155,20 @@ impl PluginDescriptor {
 }
 
 /// A single MIDI note event delivered to a plugin instrument.
+///
+/// Represents an abstract `NoteOn` instruction carrying standard pitch and normalized
+/// velocity. The duration of the note is managed by wrapping this in a pattern `Event`
+/// with an explicit time span.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::PluginNote;
+///
+/// let note = PluginNote::new(60, 0.8).unwrap();
+/// assert_eq!(note.note_number(), 60);
+/// assert_eq!(note.velocity(), 0.8);
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PluginNote {
     note_number: u8,
@@ -161,6 +214,25 @@ impl PluginNote {
 }
 
 /// A named host-automation lane for a plugin parameter.
+///
+/// Stores a sequence of time-bounded automation events bound to a specific parameter name
+/// (e.g., `"Cutoff"` or `"Gain"`). The DSP engine schedules these normalized values
+/// down to the exact frame offset on the render thread.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::PluginParameterLane;
+/// use orpheus_pattern::{Event, TimeSpan};
+///
+/// let event = Event {
+///     whole: None,
+///     part: TimeSpan::unit(),
+///     value: 0.5,
+/// };
+/// let lane = PluginParameterLane::new("Cutoff", vec![event].into_boxed_slice()).unwrap();
+/// assert_eq!(lane.name(), "Cutoff");
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct PluginParameterLane {
     name: Box<str>,
@@ -206,6 +278,20 @@ impl PluginParameterLane {
 }
 
 /// Fully materialized plugin track input consumed by the render thread.
+///
+/// Packages an immutable plugin descriptor together with the exact note schedules
+/// and automation lanes evaluated for the current cycle. This struct bridges
+/// the deterministic pattern language with the stateful plugin processor.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::{PluginDescriptor, PluginTrackSource};
+///
+/// let descriptor = PluginDescriptor::vst3("Serum");
+/// let source = PluginTrackSource::new(descriptor);
+/// assert_eq!(source.notes().len(), 0);
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct PluginTrackSource {
     descriptor: PluginDescriptor,
@@ -279,6 +365,21 @@ pub struct PluginBufferCapacities {
 }
 
 /// Real-time render state for one headless plugin track.
+///
+/// Manages the stateful activation of plugin voices, parameter cursors, and frame-by-frame
+/// audio synthesis. During offline rendering, it acts as a deterministic, headless polyphonic
+/// synthesizer test double.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::{PluginDescriptor, PluginProcessor, PluginTrackSource};
+///
+/// let descriptor = PluginDescriptor::vst3("TestSynth");
+/// let source = PluginTrackSource::new(descriptor);
+/// let mut processor = PluginProcessor::new(&source, 48_000);
+/// processor.begin_cycle();
+/// ```
 #[derive(Clone, Debug)]
 pub struct PluginProcessor {
     sample_rate_hz: f32,
