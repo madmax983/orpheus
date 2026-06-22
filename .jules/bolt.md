@@ -47,3 +47,7 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+**[TUI String Padding Performance]**
+**Learning:** Using `" ".repeat(padding)` inside a `format!` macro creates unnecessary intermediate `String` allocations.
+**Action:** Use Rust's native format specifiers (`format!("{:<width$}", content, width = ...)`) to pad strings efficiently without temporary allocations.
