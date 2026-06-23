@@ -3,6 +3,7 @@
 //! This exporter generates a human-readable chronological summary of events,
 //! similar to a tracker sequence or playlist.
 
+use std::fmt::Write as _;
 use std::io::Write;
 use std::path::Path;
 
@@ -49,20 +50,27 @@ pub fn export_sample_pattern_to_txt(
     writeln!(file, "Cycles: {cycle_count}")?;
     writeln!(file)?;
 
+    let mut params_buf = String::with_capacity(128);
+
     for event in events {
         let start = f64::from(event.part.start());
         let end = f64::from(event.part.end());
 
-        let mut params = Vec::new();
-        params.push(format!("gain: {:.2}", event.value.gain()));
-        params.push(format!("pan: {:.2}", event.value.pan()));
-        params.push(format!("rate: {:.2}", event.value.rate()));
+        params_buf.clear();
+        write!(
+            params_buf,
+            "gain: {:.2}, pan: {:.2}, rate: {:.2}",
+            event.value.gain(),
+            event.value.pan(),
+            event.value.rate()
+        )
+        .expect("formatting to a String cannot fail");
 
         if let Some(hpf) = event.value.hpf_cutoff_hz() {
-            params.push(format!("hpf: {hpf:.2}"));
+            write!(params_buf, ", hpf: {hpf:.2}").expect("formatting to a String cannot fail");
         }
         if let Some(lpf) = event.value.lpf_cutoff_hz() {
-            params.push(format!("lpf: {lpf:.2}"));
+            write!(params_buf, ", lpf: {lpf:.2}").expect("formatting to a String cannot fail");
         }
 
         writeln!(
@@ -71,7 +79,7 @@ pub fn export_sample_pattern_to_txt(
             start,
             end,
             event.value.sample(),
-            params.join(", ")
+            params_buf
         )?;
     }
 
