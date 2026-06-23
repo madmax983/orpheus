@@ -82,3 +82,7 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**[Title] Inline single-use clippy allowance methods**
+**Learning:** Extracting large match blocks into local helper methods solely to hold a `#[allow(clippy::too_many_lines)]` attribute creates unnecessary indirection and worsens readability.
+**Action:** Apply the `#[allow(...)]` attribute directly on the original function and remove the redundant wrapper entirely to flatten the execution structure.
