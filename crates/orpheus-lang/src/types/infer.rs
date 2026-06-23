@@ -563,3 +563,15 @@ mod tests {
         assert!(type_err.to_string().contains("mock parse error"));
     }
 }
+#[cfg(test)]
+mod test_infer_from {
+    use super::*;
+    use crate::diagnostics::ParseError;
+
+    #[test]
+    fn type_error_from_parse_error() {
+        let parse_err = ParseError::new("mock parse error");
+        let type_err: TypeError = parse_err.into();
+        assert_eq!(type_err.to_string(), "mock parse error");
+    }
+}

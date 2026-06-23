@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2024-05-30 - Submission Hygiene and Empty Assertions
+**Learning:** Writing tests that execute functions without asserting the expected behavior violates the core testing tenet that tests must be able to fail. Additionally, submitting PRs with leftover profiling files (like `.profraw`), logs (`cov.txt`), and temporary scripts (`plan.md`) pollutes the codebase.
+**Action:** Always include meaningful assertions (e.g., verifying `ratatui` buffer contents or tracking state changes) when writing UI or state tests. Additionally, use a dedicated cleanup step (`rm -f ...`) to clear out all exploration and profiling artifacts prior to requesting code review and submission.

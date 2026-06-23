@@ -336,3 +336,57 @@ impl HypertilePlugin for TransportPlugin {
             .render(area, buf);
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::{buffer::Buffer, layout::Rect};
+    use ratatui_hypertile::{EventOutcome, KeyChord, KeyCode, Modifiers};
+    use orpheus_dsp::EngineHandle;
+
+    fn make_key_event(code: KeyCode, modifiers: Modifiers) -> HypertileEvent {
+        HypertileEvent::Key(KeyChord {
+            code,
+            modifiers,
+        })
+    }
+
+    #[test]
+    fn transport_plugin_renders_legend() {
+        let state = Rc::new(RefCell::new(SharedState::new(EngineHandle::stub())));
+        let plugin = TransportPlugin { state };
+
+        let mut buf = Buffer::empty(Rect::new(0, 0, 100, 100));
+        plugin.render(Rect::new(0, 0, 100, 100), &mut buf, false);
+    }
+
+    #[test]
+    fn bindings_plugin_scrolls() {
+        let state = Rc::new(RefCell::new(SharedState::new(EngineHandle::stub())));
+        let mut plugin = BindingsPlugin::new(state);
+
+        let mut buf = Buffer::empty(Rect::new(0, 0, 100, 10));
+        plugin.render(Rect::new(0, 0, 100, 10), &mut buf, false);
+
+        assert_eq!(plugin.on_event(&make_key_event(KeyCode::PageDown, Modifiers::NONE)), EventOutcome::Consumed);
+        assert_eq!(plugin.on_event(&make_key_event(KeyCode::PageUp, Modifiers::NONE)), EventOutcome::Consumed);
+        assert_eq!(plugin.on_event(&make_key_event(KeyCode::Char('x'), Modifiers::NONE)), EventOutcome::Ignored);
+        assert_eq!(plugin.on_event(&make_key_event(KeyCode::PageDown, Modifiers::SHIFT)), EventOutcome::Ignored);
+    }
+
+    #[test]
+    fn repl_plugin_handles_events() {
+        let state = Rc::new(RefCell::new(SharedState::new(EngineHandle::stub())));
+        let mut plugin = ReplPlugin { state: state.clone() };
+
+        let mut buf = Buffer::empty(Rect::new(0, 0, 100, 10));
+        plugin.render(Rect::new(0, 0, 100, 10), &mut buf, false);
+
+        assert_eq!(plugin.on_event(&make_key_event(KeyCode::Char('a'), Modifiers::NONE)), EventOutcome::Consumed);
+        assert_eq!(state.borrow().input, "a");
+
+        assert_eq!(plugin.on_event(&make_key_event(KeyCode::Char('a'), Modifiers::CTRL)), EventOutcome::Consumed);
+        assert_eq!(state.borrow().cursor_index, 0);
+
+        assert_eq!(plugin.on_event(&make_key_event(KeyCode::Char('x'), Modifiers::ALT)), EventOutcome::Ignored);
+    }
+}
