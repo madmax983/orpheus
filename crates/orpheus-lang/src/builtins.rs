@@ -1625,11 +1625,9 @@ fn apply_sample_numeric_control(
             NumericControl::Constant(val) => apply_constant(pattern, val),
             NumericControl::Pattern(control) => apply_pattern(pattern, control),
         })),
-        Value::NumberPattern(_) => Err(EvalError::new(if builtin_name == "gain" {
-            format!("`{builtin_name}` only applies to sample patterns in Task 5")
-        } else {
-            format!("`{builtin_name}` only applies to sample patterns")
-        })),
+        Value::NumberPattern(_) => Err(EvalError::new(format!(
+            "`{builtin_name}` only applies to sample patterns"
+        ))),
         Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
