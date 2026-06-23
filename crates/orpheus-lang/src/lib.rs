@@ -45,7 +45,7 @@ pub use ascii_roll::render_ascii_roll;
 pub use ast::{BinaryOp, Expr, GraphBinding, Module, Stmt};
 pub use diagnostics::{LoadError, ParseError, TypeError};
 pub use error::EvalError;
-pub use eval::{eval_module, render_span};
+pub use eval::eval_module;
 pub use export::{
     RenderError, export_number_pattern_to_csv, export_number_pattern_to_json,
     export_number_pattern_to_md, export_sample_pattern_to_csv, export_sample_pattern_to_json,

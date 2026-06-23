@@ -1297,21 +1297,11 @@ fn sort_events<T>(events: &mut [Event<T>]) {
 ///
 /// This specifies a half-open time interval `[0, cycle_count)`.
 ///
-/// # Examples
-///
-/// ```
-/// use orpheus_lang::render_span;
-///
-/// let span = render_span(4).unwrap();
-/// assert_eq!(span.start().numerator(), 0);
-/// assert_eq!(span.end().numerator(), 4);
-/// ```
-///
 /// # Errors
 ///
 /// Returns an [`EvalError`] if constructing the underlying rational span fails,
 /// which may occur if the `cycle_count` exceeds the representable range.
-pub fn render_span(cycle_count: u64) -> Result<TimeSpan, EvalError> {
+pub(crate) fn render_span(cycle_count: u64) -> Result<TimeSpan, EvalError> {
     build_span(
         Rational::zero(),
         rational_from_parts(i128::from(cycle_count), 1)?,

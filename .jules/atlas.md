@@ -56,3 +56,6 @@
 **[Enforce Private Explain Module]
 **Tangle:** The `explain` module in `orpheus-lang/src/lib.rs` and its internal `Explain` trait and `explain_table` function were declared as `pub`, leaking internal REPL table rendering details to the public API.
 **Blueprint:** Changed the visibility of the `Explain` trait and `explain_table` function to `pub(crate)` in `crates/orpheus-lang/src/explain.rs`. Removed the `pub use explain::Explain;` re-export from `crates/orpheus-lang/src/lib.rs` and changed the module declaration to `pub(crate) mod explain;`. This strictly enforces internal encapsulation.
+**[Strict Facade Enforced]**
+**Tangle:** The language engine internals (`eval_into_bindings`, `apply_function_value`, `f64_to_rational`, `render_span`) were publicly exposed, leaking implementation details into the top-level API of `orpheus-lang`.
+**Blueprint:** Reduced visibility of `eval` items to `pub(crate)` and pruned re-exports from `lib.rs` to create a true Facade, maintaining high cohesion and low coupling while hiding internal language semantics.

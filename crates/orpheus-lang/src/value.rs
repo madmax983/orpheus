@@ -2646,21 +2646,6 @@ impl NumberPatternValue {
     /// # Errors
     /// Returns `EvalError` if querying fails due to invalid arithmetic limits.
     ///
-    /// ## Examples
-    ///
-    /// ```
-    /// use orpheus_lang::{eval_module, ReplMode, render_span};
-    ///
-    /// let env = eval_module("x = 1 2", ReplMode::Loose).unwrap();
-    /// let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
-    ///
-    /// // Query the first 4 cycles
-    /// let span = render_span(4).unwrap();
-    /// let events = pattern.try_query(&span).unwrap();
-    ///
-    /// // 2 events per cycle * 4 cycles = 8 events
-    /// assert_eq!(events.len(), 8);
-    /// ```
     pub fn try_query(&self, span: &TimeSpan) -> Result<Vec<Event<f64>>, EvalError> {
         self.pattern.try_query(span)
     }
