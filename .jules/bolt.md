@@ -47,3 +47,7 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+**[Documentation: Invalid Rustdoc Context]**
+**Learning:** Placing doc comments (`///`) on local `let` bindings or internal statements inside a function triggers the `unused_doc_comments` warning under strict `-D warnings`.
+**Action:** Use standard inline comments (`//`) to explain internal algorithmic optimizations inside functions. Only use `///` on item declarations (functions, structs, modules).

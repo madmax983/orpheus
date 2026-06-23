@@ -8,6 +8,7 @@ use std::fmt;
 use super::combinators::{Seq, par, seq};
 use super::node::{GraphError, Node};
 use super::primitives::passthrough;
+use smallvec::SmallVec;
 
 // ---------------------------------------------------------------------------
 // pipe
@@ -114,7 +115,10 @@ impl Node for Bind {
         }
 
         // Process the inner node with the fully-assembled input.
-        let input_refs: Vec<&[f32]> = self.full_input.iter().map(|v| &v[..frames]).collect();
+
+        // Optimization: Stack-allocate scratch buffers to avoid heap allocations on hot paths.
+        let input_refs: SmallVec<[&[f32]; 8]> =
+            self.full_input.iter().map(|v| &v[..frames]).collect();
         self.inner.process(&input_refs, outputs, frames);
     }
 
