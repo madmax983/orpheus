@@ -1,17 +1,31 @@
-//! Tests evaluating euclidean rhythm generation with edge-case parameters like zero or negative steps to prevent division-by-zero panics.
-use orpheus_lang::ReplMode;
-use orpheus_lang::eval_module;
+//! Chaos engineering tests verifying that `rem_euclid` operations
+//! are properly bounded by non-zero guards to prevent Thread Panics.
+use orpheus_lang::{ReplMode, eval_module};
 
 #[test]
-fn test_havoc_rem_euclid_zero_every() {
-    let source = "a = every(0.00000000000000001, rev, bd)\nnotes = a";
-    let env = eval_module(source, ReplMode::Loose);
-    assert!(env.is_err());
+fn test_havoc_every_zero() {
+    let source = "notes = every(0, rev, \"c\")";
+    let module = eval_module(source, ReplMode::Loose);
+    assert!(module.is_err());
 }
 
 #[test]
-fn test_havoc_rem_euclid_zero_section() {
-    let source = "a = seq_sections(section(bd, 0.00000000000000001))";
-    let env = eval_module(source, ReplMode::Loose);
-    assert!(env.is_err());
+fn test_havoc_when_zero() {
+    let source = "notes = when(0, 1, rev, \"c\")";
+    let module = eval_module(source, ReplMode::Loose);
+    assert!(module.is_err());
+}
+
+#[test]
+fn test_havoc_euclid_zero() {
+    let source = "notes = euclid(8, 0)(\"c\")";
+    let module = eval_module(source, ReplMode::Loose);
+    assert!(module.is_err());
+}
+
+#[test]
+fn test_havoc_degrees_empty() {
+    let source = "notes = degrees(\"[1]\", pcs(\"\"))";
+    let module = eval_module(source, ReplMode::Loose);
+    assert!(module.is_err());
 }

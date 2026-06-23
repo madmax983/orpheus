@@ -799,6 +799,12 @@ fn apply_euclid(args: Vec<Value>) -> Result<Value, EvalError> {
         true,
     )?;
 
+    if steps == 0 {
+        return Err(EvalError::new(
+            "`euclid` requires steps to be greater than zero",
+        ));
+    }
+
     if pulses > steps {
         return Err(EvalError::new(
             "`euclid` requires pulses less than or equal to steps",
