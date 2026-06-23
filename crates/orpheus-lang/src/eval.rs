@@ -990,6 +990,9 @@ impl Evaluator {
 ///     assert!(matches!(curried, Value::Function(_)));
 /// }
 /// ```
+///
+/// # Errors
+/// Returns [`EvalError`] if evaluation of the function logic fails.
 pub fn apply_function_value(function: FunctionValue, args: Vec<Value>) -> Result<Value, EvalError> {
     match function {
         FunctionValue::Builtin(function) => function.apply(args),
@@ -1216,6 +1219,15 @@ fn extract_constant_number_rational(value: Value, context: &str) -> Result<Ratio
 /// assert_eq!(r.denominator(), 2);
 /// ```
 ///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::f64_to_rational;
+/// let rat = f64_to_rational(0.5, "test").unwrap();
+/// assert_eq!(rat.numerator(), 1);
+/// assert_eq!(rat.denominator(), 2);
+/// ```
+///
 /// # Errors
 ///
 /// Returns an [`EvalError`] if the float is not finite, uses scientific notation, or cannot be parsed.
@@ -1305,6 +1317,15 @@ fn sort_events<T>(events: &mut [Event<T>]) {
 /// let span = render_span(4).unwrap();
 /// assert_eq!(span.start().numerator(), 0);
 /// assert_eq!(span.end().numerator(), 4);
+/// ```
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::render_span;
+/// let span = render_span(2).unwrap();
+/// assert_eq!(span.start().numerator(), 0);
+/// assert_eq!(span.end().numerator(), 2);
 /// ```
 ///
 /// # Errors
