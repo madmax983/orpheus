@@ -756,6 +756,7 @@ impl ReplSession {
             crate::value::Value::Function(func) => Ok(func.explain(binding_name)),
             crate::value::Value::Pedal(pedal) => Ok(pedal.explain(binding_name)),
             crate::value::Value::Tuning(tuning) => Ok(tuning.explain(binding_name)),
+            crate::value::Value::PluginPattern(plugin) => Ok(plugin.explain(binding_name)),
             _ => Err(format!(
                 "binding `{binding_name}` is a {} and cannot be explained",
                 value.kind_name()
@@ -3212,6 +3213,18 @@ mod tests {
 
         assert!(plan.contains("Sample Pattern Plan"));
         assert!(plan.contains("drums"));
+    }
+
+    #[test]
+    fn session_explain_returns_plugin_pattern_plan() {
+        use orpheus_dsp::EngineHandle;
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+        session.eval_line("p = vst(\"my_vst\")").unwrap();
+        let plan = session.eval_line(":explain p").unwrap();
+        assert!(plan.contains("Plugin Pattern Plan"));
+        assert!(plan.contains("p"));
+        assert!(plan.contains("PluginNote"));
+        assert!(plan.contains("my_vst"));
     }
 
     #[test]
