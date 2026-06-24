@@ -129,4 +129,11 @@ mod tests {
         let err: EvalError = parse_err.into();
         assert_eq!(err.to_string(), "mock parse error");
     }
+
+    #[test]
+    fn eval_error_from_pitch_error() {
+        let pitch_err = crate::pitch::PitchLiteralError::new("mock pitch error");
+        let err: EvalError = pitch_err.into();
+        assert_eq!(err.to_string(), "mock pitch error");
+    }
 }
