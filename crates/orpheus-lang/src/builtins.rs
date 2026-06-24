@@ -1835,8 +1835,8 @@ fn extract_whole_number(
     let number = extract_constant_number(value, context)?;
     let valid = number.is_finite()
         && number >= 0.0
-        && number.fract().abs() <= f64::EPSILON
-        && (!positive_only || number > 0.0);
+        && (number.round() - number).abs() <= f64::EPSILON
+        && (!positive_only || number.round() >= 1.0);
 
     if !valid {
         let requirement = if positive_only {

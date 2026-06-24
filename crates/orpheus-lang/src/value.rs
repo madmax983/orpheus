@@ -4410,6 +4410,9 @@ fn semitones_to_tuned_rate(semitones: f64, table: &TuningTable) -> f64 {
     // Scale sizes are far below i32::MAX in practice (tens or low hundreds);
     // the wrap warning is suppressed to keep the single-multiply fast path.
     let n = ratios.len() as i32;
+    if n == 0 {
+        return 1.0;
+    }
     let step = (semitones.round() as i32).saturating_sub(table.ref_semitone);
     let idx = step.rem_euclid(n) as usize;
     let octaves = step.div_euclid(n);
@@ -4783,6 +4786,9 @@ where
     }
 
     let period = i128::from(period);
+    if period == 0 {
+        return Err(EvalError::new("`every` period cannot be zero"));
+    }
     query_transform_cycles(inner, transform, span, |cycle| {
         cycle.rem_euclid(period) == 0
     })
@@ -4804,6 +4810,9 @@ where
 
     let period = i128::from(period);
     let offset = i128::from(offset);
+    if period == 0 {
+        return Err(EvalError::new("`when` period cannot be zero"));
+    }
     query_transform_cycles(inner, transform, span, |cycle| {
         cycle.rem_euclid(period) == offset
     })
