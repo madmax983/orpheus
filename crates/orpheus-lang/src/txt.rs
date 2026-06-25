@@ -26,6 +26,11 @@ use crate::value::{NumberPatternValue, SamplePatternValue};
 /// export_sample_pattern_to_txt(pattern, &path, 2).unwrap();
 /// ```
 ///
+/// # Performance
+///
+/// This exporter formats strings directly into the underlying file stream, avoiding
+/// intermediate heap allocations (`Vec` or `String`) for parameters during the hot loop.
+///
 /// # Errors
 ///
 /// Returns [`EvalError`] if pattern querying fails or if the file cannot be written.
@@ -53,26 +58,25 @@ pub fn export_sample_pattern_to_txt(
         let start = f64::from(event.part.start());
         let end = f64::from(event.part.end());
 
-        let mut params = Vec::new();
-        params.push(format!("gain: {:.2}", event.value.gain()));
-        params.push(format!("pan: {:.2}", event.value.pan()));
-        params.push(format!("rate: {:.2}", event.value.rate()));
-
-        if let Some(hpf) = event.value.hpf_cutoff_hz() {
-            params.push(format!("hpf: {hpf:.2}"));
-        }
-        if let Some(lpf) = event.value.lpf_cutoff_hz() {
-            params.push(format!("lpf: {lpf:.2}"));
-        }
-
-        writeln!(
+        write!(
             file,
-            "[{:.3} -> {:.3}] {} ({})",
+            "[{:.3} -> {:.3}] {} (gain: {:.2}, pan: {:.2}, rate: {:.2}",
             start,
             end,
             event.value.sample(),
-            params.join(", ")
+            event.value.gain(),
+            event.value.pan(),
+            event.value.rate()
         )?;
+
+        if let Some(hpf) = event.value.hpf_cutoff_hz() {
+            write!(file, ", hpf: {hpf:.2}")?;
+        }
+        if let Some(lpf) = event.value.lpf_cutoff_hz() {
+            write!(file, ", lpf: {lpf:.2}")?;
+        }
+
+        writeln!(file, ")")?;
     }
 
     Ok(())
