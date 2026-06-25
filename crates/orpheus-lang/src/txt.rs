@@ -3,7 +3,7 @@
 //! This exporter generates a human-readable chronological summary of events,
 //! similar to a tracker sequence or playlist.
 
-use std::io::Write;
+use std::io::{BufWriter, Write};
 use std::path::Path;
 
 use crate::eval::{EvalError, render_span};
@@ -42,7 +42,8 @@ pub fn export_sample_pattern_to_txt(
     let events = pattern.try_query(&span)?;
     let path = path.as_ref();
 
-    let mut file = std::fs::File::create(path)?;
+    let file = std::fs::File::create(path)?;
+    let mut file = BufWriter::new(file);
 
     writeln!(file, "Orpheus Sample Pattern Export")?;
     writeln!(file, "=============================")?;
@@ -53,27 +54,28 @@ pub fn export_sample_pattern_to_txt(
         let start = f64::from(event.part.start());
         let end = f64::from(event.part.end());
 
-        let mut params = Vec::new();
-        params.push(format!("gain: {:.2}", event.value.gain()));
-        params.push(format!("pan: {:.2}", event.value.pan()));
-        params.push(format!("rate: {:.2}", event.value.rate()));
-
-        if let Some(hpf) = event.value.hpf_cutoff_hz() {
-            params.push(format!("hpf: {hpf:.2}"));
-        }
-        if let Some(lpf) = event.value.lpf_cutoff_hz() {
-            params.push(format!("lpf: {lpf:.2}"));
-        }
-
-        writeln!(
+        write!(
             file,
-            "[{:.3} -> {:.3}] {} ({})",
+            "[{:.3} -> {:.3}] {} (gain: {:.2}, pan: {:.2}, rate: {:.2}",
             start,
             end,
             event.value.sample(),
-            params.join(", ")
+            event.value.gain(),
+            event.value.pan(),
+            event.value.rate()
         )?;
+
+        if let Some(hpf) = event.value.hpf_cutoff_hz() {
+            write!(file, ", hpf: {hpf:.2}")?;
+        }
+        if let Some(lpf) = event.value.lpf_cutoff_hz() {
+            write!(file, ", lpf: {lpf:.2}")?;
+        }
+
+        writeln!(file, ")")?;
     }
+
+    file.flush()?;
 
     Ok(())
 }
@@ -111,7 +113,8 @@ pub fn export_number_pattern_to_txt(
     let events = pattern.try_query(&span)?;
     let path = path.as_ref();
 
-    let mut file = std::fs::File::create(path)?;
+    let file = std::fs::File::create(path)?;
+    let mut file = BufWriter::new(file);
 
     writeln!(file, "Orpheus Number Pattern Export")?;
     writeln!(file, "=============================")?;
@@ -128,6 +131,8 @@ pub fn export_number_pattern_to_txt(
             start, end, event.value
         )?;
     }
+
+    file.flush()?;
 
     Ok(())
 }
