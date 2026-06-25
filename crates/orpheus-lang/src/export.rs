@@ -57,7 +57,12 @@ pub enum RenderError {
 /// Helper function to convert a `SampleEvent` from the evaluation phase into a
 /// `SampleTrigger` for the DSP rendering phase.
 pub fn sample_trigger_from_event(event: &crate::value::SampleEvent) -> SampleTrigger {
-    let mut trigger = SampleTrigger::named(event.sample())
+    let trigger = base_sample_trigger_from_event(event);
+    apply_optional_triggers_from_event(trigger, event)
+}
+
+fn base_sample_trigger_from_event(event: &crate::value::SampleEvent) -> SampleTrigger {
+    SampleTrigger::named(event.sample())
         .with_gain(event.gain())
         .with_pan(event.pan())
         .with_rate(event.rate())
@@ -76,7 +81,13 @@ pub fn sample_trigger_from_event(event: &crate::value::SampleEvent) -> SampleTri
         .with_resonance(event.resonance())
         .with_drive(event.drive())
         .with_pulse_width(event.pulse_width())
-        .with_slice(event.slice_start(), event.slice_end());
+        .with_slice(event.slice_start(), event.slice_end())
+}
+
+fn apply_optional_triggers_from_event(
+    mut trigger: SampleTrigger,
+    event: &crate::value::SampleEvent,
+) -> SampleTrigger {
     if let Some(onset_index) = event.onset_index() {
         trigger = trigger.with_onset(onset_index);
     }
@@ -167,6 +178,18 @@ fn export_pattern_events_to_md<T, F>(
     events: &[Event<T>],
     path: impl AsRef<Path>,
     header: &str,
+    write_event: F,
+) -> Result<(), EvalError>
+where
+    F: FnMut(&mut std::fs::File, &Event<T>) -> Result<(), EvalError>,
+{
+    export_pattern_events_to_md_impl(events, path, header, write_event)
+}
+
+fn export_pattern_events_to_md_impl<T, F>(
+    events: &[Event<T>],
+    path: impl AsRef<Path>,
+    header: &str,
     mut write_event: F,
 ) -> Result<(), EvalError>
 where
@@ -218,6 +241,14 @@ where
 ///
 /// Returns [`EvalError`] if the cycle count is 0, if pattern querying fails, or if the file cannot be written.
 pub fn export_sample_pattern_to_md(
+    pattern: &SamplePatternValue,
+    path: impl AsRef<Path>,
+    cycle_count: u64,
+) -> Result<(), EvalError> {
+    export_sample_pattern_to_md_impl(pattern, path, cycle_count)
+}
+
+fn export_sample_pattern_to_md_impl(
     pattern: &SamplePatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,
@@ -321,6 +352,19 @@ pub fn export_sample_pattern_to_csv(
 }
 
 fn export_pattern_events_to_json<T, F>(
+    events: &[Event<T>],
+    path: impl AsRef<Path>,
+    kind: &str,
+    cycle_count: u64,
+    event_to_json: F,
+) -> Result<(), EvalError>
+where
+    F: FnMut(&Event<T>) -> String,
+{
+    export_pattern_events_to_json_impl(events, path, kind, cycle_count, event_to_json)
+}
+
+fn export_pattern_events_to_json_impl<T, F>(
     events: &[Event<T>],
     path: impl AsRef<Path>,
     kind: &str,
@@ -441,6 +485,14 @@ pub fn export_number_pattern_to_md(
 ///
 /// Returns [`EvalError`] if the cycle count is 0, if pattern querying fails, or if the file cannot be written.
 pub fn export_number_pattern_to_csv(
+    pattern: &NumberPatternValue,
+    path: impl AsRef<Path>,
+    cycle_count: u64,
+) -> Result<(), EvalError> {
+    export_number_pattern_to_csv_impl(pattern, path, cycle_count)
+}
+
+fn export_number_pattern_to_csv_impl(
     pattern: &NumberPatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,

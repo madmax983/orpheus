@@ -35,6 +35,15 @@ pub fn export_sample_pattern_to_tracker(
     path: impl AsRef<Path>,
     cycle_count: u64,
 ) -> Result<(), EvalError> {
+    export_sample_pattern_to_tracker_impl(pattern, path, cycle_count)
+}
+
+#[allow(clippy::cast_precision_loss)]
+fn export_sample_pattern_to_tracker_impl(
+    pattern: &SamplePatternValue,
+    path: impl AsRef<Path>,
+    cycle_count: u64,
+) -> Result<(), EvalError> {
     if cycle_count == 0 {
         return Err(EvalError::new("exporting requires at least one cycle"));
     }
@@ -173,6 +182,15 @@ pub fn export_sample_pattern_to_tracker(
 /// Returns [`EvalError`] if pattern querying fails, the cycle count is 0, or if the file cannot be written.
 #[allow(clippy::missing_panics_doc, clippy::cast_precision_loss)]
 pub fn export_number_pattern_to_tracker(
+    pattern: &NumberPatternValue,
+    path: impl AsRef<Path>,
+    cycle_count: u64,
+) -> Result<(), EvalError> {
+    export_number_pattern_to_tracker_impl(pattern, path, cycle_count)
+}
+
+#[allow(clippy::cast_precision_loss)]
+fn export_number_pattern_to_tracker_impl(
     pattern: &NumberPatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,
