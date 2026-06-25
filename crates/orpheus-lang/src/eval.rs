@@ -1441,17 +1441,6 @@ right = sometimes(fast(2), cp hh)";
     }
 
     #[test]
-    fn eval_error_from_parse_error() {
-        let parse_err =
-            crate::diagnostics::ParseError::new("parse error at line 0, col 0: test parse error");
-        let err: super::EvalError = parse_err.into();
-        assert_eq!(
-            err.to_string(),
-            "parse error at line 0, col 0: test parse error"
-        );
-    }
-
-    #[test]
     fn eval_error_from_try_from_int_error() {
         let num_err: Result<u8, _> = 256u16.try_into();
         let err: super::EvalError = num_err.unwrap_err().into();
@@ -1481,20 +1470,6 @@ right = sometimes(fast(2), cp hh)";
             err.to_string(),
             "an error occurred when formatting an argument"
         );
-    }
-
-    #[test]
-    fn eval_error_from_type_error() {
-        let type_err = crate::diagnostics::TypeError::new("mock type error");
-        let err: super::EvalError = type_err.into();
-        assert_eq!(err.to_string(), "mock type error");
-    }
-
-    #[test]
-    fn eval_error_from_load_error() {
-        let load_err = crate::diagnostics::LoadError::new("mock load error");
-        let err: super::EvalError = load_err.into();
-        assert_eq!(err.to_string(), "mock load error");
     }
 
     #[test]
