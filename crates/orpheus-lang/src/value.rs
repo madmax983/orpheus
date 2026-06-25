@@ -37,36 +37,67 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Applies a transform periodically.
     Every,
+    /// Applies a transform based on a boolean mask.
     When,
+    /// Applies a transform probabilistically.
     Sometimes,
+    /// Applies a transform within a specific cycle fraction.
     Within,
+    /// Mutes events based on a boolean mask.
     Mask,
+    /// Delays events progressively to simulate strumming.
     Strum,
+    /// Duplicates and spaces out events like a drum roll.
     Roll,
+    /// Arpeggiates chords into individual notes.
     Arp,
+    /// Inverts pitches across an axis.
     Invert,
+    /// Drops events entirely.
     Drop,
+    /// Generates chords from base pitches.
     Chord,
+    /// Generates Euclidean rhythms.
     Euclid,
+    /// Generates rhythms using L-systems.
     Lsystem,
+    /// Generates rhythms using cellular automata.
     Wolfram,
+    /// Selects pitches from a constrained set.
     PitchClassSet,
+    /// Maps degrees to pitches.
     Degrees,
+    /// Multiplies the playback rate.
     Fast,
+    /// Divides the playback rate.
     Slow,
+    /// Shifts patterns forward or backward in time.
     Shift,
+    /// Reverses the pattern.
     Rev,
+    /// Adjusts the output gain.
     Gain,
+    /// Applies a delay effect.
     Delay,
+    /// Sets the delay time.
     DelayTime,
+    /// Sets the delay feedback amount.
     DelayFeedback,
+    /// Applies a high-pass filter.
     Hpf,
+    /// Applies a low-pass filter.
     Lpf,
+    /// Applies a reverb effect.
     Reverb,
+    /// Sets the reverb room size.
     ReverbRoom,
+    /// Sets the reverb dampening amount.
     ReverbDamp,
+    /// Adjusts filter cutoff frequencies.
     Cutoff,
+    /// Applies a chorus effect.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

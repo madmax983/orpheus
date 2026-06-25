@@ -1,3 +1,6 @@
+//!
+//! Integration tests for `analog_primitives.rs`.
+//!
 use orpheus_dsp::{Gain, LadderFilter, Mix, PhaseAccumulator, PulseOsc, SawOsc, SoftSat};
 
 #[test]

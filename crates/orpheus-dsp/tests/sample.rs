@@ -1,3 +1,6 @@
+//!
+//! Integration tests for `sample.rs`.
+//!
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};

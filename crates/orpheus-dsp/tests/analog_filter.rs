@@ -1,3 +1,6 @@
+//!
+//! Integration tests for `analog_filter.rs`.
+//!
 use orpheus_dsp::LadderFilter;
 
 #[test]

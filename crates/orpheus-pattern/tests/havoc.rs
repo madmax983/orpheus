@@ -1,3 +1,6 @@
+//!
+//! Havoc tests for finding panics and boundary issues in pattern evaluation.
+//!
 use orpheus_pattern::{CyclePattern, EventStream, Pattern, PatternNode, Rational, TimeSpan};
 
 #[test]

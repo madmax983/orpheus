@@ -1,3 +1,6 @@
+//!
+//! Integration tests for the cycle pattern model.
+//!
 use orpheus_pattern::{CyclePattern, Pattern, PatternNode, Rational, TimeSpan};
 use proptest::prelude::*;
 

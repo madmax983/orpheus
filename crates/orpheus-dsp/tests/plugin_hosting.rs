@@ -1,3 +1,6 @@
+//!
+//! Integration tests for `plugin_hosting.rs`.
+//!
 use orpheus_dsp::{
     PluginDescriptor, PluginNote, PluginParameterLane, PluginProcessor, PluginTrackSource,
     RoutingSnapshot, SampleBank, TrackSource, render_routing_snapshot_to_stereo_for_test,
@@ -13,7 +16,7 @@ fn vst3_descriptor_uses_standard_os_search_paths() {
     assert!(
         paths
             .iter()
-            .any(|path| path.to_string_lossy().contains("VST3")),
+            .any(|path| path.to_string_lossy().to_ascii_lowercase().contains("vst3")),
         "expected default VST3 search paths, got {paths:?}"
     );
 }
