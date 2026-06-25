@@ -56,3 +56,10 @@
 **[Enforce Private Explain Module]
 **Tangle:** The `explain` module in `orpheus-lang/src/lib.rs` and its internal `Explain` trait and `explain_table` function were declared as `pub`, leaking internal REPL table rendering details to the public API.
 **Blueprint:** Changed the visibility of the `Explain` trait and `explain_table` function to `pub(crate)` in `crates/orpheus-lang/src/explain.rs`. Removed the `pub use explain::Explain;` re-export from `crates/orpheus-lang/src/lib.rs` and changed the module declaration to `pub(crate) mod explain;`. This strictly enforces internal encapsulation.
+**[Fix Leaky Abstraction in AST GraphBinding]
+**Tangle:** The `GraphBinding` struct in `orpheus-lang/src/ast.rs` was exposed through a public re-export in `lib.rs`, even though it is an internal implementation detail of `Expr::Graph`.
+**Blueprint:** Removed the `pub use ast::GraphBinding;` re-export from `crates/orpheus-lang/src/lib.rs`. The `ast` module itself is private, making the struct effectively private to the crate while satisfying the compiler's interface visibility rules for `Expr`.
+
+**[Fix Leaky Abstraction in Value and FunctionValue Enums]
+**Tangle:** The `BuiltinFn`, `UserFn`, `BuiltinKind`, `ArpDirectionValue`, and `PitchClassSetValue` types in `value.rs`, as well as `TypeEnv` and `TypeScheme` in `types/mod.rs` were publicly re-exported in `lib.rs`, unnecessarily exposing internal evaluation and type inference machinery.
+**Blueprint:** Removed their public re-exports from `lib.rs` and `types/mod.rs`. The modules themselves are private, making these types effectively private to the crate while satisfying compiler interface visibility rules for the public `Value` and `Type` enums.
