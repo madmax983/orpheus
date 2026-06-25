@@ -107,7 +107,15 @@ impl SharedState {
         self.transcript.push(format!("> {line}"));
         match self.session.eval_line(&line) {
             Ok(message) => self.transcript.push(format!("\u{2713} {message}")),
-            Err(message) => self.transcript.push(format!("\u{2717} {message}")),
+            Err(message) => {
+                let mut lines = message.lines();
+                if let Some(first) = lines.next() {
+                    self.transcript.push(format!("\u{2717} {first}"));
+                }
+                for cause in lines {
+                    self.transcript.push(format!("  {cause}"));
+                }
+            }
         }
     }
 

@@ -98,7 +98,15 @@ where
 
         match session.eval_line(trimmed) {
             Ok(message) => writeln!(stdout, "{}", format!("\u{2713} {message}").green())?,
-            Err(message) => writeln!(stderr, "{}", format!("\u{2717} {message}").red().bold())?,
+            Err(message) => {
+                let mut lines = message.lines();
+                if let Some(first) = lines.next() {
+                    writeln!(stderr, "{}", format!("\u{2717} {first}").red().bold())?;
+                }
+                for cause in lines {
+                    writeln!(stderr, "  {}", cause.dark_grey())?;
+                }
+            }
         }
     }
 
