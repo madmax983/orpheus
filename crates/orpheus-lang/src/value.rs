@@ -3486,45 +3486,65 @@ where
     }
 
     fn try_query_transform(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
-        self.try_query_transform_method(span)
+        if let Some(res) = self.try_query_sequence_transform(span)? {
+            return Ok(res);
+        }
+        if let Some(res) = self.try_query_rate_pitch_transform(span)? {
+            return Ok(res);
+        }
+        if let Some(res) = self.try_query_misc_transform(span)? {
+            return Ok(res);
+        }
+        self.try_query_audio_effect(span)
     }
 
-    #[allow(clippy::too_many_lines)]
-    fn try_query_transform_method(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
-        match self {
-            Self::Roll { steps, inner } => T::roll_events(inner.try_query(span)?, *steps),
-            Self::Strum { inner } => T::strum_events(inner.try_query(span)?),
+    fn try_query_sequence_transform(
+        &self,
+        span: &TimeSpan,
+    ) -> Result<Option<Vec<Event<T>>>, EvalError> {
+        Ok(Some(match self {
+            Self::Roll { steps, inner } => T::roll_events(inner.try_query(span)?, *steps)?,
+            Self::Strum { inner } => T::strum_events(inner.try_query(span)?)?,
             Self::Arp {
                 steps,
                 direction,
                 inner,
-            } => T::arp_events(inner.try_query(span)?, *steps, *direction),
-            Self::Invert { count, inner } => T::invert_events(inner.try_query(span)?, *count),
-            Self::Drop { count, inner } => T::drop_events(inner.try_query(span)?, *count),
+            } => T::arp_events(inner.try_query(span)?, *steps, *direction)?,
+            Self::Invert { count, inner } => T::invert_events(inner.try_query(span)?, *count)?,
+            Self::Drop { count, inner } => T::drop_events(inner.try_query(span)?, *count)?,
             Self::Degrees { collection, inner } => {
-                apply_value_transform(inner, span, |value| value.map_degrees(collection))
+                apply_value_transform(inner, span, |value| value.map_degrees(collection))?
             }
             Self::Transpose { semitones, inner } => {
-                apply_value_transform(inner, span, |value| value.transpose_semitones(*semitones))
+                apply_value_transform(inner, span, |value| value.transpose_semitones(*semitones))?
             }
             Self::TransposePattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::Transpose)
+                apply_control_pattern(inner, control, span, ControlPatternKind::Transpose)?
             }
-            Self::Fast { factor, inner } => query_fast(inner, *factor, span),
-            Self::Slow { factor, inner } => query_slow(inner, *factor, span),
-            Self::Shift { offset, inner } => query_shift(inner, offset, span),
-            Self::Rev { inner } => query_rev(inner, span),
+            _ => return Ok(None),
+        }))
+    }
+
+    fn try_query_rate_pitch_transform(
+        &self,
+        span: &TimeSpan,
+    ) -> Result<Option<Vec<Event<T>>>, EvalError> {
+        Ok(Some(match self {
+            Self::Fast { factor, inner } => query_fast(inner, *factor, span)?,
+            Self::Slow { factor, inner } => query_slow(inner, *factor, span)?,
+            Self::Shift { offset, inner } => query_shift(inner, offset, span)?,
+            Self::Rev { inner } => query_rev(inner, span)?,
             Self::Gain { factor, inner } => {
-                apply_value_mutation(inner, span, |value| *value = value.adjust_gain(*factor))
+                apply_value_mutation(inner, span, |value| *value = value.adjust_gain(*factor))?
             }
             Self::GainPattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::Gain)
+                apply_control_pattern(inner, control, span, ControlPatternKind::Gain)?
             }
             Self::Pitch { semitones, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_rate(semitones_to_rate_multiplier(*semitones));
-            }),
+            })?,
             Self::PitchPattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::Pitch)
+                apply_control_pattern(inner, control, span, ControlPatternKind::Pitch)?
             }
             Self::TunedPitch {
                 semitones,
@@ -3532,183 +3552,232 @@ where
                 inner,
             } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_rate(semitones_to_tuned_rate(*semitones, tuning));
-            }),
+            })?,
             Self::TunedPitchPattern {
                 control,
                 tuning,
                 inner,
-            } => apply_tuned_pitch_pattern(inner, control, span, tuning),
+            } => apply_tuned_pitch_pattern(inner, control, span, tuning)?,
             Self::Rate { factor, inner } => {
-                apply_value_mutation(inner, span, |value| *value = value.adjust_rate(*factor))
+                apply_value_mutation(inner, span, |value| *value = value.adjust_rate(*factor))?
             }
             Self::RatePattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::Rate)
+                apply_control_pattern(inner, control, span, ControlPatternKind::Rate)?
             }
+            _ => return Ok(None),
+        }))
+    }
+
+    fn try_query_misc_transform(
+        &self,
+        span: &TimeSpan,
+    ) -> Result<Option<Vec<Event<T>>>, EvalError> {
+        Ok(Some(match self {
             Self::Onset { onset_index, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_onset(*onset_index);
-            }),
-            Self::OnsetPattern { control, inner } => apply_onset_pattern(inner, control, span),
+            })?,
+            Self::OnsetPattern { control, inner } => apply_onset_pattern(inner, control, span)?,
             Self::Slice { start, end, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_slice(*start, *end);
-            }),
+            })?,
             Self::SlicePattern {
                 start_control,
                 end_control,
                 inner,
-            } => apply_slice_pattern(inner, start_control, end_control, span),
+            } => apply_slice_pattern(inner, start_control, end_control, span)?,
             Self::SliceIdxPattern {
                 control,
                 segments,
                 inner,
-            } => apply_slice_idx_pattern(inner, control, *segments, span),
+            } => apply_slice_idx_pattern(inner, control, *segments, span)?,
             Self::Pedal {
                 pedal_program,
                 inner,
             } => apply_value_mutation(inner, span, |value| {
                 *value = value.attach_pedal_program(pedal_program);
-            }),
-            Self::Rand { site_salt } => query_rand(*site_salt, span),
-            _ => self.try_query_audio_effect(span),
-        }
+            })?,
+            Self::Rand { site_salt } => query_rand(*site_salt, span)?,
+            _ => return Ok(None),
+        }))
     }
 
     fn try_query_audio_effect(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
-        self.try_query_audio_effect_method(span)
+        if let Some(res) = self.try_query_delay_effect(span)? {
+            return Ok(res);
+        }
+        if let Some(res) = self.try_query_filter_effect(span)? {
+            return Ok(res);
+        }
+        if let Some(res) = self.try_query_reverb_drive_effect(span)? {
+            return Ok(res);
+        }
+        self.try_query_modulation_effect(span)
     }
 
-    #[allow(clippy::too_many_lines)]
-    fn try_query_audio_effect_method(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
-        match self {
+    fn try_query_delay_effect(&self, span: &TimeSpan) -> Result<Option<Vec<Event<T>>>, EvalError> {
+        Ok(Some(match self {
             Self::Delay { mix, inner } => {
-                apply_value_mutation(inner, span, |value| *value = value.adjust_delay_mix(*mix))
+                apply_value_mutation(inner, span, |value| *value = value.adjust_delay_mix(*mix))?
             }
             Self::DelayPattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::DelayMix)
+                apply_control_pattern(inner, control, span, ControlPatternKind::DelayMix)?
             }
             Self::DelayTime { time, inner } => {
-                apply_value_mutation(inner, span, |value| *value = value.adjust_delay_time(*time))
+                apply_value_mutation(inner, span, |value| *value = value.adjust_delay_time(*time))?
             }
             Self::DelayTimePattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::DelayTime)
+                apply_control_pattern(inner, control, span, ControlPatternKind::DelayTime)?
             }
-            Self::DelayFeedback { feedback, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_delay_feedback(*feedback);
-            }),
+            Self::DelayFeedback { feedback, inner } => {
+                apply_value_mutation(inner, span, |value| {
+                    *value = value.adjust_delay_feedback(*feedback);
+                })?
+            }
             Self::DelayFeedbackPattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::DelayFeedback)
+                apply_control_pattern(inner, control, span, ControlPatternKind::DelayFeedback)?
             }
+            _ => return Ok(None),
+        }))
+    }
+
+    fn try_query_filter_effect(&self, span: &TimeSpan) -> Result<Option<Vec<Event<T>>>, EvalError> {
+        Ok(Some(match self {
             Self::Hpf { cutoff_hz, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_hpf(*cutoff_hz);
-            }),
+            })?,
             Self::HpfPattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::Hpf)
+                apply_control_pattern(inner, control, span, ControlPatternKind::Hpf)?
             }
             Self::Lpf { cutoff_hz, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_lpf(*cutoff_hz);
-            }),
+            })?,
             Self::LpfPattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::Lpf)
+                apply_control_pattern(inner, control, span, ControlPatternKind::Lpf)?
             }
+            _ => return Ok(None),
+        }))
+    }
+
+    fn try_query_reverb_drive_effect(
+        &self,
+        span: &TimeSpan,
+    ) -> Result<Option<Vec<Event<T>>>, EvalError> {
+        Ok(Some(match self {
             Self::Reverb { mix, inner } => {
-                apply_value_mutation(inner, span, |value| *value = value.adjust_reverb_mix(*mix))
+                apply_value_mutation(inner, span, |value| *value = value.adjust_reverb_mix(*mix))?
             }
             Self::ReverbPattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::ReverbMix)
+                apply_control_pattern(inner, control, span, ControlPatternKind::ReverbMix)?
             }
             Self::ReverbRoom { room, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_reverb_room(*room);
-            }),
+            })?,
             Self::ReverbRoomPattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::ReverbRoom)
+                apply_control_pattern(inner, control, span, ControlPatternKind::ReverbRoom)?
             }
             Self::ReverbDamp { damp, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_reverb_damp(*damp);
-            }),
+            })?,
             Self::ReverbDampPattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::ReverbDamp)
+                apply_control_pattern(inner, control, span, ControlPatternKind::ReverbDamp)?
             }
             Self::Res { resonance, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_resonance(*resonance);
-            }),
+            })?,
             Self::ResPattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::Res)
+                apply_control_pattern(inner, control, span, ControlPatternKind::Res)?
             }
             Self::Drive { drive, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_drive(*drive);
-            }),
+            })?,
             Self::DrivePattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::Drive)
+                apply_control_pattern(inner, control, span, ControlPatternKind::Drive)?
             }
-            _ => self.try_query_modulation_effect(span),
-        }
+            _ => return Ok(None),
+        }))
     }
 
     fn try_query_modulation_effect(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
-        self.try_query_modulation_effect_method(span)
+        if let Some(res) = self.try_query_chorus_pulse_effect(span)? {
+            return Ok(res);
+        }
+        if let Some(res) = self.try_query_compressor_pan_effect(span)? {
+            return Ok(res);
+        }
+        unreachable!("handled in previous try_query stages")
     }
 
-    #[allow(clippy::too_many_lines)]
-    fn try_query_modulation_effect_method(
+    fn try_query_chorus_pulse_effect(
         &self,
         span: &TimeSpan,
-    ) -> Result<Vec<Event<T>>, EvalError> {
-        match self {
+    ) -> Result<Option<Vec<Event<T>>>, EvalError> {
+        Ok(Some(match self {
             Self::Chorus { mix, inner } => {
-                apply_value_mutation(inner, span, |value| *value = value.adjust_chorus_mix(*mix))
+                apply_value_mutation(inner, span, |value| *value = value.adjust_chorus_mix(*mix))?
             }
             Self::ChorusPattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::ChorusMix)
+                apply_control_pattern(inner, control, span, ControlPatternKind::ChorusMix)?
             }
             Self::ChorusDepth { depth, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_chorus_depth(*depth);
-            }),
+            })?,
             Self::ChorusDepthPattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::ChorusDepth)
+                apply_control_pattern(inner, control, span, ControlPatternKind::ChorusDepth)?
             }
             Self::ChorusRate { rate, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_chorus_rate(*rate);
-            }),
+            })?,
             Self::ChorusRatePattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::ChorusRate)
+                apply_control_pattern(inner, control, span, ControlPatternKind::ChorusRate)?
             }
-            Self::PulseWidth { pulse_width, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_pulse_width(*pulse_width);
-            }),
+            Self::PulseWidth { pulse_width, inner } => {
+                apply_value_mutation(inner, span, |value| {
+                    *value = value.adjust_pulse_width(*pulse_width);
+                })?
+            }
             Self::PulseWidthPattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::PulseWidth)
+                apply_control_pattern(inner, control, span, ControlPatternKind::PulseWidth)?
             }
+            _ => return Ok(None),
+        }))
+    }
+
+    fn try_query_compressor_pan_effect(
+        &self,
+        span: &TimeSpan,
+    ) -> Result<Option<Vec<Event<T>>>, EvalError> {
+        Ok(Some(match self {
             Self::Pan { amount, inner } => {
-                apply_value_mutation(inner, span, |value| *value = value.adjust_pan(*amount))
+                apply_value_mutation(inner, span, |value| *value = value.adjust_pan(*amount))?
             }
             Self::PanPattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::Pan)
+                apply_control_pattern(inner, control, span, ControlPatternKind::Pan)?
             }
             Self::Compressor { mix, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_compressor_mix(*mix);
-            }),
+            })?,
             Self::CompressorPattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::CompressorMix)
+                apply_control_pattern(inner, control, span, ControlPatternKind::CompressorMix)?
             }
             Self::CompressorThreshold { threshold, inner } => {
                 apply_value_mutation(inner, span, |value| {
                     *value = value.adjust_compressor_threshold(*threshold);
-                })
+                })?
             }
             Self::CompressorThresholdPattern { control, inner } => apply_control_pattern(
                 inner,
                 control,
                 span,
                 ControlPatternKind::CompressorThreshold,
-            ),
+            )?,
             Self::CompressorRatio { ratio, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_compressor_ratio(*ratio);
-            }),
+            })?,
             Self::CompressorRatioPattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::CompressorRatio)
+                apply_control_pattern(inner, control, span, ControlPatternKind::CompressorRatio)?
             }
-
-            _ => unreachable!("handled in previous try_query stages"),
-        }
+            _ => return Ok(None),
+        }))
     }
 }
 
