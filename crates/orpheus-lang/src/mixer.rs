@@ -134,6 +134,18 @@ impl MixerState {
         Ok(())
     }
 
+    fn get_track_mut(&mut self, track_name: &str) -> Result<&mut MixerTrack, String> {
+        self.tracks
+            .get_mut(track_name)
+            .ok_or_else(|| format!("no track named `{track_name}`"))
+    }
+
+    fn get_bus_mut(&mut self, bus_name: &str) -> Result<&mut MixerBus, String> {
+        self.buses
+            .get_mut(bus_name)
+            .ok_or_else(|| format!("no bus named `{bus_name}`"))
+    }
+
     pub(crate) fn bind_track(
         &mut self,
         track_name: &str,
@@ -141,10 +153,7 @@ impl MixerState {
         bindings: &BTreeMap<String, Value>,
     ) -> Result<(), String> {
         ensure_sample_binding(binding_name, bindings)?;
-        let track = self
-            .tracks
-            .get_mut(track_name)
-            .ok_or_else(|| format!("no track named `{track_name}`"))?;
+        let track = self.get_track_mut(track_name)?;
         track.binding_name = Some(binding_name.to_owned());
         Ok(())
     }
@@ -153,19 +162,13 @@ impl MixerState {
         if !level.is_finite() || level < 0.0 {
             return Err("track level must be a finite value >= 0".to_owned());
         }
-        let track = self
-            .tracks
-            .get_mut(track_name)
-            .ok_or_else(|| format!("no track named `{track_name}`"))?;
+        let track = self.get_track_mut(track_name)?;
         track.level = level;
         Ok(())
     }
 
     pub(crate) fn set_track_mute(&mut self, track_name: &str, muted: bool) -> Result<(), String> {
-        let track = self
-            .tracks
-            .get_mut(track_name)
-            .ok_or_else(|| format!("no track named `{track_name}`"))?;
+        let track = self.get_track_mut(track_name)?;
         track.muted = muted;
         Ok(())
     }
@@ -204,10 +207,7 @@ impl MixerState {
             return Err("delay wet must be a finite value in [0, 1]".to_owned());
         }
 
-        let bus = self
-            .buses
-            .get_mut(bus_name)
-            .ok_or_else(|| format!("no bus named `{bus_name}`"))?;
+        let bus = self.get_bus_mut(bus_name)?;
         bus.effect = Some(MixerBusEffect::Delay {
             time,
             feedback,
@@ -233,19 +233,13 @@ impl MixerState {
             return Err("reverb wet must be a finite value in [0, 1]".to_owned());
         }
 
-        let bus = self
-            .buses
-            .get_mut(bus_name)
-            .ok_or_else(|| format!("no bus named `{bus_name}`"))?;
+        let bus = self.get_bus_mut(bus_name)?;
         bus.effect = Some(MixerBusEffect::Reverb { size, damp, wet });
         Ok(())
     }
 
     pub(crate) fn clear_bus_effect(&mut self, bus_name: &str) -> Result<(), String> {
-        let bus = self
-            .buses
-            .get_mut(bus_name)
-            .ok_or_else(|| format!("no bus named `{bus_name}`"))?;
+        let bus = self.get_bus_mut(bus_name)?;
         bus.effect = None;
         Ok(())
     }
@@ -262,10 +256,7 @@ impl MixerState {
         if !self.buses.contains_key(bus_name) {
             return Err(format!("no bus named `{bus_name}`"));
         }
-        let track = self
-            .tracks
-            .get_mut(track_name)
-            .ok_or_else(|| format!("no track named `{track_name}`"))?;
+        let track = self.get_track_mut(track_name)?;
         track.sends.insert(bus_name.to_owned(), level);
         Ok(())
     }
