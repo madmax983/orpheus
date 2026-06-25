@@ -233,6 +233,50 @@ pub fn number_pattern_stats(
 /// let stats = tuning_stats("t", tuning);
 /// println!("{stats}");
 /// ```
+/// Analyzes a plugin pattern's evaluated events and returns a formatted report.
+pub fn plugin_pattern_stats(
+    binding_name: &str,
+    pattern: &crate::value::PluginPatternValue,
+    cycle_count: u64,
+) -> Result<String, crate::error::EvalError> {
+    if cycle_count == 0 {
+        return Err(crate::error::EvalError::new(
+            "stats requires at least one cycle",
+        ));
+    }
+
+    let source = pattern.track_source();
+    let note_count = source.notes().len();
+    let lane_count = source.parameter_lanes().len();
+
+    let title = format!(
+        "{} {binding_name} ({} cycles)",
+        "Plugin Pattern Stats:".cyan().bold(),
+        cycle_count.to_string().yellow()
+    );
+    let mut table = Table::new();
+    table.load_preset(UTF8_BORDERS_ONLY);
+
+    table.add_row(vec![
+        Cell::new("Total Notes")
+            .fg(comfy_table::Color::White)
+            .add_attribute(comfy_table::Attribute::Bold),
+        Cell::new(note_count.to_string())
+            .fg(comfy_table::Color::Green)
+            .set_alignment(CellAlignment::Right),
+    ]);
+    table.add_row(vec![
+        Cell::new("Parameter Lanes")
+            .fg(comfy_table::Color::White)
+            .add_attribute(comfy_table::Attribute::Bold),
+        Cell::new(lane_count.to_string())
+            .fg(comfy_table::Color::Yellow)
+            .set_alignment(CellAlignment::Right),
+    ]);
+
+    Ok(format!("{title}\n{table}"))
+}
+
 #[must_use]
 pub fn tuning_stats(binding_name: &str, tuning: &TuningValue) -> String {
     use std::fmt::Write;
