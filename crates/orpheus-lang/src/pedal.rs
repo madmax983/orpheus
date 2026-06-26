@@ -115,6 +115,17 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Constructs a new validated node with resolved signal domains.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use orpheus_lang::{ValidatedPedalNode, SignalKind};
+    /// use orpheus_lang::pedal::PedalNodeKind;
+    ///
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "param");
+    /// ```
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +141,13 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Returns the inner node kind representing its computation logic.
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Returns a human-readable summary of the node for UI rendering.
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +162,18 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Associates a user-defined variable name with a validated node.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use orpheus_lang::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind};
+    /// use orpheus_lang::pedal::PedalNodeKind;
+    ///
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "param");
+    /// let binding = ValidatedPedalBinding::new("my_node", node);
+    /// ```
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +182,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// Returns the variable name used in the `Effect` block.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Returns the underlying validated node definition.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node

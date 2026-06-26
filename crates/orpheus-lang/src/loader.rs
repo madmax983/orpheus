@@ -39,8 +39,11 @@ struct ImportSpec {
 /// ```
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
+    /// The global type environment bindings accumulated during inference.
     pub type_bindings: BTreeMap<String, Type>,
+    /// The evaluated runtime values associated with each binding.
     pub value_bindings: BTreeMap<String, Value>,
+    /// The name of the final binding evaluated in the module, if any.
     pub last_binding_name: Option<String>,
 }
 
