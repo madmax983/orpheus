@@ -50,3 +50,32 @@ fn ladder_filter_zero_cutoff_leaks_prior_state_toward_silence() {
 
     assert!(last < first);
 }
+
+#[test]
+fn ladder_filter_handles_non_finite_inputs_gracefully() {
+    let mut filter = LadderFilter::new(48000.0);
+    // Non-finite drive
+    let out = filter.process(f32::NAN, 1000.0, 0.5);
+    // Nan drive -> 0.0 drive. filter will just settle.
+    assert!(out.is_finite());
+
+    // Non-finite cutoff
+    let out = filter.process(1.0, f32::INFINITY, 0.5);
+    assert!(out.is_finite());
+
+    // Non-finite resonance
+    let out = filter.process(1.0, 1000.0, f32::NAN);
+    assert!(out.is_finite());
+}
+
+#[test]
+fn ladder_filter_zero_cutoff_decays() {
+    let mut filter = LadderFilter::new(48000.0);
+    filter.process(1.0, 1000.0, 0.5); // Push some signal into it
+    let state_before = filter.process(0.0, 1000.0, 0.5);
+
+    // Now push 0.0 cutoff, it should decay towards 0
+    let state_after = filter.process(0.0, 0.0, 0.5);
+    // Should be strictly smaller in magnitude, unless already zero
+    assert!(state_after.abs() <= state_before.abs());
+}

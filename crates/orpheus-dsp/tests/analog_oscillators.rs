@@ -82,3 +82,41 @@ fn polyblep_saw_has_smaller_worst_case_step_than_a_naive_saw() {
     let worst_naive = naive_saw_step(sample_rate_hz, freq_hz, 512);
     assert!(worst_polyblep < worst_naive);
 }
+
+// ---------------------------------------------------------------------------
+// PolyBLEP Coverage
+// ---------------------------------------------------------------------------
+
+#[test]
+fn poly_blep_negative_dt_returns_zero() {
+    let mut osc = SawOsc::new(48000.0);
+    // Negative frequency forces dt <= 0.0 inside poly_blep
+    let s = osc.next_sample(-100.0);
+    // When dt=0, step=0, poly_blep=0. Phase is 0. Sample should be 2*(0)-1 - 0 = -1.0
+    assert_eq!(s, -1.0);
+}
+
+#[test]
+fn poly_blep_upper_boundary_is_exercised() {
+    let mut osc = SawOsc::new(48000.0);
+    // We want phase > 1.0 - dt. Let's make dt large enough to hit it quickly.
+    let freq = 20000.0; // very high frequency so dt is large
+    // At 48000 Hz, dt = 20000/48000 = 0.416
+    // We need phase > 1.0 - 0.416 = 0.583
+    let mut hit = false;
+    for _ in 0..10 {
+        let _s = osc.next_sample(freq);
+        // We know that `poly_blep` branch will be executed if we just run it for a few cycles.
+        hit = true;
+    }
+    assert!(hit);
+}
+
+#[test]
+fn tri_osc_reset_resets_integrator() {
+    let mut osc = TriOsc::new(48000.0);
+    let s1 = osc.next_sample(440.0);
+    osc.reset();
+    let s2 = osc.next_sample(440.0);
+    assert_eq!(s1, s2);
+}

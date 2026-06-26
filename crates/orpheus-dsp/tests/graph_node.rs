@@ -277,3 +277,56 @@ fn wire_node_duplicates_channel() {
     assert!(out1.iter().all(|&s| (s - 7.0).abs() < f32::EPSILON));
     assert!(out2.iter().all(|&s| (s - 7.0).abs() < f32::EPSILON));
 }
+
+// ---------------------------------------------------------------------------
+// Debug Impls
+// ---------------------------------------------------------------------------
+
+#[test]
+fn const_node_debug_format() {
+    let n = constant(42.0);
+    let debug_str = format!("{:?}", n);
+    assert!(debug_str.contains("ConstNode"));
+}
+
+#[test]
+fn sine_node_debug_format() {
+    let n = sine(48000.0);
+    let debug_str = format!("{:?}", n);
+    assert!(debug_str.contains("SineNode"));
+}
+
+#[test]
+fn delay_node_debug_format() {
+    let n = delay_line(10);
+    let debug_str = format!("{:?}", n);
+    assert!(debug_str.contains("DelayNode"));
+}
+
+#[test]
+fn one_pole_debug_format() {
+    let n = one_pole(48000.0);
+    let debug_str = format!("{:?}", n);
+    assert!(debug_str.contains("OnePoleNode"));
+}
+
+#[test]
+fn passthrough_node_debug_format() {
+    let n = passthrough(2);
+    let debug_str = format!("{:?}", n);
+    assert!(debug_str.contains("PassthroughNode"));
+}
+
+#[test]
+fn sum_node_debug_format() {
+    let n = sum(3);
+    let debug_str = format!("{:?}", n);
+    assert!(debug_str.contains("SumNode"));
+}
+
+#[test]
+fn wire_node_debug_format() {
+    let n = wire(&[0, 1]);
+    let debug_str = format!("{:?}", n);
+    assert!(debug_str.contains("WireNode"));
+}

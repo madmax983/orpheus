@@ -323,3 +323,55 @@ fn channel_mismatch_error_messages_are_descriptive() {
     assert!(msg.contains('1'));
     assert!(msg.contains('2'));
 }
+
+// ---------------------------------------------------------------------------
+// Debug Impls
+// ---------------------------------------------------------------------------
+
+#[test]
+fn seq_debug_format() {
+    let s = seq(constant(1.0), passthrough(1)).unwrap();
+    let debug_str = format!("{:?}", s);
+    assert!(debug_str.contains("Seq"));
+    assert!(debug_str.contains("inputs"));
+    assert!(debug_str.contains("outputs"));
+}
+
+#[test]
+fn par_debug_format() {
+    let p = par(constant(1.0), constant(2.0));
+    let debug_str = format!("{:?}", p);
+    assert!(debug_str.contains("Par"));
+    assert!(debug_str.contains("inputs"));
+    assert!(debug_str.contains("outputs"));
+}
+
+#[test]
+fn spl_debug_format() {
+    let s = split(constant(4.0), passthrough(2)).unwrap();
+    let debug_str = format!("{:?}", s);
+    assert!(debug_str.contains("Spl"));
+    assert!(debug_str.contains("inputs"));
+    assert!(debug_str.contains("outputs"));
+}
+
+#[test]
+fn mrg_debug_format() {
+    let source = par(constant(3.0), constant(7.0));
+    let m = merge(source, passthrough(1)).unwrap();
+    let debug_str = format!("{:?}", m);
+    assert!(debug_str.contains("Mrg"));
+    assert!(debug_str.contains("inputs"));
+    assert!(debug_str.contains("outputs"));
+}
+
+#[test]
+fn rec_debug_format() {
+    let r = feedback(passthrough(2), passthrough(1)).unwrap();
+    let debug_str = format!("{:?}", r);
+    assert!(debug_str.contains("Rec"));
+    assert!(debug_str.contains("inputs"));
+    assert!(debug_str.contains("outputs"));
+    assert!(debug_str.contains("body"));
+    assert!(debug_str.contains("feedback"));
+}

@@ -203,3 +203,17 @@ fn bind_reset_preserves_determinism() {
 
     assert_eq!(out1, out2);
 }
+
+// ---------------------------------------------------------------------------
+// Debug Impls
+// ---------------------------------------------------------------------------
+
+#[test]
+fn bind_debug_format() {
+    let b = bind(saw(SR), &[(0, 440.0)]).unwrap();
+    let debug_str = format!("{:?}", b);
+    assert!(debug_str.contains("Bind"));
+    assert!(debug_str.contains("inputs"));
+    assert!(debug_str.contains("outputs"));
+    assert!(debug_str.contains("bound_count"));
+}

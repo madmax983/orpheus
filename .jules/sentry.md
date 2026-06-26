@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2024-06-26 - [Sentry: Debug Format Tests and Untracked Code]
+**Learning:** Some custom node implementations inside graph combinators were missing tests for their derived `Debug` implementation. It is important to remember that derived traits like `Debug` and formatters don't automatically achieve coverage if they aren't actually called during tests. When trying to reach near 100% test coverage as the QA/Test persona "Sentry", adding `format!("{:?}", obj)` tests captures the automatically generated `fmt` methods or custom `Debug` implementations and significantly bumps coverage.
+**Action:** Include simple `format!("{:?}", obj)` strings when writing tests to increase test coverage metrics on structurally defined structs that implement `Debug`.

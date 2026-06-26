@@ -191,3 +191,49 @@ fn soft_sat_adapter_matches_raw() {
 
     assert_eq!(node_out, raw_out);
 }
+
+// ---------------------------------------------------------------------------
+// PulseNode adapter
+// ---------------------------------------------------------------------------
+
+use orpheus_dsp::{PulseOsc, pulse};
+
+#[test]
+fn pulse_adapter_matches_raw_pulse_osc() {
+    let mut node = pulse(SR);
+    let mut raw = PulseOsc::new(SR);
+
+    let freq = vec![440.0_f32; FRAMES];
+    let pw = vec![0.5_f32; FRAMES];
+    let mut node_out = vec![0.0_f32; FRAMES];
+    node.process(&[&freq, &pw], &mut [&mut node_out], FRAMES);
+
+    let raw_out: Vec<f32> = (0..FRAMES).map(|_| raw.next_sample(440.0, 0.5)).collect();
+
+    assert_eq!(node_out, raw_out);
+}
+
+#[test]
+fn pulse_adapter_reset_matches_raw_reset() {
+    let mut node = pulse(SR);
+    let mut raw = PulseOsc::new(SR);
+
+    let freq = vec![440.0_f32; FRAMES];
+    let pw = vec![0.5_f32; FRAMES];
+    let mut buf = vec![0.0_f32; FRAMES];
+
+    node.process(&[&freq, &pw], &mut [&mut buf], FRAMES);
+    node.reset();
+
+    for _ in 0..FRAMES {
+        let _ = raw.next_sample(440.0, 0.5);
+    }
+    raw.reset();
+
+    let mut node_out = vec![0.0_f32; FRAMES];
+    node.process(&[&freq, &pw], &mut [&mut node_out], FRAMES);
+
+    let raw_out: Vec<f32> = (0..FRAMES).map(|_| raw.next_sample(440.0, 0.5)).collect();
+
+    assert_eq!(node_out, raw_out);
+}

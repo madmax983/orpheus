@@ -61,3 +61,18 @@ fn processor_debug_shows_channel_counts() {
     assert!(dbg.contains("Processor"));
     assert!(dbg.contains('3'));
 }
+
+// ---------------------------------------------------------------------------
+// Debug Impls
+// ---------------------------------------------------------------------------
+
+use orpheus_dsp::saw;
+
+#[test]
+fn processor_debug_format() {
+    let p = Processor::new(saw(48000.0));
+    let debug_str = format!("{:?}", p);
+    assert!(debug_str.contains("Processor"));
+    assert!(debug_str.contains("inputs"));
+    assert!(debug_str.contains("outputs"));
+}
