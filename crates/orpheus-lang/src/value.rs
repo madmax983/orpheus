@@ -5972,3 +5972,46 @@ impl Explain for NumberPatternValue {
         format!("{title}\n{table}")
     }
 }
+
+impl Explain for PluginPatternValue {
+    fn explain(&self, binding_name: &str) -> String {
+        use comfy_table::{Cell, CellAlignment};
+        use crossterm::style::Stylize;
+
+        let title = format!(
+            "{} {}",
+            "Plugin Pattern Plan:".cyan().bold(),
+            binding_name.yellow()
+        );
+
+        let mut table = crate::explain::explain_table(["Property", "Value"]);
+        let desc = self.track_source().descriptor();
+
+        table.add_row(vec![
+            Cell::new("Type").fg(comfy_table::Color::Cyan),
+            Cell::new("Plugin Track Source")
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        let format_str = match desc.format() {
+            orpheus_dsp::PluginFormat::Vst3 => "VST3",
+            orpheus_dsp::PluginFormat::AudioUnit => "AudioUnit",
+        };
+
+        table.add_row(vec![
+            Cell::new("Format").fg(comfy_table::Color::Cyan),
+            Cell::new(format_str)
+                .fg(comfy_table::Color::Green)
+                .set_alignment(CellAlignment::Right),
+        ]);
+        table.add_row(vec![
+            Cell::new("Identifier").fg(comfy_table::Color::Cyan),
+            Cell::new(desc.identifier())
+                .fg(comfy_table::Color::White)
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+        format!("{title}\n{table}")
+    }
+}
