@@ -82,3 +82,7 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**[Refactor massive value matches to Option cascade]**
+**Learning:** `clippy::too_many_lines` warnings on massive match statements inside core evaluators (`try_query_transform_method`, etc.) can be efficiently refactored by grouping logical subsets of match arms into dedicated helper methods that return `Result<Option<Vec<Event<T>>>, EvalError>`. This allows cascading through the helpers using `if let Some(events) = self.try_query_xxx(span)? { return Ok(events); }`, preserving strict logic, enabling early error propagation with `?`, and completely eliminating the need for `#[allow(clippy::too_many_lines)]`.
+**Action:** Use grouped `Result<Option<T>, E>` helper methods to break apart massive monolithic `match` statements where exhaustive enums can't be cleanly delegated otherwise.
