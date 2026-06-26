@@ -603,4 +603,62 @@ mod tests {
         let text = "🚀 def";
         previous_word_boundary(text, 1);
     }
+
+    #[test]
+    fn test_shared_state_advanced_editing() {
+        let engine = EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+
+        state.input = "hello world text".to_string();
+        state.cursor_index = 6; // at 'w'
+
+        state.kill_to_end();
+        assert_eq!(state.input, "hello ");
+        assert_eq!(state.cursor_index, 6);
+
+        state.kill_to_start();
+        assert_eq!(state.input, "");
+        assert_eq!(state.cursor_index, 0);
+
+        state.input = "hello world".to_string();
+        state.cursor_index = 11; // at end
+        state.delete_previous_word();
+        assert_eq!(state.input, "hello ");
+        assert_eq!(state.cursor_index, 6);
+    }
+
+    #[test]
+    fn test_shared_state_undo_redo() {
+        let engine = EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+
+        // The engine stub does not really support true undo/redo history,
+        // but we can verify that the commands are dispatched without panics.
+        state.undo_session_change();
+        // Since undo on empty state fails or returns message, status might be set.
+        assert!(state.status_message.is_some());
+
+        state.redo_session_change();
+        assert!(state.status_message.is_some());
+    }
+
+    #[test]
+    fn test_shared_state_clear_transcript() {
+        let engine = EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+
+        state.transcript.push("some previous output".to_string());
+        state.clear_transcript();
+        assert!(state.transcript.is_empty());
+    }
+
+    #[test]
+    fn test_shared_state_close_help() {
+        let engine = EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+
+        state.show_help = true;
+        state.close_help();
+        assert!(!state.show_help);
+    }
 }
