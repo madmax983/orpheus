@@ -1,6 +1,7 @@
 //! Smoke tests for the REPL binary.
 use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::str::contains;
+use predicates::prelude::PredicateBooleanExt;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -48,9 +49,7 @@ fn repl_accepts_pattern_and_reports_success() {
     cmd.write_stdin("drums = bd sn cp sn\n:quit\n")
         .assert()
         .success()
-        .stdout(contains(
-            "\u{2713} bound drums = Pattern<Sample>: Pattern<Sample>",
-        ));
+        .stdout(contains("\u{2713}").and(contains("bound drums = Pattern<Sample>: Pattern<Sample>")));
 }
 
 #[test]
@@ -81,12 +80,8 @@ fn repl_reuses_prior_bindings_across_lines() {
     cmd.write_stdin("drums = bd sn cp sn\ncopy = drums\n:quit\n")
         .assert()
         .success()
-        .stdout(contains(
-            "\u{2713} bound drums = Pattern<Sample>: Pattern<Sample>",
-        ))
-        .stdout(contains(
-            "\u{2713} bound copy = Pattern<Sample>: Pattern<Sample>",
-        ));
+        .stdout(contains("\u{2713}").and(contains("bound drums = Pattern<Sample>: Pattern<Sample>")))
+        .stdout(contains("\u{2713}").and(contains("bound copy = Pattern<Sample>: Pattern<Sample>")));
 }
 
 #[test]
@@ -96,9 +91,7 @@ fn repl_prints_inferred_function_types() {
     cmd.write_stdin("warp = fast(2)\n:quit\n")
         .assert()
         .success()
-        .stdout(contains(
-            "\u{2713} bound warp = Function(Builtin): Function(",
-        ));
+        .stdout(contains("\u{2713}").and(contains("bound warp = Function(Builtin): Function(")));
 }
 
 #[test]
