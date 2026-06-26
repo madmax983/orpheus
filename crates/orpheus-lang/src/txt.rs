@@ -14,6 +14,12 @@ use crate::value::{NumberPatternValue, SamplePatternValue};
 /// Each line in the generated file represents an event with its timing
 /// and synthesized parameters.
 ///
+/// ⚡ Bolt Optimization:
+/// This function writes output directly to the file stream using `write!` macros
+/// instead of buffering strings in memory. This eliminates multiple heap allocations
+/// per event (from `format!`, `Vec::push`, and `.join()`), significantly
+/// reducing memory churn and overhead when exporting large patterns.
+///
 /// # Examples
 ///
 /// ```
@@ -53,26 +59,25 @@ pub fn export_sample_pattern_to_txt(
         let start = f64::from(event.part.start());
         let end = f64::from(event.part.end());
 
-        let mut params = Vec::new();
-        params.push(format!("gain: {:.2}", event.value.gain()));
-        params.push(format!("pan: {:.2}", event.value.pan()));
-        params.push(format!("rate: {:.2}", event.value.rate()));
-
-        if let Some(hpf) = event.value.hpf_cutoff_hz() {
-            params.push(format!("hpf: {hpf:.2}"));
-        }
-        if let Some(lpf) = event.value.lpf_cutoff_hz() {
-            params.push(format!("lpf: {lpf:.2}"));
-        }
-
-        writeln!(
+        write!(
             file,
-            "[{:.3} -> {:.3}] {} ({})",
+            "[{:.3} -> {:.3}] {} (gain: {:.2}, pan: {:.2}, rate: {:.2}",
             start,
             end,
             event.value.sample(),
-            params.join(", ")
+            event.value.gain(),
+            event.value.pan(),
+            event.value.rate()
         )?;
+
+        if let Some(hpf) = event.value.hpf_cutoff_hz() {
+            write!(file, ", hpf: {hpf:.2}")?;
+        }
+        if let Some(lpf) = event.value.lpf_cutoff_hz() {
+            write!(file, ", lpf: {lpf:.2}")?;
+        }
+
+        writeln!(file, ")")?;
     }
 
     Ok(())
