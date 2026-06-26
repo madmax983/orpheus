@@ -4,6 +4,7 @@
 //! similar to a tracker sequence or playlist.
 
 use std::io::Write;
+use std::fmt::Write as _;
 use std::path::Path;
 
 use crate::eval::{EvalError, render_span};
@@ -29,6 +30,10 @@ use crate::value::{NumberPatternValue, SamplePatternValue};
 /// # Errors
 ///
 /// Returns [`EvalError`] if pattern querying fails or if the file cannot be written.
+///
+/// # Panics
+///
+/// Panics if formatting properties to the internal string buffer fails, which should be impossible.
 pub fn export_sample_pattern_to_txt(
     pattern: &SamplePatternValue,
     path: impl AsRef<Path>,
@@ -49,29 +54,29 @@ pub fn export_sample_pattern_to_txt(
     writeln!(file, "Cycles: {cycle_count}")?;
     writeln!(file)?;
 
+    // Removes ~5 heap allocations per exported event by formatting into a reusable buffer.
+    let mut param_buf = String::with_capacity(128);
+
     for event in events {
         let start = f64::from(event.part.start());
         let end = f64::from(event.part.end());
 
-        let mut params = Vec::new();
-        params.push(format!("gain: {:.2}", event.value.gain()));
-        params.push(format!("pan: {:.2}", event.value.pan()));
-        params.push(format!("rate: {:.2}", event.value.rate()));
+        param_buf.clear();
+        write!(param_buf, "gain: {:.2}, pan: {:.2}, rate: {:.2}", event.value.gain(), event.value.pan(), event.value.rate()).expect("formatting to a String cannot fail");
 
         if let Some(hpf) = event.value.hpf_cutoff_hz() {
-            params.push(format!("hpf: {hpf:.2}"));
+            write!(param_buf, ", hpf: {hpf:.2}").expect("formatting to a String cannot fail");
         }
         if let Some(lpf) = event.value.lpf_cutoff_hz() {
-            params.push(format!("lpf: {lpf:.2}"));
+            write!(param_buf, ", lpf: {lpf:.2}").expect("formatting to a String cannot fail");
         }
 
         writeln!(
             file,
-            "[{:.3} -> {:.3}] {} ({})",
+            "[{:.3} -> {:.3}] {} ({param_buf})",
             start,
             end,
-            event.value.sample(),
-            params.join(", ")
+            event.value.sample()
         )?;
     }
 
@@ -98,6 +103,10 @@ pub fn export_sample_pattern_to_txt(
 /// # Errors
 ///
 /// Returns [`EvalError`] if pattern querying fails or if the file cannot be written.
+///
+/// # Panics
+///
+/// Panics if formatting properties to the internal string buffer fails, which should be impossible.
 pub fn export_number_pattern_to_txt(
     pattern: &NumberPatternValue,
     path: impl AsRef<Path>,
