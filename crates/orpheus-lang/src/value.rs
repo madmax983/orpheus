@@ -660,7 +660,14 @@ impl fmt::Display for Value {
                 }
             ),
             Self::Pedal(_) => write!(f, "Pedal"),
-            Self::PluginPattern(_) => write!(f, "Plugin"),
+            Self::PluginPattern(p) => {
+                let desc = p.track_source().descriptor();
+                let format_name = match desc.format() {
+                    orpheus_dsp::PluginFormat::Vst3 => "VST3",
+                    orpheus_dsp::PluginFormat::AudioUnit => "AU",
+                };
+                write!(f, "Plugin({}, \"{}\")", format_name, desc.identifier())
+            }
             Self::Tuning(_) => write!(f, "Tuning"),
             Self::String(s) => write!(f, "\"{s}\""),
         }
