@@ -24,12 +24,7 @@ use std::sync::Arc;
 
 use orpheus_pattern::{CyclePattern, Event, EventStream, PatternNode, Rational, TimeSpan};
 
-use crate::{
-    ReplMode,
-    ast::Expr,
-    eval::{EvalError, apply_function_value},
-    pedal::PedalValue,
-};
+use crate::{ReplMode, ast::Expr, eval::EvalError, pedal::PedalValue};
 
 /// Identifies which core built-in function is being represented.
 ///
@@ -5399,7 +5394,7 @@ where
     T: PatternRuntimeValue,
 {
     let transformed =
-        apply_function_value(transform.clone(), vec![T::into_runtime_value(localized)])?;
+        crate::eval::apply_function_value_ref(transform, vec![T::into_runtime_value(localized)])?;
     T::try_from_runtime_value(transformed)
 }
 

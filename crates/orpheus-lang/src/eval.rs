@@ -997,6 +997,16 @@ pub fn apply_function_value(function: FunctionValue, args: Vec<Value>) -> Result
     }
 }
 
+pub fn apply_function_value_ref(
+    function: &FunctionValue,
+    args: Vec<Value>,
+) -> Result<Value, EvalError> {
+    match function {
+        FunctionValue::Builtin(function) => function.clone().apply(args),
+        FunctionValue::User(function) => apply_user_function(function.clone(), args),
+    }
+}
+
 /// Applies a user-defined function to the provided arguments, executing the body if fully applied.
 ///
 /// If the function is partially applied, this returns a new curried function with the provided arguments captured in its environment.
