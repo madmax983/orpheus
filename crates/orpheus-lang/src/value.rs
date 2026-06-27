@@ -122,6 +122,8 @@ pub enum BuiltinKind {
     Hex,
     /// Interprets a numeric string or value as binary.
     Bin,
+    /// Translates text into Morse code rhythm.
+    Morse,
     /// Creates a headless VST3 plugin pattern.
     Vst,
     /// Creates a headless `AudioUnit` plugin pattern.
@@ -193,6 +195,7 @@ impl fmt::Display for BuiltinKind {
             Self::Tune => "tune",
             Self::Hex => "hex",
             Self::Bin => "bin",
+            Self::Morse => "morse",
             Self::Vst => "vst",
             Self::Au => "au",
             Self::Notes => "notes",
