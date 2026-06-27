@@ -49,3 +49,7 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+
+## 2024-05-18 - [Path Case Sensitivity]
+**Learning:** Checking for substrings like "VST3" on Unix/Linux systems is brittle because default installation paths (e.g., `~/.vst3`, `/usr/lib/vst3`) often use lowercase.
+**Action:** Always use case-insensitive checks or check for both cases (e.g., `s.contains("VST3") || s.contains("vst3")`) when validating paths.
