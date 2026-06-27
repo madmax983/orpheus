@@ -113,6 +113,7 @@ fn lookup_pattern_transform(name: &str) -> Option<Value> {
         "vst" => Some(builtin_function_value(BuiltinKind::Vst)),
         "au" => Some(builtin_function_value(BuiltinKind::Au)),
         "notes" => Some(builtin_function_value(BuiltinKind::Notes)),
+        "morse" => Some(builtin_function_value(BuiltinKind::Morse)),
         "hex" => Some(builtin_function_value(BuiltinKind::Hex)),
         "bin" => Some(builtin_function_value(BuiltinKind::Bin)),
         _ => None,
@@ -405,6 +406,7 @@ impl BuiltinKind {
             Self::Vst => "vst",
             Self::Au => "au",
             Self::Notes => "notes",
+            Self::Morse => "morse",
             Self::Hex => "hex",
             Self::Bin => "bin",
             Self::PluginParam => "p",
@@ -469,6 +471,7 @@ impl BuiltinKind {
             | Self::MidiCc
             | Self::Tune
             | Self::Notes => 2,
+            Self::Morse => 1,
             Self::PluginParam => 3,
             Self::Rand => 0,
         }
@@ -535,6 +538,7 @@ impl BuiltinKind {
             Self::Vst => apply_vst(args),
             Self::Au => apply_au(args),
             Self::Notes => apply_plugin_notes(args),
+            Self::Morse => apply_morse(args),
             Self::Hex => apply_hex(args),
             Self::Bin => apply_bin(args),
             Self::PluginParam => apply_plugin_param(args),
@@ -3070,6 +3074,98 @@ fn apply_lsystem(args: Vec<Value>) -> Result<Value, EvalError> {
     Ok(Value::NumberPattern(NumberPatternValue::from_nodes(nodes)))
 }
 
+fn apply_morse(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let text = extract_string(
+        args.next()
+            .ok_or_else(|| EvalError::new("`morse` requires a string argument"))?,
+        "`morse` string",
+    )?;
+
+    let mut nodes = Vec::new();
+    let text = text.to_ascii_uppercase();
+
+    let get_code = |c: char| -> Option<&'static str> {
+        match c {
+            'A' => Some(".-"),
+            'B' => Some("-..."),
+            'C' => Some("-.-."),
+            'D' => Some("-.."),
+            'E' => Some("."),
+            'F' => Some("..-."),
+            'G' => Some("--."),
+            'H' => Some("...."),
+            'I' => Some(".."),
+            'J' => Some(".---"),
+            'K' => Some("-.-"),
+            'L' => Some(".-.."),
+            'M' => Some("--"),
+            'N' => Some("-."),
+            'O' => Some("---"),
+            'P' => Some(".--."),
+            'Q' => Some("--.-"),
+            'R' => Some(".-."),
+            'S' => Some("..."),
+            'T' => Some("-"),
+            'U' => Some("..-"),
+            'V' => Some("...-"),
+            'W' => Some(".--"),
+            'X' => Some("-..-"),
+            'Y' => Some("-.--"),
+            'Z' => Some("--.."),
+            '0' => Some("-----"),
+            '1' => Some(".----"),
+            '2' => Some("..---"),
+            '3' => Some("...--"),
+            '4' => Some("....-"),
+            '5' => Some("....."),
+            '6' => Some("-...."),
+            '7' => Some("--..."),
+            '8' => Some("---.."),
+            '9' => Some("----."),
+            ' ' => Some(" "),
+            _ => None,
+        }
+    };
+
+    for ch in text.chars() {
+        if let Some(code) = get_code(ch) {
+            if code == " " {
+                for _ in 0..4 {
+                    nodes.push(orpheus_pattern::PatternNode::rest());
+                }
+            } else {
+                for (i, symbol) in code.chars().enumerate() {
+                    if symbol == '.' {
+                        nodes.push(orpheus_pattern::PatternNode::atom(1.0));
+                        nodes.push(orpheus_pattern::PatternNode::rest());
+                    } else if symbol == '-' {
+                        nodes.push(orpheus_pattern::PatternNode::atom(1.0));
+                        nodes.push(orpheus_pattern::PatternNode::atom(1.0));
+                        nodes.push(orpheus_pattern::PatternNode::atom(1.0));
+                        nodes.push(orpheus_pattern::PatternNode::rest());
+                    }
+                    if i < code.len() - 1 {
+                        // Space between symbols in a letter is 1 unit, handled by the trailing rest.
+                    }
+                }
+                // Space between letters is 3 units total (1 already added at the end of the last symbol, so add 2 more)
+                nodes.push(orpheus_pattern::PatternNode::rest());
+                nodes.push(orpheus_pattern::PatternNode::rest());
+            }
+        }
+    }
+
+    // Trim trailing rests so the cycle exactly matches the rhythmic content length.
+    if !nodes.is_empty() {
+        while matches!(nodes.last(), Some(orpheus_pattern::PatternNode::Rest)) {
+            nodes.pop();
+        }
+    }
+
+    Ok(Value::NumberPattern(NumberPatternValue::from_nodes(nodes)))
+}
+
 #[cfg(test)]
 mod hex_bin_tests {
     use super::*;
@@ -3163,6 +3259,29 @@ mod hex_bin_error_tests {
         assert_eq!(
             result.unwrap_err().to_string(),
             "`bin` requires a string argument"
+        );
+    }
+}
+
+#[cfg(test)]
+mod morse_tests {
+    use super::*;
+
+    #[test]
+    fn test_morse_builtin() {
+        let text = std::sync::Arc::from("SOS");
+        let result = apply_morse(vec![Value::String(text)]).unwrap();
+        let _pattern = result.as_number_pattern().unwrap();
+        // Just verify it doesn't crash and returns a pattern.
+    }
+
+    #[test]
+    fn test_morse_builtin_missing_arg() {
+        let result = apply_morse(vec![]);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "`morse` requires a string argument"
         );
     }
 }

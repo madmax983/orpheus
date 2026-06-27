@@ -118,6 +118,8 @@ pub enum BuiltinKind {
     LoadScl,
     /// Adjusts the base tuning frequency (e.g., A4 = 440 Hz) for pitch calculations.
     Tune,
+    /// Generates a Morse code number pattern from a string.
+    Morse,
     /// Interprets a numeric string or value as hexadecimal.
     Hex,
     /// Interprets a numeric string or value as binary.
@@ -191,6 +193,7 @@ impl fmt::Display for BuiltinKind {
             Self::Tuning => "tuning",
             Self::LoadScl => "load_scl",
             Self::Tune => "tune",
+            Self::Morse => "morse",
             Self::Hex => "hex",
             Self::Bin => "bin",
             Self::Vst => "vst",

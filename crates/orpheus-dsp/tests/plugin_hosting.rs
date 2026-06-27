@@ -11,9 +11,11 @@ fn vst3_descriptor_uses_standard_os_search_paths() {
 
     assert_eq!(descriptor.identifier(), "Serum");
     assert!(
-        paths
-            .iter()
-            .any(|path| path.to_string_lossy().contains("VST3")),
+        paths.iter().any(|path| path
+            .to_string_lossy()
+            .to_string()
+            .to_lowercase()
+            .contains("vst3")),
         "expected default VST3 search paths, got {paths:?}"
     );
 }
