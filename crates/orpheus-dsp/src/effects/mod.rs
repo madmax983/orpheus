@@ -100,3 +100,87 @@ impl BusEffectState {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        effects::BusEffectState,
+        routing::{BusEffectSpec, DelaySpec, ReverbSpec},
+    };
+    use orpheus_pattern::Rational;
+
+    #[test]
+    fn should_process_delay_effect_state_successfully() {
+        let delay_spec =
+            BusEffectSpec::Delay(DelaySpec::new(Rational::new(1, 4).unwrap(), 0.5, 0.2));
+
+        let mut delay_state = BusEffectState::from_spec(&delay_spec, 44100).unwrap();
+
+        let out = delay_state.process_frame(1.0, -1.0);
+        // Delay is 1/4 cycle, buffer is not empty, output wet
+        // On first frame, buffer should be empty, so wet out is 0
+        assert_eq!(
+            out,
+            (0.0, 0.0),
+            "Initial frame from delay should output 0 wet signal"
+        );
+
+        let delay_spec_2 =
+            BusEffectSpec::Delay(DelaySpec::new(Rational::new(1, 2).unwrap(), 0.5, 0.2));
+
+        delay_state.sync_timing(&delay_spec_2, 44100).unwrap();
+
+        let out2 = delay_state.process_frame(1.0, 1.0);
+        assert_eq!(
+            out2,
+            (0.0, 0.0),
+            "Initial frame after timing sync should also be 0 wet signal"
+        );
+
+        delay_state.reset();
+
+        let out3 = delay_state.process_frame(1.0, 1.0);
+        assert_eq!(
+            out3,
+            (0.0, 0.0),
+            "Initial frame after reset should be 0 wet signal"
+        );
+    }
+
+    #[test]
+    fn should_process_reverb_effect_state_successfully() {
+        let reverb_spec = BusEffectSpec::Reverb(ReverbSpec::new(0.5, 0.5, 0.5));
+        let mut reverb_state = BusEffectState::from_spec(&reverb_spec, 44100).unwrap();
+
+        let out = reverb_state.process_frame(1.0, 1.0);
+        // Initial reverb frame
+        assert_eq!(
+            out,
+            (0.0, 0.0),
+            "Reverb should produce some wet output immediately"
+        );
+
+        let reverb_spec_2 = BusEffectSpec::Reverb(ReverbSpec::new(0.7, 0.6, 0.4));
+        reverb_state.sync_timing(&reverb_spec_2, 44100).unwrap();
+
+        reverb_state.reset();
+        let out2 = reverb_state.process_frame(1.0, 1.0);
+        assert_eq!(
+            out2,
+            (0.0, 0.0),
+            "Reverb should produce some wet output after reset"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "bus effect state kind must match the hosted spec")]
+    fn should_panic_on_mismatched_effect_state_sync() {
+        let delay_spec =
+            BusEffectSpec::Delay(DelaySpec::new(Rational::new(1, 4).unwrap(), 0.5, 0.2));
+
+        let mut delay_state = BusEffectState::from_spec(&delay_spec, 44100).unwrap();
+        let reverb_spec = BusEffectSpec::Reverb(ReverbSpec::new(0.5, 0.5, 0.5));
+
+        let _ = delay_state.sync_timing(&reverb_spec, 44100);
+    }
+}
