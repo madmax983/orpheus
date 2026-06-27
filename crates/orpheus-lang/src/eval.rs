@@ -720,7 +720,7 @@ impl Evaluator {
         context: &str,
     ) -> Result<i128, EvalError> {
         let value = extract_constant_number_value(self.eval_expr_in_meter(expr, meter)?, context)?;
-        if !value.is_finite() || value <= 0.0 || value.fract().abs() > f64::EPSILON {
+        if !crate::eval::is_whole_number(value) || value <= 0.0 {
             return Err(EvalError::new(format!(
                 "{context} must be a positive integer"
             )));
@@ -1330,6 +1330,10 @@ fn rational_from_parts(numerator: i128, denominator: i128) -> Result<Rational, E
     Ok(Rational::checked_from_parts(numerator, denominator)?)
 }
 
+#[doc(hidden)]
+pub fn is_whole_number(value: f64) -> bool {
+    value.is_finite() && (value.round() - value).abs() <= f64::EPSILON
+}
 #[cfg(test)]
 mod tests {
     use super::{Evaluator, ReplMode, eval_module, parse_module, render_span};

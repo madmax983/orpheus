@@ -1402,10 +1402,7 @@ fn apply_plugin_param(args: Vec<Value>) -> Result<Value, EvalError> {
 fn number_event_to_plugin_note(
     event: &orpheus_pattern::Event<f64>,
 ) -> Result<orpheus_pattern::Event<orpheus_dsp::PluginNote>, EvalError> {
-    if !event.value.is_finite()
-        || event.value.fract().abs() > f64::EPSILON
-        || !(0.0..=127.0).contains(&event.value)
-    {
+    if !crate::eval::is_whole_number(event.value) || !(0.0..=127.0).contains(&event.value) {
         return Err(EvalError::new(
             "`notes` requires integer MIDI note numbers within [0, 127]",
         ));
@@ -1645,7 +1642,7 @@ fn apply_sample_numeric_control(
 fn extract_positive_integer_factor(value: Value, builtin_name: &str) -> Result<i64, EvalError> {
     let number = extract_constant_number(value, builtin_name)?;
 
-    if !number.is_finite() || number <= 0.0 || number.fract().abs() > f64::EPSILON {
+    if !crate::eval::is_whole_number(number) || number <= 0.0 {
         return Err(EvalError::new(format!(
             "`{builtin_name}` requires a positive integer factor"
         )));
@@ -1835,7 +1832,7 @@ fn extract_whole_number(
     let number = extract_constant_number(value, context)?;
     let valid = number.is_finite()
         && number >= 0.0
-        && number.fract().abs() <= f64::EPSILON
+        && crate::eval::is_whole_number(number)
         && (!positive_only || number > 0.0);
 
     if !valid {
@@ -2223,7 +2220,7 @@ fn extract_finite_numeric_control(
 fn validate_degree_pattern(pattern: &NumberPatternValue) -> Result<(), EvalError> {
     let events = pattern.try_query(&TimeSpan::unit())?;
     for event in events {
-        if !event.value.is_finite() || event.value.fract().abs() > f64::EPSILON {
+        if !crate::eval::is_whole_number(event.value) {
             return Err(EvalError::new(
                 "`degrees` requires whole-number degree values",
             ));
@@ -2268,7 +2265,7 @@ fn extract_inversion_count(value: Value) -> Result<u32, EvalError> {
             "`invert` requires a non-negative whole number",
         ));
     }
-    if number.fract().abs() > f64::EPSILON {
+    if !crate::eval::is_whole_number(number) {
         return Err(EvalError::new("`invert` requires a whole number"));
     }
 
@@ -2297,7 +2294,7 @@ fn extract_drop_count(value: Value) -> Result<u32, EvalError> {
 }
 
 fn whole_number_from_pitch_class_value(value: f64) -> Result<i32, EvalError> {
-    if !value.is_finite() || value.fract().abs() > f64::EPSILON {
+    if !crate::eval::is_whole_number(value) {
         return Err(EvalError::new(
             "`pitch_class_set` requires whole number pitch classes",
         ));
@@ -2368,7 +2365,7 @@ where
 }
 
 fn validate_slice_idx_constant(value: f64, segments: u32) -> Result<u32, EvalError> {
-    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
+    if !crate::eval::is_whole_number(value) || value < 0.0 {
         return Err(EvalError::new("`slice_idx index` requires a whole number"));
     }
 
@@ -2397,7 +2394,7 @@ fn validate_slice_idx_constant(value: f64, segments: u32) -> Result<u32, EvalErr
 }
 
 fn validate_slice_idx_control_value(value: f64, segments: u32) -> Result<(), EvalError> {
-    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
+    if !crate::eval::is_whole_number(value) || value < 0.0 {
         return Err(EvalError::new(
             "`slice_idx` requires whole-number control values",
         ));
@@ -2412,7 +2409,7 @@ fn validate_slice_idx_control_value(value: f64, segments: u32) -> Result<(), Eva
 }
 
 fn validate_onset_index_constant(value: f64) -> Result<u32, EvalError> {
-    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
+    if !crate::eval::is_whole_number(value) || value < 0.0 {
         return Err(EvalError::new("`onset index` requires a whole number"));
     }
 
@@ -2437,7 +2434,7 @@ fn validate_onset_index_constant(value: f64) -> Result<u32, EvalError> {
 }
 
 fn validate_onset_index_control_value(value: f64) -> Result<(), EvalError> {
-    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
+    if !crate::eval::is_whole_number(value) || value < 0.0 {
         return Err(EvalError::new(
             "`onset` requires whole-number control values",
         ));
