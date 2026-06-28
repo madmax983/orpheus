@@ -49,3 +49,10 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2024-05-18 - [Execution Plan Specificity: Code Placeholders]
+**Learning:** Using placeholders, ellipses (e.g., `// ... more tests ...`), or incomplete code blocks inside commands like `cat << 'EOF'` within an execution plan violates the Specificity Rule.
+**Action:** Always provide the complete, exact, and verbatim code block intended for the file in your execution plan steps. Never abbreviate code modifications.
+
+## 2024-05-18 - [Environment: Cargo Subcommands]
+**Learning:** Non-standard Cargo subcommands (like `cargo-llvm-cov`) are not guaranteed to be pre-installed in the environment. Attempting to use them directly will result in a 'no such command' error.
+**Action:** Stick to standard Cargo commands (like `cargo test`) or explicitly install required dev tools before using them.

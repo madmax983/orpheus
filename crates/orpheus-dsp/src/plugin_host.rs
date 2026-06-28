@@ -502,3 +502,81 @@ fn note_duration_frames(event: &Event<PluginNote>, frames_per_cycle: u64) -> u32
 fn midi_note_frequency(note_number: u8) -> f32 {
     440.0 * ((f32::from(note_number) - 69.0) / 12.0).exp2()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use orpheus_pattern::{Event, Rational, TimeSpan};
+
+    #[test]
+    fn should_calculate_midi_note_frequency() {
+        let a4 = midi_note_frequency(69);
+        assert!(
+            (a4 - 440.0).abs() < f32::EPSILON,
+            "Note 69 should be 440Hz, got {a4}"
+        );
+
+        let a5 = midi_note_frequency(81);
+        assert!(
+            (a5 - 880.0).abs() < f32::EPSILON,
+            "Note 81 should be 880Hz, got {a5}"
+        );
+    }
+
+    #[test]
+    fn should_return_none_when_rational_is_negative() {
+        let negative = Rational::new(-1, 4).unwrap();
+        assert_eq!(rational_to_frame_offset(&negative, 48000), None);
+    }
+
+    #[test]
+    fn should_convert_rational_to_frame_offset_accurately() {
+        let r = Rational::new(1, 4).unwrap();
+        assert_eq!(rational_to_frame_offset(&r, 48000), Some(12000));
+
+        let zero = Rational::zero();
+        assert_eq!(rational_to_frame_offset(&zero, 48000), Some(0));
+    }
+
+    #[test]
+    fn should_return_none_on_frame_offset_overflow() {
+        let large_r = Rational::new(i64::MAX, 1).unwrap();
+        // i64::MAX * u64::MAX will definitely overflow i128
+        assert_eq!(rational_to_frame_offset(&large_r, u64::MAX), None);
+    }
+
+    #[test]
+    fn should_calculate_note_duration_in_frames() {
+        let start = Rational::zero();
+        let end = Rational::new(1, 4).unwrap();
+        let span = TimeSpan::new(start, end).unwrap();
+        let event = Event {
+            whole: None,
+            part: span,
+            value: PluginNote::new(60, 1.0).unwrap(),
+        };
+
+        assert_eq!(note_duration_frames(&event, 48000), 12000);
+    }
+
+    #[test]
+    fn should_enforce_minimum_note_duration_of_one_frame() {
+        let start = Rational::zero();
+        let end = Rational::zero(); // Start and end are the same
+        let span = TimeSpan::new(start, end).unwrap();
+        let event = Event {
+            whole: None,
+            part: span,
+            value: PluginNote::new(60, 1.0).unwrap(),
+        };
+
+        assert_eq!(note_duration_frames(&event, 48000), 1);
+    }
+
+    #[test]
+    fn should_fallback_gracefully_when_home_dir_fails_or_succeeds() {
+        // We can't guarantee HOME is set or not in the test environment,
+        // but we can ensure it doesn't panic.
+        let _ = home_dir();
+    }
+}
