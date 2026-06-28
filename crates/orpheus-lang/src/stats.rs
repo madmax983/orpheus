@@ -10,7 +10,7 @@ use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
 use crossterm::style::Stylize;
 
 use crate::eval::{EvalError, render_span};
-use crate::value::{NumberPatternValue, SamplePatternValue, TuningValue};
+use crate::value::{NumberPatternValue, PluginPatternValue, SamplePatternValue, TuningValue};
 
 /// Analyzes a sample pattern's evaluated events and returns a formatted report.
 ///
@@ -293,6 +293,75 @@ pub fn tuning_stats(binding_name: &str, tuning: &TuningValue) -> String {
     format!("{title}\n{table}")
 }
 
+/// Analyzes a plugin pattern's evaluated events and returns a formatted report.
+///
+/// The report contains the plugin format, identifier, scheduled notes, and automation lanes.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{ReplMode, eval_module, plugin_pattern_stats};
+///
+/// let env = eval_module("p = vst(\"MyPlugin\")", ReplMode::Loose).unwrap();
+/// let pattern = env.get("p").unwrap().as_plugin_pattern().unwrap();
+///
+/// let stats = plugin_pattern_stats("p", pattern);
+/// println!("{stats}");
+/// ```
+#[must_use]
+pub fn plugin_pattern_stats(binding_name: &str, pattern: &PluginPatternValue) -> String {
+    let source = pattern.track_source();
+    let descriptor = source.descriptor();
+
+    let format_str = match descriptor.format() {
+        orpheus_dsp::PluginFormat::Vst3 => "VST3",
+        orpheus_dsp::PluginFormat::AudioUnit => "AudioUnit",
+    };
+
+    let title = format!(
+        "{} {}",
+        "Plugin Stats:".cyan().bold(),
+        binding_name.yellow()
+    );
+    let mut table = Table::new();
+    table.load_preset(UTF8_BORDERS_ONLY);
+
+    table.add_row(vec![
+        Cell::new("Format")
+            .fg(comfy_table::Color::White)
+            .add_attribute(comfy_table::Attribute::Bold),
+        Cell::new(format_str)
+            .fg(comfy_table::Color::Magenta)
+            .set_alignment(CellAlignment::Right),
+    ]);
+    table.add_row(vec![
+        Cell::new("Identifier")
+            .fg(comfy_table::Color::White)
+            .add_attribute(comfy_table::Attribute::Bold),
+        Cell::new(descriptor.identifier())
+            .fg(comfy_table::Color::Green)
+            .set_alignment(CellAlignment::Right),
+    ]);
+    table.add_row(vec![
+        Cell::new("Scheduled Notes")
+            .fg(comfy_table::Color::White)
+            .add_attribute(comfy_table::Attribute::Bold),
+        Cell::new(source.notes().len().to_string())
+            .fg(comfy_table::Color::Cyan)
+            .set_alignment(CellAlignment::Right),
+    ]);
+    table.add_row(vec![
+        Cell::new("Automation Lanes")
+            .fg(comfy_table::Color::White)
+            .add_attribute(comfy_table::Attribute::Bold),
+        Cell::new(source.parameter_lanes().len().to_string())
+            .fg(comfy_table::Color::Yellow)
+            .set_alignment(CellAlignment::Right),
+    ]);
+
+    format!("{title}\n{table}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -375,5 +444,23 @@ mod tests {
         let stats = sample_pattern_stats("pattern", pattern, 1).unwrap();
         assert!(stats.contains("Unique Samples"));
         assert!(stats.contains("4 (bd, cp, hh, sn)"));
+    }
+
+    #[test]
+    fn stats_generates_correct_output_for_plugin_pattern() {
+        let source = "p = vst(\"MyPlugin\")";
+        let module = eval_module(source, ReplMode::Loose).unwrap();
+        let pattern = module.get("p").unwrap().as_plugin_pattern().unwrap();
+
+        let stats = plugin_pattern_stats("p", pattern);
+        assert!(stats.contains("Plugin Stats:"));
+        assert!(stats.contains("Format"));
+        assert!(stats.contains("VST3"));
+        assert!(stats.contains("Identifier"));
+        assert!(stats.contains("MyPlugin"));
+        assert!(stats.contains("Scheduled Notes"));
+        assert!(stats.contains("0"));
+        assert!(stats.contains("Automation Lanes"));
+        assert!(stats.contains("0"));
     }
 }

@@ -684,6 +684,10 @@ impl ReplSession {
                     let stats = crate::stats::tuning_stats(binding_name, tuning);
                     Ok(format!("\n{}", stats.trim_end()))
                 }
+                crate::value::Value::PluginPattern(pattern) => {
+                    let stats = crate::stats::plugin_pattern_stats(binding_name, pattern);
+                    Ok(format!("\n{}", stats.trim_end()))
+                }
                 _ => Err(format!(
                     "binding `{binding_name}` is a {} and cannot be analyzed",
                     value.kind_name()
@@ -2714,6 +2718,20 @@ mod tests {
         assert!(message.contains("2 (bd, sn)"));
         assert!(message.contains("Event Density"));
         assert!(message.contains("4.00 events/cycle"));
+    }
+
+    #[test]
+    fn stats_command_returns_plugin_pattern_stats() {
+        let mut session = ReplSession::new();
+        session.eval_line("p = vst(\"MySynth\")").unwrap();
+
+        let message = session.eval_line(":stats p").unwrap();
+
+        assert!(message.contains("p"));
+        assert!(message.contains("Format"));
+        assert!(message.contains("VST3"));
+        assert!(message.contains("Identifier"));
+        assert!(message.contains("MySynth"));
     }
 
     #[test]
