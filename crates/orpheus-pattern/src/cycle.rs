@@ -288,6 +288,38 @@ const fn ceil_rational(value: &Rational) -> i128 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn query_cycle_pattern_enforces_maximum_event_limit() {
+        let pattern = CyclePattern::from_nodes(vec![PatternNode::atom("a")]);
+        let span = TimeSpan::new(
+            Rational::zero(),
+            Rational::checked_from_parts(100_001, 1).unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            pattern.try_query(&span),
+            Err(PatternError::ArithmeticOverflow {
+                operation: "evaluation exceeded the maximum allowed event limit",
+            })
+        );
+    }
+
+    #[test]
+    fn query_cycle_pattern_reports_evaluator_limits_overflow() {
+        let pattern = CyclePattern::from_nodes(vec![PatternNode::atom("a")]);
+
+        let start = Rational::checked_from_parts(-1, 1).unwrap();
+        let end = Rational::checked_from_parts(i128::MAX, 1).unwrap();
+        let span = TimeSpan::new(start, end).unwrap();
+
+        assert_eq!(
+            pattern.try_query(&span),
+            Err(PatternError::ArithmeticOverflow {
+                operation: "cycle count exceeded evaluator limits",
+            })
+        );
+    }
 
     #[test]
     fn floor_and_ceil_handle_negative_rationals() {

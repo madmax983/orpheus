@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2024-11-20 - Testing Edge Cases in Pattern Engine
+**Learning:** Adding explicit test coverage for mathematical boundaries (e.g. `i128::MAX` additions) and evaluator loop limits (e.g. 100,000 max loops) in time-critical components increases confidence and prevents potential CPU spikes or panics on malformed input.
+**Action:** Always write tests that intentionally force overflows (`i128::MAX`) and exceed maximum limits to prove the safety constraints work correctly.

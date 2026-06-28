@@ -478,6 +478,70 @@ impl From<Rational> for f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn signed_from_magnitude_reports_overflow() {
+        // We need to trigger the map_err in signed_from_magnitude when negative is true.
+        // This requires magnitude > i128::MAX + 1
+        // since I128_MIN_MAGNITUDE is 1 << 127 = i128::MAX + 1
+        let result = super::signed_from_magnitude((i128::MAX as u128) + 2, true, "test operation");
+        assert_eq!(
+            result,
+            Err(PatternError::ArithmeticOverflow {
+                operation: "test operation"
+            })
+        );
+    }
+
+    #[test]
+    fn signed_from_magnitude_reports_overflow_positive() {
+        // Also the positive branch if magnitude > i128::MAX
+        let result = super::signed_from_magnitude((i128::MAX as u128) + 1, false, "test operation");
+        assert_eq!(
+            result,
+            Err(PatternError::ArithmeticOverflow {
+                operation: "test operation"
+            })
+        );
+    }
+
+    #[test]
+    fn checked_mul_reports_overflow_on_denominator() {
+        let large1 = Rational::checked_normalize(1, i128::MAX).unwrap();
+        let large2 = Rational::checked_normalize(1, 2).unwrap();
+
+        // This will try to multiply i128::MAX * 2, which overflows
+        let result = large1.checked_mul(&large2);
+        assert_eq!(
+            result,
+            Err(PatternError::ArithmeticOverflow {
+                operation: "rational multiplication"
+            })
+        );
+    }
+
+    #[test]
+    fn checked_mul_reports_overflow_on_numerator() {
+        let large1 = Rational::checked_normalize(i128::MAX, 1).unwrap();
+        let large2 = Rational::checked_normalize(2, 1).unwrap();
+
+        // This will try to multiply i128::MAX * 2, which overflows
+        let result = large1.checked_mul(&large2);
+        assert_eq!(
+            result,
+            Err(PatternError::ArithmeticOverflow {
+                operation: "rational multiplication"
+            })
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "rational addition overflowed during checked arithmetic")]
+    fn rational_addition_panics_on_overflow() {
+        let r1 = Rational::checked_normalize(i128::MAX, 1).unwrap();
+        let r2 = Rational::checked_normalize(i128::MAX, 1).unwrap();
+
+        let _ = r1 + r2;
+    }
 
     #[test]
     fn checked_normalize_accepts_i128_min_numerator() {
