@@ -10,6 +10,14 @@ use std::path::Path;
 use crate::eval::{EvalError, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue};
 
+fn format_sample_name(sample: &str) -> String {
+    if sample.len() > 4 {
+        sample.chars().take(4).collect::<String>()
+    } else {
+        sample.to_string()
+    }
+}
+
 /// Exports a sample pattern's evaluated events to a Tracker text file.
 ///
 /// The tracker output displays time vertically (as rows corresponding to 1/16th cycle steps)
@@ -86,25 +94,14 @@ pub fn export_sample_pattern_to_tracker(
         let end_step = end_step.min(total_steps);
 
         if start_step < end_step {
-            // Format sample name up to 4 chars
-            let formatted_name = if sample.len() > 4 {
-                sample.chars().take(4).collect::<String>()
-            } else {
-                sample.clone()
-            };
-            grid[start_step][lane_idx] = Some(formatted_name);
+            grid[start_step][lane_idx] = Some(format_sample_name(&sample));
             for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
                 if item[lane_idx].is_none() {
                     item[lane_idx] = Some("====".to_string());
                 }
             }
         } else if start_step < total_steps && grid[start_step][lane_idx].is_none() {
-            let formatted_name = if sample.len() > 4 {
-                sample.chars().take(4).collect::<String>()
-            } else {
-                sample.clone()
-            };
-            grid[start_step][lane_idx] = Some(formatted_name);
+            grid[start_step][lane_idx] = Some(format_sample_name(&sample));
         }
     }
 
@@ -116,11 +113,7 @@ pub fn export_sample_pattern_to_tracker(
     // Print Header
     write!(file, " STEP | TIME  |")?;
     for sample in &sample_list {
-        let padded = if sample.len() > 4 {
-            sample.chars().take(4).collect::<String>()
-        } else {
-            sample.to_string()
-        };
+        let padded = format_sample_name(sample);
         write!(file, " {padded:4} |")?;
     }
     writeln!(file)?;

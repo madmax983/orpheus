@@ -82,3 +82,6 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+**[Extract inline logic to private helper]**
+**Learning:** `clippy::too_many_lines` or cognitive complexity on a function with duplicated formatting logic can be reduced by extracting the inline formatting into a private helper function.
+**Action:** When working in modules with export/formatting logic, look for duplicate inline formatting closures or if/else branches and extract them to standalone helper functions.
