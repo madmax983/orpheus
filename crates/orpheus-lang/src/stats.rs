@@ -10,7 +10,7 @@ use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
 use crossterm::style::Stylize;
 
 use crate::eval::{EvalError, render_span};
-use crate::value::{NumberPatternValue, SamplePatternValue, TuningValue};
+use crate::value::{NumberPatternValue, PluginPatternValue, SamplePatternValue, TuningValue};
 
 /// Analyzes a sample pattern's evaluated events and returns a formatted report.
 ///
@@ -293,6 +293,78 @@ pub fn tuning_stats(binding_name: &str, tuning: &TuningValue) -> String {
     format!("{title}\n{table}")
 }
 
+/// Analyzes a plugin pattern's evaluated events and returns a formatted report.
+///
+/// The report contains the plugin identifier, format, total number of scheduled notes,
+/// and the number of active parameter automation lanes.
+///
+/// # Errors
+///
+/// Returns [`EvalError`] if `cycle_count` is 0.
+pub fn plugin_pattern_stats(
+    binding_name: &str,
+    pattern: &PluginPatternValue,
+    cycle_count: u64,
+) -> Result<String, EvalError> {
+    if cycle_count == 0 {
+        return Err(EvalError::new("stats requires at least one cycle"));
+    }
+
+    let source = pattern.track_source();
+    let total_notes = source.notes().len() as u64 * cycle_count;
+    let parameter_lanes = source.parameter_lanes().len();
+
+    let title = format!(
+        "{} {binding_name} ({} cycles)",
+        "Plugin Stats:".cyan().bold(),
+        cycle_count.to_string().yellow()
+    );
+
+    let mut table = Table::new();
+    table.load_preset(UTF8_BORDERS_ONLY);
+
+    table.add_row(vec![
+        Cell::new("Plugin")
+            .fg(comfy_table::Color::White)
+            .add_attribute(comfy_table::Attribute::Bold),
+        Cell::new(source.descriptor().identifier())
+            .fg(comfy_table::Color::Green)
+            .set_alignment(CellAlignment::Right),
+    ]);
+
+    table.add_row(vec![
+        Cell::new("Format")
+            .fg(comfy_table::Color::White)
+            .add_attribute(comfy_table::Attribute::Bold),
+        Cell::new(match source.descriptor().format() {
+            orpheus_dsp::PluginFormat::Vst3 => "VST3",
+            orpheus_dsp::PluginFormat::AudioUnit => "AudioUnit",
+        })
+        .fg(comfy_table::Color::Yellow)
+        .set_alignment(CellAlignment::Right),
+    ]);
+
+    table.add_row(vec![
+        Cell::new("Total Notes")
+            .fg(comfy_table::Color::White)
+            .add_attribute(comfy_table::Attribute::Bold),
+        Cell::new(total_notes.to_string())
+            .fg(comfy_table::Color::Yellow)
+            .set_alignment(CellAlignment::Right),
+    ]);
+
+    table.add_row(vec![
+        Cell::new("Active Params")
+            .fg(comfy_table::Color::White)
+            .add_attribute(comfy_table::Attribute::Bold),
+        Cell::new(parameter_lanes.to_string())
+            .fg(comfy_table::Color::Cyan)
+            .set_alignment(CellAlignment::Right),
+    ]);
+
+    Ok(format!("{title}\n{table}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -375,5 +447,18 @@ mod tests {
         let stats = sample_pattern_stats("pattern", pattern, 1).unwrap();
         assert!(stats.contains("Unique Samples"));
         assert!(stats.contains("4 (bd, cp, hh, sn)"));
+    }
+
+    #[test]
+    fn stats_generates_correct_output_for_plugin_pattern() {
+        let source = "p = vst(\"Massive\") |> notes(60)";
+        let module = eval_module(source, ReplMode::Loose).unwrap();
+        let pattern = module.get("p").unwrap().as_plugin_pattern().unwrap();
+
+        let stats = super::plugin_pattern_stats("p", pattern, 2).unwrap();
+        assert!(stats.contains("Plugin Stats:"));
+        assert!(stats.contains("Massive"));
+        assert!(stats.contains("Total Notes"));
+        assert!(stats.contains("2"));
     }
 }
