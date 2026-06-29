@@ -82,3 +82,6 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+**[Refactoring duplicated logic in tracker.rs]**
+**Learning:** Found repetitive step calculation logic across different tracker export functions (`export_sample_pattern_to_tracker` and `export_number_pattern_to_tracker`).
+**Action:** Extracted this logic into a private helper struct `TrackerStep` and `calculate_steps` to adhere to DRY principles.

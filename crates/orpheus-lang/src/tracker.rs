@@ -9,6 +9,35 @@ use std::path::Path;
 
 use crate::eval::{EvalError, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue};
+use orpheus_pattern::Event;
+
+struct TrackerStep {
+    start: usize,
+    end: usize,
+}
+
+fn calculate_steps<T>(event: &Event<T>, steps_per_cycle: u32, total_steps: usize) -> TrackerStep {
+    let start_f64 = f64::from(event.part.start());
+    let end_f64 = f64::from(event.part.end());
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let start_step = (start_f64 * f64::from(steps_per_cycle)).round() as usize;
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let end_step = (end_f64 * f64::from(steps_per_cycle)).round() as usize;
+
+    TrackerStep {
+        start: start_step.min(total_steps),
+        end: end_step.min(total_steps),
+    }
+}
+
+fn format_sample_name(sample: &str) -> String {
+    if sample.len() > 4 {
+        sample.chars().take(4).collect()
+    } else {
+        sample.to_string()
+    }
+}
 
 /// Exports a sample pattern's evaluated events to a Tracker text file.
 ///
@@ -74,37 +103,17 @@ pub fn export_sample_pattern_to_tracker(
                 crate::EvalError::new(format!("sample '{sample}' not found in lane list"))
             })?;
 
-        let start_f64 = f64::from(event.part.start());
-        let end_f64 = f64::from(event.part.end());
+        let step = calculate_steps(event, steps_per_cycle, total_steps);
 
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let start_step = (start_f64 * f64::from(steps_per_cycle)).round() as usize;
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let end_step = (end_f64 * f64::from(steps_per_cycle)).round() as usize;
-
-        let start_step = start_step.min(total_steps);
-        let end_step = end_step.min(total_steps);
-
-        if start_step < end_step {
-            // Format sample name up to 4 chars
-            let formatted_name = if sample.len() > 4 {
-                sample.chars().take(4).collect::<String>()
-            } else {
-                sample.clone()
-            };
-            grid[start_step][lane_idx] = Some(formatted_name);
-            for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
+        if step.start < step.end {
+            grid[step.start][lane_idx] = Some(format_sample_name(&sample));
+            for item in grid.iter_mut().take(step.end).skip(step.start + 1) {
                 if item[lane_idx].is_none() {
                     item[lane_idx] = Some("====".to_string());
                 }
             }
-        } else if start_step < total_steps && grid[start_step][lane_idx].is_none() {
-            let formatted_name = if sample.len() > 4 {
-                sample.chars().take(4).collect::<String>()
-            } else {
-                sample.clone()
-            };
-            grid[start_step][lane_idx] = Some(formatted_name);
+        } else if step.start < total_steps && grid[step.start][lane_idx].is_none() {
+            grid[step.start][lane_idx] = Some(format_sample_name(&sample));
         }
     }
 
@@ -116,11 +125,7 @@ pub fn export_sample_pattern_to_tracker(
     // Print Header
     write!(file, " STEP | TIME  |")?;
     for sample in &sample_list {
-        let padded = if sample.len() > 4 {
-            sample.chars().take(4).collect::<String>()
-        } else {
-            sample.to_string()
-        };
+        let padded = format_sample_name(sample);
         write!(file, " {padded:4} |")?;
     }
     writeln!(file)?;
@@ -197,27 +202,18 @@ pub fn export_number_pattern_to_tracker(
     let mut grid: Vec<Option<String>> = vec![None; total_steps];
 
     for event in &events {
-        let start_f64 = f64::from(event.part.start());
-        let end_f64 = f64::from(event.part.end());
-
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let start_step = (start_f64 * f64::from(steps_per_cycle)).round() as usize;
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let end_step = (end_f64 * f64::from(steps_per_cycle)).round() as usize;
-
-        let start_step = start_step.min(total_steps);
-        let end_step = end_step.min(total_steps);
+        let step = calculate_steps(event, steps_per_cycle, total_steps);
         let val_str = format!("{:7.2}", event.value);
 
-        if start_step < end_step {
-            grid[start_step] = Some(val_str);
-            for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
+        if step.start < step.end {
+            grid[step.start] = Some(val_str);
+            for item in grid.iter_mut().take(step.end).skip(step.start + 1) {
                 if item.is_none() {
                     *item = Some("=======".to_string());
                 }
             }
-        } else if start_step < total_steps && grid[start_step].is_none() {
-            grid[start_step] = Some(val_str);
+        } else if step.start < total_steps && grid[step.start].is_none() {
+            grid[step.start] = Some(val_str);
         }
     }
 
