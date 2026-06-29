@@ -47,3 +47,7 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+**[Performance: SmallVec and Mutable Slice Lifetimes]**
+**Learning:** Attempting to replace `Vec<&mut [T]>` with `SmallVec<[&mut [T]; N]>` to avoid heap allocations can cause borrow checker issues. `SmallVec`'s `Drop` implementation forces the compiler to assume the mutable references might be accessed upon drop, violating lifetimes if the slices are borrowed from `self` in a hot loop.
+**Action:** Avoid using `SmallVec` for storing locally scoped mutable references derived from `self` in DSP combinators unless the scopes can be strictly isolated.

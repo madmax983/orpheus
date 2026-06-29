@@ -2049,10 +2049,13 @@ fn collect_stem_wav_paths(directory: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(paths)
 }
 
+/// ⚡ Bolt: Avoids heap allocation by checking extensions directly instead of using `.to_ascii_lowercase()`.
 fn is_stem_wav_path(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| matches!(extension.to_ascii_lowercase().as_str(), "wav" | "wave"))
+        .is_some_and(|extension| {
+            extension.eq_ignore_ascii_case("wav") || extension.eq_ignore_ascii_case("wave")
+        })
 }
 
 fn stem_binding_name(stem: &str) -> String {

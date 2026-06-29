@@ -618,23 +618,35 @@ fn builtin_sample_bytes(name: &str) -> Result<(&'static [u8], &'static str), Sam
     }
 }
 
+/// ⚡ Bolt: Avoids heap allocation by checking extensions directly instead of using `.to_ascii_lowercase()`.
 fn is_supported_sample_path(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| matches!(extension.to_ascii_lowercase().as_str(), "wav" | "wave"))
+        .is_some_and(|extension| {
+            extension.eq_ignore_ascii_case("wav") || extension.eq_ignore_ascii_case("wave")
+        })
 }
 
+/// ⚡ Bolt: Avoids heap allocation by using `.eq_ignore_ascii_case()` instead of `.to_ascii_lowercase()`.
 fn token_from_stem(stem: &str) -> Option<(&'static str, u8)> {
-    match stem.to_ascii_lowercase().as_str() {
-        "bd" => Some(("bd", 0)),
-        "kick" => Some(("bd", 1)),
-        "sn" => Some(("sn", 0)),
-        "snare" => Some(("sn", 1)),
-        "cp" => Some(("cp", 0)),
-        "clap" => Some(("cp", 1)),
-        "hh" => Some(("hh", 0)),
-        "hat" | "hihat" => Some(("hh", 1)),
-        _ => None,
+    if stem.eq_ignore_ascii_case("bd") {
+        Some(("bd", 0))
+    } else if stem.eq_ignore_ascii_case("kick") {
+        Some(("bd", 1))
+    } else if stem.eq_ignore_ascii_case("sn") {
+        Some(("sn", 0))
+    } else if stem.eq_ignore_ascii_case("snare") {
+        Some(("sn", 1))
+    } else if stem.eq_ignore_ascii_case("cp") {
+        Some(("cp", 0))
+    } else if stem.eq_ignore_ascii_case("clap") {
+        Some(("cp", 1))
+    } else if stem.eq_ignore_ascii_case("hh") {
+        Some(("hh", 0))
+    } else if stem.eq_ignore_ascii_case("hat") || stem.eq_ignore_ascii_case("hihat") {
+        Some(("hh", 1))
+    } else {
+        None
     }
 }
 
