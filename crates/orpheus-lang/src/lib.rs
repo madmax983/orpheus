@@ -1,41 +1,41 @@
 //! Language and REPL surface for Orpheus.
 
-pub(crate) mod abc_export;
-pub(crate) mod arduino_export;
-pub(crate) mod ascii_roll;
+mod abc_export;
+mod arduino_export;
+mod ascii_roll;
 mod ast;
 mod builtins;
 mod diagnostics;
 mod error;
 mod eval;
-pub(crate) mod explain;
-pub(crate) mod export;
+mod explain;
+mod export;
 #[cfg(feature = "experimental-gcode")]
-pub(crate) mod gcode_export;
-pub(crate) mod guitar_tab_export;
-pub(crate) mod html;
+mod gcode_export;
+mod guitar_tab_export;
+mod html;
 #[cfg(feature = "lilypond_export")]
-pub(crate) mod lilypond_export;
+mod lilypond_export;
 mod loader;
-pub(crate) mod midi_export;
+mod midi_export;
 mod midi_input;
-pub(crate) mod mixer;
-pub(crate) mod number_roll;
-pub(crate) mod osu_export;
+mod mixer;
+mod number_roll;
+mod osu_export;
 mod parser;
 mod pedal;
 mod pitch;
 mod repl;
-pub(crate) mod scad_export;
-pub(crate) mod scl;
-pub(crate) mod session;
-pub(crate) mod srt;
-pub(crate) mod stats;
-pub(crate) mod supercollider_export;
+mod scad_export;
+mod scl;
+mod session;
+mod srt;
+mod stats;
+mod supercollider_export;
 mod svg;
-pub(crate) mod tracker;
+mod tracker;
 mod tui;
-pub(crate) mod txt;
+mod txt;
 mod types;
 mod value;
 
@@ -79,7 +79,7 @@ pub use tracker::{export_number_pattern_to_tracker, export_sample_pattern_to_tra
 pub use tui::{render_initial_frame_for_test, run_with_engine, run_with_engine_and_path};
 pub use txt::{export_number_pattern_to_txt, export_sample_pattern_to_txt};
 
-pub(crate) mod dot_export;
+mod dot_export;
 pub use dot_export::export_pedal_value_to_dot;
 pub use scl::{SclError, parse_scala_file, parse_scala_source};
 pub use types::{
@@ -127,5 +127,5 @@ pub enum ReplMode {
     Strict,
 }
 
-pub(crate) mod mermaid;
+mod mermaid;
 pub use mermaid::export_sample_pattern_to_mermaid_gantt;

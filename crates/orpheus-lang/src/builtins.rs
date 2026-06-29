@@ -1403,7 +1403,7 @@ fn number_event_to_plugin_note(
     event: &orpheus_pattern::Event<f64>,
 ) -> Result<orpheus_pattern::Event<orpheus_dsp::PluginNote>, EvalError> {
     if !event.value.is_finite()
-        || event.value.fract().abs() > f64::EPSILON
+        || (event.value.round() - event.value).abs() > f64::EPSILON
         || !(0.0..=127.0).contains(&event.value)
     {
         return Err(EvalError::new(
@@ -1645,7 +1645,7 @@ fn apply_sample_numeric_control(
 fn extract_positive_integer_factor(value: Value, builtin_name: &str) -> Result<i64, EvalError> {
     let number = extract_constant_number(value, builtin_name)?;
 
-    if !number.is_finite() || number <= 0.0 || number.fract().abs() > f64::EPSILON {
+    if !number.is_finite() || number <= 0.0 || (number.round() - number).abs() > f64::EPSILON {
         return Err(EvalError::new(format!(
             "`{builtin_name}` requires a positive integer factor"
         )));
@@ -2223,7 +2223,7 @@ fn extract_finite_numeric_control(
 fn validate_degree_pattern(pattern: &NumberPatternValue) -> Result<(), EvalError> {
     let events = pattern.try_query(&TimeSpan::unit())?;
     for event in events {
-        if !event.value.is_finite() || event.value.fract().abs() > f64::EPSILON {
+        if !event.value.is_finite() || (event.value.round() - event.value).abs() > f64::EPSILON {
             return Err(EvalError::new(
                 "`degrees` requires whole-number degree values",
             ));
@@ -2268,7 +2268,7 @@ fn extract_inversion_count(value: Value) -> Result<u32, EvalError> {
             "`invert` requires a non-negative whole number",
         ));
     }
-    if number.fract().abs() > f64::EPSILON {
+    if (number.round() - number).abs() > f64::EPSILON {
         return Err(EvalError::new("`invert` requires a whole number"));
     }
 
@@ -2297,7 +2297,7 @@ fn extract_drop_count(value: Value) -> Result<u32, EvalError> {
 }
 
 fn whole_number_from_pitch_class_value(value: f64) -> Result<i32, EvalError> {
-    if !value.is_finite() || value.fract().abs() > f64::EPSILON {
+    if !value.is_finite() || (value.round() - value).abs() > f64::EPSILON {
         return Err(EvalError::new(
             "`pitch_class_set` requires whole number pitch classes",
         ));
@@ -2368,7 +2368,7 @@ where
 }
 
 fn validate_slice_idx_constant(value: f64, segments: u32) -> Result<u32, EvalError> {
-    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
+    if !value.is_finite() || value < 0.0 || (value.round() - value).abs() > f64::EPSILON {
         return Err(EvalError::new("`slice_idx index` requires a whole number"));
     }
 
@@ -2397,7 +2397,7 @@ fn validate_slice_idx_constant(value: f64, segments: u32) -> Result<u32, EvalErr
 }
 
 fn validate_slice_idx_control_value(value: f64, segments: u32) -> Result<(), EvalError> {
-    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
+    if !value.is_finite() || value < 0.0 || (value.round() - value).abs() > f64::EPSILON {
         return Err(EvalError::new(
             "`slice_idx` requires whole-number control values",
         ));
@@ -2412,7 +2412,7 @@ fn validate_slice_idx_control_value(value: f64, segments: u32) -> Result<(), Eva
 }
 
 fn validate_onset_index_constant(value: f64) -> Result<u32, EvalError> {
-    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
+    if !value.is_finite() || value < 0.0 || (value.round() - value).abs() > f64::EPSILON {
         return Err(EvalError::new("`onset index` requires a whole number"));
     }
 
@@ -2437,7 +2437,7 @@ fn validate_onset_index_constant(value: f64) -> Result<u32, EvalError> {
 }
 
 fn validate_onset_index_control_value(value: f64) -> Result<(), EvalError> {
-    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
+    if !value.is_finite() || value < 0.0 || (value.round() - value).abs() > f64::EPSILON {
         return Err(EvalError::new(
             "`onset` requires whole-number control values",
         ));

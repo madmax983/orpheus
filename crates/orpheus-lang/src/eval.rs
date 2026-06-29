@@ -720,7 +720,7 @@ impl Evaluator {
         context: &str,
     ) -> Result<i128, EvalError> {
         let value = extract_constant_number_value(self.eval_expr_in_meter(expr, meter)?, context)?;
-        if !value.is_finite() || value <= 0.0 || value.fract().abs() > f64::EPSILON {
+        if !value.is_finite() || value <= 0.0 || (value.round() - value).abs() > f64::EPSILON {
             return Err(EvalError::new(format!(
                 "{context} must be a positive integer"
             )));
