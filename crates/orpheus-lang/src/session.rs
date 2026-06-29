@@ -1155,7 +1155,7 @@ impl ReplSession {
         let binding_names = loaded
             .type_bindings
             .keys()
-            .cloned()
+            .map(String::as_str)
             .collect::<Vec<_>>()
             .join(", ");
         let last_binding_name = loaded.last_binding_name.clone();
