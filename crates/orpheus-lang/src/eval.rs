@@ -1867,6 +1867,14 @@ right = sometimes(fast(2), cp hh)";
         );
     }
 
+
+    #[test]
+    fn test_render_span() {
+        let span = super::render_span(4).unwrap();
+        assert_eq!(span.start().numerator(), 0);
+        assert_eq!(span.end().numerator(), 4);
+    }
+
     #[test]
     fn apply_function_value_evaluates_user_function_correctly() {
         let module = eval_module("f x = x\nres = f(42.0)", ReplMode::Loose).unwrap();

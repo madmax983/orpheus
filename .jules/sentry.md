@@ -49,3 +49,7 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+
+## 2024-06-25 - [Testing: Validating Expected Errors]
+**Learning:** Writing a test that expects an error (e.g., an overflow) but calls `.unwrap()` on the result is logically flawed; it will panic on an actual error instead of validating it. Furthermore, testing for an overflow condition that is mathematically impossible (e.g., converting a `u64::MAX` to an `i128`) tests a 'phantom error' and should be avoided.
+**Action:** When testing error paths, use `unwrap_err()` or a `match` statement to explicitly validate the expected error, and ensure the error condition being tested is practically reachable.
