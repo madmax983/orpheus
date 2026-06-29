@@ -1,0 +1,2 @@
+p = vst("Massive") |> notes(60)
+:explain p
