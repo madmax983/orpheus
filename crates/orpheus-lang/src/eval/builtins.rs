@@ -13,7 +13,7 @@
 
 use orpheus_pattern::{Rational, TimeSpan};
 
-use crate::eval::{EvalError, apply_function_value, f64_to_rational};
+use super::{EvalError, apply_function_value, f64_to_rational};
 use crate::explain::Explain;
 use crate::midi_input;
 use crate::value::{
@@ -2742,7 +2742,8 @@ fn apply_bin(args: Vec<Value>) -> Result<Value, EvalError> {
 #[cfg(test)]
 mod tests {
     // use super::*
-    use crate::{ReplMode, eval_module};
+    use crate::ReplMode;
+    use crate::eval::eval_module;
 
     #[test]
     fn jux_applies_transform_and_pans() {
@@ -2881,7 +2882,8 @@ fn apply_palindrome(args: Vec<Value>) -> Result<Value, EvalError> {
 
 #[cfg(test)]
 mod test_nova {
-    use crate::{ReplMode, eval_module};
+    use crate::ReplMode;
+    use crate::eval::eval_module;
     use orpheus_pattern::{Rational, TimeSpan};
 
     #[test]
@@ -2983,7 +2985,8 @@ fn apply_wolfram(args: Vec<Value>) -> Result<Value, EvalError> {
 
 #[cfg(test)]
 mod wolfram_tests {
-    use crate::{ReplMode, eval_module};
+    use crate::ReplMode;
+    use crate::eval::eval_module;
     use orpheus_pattern::Rational;
 
     #[test]

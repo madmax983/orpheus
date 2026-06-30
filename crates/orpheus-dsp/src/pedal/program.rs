@@ -451,3 +451,57 @@ impl PedalGraphProgram {
         self.nodes.is_empty() && matches!(self.output, NodeRef::Input)
     }
 }
+
+/// Immutable pedal metadata attached to triggers off the audio thread.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PedalProgram {
+    source: Box<str>,
+    explain: Box<str>,
+    graph: PedalGraphProgram,
+}
+
+impl PedalProgram {
+    /// Create a new `PedalProgram` linking the parsed source with its validation explanation.
+    #[must_use]
+    pub fn new(source: impl Into<Box<str>>, explain: impl Into<Box<str>>) -> Self {
+        Self {
+            source: source.into(),
+            explain: explain.into(),
+            graph: PedalGraphProgram::new(Vec::new(), NodeRef::Input),
+        }
+    }
+
+    #[doc(hidden)]
+    #[must_use]
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
+    #[doc(hidden)]
+    #[must_use]
+    pub fn explain(&self) -> &str {
+        &self.explain
+    }
+
+    /// Inject a constructed [`PedalGraphProgram`] representing the effect's internal routing.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use orpheus_dsp::{PedalProgram, PedalNode, NodeRef};
+    ///
+    /// let program = PedalProgram::new("input |> output", "bypass")
+    ///     .with_graph(vec![], NodeRef::Input);
+    /// ```
+    #[must_use]
+    pub fn with_graph(mut self, nodes: Vec<crate::pedal::PedalNode>, output: NodeRef) -> Self {
+        self.graph = PedalGraphProgram::new(nodes, output);
+        self
+    }
+
+    #[doc(hidden)]
+    #[must_use]
+    pub const fn graph(&self) -> &PedalGraphProgram {
+        &self.graph
+    }
+}

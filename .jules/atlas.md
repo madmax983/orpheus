@@ -56,3 +56,15 @@
 **[Enforce Private Explain Module]
 **Tangle:** The `explain` module in `orpheus-lang/src/lib.rs` and its internal `Explain` trait and `explain_table` function were declared as `pub`, leaking internal REPL table rendering details to the public API.
 **Blueprint:** Changed the visibility of the `Explain` trait and `explain_table` function to `pub(crate)` in `crates/orpheus-lang/src/explain.rs`. Removed the `pub use explain::Explain;` re-export from `crates/orpheus-lang/src/lib.rs` and changed the module declaration to `pub(crate) mod explain;`. This strictly enforces internal encapsulation.
+
+**[Decoupling Eval and Builtins]**
+**Tangle:** The `eval` module contained the core `Evaluator`, while the `builtins` module contained runtime functions. They had a circular dependency where `eval` imported `builtins` for lookups, and `builtins` imported `eval` for evaluating applied functions and AST forms.
+**Blueprint:** Refactored by turning `eval` into a module (`eval/mod.rs`) and moving `builtins.rs` to `eval/builtins.rs` as a private submodule. This removes the module-level circular dependency while keeping closely coupled evaluation logic together in a single domain.
+
+**[Decoupling Pedal Commands]**
+**Tangle:** `PedalProgram` was defined in `command.rs` but relied on `PedalGraphProgram` from `pedal`. `pedal/runtime.rs` then imported `PedalProgram` back from `command.rs`, creating a loop.
+**Blueprint:** Moved `PedalProgram` directly into `pedal/program.rs` alongside the underlying graph structures it wraps. `command.rs` now just imports the finished program structs without creating cyclic feedback loops.
+
+**[Decoupling Voice Definitions]**
+**Tangle:** `VoiceKind` was defined in `voice.rs` which imported `sample_bank`. `sample_bank.rs` in turn imported `VoiceKind` from `voice.rs` to handle drum aliases.
+**Blueprint:** Moved the fundamental `VoiceKind` enum down to the lower-level `synth` module. Both `voice.rs` and `sample_bank.rs` now depend on the shared `synth` definitions, resulting in a strictly unidirectional dependency graph.

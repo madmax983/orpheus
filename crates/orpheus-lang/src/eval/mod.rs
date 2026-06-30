@@ -24,9 +24,9 @@ use std::sync::Arc;
 
 use orpheus_pattern::{Event, PatternNode, Rational, TimeSpan};
 
+use self::builtins::{builtin_value, is_sample_identifier, stack_values};
 use crate::ReplMode;
 use crate::ast::{Expr, Module, Stmt, binding_expr_self_references};
-use crate::builtins::{builtin_value, is_sample_identifier, stack_values};
 use crate::parser::parse_module;
 use crate::pedal::compile_graph;
 use crate::pitch::parse_named_pitch_literal;
@@ -46,6 +46,8 @@ use crate::value::{
 /// **Recovery:** Since `EvalError` wraps various specific errors (like `ParseError` or `TypeError`),
 /// you should match on its variants or display its `Display` implementation to locate the exact syntax issue or runtime flaw.
 pub use crate::error::EvalError;
+
+pub mod builtins;
 
 /// Evaluates bootstrap Orpheus source into runtime values.
 ///

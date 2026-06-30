@@ -11,7 +11,7 @@ use orpheus_pattern::{Event, Rational};
 use crate::SampleTrigger;
 use crate::engine::EngineError;
 use crate::routing::TrackId;
-use crate::voice::VoiceKind;
+use crate::synth::VoiceKind;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScheduledTrigger {

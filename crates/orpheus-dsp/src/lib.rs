@@ -26,7 +26,7 @@ mod synth;
 mod transient;
 mod voice;
 
-pub use command::{EngineCommand, PatternUpdate, PedalProgram, SampleTrigger, new_command_queue};
+pub use command::{EngineCommand, PatternUpdate, SampleTrigger, new_command_queue};
 pub use engine::{EngineError, EngineHandle, RenderEngine, TransportSnapshot, frames_per_cycle};
 pub use graph::*;
 pub use offline::{
@@ -34,6 +34,7 @@ pub use offline::{
     render_events_to_wav, render_routing_snapshot_to_stem_wavs,
     render_routing_snapshot_to_stereo_for_test,
 };
+pub use pedal::PedalProgram;
 pub use pedal::{
     ClipModel, FilterMode, NodeRef, PEDAL_CONTROL_INTERVAL_SAMPLES, PedalGraphProgram,
     PedalInstance, PedalNode, PedalNodeKind, PedalStage, PreampModel, SignalKind, ToneModel,
@@ -54,6 +55,6 @@ pub use sample_bank::{
 pub use scheduler::Scheduler;
 pub use synth::{
     AnalogVoice, AnalogVoiceParams, Gain, LadderFilter, Mix, Noise, OscShape, PhaseAccumulator,
-    PulseOsc, SawOsc, SoftSat, TriOsc,
+    PulseOsc, SawOsc, SoftSat, TriOsc, VoiceKind,
 };
-pub use voice::{DEFAULT_ANALOG_BASE_FREQUENCY_HZ, VoiceKind};
+pub use voice::DEFAULT_ANALOG_BASE_FREQUENCY_HZ;

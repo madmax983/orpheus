@@ -4,7 +4,6 @@ pub(crate) mod abc_export;
 pub(crate) mod arduino_export;
 pub(crate) mod ascii_roll;
 mod ast;
-mod builtins;
 mod diagnostics;
 mod error;
 mod eval;
@@ -93,7 +92,9 @@ pub use value::{
 
 // Hidden re-exports keep rustdoc examples for internal helpers compiling.
 #[doc(hidden)]
-pub use builtins::{apply_builtin_function, builtin_value, is_sample_identifier, stack_values};
+pub use eval::builtins::{
+    apply_builtin_function, builtin_value, is_sample_identifier, stack_values,
+};
 #[doc(hidden)]
 pub use eval::{apply_function_value, eval_into_bindings, f64_to_rational};
 #[doc(hidden)]

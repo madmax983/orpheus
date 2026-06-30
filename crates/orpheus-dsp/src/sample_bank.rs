@@ -19,8 +19,8 @@ use crate::sample::{DecodedSample, SampleError, load_wav_bytes, load_wav_for_tes
 use crate::sample_manifest::{
     SampleManifest, SampleManifestLoadError, SampleRegion, load_sample_manifest,
 };
+use crate::synth::VoiceKind;
 use crate::transient::{detect_transient_markers, rebase_transient_markers, resolve_onset_slice};
-use crate::voice::VoiceKind;
 
 const KICK_WAV: &[u8] = include_bytes!("../assets/kick.wav");
 const SNARE_WAV: &[u8] = include_bytes!("../assets/snare.wav");

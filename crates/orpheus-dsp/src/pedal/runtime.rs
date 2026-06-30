@@ -24,7 +24,7 @@
 )]
 use std::sync::Arc;
 
-use crate::command::PedalProgram;
+use crate::pedal::program::PedalProgram;
 
 use super::program::{
     ClipModel, FilterMode, NodeRef, PedalNode, PedalNodeKind, PedalStage, PreampModel, SignalKind,
