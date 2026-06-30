@@ -42,7 +42,7 @@ pub fn export_sample_pattern_to_txt(
     let events = pattern.try_query(&span)?;
     let path = path.as_ref();
 
-    let mut file = std::fs::File::create(path)?;
+    let mut file = std::io::BufWriter::new(std::fs::File::create(path)?);
 
     writeln!(file, "Orpheus Sample Pattern Export")?;
     writeln!(file, "=============================")?;
@@ -53,27 +53,26 @@ pub fn export_sample_pattern_to_txt(
         let start = f64::from(event.part.start());
         let end = f64::from(event.part.end());
 
-        let mut params = Vec::new();
-        params.push(format!("gain: {:.2}", event.value.gain()));
-        params.push(format!("pan: {:.2}", event.value.pan()));
-        params.push(format!("rate: {:.2}", event.value.rate()));
+        write!(
+            file,
+            "[{start:.3} -> {end:.3}] {} (gain: {:.2}, pan: {:.2}, rate: {:.2}",
+            event.value.sample(),
+            event.value.gain(),
+            event.value.pan(),
+            event.value.rate()
+        )?;
 
         if let Some(hpf) = event.value.hpf_cutoff_hz() {
-            params.push(format!("hpf: {hpf:.2}"));
+            write!(file, ", hpf: {hpf:.2}")?;
         }
         if let Some(lpf) = event.value.lpf_cutoff_hz() {
-            params.push(format!("lpf: {lpf:.2}"));
+            write!(file, ", lpf: {lpf:.2}")?;
         }
 
-        writeln!(
-            file,
-            "[{:.3} -> {:.3}] {} ({})",
-            start,
-            end,
-            event.value.sample(),
-            params.join(", ")
-        )?;
+        writeln!(file, ")")?;
     }
+
+    file.flush()?;
 
     Ok(())
 }
@@ -111,7 +110,7 @@ pub fn export_number_pattern_to_txt(
     let events = pattern.try_query(&span)?;
     let path = path.as_ref();
 
-    let mut file = std::fs::File::create(path)?;
+    let mut file = std::io::BufWriter::new(std::fs::File::create(path)?);
 
     writeln!(file, "Orpheus Number Pattern Export")?;
     writeln!(file, "=============================")?;
@@ -122,12 +121,10 @@ pub fn export_number_pattern_to_txt(
         let start = f64::from(event.part.start());
         let end = f64::from(event.part.end());
 
-        writeln!(
-            file,
-            "[{:.3} -> {:.3}] value: {:.3}",
-            start, end, event.value
-        )?;
+        writeln!(file, "[{start:.3} -> {end:.3}] value: {:.3}", event.value)?;
     }
+
+    file.flush()?;
 
     Ok(())
 }
