@@ -56,3 +56,7 @@
 **[Enforce Private Explain Module]
 **Tangle:** The `explain` module in `orpheus-lang/src/lib.rs` and its internal `Explain` trait and `explain_table` function were declared as `pub`, leaking internal REPL table rendering details to the public API.
 **Blueprint:** Changed the visibility of the `Explain` trait and `explain_table` function to `pub(crate)` in `crates/orpheus-lang/src/explain.rs`. Removed the `pub use explain::Explain;` re-export from `crates/orpheus-lang/src/lib.rs` and changed the module declaration to `pub(crate) mod explain;`. This strictly enforces internal encapsulation.
+
+**[Resolve Circular Module Dependency]
+**Tangle:** Sibling modules `builtins.rs` and `eval.rs` shared mutual dependencies and created a tangled structure with `value.rs`.
+**Blueprint:** Promoted `eval.rs` to a directory module (`eval/mod.rs`) and nested `builtins.rs` as a private submodule (`eval/builtins.rs`) to enforce strict hierarchical boundaries and resolve the crate-level import cycle.
