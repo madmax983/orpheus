@@ -457,6 +457,37 @@ mod tests {
     }
 
     #[test]
+    fn test_input_hint_and_completion() {
+        let engine = EngineHandle::stub();
+        let mut state = SharedState::new(engine);
+
+        // Empty input hint
+        assert!(state.input_hint().contains("Tab completes commands"));
+
+        // Ambiguous prefix
+        state.input = ":r".to_string();
+        assert_eq!(matching_command(&state.input), None);
+        assert!(state.input_hint().contains("Tab completes commands"));
+        state.complete_input();
+        assert_eq!(state.input, ":r"); // No change
+
+        // Unique prefix
+        state.input = ":ren".to_string();
+        assert!(
+            state
+                .input_hint()
+                .contains(":render <binding> <path> [cycles]")
+        );
+        state.complete_input();
+        assert_eq!(state.input, ":render ");
+
+        // Exact match
+        state.input = ":quit".to_string();
+        state.complete_input();
+        assert_eq!(state.input, ":quit");
+    }
+
+    #[test]
     fn test_shared_state_history_tracking() {
         let engine = EngineHandle::stub();
         let mut state = SharedState::new(engine);

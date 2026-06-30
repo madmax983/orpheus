@@ -456,6 +456,34 @@ mod tests {
     }
 
     #[test]
+    fn test_ui_styles() {
+        assert_eq!(live_binding_style().fg, Some(ratatui::style::Color::Green));
+        assert_eq!(key_legend_style().fg, Some(ratatui::style::Color::DarkGray));
+        assert_eq!(
+            help_overlay_border_style().fg,
+            Some(ratatui::style::Color::Cyan)
+        );
+        assert_eq!(
+            help_overlay_footer_style().fg,
+            Some(ratatui::style::Color::Gray)
+        );
+    }
+
+    #[test]
+    fn test_binding_legend_item() {
+        let session = ReplSession::with_engine(EngineHandle::stub());
+        let view = session.transport_view();
+        let _legend = binding_legend_item(&view);
+    }
+
+    #[test]
+    fn test_should_show_binding_legend() {
+        let session = ReplSession::with_engine(EngineHandle::stub());
+        let view = session.transport_view();
+        assert!(!should_show_binding_legend(10, 2, &view));
+    }
+
+    #[test]
     fn should_return_correct_transport_state() {
         let mut session = ReplSession::with_engine(EngineHandle::stub());
 
