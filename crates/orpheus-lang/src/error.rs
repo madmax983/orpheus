@@ -129,4 +129,24 @@ mod tests {
         let err: EvalError = parse_err.into();
         assert_eq!(err.to_string(), "mock parse error");
     }
+
+    #[test]
+    fn eval_error_from_try_from_int_error() {
+        let num_err: std::num::TryFromIntError = match u8::try_from(256u16) {
+            Ok(_) => panic!("expected TryFromIntError"),
+            Err(e) => e,
+        };
+        let eval_err: EvalError = num_err.into();
+        assert!(eval_err.to_string().contains("out of range"));
+    }
+
+    #[test]
+    fn eval_error_from_parse_int_error() {
+        let num_err: std::num::ParseIntError = match "abc".parse::<i32>() {
+            Ok(_) => panic!("expected ParseIntError"),
+            Err(e) => e,
+        };
+        let eval_err: EvalError = num_err.into();
+        assert!(eval_err.to_string().contains("invalid digit"));
+    }
 }

@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2025-06-30 - Fix missing error conversion coverage
+**Learning:** `orpheus-lang/src/error.rs` lacked tests for checking `TryFromInt` and `ParseInt` error conversions. Additionally, `eval.rs` called `unwrap_err` which caused a panic instead of actually testing the `EvalError` conversion in the case of `TryFromIntError` and `ParseIntError`.
+**Action:** Use `match` with `panic!` on `Ok` and returning `Err` in tests for `TryFromInt` and `ParseInt` instead of relying on `.unwrap_err()` to improve safety and test accuracy. Added coverage for integer conversion errors in `error.rs`.

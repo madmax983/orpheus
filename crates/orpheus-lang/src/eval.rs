@@ -1734,11 +1734,17 @@ right = sometimes(fast(2), cp hh)";
 
     #[test]
     fn eval_error_from_conversions() {
-        let num_err: std::num::TryFromIntError = u8::try_from(256u16).unwrap_err();
+        let num_err: std::num::TryFromIntError = match u8::try_from(256u16) {
+            Ok(_) => panic!("expected TryFromIntError"),
+            Err(e) => e,
+        };
         let eval_err: crate::error::EvalError = num_err.into();
         assert!(eval_err.to_string().contains("out of range"));
 
-        let num_err: std::num::ParseIntError = "abc".parse::<i32>().unwrap_err();
+        let num_err: std::num::ParseIntError = match "abc".parse::<i32>() {
+            Ok(_) => panic!("expected ParseIntError"),
+            Err(e) => e,
+        };
         let eval_err: crate::error::EvalError = num_err.into();
         assert!(eval_err.to_string().contains("invalid digit"));
 
@@ -1761,8 +1767,11 @@ right = sometimes(fast(2), cp hh)";
 
     #[test]
     fn eval_error_from_parse_int_error() {
-        let err: Result<i32, _> = "not_a_number".parse();
-        let eval_err: super::EvalError = err.unwrap_err().into();
+        let num_err: std::num::ParseIntError = match "not_a_number".parse::<i32>() {
+            Ok(_) => panic!("expected ParseIntError"),
+            Err(e) => e,
+        };
+        let eval_err: super::EvalError = num_err.into();
         assert!(eval_err.to_string().contains("invalid digit"));
     }
 
