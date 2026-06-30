@@ -82,3 +82,7 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**[Refactoring: AST Traversal DRYness]**
+**Learning:** When multiple methods traverse the same AST node (e.g., `eval_section_events` and `eval_section_length`) to compute different values, this violates DRY and degrades performance.
+**Action:** Consolidate redundant AST traversal methods into a single method that returns a tuple of the computed values (e.g., `Result<(ExplicitValue, i128), EvalError>`).

@@ -572,8 +572,8 @@ impl Evaluator {
         };
 
         let initial_offset = 0_i128;
-        let initial_combined = self.eval_section_events(first, meter, initial_offset)?;
-        let initial_length = self.eval_section_length(first, meter)?;
+        let (initial_combined, initial_length) =
+            self.eval_section_events(first, meter, initial_offset)?;
         let next_offset = initial_offset
             .checked_add(initial_length)
             .ok_or_else(|| EvalError::new("section cycle offset overflowed"))?;
@@ -581,8 +581,8 @@ impl Evaluator {
         let (combined, _) = rest.iter().try_fold(
             (initial_combined, next_offset),
             |(acc_combined, acc_offset), section| -> Result<(ExplicitValue, i128), EvalError> {
-                let section_events = self.eval_section_events(section, meter, acc_offset)?;
-                let section_length = self.eval_section_length(section, meter)?;
+                let (section_events, section_length) =
+                    self.eval_section_events(section, meter, acc_offset)?;
 
                 let next_combined = acc_combined.merge(section_events)?;
                 let next_offset = acc_offset
@@ -601,7 +601,7 @@ impl Evaluator {
         section: &Expr,
         meter: Option<&MeterContext>,
         cycle_offset: i128,
-    ) -> Result<ExplicitValue, EvalError> {
+    ) -> Result<(ExplicitValue, i128), EvalError> {
         let Expr::Section { pattern, cycles } = section else {
             return Err(EvalError::new(
                 "`seq_sections` only accepts `section(pattern, cycles)` items",
@@ -620,7 +620,8 @@ impl Evaluator {
             return Err(EvalError::new("section cycle count must be positive"));
         }
 
-        Self::repeat_explicit_value(base, repeat_count, cycle_offset)
+        let repeated = Self::repeat_explicit_value(base, repeat_count, cycle_offset)?;
+        Ok((repeated, repeat_count))
     }
 
     fn repeat_explicit_value(
@@ -652,27 +653,6 @@ impl Evaluator {
 
         combined.sort();
         Ok(combined)
-    }
-
-    fn eval_section_length(
-        &self,
-        section: &Expr,
-        meter: Option<&MeterContext>,
-    ) -> Result<i128, EvalError> {
-        let Expr::Section { cycles, .. } = section else {
-            return Err(EvalError::new(
-                "`seq_sections` only accepts `section(pattern, cycles)` items",
-            ));
-        };
-
-        let count = self.eval_positive_integer(cycles, meter, "section cycle count")?;
-        if count > 1024 {
-            return Err(EvalError::new(
-                "section cycle count exceeded the maximum allowed bound of 1024",
-            ));
-        }
-
-        Ok(count)
     }
 
     fn eval_meter_context(
