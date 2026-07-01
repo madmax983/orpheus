@@ -69,47 +69,72 @@ impl TypeEnv {
         let mut env = Self {
             entries: BTreeMap::new(),
         };
-        for name in ["bd", "sn", "cp", "hh", "saw", "pulse", "tri", "noise"] {
-            env.insert(name, TypeScheme::monomorphic(Type::pattern(Type::Sample)));
-        }
 
+        env.install_samples();
+        env.install_transforms();
+        env.install_music_theory();
+        env.install_effects();
+        env.install_utils();
+
+        install_plugin_builtins(&mut env);
+
+        env
+    }
+
+    fn install_samples(&mut self) {
+        for name in ["bd", "sn", "cp", "hh", "saw", "pulse", "tri", "noise"] {
+            self.insert(name, TypeScheme::monomorphic(Type::pattern(Type::Sample)));
+        }
+        self.insert(
+            "sample",
+            TypeScheme::monomorphic(Type::curried(
+                vec![Type::String],
+                Type::pattern(Type::Sample),
+            )),
+        );
+    }
+
+    fn install_transforms(&mut self) {
         let alpha = TypeVarId::new(0);
         for name in ["fast", "slow", "shift"] {
-            env.insert(name, numeric_pattern_transform_scheme(alpha));
+            self.insert(name, numeric_pattern_transform_scheme(alpha));
         }
-        env.insert("every", every_transform_scheme(alpha));
-        env.insert("when", when_transform_scheme(alpha));
-        env.insert("sometimes", sometimes_transform_scheme(alpha));
-        env.insert("within", within_transform_scheme(alpha));
-        env.insert("mask", mask_scheme());
-        env.insert("strum", unary_number_pattern_scheme());
-        env.insert("roll", numeric_pattern_transform_scheme(alpha));
-        env.insert("arp", arp_scheme());
-        env.insert("up", TypeScheme::monomorphic(Type::ArpDirection));
-        env.insert("down", TypeScheme::monomorphic(Type::ArpDirection));
+        self.insert("every", every_transform_scheme(alpha));
+        self.insert("when", when_transform_scheme(alpha));
+        self.insert("sometimes", sometimes_transform_scheme(alpha));
+        self.insert("within", within_transform_scheme(alpha));
+        self.insert("mask", mask_scheme());
+        self.insert("strum", unary_number_pattern_scheme());
+        self.insert("roll", numeric_pattern_transform_scheme(alpha));
+        self.insert("jux", jux_transform_scheme());
+        self.insert("rev", unary_pattern_transform_scheme(alpha));
+        self.insert("chaos", unary_pattern_transform_scheme(alpha));
 
         for name in ["invert", "drop", "chord", "transpose"] {
-            env.insert(name, number_pattern_control_scheme());
+            self.insert(name, number_pattern_control_scheme());
         }
+    }
 
-        env.insert("euclid", euclid_scheme());
-        env.insert(
+    fn install_music_theory(&mut self) {
+        self.insert("arp", arp_scheme());
+        self.insert("up", TypeScheme::monomorphic(Type::ArpDirection));
+        self.insert("down", TypeScheme::monomorphic(Type::ArpDirection));
+        self.insert("euclid", euclid_scheme());
+        self.insert(
             "pitch_class_set",
             TypeScheme::monomorphic(Type::curried(
                 vec![Type::pattern(Type::Number)],
                 Type::PitchClassSet,
             )),
         );
-        env.insert("degrees", degrees_scheme());
-
-        env.insert(
+        self.insert("degrees", degrees_scheme());
+        self.insert(
             "tuning",
             TypeScheme::monomorphic(Type::function(
                 vec![Type::pattern(Type::Number)],
                 Type::Tuning,
             )),
         );
-        install_plugin_builtins(&mut env);
 
         for name in [
             "ionian",
@@ -119,33 +144,28 @@ impl TypeEnv {
             "aeolian",
             "minor_pentatonic",
         ] {
-            env.insert(name, TypeScheme::monomorphic(Type::PitchClassSet));
+            self.insert(name, TypeScheme::monomorphic(Type::PitchClassSet));
         }
-        env.insert("jux", jux_transform_scheme());
-        env.insert("rev", unary_pattern_transform_scheme(alpha));
-        env.insert("chaos", unary_pattern_transform_scheme(alpha));
+    }
+
+    fn install_effects(&mut self) {
         for name in [
             "gain", "hpf", "lpf", "cutoff", "res", "drive", "pw", "pan", "pitch", "rate", "onset",
         ] {
-            env.insert(name, sample_control_scheme());
+            self.insert(name, sample_control_scheme());
         }
-        env.insert(
-            "sample",
-            TypeScheme::monomorphic(Type::curried(
-                vec![Type::String],
-                Type::pattern(Type::Sample),
-            )),
-        );
-        env.insert(
+        self.insert(
             "through",
             TypeScheme::monomorphic(Type::curried(
                 vec![Type::Pedal, Type::pattern(Type::Sample)],
                 Type::pattern(Type::Sample),
             )),
         );
+    }
 
+    fn install_utils(&mut self) {
         for name in ["slice", "slice_idx"] {
-            env.insert(
+            self.insert(
                 name,
                 TypeScheme::monomorphic(Type::curried(
                     vec![
@@ -157,13 +177,12 @@ impl TypeEnv {
                 )),
             );
         }
-
-        env.insert(
+        self.insert(
             "rand",
             TypeScheme::monomorphic(Type::function(vec![], Type::pattern(Type::Number))),
         );
         for name in ["cc", "midi_cc"] {
-            env.insert(
+            self.insert(
                 name,
                 TypeScheme::monomorphic(Type::curried(
                     vec![Type::pattern(Type::Number)],
@@ -171,8 +190,6 @@ impl TypeEnv {
                 )),
             );
         }
-
-        env
     }
 
     /// Inserts a new variable mapping into the type environment.

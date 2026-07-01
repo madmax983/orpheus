@@ -82,3 +82,7 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**[Extracting massive Env Initialization]**
+**Learning:** The `with_builtins` method in `env.rs` initialized the type environment with over 100 lines of sequential insertion logic. Splitting this into functional groups (e.g., `install_samples`, `install_transforms`) makes the code much easier to read and groups related abstractions.
+**Action:** When a method initializes a complex data structure with hundreds of lines of insertions, I will extract these insertions into categorized helper methods on the struct.
