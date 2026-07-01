@@ -2977,12 +2977,8 @@ enum PatternRuntime<T> {
 }
 
 impl<T> PatternRuntime<T> {
-    fn with_tuning(self, table: &TuningTable) -> Self {
-        self.with_tuning_inner(table)
-    }
-
     #[allow(clippy::too_many_lines, clippy::match_same_arms)]
-    fn with_tuning_inner(self, table: &TuningTable) -> Self {
+    fn with_tuning(self, table: &TuningTable) -> Self {
         use PatternRuntime::{
             Arp, Chaos, Chorus, ChorusDepth, ChorusDepthPattern, ChorusPattern, ChorusRate,
             ChorusRatePattern, Compressor, CompressorPattern, CompressorRatio,
@@ -2999,7 +2995,7 @@ impl<T> PatternRuntime<T> {
 
         macro_rules! recurse {
             ($inner:expr) => {
-                Box::new($inner.with_tuning_inner(table))
+                Box::new($inner.with_tuning(table))
             };
         }
 
@@ -3039,7 +3035,7 @@ impl<T> PatternRuntime<T> {
             Stack(layers) => Stack(
                 layers
                     .into_iter()
-                    .map(|layer| layer.with_tuning_inner(table))
+                    .map(|layer| layer.with_tuning(table))
                     .collect(),
             ),
             Every {
@@ -3493,6 +3489,7 @@ where
         self.try_query_transform_method(span)
     }
 
+    #[allow(clippy::too_many_lines)]
     fn try_query_transform_method(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
         match self {
             Self::Roll { steps, inner } => T::roll_events(inner.try_query(span)?, *steps),
@@ -3579,6 +3576,7 @@ where
         self.try_query_audio_effect_method(span)
     }
 
+    #[allow(clippy::too_many_lines)]
     fn try_query_audio_effect_method(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
         match self {
             Self::Delay { mix, inner } => {
@@ -3649,6 +3647,7 @@ where
         self.try_query_modulation_effect_method(span)
     }
 
+    #[allow(clippy::too_many_lines)]
     fn try_query_modulation_effect_method(
         &self,
         span: &TimeSpan,

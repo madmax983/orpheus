@@ -82,3 +82,11 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**Refactoring `clippy::too_many_lines` on massive structural matches**
+**Learning:** For extremely large pattern match blocks over massive enums (like `PatternRuntime::with_tuning`), adding `#allow(clippy::too_many_lines)` to a public-facing API function can pollute the outer API contract or encourage growing the function even larger.
+**Action:** Extract the massive match block into a private `_inner` helper method (e.g. `with_tuning_inner`), apply the allow attribute there, and have the public API (e.g., `with_tuning`) simply forward the call. This shrinks the public API and encapsulates the lint allowance safely.
+
+**Refactoring redundant type routing in builtins**
+**Learning:** Many built-in language functions (like `every`, `when`, `sometimes`, `within`) repeated exactly the same structural type matching (`match pattern { Value::SamplePattern(p) => ..., Value::NumberPattern(p) => ..., _ => Err(...) }`).
+**Action:** Replaced these repetitive blocks with the pre-existing `apply_pattern_transform` helper closure pattern, removing boilerplate type extraction and standardizing error messages across core functions.

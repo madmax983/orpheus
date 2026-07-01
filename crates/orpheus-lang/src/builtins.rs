@@ -593,25 +593,18 @@ fn apply_every(args: Vec<Value>) -> Result<Value, EvalError> {
         .next()
         .ok_or_else(|| EvalError::new("`every` requires a pattern argument"))?;
 
-    match pattern {
-        Value::SamplePattern(pattern) => {
-            let transform = extract_unary_pattern_transform(transform, "every", "second")?;
+    apply_pattern_transform(
+        pattern,
+        |pattern| {
+            let transform = extract_unary_pattern_transform(transform.clone(), "every", "second")?;
             Ok(Value::SamplePattern(pattern.every(period, transform)))
-        }
-        Value::NumberPattern(pattern) => {
-            let transform = extract_unary_pattern_transform(transform, "every", "second")?;
+        },
+        |pattern| {
+            let transform = extract_unary_pattern_transform(transform.clone(), "every", "second")?;
             Ok(Value::NumberPattern(pattern.every(period, transform)))
-        }
-        Value::ArpDirection(_)
-        | Value::PitchClassSet(_)
-        | Value::Function(_)
-        | Value::String(_)
-        | Value::Tuning(_)
-        | Value::PluginPattern(_)
-        | Value::Pedal(_) => Err(EvalError::new(
-            "`every` expected a pattern as its final argument",
-        )),
-    }
+        },
+        "every",
+    )
 }
 
 fn apply_when(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -642,19 +635,13 @@ fn apply_when(args: Vec<Value>) -> Result<Value, EvalError> {
 
     apply_pattern_transform(
         pattern,
-        |p| {
-            Ok(Value::SamplePattern(p.when(
-                period,
-                offset,
-                extract_unary_pattern_transform(transform.clone(), "when", "third")?,
-            )))
+        |pattern| {
+            let transform = extract_unary_pattern_transform(transform.clone(), "when", "third")?;
+            Ok(Value::SamplePattern(pattern.when(period, offset, transform)))
         },
-        |p| {
-            Ok(Value::NumberPattern(p.when(
-                period,
-                offset,
-                extract_unary_pattern_transform(transform.clone(), "when", "third")?,
-            )))
+        |pattern| {
+            let transform = extract_unary_pattern_transform(transform.clone(), "when", "third")?;
+            Ok(Value::NumberPattern(pattern.when(period, offset, transform)))
         },
         "when",
     )
@@ -705,17 +692,13 @@ fn apply_sometimes(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError>
 
     apply_pattern_transform(
         pattern,
-        |p| {
-            Ok(Value::SamplePattern(p.sometimes_with_site_salt(
-                extract_unary_pattern_transform(transform.clone(), "sometimes", "first")?,
-                site_salt,
-            )))
+        |pattern| {
+            let transform = extract_unary_pattern_transform(transform.clone(), "sometimes", "first")?;
+            Ok(Value::SamplePattern(pattern.sometimes_with_site_salt(transform, site_salt)))
         },
-        |p| {
-            Ok(Value::NumberPattern(p.sometimes_with_site_salt(
-                extract_unary_pattern_transform(transform.clone(), "sometimes", "first")?,
-                site_salt,
-            )))
+        |pattern| {
+            let transform = extract_unary_pattern_transform(transform.clone(), "sometimes", "first")?;
+            Ok(Value::NumberPattern(pattern.sometimes_with_site_salt(transform, site_salt)))
         },
         "sometimes",
     )
@@ -746,19 +729,13 @@ fn apply_within(args: Vec<Value>) -> Result<Value, EvalError> {
 
     apply_pattern_transform(
         pattern,
-        |p| {
-            Ok(Value::SamplePattern(p.within(
-                start,
-                end,
-                extract_unary_pattern_transform(transform.clone(), "within", "third")?,
-            )))
+        |pattern| {
+            let transform = extract_unary_pattern_transform(transform.clone(), "within", "third")?;
+            Ok(Value::SamplePattern(pattern.within(start, end, transform)))
         },
-        |p| {
-            Ok(Value::NumberPattern(p.within(
-                start,
-                end,
-                extract_unary_pattern_transform(transform.clone(), "within", "third")?,
-            )))
+        |pattern| {
+            let transform = extract_unary_pattern_transform(transform.clone(), "within", "third")?;
+            Ok(Value::NumberPattern(pattern.within(start, end, transform)))
         },
         "within",
     )
@@ -778,8 +755,8 @@ fn apply_mask(args: Vec<Value>) -> Result<Value, EvalError> {
 
     apply_pattern_transform(
         pattern,
-        |p| Ok(Value::SamplePattern(p.mask(gate.clone()))),
-        |p| Ok(Value::NumberPattern(p.mask(gate.clone()))),
+        |pattern| Ok(Value::SamplePattern(pattern.mask(gate.clone()))),
+        |pattern| Ok(Value::NumberPattern(pattern.mask(gate.clone()))),
         "mask",
     )
 }
@@ -850,8 +827,8 @@ fn apply_roll(args: Vec<Value>) -> Result<Value, EvalError> {
 
     apply_pattern_transform(
         pattern,
-        |p| Ok(Value::SamplePattern(p.roll(steps))),
-        |p| Ok(Value::NumberPattern(p.roll(steps))),
+        |pattern| Ok(Value::SamplePattern(pattern.roll(steps))),
+        |pattern| Ok(Value::NumberPattern(pattern.roll(steps))),
         "roll",
     )
 }
@@ -950,8 +927,8 @@ fn apply_fast(args: Vec<Value>) -> Result<Value, EvalError> {
 
     apply_pattern_transform(
         pattern,
-        |p| Ok(Value::SamplePattern(p.fast(factor))),
-        |p| Ok(Value::NumberPattern(p.fast(factor))),
+        |pattern| Ok(Value::SamplePattern(pattern.fast(factor))),
+        |pattern| Ok(Value::NumberPattern(pattern.fast(factor))),
         "fast",
     )
 }
@@ -969,8 +946,8 @@ fn apply_slow(args: Vec<Value>) -> Result<Value, EvalError> {
 
     apply_pattern_transform(
         pattern,
-        |p| Ok(Value::SamplePattern(p.slow(factor))),
-        |p| Ok(Value::NumberPattern(p.slow(factor))),
+        |pattern| Ok(Value::SamplePattern(pattern.slow(factor))),
+        |pattern| Ok(Value::NumberPattern(pattern.slow(factor))),
         "slow",
     )
 }
@@ -988,8 +965,8 @@ fn apply_shift(args: Vec<Value>) -> Result<Value, EvalError> {
 
     apply_pattern_transform(
         pattern,
-        |p| Ok(Value::SamplePattern(p.shift(offset))),
-        |p| Ok(Value::NumberPattern(p.shift(offset))),
+        |pattern| Ok(Value::SamplePattern(pattern.shift(offset))),
+        |pattern| Ok(Value::NumberPattern(pattern.shift(offset))),
         "shift",
     )
 }
@@ -1002,8 +979,8 @@ fn apply_rev(args: Vec<Value>) -> Result<Value, EvalError> {
 
     apply_pattern_transform(
         pattern,
-        |p| Ok(Value::SamplePattern(p.rev())),
-        |p| Ok(Value::NumberPattern(p.rev())),
+        |pattern| Ok(Value::SamplePattern(pattern.rev())),
+        |pattern| Ok(Value::NumberPattern(pattern.rev())),
         "rev",
     )
 }
@@ -1016,8 +993,8 @@ fn apply_chaos(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
 
     apply_pattern_transform(
         pattern,
-        |p| Ok(Value::SamplePattern(p.chaos_with_site_salt(site_salt))),
-        |p| Ok(Value::NumberPattern(p.chaos_with_site_salt(site_salt))),
+        |pattern| Ok(Value::SamplePattern(pattern.chaos_with_site_salt(site_salt))),
+        |pattern| Ok(Value::NumberPattern(pattern.chaos_with_site_salt(site_salt))),
         "chaos",
     )
 }
