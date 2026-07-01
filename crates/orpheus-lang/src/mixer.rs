@@ -330,7 +330,7 @@ impl MixerState {
                         std::fmt::Write::write_fmt(&mut sends, format_args!("{bus} @ {level:.2}"));
                 }
                 let muted_color = if track.muted {
-                    TuiColor::Red
+                    TuiColor::LightRed
                 } else {
                     TuiColor::DarkGray
                 };
@@ -485,7 +485,7 @@ impl MixerState {
                         std::fmt::Write::write_fmt(&mut sends, format_args!("{bus} @ {level:.2}"));
                 }
                 let muted_color = if track.muted {
-                    comfy_table::Color::Red
+                    comfy_table::Color::DarkRed
                 } else {
                     comfy_table::Color::DarkGrey
                 };
