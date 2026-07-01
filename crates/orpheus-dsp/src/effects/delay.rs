@@ -117,7 +117,13 @@ fn delay_frames(time: &Rational, frames_per_cycle: u64) -> Result<usize, EngineE
     if frames <= 0 {
         return Err(EngineError::FrameOverflow);
     }
-    usize::try_from(frames).map_err(|_| EngineError::FrameOverflow)
+    let frames_usize = usize::try_from(frames).map_err(|_| EngineError::FrameOverflow)?;
+    // Cap delay frames to 60 seconds at a max expected sample rate of 192kHz to prevent OOM crashes
+    const MAX_DELAY_FRAMES: usize = 60 * 192_000;
+    if frames_usize > MAX_DELAY_FRAMES {
+        return Err(EngineError::FrameOverflow);
+    }
+    Ok(frames_usize)
 }
 
 #[cfg(test)]
@@ -205,5 +211,17 @@ mod tests {
 
         assert_eq!(state.write_index, 0);
         assert_eq!(state.buffer[0], (0.0, 0.0));
+    }
+
+    #[test]
+    fn havoc_delay_frame_limit_prevents_oom() {
+        // Massive delay time that previously caused memory exhaustion allocation panic
+        let massive_time = Rational::new(100_000_000_000, 1).unwrap();
+        let spec = DelaySpec::new(massive_time, 0.5, 0.2);
+        let frames_per_cycle = 44100;
+
+        // Expected to fail gracefully with FrameOverflow, rather than panic via SIGABRT
+        let result = DelayState::new(&spec, frames_per_cycle);
+        assert!(matches!(result, Err(EngineError::FrameOverflow)));
     }
 }
