@@ -593,25 +593,22 @@ fn apply_every(args: Vec<Value>) -> Result<Value, EvalError> {
         .next()
         .ok_or_else(|| EvalError::new("`every` requires a pattern argument"))?;
 
-    match pattern {
-        Value::SamplePattern(pattern) => {
-            let transform = extract_unary_pattern_transform(transform, "every", "second")?;
-            Ok(Value::SamplePattern(pattern.every(period, transform)))
-        }
-        Value::NumberPattern(pattern) => {
-            let transform = extract_unary_pattern_transform(transform, "every", "second")?;
-            Ok(Value::NumberPattern(pattern.every(period, transform)))
-        }
-        Value::ArpDirection(_)
-        | Value::PitchClassSet(_)
-        | Value::Function(_)
-        | Value::String(_)
-        | Value::Tuning(_)
-        | Value::PluginPattern(_)
-        | Value::Pedal(_) => Err(EvalError::new(
-            "`every` expected a pattern as its final argument",
-        )),
-    }
+    apply_pattern_transform(
+        pattern,
+        |p| {
+            Ok(Value::SamplePattern(p.every(
+                period,
+                extract_unary_pattern_transform(transform.clone(), "every", "second")?,
+            )))
+        },
+        |p| {
+            Ok(Value::NumberPattern(p.every(
+                period,
+                extract_unary_pattern_transform(transform.clone(), "every", "second")?,
+            )))
+        },
+        "every",
+    )
 }
 
 fn apply_when(args: Vec<Value>) -> Result<Value, EvalError> {
