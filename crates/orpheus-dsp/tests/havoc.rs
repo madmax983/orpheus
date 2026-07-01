@@ -1,5 +1,5 @@
-use loom::sync::Arc;
 use loom::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use loom::sync::Arc;
 use loom::thread;
 
 #[derive(Debug, Default)]
@@ -137,4 +137,23 @@ fn havoc_test_transport_panic_livelock() {
         .join()
         .unwrap();
     });
+}
+
+/// 👺 Havoc: Tests that an extremely large delay time cannot cause
+/// the audio thread to OOM abort when allocating the internal delay buffer.
+#[test]
+fn havoc_test_delay_oom() {
+    let snapshot = orpheus_dsp::RoutingSnapshot::builder()
+        .bus("delay")
+        .bus_effect_delay("delay", orpheus_pattern::Rational::new(2_000_000, 1).unwrap(), 0.5, 0.5)
+        .build()
+        .unwrap();
+
+    let result = orpheus_dsp::render_routing_snapshot_to_stereo_for_test(
+        &snapshot,
+        1,
+        120.0,
+        &orpheus_dsp::SampleBank::load_builtin(),
+    );
+    assert!(result.is_err(), "Expected FrameOverflow error instead of OOM abort");
 }

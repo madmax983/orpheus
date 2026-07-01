@@ -117,6 +117,13 @@ fn delay_frames(time: &Rational, frames_per_cycle: u64) -> Result<usize, EngineE
     if frames <= 0 {
         return Err(EngineError::FrameOverflow);
     }
+
+    // 👺 Havoc: Protect against Out-Of-Memory (OOM) fatal aborts by capping the delay buffer.
+    // 2_880_000 frames is exactly 60 seconds of delay at 48kHz.
+    if frames > 2_880_000 {
+        return Err(EngineError::FrameOverflow);
+    }
+
     usize::try_from(frames).map_err(|_| EngineError::FrameOverflow)
 }
 
