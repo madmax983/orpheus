@@ -105,6 +105,7 @@ fn lookup_pattern_transform(name: &str) -> Option<Value> {
         "euclid" => Some(builtin_function_value(BuiltinKind::Euclid)),
         "lsystem" => Some(builtin_function_value(BuiltinKind::Lsystem)),
         "wolfram" => Some(builtin_function_value(BuiltinKind::Wolfram)),
+        "morse" => Some(builtin_function_value(BuiltinKind::Morse)),
         "pitch_class_set" => Some(builtin_function_value(BuiltinKind::PitchClassSet)),
         "degrees" => Some(builtin_function_value(BuiltinKind::Degrees)),
         "tuning" => Some(builtin_function_value(BuiltinKind::Tuning)),
@@ -360,6 +361,7 @@ impl BuiltinKind {
             Self::Euclid => "euclid",
             Self::Lsystem => "lsystem",
             Self::Wolfram => "wolfram",
+            Self::Morse => "morse",
             Self::PitchClassSet => "pitch_class_set",
             Self::Degrees => "degrees",
             Self::Fast => "fast",
@@ -427,6 +429,7 @@ impl BuiltinKind {
             | Self::Au
             | Self::MidiCc
             | Self::Hex
+            | Self::Morse
             | Self::Bin => 1,
             Self::Sometimes
             | Self::Mask
@@ -490,6 +493,7 @@ impl BuiltinKind {
             Self::Euclid => apply_euclid(args),
             Self::Lsystem => apply_lsystem(args),
             Self::Wolfram => apply_wolfram(args),
+            Self::Morse => apply_morse(args),
             Self::PitchClassSet => apply_pitch_class_set(args),
             Self::Degrees => apply_degrees(args),
             Self::Fast => apply_fast(args),
@@ -3164,5 +3168,138 @@ mod hex_bin_error_tests {
             result.unwrap_err().to_string(),
             "`bin` requires a string argument"
         );
+    }
+}
+
+
+fn apply_morse(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let text = extract_string(
+        args.next()
+            .ok_or_else(|| EvalError::new("`morse` requires a string argument"))?,
+        "`morse` string",
+    )?;
+
+    // Morse code rules:
+    // Dit = 1 unit ON
+    // Dah = 3 units ON
+    // Gap between elements of a letter = 1 unit OFF
+    // Gap between letters = 3 units OFF
+    // Gap between words = 7 units OFF
+
+    let mut events = Vec::new();
+    let mut current_time = 0; // in units
+
+    let text = text.to_ascii_uppercase();
+    let words: Vec<&str> = text.split_whitespace().collect();
+
+    for (word_idx, word) in words.iter().enumerate() {
+        for (char_idx, ch) in word.chars().enumerate() {
+            let pattern = match ch {
+                'A' => ".-",
+                'B' => "-...",
+                'C' => "-.-.",
+                'D' => "-..",
+                'E' => ".",
+                'F' => "..-.",
+                'G' => "--.",
+                'H' => "....",
+                'I' => "..",
+                'J' => ".---",
+                'K' => "-.-",
+                'L' => ".-..",
+                'M' => "--",
+                'N' => "-.",
+                'O' => "---",
+                'P' => ".--.",
+                'Q' => "--.-",
+                'R' => ".-.",
+                'S' => "...",
+                'T' => "-",
+                'U' => "..-",
+                'V' => "...-",
+                'W' => ".--",
+                'X' => "-..-",
+                'Y' => "-.--",
+                'Z' => "--..",
+                '0' => "-----",
+                '1' => ".----",
+                '2' => "..---",
+                '3' => "...--",
+                '4' => "....-",
+                '5' => ".....",
+                '6' => "-....",
+                '7' => "--...",
+                '8' => "---..",
+                '9' => "----.",
+                _ => "",
+            };
+
+            for (i, p) in pattern.chars().enumerate() {
+                let duration = if p == '.' { 1 } else { 3 };
+
+                events.push((current_time, current_time + duration));
+                current_time += duration;
+
+                if i < pattern.len() - 1 {
+                    current_time += 1; // Gap between elements
+                }
+            }
+
+            if char_idx < word.len() - 1 {
+                current_time += 3; // Gap between letters
+            }
+        }
+
+        if word_idx < words.len() - 1 {
+            current_time += 7; // Gap between words
+        }
+    }
+
+    if current_time == 0 {
+        return Ok(Value::NumberPattern(NumberPatternValue::from_events(Vec::new())));
+    }
+
+    let mut stream_events = Vec::new();
+    for (start, end) in events {
+        let start_rat = orpheus_pattern::Rational::new(i64::from(start), i64::from(current_time))
+            .map_err(|_| EvalError::new("Failed to construct rational start time"))?;
+        let end_rat = orpheus_pattern::Rational::new(i64::from(end), i64::from(current_time))
+            .map_err(|_| EvalError::new("Failed to construct rational end time"))?;
+
+        if let Ok(span) = orpheus_pattern::TimeSpan::new(start_rat, end_rat) {
+            stream_events.push(orpheus_pattern::Event {
+                whole: None,
+                part: span,
+                value: 1.0,
+            });
+        }
+    }
+
+    Ok(Value::NumberPattern(NumberPatternValue::from_events(stream_events)))
+}
+
+#[cfg(test)]
+mod morse_tests {
+    use crate::{ReplMode, eval_module};
+    use orpheus_pattern::{Rational, TimeSpan};
+
+    #[test]
+    fn test_morse_sos() {
+        let source = "m = morse(\"SOS\")";
+        let result = eval_module(source, ReplMode::Loose).unwrap();
+        let pattern = result.get("m").unwrap().as_number_pattern().unwrap();
+
+        // SOS: ... --- ...
+        // S = . . . = 1(on) 1(off) 1(on) 1(off) 1(on) -> 5
+        // gap = 3(off)
+        // O = - - - = 3(on) 1(off) 3(on) 1(off) 3(on) -> 11
+        // gap = 3(off)
+        // S = . . . = 1(on) 1(off) 1(on) 1(off) 1(on) -> 5
+        // Total time = 5 + 3 + 11 + 3 + 5 = 27
+        let span = TimeSpan::new(Rational::zero(), Rational::one()).unwrap();
+        let events = pattern.try_query(&span).unwrap();
+
+        assert_eq!(events.len(), 9); // 3 dits + 3 dahs + 3 dits
     }
 }
