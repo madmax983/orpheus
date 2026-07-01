@@ -173,3 +173,72 @@ fn duration_frames_for_event(
     let duration = end.saturating_sub(start).max(1);
     u32::try_from(duration).map_err(|_| EngineError::FrameOverflow)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::SampleTrigger;
+    use orpheus_pattern::{Event, Rational, TimeSpan};
+
+    #[test]
+    fn should_calculate_frame_offset_correctly() {
+        let cases = [
+            (Rational::zero(), 48000, 0),
+            (Rational::new(1, 2).unwrap(), 48000, 24000),
+            (Rational::new(1, 4).unwrap(), 48000, 12000),
+            (Rational::new(3, 4).unwrap(), 48000, 36000),
+            (Rational::new(1, 3).unwrap(), 48000, 16000),
+            (Rational::new(5, 1).unwrap(), 48000, 240000),
+        ];
+
+        for (start, frames_per_cycle, expected) in cases {
+            assert_eq!(
+                rational_to_frame_offset(&start, frames_per_cycle).unwrap(),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn should_return_error_for_negative_offset() {
+        let start = Rational::new(-1, 4).unwrap();
+        assert!(matches!(
+            rational_to_frame_offset(&start, 48000),
+            Err(EngineError::NegativeCycleOffset)
+        ));
+    }
+
+    #[test]
+    fn should_return_error_for_frame_overflow() {
+        let start = Rational::new(i64::MAX, 1).unwrap();
+        assert!(matches!(
+            rational_to_frame_offset(&start, u64::MAX),
+            Err(EngineError::FrameOverflow)
+        ));
+    }
+
+    #[test]
+    fn should_calculate_event_duration_correctly() {
+        let part = TimeSpan::new(Rational::zero(), Rational::new(1, 2).unwrap()).unwrap();
+        let event = Event {
+            whole: None,
+            part,
+            value: SampleTrigger::named("bd"),
+        };
+
+        assert_eq!(duration_frames_for_event(&event, 48000).unwrap(), 24000);
+    }
+
+    #[test]
+    fn should_enforce_minimum_duration_of_one_frame() {
+        let zero = Rational::zero();
+        let part = TimeSpan::new(zero, zero).unwrap();
+        let event = Event {
+            whole: None,
+            part,
+            value: SampleTrigger::named("bd"),
+        };
+
+        assert_eq!(duration_frames_for_event(&event, 48000).unwrap(), 1);
+    }
+}

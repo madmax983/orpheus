@@ -53,6 +53,7 @@ cpal.workspace = true
 crossterm.workspace = true
 orpheus-dsp.workspace = true
 orpheus-lang.workspace = true
+orpheus-pattern = { version = "0.1.0", path = "crates/orpheus-pattern" }
 
 [dev-dependencies]
 assert_cmd = "2"
