@@ -47,3 +47,7 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+**[Eliminating Intermediate String Allocations via IO buffering]**
+**Learning:** Using `let mut params = Vec::new(); params.push(format!(...)); params.join(", ")` in a loop over events and writing to `std::fs::File` incurs unnecessary `Vec` and `String` allocations, and triggers repeated unbuffered OS writes.
+**Action:** Wrap the file output stream using `std::io::BufWriter` to buffer the OS calls and remove intermediate vector storage, by formatting straight to the stream directly with `write!` and `writeln!`. Remember to explicitly `.flush()?` the `BufWriter` at the end so write errors are propagated properly rather than swallowed by `Drop`.
