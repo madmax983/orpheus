@@ -1502,13 +1502,12 @@ impl PatternRuntimeValue for SampleEvent {
                 index += 1;
             }
 
-            let cluster_events = roll_event_cluster(&events[start_index..index], steps)?;
-            if rolled.len() + cluster_events.len() > 100_000 {
+            roll_event_cluster(&events[start_index..index], steps, &mut rolled)?;
+            if rolled.len() > 100_000 {
                 return Err(EvalError::new(
                     "evaluation exceeded the maximum allowed event limit",
                 ));
             }
-            rolled.extend(cluster_events);
         }
 
         sort_events(&mut rolled);
@@ -1583,13 +1582,12 @@ impl PatternRuntimeValue for f64 {
         sort_events(&mut events);
         let mut rolled = Vec::with_capacity(events.len().saturating_mul(steps as usize));
         mutate_event_clusters(&mut events, "roll", |cluster| {
-            let cluster_result = roll_event_cluster(cluster, steps)?;
-            if rolled.len() + cluster_result.len() > 100_000 {
+            roll_event_cluster(cluster, steps, &mut rolled)?;
+            if rolled.len() > 100_000 {
                 return Err(EvalError::new(
                     "evaluation exceeded the maximum allowed event limit",
                 ));
             }
-            rolled.extend(cluster_result);
             Ok(())
         })?;
         sort_events(&mut rolled);
@@ -1622,13 +1620,12 @@ impl PatternRuntimeValue for f64 {
         sort_events(&mut events);
         let mut arped = Vec::with_capacity(events.len());
         mutate_event_clusters(&mut events, "arp", |cluster| {
-            let cluster_result = arp_event_cluster(cluster, steps, direction)?;
-            if arped.len() + cluster_result.len() > 100_000 {
+            arp_event_cluster(cluster, steps, direction, &mut arped)?;
+            if arped.len() > 100_000 {
                 return Err(EvalError::new(
                     "evaluation exceeded the maximum allowed event limit",
                 ));
             }
-            arped.extend(cluster_result);
             Ok(())
         })?;
         sort_events(&mut arped);
@@ -3833,9 +3830,11 @@ fn invert_event_cluster(cluster: &mut [Event<f64>], count: u32) -> Result<(), Ev
 fn roll_event_cluster<T: Clone>(
     cluster: &[Event<T>],
     steps: u32,
-) -> Result<Vec<Event<T>>, EvalError> {
+    rolled: &mut Vec<Event<T>>,
+) -> Result<(), EvalError> {
     if cluster.is_empty() || cluster.len() == 1 && steps == 1 {
-        return Ok(cluster.to_vec());
+        rolled.extend_from_slice(cluster);
+        return Ok(());
     }
     if steps == 0 {
         return Err(EvalError::new(
@@ -3846,7 +3845,8 @@ fn roll_event_cluster<T: Clone>(
     let span = cluster[0].part;
     let width = window_width(&span)?;
     if width == Rational::zero() || steps == 1 {
-        return Ok(cluster.to_vec());
+        rolled.extend_from_slice(cluster);
+        return Ok(());
     }
 
     let step_count = i128::from(steps);
@@ -3861,7 +3861,7 @@ fn roll_event_cluster<T: Clone>(
     let capacity = cluster_len
         .checked_mul(steps_usize)
         .ok_or_else(|| EvalError::new("`roll` exceeded the supported evaluator range"))?;
-    let mut rolled = Vec::with_capacity(capacity);
+    rolled.reserve(capacity);
 
     for index in 0..steps {
         let offset = rational_mul_parts(&step, i64::from(index), 1)?;
@@ -3877,7 +3877,7 @@ fn roll_event_cluster<T: Clone>(
         }
     }
 
-    Ok(rolled)
+    Ok(())
 }
 
 fn strum_event_cluster(cluster: &mut [Event<f64>]) -> Result<(), EvalError> {
@@ -3915,9 +3915,11 @@ fn arp_event_cluster(
     cluster: &mut [Event<f64>],
     steps: u32,
     direction: ArpDirectionValue,
-) -> Result<Vec<Event<f64>>, EvalError> {
+    arped: &mut Vec<Event<f64>>,
+) -> Result<(), EvalError> {
     if cluster.is_empty() {
-        return Ok(cluster.to_vec());
+        arped.extend_from_slice(cluster);
+        return Ok(());
     }
 
     if steps == 0 {
@@ -3930,7 +3932,8 @@ fn arp_event_cluster(
     let span = cluster[0].part;
     let width = window_width(&span)?;
     if width == Rational::zero() {
-        return Ok(cluster.to_vec());
+        arped.extend_from_slice(cluster);
+        return Ok(());
     }
 
     let step_count = i128::from(steps);
@@ -3941,7 +3944,7 @@ fn arp_event_cluster(
     let len = cluster.len();
     let capacity = usize::try_from(steps)
         .map_err(|_| EvalError::new("`arp` exceeded the supported evaluator range"))?;
-    let mut arped = Vec::with_capacity(capacity);
+    arped.reserve(capacity);
 
     for index in 0..steps {
         let offset_index = i64::from(index);
@@ -3977,7 +3980,7 @@ fn arp_event_cluster(
         });
     }
 
-    Ok(arped)
+    Ok(())
 }
 
 fn drop_event_cluster(cluster: &mut [Event<f64>], count: u32) -> Result<(), EvalError> {
@@ -5700,8 +5703,9 @@ mod tests {
         ];
 
         let mut events = cluster.clone();
-        let events = arp_event_cluster(&mut events, 5, ArpDirectionValue::Up).unwrap();
-        assert_eq!(events, cluster);
+        let mut out = Vec::new();
+        arp_event_cluster(&mut events, 5, ArpDirectionValue::Up, &mut out).unwrap();
+        assert_eq!(out, cluster);
     }
 
     #[test]
@@ -5755,7 +5759,8 @@ mod tests {
             },
         ];
 
-        let events = roll_event_cluster(&cluster, 5).unwrap();
+        let mut events = Vec::new();
+        roll_event_cluster(&cluster, 5, &mut events).unwrap();
         assert_eq!(events, cluster);
     }
 

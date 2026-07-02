@@ -47,3 +47,7 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+**[Event Generation Heap Allocations]**
+**Learning:** `roll_event_cluster` and `arp_event_cluster` in `orpheus-lang/src/value.rs` returned newly allocated `Vec`s for every cluster of overlapping events. The caller (`roll_events` and `arp_events`) then used `.extend()` to push these temporary collections into a final output `Vec`. In dense patterns, this intermediate allocation on every cluster caused severe performance degradation on the hot path.
+**Action:** Changed the signature of helper cluster mutators to accept a `&mut Vec<Event<T>>` output parameter and push directly to it using `.extend_from_slice()` and `.push()`. This eliminates the intermediate vectors and relies solely on one reserved output vector in the parent.
