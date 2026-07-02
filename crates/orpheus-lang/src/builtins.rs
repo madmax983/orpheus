@@ -104,6 +104,7 @@ fn lookup_pattern_transform(name: &str) -> Option<Value> {
         "chord" => Some(builtin_function_value(BuiltinKind::Chord)),
         "euclid" => Some(builtin_function_value(BuiltinKind::Euclid)),
         "lsystem" => Some(builtin_function_value(BuiltinKind::Lsystem)),
+        "morse" => Some(builtin_function_value(BuiltinKind::Morse)),
         "wolfram" => Some(builtin_function_value(BuiltinKind::Wolfram)),
         "pitch_class_set" => Some(builtin_function_value(BuiltinKind::PitchClassSet)),
         "degrees" => Some(builtin_function_value(BuiltinKind::Degrees)),
@@ -359,6 +360,7 @@ impl BuiltinKind {
             Self::Chord => "chord",
             Self::Euclid => "euclid",
             Self::Lsystem => "lsystem",
+            Self::Morse => "morse",
             Self::Wolfram => "wolfram",
             Self::PitchClassSet => "pitch_class_set",
             Self::Degrees => "degrees",
@@ -436,6 +438,7 @@ impl BuiltinKind {
             | Self::Chord
             | Self::Euclid
             | Self::Wolfram
+            | Self::Morse
             | Self::Degrees
             | Self::Fast
             | Self::Slow
@@ -489,6 +492,7 @@ impl BuiltinKind {
             Self::Chord => apply_chord(args),
             Self::Euclid => apply_euclid(args),
             Self::Lsystem => apply_lsystem(args),
+            Self::Morse => apply_morse(args),
             Self::Wolfram => apply_wolfram(args),
             Self::PitchClassSet => apply_pitch_class_set(args),
             Self::Degrees => apply_degrees(args),
@@ -2926,6 +2930,100 @@ mod test_nova {
         assert_eq!(events[3].value.sample(), "sn");
         assert_eq!(events[3].part.start(), &Rational::new(3, 2).unwrap());
     }
+}
+
+fn apply_morse(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let text = extract_string(
+        args.next()
+            .ok_or_else(|| EvalError::new("`morse` requires a text argument"))?,
+        "`morse` text",
+    )?;
+
+    let mut nodes = Vec::new();
+    let text_upper = text.to_uppercase();
+
+    let dict: std::collections::HashMap<char, &str> = [
+        ('A', ".-"),
+        ('B', "-..."),
+        ('C', "-.-."),
+        ('D', "-.."),
+        ('E', "."),
+        ('F', "..-."),
+        ('G', "--."),
+        ('H', "...."),
+        ('I', ".."),
+        ('J', ".---"),
+        ('K', "-.-"),
+        ('L', ".-.."),
+        ('M', "--"),
+        ('N', "-."),
+        ('O', "---"),
+        ('P', ".--."),
+        ('Q', "--.-"),
+        ('R', ".-."),
+        ('S', "..."),
+        ('T', "-"),
+        ('U', "..-"),
+        ('V', "...-"),
+        ('W', ".--"),
+        ('X', "-..-"),
+        ('Y', "-.--"),
+        ('Z', "--.."),
+        ('0', "-----"),
+        ('1', ".----"),
+        ('2', "..---"),
+        ('3', "...--"),
+        ('4', "....-"),
+        ('5', "....."),
+        ('6', "-...."),
+        ('7', "--..."),
+        ('8', "---.."),
+        ('9', "----."),
+    ]
+    .iter()
+    .copied()
+    .collect();
+
+    let mut first_word = true;
+    for word in text_upper.split_whitespace() {
+        if !first_word {
+            for _ in 0..7 {
+                nodes.push(orpheus_pattern::PatternNode::rest());
+            }
+        }
+        first_word = false;
+
+        let mut first_letter = true;
+        for c in word.chars() {
+            if let Some(&code) = dict.get(&c) {
+                if !first_letter {
+                    for _ in 0..3 {
+                        nodes.push(orpheus_pattern::PatternNode::rest());
+                    }
+                }
+                first_letter = false;
+
+                let mut first_symbol = true;
+                for symbol in code.chars() {
+                    if !first_symbol {
+                        nodes.push(orpheus_pattern::PatternNode::rest());
+                    }
+                    first_symbol = false;
+
+                    if symbol == '.' {
+                        nodes.push(orpheus_pattern::PatternNode::atom(1.0));
+                    } else if symbol == '-' {
+                        nodes.push(orpheus_pattern::PatternNode::atom(1.0));
+                        nodes.push(orpheus_pattern::PatternNode::rest());
+                        nodes.push(orpheus_pattern::PatternNode::rest());
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(Value::NumberPattern(NumberPatternValue::from_nodes(nodes)))
 }
 
 fn apply_wolfram(args: Vec<Value>) -> Result<Value, EvalError> {
