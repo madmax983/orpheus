@@ -5972,3 +5972,59 @@ impl Explain for NumberPatternValue {
         format!("{title}\n{table}")
     }
 }
+
+impl Explain for PitchClassSetValue {
+    fn explain(&self, binding_name: &str) -> String {
+        use comfy_table::{Cell, CellAlignment};
+        use crossterm::style::Stylize;
+
+        let title = format!(
+            "{} {}",
+            "Pitch Class Set Plan:".cyan().bold(),
+            binding_name.yellow()
+        );
+
+        let mut table = crate::explain::explain_table(["Step", "Interval (Semitones)"]);
+
+        for (i, interval) in self.pitch_classes.iter().enumerate() {
+            table.add_row(vec![
+                Cell::new(i.to_string()).fg(comfy_table::Color::Cyan),
+                Cell::new(interval.to_string())
+                    .fg(comfy_table::Color::Yellow)
+                    .set_alignment(CellAlignment::Right),
+            ]);
+        }
+
+        format!("{title}\n{table}")
+    }
+}
+
+impl Explain for ArpDirectionValue {
+    fn explain(&self, binding_name: &str) -> String {
+        use crossterm::style::Stylize;
+        let title = format!("{} {}", "Arp Direction Plan:".cyan().bold(), binding_name.yellow());
+        let mut table = crate::explain::explain_table(["Property", "Value"]);
+        table.add_row(vec![
+            comfy_table::Cell::new("Direction").fg(comfy_table::Color::Cyan),
+            comfy_table::Cell::new(format!("{:?}", self)).fg(comfy_table::Color::Yellow).set_alignment(comfy_table::CellAlignment::Right),
+        ]);
+        format!("{title}\n{table}")
+    }
+}
+
+impl Explain for PluginPatternValue {
+    fn explain(&self, binding_name: &str) -> String {
+        use crossterm::style::Stylize;
+        let title = format!("{} {}", "Plugin Pattern Plan:".cyan().bold(), binding_name.yellow());
+        let mut table = crate::explain::explain_table(["Property", "Value"]);
+        table.add_row(vec![
+            comfy_table::Cell::new("Type").fg(comfy_table::Color::Cyan),
+            comfy_table::Cell::new("Lazy Pattern Tree").fg(comfy_table::Color::Yellow).set_alignment(comfy_table::CellAlignment::Right),
+        ]);
+        table.add_row(vec![
+            comfy_table::Cell::new("Event Type").fg(comfy_table::Color::Cyan),
+            comfy_table::Cell::new("PluginEvent").fg(comfy_table::Color::Green).set_alignment(comfy_table::CellAlignment::Right),
+        ]);
+        format!("{title}\n{table}")
+    }
+}
