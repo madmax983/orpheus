@@ -23,6 +23,35 @@ use crate::value::{NumberPatternValue, SamplePatternValue};
 /// let path = std::env::temp_dir().join("piano_roll.html");
 /// export_sample_pattern_to_html(pattern, &path, 2).unwrap();
 /// ```
+fn write_html_header(
+    file: &mut std::fs::File,
+    title: &str,
+    width: f64,
+    height: f64,
+    custom_css: &str,
+) -> std::io::Result<()> {
+    writeln!(
+        file,
+        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n<title>Orpheus {title} Pattern Export</title>\n<style>\nbody {{ background-color: #1e1e1e; color: #ffffff; font-family: monospace; padding: 20px; }}\n{custom_css}.cycle-line {{ position: absolute; top: 0; bottom: 0; border-left: 2px solid #333333; }}\n.cycle-label {{ position: absolute; top: 5px; color: #888888; font-size: 12px; transform: translateX(-50%); }}\n#container {{ position: relative; width: {width}px; height: {height}px; background-color: #252525; overflow: hidden; border: 1px solid #444; margin-top: 20px; }}\n</style>\n</head>\n<body>\n<h2>Orpheus {title} Pattern</h2>\n<div id=\"container\">"
+    )
+}
+
+fn write_cycle_lines(
+    file: &mut std::fs::File,
+    cycle_count: u64,
+    pixels_per_cycle: f64,
+) -> std::io::Result<()> {
+    for cycle in 0..=cycle_count {
+        #[allow(clippy::cast_precision_loss)]
+        let x = (cycle as f64).mul_add(pixels_per_cycle, 100.0);
+        writeln!(
+            file,
+            "<div class=\"cycle-line\" style=\"left: {x}px;\"></div>\n<div class=\"cycle-label\" style=\"left: {x}px;\">Cycle {cycle}</div>"
+        )?;
+    }
+    Ok(())
+}
+
 ///
 /// # Panics
 ///
@@ -64,20 +93,16 @@ pub fn export_sample_pattern_to_html(
     let height = (sample_list.len() as f64).mul_add(lane_height, 40.0);
 
     let mut file = std::fs::File::create(path)?;
-    writeln!(
-        file,
-        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n<title>Orpheus Pattern Export</title>\n<style>\nbody {{ background-color: #1e1e1e; color: #ffffff; font-family: monospace; padding: 20px; }}\n.event {{ position: absolute; background-color: #4CAF50; border-radius: 4px; box-sizing: border-box; border: 1px solid #388E3C; cursor: pointer; transition: transform 0.1s; }}\n.event:hover {{ transform: scale(1.02); z-index: 10; }}\n.lane {{ position: absolute; border-bottom: 1px solid #333333; left: 100px; right: 0; }}\n.lane-label {{ position: absolute; left: 10px; font-size: 14px; }}\n.cycle-line {{ position: absolute; top: 0; bottom: 0; border-left: 2px solid #333333; }}\n.cycle-label {{ position: absolute; top: 5px; color: #888888; font-size: 12px; transform: translateX(-50%); }}\n#container {{ position: relative; width: {width}px; height: {height}px; background-color: #252525; overflow: hidden; border: 1px solid #444; margin-top: 20px; }}\n</style>\n</head>\n<body>\n<h2>Orpheus Sample Pattern</h2>\n<div id=\"container\">"
+    write_html_header(
+        &mut file,
+        "Sample",
+        width,
+        height,
+        ".event { position: absolute; background-color: #4CAF50; border-radius: 4px; box-sizing: border-box; border: 1px solid #388E3C; cursor: pointer; transition: transform 0.1s; }\n.event:hover { transform: scale(1.02); z-index: 10; }\n.lane { position: absolute; border-bottom: 1px solid #333333; left: 100px; right: 0; }\n.lane-label { position: absolute; left: 10px; font-size: 14px; }\n"
     )?;
 
     // Draw cycle lines
-    for cycle in 0..=cycle_count {
-        #[allow(clippy::cast_precision_loss)]
-        let x = (cycle as f64).mul_add(pixels_per_cycle, 100.0);
-        writeln!(
-            file,
-            "<div class=\"cycle-line\" style=\"left: {x}px;\"></div>\n<div class=\"cycle-label\" style=\"left: {x}px;\">Cycle {cycle}</div>"
-        )?;
-    }
+    write_cycle_lines(&mut file, cycle_count, pixels_per_cycle)?;
 
     // Draw lanes
     for (i, sample) in sample_list.iter().enumerate() {
@@ -181,20 +206,16 @@ pub fn export_number_pattern_to_html(
     let total_height = 2.0_f64.mul_add(margin, height);
 
     let mut file = std::fs::File::create(path)?;
-    writeln!(
-        file,
-        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n<title>Orpheus Number Pattern Export</title>\n<style>\nbody {{ background-color: #1e1e1e; color: #ffffff; font-family: monospace; padding: 20px; }}\n.event {{ position: absolute; background-color: #2196F3; border-radius: 2px; cursor: pointer; transition: background-color 0.1s; }}\n.event:hover {{ background-color: #64B5F6; z-index: 10; }}\n.axis-line {{ position: absolute; border-bottom: 1px dashed #555555; left: 100px; right: 0; }}\n.axis-label {{ position: absolute; left: 10px; font-size: 14px; }}\n.cycle-line {{ position: absolute; top: 0; bottom: 0; border-left: 2px solid #333333; }}\n.cycle-label {{ position: absolute; top: 5px; color: #888888; font-size: 12px; transform: translateX(-50%); }}\n#container {{ position: relative; width: {width}px; height: {total_height}px; background-color: #252525; overflow: hidden; border: 1px solid #444; margin-top: 20px; }}\n</style>\n</head>\n<body>\n<h2>Orpheus Number Pattern</h2>\n<div id=\"container\">"
+    write_html_header(
+        &mut file,
+        "Number",
+        width,
+        total_height,
+        ".event { position: absolute; background-color: #2196F3; border-radius: 2px; cursor: pointer; transition: background-color 0.1s; }\n.event:hover { background-color: #64B5F6; z-index: 10; }\n.axis-line { position: absolute; border-bottom: 1px dashed #555555; left: 100px; right: 0; }\n.axis-label { position: absolute; left: 10px; font-size: 14px; }\n"
     )?;
 
     // Draw cycle lines
-    for cycle in 0..=cycle_count {
-        #[allow(clippy::cast_precision_loss)]
-        let x = (cycle as f64).mul_add(pixels_per_cycle, 100.0);
-        writeln!(
-            file,
-            "<div class=\"cycle-line\" style=\"left: {x}px;\"></div>\n<div class=\"cycle-label\" style=\"left: {x}px;\">Cycle {cycle}</div>"
-        )?;
-    }
+    write_cycle_lines(&mut file, cycle_count, pixels_per_cycle)?;
 
     // Draw min/max labels and axis lines
     writeln!(

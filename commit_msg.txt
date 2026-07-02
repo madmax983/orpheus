@@ -1,0 +1,6 @@
+⚒️ Forge: Refactor HTML Generation Boilerplate
+
+* 🚮 Smell: Repeated large strings of HTML generation boilerplate in `crates/orpheus-lang/src/html.rs` for different `PatternValue` structs.
+* ✨ Solution: Extracted the layout and cycle line HTML string construction to `write_html_header` and `write_cycle_lines`.
+* 🧼 Benefit: Eliminates massive, near-identical copy-pasted blocks of string formatting, drastically reducing line lengths and improving readability of the generation loop.
+* 🛡️ Verification: Tests passed. No logic changed.
