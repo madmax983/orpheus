@@ -13,8 +13,8 @@ mod infer;
 use std::collections::BTreeMap;
 use std::fmt::{self, Display, Formatter};
 
-pub use env::TypeEnv;
-pub use env::TypeScheme;
+
+
 pub use infer::infer_into_bindings;
 pub use infer::infer_module;
 
