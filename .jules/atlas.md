@@ -56,3 +56,6 @@
 **[Enforce Private Explain Module]
 **Tangle:** The `explain` module in `orpheus-lang/src/lib.rs` and its internal `Explain` trait and `explain_table` function were declared as `pub`, leaking internal REPL table rendering details to the public API.
 **Blueprint:** Changed the visibility of the `Explain` trait and `explain_table` function to `pub(crate)` in `crates/orpheus-lang/src/explain.rs`. Removed the `pub use explain::Explain;` re-export from `crates/orpheus-lang/src/lib.rs` and changed the module declaration to `pub(crate) mod explain;`. This strictly enforces internal encapsulation.
+**[Enforce Private Type Inference Environment Module]
+**Tangle:** The `mod env;` inside `orpheus-lang/src/types/mod.rs` was exposed using `pub mod env;`. This triggers the `clippy::redundant_pub_crate` lint in downstream compilation because the parent `mod types` in `lib.rs` is private, making the `pub` redundant and bypassing intended encapsulation.
+**Blueprint:** Modified `pub mod env;` to `mod env;` to fix the lint and enforce correct module boundaries, relying on explicit `pub use` statements for the required API exports instead.
