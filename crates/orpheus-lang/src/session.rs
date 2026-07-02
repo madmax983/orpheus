@@ -751,11 +751,17 @@ impl ReplSession {
             .ok_or_else(|| format!("no binding named `{binding_name}`"))?;
 
         match value {
-            crate::value::Value::SamplePattern(pattern) => Ok(pattern.explain(binding_name)),
-            crate::value::Value::NumberPattern(pattern) => Ok(pattern.explain(binding_name)),
-            crate::value::Value::Function(func) => Ok(func.explain(binding_name)),
-            crate::value::Value::Pedal(pedal) => Ok(pedal.explain(binding_name)),
-            crate::value::Value::Tuning(tuning) => Ok(tuning.explain(binding_name)),
+            crate::value::Value::SamplePattern(pattern) => {
+                Ok(format!("\n{}", pattern.explain(binding_name)))
+            }
+            crate::value::Value::NumberPattern(pattern) => {
+                Ok(format!("\n{}", pattern.explain(binding_name)))
+            }
+            crate::value::Value::Function(func) => Ok(format!("\n{}", func.explain(binding_name))),
+            crate::value::Value::Pedal(pedal) => Ok(format!("\n{}", pedal.explain(binding_name))),
+            crate::value::Value::Tuning(tuning) => {
+                Ok(format!("\n{}", tuning.explain(binding_name)))
+            }
             _ => Err(format!(
                 "binding `{binding_name}` is a {} and cannot be explained",
                 value.kind_name()
