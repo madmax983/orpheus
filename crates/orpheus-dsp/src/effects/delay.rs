@@ -117,6 +117,14 @@ fn delay_frames(time: &Rational, frames_per_cycle: u64) -> Result<usize, EngineE
     if frames <= 0 {
         return Err(EngineError::FrameOverflow);
     }
+
+    // Bounds check to avoid massive heap allocations
+    // Cap at approx 60 seconds at 48kHz (2_880_000 frames)
+    let limit = 48_000 * 60;
+    if frames > limit {
+        return Err(EngineError::FrameOverflow);
+    }
+
     usize::try_from(frames).map_err(|_| EngineError::FrameOverflow)
 }
 
@@ -205,5 +213,27 @@ mod tests {
 
         assert_eq!(state.write_index, 0);
         assert_eq!(state.buffer[0], (0.0, 0.0));
+    }
+}
+
+/// 👺 Havoc: Proptest feeding arbitrary large positive rationals into `delay_frames`
+/// to ensure it triggers `FrameOverflow` instead of generating gigabyte-scale allocations.
+#[cfg(test)]
+mod havoc_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn test_havoc_delay_frames_bounds_check(num in 1i128..i128::MAX, den in 1i128..100) {
+            if let Ok(time) = Rational::checked_from_parts(num, den) {
+                let frames_per_cycle = 48000;
+                match delay_frames(&time, frames_per_cycle) {
+                    Ok(frames) => assert!(frames <= 48000 * 60, "Allowed allocation of {frames} exceeded 60s limit!"),
+                    Err(EngineError::FrameOverflow) => (),
+                    Err(e) => panic!("Unexpected error: {e:?}"),
+                }
+            }
+        }
     }
 }
