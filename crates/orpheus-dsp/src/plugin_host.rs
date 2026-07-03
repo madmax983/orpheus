@@ -58,6 +58,15 @@ impl PluginDescriptor {
     ///
     /// Panics if `identifier` is empty. Use [`Self::try_new`] when accepting
     /// untrusted user input.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::PluginDescriptor;
+    ///
+    /// let descriptor = PluginDescriptor::vst3("Serum");
+    /// assert_eq!(descriptor.identifier(), "Serum");
+    /// ```
     #[must_use]
     pub fn vst3(identifier: impl Into<Box<str>>) -> Self {
         Self::try_new(PluginFormat::Vst3, identifier)
@@ -70,6 +79,15 @@ impl PluginDescriptor {
     ///
     /// Panics if `identifier` is empty. Use [`Self::try_new`] when accepting
     /// untrusted user input.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::PluginDescriptor;
+    ///
+    /// let descriptor = PluginDescriptor::audio_unit("TestSynth");
+    /// assert_eq!(descriptor.identifier(), "TestSynth");
+    /// ```
     #[must_use]
     pub fn audio_unit(identifier: impl Into<Box<str>>) -> Self {
         Self::try_new(PluginFormat::AudioUnit, identifier)
@@ -81,6 +99,18 @@ impl PluginDescriptor {
     /// # Errors
     ///
     /// Returns [`PluginHostError::EmptyIdentifier`] if `identifier` is blank.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::{PluginDescriptor, PluginFormat, PluginHostError};
+    ///
+    /// let descriptor = PluginDescriptor::try_new(PluginFormat::Vst3, "Serum").unwrap();
+    /// assert_eq!(descriptor.identifier(), "Serum");
+    ///
+    /// let error = PluginDescriptor::try_new(PluginFormat::Vst3, "").unwrap_err();
+    /// assert_eq!(error, PluginHostError::EmptyIdentifier);
+    /// ```
     pub fn try_new(
         format: PluginFormat,
         identifier: impl Into<Box<str>>,

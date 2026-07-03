@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-05-19 - [Missing Plugin Descriptor Documentation]
+**Confusion:** The `PluginDescriptor` construction functions (`vst3`, `audio_unit`, `try_new`) in `crates/orpheus-dsp/src/plugin_host.rs` lacked executable doctests, leaving users to guess the required arguments and error handling logic.
+**Clarification:** Added executable `## Examples` doctests for all three constructor methods to provide concrete usage context and demonstrate error handling for `try_new`.
