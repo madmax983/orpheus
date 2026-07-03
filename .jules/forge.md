@@ -82,3 +82,6 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**[Refactoring: Chained Match Fallbacks]**
+**Learning:** When resolving `clippy::too_many_lines` in massive enum `match` blocks that use sequential fallback methods (e.g., `_ => self.next_category_method()`), extract related subsets of match arms into new helper methods. Chain these new methods together using the same fallback pattern to maintain the exact AST node evaluation order without altering runtime behavior.

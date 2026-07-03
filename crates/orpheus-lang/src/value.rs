@@ -3489,7 +3489,6 @@ where
         self.try_query_transform_method(span)
     }
 
-    #[allow(clippy::too_many_lines)]
     fn try_query_transform_method(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
         match self {
             Self::Roll { steps, inner } => T::roll_events(inner.try_query(span)?, *steps),
@@ -3510,16 +3509,6 @@ where
             Self::TransposePattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Transpose)
             }
-            Self::Fast { factor, inner } => query_fast(inner, *factor, span),
-            Self::Slow { factor, inner } => query_slow(inner, *factor, span),
-            Self::Shift { offset, inner } => query_shift(inner, offset, span),
-            Self::Rev { inner } => query_rev(inner, span),
-            Self::Gain { factor, inner } => {
-                apply_value_mutation(inner, span, |value| *value = value.adjust_gain(*factor))
-            }
-            Self::GainPattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::Gain)
-            }
             Self::Pitch { semitones, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_rate(semitones_to_rate_multiplier(*semitones));
             }),
@@ -3538,6 +3527,23 @@ where
                 tuning,
                 inner,
             } => apply_tuned_pitch_pattern(inner, control, span, tuning),
+            Self::Pedal {
+                pedal_program,
+                inner,
+            } => apply_value_mutation(inner, span, |value| {
+                *value = value.attach_pedal_program(pedal_program);
+            }),
+            Self::Rand { site_salt } => query_rand(*site_salt, span),
+            _ => self.try_query_timing_method(span),
+        }
+    }
+
+    fn try_query_timing_method(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
+        match self {
+            Self::Fast { factor, inner } => query_fast(inner, *factor, span),
+            Self::Slow { factor, inner } => query_slow(inner, *factor, span),
+            Self::Shift { offset, inner } => query_shift(inner, offset, span),
+            Self::Rev { inner } => query_rev(inner, span),
             Self::Rate { factor, inner } => {
                 apply_value_mutation(inner, span, |value| *value = value.adjust_rate(*factor))
             }
@@ -3561,13 +3567,6 @@ where
                 segments,
                 inner,
             } => apply_slice_idx_pattern(inner, control, *segments, span),
-            Self::Pedal {
-                pedal_program,
-                inner,
-            } => apply_value_mutation(inner, span, |value| {
-                *value = value.attach_pedal_program(pedal_program);
-            }),
-            Self::Rand { site_salt } => query_rand(*site_salt, span),
             _ => self.try_query_audio_effect(span),
         }
     }
@@ -3576,7 +3575,6 @@ where
         self.try_query_audio_effect_method(span)
     }
 
-    #[allow(clippy::too_many_lines)]
     fn try_query_audio_effect_method(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
         match self {
             Self::Delay { mix, inner } => {
@@ -3597,18 +3595,6 @@ where
             Self::DelayFeedbackPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::DelayFeedback)
             }
-            Self::Hpf { cutoff_hz, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_hpf(*cutoff_hz);
-            }),
-            Self::HpfPattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::Hpf)
-            }
-            Self::Lpf { cutoff_hz, inner } => apply_value_mutation(inner, span, |value| {
-                *value = value.adjust_lpf(*cutoff_hz);
-            }),
-            Self::LpfPattern { control, inner } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::Lpf)
-            }
             Self::Reverb { mix, inner } => {
                 apply_value_mutation(inner, span, |value| *value = value.adjust_reverb_mix(*mix))
             }
@@ -3626,6 +3612,24 @@ where
             }),
             Self::ReverbDampPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::ReverbDamp)
+            }
+            _ => self.try_query_filter_method(span),
+        }
+    }
+
+    fn try_query_filter_method(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
+        match self {
+            Self::Hpf { cutoff_hz, inner } => apply_value_mutation(inner, span, |value| {
+                *value = value.adjust_hpf(*cutoff_hz);
+            }),
+            Self::HpfPattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::Hpf)
+            }
+            Self::Lpf { cutoff_hz, inner } => apply_value_mutation(inner, span, |value| {
+                *value = value.adjust_lpf(*cutoff_hz);
+            }),
+            Self::LpfPattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::Lpf)
             }
             Self::Res { resonance, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_resonance(*resonance);
@@ -3647,7 +3651,6 @@ where
         self.try_query_modulation_effect_method(span)
     }
 
-    #[allow(clippy::too_many_lines)]
     fn try_query_modulation_effect_method(
         &self,
         span: &TimeSpan,
@@ -3676,6 +3679,18 @@ where
             }),
             Self::PulseWidthPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::PulseWidth)
+            }
+            _ => self.try_query_dynamics_method(span),
+        }
+    }
+
+    fn try_query_dynamics_method(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
+        match self {
+            Self::Gain { factor, inner } => {
+                apply_value_mutation(inner, span, |value| *value = value.adjust_gain(*factor))
+            }
+            Self::GainPattern { control, inner } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::Gain)
             }
             Self::Pan { amount, inner } => {
                 apply_value_mutation(inner, span, |value| *value = value.adjust_pan(*amount))
