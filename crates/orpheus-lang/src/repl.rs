@@ -35,6 +35,21 @@ pub fn run_stdio_with_engine(engine: EngineHandle) -> io::Result<()> {
     run_stdio_with_engine_and_path(engine, None, None)
 }
 
+use std::fmt::Write as _;
+
+fn format_multiline_output(prefix: &str, message: &str) -> String {
+    let lines: Vec<_> = message.lines().collect();
+    if lines.is_empty() {
+        return String::new();
+    }
+    let mut f = String::new();
+    let _ = write!(f, "{prefix} {}", lines[0]);
+    for line in lines.iter().skip(1) {
+        let _ = write!(f, "\n  {line}");
+    }
+    f
+}
+
 /// Runs the phase-one Orpheus REPL with an optional startup `.ode` preload.
 ///
 /// # Errors
@@ -55,13 +70,13 @@ pub fn run_stdio_with_engine_and_path(
     let mut stderr = stderr.lock();
 
     if let Some(msg) = warning {
-        writeln!(stderr, "{}", format!("[Warn] {msg}").yellow().bold())?;
+        writeln!(stderr, "{}", format_multiline_output("[Warn]", &msg).yellow().bold())?;
     }
 
     if let Some(path) = startup_path {
         match session.open_file(path) {
-            Ok(msg) => writeln!(stdout, "{}", format!("\u{2713} {msg}").green())?,
-            Err(msg) => writeln!(stderr, "{}", format!("\u{2717} {msg}").red().bold())?,
+            Ok(msg) => writeln!(stdout, "{}", format_multiline_output("\u{2713}", &msg).green())?,
+            Err(msg) => writeln!(stderr, "{}", format_multiline_output("\u{2717}", &msg).red().bold())?,
         }
     }
 
@@ -97,8 +112,14 @@ where
         }
 
         match session.eval_line(trimmed) {
-            Ok(message) => writeln!(stdout, "{}", format!("\u{2713} {message}").green())?,
-            Err(message) => writeln!(stderr, "{}", format!("\u{2717} {message}").red().bold())?,
+            Ok(message) => {
+                let formatted = format_multiline_output("\u{2713}", &message);
+                writeln!(stdout, "{}", formatted.green())?;
+            }
+            Err(message) => {
+                let formatted = format_multiline_output("\u{2717}", &message);
+                writeln!(stderr, "{}", formatted.red().bold())?;
+            }
         }
     }
 
