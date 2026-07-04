@@ -37,36 +37,67 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Applies a function conditionally on specific cycles (e.g., every 4th cycle).
     Every,
+    /// Conditionally applies a function based on a binary pattern gate.
     When,
+    /// Applies a function with a given probability.
     Sometimes,
+    /// Applies a function to only a specific fractional window of a cycle.
     Within,
+    /// Silences events based on a boolean mask pattern.
     Mask,
+    /// Delays events progressively within a pattern to create a strumming effect.
     Strum,
+    /// Repeats events rapidly to simulate a drum roll.
     Roll,
+    /// Arpeggiates chords into a sequence of individual notes.
     Arp,
+    /// Inverts pitches or values around a central axis.
     Invert,
+    /// Randomly drops events to thin out a pattern.
     Drop,
+    /// Constructs chords based on scale degrees or pitch classes.
     Chord,
+    /// Generates Euclidean rhythms distributing pulses as evenly as possible.
     Euclid,
+    /// Generates patterns using Lindenmayer systems.
     Lsystem,
+    /// Generates patterns using 1D cellular automata (Wolfram rules).
     Wolfram,
+    /// Defines a custom scale or set of pitch classes.
     PitchClassSet,
+    /// Translates scale degrees into concrete pitch numbers.
     Degrees,
+    /// Multiplies the playback speed of a pattern.
     Fast,
+    /// Divides the playback speed of a pattern.
     Slow,
+    /// Shifts a pattern forward or backward in time.
     Shift,
+    /// Reverses the temporal order of events in a cycle.
     Rev,
+    /// Adjusts the volume gain of events.
     Gain,
+    /// Adds a delay audio effect.
     Delay,
+    /// Sets the delay time for the delay effect.
     DelayTime,
+    /// Sets the feedback amount for the delay effect.
     DelayFeedback,
+    /// Applies a high-pass filter.
     Hpf,
+    /// Applies a low-pass filter.
     Lpf,
+    /// Adds a reverb audio effect.
     Reverb,
+    /// Sets the room size parameter for reverb.
     ReverbRoom,
+    /// Sets the high-frequency damping parameter for reverb.
     ReverbDamp,
+    /// Adjusts the cutoff frequency of active filters.
     Cutoff,
+    /// Adds a chorus audio effect.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

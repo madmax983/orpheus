@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-05-25 - [Missing Doctests and Meaningless Comments in Pedal API]
+**Confusion:** The `ValidatedPedalNode` and `ValidatedPedalBinding` structs in the `pedal` module lacked doctests and their methods were hidden with `#[doc(hidden)]`, making them inaccessible to users trying to build a custom DSP graph. This violated the Bard philosophy of "if it isn't documented, it doesn't exist" and hiding public APIs.
+**Clarification:** Removed the inappropriate `#[doc(hidden)]` tags and added comprehensive `///` narrative documentation explaining *why* the methods exist. Included executable `## Examples` doctest blocks illustrating successful creation and querying of pedal nodes and bindings.
