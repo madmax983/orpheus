@@ -1,13 +1,39 @@
---- crates/orpheus-lang/src/eval.rs
-+++ crates/orpheus-lang/src/eval.rs
-@@ -1009,14 +1009,15 @@
-     let owned_user_fn = std::sync::Arc::unwrap_or_clone(function);
+<<<<<<< SEARCH
+    // Multiply up to a reasonable precision limit to extract the integer fraction.
+    // 100_000 is used as a hard upper bound for decimal denominator expansion
+    // to match original string parsing precision assumptions without overflowing.
+    while (num.round() - num).abs() > f64::EPSILON && denom < 100_000 {
+        num *= 10.0;
+        denom *= 10;
+    }
 
-     let evaluator = Evaluator {
-         mode: owned_user_fn.mode,
-         bindings: owned_user_fn.captured_bindings,
-         expr_site_salts: owned_user_fn.expr_site_salts,
-         depth: std::cell::Cell::new(owned_user_fn.depth + 1),
-     };
-     evaluator.eval_expr(&owned_user_fn.body)
- }
+    #[allow(clippy::cast_possible_truncation)]
+    let rounded_num = num.round() as i128;
+
+    rational_from_parts(rounded_num, denom)
+}
+
+fn checked_pow10(exponent: usize) -> Result<i128, EvalError> {
+    let mut value = 1_i128;
+    for _ in 0..exponent {
+        value = value
+            .checked_mul(10)
+            .ok_or_else(|| EvalError::new("decimal literal exceeded the supported range"))?;
+    }
+    Ok(value)
+}
+=======
+    // Multiply up to a reasonable precision limit to extract the integer fraction.
+    // 100_000_000 is used as a hard upper bound for decimal denominator expansion
+    // to match original string parsing precision assumptions without overflowing.
+    while (num.round() - num).abs() > f64::EPSILON && denom < 100_000_000 {
+        num *= 10.0;
+        denom *= 10;
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    let rounded_num = num.round() as i128;
+
+    rational_from_parts(rounded_num, denom)
+}
+>>>>>>> REPLACE

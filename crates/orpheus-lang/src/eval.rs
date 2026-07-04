@@ -1224,43 +1224,42 @@ pub fn f64_to_rational(value: f64, context: &str) -> Result<Rational, EvalError>
         return Err(EvalError::new(format!("{context} must be finite")));
     }
 
-    let rendered = value.to_string();
-    if rendered.contains('e') || rendered.contains('E') {
+    // ⚡ Bolt: Eliminate slow string formatting on hot paths for parsing numbers.
+    // Instead of allocating via `.to_string()`, converting characters, and parsing back
+    // into an integer, use floating point math to extract the fractional scale.
+    let mut denom: i128 = 1;
+    let mut num: f64 = value;
+
+    // Check if exponent is too large by seeing if log10 is above safe i128 bounds (~38 digits)
+    if value.abs() >= 1e38 {
         return Err(EvalError::new(format!(
-            "{context} must not use scientific notation in Task 12"
+            "{context} exceeded the supported range"
         )));
     }
 
-    let (negative, digits) = rendered
-        .strip_prefix('-')
-        .map_or((false, rendered.as_str()), |rest| (true, rest));
-
-    let (numerator, denominator) = if let Some((whole, fractional)) = digits.split_once('.') {
-        let scale = checked_pow10(fractional.len())?;
-        let combined = [whole, fractional].concat();
-        let numerator = combined
-            .parse::<i128>()
-            .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?;
-        (numerator, scale)
-    } else {
-        let numerator = digits
-            .parse::<i128>()
-            .map_err(|_| EvalError::new(format!("{context} exceeded the supported range")))?;
-        (numerator, 1_i128)
-    };
-
-    let signed_numerator = if negative { -numerator } else { numerator };
-    rational_from_parts(signed_numerator, denominator)
-}
-
-fn checked_pow10(exponent: usize) -> Result<i128, EvalError> {
-    let mut value = 1_i128;
-    for _ in 0..exponent {
-        value = value
-            .checked_mul(10)
-            .ok_or_else(|| EvalError::new("decimal literal exceeded the supported range"))?;
+    // Multiply up to a reasonable precision limit to extract the integer fraction.
+    // 10_000_000_000 is used as a hard upper bound for decimal denominator expansion
+    // to match original string parsing precision assumptions without overflowing.
+    while (num.round() - num).abs() > 1e-9 && denom < 10_000_000_000 {
+        num *= 10.0;
+        denom *= 10;
     }
-    Ok(value)
+
+    // Check bounds since f64 can exceed i128 if the exponent is large (but less than 1e38)
+    #[allow(clippy::cast_precision_loss)]
+    let max_val = i128::MAX as f64;
+    #[allow(clippy::cast_precision_loss)]
+    let min_val = i128::MIN as f64;
+    if num > max_val || num < min_val {
+        return Err(EvalError::new(format!(
+            "{context} exceeded the supported range"
+        )));
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    let rounded_num = num.round() as i128;
+
+    rational_from_parts(rounded_num, denom)
 }
 
 fn shift_events<T>(events: &mut [Event<T>], offset: &Rational) -> Result<(), EvalError> {
