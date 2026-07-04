@@ -4650,38 +4650,29 @@ fn validate_onset_control_events(control_events: &[Event<f64>]) -> Result<(), Ev
     Ok(())
 }
 
-fn whole_number_from_slice_idx_value(value: f64) -> Result<u32, EvalError> {
+fn extract_whole_number(value: f64, context: &str) -> Result<u32, EvalError> {
     if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
-        return Err(EvalError::new(
-            "`slice_idx` requires whole-number control values",
-        ));
+        return Err(EvalError::new(format!(
+            "`{context}` requires whole-number control values"
+        )));
     }
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let integer = value.round() as u32;
     if integer == u32::MAX && value > f64::from(u32::MAX) {
-        return Err(EvalError::new(
-            "`slice_idx` control value exceeded the supported evaluator range",
-        ));
+        return Err(EvalError::new(format!(
+            "`{context}` control value exceeded the supported evaluator range"
+        )));
     }
     Ok(integer)
 }
 
-fn whole_number_from_onset_value(value: f64) -> Result<u32, EvalError> {
-    if !value.is_finite() || value < 0.0 || value.fract().abs() > f64::EPSILON {
-        return Err(EvalError::new(
-            "`onset` requires whole-number control values",
-        ));
-    }
+fn whole_number_from_slice_idx_value(value: f64) -> Result<u32, EvalError> {
+    extract_whole_number(value, "slice_idx")
+}
 
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    let integer = value.round() as u32;
-    if integer == u32::MAX && value > f64::from(u32::MAX) {
-        return Err(EvalError::new(
-            "`onset` control value exceeded the supported evaluator range",
-        ));
-    }
-    Ok(integer)
+fn whole_number_from_onset_value(value: f64) -> Result<u32, EvalError> {
+    extract_whole_number(value, "onset")
 }
 
 fn query_rand<T>(site_salt: u64, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError>
