@@ -37,36 +37,88 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Conditionally applies a function to a pattern every N cycles.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::value::BuiltinKind;
+    /// let kind = BuiltinKind::Every;
+    /// ```
     Every,
+    /// Conditionally applies a function when a boolean pattern evaluates to true.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::value::BuiltinKind;
+    /// let kind = BuiltinKind::When;
+    /// ```
     When,
+    /// Applies a function to a pattern probabilistically.
     Sometimes,
+    /// Restricts the application of a function to a specific time span within a cycle.
     Within,
+    /// Mutes a pattern when a boolean pattern is false.
     Mask,
+    /// Strums a chord by offsetting the start times of the notes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::value::BuiltinKind;
+    /// let kind = BuiltinKind::Strum;
+    /// ```
     Strum,
+    /// Rolls a single event into multiple subdivisions.
     Roll,
+    /// Arpeggiates a chord pattern into a melodic sequence.
     Arp,
+    /// Inverts a chord to its next inversion.
     Invert,
+    /// Drops the bottom or top notes from a chord pattern.
     Drop,
+    /// Evaluates a chord name into a pitch class set.
     Chord,
+    /// Generates a Euclidean rhythm pattern.
     Euclid,
+    /// Generates a pattern using an L-system grammar.
     Lsystem,
+    /// Generates a sequence from a 1D cellular automaton rule.
     Wolfram,
+    /// Represents a literal set of pitch classes.
     PitchClassSet,
+    /// Translates diatonic degrees into chromatic intervals.
     Degrees,
+    /// Speeds up the playback of a pattern.
     Fast,
+    /// Slows down the playback of a pattern.
     Slow,
+    /// Time-shifts a pattern forward or backward.
     Shift,
+    /// Reverses the temporal order of events in a cycle.
     Rev,
+    /// Controls the amplitude multiplication of a signal.
     Gain,
+    /// Enables a delay effect on an audio signal.
     Delay,
+    /// Sets the delay time for the delay effect in milliseconds or fractional beats.
     DelayTime,
+    /// Sets the feedback ratio for the delay effect.
     DelayFeedback,
+    /// Applies a high-pass filter to the audio signal.
     Hpf,
+    /// Applies a low-pass filter to the audio signal.
     Lpf,
+    /// Enables a reverb effect on an audio signal.
     Reverb,
+    /// Sets the room size parameter for the reverb effect.
     ReverbRoom,
+    /// Sets the high-frequency damping parameter for the reverb effect.
     ReverbDamp,
+    /// Controls the cutoff frequency of an active filter in Hz.
     Cutoff,
+    /// Enables a chorus modulation effect on the audio signal.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

@@ -260,6 +260,18 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Creates a new `BuiltinFn` instance for the specified primitive kind.
+    ///
+    /// This is used internally by the runtime to represent standard library functions
+    /// before they are applied to arguments.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::value::{BuiltinFn, BuiltinKind};
+    ///
+    /// let func = BuiltinFn::new(BuiltinKind::Every);
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +281,16 @@ impl BuiltinFn {
         }
     }
 
+    /// Attaches a unique site salt to this built-in function to ensure predictable randomness
+    /// when evaluated at a specific lexical call site.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::value::{BuiltinFn, BuiltinKind};
+    ///
+    /// let func = BuiltinFn::new(BuiltinKind::Sometimes).with_site_salt(42);
+    /// ```
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);
