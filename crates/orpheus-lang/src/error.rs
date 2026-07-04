@@ -129,4 +129,30 @@ mod tests {
         let err: EvalError = parse_err.into();
         assert_eq!(err.to_string(), "mock parse error");
     }
+
+    #[test]
+    fn eval_error_from_io_error() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "not found");
+        let err: EvalError = io_err.into();
+        assert_eq!(err.to_string(), "file not found");
+
+        let io_err2 =
+            std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied");
+        let err2: EvalError = io_err2.into();
+        assert_eq!(err2.to_string(), "permission denied");
+
+        let io_err3 = std::io::Error::other("other error");
+        let err3: EvalError = io_err3.into();
+        assert_eq!(err3.to_string(), "other error");
+    }
+
+    #[test]
+    fn eval_error_from_fmt_error() {
+        let fmt_err = std::fmt::Error;
+        let err: EvalError = fmt_err.into();
+        assert_eq!(
+            err.to_string(),
+            "an error occurred when formatting an argument"
+        );
+    }
 }

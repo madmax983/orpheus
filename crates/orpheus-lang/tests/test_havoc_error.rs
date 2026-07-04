@@ -64,3 +64,35 @@ fn eval_error_from_pattern_error() {
             .contains("rational denominator cannot be zero")
     );
 }
+
+#[test]
+fn eval_error_from_type_error() {
+    use orpheus_lang::TypeError;
+    let type_err = TypeError::new("mock type error");
+    let err: EvalError = type_err.into();
+    assert_eq!(err.to_string(), "mock type error");
+}
+
+#[test]
+fn eval_error_from_load_error() {
+    use orpheus_lang::LoadError;
+    let load_err = LoadError::new("mock load error");
+    let err: EvalError = load_err.into();
+    assert_eq!(err.to_string(), "mock load error");
+}
+
+#[test]
+fn eval_error_from_parse_error() {
+    use orpheus_lang::ParseError;
+    let parse_err = ParseError::new("mock parse error");
+    let err: EvalError = parse_err.into();
+    assert_eq!(err.to_string(), "mock parse error");
+}
+
+#[test]
+fn type_error_from_parse_error() {
+    use orpheus_lang::{ParseError, TypeError};
+    let parse_err = ParseError::new("mock parse error");
+    let type_err: TypeError = parse_err.into();
+    assert_eq!(type_err.to_string(), "mock parse error");
+}

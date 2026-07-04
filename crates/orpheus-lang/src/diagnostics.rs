@@ -36,7 +36,8 @@ pub struct ParseError {
 }
 
 impl ParseError {
-    pub(crate) fn new(message: impl Into<Box<str>>) -> Self {
+    #[doc(hidden)]
+    pub fn new(message: impl Into<Box<str>>) -> Self {
         Self {
             message: message.into(),
         }
@@ -75,7 +76,8 @@ pub struct TypeError {
 }
 
 impl TypeError {
-    pub(crate) fn new(message: impl Into<Box<str>>) -> Self {
+    #[doc(hidden)]
+    pub fn new(message: impl Into<Box<str>>) -> Self {
         Self {
             message: message.into(),
         }
@@ -113,7 +115,8 @@ pub struct LoadError {
 }
 
 impl LoadError {
-    pub(crate) fn new(message: impl Into<Box<str>>) -> Self {
+    #[doc(hidden)]
+    pub fn new(message: impl Into<Box<str>>) -> Self {
         Self {
             message: message.into(),
         }
