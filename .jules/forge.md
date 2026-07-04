@@ -82,3 +82,7 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**Refactoring `clippy::too_many_lines` on massive matches via method splitting**
+**Learning:** Extracting massive sequential `match` statements over giant enums (like `PatternRuntime`) out of `try_query` into multiple sub-methods (e.g. `try_query_transform`, `try_query_audio_effect`, etc) that use `_ => self.next_category_method(span)` successfully flattens the enum and improves readability without altering runtime behavior. Doing so can trigger `clippy::too_many_lines` on the individual sub-methods if they are still very long, but we can safely remove the `#[allow(clippy::too_many_lines)]` locally by breaking it up properly.
+**Action:** Always safely refactor giant matches into sequential methods. If `#[allow]` is present, evaluate whether breaking down further or locally managing it is best. Here, we successfully removed the `allow` attributes to clean the code further.

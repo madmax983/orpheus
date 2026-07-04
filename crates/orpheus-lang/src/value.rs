@@ -3489,7 +3489,6 @@ where
         self.try_query_transform_method(span)
     }
 
-    #[allow(clippy::too_many_lines)]
     fn try_query_transform_method(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
         match self {
             Self::Roll { steps, inner } => T::roll_events(inner.try_query(span)?, *steps),
@@ -3576,7 +3575,6 @@ where
         self.try_query_audio_effect_method(span)
     }
 
-    #[allow(clippy::too_many_lines)]
     fn try_query_audio_effect_method(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
         match self {
             Self::Delay { mix, inner } => {
@@ -3647,7 +3645,6 @@ where
         self.try_query_modulation_effect_method(span)
     }
 
-    #[allow(clippy::too_many_lines)]
     fn try_query_modulation_effect_method(
         &self,
         span: &TimeSpan,
