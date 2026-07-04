@@ -37,36 +37,67 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// The `every` pattern transformation
     Every,
+    /// The `when` pattern transformation
     When,
+    /// The `sometimes` pattern transformation
     Sometimes,
+    /// The `within` pattern transformation
     Within,
+    /// The `mask` pattern transformation
     Mask,
+    /// The `strum` pattern transformation
     Strum,
+    /// The `roll` pattern transformation
     Roll,
+    /// The `arp` pattern transformation
     Arp,
+    /// The `invert` pattern transformation
     Invert,
+    /// The `drop` pattern transformation
     Drop,
+    /// The `chord` pattern transformation
     Chord,
+    /// The `euclid` pattern transformation
     Euclid,
+    /// The `lsystem` pattern transformation
     Lsystem,
+    /// The `wolfram` pattern transformation
     Wolfram,
+    /// The `pitchClassSet` pattern transformation
     PitchClassSet,
+    /// The `degrees` pattern transformation
     Degrees,
+    /// The `fast` pattern transformation
     Fast,
+    /// The `slow` pattern transformation
     Slow,
+    /// The `shift` pattern transformation
     Shift,
+    /// The `rev` pattern transformation
     Rev,
+    /// Gain effect
     Gain,
+    /// Delay effect
     Delay,
+    /// Delay time parameter
     DelayTime,
+    /// Delay feedback parameter
     DelayFeedback,
+    /// High pass filter effect
     Hpf,
+    /// Low pass filter effect
     Lpf,
+    /// Reverb effect
     Reverb,
+    /// Reverb room size parameter
     ReverbRoom,
+    /// Reverb damp parameter
     ReverbDamp,
+    /// Filter cutoff parameter
     Cutoff,
+    /// Chorus effect
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,
