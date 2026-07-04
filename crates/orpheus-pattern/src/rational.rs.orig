@@ -336,12 +336,7 @@ impl Add for Rational {
             Err(PatternError::ArithmeticOverflow { .. }) => {
                 // Havoc fix: Saturated addition for unbounded execution to prevent
                 // a process-terminating panic and allow graceful recovery
-                let mut bias = 0;
-                if self.numerator > 0 { bias += 1; }
-                if self.numerator < 0 { bias -= 1; }
-                if rhs.numerator > 0 { bias += 1; }
-                if rhs.numerator < 0 { bias -= 1; }
-                if bias >= 0 {
+                if self.numerator > 0 || rhs.numerator > 0 {
                     Self::checked_normalize(i128::MAX, 1).unwrap()
                 } else {
                     Self::checked_normalize(i128::MIN, 1).unwrap()

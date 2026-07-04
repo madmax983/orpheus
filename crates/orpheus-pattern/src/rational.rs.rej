@@ -1,0 +1,22 @@
+--- rational.rs
++++ rational.rs
+@@ -334,7 +334,18 @@ impl Add for Rational {
+         match self.checked_add(&rhs) {
+             Ok(sum) => sum,
+             Err(PatternError::ArithmeticOverflow { .. }) => {
+-                panic!("rational addition overflowed during checked arithmetic")
++                // Havoc fix: Saturated addition for unbounded execution to prevent
++                // a process-terminating panic and allow graceful recovery
++                let mut bias = 0;
++                if self.numerator > 0 { bias += 1; }
++                if self.numerator < 0 { bias -= 1; }
++                if rhs.numerator > 0 { bias += 1; }
++                if rhs.numerator < 0 { bias -= 1; }
++                if bias >= 0 {
++                    Self::checked_normalize(i128::MAX, 1).unwrap()
++                } else {
++                    Self::checked_normalize(i128::MIN, 1).unwrap()
++                }
+             }
+             Err(PatternError::InvalidDenominator { .. } | PatternError::InvalidSpan { .. }) => {
+                 unreachable!("checked_add only reports arithmetic overflow")
