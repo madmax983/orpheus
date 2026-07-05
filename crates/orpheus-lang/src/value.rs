@@ -37,36 +37,67 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Applies a function to every Nth cycle.
     Every,
+    /// Applies a function to every Nth cycle, with an offset.
     When,
+    /// Applies a function with a given probability.
     Sometimes,
+    /// Applies a function to a specific fraction of a cycle.
     Within,
+    /// Masks a pattern with a binary pattern.
     Mask,
+    /// Strums a pattern, spreading out overlapping events.
     Strum,
+    /// Rolls events rapidly like a drum roll.
     Roll,
+    /// Arpeggiates chords into individual notes.
     Arp,
+    /// Inverts chords or melodies.
     Invert,
+    /// Drops specific notes from a chord.
     Drop,
+    /// Builds chords from root notes.
     Chord,
+    /// Generates Euclidean rhythms.
     Euclid,
+    /// Generates patterns using Lindenmayer systems.
     Lsystem,
+    /// Generates patterns using Wolfram cellular automata.
     Wolfram,
+    /// Represents a pitch class set for harmony mapping.
     PitchClassSet,
+    /// Maps scale degrees to specific pitches.
     Degrees,
+    /// Speeds up the temporal playback rate.
     Fast,
+    /// Slows down the temporal playback rate.
     Slow,
+    /// Shifts events forward or backward in time.
     Shift,
+    /// Reverses the pattern temporally.
     Rev,
+    /// Applies a gain/volume multiplier.
     Gain,
+    /// Applies a delay effect.
     Delay,
+    /// Sets the time of a delay effect.
     DelayTime,
+    /// Sets the feedback amount of a delay effect.
     DelayFeedback,
+    /// Applies a high-pass filter.
     Hpf,
+    /// Applies a low-pass filter.
     Lpf,
+    /// Applies a reverb effect.
     Reverb,
+    /// Sets the room size of a reverb effect.
     ReverbRoom,
+    /// Sets the damping of a reverb effect.
     ReverbDamp,
+    /// Sets the cutoff frequency for a filter.
     Cutoff,
+    /// Applies a chorus effect.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

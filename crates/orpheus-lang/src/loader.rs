@@ -39,8 +39,13 @@ struct ImportSpec {
 /// ```
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
+    /// The static type environment inferred during compilation.
+    /// This prevents malformed graphs from crashing the DSP thread at runtime.
     pub type_bindings: BTreeMap<String, Type>,
+    /// The fully evaluated constant bindings ready for execution.
     pub value_bindings: BTreeMap<String, Value>,
+    /// The identifier of the final statement evaluated. Used by the REPL to
+    /// implicitly play the last defined pattern without requiring an explicit `play` command.
     pub last_binding_name: Option<String>,
 }
 

@@ -260,6 +260,19 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Bootstraps a foundational language primitive.
+    ///
+    /// We instantiate built-ins explicitly because they bypass standard
+    /// user-space evaluation, directly manipulating the underlying DSL AST
+    /// before runtime rendering occurs.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    ///
+    /// let every_transform = BuiltinFn::new(BuiltinKind::Every);
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +282,20 @@ impl BuiltinFn {
         }
     }
 
+    /// Injects a deterministic random seed into the operation.
+    ///
+    /// Stochastic functions like `sometimes` or `rand` need to be reproducible
+    /// when the code doesn't change. By tying the entropy to the specific lexical
+    /// site (the "salt") where the function was called, we ensure the chaos remains
+    /// predictable across evaluations.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    ///
+    /// let random_op = BuiltinFn::new(BuiltinKind::Sometimes).with_site_salt(8493);
+    /// ```
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

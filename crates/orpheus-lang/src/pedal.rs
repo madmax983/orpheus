@@ -115,6 +115,19 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Constructs a verified node in the pedal graph.
+    ///
+    /// Validation ensures that we never attempt to connect an `Audio` rate signal
+    /// to a `Control` rate expectation, which would cause runtime desynchronization
+    /// in the DSP block evaluator.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalNode, SignalKind, pedal::PedalNodeKind};
+    ///
+    /// let lfo_node = ValidatedPedalNode::new(SignalKind::Control, PedalNodeKind::Input, "lfo");
+    /// ```
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +143,13 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Inspects the specific category of operation this node performs.
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Retrieves a human-readable description of the node for graph visualization.
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +164,20 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Anchors a validated node to a specific lexical identifier.
+    ///
+    /// This binding mechanism is how we allow complex DSP graphs to be
+    /// broken down into readable, intermediate `let` statements in the user's code,
+    /// rather than forcing a single massive inline expression.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, pedal::PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Input, "osc");
+    /// let binding = ValidatedPedalBinding::new("carrier_wave", node);
+    /// ```
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +186,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// Exposes the lexical identifier used to reference this binding.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Accesses the underlying DSP node anchored to this identifier.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node
