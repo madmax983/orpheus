@@ -19,6 +19,7 @@ pub(crate) mod lilypond_export;
 mod loader;
 pub(crate) mod midi_export;
 mod midi_input;
+pub(crate) mod minecraft_export;
 pub(crate) mod mixer;
 pub(crate) mod number_roll;
 pub(crate) mod osu_export;
@@ -60,6 +61,9 @@ pub use html::{export_number_pattern_to_html, export_sample_pattern_to_html};
 pub use lilypond_export::export_number_pattern_to_lilypond;
 pub use loader::{StrictLoadedFile, load_file_strict};
 pub use midi_export::{export_number_pattern_to_midi, export_sample_pattern_to_midi};
+pub use minecraft_export::{
+    export_number_pattern_to_minecraft, export_sample_pattern_to_minecraft,
+};
 pub use number_roll::render_ascii_number_roll;
 pub use osu_export::export_sample_pattern_to_osu;
 pub use parser::parse_module;
