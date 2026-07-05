@@ -11,3 +11,15 @@ fn test_havoc_float_cast() {
         "meter beat count exceeded the supported range"
     );
 }
+
+#[test]
+fn test_havoc_float_cast_boundary() {
+    let source = "notes = meter(170141183460469230000000000000000000000.0, 4, at(beat(0), bd))";
+    let res = eval_module(source, ReplMode::Loose);
+    assert!(res.is_err());
+    let err = res.unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "meter beat count exceeded the supported range"
+    );
+}

@@ -734,7 +734,7 @@ impl Evaluator {
         let max_val = i128::MAX as f64;
         #[allow(clippy::cast_precision_loss)]
         let min_val = i128::MIN as f64;
-        if value > max_val || value < min_val {
+        if value >= max_val || value <= min_val {
             return Err(EvalError::new(format!(
                 "{context} exceeded the supported range"
             )));
