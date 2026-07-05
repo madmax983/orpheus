@@ -82,3 +82,6 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+**[Fix Redundant Match Arms]**
+**Learning:** `clippy::match_same_arms` warns about having multiple match arms that return identical body results. `clippy::too_many_lines` can sometimes be suppressed with `#[allow(...)]` but this can cause other clippy rules to be disabled in unexpected ways, or hide refactoring opportunities. Refactoring by merging identical match arms (e.g., `A | B => ...`) can help reduce line count and remove `clippy::too_many_lines` safely without the need for `#[allow(...)]`.
+**Action:** When working on large match blocks, identify identical bodies and merge them into a single arm separated by `|` to shorten the block.

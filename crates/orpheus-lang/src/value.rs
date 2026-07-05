@@ -2977,7 +2977,7 @@ enum PatternRuntime<T> {
 }
 
 impl<T> PatternRuntime<T> {
-    #[allow(clippy::too_many_lines, clippy::match_same_arms)]
+    #[allow(clippy::too_many_lines)]
     fn with_tuning(self, table: &TuningTable) -> Self {
         use PatternRuntime::{
             Arp, Chaos, Chorus, ChorusDepth, ChorusDepthPattern, ChorusPattern, ChorusRate,
@@ -3000,28 +3000,21 @@ impl<T> PatternRuntime<T> {
         }
 
         match self {
-            Pitch { semitones, inner } => TunedPitch {
-                semitones,
-                tuning: table.clone(),
-                inner: recurse!(inner),
-            },
-            PitchPattern { control, inner } => TunedPitchPattern {
-                control,
-                tuning: table.clone(),
-                inner: recurse!(inner),
-            },
-            TunedPitch {
+            Pitch { semitones, inner }
+            | TunedPitch {
                 semitones, inner, ..
             } => TunedPitch {
                 semitones,
                 tuning: table.clone(),
                 inner: recurse!(inner),
             },
-            TunedPitchPattern { control, inner, .. } => TunedPitchPattern {
-                control,
-                tuning: table.clone(),
-                inner: recurse!(inner),
-            },
+            PitchPattern { control, inner } | TunedPitchPattern { control, inner, .. } => {
+                TunedPitchPattern {
+                    control,
+                    tuning: table.clone(),
+                    inner: recurse!(inner),
+                }
+            }
             Cycle(c) => Cycle(c),
             Stream(s) => Stream(s),
             ExplicitCycle {
@@ -3489,7 +3482,6 @@ where
         self.try_query_transform_method(span)
     }
 
-    #[allow(clippy::too_many_lines)]
     fn try_query_transform_method(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
         match self {
             Self::Roll { steps, inner } => T::roll_events(inner.try_query(span)?, *steps),
@@ -3576,7 +3568,6 @@ where
         self.try_query_audio_effect_method(span)
     }
 
-    #[allow(clippy::too_many_lines)]
     fn try_query_audio_effect_method(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
         match self {
             Self::Delay { mix, inner } => {
@@ -3647,7 +3638,6 @@ where
         self.try_query_modulation_effect_method(span)
     }
 
-    #[allow(clippy::too_many_lines)]
     fn try_query_modulation_effect_method(
         &self,
         span: &TimeSpan,
