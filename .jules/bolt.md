@@ -47,3 +47,6 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+**[Heavy `.clone()` on AST Nodes]**
+**Learning:** Functions taking `Vec<Expr>` and copying inner elements using `.clone()` to build new boxes cause deep heap allocations on the parse tree path. Using `args.into_iter()` inside size-checked match arms completely eliminates cloning.
+**Action:** When destructuring ownership of elements out of `Vec<T>` where `T` is a heap-allocated tree node, use `into_iter().next().unwrap()` instead of `.clone()` if you can safely verify the container length.

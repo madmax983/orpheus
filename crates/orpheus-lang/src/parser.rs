@@ -472,35 +472,41 @@ fn build_call_expr(callee: Expr, args: Vec<Expr>) -> Result<Expr, ParseError> {
     if let Expr::Ident(callee_name) = &callee {
         match callee_name.as_str() {
             "stream" => return Ok(Expr::Stream(args)),
-            "at" => match args.as_slice() {
-                [start, pattern] => {
+            "at" => match args.len() {
+                2 => {
+                    let mut it = args.into_iter();
                     return Ok(Expr::At {
-                        start: Box::new(start.clone()),
-                        pattern: Box::new(pattern.clone()),
+                        start: Box::new(it.next().unwrap()),
+                        pattern: Box::new(it.next().unwrap()),
                     });
                 }
                 _ => return Err(ParseError::new("`at` requires exactly two arguments")),
             },
-            "meter" => match args.as_slice() {
-                [beats, unit, pattern] => {
+            "meter" => match args.len() {
+                3 => {
+                    let mut it = args.into_iter();
                     return Ok(Expr::Meter {
-                        beats: Box::new(beats.clone()),
-                        unit: Box::new(unit.clone()),
-                        pattern: Box::new(pattern.clone()),
+                        beats: Box::new(it.next().unwrap()),
+                        unit: Box::new(it.next().unwrap()),
+                        pattern: Box::new(it.next().unwrap()),
                     });
                 }
-                [_, _] => {}
+                2 => {}
                 _ => return Err(ParseError::new("`meter` requires exactly three arguments")),
             },
-            "beat" => match args.as_slice() {
-                [value] => return Ok(Expr::Beat(Box::new(value.clone()))),
+            "beat" => match args.len() {
+                1 => {
+                    let mut it = args.into_iter();
+                    return Ok(Expr::Beat(Box::new(it.next().unwrap())));
+                }
                 _ => return Err(ParseError::new("`beat` requires exactly one argument")),
             },
-            "section" => match args.as_slice() {
-                [pattern, cycles] => {
+            "section" => match args.len() {
+                2 => {
+                    let mut it = args.into_iter();
                     return Ok(Expr::Section {
-                        pattern: Box::new(pattern.clone()),
-                        cycles: Box::new(cycles.clone()),
+                        pattern: Box::new(it.next().unwrap()),
+                        cycles: Box::new(it.next().unwrap()),
                     });
                 }
                 _ => return Err(ParseError::new("`section` requires exactly two arguments")),
