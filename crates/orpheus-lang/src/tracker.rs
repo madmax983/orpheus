@@ -329,4 +329,25 @@ mod tests {
             "exporting requires at least one cycle"
         );
     }
+
+    #[test]
+    fn export_cycle_count_too_high_returns_error() {
+        let module = eval_module("pat = bd sn", ReplMode::Loose).unwrap();
+        let pat = module.get("pat").unwrap().as_sample_pattern().unwrap();
+        assert_eq!(
+            export_sample_pattern_to_tracker(pat, "test.trk", 6251)
+                .unwrap_err()
+                .to_string(),
+            "evaluation exceeded the maximum allowed event limit"
+        );
+
+        let module = eval_module("pat = 1 2", ReplMode::Loose).unwrap();
+        let pat = module.get("pat").unwrap().as_number_pattern().unwrap();
+        assert_eq!(
+            export_number_pattern_to_tracker(pat, "test.trk", 6251)
+                .unwrap_err()
+                .to_string(),
+            "evaluation exceeded the maximum allowed event limit"
+        );
+    }
 }
