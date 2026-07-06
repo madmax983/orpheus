@@ -260,6 +260,7 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Creates a new `BuiltinFn` with the given `BuiltinKind`.
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +270,7 @@ impl BuiltinFn {
         }
     }
 
+    /// Associates a site salt with the builtin function for random operations.
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);
