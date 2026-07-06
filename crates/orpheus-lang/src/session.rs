@@ -883,6 +883,7 @@ impl ReplSession {
 
         match ext.as_deref() {
             Some("svg") => crate::svg::export_sample_pattern_to_svg(pattern, path, cycles),
+            Some("css") => crate::css_export::export_sample_pattern_to_css(pattern, path, cycles),
             Some("html") => crate::html::export_sample_pattern_to_html(pattern, path, cycles),
             Some("json") => crate::export::export_sample_pattern_to_json(pattern, path, cycles),
             Some("md") => crate::export::export_sample_pattern_to_md(pattern, path, cycles),
@@ -917,6 +918,7 @@ impl ReplSession {
 
         match ext.as_deref() {
             Some("svg") => crate::svg::export_number_pattern_to_svg(pattern, path, cycles),
+            Some("css") => crate::css_export::export_number_pattern_to_css(pattern, path, cycles),
             Some("html") => crate::html::export_number_pattern_to_html(pattern, path, cycles),
             Some("json") => crate::export::export_number_pattern_to_json(pattern, path, cycles),
             Some("md") => crate::export::export_number_pattern_to_md(pattern, path, cycles),
@@ -2833,6 +2835,48 @@ mod tests {
         assert!(json["events"].is_array());
         assert_eq!(json["events"][0]["sample"], "bd");
         assert_eq!(json["events"][1]["sample"], "sn");
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn export_command_exports_a_bound_pattern_to_css() {
+        let mut session = ReplSession::new();
+        let path = temp_svg_path().with_extension("css");
+
+        session.eval_line("pattern = bd sn").unwrap();
+        let message = session
+            .eval_line(&format!(":export pattern {} 1", path.display()))
+            .unwrap();
+
+        assert_eq!(
+            message,
+            format!("exported `pattern` to `{}` (1 cycle(s))", path.display())
+        );
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("@keyframes orpheus_sample_bd {"));
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn export_command_exports_number_pattern_to_css() {
+        let mut session = ReplSession::new();
+        let path = temp_svg_path().with_extension("css");
+
+        session.eval_line("notes = 1 2 3").unwrap();
+        let message = session
+            .eval_line(&format!(":export notes {} 1", path.display()))
+            .unwrap();
+
+        assert_eq!(
+            message,
+            format!("exported `notes` to `{}` (1 cycle(s))", path.display())
+        );
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("@keyframes orpheus_number_pattern {"));
 
         let _ = std::fs::remove_file(path);
     }
