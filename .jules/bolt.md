@@ -47,3 +47,6 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+**[sort_unstable_by instead of sort_by/sort]**
+**Learning:** In Rust, `sort_by` and `sort` allocate memory to preserve the original relative order of equal elements. This is unnecessary when sorting primitive collections like spans/boundaries that are immediately deduplicated, causing redundant overhead on hot evaluation paths.
+**Action:** Always replace `sort()` with `sort_unstable()` and `sort_by()` with `sort_unstable_by()` for collections where relative order of identical items does not matter to eliminate stable sort allocations.

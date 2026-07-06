@@ -5279,7 +5279,7 @@ where
         return None;
     }
 
-    boundaries.sort();
+    boundaries.sort_unstable();
     boundaries.dedup();
     Some(boundaries)
 }
