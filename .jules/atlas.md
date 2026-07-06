@@ -56,3 +56,6 @@
 **[Enforce Private Explain Module]
 **Tangle:** The `explain` module in `orpheus-lang/src/lib.rs` and its internal `Explain` trait and `explain_table` function were declared as `pub`, leaking internal REPL table rendering details to the public API.
 **Blueprint:** Changed the visibility of the `Explain` trait and `explain_table` function to `pub(crate)` in `crates/orpheus-lang/src/explain.rs`. Removed the `pub use explain::Explain;` re-export from `crates/orpheus-lang/src/lib.rs` and changed the module declaration to `pub(crate) mod explain;`. This strictly enforces internal encapsulation.
+**[Fix Missing Documentation for Public API in orpheus-lang]
+**Tangle:** Running `RUSTDOCFLAGS="-D warnings -W missing_docs" cargo doc` revealed missing documentation strings on multiple public items (structs, methods, and enum variants) in `crates/orpheus-lang`. This violates the principle of fully documented public interfaces.
+**Blueprint:** Added explicit `///` documentation to `BuiltinFn::new`, `BuiltinFn::with_site_salt`, `StrictLoadedFile` fields, `ValidatedPedalNode::new/kind/summary`, `ValidatedPedalBinding::new/name/node`, `TypeScheme` fields/methods, `TypeEnv::values`, and all variants of the `BuiltinKind` enum to enforce API contracts and resolve the doc warnings.

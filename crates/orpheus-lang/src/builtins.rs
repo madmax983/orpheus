@@ -260,6 +260,7 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Constructs a new `BuiltinFn` of the given kind with no bound arguments.
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +270,7 @@ impl BuiltinFn {
         }
     }
 
+    /// Sets the AST site salt, used to ensure structural uniqueness for internal state tracking.
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

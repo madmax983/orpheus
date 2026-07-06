@@ -37,36 +37,67 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Plays a pattern every N cycles.
     Every,
+    /// Plays a pattern when a condition is met.
     When,
+    /// Plays a pattern sometimes (probabilistic).
     Sometimes,
+    /// Plays a pattern within a specified cycle range.
     Within,
+    /// Masks a pattern with a boolean sequence.
     Mask,
+    /// Strums a chord (delays each note).
     Strum,
+    /// Rolls a pattern (repeats with decay).
     Roll,
+    /// Arpeggiates a chord.
     Arp,
+    /// Inverts a pattern.
     Invert,
+    /// Drops notes from a pattern.
     Drop,
+    /// Creates a chord from a root note.
     Chord,
+    /// Generates a Euclidean rhythm.
     Euclid,
+    /// Generates an L-system sequence.
     Lsystem,
+    /// Generates a Wolfram cellular automaton sequence.
     Wolfram,
+    /// Generates a pitch class set.
     PitchClassSet,
+    /// Specifies scale degrees.
     Degrees,
+    /// Speeds up a pattern.
     Fast,
+    /// Slows down a pattern.
     Slow,
+    /// Shifts a pattern in time.
     Shift,
+    /// Reverses a pattern.
     Rev,
+    /// Sets the gain.
     Gain,
+    /// Sets the delay effect.
     Delay,
+    /// Sets the delay time.
     DelayTime,
+    /// Sets the delay feedback.
     DelayFeedback,
+    /// Sets a high-pass filter.
     Hpf,
+    /// Sets a low-pass filter.
     Lpf,
+    /// Sets the reverb effect.
     Reverb,
+    /// Sets the reverb room size.
     ReverbRoom,
+    /// Sets the reverb damping.
     ReverbDamp,
+    /// Sets the filter cutoff.
     Cutoff,
+    /// Sets the chorus effect.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

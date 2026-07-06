@@ -115,6 +115,7 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Constructs a new `ValidatedPedalNode`.
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +131,13 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Returns the specific node behavior variant.
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Returns a human-readable summary of this node.
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +152,7 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Constructs a new `ValidatedPedalBinding`.
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +161,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// Returns the name of the binding.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Returns the underlying signal node for this binding.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node
