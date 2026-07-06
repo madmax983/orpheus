@@ -1,0 +1,175 @@
+--- crates/orpheus-lang/src/builtins.rs
++++ crates/orpheus-lang/src/builtins.rs
+@@ -261,15 +261,33 @@
+
+ impl BuiltinFn {
+-    /// Creates a new built-in function from the provided kind.
++    /// Constructs a deferred built-in function ready for evaluation.
++    ///
++    /// Built-in functions in Orpheus (like `every` or `fast`) are parsed without
++    /// arguments initially and bound incrementally as they evaluate. This allows
++    /// them to act as higher-order functions in the AST until fully saturated.
++    ///
++    /// # Examples
++    /// ```
++    /// use orpheus_lang::value::BuiltinKind;
++    /// use orpheus_lang::builtins::BuiltinFn;
++    ///
++    /// let fast_func = BuiltinFn::new(BuiltinKind::Fast);
++    /// ```
+     #[must_use]
+     pub const fn new(kind: BuiltinKind) -> Self {
+         Self {
+             kind,
+             bound_args: Vec::new(),
+             site_salt: None,
+         }
+     }
+
+-    /// Sets a site-specific salt on the function, often used for stable randomness.
++    /// Injects a stable cryptographic salt based on the function's lexical site.
++    ///
++    /// When functions like `rand` are evaluated, they require deterministic
++    /// seeds to remain stable across performance renders. Injecting a site salt
++    /// derived from the AST location ensures two identical random functions in
++    /// the code generate distinct but repeatable streams.
+     #[must_use]
+     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
+--- crates/orpheus-lang/src/loader.rs
++++ crates/orpheus-lang/src/loader.rs
+@@ -40,11 +40,20 @@
+ #[derive(Clone, Debug)]
+ pub struct StrictLoadedFile {
+-    /// Type definitions exported from this file.
++    /// Type signatures inferred during static analysis.
++    ///
++    /// Preserving these bindings ensures that external scripts importing this
++    /// file can statically verify types before runtime execution begins.
+     pub type_bindings: BTreeMap<String, Type>,
+-    /// Constant values and functions evaluated at compile/load time.
++    /// Concrete runtime values evaluated and materialized during load.
++    ///
++    /// These bindings act as a cached global environment, preventing expensive
++    /// recalculations when this file is required by multiple dependencies.
+     pub value_bindings: BTreeMap<String, Value>,
+-    /// The name of the final binding evaluated in the file, if any.
++    /// A pointer to the terminal expression bound in this scope.
++    ///
++    /// Useful for REPL evaluation, where loading an `.ode` file should
++    /// implicitly play or display the very last definition written by the user.
+     pub last_binding_name: Option<String>,
+ }
+--- crates/orpheus-lang/src/pedal.rs
++++ crates/orpheus-lang/src/pedal.rs
+@@ -117,7 +117,16 @@
+ impl ValidatedPedalNode {
+-    /// Constructs a validated internal node for a pedal plan.
++    /// Materializes a configuration state into a solid graph execution node.
++    ///
++    /// In the `Pedal` domain, raw syntax trees are validated into these nodes
++    /// before audio synthesis. This ensures that an effect (like Reverb) is
++    /// correctly typed (e.g. `Audio` vs `Control`) prior to graph compilation.
++    ///
++    /// # Examples
++    /// ```
++    /// use orpheus_lang::pedal::{ValidatedPedalNode, SignalKind, PedalNodeKind};
++    ///
++    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Reverb, "room: 0.5");
++    /// ```
+     #[must_use]
+     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
+         Self {
+@@ -131,13 +140,21 @@
+     }
+
+-    /// Exposes the underlying operational kind of the node.
++    /// Retrieves the core operation (e.g. Reverb, Delay) powering this node.
++    ///
++    /// This is heavily utilized during DSP compilation when traversing the
++    /// validated tree to instantiate native audio processors.
+     #[must_use]
+     pub const fn kind(&self) -> &PedalNodeKind {
+         &self.kind
+     }
+
+-    /// Exposes a human-readable summary of the node's configured state.
++    /// Fetches the stringified summary of the node's parameters.
++    ///
++    /// Rather than inspecting the full AST at runtime, the TUI accesses this
++    /// summary to display an immediate, readable snapshot of the effect's
++    /// active configuration.
+     #[must_use]
+     pub fn summary(&self) -> &str {
+         &self.summary
+@@ -154,17 +171,28 @@
+
+ impl ValidatedPedalModule {
+-    /// Creates a validated module binding a name to a pedal node tree.
++    /// Links a validated execution graph to a global identifier.
++    ///
++    /// Modules are the top-level definitions in a Pedal script. Binding a tree
++    /// of nodes to a name allows other parts of the Orpheus system to route
++    /// signals through this specific effects chain by referencing the name.
+     #[must_use]
+     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
+         Self {
+             name: name.into(),
+             node,
+         }
+     }
+
+-    /// Returns the name assigned to the pedal module.
++    /// Fetches the global identifier for this effects chain.
++    ///
++    /// Used heavily by the environment registry when resolving string references
++    /// to active `Pedal` modules.
+     #[must_use]
+     pub fn name(&self) -> &str {
+         &self.name
+     }
+
+-    /// Returns the root node defining the pedal effect structure.
++    /// Accesses the entry point of the validated graph tree.
++    ///
++    /// The root node acts as the final output stage of the module; signal data
++    /// flows recursively down through its dependencies and exits here.
+     #[must_use]
+     pub const fn node(&self) -> &ValidatedPedalNode {
+         &self.node
+--- crates/orpheus-lang/src/types/env.rs
++++ crates/orpheus-lang/src/types/env.rs
+@@ -27,13 +27,19 @@
+ #[derive(Clone, Debug, Eq, PartialEq)]
+ pub struct TypeScheme {
+-    /// The generic type variables that are quantified over this scheme.
++    /// Universally quantified generic variables scoped to this scheme.
++    ///
++    /// For example, the type `forall a. a -> a` has one variable `a` in this vector.
+     pub vars: Vec<TypeVarId>,
+-    /// The concrete or structural type.
++    /// The underlying concrete signature.
++    ///
++    /// This is the actual structural shape of the type, referencing the `vars` defined above.
+     pub ty: Type,
+ }
+
+ impl TypeScheme {
+-    /// Creates a polymorphic type scheme containing zero free variables.
++    /// Elevates a concrete, non-generic type into a top-level TypeScheme.
++    ///
++    /// This is commonly used when binding standard variables (like a fixed string or number)
++    /// into an environment, where no polymorphic instantiation is required.
+     #[must_use]
+     pub const fn monomorphic(ty: Type) -> Self {
+         Self {
+@@ -199,7 +205,10 @@
+     }
+
+-    /// Iterates over all type schemes currently bound in the environment.
++    /// Yields references to every type scheme actively scoped in this environment.
++    ///
++    /// This is primarily utilized during cross-file module linking when bulk-exporting
++    /// validated types from an `.ode` file to expose them to dependent consumers.
+     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
+         self.bindings.values()
+     }

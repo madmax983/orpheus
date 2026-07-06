@@ -39,8 +39,23 @@ struct ImportSpec {
 /// ```
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
+    /// Type definitions exported from this file.
+    /// Type signatures inferred during static analysis.
+    ///
+    /// Preserving these bindings ensures that external scripts importing this
+    /// file can statically verify types before runtime execution begins.
     pub type_bindings: BTreeMap<String, Type>,
+    /// Constant values and functions evaluated at compile/load time.
+    /// Concrete runtime values evaluated and materialized during load.
+    ///
+    /// These bindings act as a cached global environment, preventing expensive
+    /// recalculations when this file is required by multiple dependencies.
     pub value_bindings: BTreeMap<String, Value>,
+    /// The name of the final binding evaluated in the file, if any.
+    /// A pointer to the terminal expression bound in this scope.
+    ///
+    /// Useful for REPL evaluation, where loading an `.ode` file should
+    /// implicitly play or display the very last definition written by the user.
     pub last_binding_name: Option<String>,
 }
 

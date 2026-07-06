@@ -37,67 +37,36 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
-    /// Applies a function only on every Nth cycle.
     Every,
-    /// Applies a function based on a boolean condition pattern.
     When,
-    /// Randomly applies a function based on a probability pattern.
     Sometimes,
-    /// Applies a function only within a specific temporal arc of the cycle.
     Within,
-    /// Uses a boolean pattern to mask out (silence) events.
     Mask,
-    /// Arpeggiates a chord pattern into individual sequential notes.
     Strum,
-    /// Repeats an event rapidly to create a snare-rush or drum roll effect.
     Roll,
-    /// Converts a chord into a structured arpeggio over a specific span.
     Arp,
-    /// Inverts the pitches of a chord or melody around an axis.
     Invert,
-    /// Drops the nth note from a sequence.
     Drop,
-    /// Stacks multiple intervals to form a chord from a root note.
     Chord,
-    /// Generates Euclidean rhythms based on pulses and steps.
     Euclid,
-    /// Generates patterns using Lindenmayer systems (L-systems).
     Lsystem,
-    /// Generates patterns based on elementary cellular automata (Wolfram rules).
     Wolfram,
-    /// Treats a set of numbers as a pitch class set for transformations.
     PitchClassSet,
-    /// Maps a scale degree to a specific pitch in the active tuning.
     Degrees,
-    /// Multiplies the playback speed of a pattern (e.g., plays twice as fast).
     Fast,
-    /// Divides the playback speed of a pattern (e.g., plays half as fast).
     Slow,
-    /// Shifts a pattern forward or backward in time by a given fraction of a cycle.
     Shift,
-    /// Reverses the temporal order of events within each cycle.
     Rev,
-    /// Adjusts the amplitude/volume of an audio signal.
     Gain,
-    /// Applies a basic delay effect to an audio signal.
     Delay,
-    /// The time interval between delay taps.
     DelayTime,
-    /// The amount of delayed signal fed back into the delay line.
     DelayFeedback,
-    /// High-pass filter, allowing frequencies above a cutoff to pass.
     Hpf,
-    /// Low-pass filter, allowing frequencies below a cutoff to pass.
     Lpf,
-    /// Applies algorithmic reverberation to an audio signal.
     Reverb,
-    /// Controls the simulated room size for the reverb effect.
     ReverbRoom,
-    /// Controls the high-frequency damping factor for the reverb effect.
     ReverbDamp,
-    /// The cutoff frequency for a filter effect, measured in Hz.
     Cutoff,
-    /// Applies a chorus modulation effect.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

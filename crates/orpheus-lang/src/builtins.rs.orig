@@ -261,20 +261,6 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 
 impl BuiltinFn {
     #[must_use]
-    /// Creates a new built-in function from the provided kind.
-    /// Constructs a deferred built-in function ready for evaluation.
-    ///
-    /// Built-in functions in Orpheus (like `every` or `fast`) are parsed without
-    /// arguments initially and bound incrementally as they evaluate. This allows
-    /// them to act as higher-order functions in the AST until fully saturated.
-    ///
-    /// # Examples
-    /// ```
-    /// use orpheus_lang::value::BuiltinKind;
-    /// use orpheus_lang::builtins::BuiltinFn;
-    ///
-    /// let fast_func = BuiltinFn::new(BuiltinKind::Fast);
-    /// ```
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
             kind,
@@ -284,13 +270,6 @@ impl BuiltinFn {
     }
 
     #[must_use]
-    /// Sets a site-specific salt on the function, often used for stable randomness.
-    /// Injects a stable cryptographic salt based on the function's lexical site.
-    ///
-    /// When functions like `rand` are evaluated, they require deterministic
-    /// seeds to remain stable across performance renders. Injecting a site salt
-    /// derived from the AST location ensures two identical random functions in
-    /// the code generate distinct but repeatable streams.
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);
         self

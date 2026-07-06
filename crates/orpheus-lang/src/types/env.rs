@@ -26,12 +26,25 @@ use crate::types::{Type, TypeVarId};
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
+    /// The generic type variables that are quantified over this scheme.
+    /// Universally quantified generic variables scoped to this scheme.
+    ///
+    /// For example, the type `forall a. a -> a` has one variable `a` in this vector.
     pub vars: Vec<TypeVarId>,
+    /// The concrete or structural type.
+    /// The underlying concrete signature.
+    ///
+    /// This is the actual structural shape of the type, referencing the `vars` defined above.
     pub ty: Type,
 }
 
 impl TypeScheme {
     #[must_use]
+    /// Creates a polymorphic type scheme containing zero free variables.
+    /// Elevates a concrete, non-generic type into a top-level `TypeScheme`.
+    ///
+    /// This is commonly used when binding standard variables (like a fixed string or number)
+    /// into an environment, where no polymorphic instantiation is required.
     pub const fn monomorphic(ty: Type) -> Self {
         Self {
             vars: Vec::new(),
@@ -195,6 +208,7 @@ impl TypeEnv {
         self.entries.get(name)
     }
 
+    /// Iterates over all type schemes currently bound in the environment.
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }

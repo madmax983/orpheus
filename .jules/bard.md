@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-07-06 - [Core Types Narrative Documentation]
+**Confusion:** Many public API types in `orpheus-lang` (like `BuiltinFn::new`, `StrictLoadedFile` bindings, `ValidatedPedalNode`, and `TypeScheme`) were flagged with `missing_docs` by the rustdoc compiler, and lacked descriptive explanations of why they existed in the architecture.
+**Clarification:** Added comprehensive `///` doc comments that provide high-level contextual narrative (e.g., explaining how `BuiltinFn` acts as a deferred higher-order function, and why `Pedal` trees must be validated). Added executable `/// ```` doc tests to struct constructors like `BuiltinFn::new` and `ValidatedPedalNode::new` to satisfy Bard's requirements for examples.

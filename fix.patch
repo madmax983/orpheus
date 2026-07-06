@@ -1,0 +1,107 @@
+--- crates/orpheus-lang/src/builtins.rs
++++ crates/orpheus-lang/src/builtins.rs
+@@ -261,12 +261,14 @@
+
+ impl BuiltinFn {
++    /// Creates a new built-in function from the provided kind.
+     #[must_use]
+     pub const fn new(kind: BuiltinKind) -> Self {
+         Self {
+             kind,
+             bound_args: Vec::new(),
+             site_salt: None,
+         }
+     }
+
++    /// Sets a site-specific salt on the function, often used for stable randomness.
+     #[must_use]
+     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
+--- crates/orpheus-lang/src/loader.rs
++++ crates/orpheus-lang/src/loader.rs
+@@ -40,7 +40,10 @@
+ #[derive(Clone, Debug)]
+ pub struct StrictLoadedFile {
++    /// Type definitions exported from this file.
+     pub type_bindings: BTreeMap<String, Type>,
++    /// Constant values and functions evaluated at compile/load time.
+     pub value_bindings: BTreeMap<String, Value>,
++    /// The name of the final binding evaluated in the file, if any.
+     pub last_binding_name: Option<String>,
+ }
+--- crates/orpheus-lang/src/pedal.rs
++++ crates/orpheus-lang/src/pedal.rs
+@@ -117,17 +117,20 @@
+ impl ValidatedPedalNode {
++    /// Constructs a validated internal node for a pedal plan.
+     #[must_use]
+     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
+         Self {
+             signal_kind,
+             kind,
+             summary: summary.into(),
+         }
+     }
+
+     #[doc(hidden)]
+     #[must_use]
+     pub const fn signal_kind(&self) -> &SignalKind {
+         &self.signal_kind
+     }
+
++    /// Exposes the underlying operational kind of the node.
+     #[must_use]
+     pub const fn kind(&self) -> &PedalNodeKind {
+         &self.kind
+     }
+
++    /// Exposes a human-readable summary of the node's configured state.
+     #[must_use]
+     pub fn summary(&self) -> &str {
+         &self.summary
+@@ -151,16 +154,19 @@
+
+ impl ValidatedPedalModule {
++    /// Creates a validated module binding a name to a pedal node tree.
+     #[must_use]
+     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
+         Self {
+             name: name.into(),
+             node,
+         }
+     }
+
++    /// Returns the name assigned to the pedal module.
+     #[must_use]
+     pub fn name(&self) -> &str {
+         &self.name
+     }
+
++    /// Returns the root node defining the pedal effect structure.
+     #[must_use]
+     pub const fn node(&self) -> &ValidatedPedalNode {
+         &self.node
+--- crates/orpheus-lang/src/types/env.rs
++++ crates/orpheus-lang/src/types/env.rs
+@@ -27,11 +27,14 @@
+ #[derive(Clone, Debug, Eq, PartialEq)]
+ pub struct TypeScheme {
++    /// The generic type variables that are quantified over this scheme.
+     pub vars: Vec<TypeVarId>,
++    /// The concrete or structural type.
+     pub ty: Type,
+ }
+
+ impl TypeScheme {
++    /// Creates a polymorphic type scheme containing zero free variables.
+     #[must_use]
+     pub const fn monomorphic(ty: Type) -> Self {
+         Self {
+             vars: Vec::new(),
+@@ -196,6 +199,7 @@
+         self.bindings.iter().map(|(name, _)| name)
+     }
+
++    /// Iterates over all type schemes currently bound in the environment.
+     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
+         self.bindings.values()
+     }

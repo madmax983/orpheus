@@ -116,6 +116,19 @@ pub struct ValidatedPedalNode {
 
 impl ValidatedPedalNode {
     #[must_use]
+    /// Constructs a validated internal node for a pedal plan.
+    /// Materializes a configuration state into a solid graph execution node.
+    ///
+    /// In the `Pedal` domain, raw syntax trees are validated into these nodes
+    /// before audio synthesis. This ensures that an effect (like Reverb) is
+    /// correctly typed (e.g. `Audio` vs `Control`) prior to graph compilation.
+    ///
+    /// # Examples
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Reverb, "room: 0.5");
+    /// ```
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
             signal_kind,
@@ -131,11 +144,13 @@ impl ValidatedPedalNode {
     }
 
     #[must_use]
+    /// Exposes the underlying operational kind of the node.
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
     #[must_use]
+    /// Exposes a human-readable summary of the node's configured state.
     pub fn summary(&self) -> &str {
         &self.summary
     }
@@ -150,6 +165,7 @@ pub struct ValidatedPedalBinding {
 
 impl ValidatedPedalBinding {
     #[must_use]
+    /// Creates a validated module binding a name to a pedal node tree.
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
             name: name.into(),
@@ -158,11 +174,13 @@ impl ValidatedPedalBinding {
     }
 
     #[must_use]
+    /// Returns the name assigned to the pedal module.
     pub fn name(&self) -> &str {
         &self.name
     }
 
     #[must_use]
+    /// Returns the root node defining the pedal effect structure.
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node
     }
