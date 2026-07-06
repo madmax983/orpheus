@@ -1,7 +1,8 @@
+cat << 'INNER_EOF' > crates/orpheus-dsp/tests/plugin_hosting.rs
 use orpheus_dsp::{
-    PluginDescriptor, PluginFormat, PluginHostError, PluginNote, PluginParameterLane,
-    PluginProcessor, PluginTrackSource, RoutingSnapshot, SampleBank, TrackSource,
-    render_routing_snapshot_to_stereo_for_test,
+    PluginDescriptor, PluginNote, PluginParameterLane, PluginProcessor, PluginTrackSource,
+    RoutingSnapshot, SampleBank, TrackSource, render_routing_snapshot_to_stereo_for_test,
+    PluginFormat, PluginHostError
 };
 use orpheus_pattern::{Event, Rational, TimeSpan};
 
@@ -93,16 +94,10 @@ fn plugin_host_error_display_and_clone() {
     assert_eq!(err.clone(), PluginHostError::EmptyIdentifier);
 
     let err2 = PluginHostError::InvalidNoteNumber;
-    assert_eq!(
-        err2.to_string(),
-        "plugin note number must be within [0, 127]"
-    );
+    assert_eq!(err2.to_string(), "plugin note number must be within [0, 127]");
 
     let err3 = PluginHostError::InvalidVelocity;
-    assert_eq!(
-        err3.to_string(),
-        "plugin note velocity must be finite and within [0, 1]"
-    );
+    assert_eq!(err3.to_string(), "plugin note velocity must be finite and within [0, 1]");
 
     let err4 = PluginHostError::EmptyParameterName;
     assert_eq!(err4.to_string(), "plugin parameter name must not be empty");
@@ -149,46 +144,20 @@ fn plugin_note_validation_and_getters() {
     assert_eq!(note.velocity(), 0.5);
     assert_eq!(note.channel(), 0);
 
-    assert_eq!(
-        PluginNote::new(60, -0.1),
-        Err(PluginHostError::InvalidVelocity)
-    );
-    assert_eq!(
-        PluginNote::new(60, 1.1),
-        Err(PluginHostError::InvalidVelocity)
-    );
-    assert_eq!(
-        PluginNote::new(60, f32::NAN),
-        Err(PluginHostError::InvalidVelocity)
-    );
+    assert_eq!(PluginNote::new(60, -0.1), Err(PluginHostError::InvalidVelocity));
+    assert_eq!(PluginNote::new(60, 1.1), Err(PluginHostError::InvalidVelocity));
+    assert_eq!(PluginNote::new(60, f32::NAN), Err(PluginHostError::InvalidVelocity));
 }
 
 #[test]
 fn plugin_parameter_lane_validation() {
-    assert_eq!(
-        PluginParameterLane::new("   ", vec![].into_boxed_slice()),
-        Err(PluginHostError::EmptyParameterName)
-    );
+    assert_eq!(PluginParameterLane::new("   ", vec![].into_boxed_slice()), Err(PluginHostError::EmptyParameterName));
 
-    let events = vec![Event {
-        whole: None,
-        part: TimeSpan::unit(),
-        value: -0.1,
-    }];
-    assert_eq!(
-        PluginParameterLane::new("Gain", events.into_boxed_slice()),
-        Err(PluginHostError::InvalidParameterValue)
-    );
+    let events = vec![Event { whole: None, part: TimeSpan::unit(), value: -0.1 }];
+    assert_eq!(PluginParameterLane::new("Gain", events.into_boxed_slice()), Err(PluginHostError::InvalidParameterValue));
 
-    let events = vec![Event {
-        whole: None,
-        part: TimeSpan::unit(),
-        value: f32::NAN,
-    }];
-    assert_eq!(
-        PluginParameterLane::new("Gain", events.into_boxed_slice()),
-        Err(PluginHostError::InvalidParameterValue)
-    );
+    let events = vec![Event { whole: None, part: TimeSpan::unit(), value: f32::NAN }];
+    assert_eq!(PluginParameterLane::new("Gain", events.into_boxed_slice()), Err(PluginHostError::InvalidParameterValue));
 }
 
 #[test]
@@ -205,3 +174,5 @@ fn plugin_track_source_with_parameter_lane_and_getters() {
     assert_eq!(source.parameter_lanes().len(), 2);
     assert_eq!(source.notes().len(), 0);
 }
+INNER_EOF
+cargo test -p orpheus-dsp --test plugin_hosting
