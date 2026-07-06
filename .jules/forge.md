@@ -82,3 +82,6 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+## YYYY-MM-DD - [Extracting Iterative Field Parsers]
+**Learning:** Extracting monolithic `match` statements inside iterative loop parsers (like in `ManifestParser::parse_region`) into distinct field-parsing helpers (`parse_region_field`) and validation helpers (`validate_region`) greatly flattens the loop, eliminates God Functions, and improves readability without breaking strict parsing semantics.
+**Action:** When a parser function mixes parsing control flow, large per-field matches, and post-parse validation into a massive function, extract the per-field match into a `&mut` helper and the validation into a stateless constructor helper.

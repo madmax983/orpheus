@@ -71,6 +71,94 @@ pub fn load_sample_manifest(
         })
 }
 
+struct RegionContext {
+    token: Option<String>,
+    start: Option<f64>,
+    end: Option<f64>,
+    rate: f64,
+    seen_rate: bool,
+}
+
+impl Default for RegionContext {
+    fn default() -> Self {
+        Self {
+            token: None,
+            start: None,
+            end: None,
+            rate: 1.0,
+            seen_rate: false,
+        }
+    }
+}
+
+impl RegionContext {
+    fn parse_field(&mut self, parser: &mut ManifestParser<'_>, field: &str) -> Result<(), String> {
+        match field {
+            "token" => {
+                if self.token.is_some() {
+                    return Err("duplicate `token` field in region".to_owned());
+                }
+                self.token = Some(parser.parse_string()?);
+            }
+            "start" => {
+                if self.start.is_some() {
+                    return Err("duplicate `start` field in region".to_owned());
+                }
+                self.start = Some(parser.parse_number()?);
+            }
+            "end" => {
+                if self.end.is_some() {
+                    return Err("duplicate `end` field in region".to_owned());
+                }
+                self.end = Some(parser.parse_number()?);
+            }
+            "rate" => {
+                if self.seen_rate {
+                    return Err("duplicate `rate` field in region".to_owned());
+                }
+                self.rate = parser.parse_number()?;
+                self.seen_rate = true;
+            }
+            other => {
+                return Err(format!(
+                    "unknown region field `{other}`; expected `token`, `start`, `end`, or `rate`"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate(self) -> Result<SampleRegion, String> {
+        let token = self
+            .token
+            .ok_or_else(|| "region missing required `token` field".to_owned())?;
+        let start = self
+            .start
+            .ok_or_else(|| "region missing required `start` field".to_owned())?;
+        let end = self
+            .end
+            .ok_or_else(|| "region missing required `end` field".to_owned())?;
+        if !start.is_finite()
+            || !end.is_finite()
+            || !(0.0..=1.0).contains(&start)
+            || !(0.0..=1.0).contains(&end)
+            || start >= end
+        {
+            return Err("region requires 0 <= start < end <= 1".to_owned());
+        }
+        if !self.rate.is_finite() || self.rate <= 0.0 {
+            return Err("region `rate` must be a positive finite number".to_owned());
+        }
+
+        Ok(SampleRegion {
+            token,
+            start,
+            end,
+            rate: self.rate,
+        })
+    }
+}
+
 struct ManifestParser<'a> {
     source: &'a str,
     offset: usize,
@@ -212,11 +300,7 @@ impl<'a> ManifestParser<'a> {
 
     fn parse_region(&mut self) -> Result<SampleRegion, String> {
         self.expect_char('(')?;
-        let mut token = None;
-        let mut start = None;
-        let mut end = None;
-        let mut rate = 1.0;
-        let mut seen_rate = false;
+        let mut context = RegionContext::default();
 
         loop {
             self.skip_ignored();
@@ -229,38 +313,7 @@ impl<'a> ManifestParser<'a> {
             self.expect_char(':')?;
             self.skip_ignored();
 
-            match field.as_str() {
-                "token" => {
-                    if token.is_some() {
-                        return Err("duplicate `token` field in region".to_owned());
-                    }
-                    token = Some(self.parse_string()?);
-                }
-                "start" => {
-                    if start.is_some() {
-                        return Err("duplicate `start` field in region".to_owned());
-                    }
-                    start = Some(self.parse_number()?);
-                }
-                "end" => {
-                    if end.is_some() {
-                        return Err("duplicate `end` field in region".to_owned());
-                    }
-                    end = Some(self.parse_number()?);
-                }
-                "rate" => {
-                    if seen_rate {
-                        return Err("duplicate `rate` field in region".to_owned());
-                    }
-                    rate = self.parse_number()?;
-                    seen_rate = true;
-                }
-                other => {
-                    return Err(format!(
-                        "unknown region field `{other}`; expected `token`, `start`, `end`, or `rate`"
-                    ));
-                }
-            }
+            context.parse_field(self, field.as_str())?;
 
             self.skip_ignored();
             if self.consume_char(',') {
@@ -272,27 +325,7 @@ impl<'a> ManifestParser<'a> {
             return Err(self.expected_message("`,` or `)`"));
         }
 
-        let token = token.ok_or_else(|| "region missing required `token` field".to_owned())?;
-        let start = start.ok_or_else(|| "region missing required `start` field".to_owned())?;
-        let end = end.ok_or_else(|| "region missing required `end` field".to_owned())?;
-        if !start.is_finite()
-            || !end.is_finite()
-            || !(0.0..=1.0).contains(&start)
-            || !(0.0..=1.0).contains(&end)
-            || start >= end
-        {
-            return Err("region requires 0 <= start < end <= 1".to_owned());
-        }
-        if !rate.is_finite() || rate <= 0.0 {
-            return Err("region `rate` must be a positive finite number".to_owned());
-        }
-
-        Ok(SampleRegion {
-            token,
-            start,
-            end,
-            rate,
-        })
+        context.validate()
     }
 
     fn parse_identifier(&mut self) -> Result<String, String> {
