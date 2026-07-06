@@ -49,19 +49,10 @@ fn run() -> anyhow::Result<()> {
     let (engine, _stream, warning) = match start_live_audio() {
         Ok((engine, stream)) => (engine, Some(stream), None),
         Err(error) => {
-            let mut message = format!(
-                "{}\n  {}",
-                "Audio Output Disabled:".yellow().bold(),
-                error.to_string().red()
-            );
+            let mut message = format!("{}\n  {}", "Audio Output Disabled:".yellow().bold(), error);
             for cause in error.chain().skip(1) {
                 use std::fmt::Write;
-                let _ = write!(
-                    &mut message,
-                    "\n  {} {}",
-                    "->".dark_grey(),
-                    cause.to_string().dark_grey()
-                );
+                let _ = write!(&mut message, "\n  {} {}", "->".dark_grey(), cause);
             }
             (EngineHandle::stub(), None, Some(message))
         }
