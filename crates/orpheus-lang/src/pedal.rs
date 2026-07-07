@@ -115,6 +115,19 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Constructs a new verified unit in the pedal graph.
+    ///
+    /// Requires the underlying DSP functionality to be mapped to an explicit
+    /// audio or control rate signal constraint.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::In, "Input");
+    /// assert_eq!(node.summary(), "Input");
+    /// ```
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +143,15 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Identifies the underlying hardware representation to dictate how this node
+    /// connects into the larger DSP graph.
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Extracts a concise, human-readable overview of the node's function,
+    /// primarily for rendering within user-facing diagnostic tools.
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +166,18 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Constructs a named alias for a sub-graph node to allow cyclic routing
+    /// and clean abstractions.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::In, "Input");
+    /// let binding = ValidatedPedalBinding::new("sig", node);
+    /// assert_eq!(binding.name(), "sig");
+    /// ```
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +186,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// The local variable name representing the start of the mapped signal subgraph.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Accesses the verified internal pedal node that handles logic mapping for this binding.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node

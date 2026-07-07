@@ -260,6 +260,17 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Creates a new built-in function instance for the specified primitive transformation.
+    ///
+    /// This initializes an empty list of bound arguments, ready for partial application.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    ///
+    /// let func = BuiltinFn::new(BuiltinKind::Fast);
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +280,11 @@ impl BuiltinFn {
         }
     }
 
+    /// Attaches a deterministic pseudo-random seed to this function instance.
+    ///
+    /// This is used for operations like `rand` or `chaos` to ensure that random
+    /// evaluations remain stable and reproducible based on their exact structural
+    /// position within the original abstract syntax tree.
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

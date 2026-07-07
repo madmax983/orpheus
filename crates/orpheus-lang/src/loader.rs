@@ -39,8 +39,12 @@ struct ImportSpec {
 /// ```
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
+    /// The globally inferred types for all successfully parsed definitions.
     pub type_bindings: BTreeMap<String, Type>,
+    /// The runtime values holding the evaluated patterns and function closures.
     pub value_bindings: BTreeMap<String, Value>,
+    /// The name of the final binding evaluated, which helps the REPL automatically
+    /// select the primary pattern to begin playing.
     pub last_binding_name: Option<String>,
 }
 

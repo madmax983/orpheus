@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-05-18 - [Fix Missing Docs]
+**Confusion:** Some public fields and methods did not have `///` comments. Specifically getters, constructors, enum variants, and fields of public structs. Also standard `cargo doc` execution was hiding the fact that these docs were missing.
+**Clarification:** Passed `RUSTDOCFLAGS="-D warnings -W missing_docs"` to `cargo doc` in bash to expose undocumented public items, and then systematically added missing docs and examples.
