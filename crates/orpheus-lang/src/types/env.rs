@@ -26,11 +26,24 @@ use crate::types::{Type, TypeVarId};
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
+    /// The universal type variables bound by this scheme.
     pub vars: Vec<TypeVarId>,
+    /// The underlying type, which may contain references to the bound variables.
     pub ty: Type,
 }
 
 impl TypeScheme {
+    /// Constructs a rigid type scheme containing no universally quantified variables.
+    /// This is used to bind primitive identifiers (like `bd` or specific scales) that
+    /// cannot be specialized or curried in different contexts.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::types::{Type, TypeScheme};
+    ///
+    /// let scheme = TypeScheme::monomorphic(Type::Number);
+    /// ```
     #[must_use]
     pub const fn monomorphic(ty: Type) -> Self {
         Self {
@@ -195,6 +208,18 @@ impl TypeEnv {
         self.entries.get(name)
     }
 
+    /// Yields all bound type schemes in the environment, which is required during scope
+    /// analysis to map the free type variables of active expressions against the constraints
+    /// of the enclosing evaluation context.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::TypeEnv;
+    ///
+    /// let env = TypeEnv::with_builtins();
+    /// assert!(env.values().count() > 0);
+    /// ```
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }

@@ -260,6 +260,16 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Instantiates a new primitive function with its argument bindings initialized to empty.
+    /// This serves as the starting point for currying when a function is partially applied during evaluation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::value::{BuiltinFn, BuiltinKind};
+    ///
+    /// let func = BuiltinFn::new(BuiltinKind::Fast);
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -269,6 +279,16 @@ impl BuiltinFn {
         }
     }
 
+    /// Injects a deterministic seed based on the source code location, allowing functions like
+    /// `rand` or `chaos` to produce repeatable pseudo-random sequences on subsequent plays.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::value::{BuiltinFn, BuiltinKind};
+    ///
+    /// let func = BuiltinFn::new(BuiltinKind::Rand).with_site_salt(42);
+    /// ```
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);
