@@ -56,3 +56,6 @@
 **[Enforce Private Explain Module]
 **Tangle:** The `explain` module in `orpheus-lang/src/lib.rs` and its internal `Explain` trait and `explain_table` function were declared as `pub`, leaking internal REPL table rendering details to the public API.
 **Blueprint:** Changed the visibility of the `Explain` trait and `explain_table` function to `pub(crate)` in `crates/orpheus-lang/src/explain.rs`. Removed the `pub use explain::Explain;` re-export from `crates/orpheus-lang/src/lib.rs` and changed the module declaration to `pub(crate) mod explain;`. This strictly enforces internal encapsulation.
+**[Enforce Private Type Environment Module]**
+**Tangle:** The `env` module inside `orpheus-lang/src/types/mod.rs` was declared as `pub mod`, unnecessarily leaking the internal type-checker module abstractions to the public API.
+**Blueprint:** Removed the `pub` visibility modifier from the `env` module in `types/mod.rs`, changing it to `mod env;`. This enforces strong module boundaries by keeping the module internal, while the intended public items (`TypeEnv` and `TypeScheme`) remain explicitly exposed via `pub use`.
