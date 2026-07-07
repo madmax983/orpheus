@@ -261,6 +261,14 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 
 impl BuiltinFn {
     #[must_use]
+    /// Creates a new `BuiltinFn` representing the given primitive operation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::value::{BuiltinFn, BuiltinKind};
+    /// let delay = BuiltinFn::new(BuiltinKind::Delay);
+    /// ```
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
             kind,
@@ -270,6 +278,16 @@ impl BuiltinFn {
     }
 
     #[must_use]
+    /// Attaches a pseudo-random seed to this instance for deterministic variation across identical AST nodes.
+    ///
+    /// Used heavily by sequence generators like `Euclid` and `Roll`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::value::{BuiltinFn, BuiltinKind};
+    /// let gen = BuiltinFn::new(BuiltinKind::Euclid).with_site_salt(42);
+    /// ```
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);
         self

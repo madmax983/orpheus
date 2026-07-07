@@ -37,36 +37,67 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Plays an event on every Nth cycle, dropping it otherwise.
     Every,
+    /// Conditionally passes an event through based on a boolean mask pattern.
     When,
+    /// Randomly degrades an event stream based on a given probability.
     Sometimes,
+    /// Applies a transformation only within a specific temporal window.
     Within,
+    /// Silences steps in a sequence based on a binary string mask.
     Mask,
+    /// Offsets the timing of chords to simulate a strumming motion.
     Strum,
+    /// Rapidly repeats a single event a specified number of times within its duration.
     Roll,
+    /// Arpeggiates chords into melodic sequences based on directional patterns.
     Arp,
+    /// Inverts chord voicings or melodic contours around a central axis.
     Invert,
+    /// Discards elements from a sequence, useful for Euclidean rhythm generation.
     Drop,
+    /// Stacks additional pitches onto a root note to build harmonies.
     Chord,
+    /// Generates Euclidean rhythms based on pulses distributed evenly across steps.
     Euclid,
+    /// Generates complex deterministic patterns using Lindenmayer string rewriting systems.
     Lsystem,
+    /// Employs 1D cellular automata (Wolfram codes) to generate branching rhythmic structures.
     Wolfram,
+    /// Restricts melodic material to a predefined set of permitted pitch classes.
     PitchClassSet,
+    /// Quantizes raw chromatic pitches to diatonic scale degrees.
     Degrees,
+    /// Accelerates playback by temporally squashing event durations.
     Fast,
+    /// Decelerates playback by temporally stretching event durations.
     Slow,
+    /// Rotates the sequence forward or backward in time.
     Shift,
+    /// Reverses the temporal order of events within a cycle.
     Rev,
+    /// Applies a volume multiplier to an audio signal.
     Gain,
+    /// The built-in delay line effect.
     Delay,
+    /// Controls the temporal offset of the delay line.
     DelayTime,
+    /// Controls the recirculation decay of the delay line.
     DelayFeedback,
+    /// The built-in high-pass filter effect.
     Hpf,
+    /// The built-in low-pass filter effect.
     Lpf,
+    /// The built-in algorithmic reverb effect.
     Reverb,
+    /// Controls the simulated room size of the reverb.
     ReverbRoom,
+    /// Controls the high-frequency absorption of the reverb space.
     ReverbDamp,
+    /// Adjusts the frequency cutoff point for filters.
     Cutoff,
+    /// The built-in chorus modulation effect.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

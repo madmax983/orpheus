@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-07-07 - [Missing Documentation for Language API]
+**Confusion:** Various structs, fields, and enum variants in `orpheus-lang` lacked doc comments, triggering `missing_docs` lints. This affected `BuiltinKind`, `BuiltinFn`, `ModuleLoader` type bindings, `TypeScheme`, and `PedalNode` constructors.
+**Clarification:** Added high-quality narrative doc comments to these APIs, explaining *why* they exist rather than just what they are. Added `## Examples` doctests to constructors where applicable, and used `#[doc(hidden)]` for boilerplate getters like `kind()` to reduce noise.

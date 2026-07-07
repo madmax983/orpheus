@@ -116,6 +116,21 @@ pub struct ValidatedPedalNode {
 
 impl ValidatedPedalNode {
     #[must_use]
+    /// Creates a generic runtime pedal node to represent an active DSP stage.
+    ///
+    /// This provides the structural foundation for constructing complex virtual analog routing graphs.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::SignalKind;
+    /// use orpheus_lang::pedal::{ValidatedPedalNode, PedalNodeKind};
+    /// let node = ValidatedPedalNode::new(
+    ///     SignalKind::Audio,
+    ///     PedalNodeKind::Input("in_1".to_string()),
+    ///     "Stereo Input Stage"
+    /// );
+    /// ```
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
             signal_kind,
@@ -131,11 +146,13 @@ impl ValidatedPedalNode {
     }
 
     #[must_use]
+    #[doc(hidden)]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
     #[must_use]
+    #[doc(hidden)]
     pub fn summary(&self) -> &str {
         &self.summary
     }
@@ -150,6 +167,22 @@ pub struct ValidatedPedalBinding {
 
 impl ValidatedPedalBinding {
     #[must_use]
+    /// Associates a constructed virtual analog routing node with a symbolic identifier.
+    ///
+    /// This binds an intermediate DSP graph product to a human-readable name.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::SignalKind;
+    /// use orpheus_lang::pedal::{ValidatedPedalBinding, ValidatedPedalNode, PedalNodeKind};
+    /// let node = ValidatedPedalNode::new(
+    ///     SignalKind::Audio,
+    ///     PedalNodeKind::Input("in".into()),
+    ///     "Input Stage"
+    /// );
+    /// let binding = ValidatedPedalBinding::new("my_filter", node);
+    /// ```
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
             name: name.into(),
@@ -158,11 +191,13 @@ impl ValidatedPedalBinding {
     }
 
     #[must_use]
+    #[doc(hidden)]
     pub fn name(&self) -> &str {
         &self.name
     }
 
     #[must_use]
+    #[doc(hidden)]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node
     }
