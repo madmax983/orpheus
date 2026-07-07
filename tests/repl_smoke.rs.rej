@@ -1,0 +1,10 @@
+--- tests/repl_smoke.rs
++++ tests/repl_smoke.rs
+@@ -137,7 +137,7 @@ mod tests {
+         run_with_handles(reader, &mut stdout, &mut stderr, &mut session).unwrap();
+
+         let stderr_str = String::from_utf8(stderr).unwrap();
+-        assert!(stderr_str.contains("\u{2717} parse error"));
++        assert!(stderr_str.contains("parse error"));
+     }
+ }

@@ -32,22 +32,66 @@ impl HypertilePlugin for ReplPlugin {
             .transcript
             .iter()
             .flat_map(|entry| {
-                let style = if entry.starts_with("> ") {
-                    Style::default().fg(Color::DarkGray)
+                if entry.starts_with("> ") {
+                    entry
+                        .split('\n')
+                        .map(|line| {
+                            Line::styled(line.to_owned(), Style::default().fg(Color::DarkGray))
+                        })
+                        .collect::<Vec<_>>()
                 } else if entry.starts_with("\u{2717} ") {
-                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
-                } else if entry.starts_with("\u{26a0}\u{fe0f} ") {
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD)
+                    let prefix_len = "\u{2717} ".len();
+                    let mut lines: Vec<Line> = entry[prefix_len..]
+                        .split('\n')
+                        .map(|line| Line::styled(line.to_owned(), Style::default()))
+                        .collect();
+                    if let Some(first_line) = lines.first_mut() {
+                        first_line.spans.insert(
+                            0,
+                            Span::styled(
+                                "\u{2717} ",
+                                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                            ),
+                        );
+                    }
+                    lines
                 } else if entry.starts_with("\u{2713} ") {
-                    Style::default().fg(Color::Green)
+                    let prefix_len = "\u{2713} ".len();
+                    let mut lines: Vec<Line> = entry[prefix_len..]
+                        .split('\n')
+                        .map(|line| Line::styled(line.to_owned(), Style::default()))
+                        .collect();
+                    if let Some(first_line) = lines.first_mut() {
+                        first_line.spans.insert(
+                            0,
+                            Span::styled("\u{2713} ", Style::default().fg(Color::Green)),
+                        );
+                    }
+                    lines
+                } else if entry.starts_with("\u{26a0}\u{fe0f} ") {
+                    let prefix_len = "\u{26a0}\u{fe0f} ".len();
+                    let mut lines: Vec<Line> = entry[prefix_len..]
+                        .split('\n')
+                        .map(|line| Line::styled(line.to_owned(), Style::default()))
+                        .collect();
+                    if let Some(first_line) = lines.first_mut() {
+                        first_line.spans.insert(
+                            0,
+                            Span::styled(
+                                "\u{26a0}\u{fe0f} ",
+                                Style::default()
+                                    .fg(Color::Yellow)
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                        );
+                    }
+                    lines
                 } else {
-                    Style::default()
-                };
-                entry
-                    .split('\n')
-                    .map(move |line| Line::styled(line.to_owned(), style))
+                    entry
+                        .split('\n')
+                        .map(|line| Line::styled(line.to_owned(), Style::default()))
+                        .collect::<Vec<_>>()
+                }
             })
             .collect::<Vec<_>>();
 

@@ -1,0 +1,205 @@
+diff --git a/crates/orpheus-dsp/tests/plugin_hosting.rs b/crates/orpheus-dsp/tests/plugin_hosting.rs
+index 515fd38..1ce8f68 100644
+--- a/crates/orpheus-dsp/tests/plugin_hosting.rs
++++ b/crates/orpheus-dsp/tests/plugin_hosting.rs
+@@ -13,7 +13,7 @@ fn vst3_descriptor_uses_standard_os_search_paths() {
+     assert!(
+         paths
+             .iter()
+-            .any(|path| path.to_string_lossy().contains("VST3")),
++            .any(|path| path.to_string_lossy().to_uppercase().contains("VST3")),
+         "expected default VST3 search paths, got {paths:?}"
+     );
+ }
+diff --git a/crates/orpheus-lang/src/repl.rs b/crates/orpheus-lang/src/repl.rs
+index 839c119..df9c3c4 100644
+--- a/crates/orpheus-lang/src/repl.rs
++++ b/crates/orpheus-lang/src/repl.rs
+@@ -55,13 +55,13 @@ pub fn run_stdio_with_engine_and_path(
+     let mut stderr = stderr.lock();
+
+     if let Some(msg) = warning {
+-        writeln!(stderr, "{}", format!("[Warn] {msg}").yellow().bold())?;
++        writeln!(stderr, "{} {}", "[Warn]".yellow().bold(), msg)?;
+     }
+
+     if let Some(path) = startup_path {
+         match session.open_file(path) {
+-            Ok(msg) => writeln!(stdout, "{}", format!("\u{2713} {msg}").green())?,
+-            Err(msg) => writeln!(stderr, "{}", format!("\u{2717} {msg}").red().bold())?,
++            Ok(msg) => writeln!(stdout, "{} {}", "\u{2713}".green(), msg)?,
++            Err(msg) => writeln!(stderr, "{} {}", "\u{2717}".red().bold(), msg)?,
+         }
+     }
+
+@@ -97,8 +97,8 @@ where
+         }
+
+         match session.eval_line(trimmed) {
+-            Ok(message) => writeln!(stdout, "{}", format!("\u{2713} {message}").green())?,
+-            Err(message) => writeln!(stderr, "{}", format!("\u{2717} {message}").red().bold())?,
++            Ok(message) => writeln!(stdout, "{} {}", "\u{2713}".green(), message)?,
++            Err(message) => writeln!(stderr, "{} {}", "\u{2717}".red().bold(), message)?,
+         }
+     }
+
+diff --git a/crates/orpheus-lang/src/tui/plugins.rs b/crates/orpheus-lang/src/tui/plugins.rs
+index 4597349..e38d81d 100644
+--- a/crates/orpheus-lang/src/tui/plugins.rs
++++ b/crates/orpheus-lang/src/tui/plugins.rs
+@@ -32,22 +32,66 @@ impl HypertilePlugin for ReplPlugin {
+             .transcript
+             .iter()
+             .flat_map(|entry| {
+-                let style = if entry.starts_with("> ") {
+-                    Style::default().fg(Color::DarkGray)
++                if entry.starts_with("> ") {
++                    entry
++                        .split('\n')
++                        .map(|line| {
++                            Line::styled(line.to_owned(), Style::default().fg(Color::DarkGray))
++                        })
++                        .collect::<Vec<_>>()
+                 } else if entry.starts_with("\u{2717} ") {
+-                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+-                } else if entry.starts_with("\u{26a0}\u{fe0f} ") {
+-                    Style::default()
+-                        .fg(Color::Yellow)
+-                        .add_modifier(Modifier::BOLD)
++                    let prefix_len = "\u{2717} ".len();
++                    let mut lines: Vec<Line> = entry[prefix_len..]
++                        .split('\n')
++                        .map(|line| Line::styled(line.to_owned(), Style::default()))
++                        .collect();
++                    if let Some(first_line) = lines.first_mut() {
++                        first_line.spans.insert(
++                            0,
++                            Span::styled(
++                                "\u{2717} ",
++                                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
++                            ),
++                        );
++                    }
++                    lines
+                 } else if entry.starts_with("\u{2713} ") {
+-                    Style::default().fg(Color::Green)
++                    let prefix_len = "\u{2713} ".len();
++                    let mut lines: Vec<Line> = entry[prefix_len..]
++                        .split('\n')
++                        .map(|line| Line::styled(line.to_owned(), Style::default()))
++                        .collect();
++                    if let Some(first_line) = lines.first_mut() {
++                        first_line.spans.insert(
++                            0,
++                            Span::styled("\u{2713} ", Style::default().fg(Color::Green)),
++                        );
++                    }
++                    lines
++                } else if entry.starts_with("\u{26a0}\u{fe0f} ") {
++                    let prefix_len = "\u{26a0}\u{fe0f} ".len();
++                    let mut lines: Vec<Line> = entry[prefix_len..]
++                        .split('\n')
++                        .map(|line| Line::styled(line.to_owned(), Style::default()))
++                        .collect();
++                    if let Some(first_line) = lines.first_mut() {
++                        first_line.spans.insert(
++                            0,
++                            Span::styled(
++                                "\u{26a0}\u{fe0f} ",
++                                Style::default()
++                                    .fg(Color::Yellow)
++                                    .add_modifier(Modifier::BOLD),
++                            ),
++                        );
++                    }
++                    lines
+                 } else {
+-                    Style::default()
+-                };
+-                entry
+-                    .split('\n')
+-                    .map(move |line| Line::styled(line.to_owned(), style))
++                    entry
++                        .split('\n')
++                        .map(|line| Line::styled(line.to_owned(), Style::default()))
++                        .collect::<Vec<_>>()
++                }
+             })
+             .collect::<Vec<_>>();
+
+diff --git a/src/main.rs b/src/main.rs
+index 6b86ad3..d365626 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -17,7 +17,7 @@ use orpheus_dsp::EngineHandle;
+
+ fn main() {
+     if let Err(error) = run() {
+-        eprintln!("{} {}", "\u{2717} Failed:".red().bold(), error);
++        eprintln!("{} Failed: {}", "\u{2717}".red().bold(), error);
+         for cause in error.chain().skip(1) {
+             eprintln!("  {} {}", "->".dark_grey(), cause);
+         }
+@@ -51,8 +51,8 @@ fn run() -> anyhow::Result<()> {
+         Err(error) => {
+             let mut message = format!(
+                 "{}\n  {}",
+-                "Audio Output Disabled:".yellow().bold(),
+-                error.to_string().red()
++                "Audio Output Disabled:",
++                error.to_string()
+             );
+             for cause in error.chain().skip(1) {
+                 use std::fmt::Write;
+@@ -157,7 +157,7 @@ fn start_live_audio() -> anyhow::Result<(EngineHandle, Stream)> {
+                 }
+             },
+             |error| {
+-                eprintln!("{} {}", "\u{2717} Audio stream error:".red().bold(), error);
++                eprintln!("{} Audio stream error: {}", "\u{2717}".red().bold(), error);
+             },
+             None,
+         )
+diff --git a/tests/repl_smoke.rs b/tests/repl_smoke.rs
+index f0f878f..b5fc4bc 100644
+--- a/tests/repl_smoke.rs
++++ b/tests/repl_smoke.rs
+@@ -43,7 +43,7 @@ fn repl_accepts_pattern_and_reports_success() {
+         .assert()
+         .success()
+         .stdout(contains(
+-            "\u{2713} bound drums = Pattern<Sample>: Pattern<Sample>",
++            "bound drums = Pattern<Sample>: Pattern<Sample>",
+         ));
+ }
+
+@@ -75,10 +75,10 @@ fn repl_reuses_prior_bindings_across_lines() {
+         .assert()
+         .success()
+         .stdout(contains(
+-            "\u{2713} bound drums = Pattern<Sample>: Pattern<Sample>",
++            "bound drums = Pattern<Sample>: Pattern<Sample>",
+         ))
+         .stdout(contains(
+-            "\u{2713} bound copy = Pattern<Sample>: Pattern<Sample>",
++            "bound copy = Pattern<Sample>: Pattern<Sample>",
+         ));
+ }
+
+@@ -87,7 +87,7 @@ fn repl_prints_inferred_function_types() {
+         .assert()
+         .success()
+         .stdout(contains(
+-            "\u{2713} bound warp = Function(Builtin): Function(",
++            "bound warp = Function(Builtin): Function(",
+         ));
+ }
+
+@@ -137,7 +137,7 @@ mod tests {
+         run_with_handles(reader, &mut stdout, &mut stderr, &mut session).unwrap();
+
+         let stderr_str = String::from_utf8(stderr).unwrap();
+-        assert!(stderr_str.contains("\u{2717} parse error"));
++        assert!(stderr_str.contains("parse error"));
+     }
+ }

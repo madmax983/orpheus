@@ -1,0 +1,10 @@
+--- src/main.rs
++++ src/main.rs
+@@ -52,7 +52,7 @@
+         Err(error) => {
+             let mut message = format!(
+                 "Audio Output Disabled:\n  {error}"
+-
+             );
+             for cause in error.chain().skip(1) {
+                 use std::fmt::Write;
