@@ -1,5 +1,5 @@
 //! Integration tests for the syntax parser, ensuring all language constructs translate correctly into the internal Abstract Syntax Tree.
-use orpheus_lang::{BinaryOp, Expr, Stmt, parse_module};
+use orpheus_lang::{BinaryOp, Expr, StepOp, Stmt, parse_module};
 
 fn binding_expr(source: &str) -> Expr {
     let module = parse_module(source).unwrap();
@@ -410,4 +410,191 @@ fn parses_groups_inside_alternations() {
 #[test]
 fn rejects_empty_alternations() {
     assert_parse_error_contains("drums = <>", &[]);
+}
+
+// --- mini-notation step operators: `*`, `/`, `!`, `?`, `{...}` polymeter ---
+
+/// Like [`assert_parse_error_contains`] but without requiring positional
+/// information; step-operator validation happens after AST construction where
+/// spans are no longer available.
+fn assert_parse_fails_mentioning(source: &str, expected_fragments: &[&str]) {
+    let error = parse_module(source).unwrap_err();
+    let message = error.to_string();
+    for fragment in expected_fragments {
+        assert!(
+            message.contains(fragment),
+            "parse error `{message}` did not mention required fragment `{fragment}`"
+        );
+    }
+}
+
+fn modified(inner: Expr, op: StepOp) -> Expr {
+    Expr::Modified {
+        inner: Box::new(inner),
+        op,
+    }
+}
+
+fn ident(name: &str) -> Expr {
+    Expr::Ident(name.to_owned())
+}
+
+#[test]
+fn parses_tight_star_as_repetition_inside_sequences() {
+    let expr = binding_expr("drums = bd*2 sn");
+    assert_eq!(
+        expr,
+        Expr::Seq(vec![modified(ident("bd"), StepOp::Fast(2.0)), ident("sn"),])
+    );
+}
+
+#[test]
+fn parses_tight_slash_as_slow() {
+    let expr = binding_expr("drums = bd/2 sn");
+    assert_eq!(
+        expr,
+        Expr::Seq(vec![modified(ident("bd"), StepOp::Slow(2)), ident("sn")])
+    );
+}
+
+#[test]
+fn parses_step_operators_on_groups_and_alternations() {
+    assert_eq!(
+        binding_expr("drums = (bd sn)*2"),
+        modified(
+            Expr::Group(vec![ident("bd"), ident("sn")]),
+            StepOp::Fast(2.0),
+        )
+    );
+    assert_eq!(
+        binding_expr("drums = <bd sn>*2"),
+        modified(
+            Expr::Alternation(vec![ident("bd"), ident("sn")]),
+            StepOp::Fast(2.0),
+        )
+    );
+}
+
+#[test]
+fn parses_replication_as_separate_steps() {
+    assert_eq!(
+        binding_expr("drums = bd!3 sn"),
+        Expr::Seq(vec![ident("bd"), ident("bd"), ident("bd"), ident("sn")])
+    );
+}
+
+#[test]
+fn parses_replication_inside_alternations() {
+    assert_eq!(
+        binding_expr("drums = <bd!2 sn>"),
+        Expr::Alternation(vec![ident("bd"), ident("bd"), ident("sn")])
+    );
+}
+
+#[test]
+fn replication_distributes_later_modifiers_over_each_copy() {
+    assert_eq!(
+        binding_expr("drums = bd!2?"),
+        Expr::Seq(vec![
+            modified(ident("bd"), StepOp::Degrade(0.5)),
+            modified(ident("bd"), StepOp::Degrade(0.5)),
+        ])
+    );
+}
+
+#[test]
+fn parses_degrade_with_and_without_probability_suffix() {
+    assert_eq!(
+        binding_expr("drums = bd? sn"),
+        Expr::Seq(vec![
+            modified(ident("bd"), StepOp::Degrade(0.5)),
+            ident("sn"),
+        ])
+    );
+    assert_eq!(
+        binding_expr("drums = bd?0.3 sn"),
+        Expr::Seq(vec![
+            modified(ident("bd"), StepOp::Degrade(0.3)),
+            ident("sn"),
+        ])
+    );
+}
+
+#[test]
+fn parses_polymeter_with_explicit_step_count() {
+    assert_eq!(
+        binding_expr("drums = {bd sn, hh hh hh}%4"),
+        Expr::Polymeter {
+            groups: vec![
+                vec![ident("bd"), ident("sn")],
+                vec![ident("hh"), ident("hh"), ident("hh")],
+            ],
+            steps: Some(4),
+        }
+    );
+}
+
+#[test]
+fn parses_polymeter_without_step_suffix() {
+    assert_eq!(
+        binding_expr("drums = {bd sn, hh cp sn}"),
+        Expr::Polymeter {
+            groups: vec![
+                vec![ident("bd"), ident("sn")],
+                vec![ident("hh"), ident("cp"), ident("sn")],
+            ],
+            steps: None,
+        }
+    );
+}
+
+#[test]
+fn spaced_star_still_parses_as_binary_multiplication() {
+    let expr = binding_expr("gainy = bd * 2");
+    let (lhs, rhs) = assert_is_binary(&expr, BinaryOp::Mul);
+    assert_is_ident(lhs, "bd");
+    assert_is_number(rhs, 2.0);
+}
+
+#[test]
+fn tight_star_inside_pedal_graphs_stays_multiplication() {
+    let source = "drivebox = graph { dry = input ; mix(dry*0.2, dry) |> output }";
+    let module = parse_module(source).unwrap();
+    match &module.statements[0] {
+        Stmt::Binding { expr, .. } => match expr {
+            Expr::Graph { result, .. } => {
+                let (lhs, _) = assert_is_pipe(result);
+                let args = assert_is_call(lhs, "mix");
+                let (mul_lhs, mul_rhs) = assert_is_binary(&args[0], BinaryOp::Mul);
+                assert_is_ident(mul_lhs, "dry");
+                assert_is_number(mul_rhs, 0.2);
+            }
+            other => panic!("unexpected AST: {other:#?}"),
+        },
+    }
+}
+
+#[test]
+fn rejects_out_of_bounds_step_operator_factors() {
+    assert_parse_fails_mentioning("drums = bd*0 sn", &["`*`", "1", "1024"]);
+    assert_parse_fails_mentioning("drums = bd*1025 sn", &["`*`", "1", "1024"]);
+    assert_parse_fails_mentioning("drums = bd*1.5 sn", &["`*`", "integer"]);
+    assert_parse_fails_mentioning("drums = bd/0 sn", &["`/`", "1", "1024"]);
+    assert_parse_fails_mentioning("drums = bd!0 sn", &["`!`", "1", "1024"]);
+    assert_parse_fails_mentioning("drums = bd?1.5 sn", &["`?`", "probability"]);
+    assert_parse_fails_mentioning("drums = {bd sn}%0", &["polymeter", "1", "1024"]);
+}
+
+#[test]
+fn rejects_malformed_polymeters() {
+    assert!(parse_module("drums = {bd sn").is_err());
+    assert!(parse_module("drums = {}").is_err());
+    assert!(parse_module("drums = {bd sn,}").is_err());
+}
+
+#[test]
+fn rejects_oversized_replication() {
+    // Replication expands into real sequence steps, so it shares the flat
+    // sequence length budget.
+    assert_parse_fails_mentioning("drums = bd!1024", &["maximum AST depth exceeded"]);
 }

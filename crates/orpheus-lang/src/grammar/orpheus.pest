@@ -10,13 +10,29 @@ sequence = { sum_expr ~ (required_padding ~ sum_expr)* }
 
 sum_expr = { product_expr ~ (padding ~ add_op ~ padding ~ product_expr)* }
 product_expr = { application ~ (padding ~ mul_op ~ padding ~ application)* }
-application = { primary ~ call_suffix* }
+application = { primary ~ call_suffix* ~ step_modifier* }
 call_suffix = { "(" ~ padding ~ call_args? ~ padding ~ ")" }
-primary = { graph | stack | group | alternation | rest | number | string | identifier }
+primary = { graph | stack | group | alternation | polymeter | rest | number | string | identifier }
+
+// Mini-notation step operators bind tightly (no whitespace) to a sequence
+// element: `bd*2` is repetition while `bd * 2` stays a binary product.
+step_modifier = { repeat_modifier | slow_modifier | replicate_modifier | degrade_modifier }
+repeat_modifier = { "*" ~ modifier_number }
+slow_modifier = { "/" ~ modifier_number }
+replicate_modifier = { "!" ~ modifier_number }
+degrade_modifier = { "?" ~ modifier_number? }
+modifier_number = @{ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
 
 group = { "(" ~ padding ~ sum_expr ~ (required_padding ~ sum_expr)* ~ padding ~ ")" }
 
 alternation = { "<" ~ padding ~ sum_expr ~ (required_padding ~ sum_expr)* ~ padding ~ ">" }
+
+// Polymeter `{a b, c d e}%n`: comma-separated subsequences that each step at
+// the shared per-cycle step count (the first subsequence's length unless the
+// tight `%n` suffix overrides it).
+polymeter = { "{" ~ padding ~ polymeter_group ~ (padding ~ "," ~ padding ~ polymeter_group)* ~ padding ~ "}" ~ polymeter_steps? }
+polymeter_group = { sum_expr ~ (required_padding ~ sum_expr)* }
+polymeter_steps = { "%" ~ modifier_number }
 
 stack = { "stack" ~ "(" ~ padding ~ stack_layers ~ padding ~ ")" }
 stack_layers = { pipe_expr ~ (padding ~ "," ~ padding ~ pipe_expr)* }

@@ -225,6 +225,10 @@ impl Inferencer {
             Expr::SeqSections(items) => self.infer_homogeneous(items, "`seq_sections` items"),
             Expr::Group(items) => self.infer_pattern_items(items, "group items"),
             Expr::Alternation(items) => self.infer_pattern_items(items, "alternation items"),
+            Expr::Modified { inner, .. } => {
+                self.infer_pattern_items(std::slice::from_ref(inner), "step operator operand")
+            }
+            Expr::Polymeter { groups, .. } => self.infer_polymeter_groups(groups),
             Expr::Ident(name) => self.infer_ident(name),
             Expr::Rest => Err(TypeError::new(
                 "rest markers do not have a standalone type outside pattern sequences",
@@ -293,6 +297,31 @@ impl Inferencer {
         }
 
         Ok(self.resolve(expected))
+    }
+
+    /// Types a `{a b, c d e}` polymeter: every subsequence is a pattern item
+    /// list and all subsequences must agree on one element type.
+    fn infer_polymeter_groups(&mut self, groups: &[Vec<Expr>]) -> Result<Type, TypeError> {
+        let mut expected: Option<Type> = None;
+        for group in groups {
+            let actual = self.infer_pattern_items(group, "polymeter items")?;
+            if let Some(expected_ty) = expected.clone() {
+                self.unify(expected_ty.clone(), actual.clone()).map_err(|_| {
+                    TypeError::new(format!(
+                        "polymeter subsequences must all have the same type; expected {}, found {}",
+                        self.resolve(expected_ty),
+                        self.resolve(actual)
+                    ))
+                })?;
+            } else {
+                expected = Some(actual);
+            }
+        }
+
+        expected.map_or_else(
+            || Err(TypeError::new("polymeter cannot be empty")),
+            |expected| Ok(self.resolve(expected)),
+        )
     }
 
     fn infer_pattern_items(&mut self, items: &[Expr], context: &str) -> Result<Type, TypeError> {
