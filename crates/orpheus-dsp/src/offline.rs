@@ -18,7 +18,9 @@ use thiserror::Error;
 use crate::SampleTrigger;
 use crate::effects::BusEffectState;
 use crate::engine::{DEFAULT_SAMPLE_RATE, DEFAULT_TEMPO_BPM, EngineError, frames_per_cycle};
-use crate::graph_voice::{GraphVoiceBank, GraphVoiceSpec, graph_note_params};
+use crate::graph_voice::{
+    GraphVoiceBank, GraphVoiceSpec, graph_note_params, graph_note_voice_params,
+};
 use crate::plugin_host::PluginProcessor;
 use crate::routing::{GeneratorId, RoutingSnapshot, TrackId, TrackSource};
 use crate::sample_bank::SampleBank;
@@ -887,13 +889,14 @@ fn activate_voice(
             &scheduled_trigger.trigger,
             crate::DEFAULT_ANALOG_BASE_FREQUENCY_HZ,
         );
-        let _ = graph_voices.trigger(
+        let _ = graph_voices.trigger_with_params(
             token,
             scheduled_trigger.track_id,
             scheduled_trigger.duration_frames,
             freq_hz,
             gain,
             pan,
+            graph_note_voice_params(&scheduled_trigger.trigger),
         );
         return Ok(());
     }

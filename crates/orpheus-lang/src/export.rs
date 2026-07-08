@@ -76,7 +76,8 @@ pub fn sample_trigger_from_event(event: &crate::value::SampleEvent) -> SampleTri
         .with_resonance(event.resonance())
         .with_drive(event.drive())
         .with_pulse_width(event.pulse_width())
-        .with_slice(event.slice_start(), event.slice_end());
+        .with_slice(event.slice_start(), event.slice_end())
+        .with_voice_params(event.voice_params());
     if let Some(onset_index) = event.onset_index() {
         trigger = trigger.with_onset(onset_index);
     }

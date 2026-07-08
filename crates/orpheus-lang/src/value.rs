@@ -198,9 +198,18 @@ pub enum BuiltinKind {
     Notes,
     /// Automates a named plugin parameter with normalized values.
     PluginParam,
+    /// Sets the first per-note voice pattern parameter (`p1`).
+    VoiceParam1,
+    /// Sets the second per-note voice pattern parameter (`p2`).
+    VoiceParam2,
+    /// Sets the third per-note voice pattern parameter (`p3`).
+    VoiceParam3,
+    /// Sets the fourth per-note voice pattern parameter (`p4`).
+    VoiceParam4,
 }
 
 impl fmt::Display for BuiltinKind {
+    #[allow(clippy::too_many_lines)]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = match self {
             Self::Every => "every",
@@ -297,6 +306,10 @@ impl fmt::Display for BuiltinKind {
             Self::Au => "au",
             Self::Notes => "notes",
             Self::PluginParam => "p",
+            Self::VoiceParam1 => "p1",
+            Self::VoiceParam2 => "p2",
+            Self::VoiceParam3 => "p3",
+            Self::VoiceParam4 => "p4",
         };
         write!(f, "{name}")
     }
@@ -1052,6 +1065,10 @@ pub struct SampleEvent {
     onset_index: Option<u32>,
     slice_start: f64,
     slice_end: f64,
+    /// The per-note voice pattern parameters (`p1`..`p4`), read inside
+    /// `voice { ... }` bodies as ambient signals (ADR 0010 addendum). Zero
+    /// when the pattern never sets them.
+    voice_params: [f64; orpheus_dsp::VOICE_PARAM_COUNT],
     pedal_program: Option<Arc<orpheus_dsp::PedalProgram>>,
 }
 
@@ -1082,6 +1099,7 @@ impl SampleEvent {
             onset_index: None,
             slice_start: 0.0,
             slice_end: 1.0,
+            voice_params: [0.0; orpheus_dsp::VOICE_PARAM_COUNT],
             pedal_program: None,
         }
     }
@@ -1294,6 +1312,15 @@ impl SampleEvent {
         self.slice_end
     }
 
+    /// The per-note voice pattern parameters (`p1`..`p4`), zero when unset.
+    ///
+    /// Graph voice bodies read them as the ambient `p1`..`p4` signals,
+    /// sampled at trigger time and held for the note (ADR 0010 addendum).
+    #[must_use]
+    pub const fn voice_params(&self) -> [f64; orpheus_dsp::VOICE_PARAM_COUNT] {
+        self.voice_params
+    }
+
     #[doc(hidden)]
     #[must_use]
     pub const fn pedal_program(&self) -> Option<&Arc<orpheus_dsp::PedalProgram>> {
@@ -1349,6 +1376,7 @@ trait PatternValueTransform: Sized {
     fn adjust_drive(&self, drive: f64) -> Self;
     fn adjust_pulse_width(&self, pulse_width: f64) -> Self;
     fn adjust_pan(&self, amount: f64) -> Self;
+    fn adjust_voice_param(&self, index: usize, value: f64) -> Self;
     fn adjust_rate(&self, factor: f64) -> Self;
     fn adjust_onset(&self, onset_index: u32) -> Self;
     fn adjust_slice(&self, start: f64, end: f64) -> Self;
@@ -1451,6 +1479,14 @@ impl PatternValueTransform for SampleEvent {
 
     fn adjust_pan(&self, amount: f64) -> Self {
         self.clone_with(|event| event.pan = (event.pan + amount).clamp(-1.0, 1.0))
+    }
+
+    fn adjust_voice_param(&self, index: usize, value: f64) -> Self {
+        self.clone_with(|event| {
+            if let Some(param) = event.voice_params.get_mut(index) {
+                *param = value;
+            }
+        })
     }
 
     fn adjust_rate(&self, factor: f64) -> Self {
@@ -1567,6 +1603,10 @@ impl PatternValueTransform for f64 {
     }
 
     fn adjust_pan(&self, _amount: f64) -> Self {
+        *self
+    }
+
+    fn adjust_voice_param(&self, _index: usize, _value: f64) -> Self {
         *self
     }
 
@@ -2480,6 +2520,26 @@ impl SamplePatternValue {
     pub(crate) fn pan_pattern(self, control: NumberPatternValue) -> Self {
         Self {
             pattern: PatternRuntime::PanPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn voice_param(self, index: usize, value: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::VoiceParam {
+                index,
+                value,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn voice_param_pattern(self, index: usize, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::VoiceParamPattern {
+                index,
                 control: Box::new(control.pattern),
                 inner: Box::new(self.pattern),
             },
@@ -3600,6 +3660,20 @@ enum PatternRuntime<T> {
         control: Box<PatternRuntime<f64>>,
         inner: Box<Self>,
     },
+    /// Sets one per-note voice pattern parameter (`p1`..`p4`) to a constant
+    /// value; voice bodies read it as an ambient signal (ADR 0010 addendum).
+    VoiceParam {
+        index: usize,
+        value: f64,
+        inner: Box<Self>,
+    },
+    /// [`Self::VoiceParam`] with a patterned control: each event samples the
+    /// overlapping control value, so patterns set the parameter per note.
+    VoiceParamPattern {
+        index: usize,
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
     Compressor {
         mix: f64,
         inner: Box<Self>,
@@ -3737,7 +3811,7 @@ impl<T> PatternRuntime<T> {
             ReverbDampPattern, ReverbPattern, ReverbRoom, ReverbRoomPattern, Roll, Rot, Scan,
             Segment, Shift, ShuffleSlots, Slice, SliceIdxPattern, SlicePattern, Slow, SlowCat,
             SlowPattern, Sometimes, Stack, Stream, Strum, Transpose, TransposePattern, TunedPitch,
-            TunedPitchPattern, When, WhenMod, Within,
+            TunedPitchPattern, VoiceParam, VoiceParamPattern, When, WhenMod, Within,
         };
 
         macro_rules! recurse {
@@ -4138,6 +4212,24 @@ impl<T> PatternRuntime<T> {
                 control,
                 inner: recurse!(inner),
             },
+            VoiceParam {
+                index,
+                value,
+                inner,
+            } => VoiceParam {
+                index,
+                value,
+                inner: recurse!(inner),
+            },
+            VoiceParamPattern {
+                index,
+                control,
+                inner,
+            } => VoiceParamPattern {
+                index,
+                control,
+                inner: recurse!(inner),
+            },
             Compressor { mix, inner } => Compressor {
                 mix,
                 inner: recurse!(inner),
@@ -4295,6 +4387,8 @@ impl<T> PatternRuntime<T> {
             | Self::PulseWidthPattern { inner, .. }
             | Self::Pan { inner, .. }
             | Self::PanPattern { inner, .. }
+            | Self::VoiceParam { inner, .. }
+            | Self::VoiceParamPattern { inner, .. }
             | Self::Compressor { inner, .. }
             | Self::CompressorPattern { inner, .. }
             | Self::CompressorThreshold { inner, .. }
@@ -4641,6 +4735,20 @@ where
             }
             Self::PanPattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Pan)
+            }
+            Self::VoiceParam {
+                index,
+                value,
+                inner,
+            } => apply_value_mutation(inner, span, |event| {
+                *event = event.adjust_voice_param(*index, *value);
+            }),
+            Self::VoiceParamPattern {
+                index,
+                control,
+                inner,
+            } => {
+                apply_control_pattern(inner, control, span, ControlPatternKind::VoiceParam(*index))
             }
             Self::Compressor { mix, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_compressor_mix(*mix);
@@ -5011,6 +5119,9 @@ enum ControlPatternKind {
     Pitch,
     Rate,
     Transpose,
+    /// One per-note voice pattern parameter (`p1`..`p4`); the payload is the
+    /// zero-based parameter index.
+    VoiceParam(usize),
 }
 
 impl ControlPatternKind {
@@ -5038,6 +5149,7 @@ impl ControlPatternKind {
             Self::Pitch => Ok(value.adjust_rate(semitones_to_rate_multiplier(control_val))),
             Self::Rate => Ok(value.adjust_rate(control_val)),
             Self::Transpose => value.transpose_semitones(control_val),
+            Self::VoiceParam(index) => Ok(value.adjust_voice_param(index, control_val)),
         }
     }
 
@@ -5071,8 +5183,19 @@ impl ControlPatternKind {
             Self::Pitch => Self::validate_pitch(value),
             Self::Rate => Self::validate_rate(value),
             Self::Transpose => Self::validate_transpose(value),
+            Self::VoiceParam(index) => Self::validate_voice_param(index, value),
             _ => unreachable!("handled in validate"),
         }
+    }
+
+    fn validate_voice_param(index: usize, value: f64) -> Result<(), EvalError> {
+        if !value.is_finite() {
+            return Err(EvalError::new(format!(
+                "`p{}` requires finite numeric control values",
+                index + 1
+            )));
+        }
+        Ok(())
     }
 
     fn validate_gain(value: f64) -> Result<(), EvalError> {
