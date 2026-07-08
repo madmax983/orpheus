@@ -515,5 +515,5 @@ fn io_glyphs_are_valid_on_the_grid() {
     for glyph in [':', '%', '!', '?', ';', '=', '$'] {
         assert!(is_valid_glyph(glyph), "{glyph:?} must be a valid glyph");
     }
-    assert!(!is_valid_glyph('#'), "comments remain out of scope");
+    assert!(is_valid_glyph('#'), "comments joined the alphabet in v4");
 }

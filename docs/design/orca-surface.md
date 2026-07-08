@@ -322,6 +322,7 @@ swap and `a == b` returning `a`) but with the hash in place of
   OSC (`=`), and the self-command (`$`) beyond the existing simplified `:`
   event output. *(Implemented in v3 — section 9.)*
 - **Comments (`#`)** — the grid glyph alphabet still rejects `#`.
+  *(Implemented in v4 — section 10.)*
 - **Engine-side generator track source** (the per-cycle re-publish from v1
   remains the integration path).
 - **`Pattern<T>` implementation for the grid** — now unblocked by
@@ -430,6 +431,7 @@ base-36-value note mapping:
    the same `repitched` path the simplified `:` used.
 3. Velocity and length ride on the event but are not yet consumed by the
    audio bridge (future: velocity → gain, length → note-off/envelope).
+   *(Implemented in v4 — section 10.)*
 
 `MidiCc`, `MidiPb`, `Udp`, `Osc`, and `Command` events never reach the
 audio path; they stay on the engine's per-tick event list for future
@@ -457,9 +459,120 @@ publisher clock, `frame` adjustments to the engine) is future work.
   so transports own that conversion.
 - **Command interpreter** for `$` (section 9.5).
 - **Comments (`#`)** remain out of scope; the glyph alphabet still rejects
-  `#`.
+  `#`. *(Implemented in v4 — section 10.)*
 
 Two deliberate, documented divergences from the reference: the engine stops
 the message scan at the grid edge (orca-js keeps scanning out of bounds and
 appends empty strings — observably identical), and events are plain data
 rather than calls into a live `client.io` singleton.
+
+## 10. v4: velocity, note length, and `#` comments
+
+**Status: implemented.** v4 makes the two remaining `:`/`%` ports audible
+through the publish bridge and adds the last missing grid glyph, the `#`
+comment operator. Semantics verified against main-branch `io/midi.js` and
+`library.js` (`OperatorComment`).
+
+### 10.1 Velocity → gain
+
+The reference sends the velocity port (base-36, clamped 0-16, empty
+defaults to `f` = 15) as the MIDI velocity byte
+`parseInt((velocity / 16) * 127)` (`io/midi.js` `trigger()`). Note this is
+**not** the `ceil(127·raw/35)` scaling used by CC values and pitch-bend
+bytes — velocity has its own divisor (16) and truncates instead of
+rounding up.
+
+The bridge maps that byte onto `SampleEvent`'s gain **linearly**:
+
+```text
+gain = floor(velocity * 127 / 16) / 127
+```
+
+so velocity `0` is silent, the default `f` (15) plays at `119/127 ≈ 0.937`,
+and the clamp ceiling `g` (16) is exactly unity gain. The linear curve was
+chosen over the common perceptual `(v/127)^2` because Orpheus's `gain` is
+already a plain linear amplitude multiplier (`gain(0.5)` = half amplitude,
+applied directly to the rendered samples in the DSP voice); keeping the
+grid's velocity on the same scale means a grid note at velocity 8 and a
+pattern under `gain(63/127)` sound identical. A velocity-0 note is still
+emitted (the reference also sends the note-on with `v = 0`), it is just
+inaudible.
+
+### 10.2 Length → event duration
+
+In the reference, `io/midi.js` `run()` executes once per frame: a pushed
+note is pressed (note-on) on its frame, then its length counts down one
+per frame and the note is released (note-off) when it reaches zero — so a
+note with length `L` sounds for exactly `L` frames (note-on at frame `N`,
+note-off at frame `N + L`). The length port clamps to 0-32 and defaults
+to 1.
+
+The bridge therefore stretches the emitted event's span from the fixed
+one-frame `[N/F, (N+1)/F)` of v1-v3 to:
+
+```text
+length L  ->  part = [ N/F , (N+L)/F )
+```
+
+Two edges are decided deliberately:
+
+- **`L = 0` collapses to one frame.** The reference presses and releases
+  within the same `run()` pass — an "instant" note. Zero-width spans are
+  dropped by the event-stream clipping model (and the DSP floors trigger
+  durations at 1 audio frame anyway), so the bridge floors length at one
+  grid frame to keep the note-on audible.
+- **Cycle-boundary clamp.** A note whose span crosses the cycle end (e.g.
+  frame 14 of 16 with length 8) has its `part` clamped at `1` while the
+  event's `whole` keeps the full extent `[14/16, 22/16)`. The reference
+  sustains across the boundary; the per-cycle re-publish model (ADR 0008)
+  cannot, because each boundary replaces the published pattern wholesale
+  and the scheduler derives trigger durations from the clipped `part`.
+  The truncated tail is a **documented limitation** of the re-publish
+  seam, accepted here rather than building the engine-side generator
+  track source that cross-boundary sustain would need (still future work,
+  section 7.3).
+
+**What is actually audible.** The scheduler (`orpheus-dsp/scheduler.rs`)
+converts `part` into `duration_frames`, and what happens then depends on
+the voice backing the sample token: analog-synth primitives (the default
+`tri`, and the other pitched synth tokens) honor `duration_frames` as
+their sustain, so grid note length is audible end-to-end with the default
+token; the built-in drum voices use fixed per-voice durations and
+wav-bank samples play to their natural end, so both ignore length (as
+they ignore it for every other pattern source in Orpheus — not a grid
+limitation). Gain is honored by every voice kind.
+
+### 10.3 The `#` comment operator
+
+Per `library.js` `OperatorComment`: `#` is passive (runs every frame) and
+its whole operation is lock-based, like `H` — no engine special-casing.
+It locks every cell east of itself on its own row, stopping at (and
+including) the first matching `#`; an unmatched `#` locks to the row end.
+It then locks its own cell. Everything in the span becomes inert data:
+
+- operators between two `#` never execute (a commented `D1` never bangs,
+  a commented `E` never moves);
+- a commented lowercase operator ignores adjacent bangs (the lock check
+  precedes the bang check);
+- a commented `*` never runs its self-erase, so it stays on the grid —
+  and, faithfully to the reference (`hasNeighbor` reads raw glyphs, not
+  locks), it still reads as a bang neighbor for *unlocked* operators on
+  adjacent rows;
+- the comment affects only its own row, and only eastward: glyphs west of
+  the opening `#` and east of the closing `#` are live.
+
+`#` is now a valid glyph in `Grid::from_rows`/`Grid::set` and therefore
+typeable in the TUI pane (which gates input on `is_valid_glyph`).
+
+### 10.4 Still future work after v4
+
+- **Real transports** (MIDI out, UDP/OSC sockets, `$` command
+  interpreter) — unchanged from section 9.6; the remaining reference
+  behaviors to reproduce there are the note stack's duplicate retrigger
+  and `%`'s mono cut, which have no meaning in the current one-shot
+  sampler bridge.
+- **Engine-side generator track source**, which would also lift the
+  cycle-boundary clamp of section 10.2.
+- **Cross-boundary sustain**, blocked on the above.
+- **`Pattern<T>` implementation for the grid**, persistence, language
+  surface, proofs (sections 6/7.3).

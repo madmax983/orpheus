@@ -17,12 +17,19 @@
 //! pitch. Non-note IO events (CC, pitch bend, UDP, OSC, `$` commands) stay
 //! on the engine's per-tick event list for future transports and do not
 //! reach the audio path.
+//!
+//! v4 consumes the note's velocity and length ports (see
+//! `docs/design/orca-surface.md` section 10): velocity becomes the event's
+//! linear gain through the reference `io/midi.js` scaling
+//! `floor(velocity * 127 / 16) / 127`, and length `L` stretches the event's
+//! span to `L` grid frames, clamped at the cycle end because the per-cycle
+//! re-publish model (ADR 0008) cannot sustain a note across a boundary.
 
-use orpheus_pattern::{Event, PatternError};
+use orpheus_pattern::{Event, PatternError, Rational, TimeSpan};
 
 use crate::value::SampleEvent;
 
-use super::engine::{OrcaEngine, OrcaEvent, OrcaIoEvent, frame_span};
+use super::engine::{OrcaEngine, OrcaEvent, OrcaIoEvent};
 use super::grid::Grid;
 
 /// Default grid frames per musical cycle: Orca's convention of 16th-note
@@ -124,6 +131,51 @@ const fn min_u8(value: u8, ceiling: u8) -> u8 {
     if value < ceiling { value } else { ceiling }
 }
 
+/// The linear gain for a grid velocity (the `:`/`%` velocity port, 0-16).
+///
+/// The reference `io/midi.js` sends `parseInt((velocity / 16) * 127)` as the
+/// MIDI velocity byte; that byte maps linearly onto Orpheus's gain (an
+/// amplitude multiplier where `1.0` is full volume), so the default velocity
+/// `f` (15) plays at `119/127` and the ceiling `g` (16) at exactly `1.0`.
+/// The linear curve (rather than the common `(v/127)^2`) matches the `gain`
+/// transform's convention that `0.5` means half amplitude.
+fn velocity_gain(velocity: u8) -> f64 {
+    let byte = u32::from(min_u8(velocity, 16)) * 127 / 16;
+    f64::from(byte) / 127.0
+}
+
+/// The `(part, whole)` spans for a note fired at `frame_in_cycle` lasting
+/// `length` grid frames of `frames_per_cycle`.
+///
+/// The reference `io/midi.js` presses a note on its frame and releases it
+/// once `length` frames have elapsed, so a note with length `L` sounds for
+/// exactly `L` frames: `[N/F, (N+L)/F)`. A length of `0` (press and release
+/// within the same frame pass) collapses to one frame, the shortest span the
+/// unit-cycle event model can carry. When the span crosses the cycle end the
+/// playable `part` is clamped at `1` and the full extent is preserved as the
+/// event's `whole` — the per-cycle re-publish model re-materializes the next
+/// cycle from scratch, so the truncated tail never sounds (a documented
+/// limitation, not reference behavior).
+fn note_spans(
+    frame_in_cycle: u64,
+    length: u8,
+    frames_per_cycle: u64,
+) -> Result<(TimeSpan, Option<TimeSpan>), PatternError> {
+    let length_frames = i128::from(length.max(1));
+    let denominator = i128::from(frames_per_cycle);
+    let start = Rational::checked_from_parts(i128::from(frame_in_cycle), denominator)?;
+    let end =
+        Rational::checked_from_parts(i128::from(frame_in_cycle) + length_frames, denominator)?;
+    let cycle_end = Rational::one();
+    if start < cycle_end && end > cycle_end {
+        let part = TimeSpan::new(start, cycle_end)?;
+        let whole = TimeSpan::new(start, end)?;
+        Ok((part, Some(whole)))
+    } else {
+        Ok((TimeSpan::new(start, end)?, None))
+    }
+}
+
 /// Converts one [`OrcaEvent`] fired at `frame_in_cycle` of `frames_per_cycle`
 /// into an unclipped unit-cycle [`Event<SampleEvent>`], or `None` when the
 /// event does not reach the audio path.
@@ -131,11 +183,14 @@ const fn min_u8(value: u8, ceiling: u8) -> u8 {
 /// Only the MIDI-note family (`:` [`OrcaIoEvent::Midi`], `%`
 /// [`OrcaIoEvent::MidiMono`]) becomes audible; other IO events — and notes
 /// whose glyph falls outside the transpose table — return `Ok(None)`. A
-/// note event occupies the exact rational span
-/// `[frame_in_cycle / frames_per_cycle, (frame_in_cycle + 1) / frames_per_cycle)`
-/// and triggers `sample_token` repitched by the note's [`midi_note_id`]
-/// relative to middle C (`:03C` plays the base pitch). Velocity and length
-/// are carried on the event but not yet consumed by the audio bridge.
+/// note with length `L` occupies the exact rational span
+/// `[frame_in_cycle / frames_per_cycle, (frame_in_cycle + L) / frames_per_cycle)`
+/// (`L = 0` collapses to one frame; a span crossing the cycle end keeps its
+/// full extent as `whole` while `part` is clamped at `1`) and triggers
+/// `sample_token` repitched by the note's [`midi_note_id`] relative to
+/// middle C (`:03C` plays the base pitch), at the linear gain
+/// `floor(velocity * 127 / 16) / 127` — the reference `io/midi.js` velocity
+/// byte mapped onto Orpheus's linear amplitude convention.
 ///
 /// # Errors
 ///
@@ -153,14 +208,12 @@ pub fn sample_event_from_orca(
     let Some(id) = midi_note_id(note.note, note.octave) else {
         return Ok(None);
     };
-    let part = frame_span(frame_in_cycle, frames_per_cycle)?;
+    let (part, whole) = note_spans(frame_in_cycle, note.length, frames_per_cycle)?;
     let semitones = f64::from(i16::from(id) - MIDDLE_C);
-    let value = SampleEvent::named(sample_token).repitched(semitones);
-    Ok(Some(Event {
-        whole: None,
-        part,
-        value,
-    }))
+    let value = SampleEvent::named(sample_token)
+        .repitched(semitones)
+        .with_gain(velocity_gain(note.velocity));
+    Ok(Some(Event { whole, part, value }))
 }
 
 /// Advances `engine` by one full grid cycle (`frames_per_cycle` ticks) and
@@ -177,7 +230,7 @@ pub fn sample_event_from_orca(
 ///
 /// # Errors
 ///
-/// Propagates rational-construction errors from [`frame_span`]. A
+/// Propagates rational-construction errors from note-span construction. A
 /// `frames_per_cycle` of zero ticks nothing and returns an empty batch.
 pub fn materialize_cycle(
     engine: &mut OrcaEngine,

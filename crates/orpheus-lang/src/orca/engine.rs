@@ -20,7 +20,7 @@ use std::collections::BTreeMap;
 
 use orpheus_pattern::{PatternError, Rational, TimeSpan};
 
-use super::grid::{BANG, EMPTY, Grid, GridError};
+use super::grid::{BANG, COMMENT, EMPTY, Grid, GridError};
 
 /// The base-36 glyph alphabet: index = value.
 const KEYS: &[u8; 36] = b"0123456789abcdefghijklmnopqrstuvwxyz";
@@ -310,6 +310,7 @@ impl OrcaEngine {
             'X' | 'x' => self.op_write(x, y),
             'Y' | 'y' => self.op_jymper(x, y, glyph),
             'Z' | 'z' => self.op_lerp(x, y),
+            COMMENT => self.op_comment(x, y),
             ':' => self.op_midi(x, y, false),
             '%' => self.op_midi(x, y, true),
             '!' => self.op_cc(x, y),
@@ -585,6 +586,23 @@ impl OrcaEngine {
             dx += 1;
         }
         self.write_port(x, y, dx, 0, west, false);
+    }
+
+    /// Comment (`#`): locks every cell east on its own row up to and
+    /// including the matching `#` (or to the row end when unmatched), plus
+    /// itself, turning the whole span into inert data (reference
+    /// `library.js` `OperatorComment`). Locked glyphs never execute, so a
+    /// commented `*` also never self-erases — though, matching the
+    /// reference, it still reads as a bang neighbor for unlocked operators
+    /// on adjacent rows.
+    fn op_comment(&mut self, x: usize, y: usize) {
+        for cx in (x + 1)..self.grid.width() {
+            self.lock(cx, y);
+            if self.grid.glyph_at(cx, y) == Some(COMMENT) {
+                break;
+            }
+        }
+        self.lock(x, y);
     }
 
     /// MIDI note output (`:` polyphonic, `%` monophonic). Port layout east

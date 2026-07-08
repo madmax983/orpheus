@@ -1268,6 +1268,17 @@ impl SampleEvent {
         self
     }
 
+    /// Returns a copy with the gain replaced by `gain`.
+    ///
+    /// Used by the Orca publish bridge to map a grid note's MIDI velocity
+    /// onto a linear amplitude (the same convention as the `gain` transform,
+    /// where `0.5` is half amplitude).
+    #[must_use]
+    pub(crate) const fn with_gain(mut self, gain: f64) -> Self {
+        self.gain = gain;
+        self
+    }
+
     fn clone_with(&self, mutate: impl FnOnce(&mut Self)) -> Self {
         let mut cloned = self.clone();
         mutate(&mut cloned);
