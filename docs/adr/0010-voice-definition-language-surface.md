@@ -117,8 +117,17 @@ onto the `Mrg` combinator.
 **Supporting stages.** `delay(x, seconds)` exposes the fixed `delay_line`
 (literal seconds, capped at 10 s, capacity allocated at build time) and
 `gain(x, amount)` is `Mul` as a pipeable stage, since `*` cannot follow a
-pipe target grammatically. A fractional/modulatable delay stays a graph-layer
-follow-up.
+pipe target grammatically.
+
+**Modulatable delay time.** When the `delay` time argument is not a number
+literal it is compiled as a SIGNAL — `wet = dry |> delay(lfo)` is the
+chorus/flanger form — lowering onto the graph layer's fractional delay line
+(`fdelay`, linearly interpolated, time input modulatable at audio rate). The
+line's capacity stays fixed before the audio thread runs: signal-driven
+delays get one second of headroom
+(`MODULATED_VOICE_DELAY_MAX_SECONDS`), and requested times outside
+\[0, capacity\] clamp at render time. Literal times keep the exact
+whole-sample `delay_line`, so existing bodies are byte-for-byte unchanged.
 
 **Pragma bindings.** Two reserved binding names configure the program rather
 than defining signals, keeping the grammar untouched (named call arguments do

@@ -123,7 +123,13 @@ Module: `crates/orpheus-dsp/src/graph/` (ADR 0004).
 - [ ] SVF (state-variable filter) node
 - [x] ADSR / AR envelope nodes — `adsr`/`ar`
   (`crates/orpheus-dsp/src/graph/primitives.rs`)
-- [ ] fractional / modulatable delay line
+- [x] fractional / modulatable delay line — `fdelay(sample_rate_hz,
+  max_delay_seconds)`, 2-in (audio, delay\_seconds signal)/1-out, linear
+  interpolation, capacity fixed at construction and capped at 10 s
+  (`crates/orpheus-dsp/src/graph/primitives.rs`); voice-body exposure shipped:
+  a non-literal `delay` time is a signal driving the fractional line at 1 s
+  capacity (`delay(x, lfo)`), literal times keep the fixed whole-sample
+  `delay_line` (ADR 0010 addendum)
 - [ ] sample-playback node
 - [x] `MixNode` adapter — `mix_node` wraps the crossfade in
   `crates/orpheus-dsp/src/synth/mix.rs` (`graph/adapters.rs`)

@@ -23,8 +23,9 @@ pub use processor::Processor;
 
 // Primitives (new nodes)
 pub use primitives::{
-    AdsrNode, ArNode, ConstNode, DelayNode, OnePoleNode, PanNode, PassthroughNode, SineNode,
-    SumNode, WireNode, adsr, ar, constant, delay_line, one_pole, pan, passthrough, sine, sum, wire,
+    AdsrNode, ArNode, ConstNode, DelayNode, FractionalDelayNode, MAX_FRACTIONAL_DELAY_SECONDS,
+    OnePoleNode, PanNode, PassthroughNode, SineNode, SumNode, WireNode, adsr, ar, constant,
+    delay_line, fdelay, one_pole, pan, passthrough, sine, sum, wire,
 };
 
 // Adapters (existing synth/ primitive wrappers)

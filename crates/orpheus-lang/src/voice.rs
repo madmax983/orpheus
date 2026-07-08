@@ -21,7 +21,7 @@ use comfy_table::Cell;
 use crossterm::style::Stylize;
 use orpheus_dsp::{
     DEFAULT_GRAPH_VOICE_POLYPHONY, GraphVoiceSpec, MAX_GRAPH_VOICE_POLYPHONY,
-    MAX_VOICE_DELAY_SECONDS, VoiceNodeSpec, VoiceSignalRef,
+    MAX_VOICE_DELAY_SECONDS, MODULATED_VOICE_DELAY_MAX_SECONDS, VoiceNodeSpec, VoiceSignalRef,
 };
 
 use crate::ast::{BinaryOp, Expr, GraphBinding};
@@ -550,9 +550,13 @@ impl VoiceCompiler {
         })
     }
 
-    /// Compiles `delay(input, seconds)` — a fixed delay line. The delay time
-    /// must be a number literal because the line's capacity is allocated
-    /// before the audio thread runs.
+    /// Compiles `delay(input, seconds)`. A number-literal time compiles to
+    /// the fixed whole-sample delay line (capacity == time, allocated before
+    /// the audio thread runs). Any other time expression is a SIGNAL driving
+    /// the fractional delay line's time input — `delay(x, lfo)` is the
+    /// chorus/flanger form — with a fixed capacity of
+    /// [`MODULATED_VOICE_DELAY_MAX_SECONDS`]; requested times outside
+    /// \[0, capacity\] clamp at render time.
     fn compile_delay(
         &mut self,
         args: &[Expr],
@@ -563,13 +567,23 @@ impl VoiceCompiler {
             None if args.len() == 2 => (self.compile_expr(&args[0])?, &args[1]),
             _ => {
                 return Err(EvalError::new(
-                    "`delay` expects an input signal plus a delay time in seconds \
-                     (e.g. `x |> delay(0.25)`)",
+                    "`delay` expects an input signal plus a delay time in seconds — \
+                     a number literal for a fixed line, or a signal to modulate it \
+                     (e.g. `x |> delay(0.25)` or `x |> delay(lfo)`)",
                 ));
             }
         };
-        let seconds = delay_literal(seconds_expr)?;
-        self.push(VoiceNodeSpec::Delay { input, seconds })
+        if matches!(seconds_expr, Expr::Number(_)) {
+            let seconds = delay_literal(seconds_expr)?;
+            self.push(VoiceNodeSpec::Delay { input, seconds })
+        } else {
+            let seconds = self.compile_expr(seconds_expr)?;
+            self.push(VoiceNodeSpec::FractionalDelay {
+                input,
+                seconds,
+                max_seconds: MODULATED_VOICE_DELAY_MAX_SECONDS,
+            })
+        }
     }
 
     /// Compiles `feedback(body)` — a one-sample feedback loop around `body`.

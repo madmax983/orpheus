@@ -139,6 +139,121 @@ pub fn delay_line(delay_samples: usize) -> DelayNode {
 }
 
 // ---------------------------------------------------------------------------
+// FractionalDelayNode
+// ---------------------------------------------------------------------------
+
+/// The longest capacity a [`FractionalDelayNode`] may request, in seconds.
+///
+/// Matches the fixed voice-delay cap: the buffer is allocated up front at
+/// construction, so the ceiling keeps memory bounded.
+pub const MAX_FRACTIONAL_DELAY_SECONDS: f32 = 10.0;
+
+/// A fractional, modulatable delay line — the chorus/flanger building block.
+/// 2 inputs (audio, delay\_seconds), 1 output.
+///
+/// The delay TIME is a signal input (params-as-signals, ADR 0004), so it may
+/// move at audio rate; requested times are clamped to \[0, capacity\] each
+/// sample, and non-finite requests read at zero delay. Capacity is fixed at
+/// construction (see [`fdelay`]) and the buffer is allocated there, so
+/// `process()` never allocates.
+///
+/// **Interpolation: linear.** Reading between samples takes the convex
+/// combination of the two neighbouring samples, so the output is always
+/// bounded by the input and stays continuous under arbitrarily fast
+/// modulation. The trade-off is a mild high-frequency roll-off that is worst
+/// at half-sample fractions (the read acts as a gentle one-zero low-pass).
+/// Allpass interpolation would keep the magnitude response flat, but its
+/// recursive state smears and clicks when the delay time moves quickly —
+/// exactly the modulated chorus/flanger use this node exists for — so linear
+/// is the deliberate choice here.
+#[derive(Debug, Clone)]
+pub struct FractionalDelayNode {
+    buffer: Vec<f32>,
+    write_index: usize,
+    sample_rate_hz: f32,
+    /// The largest readable delay, in samples (buffer capacity minus the
+    /// write cell and the interpolation neighbour).
+    max_delay_samples: f32,
+}
+
+impl Node for FractionalDelayNode {
+    fn inputs(&self) -> u32 {
+        2
+    }
+    fn outputs(&self) -> u32 {
+        1
+    }
+    fn process(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], frames: usize) {
+        let audio = inputs[0];
+        let seconds = inputs[1];
+        let out = &mut outputs[0];
+        let len = self.buffer.len();
+        for i in 0..frames {
+            // Write first, then read `delay` samples behind the write head:
+            // a zero delay is the freshly written sample, and a delay of `n`
+            // whole samples matches `delay_line(n)` exactly.
+            self.buffer[self.write_index] = audio[i];
+            let requested = seconds[i] * self.sample_rate_hz;
+            let delay = if requested.is_finite() {
+                requested.clamp(0.0, self.max_delay_samples)
+            } else {
+                0.0
+            };
+            // Truncation is floor for the non-negative clamped delay, and the
+            // whole part is bounded by the buffer capacity.
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let whole = delay as usize;
+            // Whole sample counts up to the 10 s cap are exact in f32.
+            #[allow(clippy::cast_precision_loss)]
+            let frac = delay - whole as f32;
+            let read0 = (self.write_index + len - whole) % len;
+            let read1 = if read0 == 0 { len - 1 } else { read0 - 1 };
+            let a = self.buffer[read0];
+            let b = self.buffer[read1];
+            out[i] = a + frac * (b - a);
+            self.write_index += 1;
+            if self.write_index >= len {
+                self.write_index = 0;
+            }
+        }
+    }
+    fn reset(&mut self) {
+        self.buffer.fill(0.0);
+        self.write_index = 0;
+    }
+}
+
+/// Creates a fractional, modulatable delay line.
+/// 2 inputs (audio, delay\_seconds), 1 output.
+///
+/// `max_delay_seconds` fixes the line's capacity: the buffer is allocated
+/// here, once, and requested delay times are clamped to
+/// \[0, `max_delay_seconds`\] at render time. The capacity is capped at
+/// [`MAX_FRACTIONAL_DELAY_SECONDS`]; non-finite or non-positive requests fall
+/// back to a one-sample line. Non-finite or non-positive sample rates fall
+/// back to 48 kHz.
+#[must_use]
+pub fn fdelay(sample_rate_hz: f32, max_delay_seconds: f32) -> FractionalDelayNode {
+    let sample_rate_hz = sanitize_sample_rate(sample_rate_hz);
+    let max_delay_seconds = if max_delay_seconds.is_finite() && max_delay_seconds > 0.0 {
+        max_delay_seconds.min(MAX_FRACTIONAL_DELAY_SECONDS)
+    } else {
+        0.0
+    };
+    let max_delay_samples = (max_delay_seconds * sample_rate_hz).ceil().max(1.0);
+    // One cell for the freshly written sample plus one for the interpolation
+    // neighbour beyond the largest whole delay.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let capacity = max_delay_samples as usize + 2;
+    FractionalDelayNode {
+        buffer: vec![0.0; capacity],
+        write_index: 0,
+        sample_rate_hz,
+        max_delay_samples,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // OnePoleNode
 // ---------------------------------------------------------------------------
 
