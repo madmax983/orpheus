@@ -1984,6 +1984,10 @@ impl SamplePatternValue {
     }
 
     pub(crate) fn fast(self, factor: i64) -> Self {
+        self.fast_rational(Rational::from_integer(factor))
+    }
+
+    pub(crate) fn fast_rational(self, factor: Rational) -> Self {
         Self {
             pattern: PatternRuntime::Fast {
                 factor,
@@ -2089,6 +2093,10 @@ impl SamplePatternValue {
     }
 
     pub(crate) fn slow(self, factor: i64) -> Self {
+        self.slow_rational(Rational::from_integer(factor))
+    }
+
+    pub(crate) fn slow_rational(self, factor: Rational) -> Self {
         Self {
             pattern: PatternRuntime::Slow {
                 factor,
@@ -2763,6 +2771,10 @@ impl NumberPatternValue {
     }
 
     pub(crate) fn fast(self, factor: i64) -> Self {
+        self.fast_rational(Rational::from_integer(factor))
+    }
+
+    pub(crate) fn fast_rational(self, factor: Rational) -> Self {
         Self {
             pattern: PatternRuntime::Fast {
                 factor,
@@ -2933,6 +2945,10 @@ impl NumberPatternValue {
     }
 
     pub(crate) fn slow(self, factor: i64) -> Self {
+        self.slow_rational(Rational::from_integer(factor))
+    }
+
+    pub(crate) fn slow_rational(self, factor: Rational) -> Self {
         Self {
             pattern: PatternRuntime::Slow {
                 factor,
@@ -3268,11 +3284,11 @@ enum PatternRuntime<T> {
         inner: Box<Self>,
     },
     Fast {
-        factor: i64,
+        factor: Rational,
         inner: Box<Self>,
     },
     Slow {
-        factor: i64,
+        factor: Rational,
         inner: Box<Self>,
     },
     Shift {
@@ -4224,8 +4240,8 @@ where
             Self::TransposePattern { control, inner } => {
                 apply_control_pattern(inner, control, span, ControlPatternKind::Transpose)
             }
-            Self::Fast { factor, inner } => query_fast(inner, *factor, span),
-            Self::Slow { factor, inner } => query_slow(inner, *factor, span),
+            Self::Fast { factor, inner } => query_fast(inner, factor, span),
+            Self::Slow { factor, inner } => query_slow(inner, factor, span),
             Self::Shift { offset, inner } => query_shift(inner, offset, span),
             Self::Rev { inner } => query_rev(inner, span),
             Self::Gain { factor, inner } => {
@@ -5563,17 +5579,25 @@ where
     Ok(events)
 }
 
+/// Queries `fast(n/d, p)`: cycle span `[a, b)` maps to `p` over
+/// `[a*n/d, b*n/d)` and the resulting events are scaled back by `d/n`.
+///
+/// The historical integer path is the special case `d = 1`. With a
+/// non-integer factor the scaled-back wholes can have non-integer endpoints
+/// that straddle cycle boundaries, exactly like `shift` with a fractional
+/// offset — downstream consumers already handle that shape.
 fn query_fast<T>(
     inner: &PatternRuntime<T>,
-    factor: i64,
+    factor: &Rational,
     span: &TimeSpan,
 ) -> Result<Vec<Event<T>>, EvalError>
 where
     T: PatternRuntimeValue,
 {
-    let source_span = scale_span(span, factor, 1)?;
+    let source_span = scale_span_by_rational(span, factor)?;
     let mut events = inner.try_query(&source_span)?;
-    rescale_events(&mut events, 1, factor)?;
+    let inverse_factor = rational_reciprocal(factor)?;
+    rescale_events(&mut events, &inverse_factor)?;
     Ok(events)
 }
 
@@ -6537,18 +6561,17 @@ where
     Ok(events)
 }
 
+/// Queries `slow(n/d, p)`, which is exactly `fast(d/n, p)`.
 fn query_slow<T>(
     inner: &PatternRuntime<T>,
-    factor: i64,
+    factor: &Rational,
     span: &TimeSpan,
 ) -> Result<Vec<Event<T>>, EvalError>
 where
     T: PatternRuntimeValue,
 {
-    let source_span = scale_span(span, 1, factor)?;
-    let mut events = inner.try_query(&source_span)?;
-    rescale_events(&mut events, factor, 1)?;
-    Ok(events)
+    let inverse_factor = rational_reciprocal(factor)?;
+    query_fast(inner, &inverse_factor, span)
 }
 
 fn query_shift<T>(
@@ -6655,15 +6678,11 @@ where
     })
 }
 
-fn rescale_events<T>(
-    events: &mut [Event<T>],
-    numerator: i64,
-    denominator: i64,
-) -> Result<(), EvalError> {
+fn rescale_events<T>(events: &mut [Event<T>], factor: &Rational) -> Result<(), EvalError> {
     for event in events {
-        event.part = scale_span(&event.part, numerator, denominator)?;
+        event.part = scale_span_by_rational(&event.part, factor)?;
         if let Some(whole) = event.whole.take() {
-            event.whole = Some(scale_span(&whole, numerator, denominator)?);
+            event.whole = Some(scale_span_by_rational(&whole, factor)?);
         }
     }
 
@@ -6794,13 +6813,6 @@ where
     boundaries.sort();
     boundaries.dedup();
     Some(boundaries)
-}
-
-fn scale_span(span: &TimeSpan, numerator: i64, denominator: i64) -> Result<TimeSpan, EvalError> {
-    build_span(
-        rational_mul_parts(span.start(), numerator, denominator)?,
-        rational_mul_parts(span.end(), numerator, denominator)?,
-    )
 }
 
 fn scale_span_by_rational(span: &TimeSpan, factor: &Rational) -> Result<TimeSpan, EvalError> {
@@ -7101,6 +7113,137 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["sn", "bd", "cp", "bd", "sn", "cp", "sn", "bd", "cp"]
         );
+    }
+
+    #[test]
+    fn query_fast_with_rational_factor_scales_events_exactly() {
+        // fast(3/2, bd sn): source [0, 3) worth of pattern squeezed into
+        // [0, 2), so event k occupies [2k/6, 2(k+1)/6) = [k/3, (k+1)/3).
+        let pattern = SamplePatternValue::from_nodes(vec![
+            PatternNode::atom(SampleEvent::named("bd")),
+            PatternNode::atom(SampleEvent::named("sn")),
+        ])
+        .fast_rational(Rational::new(3, 2).unwrap());
+        let span = TimeSpan::new(Rational::zero(), Rational::new(2, 1).unwrap()).unwrap();
+        let events = pattern.try_query(&span).unwrap();
+
+        assert_eq!(events.len(), 6);
+        for (index, event) in events.iter().enumerate() {
+            let index = i64::try_from(index).unwrap();
+            assert_eq!(event.part.start(), &Rational::new(index, 3).unwrap());
+            assert_eq!(event.part.end(), &Rational::new(index + 1, 3).unwrap());
+            // `whole: None` marks an unclipped event whose part is its whole.
+            assert_eq!(event.whole, None);
+            let expected = if index % 2 == 0 { "bd" } else { "sn" };
+            assert_eq!(event.value.sample(), expected);
+        }
+    }
+
+    #[test]
+    fn query_fast_with_rational_factor_is_chunking_stable() {
+        // fast(3/4) = slow(4/3) produces wholes with non-integer endpoints
+        // that straddle cycle boundaries. Querying cycle-by-cycle must agree
+        // with one whole-span query: same wholes and values, with the
+        // per-cycle parts tiling the whole-span parts exactly.
+        let pattern = SamplePatternValue::from_nodes(vec![
+            PatternNode::atom(SampleEvent::named("bd")),
+            PatternNode::atom(SampleEvent::named("sn")),
+        ])
+        .fast_rational(Rational::new(3, 4).unwrap());
+
+        let whole_span = TimeSpan::new(Rational::zero(), Rational::new(4, 1).unwrap()).unwrap();
+        let whole_events = pattern.try_query(&whole_span).unwrap();
+
+        let mut chunked_events = Vec::new();
+        for cycle in 0..4 {
+            let span = TimeSpan::new(
+                Rational::new(cycle, 1).unwrap(),
+                Rational::new(cycle + 1, 1).unwrap(),
+            )
+            .unwrap();
+            chunked_events.extend(pattern.try_query(&span).unwrap());
+        }
+
+        // `whole: None` marks an unclipped event, so an event's full extent
+        // is its whole when present and its part otherwise. Onsets (extent
+        // start == part start) must be identical across both query styles.
+        let extent =
+            |event: &Event<SampleEvent>| event.whole.as_ref().map_or(event.part, |whole| *whole);
+        let onsets = |events: &[Event<SampleEvent>]| {
+            events
+                .iter()
+                .filter(|event| extent(event).start() == event.part.start())
+                .map(|event| {
+                    (
+                        *extent(event).start(),
+                        *extent(event).end(),
+                        event.value.sample().to_owned(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(onsets(&whole_events), onsets(&chunked_events));
+
+        // Every chunked fragment belongs to a whole-span event with the same
+        // extent, and the fragments tile that event's part exactly.
+        for whole_event in &whole_events {
+            let fragments: Vec<_> = chunked_events
+                .iter()
+                .filter(|fragment| {
+                    extent(fragment) == extent(whole_event)
+                        && fragment.value.sample() == whole_event.value.sample()
+                })
+                .collect();
+            assert!(!fragments.is_empty());
+            assert_eq!(fragments[0].part.start(), whole_event.part.start());
+            assert_eq!(fragments.last().unwrap().part.end(), whole_event.part.end());
+            for pair in fragments.windows(2) {
+                assert_eq!(pair[0].part.end(), pair[1].part.start());
+            }
+        }
+    }
+
+    #[test]
+    fn slow_rational_is_the_inverse_of_fast_rational() {
+        let base = SamplePatternValue::from_nodes(vec![
+            PatternNode::atom(SampleEvent::named("bd")),
+            PatternNode::atom(SampleEvent::named("sn")),
+            PatternNode::atom(SampleEvent::named("cp")),
+        ]);
+        let factor = Rational::new(3, 2).unwrap();
+        let round_trip = base.clone().slow_rational(factor).fast_rational(factor);
+
+        let span = TimeSpan::new(Rational::zero(), Rational::new(5, 1).unwrap()).unwrap();
+        let base_events = base.try_query(&span).unwrap();
+        let round_trip_events = round_trip.try_query(&span).unwrap();
+
+        assert_eq!(base_events.len(), round_trip_events.len());
+        for (base_event, round_trip_event) in base_events.iter().zip(&round_trip_events) {
+            assert_eq!(base_event.part, round_trip_event.part);
+            assert_eq!(base_event.whole, round_trip_event.whole);
+            assert_eq!(base_event.value.sample(), round_trip_event.value.sample());
+        }
+    }
+
+    #[test]
+    fn integer_fast_still_matches_the_rational_path_with_denominator_one() {
+        let base = SamplePatternValue::from_nodes(vec![
+            PatternNode::atom(SampleEvent::named("bd")),
+            PatternNode::atom(SampleEvent::named("sn")),
+        ]);
+        let integral = base.clone().fast(2);
+        let rational = base.fast_rational(Rational::new(2, 1).unwrap());
+
+        let span = TimeSpan::new(Rational::zero(), Rational::new(3, 1).unwrap()).unwrap();
+        let integral_events = integral.try_query(&span).unwrap();
+        let rational_events = rational.try_query(&span).unwrap();
+
+        assert_eq!(integral_events.len(), rational_events.len());
+        for (left, right) in integral_events.iter().zip(&rational_events) {
+            assert_eq!(left.part, right.part);
+            assert_eq!(left.whole, right.whole);
+            assert_eq!(left.value.sample(), right.value.sample());
+        }
     }
 
     #[test]

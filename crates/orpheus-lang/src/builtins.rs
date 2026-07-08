@@ -1469,7 +1469,7 @@ fn apply_degrees(args: Vec<Value>) -> Result<Value, EvalError> {
 
 fn apply_fast(args: Vec<Value>) -> Result<Value, EvalError> {
     let mut args = args.into_iter();
-    let factor = extract_positive_integer_factor(
+    let factor = extract_positive_rational_factor(
         args.next()
             .ok_or_else(|| EvalError::new("`fast` requires a factor argument"))?,
         "fast",
@@ -1480,15 +1480,15 @@ fn apply_fast(args: Vec<Value>) -> Result<Value, EvalError> {
 
     apply_pattern_transform(
         pattern,
-        |p| Ok(Value::SamplePattern(p.fast(factor))),
-        |p| Ok(Value::NumberPattern(p.fast(factor))),
+        |p| Ok(Value::SamplePattern(p.fast_rational(factor))),
+        |p| Ok(Value::NumberPattern(p.fast_rational(factor))),
         "fast",
     )
 }
 
 fn apply_slow(args: Vec<Value>) -> Result<Value, EvalError> {
     let mut args = args.into_iter();
-    let factor = extract_positive_integer_factor(
+    let factor = extract_positive_rational_factor(
         args.next()
             .ok_or_else(|| EvalError::new("`slow` requires a factor argument"))?,
         "slow",
@@ -1499,8 +1499,8 @@ fn apply_slow(args: Vec<Value>) -> Result<Value, EvalError> {
 
     apply_pattern_transform(
         pattern,
-        |p| Ok(Value::SamplePattern(p.slow(factor))),
-        |p| Ok(Value::NumberPattern(p.slow(factor))),
+        |p| Ok(Value::SamplePattern(p.slow_rational(factor))),
+        |p| Ok(Value::NumberPattern(p.slow_rational(factor))),
         "slow",
     )
 }
@@ -2850,6 +2850,55 @@ fn extract_positive_integer_factor(value: Value, builtin_name: &str) -> Result<i
     Ok(integer)
 }
 
+/// Extracts a positive rational tempo factor for `fast`/`slow`.
+///
+/// Decimal literals convert to exact rationals through [`f64_to_rational`],
+/// which parses the shortest round-trip decimal rendering of the `f64`
+/// rather than its bit pattern: `1.5` becomes `3/2`, `0.75` becomes `3/4`,
+/// and `0.1` becomes exactly `1/10` (not the nearest binary float
+/// `3602879701896397/2^55`). The factor as written is therefore preserved
+/// exactly up to f64's ~17 significant decimal digits.
+///
+/// Bounds extend the historical integer rule (`1..=1024`) to rationals:
+/// after reduction, the numerator and denominator must each be at most
+/// 1024, so accepted factors lie in `[1/1024, 1024]`. Factors that are
+/// zero, negative, or non-finite are rejected, as are decimals whose
+/// reduced denominator exceeds 1024 (e.g. `0.123456789`).
+fn extract_positive_rational_factor(
+    value: Value,
+    builtin_name: &str,
+) -> Result<Rational, EvalError> {
+    let number = extract_constant_number(value, builtin_name)?;
+
+    if !number.is_finite() || number <= 0.0 {
+        return Err(EvalError::new(format!(
+            "`{builtin_name}` requires a positive factor"
+        )));
+    }
+
+    let factor = f64_to_rational(number, &format!("`{builtin_name}` factor"))?;
+
+    if factor.numerator() <= 0 {
+        return Err(EvalError::new(format!(
+            "`{builtin_name}` requires a positive factor"
+        )));
+    }
+
+    if factor.denominator() > 1024 {
+        return Err(EvalError::new(format!(
+            "`{builtin_name}` factor denominator exceeded the maximum allowed bound of 1024"
+        )));
+    }
+
+    if factor.numerator() > 1024 {
+        return Err(EvalError::new(format!(
+            "`{builtin_name}` factor exceeded the maximum allowed bound of 1024"
+        )));
+    }
+
+    Ok(factor)
+}
+
 fn extract_constant_rational_offset(
     value: Value,
     builtin_name: &str,
@@ -3972,6 +4021,64 @@ mod tests {
 
         assert_eq!(right_events[0].value.sample(), "sn");
         assert_eq!(right_events[1].value.sample(), "bd");
+    }
+
+    #[test]
+    fn extract_positive_rational_factor_converts_decimals_exactly() {
+        // Conversion goes through the decimal-literal rendering of the f64,
+        // so common decimals map to their exact written fractions.
+        let cases = [
+            (1.5, 3, 2),
+            (0.75, 3, 4),
+            (0.1, 1, 10),
+            (2.0, 2, 1),
+            (1024.0, 1024, 1),
+        ];
+        for (input, numerator, denominator) in cases {
+            let factor = super::extract_positive_rational_factor(
+                crate::value::Value::NumberPattern(crate::value::NumberPatternValue::constant(
+                    input,
+                )),
+                "fast",
+            )
+            .unwrap();
+            assert_eq!(factor.numerator(), numerator, "numerator for {input}");
+            assert_eq!(factor.denominator(), denominator, "denominator for {input}");
+        }
+    }
+
+    #[test]
+    fn extract_positive_rational_factor_rejects_out_of_bounds_values() {
+        let rejected = [
+            (0.0, "requires a positive factor"),
+            (-1.5, "requires a positive factor"),
+            (f64::NAN, "requires a positive factor"),
+            (f64::INFINITY, "requires a positive factor"),
+            (2048.0, "factor exceeded the maximum allowed bound of 1024"),
+            (1024.5, "factor exceeded the maximum allowed bound of 1024"),
+            (
+                0.0001,
+                "factor denominator exceeded the maximum allowed bound of 1024",
+            ),
+            (
+                0.123_456_789,
+                "factor denominator exceeded the maximum allowed bound of 1024",
+            ),
+        ];
+        for (input, fragment) in rejected {
+            let error = super::extract_positive_rational_factor(
+                crate::value::Value::NumberPattern(crate::value::NumberPatternValue::constant(
+                    input,
+                )),
+                "fast",
+            )
+            .unwrap_err();
+            let message = error.to_string();
+            assert!(
+                message.contains(fragment),
+                "error `{message}` for {input} missing `{fragment}`"
+            );
+        }
     }
 
     #[test]

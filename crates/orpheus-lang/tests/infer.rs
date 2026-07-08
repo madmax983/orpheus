@@ -1074,3 +1074,12 @@ fn whenmod_infers_a_polymorphic_pattern_transform_function() {
         other => panic!("expected function type, got {other:?}"),
     }
 }
+
+#[test]
+fn fast_and_slow_accept_fractional_factors_and_preserve_pattern_types() {
+    let sample_typed = infer_module("drums = fast(1.5, bd sn)", ReplMode::Strict).unwrap();
+    let number_typed = infer_module("swing = slow(0.5, 1 2)", ReplMode::Strict).unwrap();
+
+    assert_eq!(sample_typed.type_of("drums").to_string(), "Pattern<Sample>");
+    assert_eq!(number_typed.type_of("swing").to_string(), "Pattern<Number>");
+}
