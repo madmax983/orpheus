@@ -12,6 +12,7 @@ use thiserror::Error;
 
 use crate::command::{EngineCommand, PatternUpdate, new_command_queue};
 use crate::effects::BusEffectState;
+use crate::graph_voice::{GraphVoiceBank, graph_note_params};
 use crate::plugin_host::PluginProcessor;
 use crate::routing::{BusEffectSpec, RoutingSnapshot, TrackSource};
 use crate::sample_bank::SampleBank;
@@ -235,6 +236,7 @@ pub enum EngineError {
 struct EngineCore {
     scheduler: Scheduler,
     active_voices: Vec<Option<ActiveVoice>>,
+    graph_voices: GraphVoiceBank,
     sample_bank: SampleBank,
     active_routing: RoutingSnapshot,
     pending_routing: Option<RoutingSnapshot>,
@@ -274,6 +276,10 @@ impl EngineCore {
             active_voices: std::iter::repeat_with(|| None)
                 .take(MAX_ACTIVE_VOICES)
                 .collect(),
+            // Graph voices are compiled and warmed here, before the audio
+            // thread exists; the render path only reuses the pooled voices.
+            #[allow(clippy::cast_precision_loss)]
+            graph_voices: GraphVoiceBank::with_builtin_programs(config.sample_rate.0 as f32),
             sample_bank: SampleBank::load_builtin(),
             active_routing,
             pending_routing: None,
@@ -465,6 +471,25 @@ impl EngineCore {
                         )
                     })
                 });
+            if slot.is_some() {
+                return;
+            }
+        }
+
+        // Tokens the sample bank and built-in fallbacks do not own may name a
+        // pooled graph voice program. The pool is pre-allocated and prepared
+        // at construction time, so this path never allocates.
+        let token = trigger.trigger.token();
+        if self.graph_voices.has_program(token) {
+            let (freq_hz, gain, pan) = graph_note_params(&trigger.trigger, self.base_hz);
+            let _ = self.graph_voices.trigger(
+                token,
+                trigger.track_id,
+                trigger.duration_frames,
+                freq_hz,
+                gain,
+                pan,
+            );
         }
     }
 
@@ -498,6 +523,7 @@ impl EngineCore {
         for slot in &mut self.active_voices {
             *slot = None;
         }
+        self.graph_voices.stop_all();
         self.current_frame = 0;
         self.current_cycle_start_frame = 0;
         self.next_cycle_boundary_frame = self.frames_per_cycle;
@@ -594,6 +620,8 @@ impl EngineCore {
                 }
             }
         }
+
+        self.graph_voices.render_frame(&mut self.track_mix_buffer);
 
         let local_frame = self
             .current_frame

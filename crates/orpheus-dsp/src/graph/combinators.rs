@@ -20,6 +20,81 @@ fn grow_scratch(bufs: &mut [Vec<f32>], min_len: usize) {
     }
 }
 
+/// Channel-count ceiling for stack-allocated slice-reference tables.
+///
+/// Rendering must not allocate on the audio thread, so the per-call
+/// `&[&[f32]]` / `&mut [&mut [f32]]` views over scratch buffers are built in
+/// fixed-size stack arrays. Graphs wider than this fall back to a heap
+/// `Vec` (correct, but no longer allocation-free) — the engine's built-in
+/// voice programs stay far below the ceiling.
+pub(super) const MAX_STACK_CHANNELS: usize = 32;
+
+/// Runs `f` with immutable `frames`-long views over the first `bufs.len()`
+/// scratch buffers, without allocating for graphs up to
+/// [`MAX_STACK_CHANNELS`] channels wide.
+pub(super) fn with_shared_refs<R>(
+    bufs: &[Vec<f32>],
+    frames: usize,
+    f: impl FnOnce(&[&[f32]]) -> R,
+) -> R {
+    let count = bufs.len();
+    if count <= MAX_STACK_CHANNELS {
+        let mut refs: [&[f32]; MAX_STACK_CHANNELS] = [&[]; MAX_STACK_CHANNELS];
+        for (slot, buf) in refs.iter_mut().zip(bufs) {
+            *slot = &buf[..frames];
+        }
+        f(&refs[..count])
+    } else {
+        let refs: Vec<&[f32]> = bufs.iter().map(|buf| &buf[..frames]).collect();
+        f(&refs)
+    }
+}
+
+/// Runs `f` with `count` immutable views selected cyclically from `bufs`
+/// (`view[i] = bufs[i % bufs.len()]`), without allocating for up to
+/// [`MAX_STACK_CHANNELS`] views.
+pub(super) fn with_cyclic_shared_refs<R>(
+    bufs: &[Vec<f32>],
+    count: usize,
+    frames: usize,
+    f: impl FnOnce(&[&[f32]]) -> R,
+) -> R {
+    if count <= MAX_STACK_CHANNELS {
+        let mut refs: [&[f32]; MAX_STACK_CHANNELS] = [&[]; MAX_STACK_CHANNELS];
+        for (index, slot) in refs.iter_mut().take(count).enumerate() {
+            *slot = &bufs[index % bufs.len()][..frames];
+        }
+        f(&refs[..count])
+    } else {
+        let refs: Vec<&[f32]> = (0..count)
+            .map(|index| &bufs[index % bufs.len()][..frames])
+            .collect();
+        f(&refs)
+    }
+}
+
+/// Runs `f` with mutable `frames`-long views over the first `bufs.len()`
+/// scratch buffers, without allocating for graphs up to
+/// [`MAX_STACK_CHANNELS`] channels wide.
+pub(super) fn with_mut_refs<R>(
+    bufs: &mut [Vec<f32>],
+    frames: usize,
+    f: impl FnOnce(&mut [&mut [f32]]) -> R,
+) -> R {
+    let count = bufs.len();
+    if count <= MAX_STACK_CHANNELS {
+        let mut refs: [&mut [f32]; MAX_STACK_CHANNELS] =
+            std::array::from_fn(|_| <&mut [f32]>::default());
+        for (slot, buf) in refs.iter_mut().zip(bufs.iter_mut()) {
+            *slot = &mut buf[..frames];
+        }
+        f(&mut refs[..count])
+    } else {
+        let mut refs: Vec<&mut [f32]> = bufs.iter_mut().map(|buf| &mut buf[..frames]).collect();
+        f(&mut refs)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Sequential
 // ---------------------------------------------------------------------------
@@ -52,15 +127,15 @@ impl Node for Seq {
     fn process(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], frames: usize) {
         grow_scratch(&mut self.scratch_data, frames);
 
-        let mut scratch_mut: Vec<&mut [f32]> = self
-            .scratch_data
-            .iter_mut()
-            .map(|v| &mut v[..frames])
-            .collect();
-        self.a.process(inputs, &mut scratch_mut, frames);
+        let a = &mut self.a;
+        with_mut_refs(&mut self.scratch_data, frames, |scratch| {
+            a.process(inputs, scratch, frames);
+        });
 
-        let scratch_ref: Vec<&[f32]> = self.scratch_data.iter().map(|v| &v[..frames]).collect();
-        self.b.process(&scratch_ref, outputs, frames);
+        let b = &mut self.b;
+        with_shared_refs(&self.scratch_data, frames, |scratch| {
+            b.process(scratch, outputs, frames);
+        });
     }
     fn reset(&mut self) {
         self.a.reset();
@@ -174,20 +249,16 @@ impl Node for Spl {
     fn process(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], frames: usize) {
         grow_scratch(&mut self.scratch_data, frames);
 
-        let mut scratch_mut: Vec<&mut [f32]> = self
-            .scratch_data
-            .iter_mut()
-            .map(|v| &mut v[..frames])
-            .collect();
-        self.a.process(inputs, &mut scratch_mut, frames);
+        let a = &mut self.a;
+        with_mut_refs(&mut self.scratch_data, frames, |scratch| {
+            a.process(inputs, scratch, frames);
+        });
 
-        let a_outs = self.a.outputs() as usize;
-        let b_ins = self.b.inputs() as usize;
-        let b_input_refs: Vec<&[f32]> = (0..b_ins)
-            .map(|i| &self.scratch_data[i % a_outs][..frames])
-            .collect();
-
-        self.b.process(&b_input_refs, outputs, frames);
+        let b = &mut self.b;
+        let b_ins = b.inputs() as usize;
+        with_cyclic_shared_refs(&self.scratch_data, b_ins, frames, |b_inputs| {
+            b.process(b_inputs, outputs, frames);
+        });
     }
     fn reset(&mut self) {
         self.a.reset();
@@ -259,12 +330,10 @@ impl Node for Mrg {
         grow_scratch(&mut self.a_scratch, frames);
         grow_scratch(&mut self.sum_scratch, frames);
 
-        let mut a_mut: Vec<&mut [f32]> = self
-            .a_scratch
-            .iter_mut()
-            .map(|v| &mut v[..frames])
-            .collect();
-        self.a.process(inputs, &mut a_mut, frames);
+        let a = &mut self.a;
+        with_mut_refs(&mut self.a_scratch, frames, |a_outputs| {
+            a.process(inputs, a_outputs, frames);
+        });
 
         for (g, sum_buf) in self.sum_scratch.iter_mut().enumerate() {
             sum_buf[..frames].fill(0.0);
@@ -276,8 +345,10 @@ impl Node for Mrg {
             }
         }
 
-        let sum_refs: Vec<&[f32]> = self.sum_scratch.iter().map(|v| &v[..frames]).collect();
-        self.b.process(&sum_refs, outputs, frames);
+        let b = &mut self.b;
+        with_shared_refs(&self.sum_scratch, frames, |sum_inputs| {
+            b.process(sum_inputs, outputs, frames);
+        });
     }
     fn reset(&mut self) {
         self.a.reset();
@@ -385,13 +456,13 @@ impl Node for Rec {
             }
 
             // Process body for 1 frame.
-            let body_in_refs: Vec<&[f32]> =
-                self.body_in_scratch[..m].iter().map(|v| &v[..1]).collect();
-            let mut body_out_refs: Vec<&mut [f32]> = self.body_out_scratch[..n]
-                .iter_mut()
-                .map(|v| &mut v[..1])
-                .collect();
-            self.body.process(&body_in_refs, &mut body_out_refs, 1);
+            let body = &mut self.body;
+            let body_out_scratch = &mut self.body_out_scratch;
+            with_shared_refs(&self.body_in_scratch[..m], 1, |body_inputs| {
+                with_mut_refs(&mut body_out_scratch[..n], 1, |body_outputs| {
+                    body.process(body_inputs, body_outputs, 1);
+                });
+            });
 
             // Copy body outputs to external outputs.
             for (ch, out) in outputs.iter_mut().enumerate().take(n) {
@@ -399,13 +470,13 @@ impl Node for Rec {
             }
 
             // Process feedback: reads first p body outputs, produces q outputs.
-            let fb_in_refs: Vec<&[f32]> =
-                self.body_out_scratch[..p].iter().map(|v| &v[..1]).collect();
-            let mut fb_out_refs: Vec<&mut [f32]> = self.fb_out_scratch[..q]
-                .iter_mut()
-                .map(|v| &mut v[..1])
-                .collect();
-            self.feedback.process(&fb_in_refs, &mut fb_out_refs, 1);
+            let feedback = &mut self.feedback;
+            let fb_out_scratch = &mut self.fb_out_scratch;
+            with_shared_refs(&self.body_out_scratch[..p], 1, |fb_inputs| {
+                with_mut_refs(&mut fb_out_scratch[..q], 1, |fb_outputs| {
+                    feedback.process(fb_inputs, fb_outputs, 1);
+                });
+            });
 
             // Store feedback output in delay buffer for next frame.
             for ch in 0..q {
