@@ -18,7 +18,9 @@ use crate::ast::{BinaryOp, Expr, Module, Stmt, binding_expr_self_references};
 use crate::diagnostics::{ParseError, TypeError};
 use crate::parser::parse_module;
 use crate::pitch::parse_named_pitch_literal;
-use crate::types::env::{TypeEnv, TypeScheme, pattern_concat_scheme};
+use crate::types::env::{
+    TypeEnv, TypeScheme, choose_scheme, pattern_concat_scheme, wchoose_scheme,
+};
 use crate::types::{Type, TypeVarId, TypedModule};
 
 /// Infers the types of top-level bindings in an Orpheus module.
@@ -186,7 +188,7 @@ impl Inferencer {
                 self.apply_argument(rhs_ty, lhs_ty)
             }
             Expr::Call { callee, args } => {
-                if let Some(ty) = self.infer_variadic_cat(callee, args)? {
+                if let Some(ty) = self.infer_variadic_call(callee, args)? {
                     return Ok(ty);
                 }
                 let mut callee_ty = self.infer_expr(callee)?;
@@ -328,13 +330,14 @@ impl Inferencer {
         }
     }
 
-    /// Types variadic `cat`/`slowcat` calls with more than two arguments.
+    /// Types variadic builtin calls (`cat`/`slowcat`, `choose`, `wchoose`)
+    /// with more arguments than their base environment scheme covers.
     ///
-    /// The environment scheme for `cat` only covers the curried two-argument
-    /// form; larger argument lists are checked here as a homogeneous list of
-    /// patterns. Calls where `cat`/`slowcat` has been shadowed by a user
-    /// binding fall through to the generic application path.
-    fn infer_variadic_cat(
+    /// The environment schemes only cover the curried base-arity forms;
+    /// larger argument lists are checked here. Calls where the builtin has
+    /// been shadowed by a user binding fall through to the generic
+    /// application path.
+    fn infer_variadic_call(
         &mut self,
         callee: &Expr,
         args: &[Expr],
@@ -342,17 +345,50 @@ impl Inferencer {
         let Expr::Ident(name) = callee else {
             return Ok(None);
         };
-        if !matches!(name.as_str(), "cat" | "slowcat") || args.len() <= 2 {
-            return Ok(None);
+        match name.as_str() {
+            "cat" | "slowcat" if args.len() > 2 => {
+                if self.env.get(name) != Some(&pattern_concat_scheme(TypeVarId::new(0))) {
+                    return Ok(None);
+                }
+                let ty = self.infer_homogeneous(args, "`cat` patterns")?;
+                let element = self.fresh_var_type();
+                self.unify(ty.clone(), Type::pattern(element))?;
+                Ok(Some(self.resolve(ty)))
+            }
+            "choose" if args.len() > 2 => {
+                if self.env.get(name) != Some(&choose_scheme()) {
+                    return Ok(None);
+                }
+                self.infer_number_pattern_arguments(args, "`choose` values")
+            }
+            "wchoose" if args.len() > 4 => {
+                if self.env.get(name) != Some(&wchoose_scheme()) {
+                    return Ok(None);
+                }
+                self.infer_number_pattern_arguments(args, "`wchoose` value/weight pairs")
+            }
+            _ => Ok(None),
         }
-        if self.env.get(name) != Some(&pattern_concat_scheme(TypeVarId::new(0))) {
-            return Ok(None);
-        }
+    }
 
-        let ty = self.infer_homogeneous(args, "`cat` patterns")?;
-        let element = self.fresh_var_type();
-        self.unify(ty.clone(), Type::pattern(element))?;
-        Ok(Some(self.resolve(ty)))
+    /// Checks every argument against `Pattern<Number>` and returns
+    /// `Pattern<Number>` as the call's type.
+    fn infer_number_pattern_arguments(
+        &mut self,
+        args: &[Expr],
+        context: &str,
+    ) -> Result<Option<Type>, TypeError> {
+        for arg in args {
+            let actual = self.infer_expr(arg)?;
+            self.unify(actual.clone(), Type::pattern(Type::Number))
+                .map_err(|_| {
+                    TypeError::new(format!(
+                        "{context} must all be numbers; found {}",
+                        self.resolve(actual)
+                    ))
+                })?;
+        }
+        Ok(Some(Type::pattern(Type::Number)))
     }
 
     fn infer_ident(&mut self, name: &str) -> Result<Type, TypeError> {
@@ -375,8 +411,25 @@ impl Inferencer {
             Type::function(vec![param_ty.clone()], ret_ty.clone()),
         )
         .map_err(|_| TypeError::new("attempted to call a non-function value"))?;
+        let arg_ty = self.coerce_nullary_function_argument(&param_ty, arg_ty);
         self.unify(param_ty, arg_ty)?;
         Ok(self.resolve(ret_ty))
+    }
+
+    /// Coerces a zero-arity function argument (e.g. bare `rand`, typed
+    /// `() -> Pattern<Number>`) to its result type when the parameter does
+    /// not itself expect a function, so `rand |> segment(8)` and
+    /// `segment(4, rand)` type-check without writing `rand()`. Mirrors the
+    /// evaluator, which invokes saturated zero-arity builtins in pattern
+    /// position.
+    fn coerce_nullary_function_argument(&self, param_ty: &Type, arg_ty: Type) -> Type {
+        match self.resolve(param_ty.clone()) {
+            Type::Function(..) | Type::Var(_) => arg_ty,
+            _ => match self.resolve(arg_ty.clone()) {
+                Type::Function(args, ret) if args.is_empty() => *ret,
+                _ => arg_ty,
+            },
+        }
     }
 
     fn instantiate(&mut self, scheme: &TypeScheme) -> Type {

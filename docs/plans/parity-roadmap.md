@@ -36,11 +36,17 @@ File paths point the next contributor at the relevant implementation sites.
   (`apply_sometimes_by_probability`, builtins.rs)
 - [ ] `euclid` rotation / `euclidInv` / `euclidFull`
 - [ ] `chunk` / `rot` — the remaining rotation family beside `iter`
-- [ ] `segment` / `range` — sampling continuous patterns into discrete steps
+- [x] `segment` / `range` — sampling continuous patterns into discrete steps;
+  `PatternRuntime::Segment`/`Range` (value.rs), `apply_segment`/`apply_range`
+  (builtins.rs); bare `rand` is auto-invoked in pattern position so
+  `rand |> segment(8) |> range(200, 2000) |> cutoff` works end-to-end
 - [ ] `run` / `scan` — integer ramp patterns
-- [ ] `irand` — integer random source
-- [ ] `choose` / `wchoose` — spec exists:
-  `docs/design/specs/probabilistic_pattern_sequencing_spec.md`
+- [x] `irand` — integer random source; `PatternRuntime::IRand` (value.rs)
+- [x] `choose` / `wchoose` — spec:
+  `docs/design/specs/probabilistic_pattern_sequencing_spec.md`; constant
+  numeric values only in v1 (`wchoose` takes interleaved `v1, w1, v2, w2, ...`
+  pairs); `PatternRuntime::Choose` (value.rs), `apply_choose`/`apply_wchoose`
+  (builtins.rs)
 - [ ] `shuffle` / `scramble` with an explicit subdivision count
 
 ## Tidal: grammar (Orpheus uses real grammar instead of mini-notation strings)

@@ -243,6 +243,46 @@ fn install_probabilistic_builtins(env: &mut TypeEnv, alpha: TypeVarId) {
     for name in ["often", "rarely", "almost_always", "almost_never"] {
         env.insert(name, sometimes_transform_scheme(alpha));
     }
+    // `segment` samples any pattern kind; `range`/`choose`/`wchoose`/`irand`
+    // operate on numbers. `choose`/`wchoose` are variadic at runtime; calls
+    // beyond the base arity are special-cased during inference.
+    env.insert("segment", numeric_pattern_transform_scheme(alpha));
+    env.insert("range", range_scheme());
+    env.insert("choose", choose_scheme());
+    env.insert("wchoose", wchoose_scheme());
+    env.insert("irand", unary_number_pattern_scheme());
+}
+
+fn range_scheme() -> TypeScheme {
+    TypeScheme::monomorphic(Type::curried(
+        vec![
+            Type::pattern(Type::Number),
+            Type::pattern(Type::Number),
+            Type::pattern(Type::Number),
+        ],
+        Type::pattern(Type::Number),
+    ))
+}
+
+/// The two-value base scheme for `choose`:
+/// `Pattern<Number> -> Pattern<Number> -> Pattern<Number>`.
+///
+/// `choose` is variadic at runtime; calls with more than two arguments are
+/// special-cased during inference.
+pub fn choose_scheme() -> TypeScheme {
+    number_pattern_control_scheme()
+}
+
+/// The two-pair base scheme for `wchoose(v1, w1, v2, w2)`:
+/// four `Pattern<Number>` arguments returning `Pattern<Number>`.
+///
+/// `wchoose` is variadic at runtime; calls with more than four arguments are
+/// special-cased during inference.
+pub fn wchoose_scheme() -> TypeScheme {
+    TypeScheme::monomorphic(Type::curried(
+        vec![Type::pattern(Type::Number); 4],
+        Type::pattern(Type::Number),
+    ))
 }
 
 fn install_cycle_alternation_builtins(env: &mut TypeEnv, alpha: TypeVarId) {
