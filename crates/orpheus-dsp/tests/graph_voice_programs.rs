@@ -7,8 +7,8 @@
 //! `EngineCommand::ReplaceGraphVoicePrograms`.
 
 use orpheus_dsp::{
-    EngineCommand, EngineHandle, GraphVoiceBank, GraphVoiceSpec, PatternUpdate, SampleTrigger,
-    VoiceNodeSpec, VoiceSignalRef,
+    EngineCommand, EngineHandle, GraphVoiceBank, GraphVoiceSpec, GraphVoiceSpecError,
+    PatternUpdate, SampleTrigger, VoiceNodeSpec, VoiceSignalRef,
 };
 use orpheus_pattern::{Event, Rational, TimeSpan};
 
@@ -272,4 +272,274 @@ fn engine_ignores_unknown_tokens_after_replacement() {
 
     let rendered = engine.render_test_block(9_600);
     assert!(rendered.iter().all(|sample| sample.abs() < f32::EPSILON));
+}
+
+// ---------------------------------------------------------------------------
+// Richer voice vocabulary: feedback taps, fixed delays, n-ary merge, and
+// per-program polyphony (ADR 0010 addendum).
+// ---------------------------------------------------------------------------
+
+/// A feedback echo: a short sine blip plus a 50 ms feedback delay decaying by
+/// 0.5 per repeat. `Feedback(6)` closes the loop by reading node 6's output
+/// one sample late (lowered onto the `Rec` combinator).
+fn echo_spec(token: &str) -> GraphVoiceSpec {
+    GraphVoiceSpec::new(
+        token,
+        0.3,
+        vec![
+            VoiceNodeSpec::Sine {
+                freq: VoiceSignalRef::Freq,
+            },
+            VoiceNodeSpec::Ar {
+                gate: VoiceSignalRef::Gate,
+                attack_s: 0.001,
+                release_s: 0.01,
+            },
+            VoiceNodeSpec::Mul {
+                left: VoiceSignalRef::Node(0),
+                right: VoiceSignalRef::Node(1),
+            },
+            VoiceNodeSpec::Constant { value: 0.5 },
+            VoiceNodeSpec::Add {
+                left: VoiceSignalRef::Node(2),
+                right: VoiceSignalRef::Feedback(6),
+            },
+            VoiceNodeSpec::Delay {
+                input: VoiceSignalRef::Node(4),
+                seconds: 0.05,
+            },
+            VoiceNodeSpec::Mul {
+                left: VoiceSignalRef::Node(5),
+                right: VoiceSignalRef::Node(3),
+            },
+            VoiceNodeSpec::Add {
+                left: VoiceSignalRef::Node(2),
+                right: VoiceSignalRef::Node(6),
+            },
+        ],
+        VoiceSignalRef::Node(7),
+    )
+    .expect("echo spec should validate")
+}
+
+fn window_energy(samples: &[(f32, f32)], range: std::ops::Range<usize>) -> f32 {
+    samples[range]
+        .iter()
+        .map(|&(left, _)| left.abs())
+        .sum::<f32>()
+}
+
+#[test]
+fn feedback_delay_spec_produces_repeating_decaying_echoes() {
+    let spec = echo_spec("echo");
+    let mut voice = spec.build_voice(SR);
+    voice.prepare();
+
+    // A 2 ms blip, then let the echo train ring out. Delay = 0.05 s = 2400
+    // frames at 48 kHz.
+    let mut frames = Vec::with_capacity(9_600);
+    for frame in 0..9_600_u32 {
+        let gate = if frame < 96 { 1.0 } else { 0.0 };
+        frames.push(voice.process_frame(gate, 220.0, 1.0, 0.0));
+    }
+
+    let dry = window_energy(&frames, 0..600);
+    let quiet = window_energy(&frames, 1_200..2_350);
+    let first_echo = window_energy(&frames, 2_400..3_100);
+    let second_echo = window_energy(&frames, 4_800..5_500);
+    let third_echo = window_energy(&frames, 7_200..7_900);
+
+    assert!(dry > 1.0, "direct blip should be audible, got {dry}");
+    assert!(
+        quiet < dry * 0.01,
+        "the gap before the first echo should be near-silent, got {quiet} vs dry {dry}"
+    );
+    assert!(
+        first_echo > dry * 0.2,
+        "first echo should repeat the blip, got {first_echo} vs dry {dry}"
+    );
+    assert!(
+        second_echo > dry * 0.05 && second_echo < first_echo,
+        "second echo should be audible but quieter, got {second_echo} vs {first_echo}"
+    );
+    assert!(
+        third_echo < second_echo,
+        "echo train must decay, got {third_echo} vs {second_echo}"
+    );
+}
+
+/// The same parallel filter bank expressed once through an n-ary `Merge`
+/// (lowered onto the `Mrg` combinator) and once through chained `Add` nodes.
+fn filter_bank_nodes() -> Vec<VoiceNodeSpec> {
+    vec![
+        VoiceNodeSpec::Saw {
+            freq: VoiceSignalRef::Freq,
+        },
+        VoiceNodeSpec::Constant { value: 500.0 },
+        VoiceNodeSpec::Constant { value: 0.2 },
+        VoiceNodeSpec::Constant { value: 3_000.0 },
+        VoiceNodeSpec::Constant { value: 0.2 },
+        VoiceNodeSpec::Lowpass {
+            input: VoiceSignalRef::Node(0),
+            cutoff_hz: VoiceSignalRef::Node(1),
+            resonance: VoiceSignalRef::Node(2),
+        },
+        VoiceNodeSpec::Lowpass {
+            input: VoiceSignalRef::Node(0),
+            cutoff_hz: VoiceSignalRef::Node(3),
+            resonance: VoiceSignalRef::Node(4),
+        },
+    ]
+}
+
+#[test]
+fn merge_spec_matches_manually_summed_branches() {
+    let mut merged_nodes = filter_bank_nodes();
+    merged_nodes.push(VoiceNodeSpec::Merge {
+        inputs: vec![VoiceSignalRef::Node(5), VoiceSignalRef::Node(6)],
+    });
+    let merged = GraphVoiceSpec::new("bank", 0.02, merged_nodes, VoiceSignalRef::Node(7))
+        .expect("merge spec should validate");
+
+    let mut summed_nodes = filter_bank_nodes();
+    summed_nodes.push(VoiceNodeSpec::Add {
+        left: VoiceSignalRef::Node(5),
+        right: VoiceSignalRef::Node(6),
+    });
+    let summed = GraphVoiceSpec::new("bank", 0.02, summed_nodes, VoiceSignalRef::Node(7))
+        .expect("summed spec should validate");
+
+    let mut merged_voice = merged.build_voice(SR);
+    let mut summed_voice = summed.build_voice(SR);
+    merged_voice.prepare();
+    summed_voice.prepare();
+
+    let mut audible = false;
+    for _ in 0..2_048 {
+        let (ml, mr) = merged_voice.process_frame(1.0, 110.0, 0.8, 0.1);
+        let (sl, sr) = summed_voice.process_frame(1.0, 110.0, 0.8, 0.1);
+        assert!((ml - sl).abs() < 1e-6 && (mr - sr).abs() < 1e-6);
+        audible |= ml.abs() > 0.01;
+    }
+    assert!(audible, "the filter bank should produce audio while gated");
+}
+
+#[test]
+fn spec_validation_rejects_bad_feedback_merge_and_delay_shapes() {
+    // Feedback reference beyond the node list.
+    let error = GraphVoiceSpec::new(
+        "fb",
+        0.02,
+        vec![VoiceNodeSpec::Add {
+            left: VoiceSignalRef::Gate,
+            right: VoiceSignalRef::Feedback(5),
+        }],
+        VoiceSignalRef::Node(0),
+    )
+    .unwrap_err();
+    assert!(
+        matches!(
+            error,
+            GraphVoiceSpecError::FeedbackOutOfRange {
+                node: 0,
+                reference: 5
+            }
+        ),
+        "unexpected error: {error}"
+    );
+
+    // Self-feedback is a valid loop (one-sample delay).
+    assert!(
+        GraphVoiceSpec::new(
+            "selffb",
+            0.02,
+            vec![VoiceNodeSpec::Add {
+                left: VoiceSignalRef::Gate,
+                right: VoiceSignalRef::Feedback(0),
+            }],
+            VoiceSignalRef::Node(0),
+        )
+        .is_ok()
+    );
+
+    // A merge node must list at least one input.
+    let error = GraphVoiceSpec::new(
+        "mrg",
+        0.02,
+        vec![VoiceNodeSpec::Merge { inputs: Vec::new() }],
+        VoiceSignalRef::Node(0),
+    )
+    .unwrap_err();
+    assert!(
+        matches!(error, GraphVoiceSpecError::EmptyMerge { node: 0 }),
+        "unexpected error: {error}"
+    );
+
+    // Delay lengths are capped so pool construction stays bounded.
+    let error = GraphVoiceSpec::new(
+        "slap",
+        0.02,
+        vec![VoiceNodeSpec::Delay {
+            input: VoiceSignalRef::Gate,
+            seconds: 60.0,
+        }],
+        VoiceSignalRef::Node(0),
+    )
+    .unwrap_err();
+    assert!(
+        matches!(error, GraphVoiceSpecError::DelayTooLong { node: 0 }),
+        "unexpected error: {error}"
+    );
+
+    // Negative delays are invalid parameters.
+    assert!(
+        GraphVoiceSpec::new(
+            "neg",
+            0.02,
+            vec![VoiceNodeSpec::Delay {
+                input: VoiceSignalRef::Gate,
+                seconds: -0.1,
+            }],
+            VoiceSignalRef::Node(0),
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn spec_polyphony_defaults_and_validates_bounds() {
+    let spec = pluck_spec("pluck");
+    assert_eq!(spec.polyphony(), 8, "default polyphony follows ADR 0009");
+
+    let spec = pluck_spec("pluck").with_polyphony(4).unwrap();
+    assert_eq!(spec.polyphony(), 4);
+
+    assert!(matches!(
+        pluck_spec("pluck").with_polyphony(0),
+        Err(GraphVoiceSpecError::InvalidPolyphony { requested: 0 })
+    ));
+    assert!(matches!(
+        pluck_spec("pluck").with_polyphony(65),
+        Err(GraphVoiceSpecError::InvalidPolyphony { requested: 65 })
+    ));
+}
+
+#[test]
+fn bank_pools_follow_per_program_polyphony() {
+    let duo = pluck_spec("duo").with_polyphony(2).unwrap();
+    let mut bank = GraphVoiceBank::with_user_programs(SR, vec![duo]);
+
+    let track = orpheus_dsp::TrackId::new(0);
+    assert!(bank.trigger("duo", track, 10, 220.0, 0.5, 0.0));
+    assert!(bank.trigger("duo", track, 10, 220.0, 0.5, 0.0));
+    assert!(
+        !bank.trigger("duo", track, 10, 220.0, 0.5, 0.0),
+        "a poly-2 program must drop its third simultaneous note"
+    );
+
+    // Built-in programs keep the default pool of 8.
+    for _ in 0..8 {
+        assert!(bank.trigger("gsine", track, 10, 220.0, 0.5, 0.0));
+    }
+    assert!(!bank.trigger("gsine", track, 10, 220.0, 0.5, 0.0));
 }
