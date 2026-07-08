@@ -1,7 +1,9 @@
 //! Tests for existing-primitive adapters.
 
-use orpheus_dsp::{Gain, LadderFilter, Noise, SawOsc, SoftSat, TriOsc};
-use orpheus_dsp::{Node, gain_node, ladder_filter, noise, saw, soft_sat, tri};
+#![allow(clippy::cast_precision_loss)]
+
+use orpheus_dsp::{Gain, LadderFilter, Mix, Noise, SawOsc, SoftSat, TriOsc};
+use orpheus_dsp::{Node, gain_node, ladder_filter, mix_node, noise, saw, soft_sat, tri};
 
 const SR: f32 = 48_000.0;
 const FRAMES: usize = 256;
@@ -190,4 +192,67 @@ fn soft_sat_adapter_matches_raw() {
     let raw_out: Vec<f32> = (0..FRAMES).map(|_| raw.process(0.8, 2.0)).collect();
 
     assert_eq!(node_out, raw_out);
+}
+
+// ---------------------------------------------------------------------------
+// MixNode adapter
+// ---------------------------------------------------------------------------
+
+#[test]
+fn mix_adapter_channel_counts() {
+    let node = mix_node();
+    assert_eq!(node.inputs(), 3);
+    assert_eq!(node.outputs(), 1);
+}
+
+#[test]
+fn mix_adapter_balance_extremes_select_inputs() {
+    let mut node = mix_node();
+    let left = vec![0.25_f32; FRAMES];
+    let right = vec![-0.75_f32; FRAMES];
+    let mut out = vec![0.0_f32; FRAMES];
+
+    // Balance 0 selects the first input entirely.
+    let balance = vec![0.0_f32; FRAMES];
+    node.process(&[&left, &right, &balance], &mut [&mut out], FRAMES);
+    assert!(out.iter().all(|&s| (s - 0.25).abs() < f32::EPSILON));
+
+    // Balance 1 selects the second input entirely.
+    let balance = vec![1.0_f32; FRAMES];
+    node.process(&[&left, &right, &balance], &mut [&mut out], FRAMES);
+    assert!(out.iter().all(|&s| (s - (-0.75)).abs() < f32::EPSILON));
+}
+
+#[test]
+fn mix_adapter_matches_raw_mix_blend() {
+    let mut node = mix_node();
+
+    // Varying signals and a mid-point balance sweep.
+    let left: Vec<f32> = (0..FRAMES).map(|i| (i as f32 * 0.013).sin()).collect();
+    let right: Vec<f32> = (0..FRAMES).map(|i| (i as f32 * 0.007).cos()).collect();
+    let balance: Vec<f32> = (0..FRAMES).map(|i| i as f32 / FRAMES as f32).collect();
+    let mut node_out = vec![0.0_f32; FRAMES];
+
+    node.process(&[&left, &right, &balance], &mut [&mut node_out], FRAMES);
+
+    let raw_out: Vec<f32> = (0..FRAMES)
+        .map(|i| Mix::blend(left[i], right[i], balance[i]))
+        .collect();
+
+    // Bit-identical output.
+    assert_eq!(node_out, raw_out);
+}
+
+#[test]
+fn mix_adapter_midpoint_matches_reference() {
+    let mut node = mix_node();
+    let left = vec![1.0_f32; FRAMES];
+    let right = vec![0.0_f32; FRAMES];
+    let balance = vec![0.5_f32; FRAMES];
+    let mut out = vec![0.0_f32; FRAMES];
+
+    node.process(&[&left, &right, &balance], &mut [&mut out], FRAMES);
+
+    let reference = Mix::blend(1.0, 0.0, 0.5);
+    assert!(out.iter().all(|&s| (s - reference).abs() < f32::EPSILON));
 }
