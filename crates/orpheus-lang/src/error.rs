@@ -129,4 +129,11 @@ mod tests {
         let err: EvalError = parse_err.into();
         assert_eq!(err.to_string(), "mock parse error");
     }
+
+    #[test]
+    fn type_error_from_parse_error() {
+        let parse_err = crate::diagnostics::ParseError::new("mock parse error");
+        let type_err: crate::diagnostics::TypeError = parse_err.into();
+        assert_eq!(type_err.to_string(), "mock parse error");
+    }
 }

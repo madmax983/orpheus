@@ -453,6 +453,13 @@ mod tests {
         session.render_test_block_for_tui(96000 + 48000);
         let snapshot = session.transport_snapshot();
         assert_eq!(format_cycle_position(&snapshot), "1.500");
+
+        let mut zero_fps_session = ReplSession::with_engine(EngineHandle::stub());
+        zero_fps_session.eval_line(":tempo 0.0001").unwrap();
+        assert_eq!(
+            format_cycle_position(&zero_fps_session.transport_snapshot()),
+            "0.000"
+        );
     }
 
     #[test]

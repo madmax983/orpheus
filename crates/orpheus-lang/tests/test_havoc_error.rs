@@ -64,3 +64,11 @@ fn eval_error_from_pattern_error() {
             .contains("rational denominator cannot be zero")
     );
 }
+
+#[test]
+fn eval_error_from_pitch_literal_error() {
+    use orpheus_lang::PitchLiteralError;
+    let pitch_err = PitchLiteralError::new("mock pitch error");
+    let err: EvalError = pitch_err.into();
+    assert_eq!(err.to_string(), "mock pitch error");
+}
