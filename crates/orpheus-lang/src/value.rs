@@ -116,6 +116,16 @@ pub enum BuiltinKind {
     SliceIdx,
     /// The built-in pseudo-random number generator function.
     Rand,
+    /// Samples a (typically continuous) pattern into `n` discrete events per cycle.
+    Segment,
+    /// Linearly rescales a unit-interval number pattern into `[min, max]`.
+    Range,
+    /// Continuous pattern choosing uniformly among constant values (Tidal `choose`).
+    Choose,
+    /// Continuous pattern choosing among weighted `value, weight` pairs (Tidal `wchoose`).
+    WChoose,
+    /// Continuous pattern of whole numbers in `[0, n)` (Tidal `irand`).
+    IRand,
     /// The jux operation, applying a function to only the left or right channel of a pattern.
     Jux,
     /// Evaluates expressions sequentially but passes the final value through unchanged.
@@ -213,6 +223,11 @@ impl fmt::Display for BuiltinKind {
             Self::Slice => "slice",
             Self::SliceIdx => "slice_idx",
             Self::Rand => "rand",
+            Self::Segment => "segment",
+            Self::Range => "range",
+            Self::Choose => "choose",
+            Self::WChoose => "wchoose",
+            Self::IRand => "irand",
             Self::Jux => "jux",
             Self::Through => "through",
             Self::MidiCc => "midi_cc",
@@ -1262,6 +1277,7 @@ trait PatternValueTransform: Sized {
     fn attach_pedal_program(&self, pedal_program: &Arc<orpheus_dsp::PedalProgram>) -> Self;
     fn map_degrees(&self, collection: &PitchClassSetValue) -> Result<Self, EvalError>;
     fn transpose_semitones(&self, semitones: f64) -> Result<Self, EvalError>;
+    fn map_range(&self, min: f64, max: f64) -> Result<Self, EvalError>;
 }
 
 trait PatternRuntimeValue: Clone + PatternValueTransform + Send + Sync + fmt::Debug + Sized {
@@ -1391,6 +1407,12 @@ impl PatternValueTransform for SampleEvent {
             "internal evaluator error: transposition only applies to number patterns",
         ))
     }
+
+    fn map_range(&self, _min: f64, _max: f64) -> Result<Self, EvalError> {
+        Err(EvalError::new(
+            "internal evaluator error: `range` only applies to number patterns",
+        ))
+    }
 }
 
 impl PatternValueTransform for f64 {
@@ -1498,6 +1520,17 @@ impl PatternValueTransform for f64 {
         } else {
             Err(EvalError::new(
                 "`transpose` produced a non-finite numeric value",
+            ))
+        }
+    }
+
+    fn map_range(&self, min: f64, max: f64) -> Result<Self, EvalError> {
+        let value = (max - min).mul_add(*self, min);
+        if value.is_finite() {
+            Ok(value)
+        } else {
+            Err(EvalError::new(
+                "`range` produced a non-finite numeric value",
             ))
         }
     }
@@ -1814,6 +1847,15 @@ impl SamplePatternValue {
         Self {
             pattern: PatternRuntime::Fast {
                 factor,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn segment(self, n: i64) -> Self {
+        Self {
+            pattern: PatternRuntime::Segment {
+                n,
                 inner: Box::new(self.pattern),
             },
         }
@@ -2795,6 +2837,42 @@ impl NumberPatternValue {
             pattern: PatternRuntime::Rand { site_salt },
         }
     }
+
+    pub(crate) fn segment(self, n: i64) -> Self {
+        Self {
+            pattern: PatternRuntime::Segment {
+                n,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn range(self, min: f64, max: f64) -> Self {
+        Self {
+            pattern: PatternRuntime::Range {
+                min,
+                max,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    /// Builds a continuous weighted-choice pattern from `(value, normalized
+    /// cumulative upper bound)` options; see [`PatternRuntime::Choose`].
+    pub(crate) fn choose(options: Vec<(f64, f64)>, site_salt: u64) -> Self {
+        Self {
+            pattern: PatternRuntime::Choose {
+                options: options.into(),
+                site_salt,
+            },
+        }
+    }
+
+    pub(crate) const fn irand(n: i64, site_salt: u64) -> Self {
+        Self {
+            pattern: PatternRuntime::IRand { n, site_salt },
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -3119,23 +3197,54 @@ enum PatternRuntime<T> {
     Rand {
         site_salt: u64,
     },
+    /// Samples the inner pattern into `n` equal per-cycle slots (Tidal
+    /// `segment`). Each slot emits the value the inner pattern holds at the
+    /// slot's start, with `whole` covering the full slot. Values are always
+    /// derived from the full slot span, so chunked queries agree with
+    /// whole-span queries.
+    Segment {
+        n: i64,
+        inner: Box<Self>,
+    },
+    /// Linearly rescales unit-interval numeric values into `[min, max]`
+    /// (Tidal `range`). `min > max` is allowed and inverts the mapping.
+    Range {
+        min: f64,
+        max: f64,
+        inner: Box<Self>,
+    },
+    /// Continuous pattern choosing among weighted options by hashing the
+    /// query-span start with the lexical site salt (Tidal `choose`/`wchoose`).
+    /// Each option pairs a value with its normalized cumulative upper bound in
+    /// `(0, 1]`; zero-weight options are filtered out at construction.
+    Choose {
+        options: Arc<[(f64, f64)]>,
+        site_salt: u64,
+    },
+    /// Continuous pattern of whole numbers in `[0, n)` (Tidal `irand`),
+    /// quantized from the same span-start hash as `Rand`.
+    IRand {
+        n: i64,
+        site_salt: u64,
+    },
 }
 
 impl<T> PatternRuntime<T> {
     #[allow(clippy::too_many_lines, clippy::match_same_arms)]
     fn with_tuning(self, table: &TuningTable) -> Self {
         use PatternRuntime::{
-            Arp, Chaos, Chorus, ChorusDepth, ChorusDepthPattern, ChorusPattern, ChorusRate,
+            Arp, Chaos, Choose, Chorus, ChorusDepth, ChorusDepthPattern, ChorusPattern, ChorusRate,
             ChorusRatePattern, Compressor, CompressorPattern, CompressorRatio,
             CompressorRatioPattern, CompressorThreshold, CompressorThresholdPattern, Cycle,
             Degrade, Degrees, Delay, DelayFeedback, DelayFeedbackPattern, DelayPattern, DelayTime,
             DelayTimePattern, Drive, DrivePattern, Drop, Every, ExplicitCycle, Fast, Gain,
-            GainPattern, Hpf, HpfPattern, Invert, Iter, Lpf, LpfPattern, Mask, Onset, OnsetPattern,
-            Pan, PanPattern, Pedal, Pitch, PitchPattern, PulseWidth, PulseWidthPattern, Rand, Rate,
-            RatePattern, Res, ResPattern, Rev, Reverb, ReverbDamp, ReverbDampPattern,
-            ReverbPattern, ReverbRoom, ReverbRoomPattern, Roll, Shift, Slice, SliceIdxPattern,
-            SlicePattern, Slow, SlowCat, Sometimes, Stack, Stream, Strum, Transpose,
-            TransposePattern, TunedPitch, TunedPitchPattern, When, Within,
+            GainPattern, Hpf, HpfPattern, IRand, Invert, Iter, Lpf, LpfPattern, Mask, Onset,
+            OnsetPattern, Pan, PanPattern, Pedal, Pitch, PitchPattern, PulseWidth,
+            PulseWidthPattern, Rand, Range, Rate, RatePattern, Res, ResPattern, Rev, Reverb,
+            ReverbDamp, ReverbDampPattern, ReverbPattern, ReverbRoom, ReverbRoomPattern, Roll,
+            Segment, Shift, Slice, SliceIdxPattern, SlicePattern, Slow, SlowCat, Sometimes, Stack,
+            Stream, Strum, Transpose, TransposePattern, TunedPitch, TunedPitchPattern, When,
+            Within,
         };
 
         macro_rules! recurse {
@@ -3177,6 +3286,17 @@ impl<T> PatternRuntime<T> {
                 stream,
             },
             Rand { site_salt } => Rand { site_salt },
+            Choose { options, site_salt } => Choose { options, site_salt },
+            IRand { n, site_salt } => IRand { n, site_salt },
+            Segment { n, inner } => Segment {
+                n,
+                inner: recurse!(inner),
+            },
+            Range { min, max, inner } => Range {
+                min,
+                max,
+                inner: recurse!(inner),
+            },
             Stack(layers) => Stack(
                 layers
                     .into_iter()
@@ -3516,8 +3636,14 @@ impl<T> PatternRuntime<T> {
             Self::SlowCat(children) => children
                 .first()
                 .map_or(Ok(cycle), |child| child.absolute_cycle(cycle)),
-            Self::Cycle(_) | Self::Stream(_) | Self::Rand { .. } => Ok(cycle),
-            Self::Iter { inner, .. }
+            Self::Cycle(_)
+            | Self::Stream(_)
+            | Self::Rand { .. }
+            | Self::Choose { .. }
+            | Self::IRand { .. } => Ok(cycle),
+            Self::Segment { inner, .. }
+            | Self::Range { inner, .. }
+            | Self::Iter { inner, .. }
             | Self::Every { inner, .. }
             | Self::When { inner, .. }
             | Self::Sometimes { inner, .. }
@@ -3748,6 +3874,12 @@ where
                 *value = value.attach_pedal_program(pedal_program);
             }),
             Self::Rand { site_salt } => query_rand(*site_salt, span),
+            Self::Segment { n, inner } => query_segment(inner, *n, span),
+            Self::Range { min, max, inner } => {
+                apply_value_transform(inner, span, |value| value.map_range(*min, *max))
+            }
+            Self::Choose { options, site_salt } => query_choose(options, *site_salt, span),
+            Self::IRand { n, site_salt } => query_irand(*n, *site_salt, span),
             _ => self.try_query_audio_effect(span),
         }
     }
@@ -4864,14 +4996,13 @@ fn whole_number_from_onset_value(value: f64) -> Result<u32, EvalError> {
     Ok(integer)
 }
 
-fn query_rand<T>(site_salt: u64, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError>
-where
-    T: PatternRuntimeValue,
-{
-    if span.is_empty() {
-        return Ok(Vec::new());
-    }
-
+/// Hashes a query-span start (numerator and denominator) together with the
+/// lexical site salt into a stable pseudo-random value in `[0, 1]`.
+///
+/// This is the shared entropy source of the continuous random patterns
+/// (`rand`, `choose`, `wchoose`, `irand`): the same span start always yields
+/// the same value, keeping the random streams time-travel-safe.
+fn span_start_random_value(site_salt: u64, span: &TimeSpan) -> f64 {
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let numerator = span.start().numerator() as u64;
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -4886,14 +5017,141 @@ where
     state ^= state >> 31;
 
     #[allow(clippy::cast_precision_loss)]
-    let value_f64 = (state as f64) / (u64::MAX as f64);
-    let t_val = T::try_from_rand(value_f64)?;
+    let value = (state as f64) / (u64::MAX as f64);
+    value
+}
+
+fn query_rand<T>(site_salt: u64, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let t_val = T::try_from_rand(span_start_random_value(site_salt, span))?;
 
     Ok(vec![Event {
         whole: None,
         part: *span,
         value: t_val,
     }])
+}
+
+fn query_choose<T>(
+    options: &[(f64, f64)],
+    site_salt: u64,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let coin = span_start_random_value(site_salt, span);
+    // Options are (value, normalized cumulative upper bound); the final
+    // fallback absorbs any floating-point shortfall when `coin` is 1.0.
+    let chosen = options
+        .iter()
+        .find(|(_, upper)| coin < *upper)
+        .or_else(|| options.last())
+        .map(|(value, _)| *value)
+        .ok_or_else(|| {
+            EvalError::new("internal evaluator error: `choose` requires at least one option")
+        })?;
+
+    Ok(vec![Event {
+        whole: None,
+        part: *span,
+        value: T::try_from_rand(chosen)?,
+    }])
+}
+
+fn query_irand<T>(n: i64, site_salt: u64, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let coin = span_start_random_value(site_salt, span);
+    #[allow(clippy::cast_precision_loss)]
+    let bound = n as f64;
+    // `coin` may be exactly 1.0, so clamp the quantized draw below `n`.
+    let value = (coin * bound).floor().clamp(0.0, bound - 1.0);
+
+    Ok(vec![Event {
+        whole: None,
+        part: *span,
+        value: T::try_from_rand(value)?,
+    }])
+}
+
+/// Samples `inner` into `n` equal slots per cycle (Tidal `segment`).
+///
+/// Every slot intersecting the query span is evaluated over its **full** slot
+/// span, and the slot emits one event per inner event active at the slot
+/// start, carrying that value with `whole` set to the whole slot. Deriving
+/// values from full slots keeps arbitrarily chunked queries consistent with
+/// whole-span queries; slots where the inner pattern is silent at the slot
+/// start (rests) emit nothing.
+fn query_segment<T>(
+    inner: &PatternRuntime<T>,
+    n: i64,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let slot_count = i128::from(n);
+    let mut events = Vec::new();
+    let start_cycle = floor_rational(span.start());
+    let end_cycle = ceil_rational(span.end());
+
+    for cycle in start_cycle..end_cycle {
+        let cycle_base = cycle.checked_mul(slot_count).ok_or_else(|| {
+            EvalError::new("`segment` cycle index exceeded the supported evaluator range")
+        })?;
+        for slot in 0..slot_count {
+            let slot_index = cycle_base.checked_add(slot).ok_or_else(|| {
+                EvalError::new("`segment` slot index exceeded the supported evaluator range")
+            })?;
+            let slot_span = build_span(
+                rational_from_parts(slot_index, slot_count)?,
+                rational_from_parts(slot_index + 1, slot_count)?,
+            )?;
+            let Some(part) = clip_span(&slot_span, span)? else {
+                continue;
+            };
+
+            let slot_events = inner.try_query(&slot_span)?;
+            for event in slot_events {
+                if event.part.start() != slot_span.start() {
+                    continue;
+                }
+                if events.len() >= 100_000 {
+                    return Err(EvalError::new(
+                        "evaluation exceeded the maximum allowed event limit",
+                    ));
+                }
+                events.push(Event {
+                    whole: Some(slot_span),
+                    part,
+                    value: event.value,
+                });
+            }
+        }
+    }
+
+    sort_events(&mut events);
+    Ok(events)
 }
 
 fn query_fast<T>(

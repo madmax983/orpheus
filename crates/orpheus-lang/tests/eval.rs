@@ -3896,3 +3896,369 @@ fn almost_always_and_almost_never_bracket_the_probability_range() {
     assert!(always_ratio > 0.8, "almost_always ratio {always_ratio}");
     assert!(never_ratio < 0.2, "almost_never ratio {never_ratio}");
 }
+
+// --- segment / range / choose / wchoose / irand: sampling continuous patterns ---
+
+/// Queries a number pattern binding over the unit cycle.
+fn unit_number_events(source: &str, name: &str) -> Vec<orpheus_pattern::Event<f64>> {
+    let module = eval_module(source, ReplMode::Loose).unwrap();
+    let pattern = module.get(name).unwrap().as_number_pattern().unwrap();
+    pattern.try_query(&TimeSpan::unit()).unwrap()
+}
+
+#[test]
+fn segment_samples_rand_into_discrete_slots() {
+    let events = unit_number_events("m = rand() |> segment(4)", "m");
+
+    assert_eq!(events.len(), 4);
+    for (index, event) in events.iter().enumerate() {
+        let index = i64::try_from(index).unwrap();
+        let expected_start = Rational::new(index, 4).unwrap();
+        let expected_end = Rational::new(index + 1, 4).unwrap();
+        let whole = event.whole.expect("segment slots have whole spans");
+        assert_eq!(*whole.start(), expected_start);
+        assert_eq!(*whole.end(), expected_end);
+        assert_eq!(event.part, whole, "unit-cycle query keeps whole == part");
+        assert!((0.0..=1.0).contains(&event.value));
+    }
+
+    let distinct = events
+        .iter()
+        .map(|event| event.value.to_bits())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert!(distinct.len() > 1, "rand slots should not all be equal");
+}
+
+#[test]
+fn segment_accepts_bare_rand_in_value_position() {
+    let events = unit_number_events("m = segment(4, rand)", "m");
+    assert_eq!(events.len(), 4);
+}
+
+#[test]
+fn segment_queries_are_deterministic_across_repeats() {
+    let first = number_event_keys("m = rand() |> segment(8)", "m", 8);
+    let second = number_event_keys("m = rand() |> segment(8)", "m", 8);
+    assert_eq!(first, second);
+    assert_eq!(first.len(), 64);
+}
+
+#[test]
+fn segment_is_stable_under_query_chunking() {
+    let module = eval_module("m = rand() |> segment(4)", ReplMode::Loose).unwrap();
+    let pattern = module.get("m").unwrap().as_number_pattern().unwrap();
+
+    let span = orpheus_lang::render_span(2).unwrap();
+    let whole = pattern.try_query(&span).unwrap();
+    assert_eq!(whole.len(), 8);
+
+    // Chunk boundaries intentionally split slots (1/8 is inside slot [0, 1/4)).
+    let boundaries = [
+        Rational::new(0, 1).unwrap(),
+        Rational::new(1, 8).unwrap(),
+        Rational::new(5, 8).unwrap(),
+        Rational::new(2, 1).unwrap(),
+    ];
+    let mut chunked = Vec::new();
+    for window in boundaries.windows(2) {
+        let chunk = TimeSpan::new(window[0], window[1]).unwrap();
+        chunked.extend(pattern.try_query(&chunk).unwrap());
+    }
+
+    let whole_keys: std::collections::BTreeSet<(i128, i128, u64)> = whole
+        .iter()
+        .map(|event| {
+            let slot = event.whole.expect("segment emits whole slots");
+            (
+                slot.start().numerator(),
+                slot.start().denominator(),
+                event.value.to_bits(),
+            )
+        })
+        .collect();
+
+    for event in &chunked {
+        let slot = event.whole.expect("segment emits whole slots");
+        let key = (
+            slot.start().numerator(),
+            slot.start().denominator(),
+            event.value.to_bits(),
+        );
+        assert!(
+            whole_keys.contains(&key),
+            "chunked slot {key:?} must match the whole-span query"
+        );
+    }
+    let chunked_slots: std::collections::BTreeSet<(i128, i128)> = chunked
+        .iter()
+        .map(|event| {
+            let slot = event.whole.unwrap();
+            (slot.start().numerator(), slot.start().denominator())
+        })
+        .collect();
+    assert_eq!(chunked_slots.len(), 8, "chunking must cover every slot");
+}
+
+#[test]
+fn segment_resamples_discrete_patterns() {
+    let events = unit_number_events("m = 10 20 |> segment(4)", "m");
+    let values = events.iter().map(|event| event.value).collect::<Vec<_>>();
+    assert_eq!(values, [10.0, 10.0, 20.0, 20.0]);
+}
+
+#[test]
+fn segment_applies_to_sample_patterns() {
+    let module = eval_module("drums = bd |> segment(4)", ReplMode::Loose).unwrap();
+    let names = sample_names(module.get("drums").unwrap());
+    assert_eq!(names, ["bd", "bd", "bd", "bd"]);
+}
+
+#[test]
+fn segment_rejects_invalid_slot_counts() {
+    assert_eval_error_contains(
+        "m = rand() |> segment(0)",
+        ReplMode::Loose,
+        &["`segment` requires a positive integer factor"],
+    );
+    assert_eval_error_contains(
+        "m = rand() |> segment(2000)",
+        ReplMode::Loose,
+        &["`segment` factor exceeded the maximum allowed bound of 1024"],
+    );
+}
+
+#[test]
+fn range_rescales_unit_interval_values_linearly() {
+    let events = unit_number_events("m = 0 0.5 1 |> range(200, 2000)", "m");
+    let values = events.iter().map(|event| event.value).collect::<Vec<_>>();
+    assert_eq!(values, [200.0, 1100.0, 2000.0]);
+}
+
+#[test]
+fn range_supports_inverted_bounds() {
+    let events = unit_number_events("m = 0 1 |> range(10, -10)", "m");
+    let values = events.iter().map(|event| event.value).collect::<Vec<_>>();
+    assert_eq!(values, [10.0, -10.0]);
+}
+
+#[test]
+fn range_composes_after_segment() {
+    let first = number_event_keys("m = rand() |> segment(8) |> range(200, 2000)", "m", 4);
+    let second = number_event_keys("m = rand() |> segment(8) |> range(200, 2000)", "m", 4);
+    assert_eq!(first, second);
+    assert_eq!(first.len(), 32);
+    for (_, _, bits) in first {
+        let value = f64::from_bits(bits);
+        assert!(
+            (200.0..=2000.0).contains(&value),
+            "expected value within [200, 2000], got {value}"
+        );
+    }
+}
+
+#[test]
+fn range_rejects_sample_patterns() {
+    assert_eval_error_contains(
+        "m = bd |> range(0, 1)",
+        ReplMode::Loose,
+        &["`range` requires a number pattern argument"],
+    );
+}
+
+#[test]
+fn choose_draws_only_from_the_given_values() {
+    let draws = number_event_keys("m = choose(1, 2, 3) |> segment(8)", "m", 8);
+    assert_eq!(draws.len(), 64);
+
+    let allowed: std::collections::BTreeSet<u64> = [1.0_f64, 2.0, 3.0]
+        .iter()
+        .map(|value| value.to_bits())
+        .collect();
+    let mut seen = std::collections::BTreeSet::new();
+    for (_, _, bits) in draws {
+        assert!(
+            allowed.contains(&bits),
+            "choose drew a value outside the given set: {}",
+            f64::from_bits(bits)
+        );
+        seen.insert(bits);
+    }
+    assert_eq!(seen.len(), 3, "64 draws should hit every option");
+}
+
+#[test]
+fn choose_queries_are_deterministic_across_repeats() {
+    let first = number_event_keys("m = choose(1, 2, 3) |> segment(8)", "m", 8);
+    let second = number_event_keys("m = choose(1, 2, 3) |> segment(8)", "m", 8);
+    assert_eq!(first, second);
+}
+
+#[test]
+fn choose_is_roughly_uniform_over_many_draws() {
+    let draws = number_event_keys("m = choose(0, 1) |> segment(16)", "m", 32);
+    assert_eq!(draws.len(), 512);
+    let ones = draws
+        .iter()
+        .filter(|(_, _, bits)| *bits == 1.0_f64.to_bits())
+        .count();
+    #[allow(clippy::cast_precision_loss)]
+    let ratio = ones as f64 / draws.len() as f64;
+    assert!(
+        (0.35..=0.65).contains(&ratio),
+        "expected roughly uniform draws, got ratio {ratio}"
+    );
+}
+
+#[test]
+fn choose_call_sites_have_distinct_streams() {
+    let module = eval_module(
+        "a = choose(0, 1) |> segment(16)\nb = choose(0, 1) |> segment(16)",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let span = orpheus_lang::render_span(8).unwrap();
+    let a = module
+        .get("a")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .try_query(&span)
+        .unwrap();
+    let b = module
+        .get("b")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .try_query(&span)
+        .unwrap();
+
+    assert_eq!(a.len(), b.len());
+    let differs = a
+        .iter()
+        .zip(b.iter())
+        .any(|(left, right)| (left.value - right.value).abs() > f64::EPSILON);
+    assert!(differs, "distinct call sites must produce distinct streams");
+}
+
+#[test]
+fn choose_rejects_non_constant_arguments() {
+    assert_eval_error_contains(
+        "m = choose(1 2, 3)",
+        ReplMode::Loose,
+        &["`choose` requires a constant number argument"],
+    );
+}
+
+#[test]
+fn wchoose_respects_relative_weights() {
+    let draws = number_event_keys("m = wchoose(0, 1, 1, 3) |> segment(16)", "m", 32);
+    assert_eq!(draws.len(), 512);
+    let ones = draws
+        .iter()
+        .filter(|(_, _, bits)| *bits == 1.0_f64.to_bits())
+        .count();
+    #[allow(clippy::cast_precision_loss)]
+    let ratio = ones as f64 / draws.len() as f64;
+    assert!(
+        (0.6..=0.9).contains(&ratio),
+        "expected roughly 75% weighted draws, got ratio {ratio}"
+    );
+}
+
+#[test]
+fn wchoose_never_picks_zero_weight_values() {
+    let draws = number_event_keys("m = wchoose(5, 0, 7, 1) |> segment(16)", "m", 16);
+    assert_eq!(draws.len(), 256);
+    for (_, _, bits) in draws {
+        assert_eq!(
+            bits,
+            7.0_f64.to_bits(),
+            "zero-weight values must never be chosen"
+        );
+    }
+}
+
+#[test]
+fn wchoose_rejects_invalid_weights() {
+    assert_eval_error_contains(
+        "m = wchoose(1, -0.5, 2, 1)",
+        ReplMode::Loose,
+        &["`wchoose` requires non-negative finite weights"],
+    );
+    assert_eval_error_contains(
+        "m = wchoose(1, 0, 2, 0)",
+        ReplMode::Loose,
+        &["`wchoose` requires at least one positive weight"],
+    );
+    assert_eval_error_contains(
+        "m = wchoose(1, 1, 2, 1, 3)",
+        ReplMode::Loose,
+        &["`wchoose` requires value/weight pairs"],
+    );
+}
+
+#[test]
+fn irand_draws_whole_numbers_below_the_bound() {
+    let draws = number_event_keys("m = irand(4) |> segment(16)", "m", 16);
+    assert_eq!(draws.len(), 256);
+    let mut seen = std::collections::BTreeSet::new();
+    for (_, _, bits) in &draws {
+        let value = f64::from_bits(*bits);
+        assert!(
+            value.fract() == 0.0 && (0.0..4.0).contains(&value),
+            "irand(4) must draw whole numbers in [0, 4), got {value}"
+        );
+        seen.insert(*bits);
+    }
+    assert!(seen.len() > 1, "irand should draw more than one value");
+
+    let repeat = number_event_keys("m = irand(4) |> segment(16)", "m", 16);
+    assert_eq!(draws, repeat);
+}
+
+#[test]
+fn rand_segment_range_cutoff_idiom_works_end_to_end() {
+    let source = "\
+ctrl = rand |> segment(8) |> range(200, 2000) |> cutoff
+filtered = bd |> ctrl
+";
+    let module = eval_module(source, ReplMode::Loose).unwrap();
+    let pattern = module.get("filtered").unwrap().as_sample_pattern().unwrap();
+
+    let events = pattern.query_unit().unwrap();
+    assert_eq!(events.len(), 8, "8 control slots split the cycle into 8");
+
+    let mut cutoffs = Vec::new();
+    for event in &events {
+        assert_eq!(event.value.sample(), "bd");
+        let cutoff = event
+            .value
+            .lpf_cutoff_hz()
+            .expect("cutoff control must set the filter cutoff");
+        assert!(
+            (200.0..=2000.0).contains(&cutoff),
+            "cutoff {cutoff} outside [200, 2000]"
+        );
+        cutoffs.push(cutoff);
+    }
+    let distinct = cutoffs
+        .iter()
+        .map(|value| value.to_bits())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert!(distinct.len() > 1, "slots should carry different cutoffs");
+
+    // Deterministic: re-evaluating the module yields the same cutoffs.
+    let module_again = eval_module(source, ReplMode::Loose).unwrap();
+    let events_again = module_again
+        .get("filtered")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+    let cutoffs_again = events_again
+        .iter()
+        .map(|event| event.value.lpf_cutoff_hz().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(cutoffs, cutoffs_again);
+}

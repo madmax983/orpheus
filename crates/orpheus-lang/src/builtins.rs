@@ -180,6 +180,11 @@ fn lookup_effect(name: &str) -> Option<Value> {
         "slice" => Some(builtin_function_value(BuiltinKind::Slice)),
         "slice_idx" => Some(builtin_function_value(BuiltinKind::SliceIdx)),
         "rand" => Some(builtin_function_value(BuiltinKind::Rand)),
+        "segment" => Some(builtin_function_value(BuiltinKind::Segment)),
+        "range" => Some(builtin_function_value(BuiltinKind::Range)),
+        "choose" => Some(builtin_function_value(BuiltinKind::Choose)),
+        "wchoose" => Some(builtin_function_value(BuiltinKind::WChoose)),
+        "irand" => Some(builtin_function_value(BuiltinKind::IRand)),
         "jux" => Some(builtin_function_value(BuiltinKind::Jux)),
         "through" => Some(builtin_function_value(BuiltinKind::Through)),
         "cc" | "midi_cc" => Some(builtin_function_value(BuiltinKind::MidiCc)),
@@ -412,6 +417,11 @@ impl BuiltinKind {
             Self::Slice => "slice",
             Self::SliceIdx => "slice_idx",
             Self::Rand => "rand",
+            Self::Segment => "segment",
+            Self::Range => "range",
+            Self::Choose => "choose",
+            Self::WChoose => "wchoose",
+            Self::IRand => "irand",
             Self::Jux => "jux",
             Self::Through => "through",
             Self::MidiCc => "midi_cc",
@@ -438,7 +448,7 @@ impl BuiltinKind {
     /// Variadic builtins still curry when given fewer than `arity()` arguments,
     /// but execute with any argument count at or above it.
     const fn is_variadic(self) -> bool {
-        matches!(self, Self::Cat)
+        matches!(self, Self::Cat | Self::Choose | Self::WChoose)
     }
 
     const fn arity(self) -> usize {
@@ -448,8 +458,9 @@ impl BuiltinKind {
             | Self::Slice
             | Self::SliceIdx
             | Self::Lsystem
+            | Self::Range
             | Self::SometimesBy => 3,
-            Self::When | Self::Within => 4,
+            Self::When | Self::Within | Self::WChoose => 4,
             Self::PitchClassSet
             | Self::Rev
             | Self::Sample
@@ -463,6 +474,7 @@ impl BuiltinKind {
             | Self::MidiCc
             | Self::Hex
             | Self::Bin
+            | Self::IRand
             | Self::Degrade => 1,
             Self::Sometimes
             | Self::DegradeBy
@@ -513,6 +525,8 @@ impl BuiltinKind {
             | Self::Append
             | Self::Iter
             | Self::IterBack
+            | Self::Segment
+            | Self::Choose
             | Self::Notes => 2,
             Self::PluginParam => 3,
             Self::Rand => 0,
@@ -598,6 +612,11 @@ impl BuiltinKind {
             Self::Slice => apply_slice(args),
             Self::SliceIdx => apply_slice_idx(args),
             Self::Rand => apply_rand(args, function.site_salt.unwrap_or_default()),
+            Self::Segment => apply_segment(args),
+            Self::Range => apply_range(args),
+            Self::Choose => apply_choose(args, function.site_salt.unwrap_or_default()),
+            Self::WChoose => apply_wchoose(args, function.site_salt.unwrap_or_default()),
+            Self::IRand => apply_irand(args, function.site_salt.unwrap_or_default()),
             Self::Jux => apply_jux(args),
             Self::Through => apply_through(args),
             Self::MidiCc => apply_midi_cc(args),
@@ -1851,6 +1870,151 @@ fn apply_rand(_args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
     Ok(Value::NumberPattern(NumberPatternValue::rand(site_salt)))
 }
 
+/// Implements `segment(n, pattern)`: sample a (typically continuous) pattern
+/// into `n` discrete events per cycle, one per equal slot.
+fn apply_segment(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let n = extract_positive_integer_factor(
+        args.next()
+            .ok_or_else(|| EvalError::new("`segment` requires a slot count argument"))?,
+        "segment",
+    )?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`segment` requires a pattern argument"))?;
+
+    apply_pattern_transform(
+        pattern,
+        |p| Ok(Value::SamplePattern(p.segment(n))),
+        |p| Ok(Value::NumberPattern(p.segment(n))),
+        "segment",
+    )
+}
+
+/// Implements `range(min, max, pattern)`: linearly rescale a unit-interval
+/// number pattern to `[min, max]`. `min > max` inverts the mapping.
+fn apply_range(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let min = extract_range_bound(
+        args.next()
+            .ok_or_else(|| EvalError::new("`range` requires a minimum argument"))?,
+    )?;
+    let max = extract_range_bound(
+        args.next()
+            .ok_or_else(|| EvalError::new("`range` requires a maximum argument"))?,
+    )?;
+    let pattern = extract_number_pattern(
+        args.next()
+            .ok_or_else(|| EvalError::new("`range` requires a pattern argument"))?,
+        "range",
+    )?;
+
+    Ok(Value::NumberPattern(pattern.range(min, max)))
+}
+
+fn extract_range_bound(value: Value) -> Result<f64, EvalError> {
+    let bound = extract_constant_number(value, "range")?;
+    if bound.is_finite() {
+        Ok(bound)
+    } else {
+        Err(EvalError::new("`range` requires finite numeric bounds"))
+    }
+}
+
+/// Implements `choose(v1, v2, ...)`: a continuous pattern drawing uniformly
+/// among the given constant values, deterministically salted by call site.
+fn apply_choose(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
+    let mut values = Vec::with_capacity(args.len());
+    for arg in args {
+        let value = extract_constant_number(arg, "choose")?;
+        if !value.is_finite() {
+            return Err(EvalError::new("`choose` requires finite numeric values"));
+        }
+        values.push(value);
+    }
+
+    let weights = vec![1.0; values.len()];
+    let options = weighted_choose_options(&values, &weights, "choose")?;
+    Ok(Value::NumberPattern(NumberPatternValue::choose(
+        options, site_salt,
+    )))
+}
+
+/// Implements `wchoose(v1, w1, v2, w2, ...)`: a continuous pattern drawing
+/// among interleaved value/weight pairs proportionally to the weights.
+fn apply_wchoose(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
+    if !args.len().is_multiple_of(2) {
+        return Err(EvalError::new(
+            "`wchoose` requires value/weight pairs: an even number of arguments like `wchoose(v1, w1, v2, w2)`",
+        ));
+    }
+
+    let mut values = Vec::with_capacity(args.len() / 2);
+    let mut weights = Vec::with_capacity(args.len() / 2);
+    for (index, arg) in args.into_iter().enumerate() {
+        let number = extract_constant_number(arg, "wchoose")?;
+        if index.is_multiple_of(2) {
+            if !number.is_finite() {
+                return Err(EvalError::new("`wchoose` requires finite numeric values"));
+            }
+            values.push(number);
+        } else {
+            if !number.is_finite() || number < 0.0 {
+                return Err(EvalError::new(
+                    "`wchoose` requires non-negative finite weights",
+                ));
+            }
+            weights.push(number);
+        }
+    }
+
+    let options = weighted_choose_options(&values, &weights, "wchoose")?;
+    Ok(Value::NumberPattern(NumberPatternValue::choose(
+        options, site_salt,
+    )))
+}
+
+/// Normalizes value/weight pairs into `(value, cumulative upper bound)`
+/// options in `(0, 1]`, dropping zero-weight values so they can never be
+/// drawn.
+fn weighted_choose_options(
+    values: &[f64],
+    weights: &[f64],
+    builtin_name: &str,
+) -> Result<Vec<(f64, f64)>, EvalError> {
+    debug_assert_eq!(values.len(), weights.len());
+    let total: f64 = weights.iter().sum();
+    if total <= 0.0 {
+        return Err(EvalError::new(format!(
+            "`{builtin_name}` requires at least one positive weight"
+        )));
+    }
+
+    let mut options = Vec::with_capacity(values.len());
+    let mut cumulative = 0.0;
+    for (value, weight) in values.iter().zip(weights) {
+        if *weight <= 0.0 {
+            continue;
+        }
+        cumulative += weight / total;
+        options.push((*value, cumulative));
+    }
+    Ok(options)
+}
+
+/// Implements `irand(n)`: a continuous pattern of whole numbers in `[0, n)`.
+fn apply_irand(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
+    let n = extract_positive_integer_factor(
+        args.into_iter()
+            .next()
+            .ok_or_else(|| EvalError::new("`irand` requires a bound argument"))?,
+        "irand",
+    )?;
+    Ok(Value::NumberPattern(NumberPatternValue::irand(
+        n, site_salt,
+    )))
+}
+
 fn apply_slice_idx(args: Vec<Value>) -> Result<Value, EvalError> {
     let mut args = args.into_iter();
     let index_arg = args
@@ -1890,13 +2054,27 @@ fn apply_slice_idx(args: Vec<Value>) -> Result<Value, EvalError> {
     }
 }
 
+/// Invokes a bare zero-arity builtin (e.g. `rand`) used in pattern position,
+/// so `rand |> segment(8)` and `segment(8, rand)` behave like `rand()`.
+///
+/// Bare identifiers carry no call-site salt, so every bare `rand` shares one
+/// stream — matching Tidal, where `rand` is a single global signal.
+fn force_nullary_builtin(value: Value) -> Result<Value, EvalError> {
+    match value {
+        Value::Function(FunctionValue::Builtin(function)) if function.kind.arity() == 0 => {
+            function.apply(Vec::new())
+        }
+        other => Ok(other),
+    }
+}
+
 fn apply_pattern_transform(
     pattern: Value,
     mut apply_sample: impl FnMut(crate::value::SamplePatternValue) -> Result<Value, EvalError>,
     mut apply_number: impl FnMut(crate::value::NumberPatternValue) -> Result<Value, EvalError>,
     builtin_name: &str,
 ) -> Result<Value, EvalError> {
-    match pattern {
+    match force_nullary_builtin(pattern)? {
         Value::SamplePattern(p) => apply_sample(p),
         Value::NumberPattern(p) => apply_number(p),
         _ => Err(EvalError::new(format!(
@@ -2855,7 +3033,7 @@ fn extract_number_pattern(
     value: Value,
     builtin_name: &str,
 ) -> Result<NumberPatternValue, EvalError> {
-    match value {
+    match force_nullary_builtin(value)? {
         Value::NumberPattern(pattern) => Ok(pattern),
         Value::SamplePattern(_)
         | Value::ArpDirection(_)

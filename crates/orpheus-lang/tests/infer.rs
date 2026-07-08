@@ -770,3 +770,83 @@ fn almost_always_and_almost_never_preserve_sample_pattern_types() {
     assert_eq!(always_typed.type_of("drums").to_string(), "Pattern<Sample>");
     assert_eq!(never_typed.type_of("drums").to_string(), "Pattern<Sample>");
 }
+
+// --- segment / range / choose / wchoose / irand typing ---
+
+#[test]
+fn segment_preserves_pattern_types() {
+    let number_typed = infer_module("m = 1 2 |> segment(4)", ReplMode::Strict).unwrap();
+    assert_eq!(number_typed.type_of("m").to_string(), "Pattern<Number>");
+
+    let sample_typed = infer_module("drums = bd sn |> segment(4)", ReplMode::Strict).unwrap();
+    assert_eq!(sample_typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn range_maps_number_patterns_to_number_patterns() {
+    let typed = infer_module("m = range(200, 2000, 0 0.5 1)", ReplMode::Strict).unwrap();
+    assert_eq!(typed.type_of("m").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn range_rejects_sample_patterns() {
+    let error = infer_module("m = bd |> range(0, 1)", ReplMode::Strict).unwrap_err();
+    assert!(error.to_string().contains("Sample"));
+}
+
+#[test]
+fn choose_infers_a_number_pattern() {
+    let two = infer_module("m = choose(1, 2)", ReplMode::Strict).unwrap();
+    assert_eq!(two.type_of("m").to_string(), "Pattern<Number>");
+
+    let variadic = infer_module("m = choose(1, 2, 3, 4)", ReplMode::Strict).unwrap();
+    assert_eq!(variadic.type_of("m").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn variadic_choose_rejects_sample_arguments() {
+    let error = infer_module("m = choose(1, bd, 3)", ReplMode::Strict).unwrap_err();
+    assert!(error.to_string().contains("Sample"));
+}
+
+#[test]
+fn wchoose_infers_a_number_pattern() {
+    let base = infer_module("m = wchoose(1, 1, 2, 3)", ReplMode::Strict).unwrap();
+    assert_eq!(base.type_of("m").to_string(), "Pattern<Number>");
+
+    let variadic = infer_module("m = wchoose(1, 1, 2, 3, 4, 1)", ReplMode::Strict).unwrap();
+    assert_eq!(variadic.type_of("m").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn irand_infers_a_number_pattern() {
+    let typed = infer_module("m = irand(8)", ReplMode::Strict).unwrap();
+    assert_eq!(typed.type_of("m").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn bare_rand_pipes_into_segment_range_and_cutoff() {
+    let typed = infer_module(
+        "ctrl = rand |> segment(8) |> range(200, 2000) |> cutoff",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    match typed.type_of("ctrl") {
+        Type::Function(args, ret) => {
+            assert_eq!(args.len(), 1);
+            assert_eq!(args[0].to_string(), "Pattern<Sample>");
+            assert_eq!(ret.to_string(), "Pattern<Sample>");
+        }
+        other => panic!("expected function type, got {other:?}"),
+    }
+}
+
+#[test]
+fn bare_rand_and_rand_call_coerce_in_argument_position() {
+    let bare = infer_module("m = segment(4, rand)", ReplMode::Strict).unwrap();
+    assert_eq!(bare.type_of("m").to_string(), "Pattern<Number>");
+
+    let called = infer_module("m = segment(4, rand())", ReplMode::Strict).unwrap();
+    assert_eq!(called.type_of("m").to_string(), "Pattern<Number>");
+}
