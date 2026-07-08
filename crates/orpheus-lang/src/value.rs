@@ -29,6 +29,7 @@ use crate::{
     ast::Expr,
     eval::{EvalError, apply_function_value},
     pedal::PedalValue,
+    voice::VoiceValue,
 };
 
 /// Identifies which core built-in function is being represented.
@@ -724,6 +725,9 @@ pub enum Value {
     Function(FunctionValue),
     /// A validated pedal graph ready for later lowering.
     Pedal(PedalValue),
+    /// A compiled voice program awaiting engine registration under its
+    /// binding name.
+    Voice(VoiceValue),
     /// A headless plugin instrument ready for mixer routing.
     PluginPattern(PluginPatternValue),
     /// A static microtonal tuning table used by `tune(...)` to override 12-TET.
@@ -747,7 +751,8 @@ impl fmt::Display for Value {
                     FunctionValue::User(_) => "User",
                 }
             ),
-            Self::Pedal(_) => write!(f, "Pedal"),
+            Self::Pedal(_) | Self::Voice(_) => write!(f, "Pedal"),
+            Self::Voice(_) => write!(f, "Voice"),
             Self::PluginPattern(_) => write!(f, "Plugin"),
             Self::Tuning(_) => write!(f, "Tuning"),
             Self::String(s) => write!(f, "\"{s}\""),
@@ -774,7 +779,7 @@ impl Value {
             | Self::ArpDirection(_)
             | Self::PitchClassSet(_)
             | Self::Function(_)
-            | Self::Pedal(_)
+            | Self::Pedal(_) | Self::Voice(_)
             | Self::PluginPattern(_)
             | Self::Tuning(_)
             | Self::String(_) => None,
@@ -800,7 +805,7 @@ impl Value {
             | Self::PitchClassSet(_)
             | Self::Tuning(_)
             | Self::Function(_)
-            | Self::Pedal(_)
+            | Self::Pedal(_) | Self::Voice(_)
             | Self::PluginPattern(_)
             | Self::String(_) => None,
         }
@@ -824,7 +829,7 @@ impl Value {
             | Self::NumberPattern(_)
             | Self::ArpDirection(_)
             | Self::Function(_)
-            | Self::Pedal(_)
+            | Self::Pedal(_) | Self::Voice(_)
             | Self::PluginPattern(_)
             | Self::Tuning(_)
             | Self::String(_) => None,
@@ -845,7 +850,7 @@ impl Value {
             | Self::ArpDirection(_)
             | Self::PitchClassSet(_)
             | Self::Function(_)
-            | Self::Pedal(_)
+            | Self::Pedal(_) | Self::Voice(_)
             | Self::PluginPattern(_)
             | Self::String(_) => None,
         }
@@ -861,7 +866,7 @@ impl Value {
             | Self::ArpDirection(_)
             | Self::PitchClassSet(_)
             | Self::Function(_)
-            | Self::Pedal(_)
+            | Self::Pedal(_) | Self::Voice(_)
             | Self::Tuning(_)
             | Self::String(_) => None,
         }
@@ -885,7 +890,7 @@ impl Value {
             | Self::NumberPattern(_)
             | Self::PitchClassSet(_)
             | Self::Function(_)
-            | Self::Pedal(_)
+            | Self::Pedal(_) | Self::Voice(_)
             | Self::PluginPattern(_)
             | Self::Tuning(_)
             | Self::String(_) => None,
@@ -915,14 +920,16 @@ impl Value {
     pub const fn as_pedal(&self) -> Option<&PedalValue> {
         match self {
             Self::Pedal(pedal) => Some(pedal),
-            Self::SamplePattern(_)
-            | Self::NumberPattern(_)
-            | Self::ArpDirection(_)
-            | Self::PitchClassSet(_)
-            | Self::Function(_)
-            | Self::PluginPattern(_)
-            | Self::Tuning(_)
-            | Self::String(_) => None,
+            _ => None,
+        }
+    }
+
+    /// Attempts to unwrap the value into a compiled voice program.
+    #[must_use]
+    pub const fn as_voice(&self) -> Option<&VoiceValue> {
+        match self {
+            Self::Voice(voice) => Some(voice),
+            _ => None,
         }
     }
 
@@ -948,7 +955,8 @@ impl Value {
             Self::ArpDirection(_) => "arp direction",
             Self::PitchClassSet(_) => "pitch class set",
             Self::Function(_) => "function",
-            Self::Pedal(_) => "pedal",
+            Self::Pedal(_) | Self::Voice(_) => "pedal",
+            Self::Voice(_) => "voice",
             Self::PluginPattern(_) => "plugin",
             Self::Tuning(_) => "tuning",
             Self::String(_) => "string",
@@ -1598,7 +1606,7 @@ impl PatternRuntimeValue for SampleEvent {
             | Value::ArpDirection(_)
             | Value::PitchClassSet(_)
             | Value::Function(_)
-            | Value::Pedal(_)
+            | Value::Pedal(_) | Value::Voice(_)
             | Value::PluginPattern(_)
             | Value::Tuning(_)
             | Value::String(_) => Err(EvalError::new(
@@ -1690,7 +1698,7 @@ impl PatternRuntimeValue for f64 {
             | Value::ArpDirection(_)
             | Value::PitchClassSet(_)
             | Value::Function(_)
-            | Value::Pedal(_)
+            | Value::Pedal(_) | Value::Voice(_)
             | Value::PluginPattern(_)
             | Value::Tuning(_)
             | Value::String(_) => Err(EvalError::new(

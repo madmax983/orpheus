@@ -34,7 +34,10 @@ pub use engine::{
     EngineError, EngineHandle, MAX_GENERATORS, RenderEngine, TransportSnapshot, frames_per_cycle,
 };
 pub use graph::*;
-pub use graph_voice::{GraphVoice, GraphVoiceProgram, builtin_graph_voice_programs};
+pub use graph_voice::{
+    GraphVoice, GraphVoiceBank, GraphVoiceProgram, GraphVoiceSpec, GraphVoiceSpecError,
+    VoiceNodeSpec, VoiceSignalRef, builtin_graph_voice_programs,
+};
 pub use offline::{
     OfflineRenderError, render_events_to_file, render_events_to_file_with_bank,
     render_events_to_wav, render_routing_snapshot_to_stem_wavs,

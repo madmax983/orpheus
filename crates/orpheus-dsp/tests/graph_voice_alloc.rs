@@ -13,8 +13,8 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 
 use orpheus_dsp::{
-    Node, Processor, adsr, bind, builtin_graph_voice_programs, constant, gain_node, pan, par, seq,
-    sine,
+    GraphVoiceSpec, Node, Processor, VoiceNodeSpec, VoiceSignalRef, adsr, bind,
+    builtin_graph_voice_programs, constant, gain_node, pan, par, seq, sine,
 };
 
 struct CountingAllocator;
@@ -81,6 +81,61 @@ fn prepared_graph_voice_processes_without_allocating() {
         after - before,
         0,
         "graph voice process_frame must not allocate after prepare()"
+    );
+}
+
+#[test]
+fn prepared_user_spec_voice_processes_without_allocating() {
+    // A user-defined program (saw x ADSR through a ladder lowpass) compiled
+    // from its declarative spec must follow the same discipline as builtins:
+    // construction and prepare() may allocate, process_frame() must not.
+    let spec = GraphVoiceSpec::new(
+        "pluck",
+        0.05,
+        vec![
+            VoiceNodeSpec::Saw {
+                freq: VoiceSignalRef::Freq,
+            },
+            VoiceNodeSpec::Constant { value: 1_500.0 },
+            VoiceNodeSpec::Constant { value: 0.2 },
+            VoiceNodeSpec::Lowpass {
+                input: VoiceSignalRef::Node(0),
+                cutoff_hz: VoiceSignalRef::Node(1),
+                resonance: VoiceSignalRef::Node(2),
+            },
+            VoiceNodeSpec::Adsr {
+                gate: VoiceSignalRef::Gate,
+                attack_s: 0.001,
+                decay_s: 0.02,
+                sustain: 0.6,
+                release_s: 0.05,
+            },
+            VoiceNodeSpec::Mul {
+                left: VoiceSignalRef::Node(3),
+                right: VoiceSignalRef::Node(4),
+            },
+        ],
+        VoiceSignalRef::Node(5),
+    )
+    .expect("user voice spec should validate");
+
+    let mut voice = spec.build_voice(SR);
+    voice.prepare();
+
+    let before = allocation_count();
+    let mut energy = 0.0_f32;
+    for frame in 0..4_096_u32 {
+        let gate = if frame < 2_048 { 1.0 } else { 0.0 };
+        let (left, right) = voice.process_frame(gate, 220.0, 0.8, 0.25);
+        energy += left.abs() + right.abs();
+    }
+    let after = allocation_count();
+
+    assert!(energy > 0.0, "prepared user voice should produce audio");
+    assert_eq!(
+        after - before,
+        0,
+        "user spec voice process_frame must not allocate after prepare()"
     );
 }
 

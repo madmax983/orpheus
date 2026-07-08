@@ -294,7 +294,7 @@ fn finalize_step_modifiers(expr: &mut Expr, in_graph: bool) -> Result<(), ParseE
             }
             Ok(())
         }
-        Expr::Graph { bindings, result } => {
+        Expr::Graph { bindings, result } | Expr::Voice { bindings, result } => {
             for binding in bindings {
                 finalize_step_modifiers(&mut binding.expr, true)?;
             }
@@ -472,6 +472,7 @@ fn build_expr(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
         Rule::product_expr => build_product_expr(pair, next_depth),
         Rule::sum_expr => build_sum_expr(pair, next_depth),
         Rule::graph => build_graph(pair, next_depth),
+        Rule::voice => build_voice(pair, next_depth),
         Rule::primary => build_expr(first_inner(pair, "primary expression")?, next_depth),
         Rule::group => build_group(pair, next_depth),
         Rule::alternation => build_alternation(pair, next_depth),
@@ -824,6 +825,28 @@ fn build_polymeter(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseErro
 }
 
 fn build_graph(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    let (bindings, result) = build_graph_block_body(pair, depth, "graph")?;
+    Ok(Expr::Graph {
+        bindings,
+        result: Box::new(result),
+    })
+}
+
+fn build_voice(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    let (bindings, result) = build_graph_block_body(pair, depth, "voice")?;
+    Ok(Expr::Voice {
+        bindings,
+        result: Box::new(result),
+    })
+}
+
+/// Builds the shared `{ bindings ; result }` body used by both `graph { .. }`
+/// (pedal DSL) and `voice { .. }` (instrument definition) blocks.
+fn build_graph_block_body(
+    pair: Pair<'_, Rule>,
+    depth: usize,
+    keyword: &str,
+) -> Result<(Vec<GraphBinding>, Expr), ParseError> {
     if depth > MAX_AST_DEPTH {
         return Err(ParseError::new("maximum AST depth exceeded"));
     }
@@ -833,7 +856,7 @@ fn build_graph(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
 
     let Some(body_pair) = pair.into_inner().next() else {
         return Err(ParseError::new(format!(
-            "parse error at line {line}, col {col}: `graph` blocks require a result expression"
+            "parse error at line {line}, col {col}: `{keyword}` blocks require a result expression"
         )));
     };
 
@@ -845,7 +868,7 @@ fn build_graph(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
                     Rule::graph_binding => {
                         if result.is_some() {
                             return Err(ParseError::new(format!(
-                                "parse error at line {line}, col {col}: `graph` bindings must appear before the final result expression"
+                                "parse error at line {line}, col {col}: `{keyword}` bindings must appear before the final result expression"
                             )));
                         }
                         bindings.push(build_graph_binding(entry, depth)?);
@@ -853,7 +876,7 @@ fn build_graph(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
                     Rule::graph_result => {
                         if result.is_some() {
                             return Err(ParseError::new(format!(
-                                "parse error at line {line}, col {col}: `graph` blocks may contain only one result expression"
+                                "parse error at line {line}, col {col}: `{keyword}` blocks may contain only one result expression"
                             )));
                         }
                         result = Some(build_pipe_expr(first_inner(entry, "graph result")?, depth)?);
@@ -875,13 +898,10 @@ fn build_graph(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
 
     let result = result.ok_or_else(|| {
         ParseError::new(format!(
-            "parse error at line {line}, col {col}: `graph` blocks require a result expression"
+            "parse error at line {line}, col {col}: `{keyword}` blocks require a result expression"
         ))
     })?;
-    Ok(Expr::Graph {
-        bindings,
-        result: Box::new(result),
-    })
+    Ok((bindings, result))
 }
 
 fn build_graph_binding(pair: Pair<'_, Rule>, depth: usize) -> Result<GraphBinding, ParseError> {

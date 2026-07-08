@@ -21,7 +21,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use orpheus_dsp::{
     DEFAULT_ANALOG_BASE_FREQUENCY_HZ, EngineCommand, EngineHandle, GeneratorCycle, GeneratorId,
-    PatternUpdate, SampleBank, SampleLibraryWatcher, SampleLibraryWatcherConfig, TransportSnapshot,
+    GraphVoiceBank, PatternUpdate, SampleBank, SampleLibraryWatcher, SampleLibraryWatcherConfig,
+    TransportSnapshot,
     load_sample_bank_from_directory, render_routing_snapshot_to_stem_wavs,
 };
 use orpheus_pattern::Rational;
@@ -428,6 +429,9 @@ impl ReplSession {
         debug_assert_eq!(name, value_name);
 
         self.push_pattern_update(&name, &value)?;
+        if matches!(value, Value::Voice(_)) {
+            self.sync_graph_voice_programs()?;
+        }
         self.history.record(snapshot);
         Ok(success_banner(&name, &value, &ty))
     }
@@ -533,6 +537,7 @@ impl ReplSession {
 
     fn restore_history_snapshot(&mut self, snapshot: SessionSnapshot) -> Result<(), String> {
         let routing_snapshot = snapshot.mixer.compile_snapshot(&snapshot.bindings)?;
+        let had_voice_bindings = self.has_voice_bindings();
 
         if self.sample_bank != snapshot.sample_bank {
             self.engine
@@ -567,6 +572,9 @@ impl ReplSession {
         *self.pattern_display.borrow_mut() = snapshot.pattern_display;
         self.tempo_bpm = snapshot.tempo_bpm;
         self.reference_frequency_hz = snapshot.reference_frequency_hz;
+        if had_voice_bindings || self.has_voice_bindings() {
+            self.sync_graph_voice_programs()?;
+        }
         self.restart_sample_watcher_after_restore()
     }
 
@@ -756,6 +764,7 @@ impl ReplSession {
             crate::value::Value::NumberPattern(pattern) => Ok(pattern.explain(binding_name)),
             crate::value::Value::Function(func) => Ok(func.explain(binding_name)),
             crate::value::Value::Pedal(pedal) => Ok(pedal.explain(binding_name)),
+            crate::value::Value::Voice(voice) => Ok(voice.explain(binding_name)),
             crate::value::Value::Tuning(tuning) => Ok(tuning.explain(binding_name)),
             _ => Err(format!(
                 "binding `{binding_name}` is a {} and cannot be explained",
@@ -956,7 +965,7 @@ impl ReplSession {
             Value::ArpDirection(_)
             | Value::PitchClassSet(_)
             | Value::Function(_)
-            | Value::Pedal(_)
+            | Value::Pedal(_) | Value::Voice(_)
             | Value::PluginPattern(_)
             | Value::Tuning(_)
             | Value::String(_) => {
@@ -1165,6 +1174,10 @@ impl ReplSession {
         self.type_bindings = loaded.type_bindings;
         self.mixer = MixerState::default();
         *self.pattern_display.borrow_mut() = PatternDisplayState::default();
+
+        if self.has_voice_bindings() {
+            self.sync_graph_voice_programs()?;
+        }
 
         if let Some(name) = last_binding_name
             && let Some(value) = self.bindings.get(&name).cloned()
@@ -1611,6 +1624,32 @@ impl ReplSession {
             self.push_pattern_update(&binding_name, &value)?;
         }
         Ok(())
+    }
+
+    /// Rebuilds the engine's graph voice bank from every `voice { ... }`
+    /// binding and enqueues it for adoption at the next cycle boundary.
+    ///
+    /// The bank (built-ins plus one program per voice binding, keyed by the
+    /// binding name) is compiled and pre-warmed here on the language thread —
+    /// never on the audio thread — mirroring the sample bank swap discipline
+    /// (ADR 0009/0010).
+    fn sync_graph_voice_programs(&mut self) -> Result<(), String> {
+        let mut specs = Vec::new();
+        for (name, value) in &self.bindings {
+            if let Value::Voice(voice) = value {
+                specs.push(voice.to_spec(name).map_err(|error| error.to_string())?);
+            }
+        }
+        let bank = GraphVoiceBank::with_user_programs(self.engine.sample_rate_hz(), specs);
+        self.engine
+            .enqueue(EngineCommand::ReplaceGraphVoicePrograms(bank))
+            .map_err(|error| format!("failed to enqueue graph voice programs: {error}"))
+    }
+
+    fn has_voice_bindings(&self) -> bool {
+        self.bindings
+            .values()
+            .any(|value| matches!(value, Value::Voice(_)))
     }
 
     fn enqueue_mixer_snapshot(&mut self) -> Result<(), String> {

@@ -12,7 +12,7 @@ sum_expr = { product_expr ~ (padding ~ add_op ~ padding ~ product_expr)* }
 product_expr = { application ~ (padding ~ mul_op ~ padding ~ application)* }
 application = { primary ~ call_suffix* ~ step_modifier* }
 call_suffix = { "(" ~ padding ~ call_args? ~ padding ~ ")" }
-primary = { graph | stack | group | alternation | polymeter | rest | number | string | identifier }
+primary = { graph | voice | stack | group | alternation | polymeter | rest | number | string | identifier }
 
 // Mini-notation step operators bind tightly (no whitespace) to a sequence
 // element: `bd*2` is repetition while `bd * 2` stays a binary product.
@@ -42,6 +42,10 @@ call_arg = { named_call_arg | pipe_expr }
 named_call_arg = { identifier ~ padding ~ assign_op ~ padding ~ pipe_expr }
 
 graph = { "graph" ~ padding ~ "{" ~ padding ~ graph_body? ~ padding ~ "}" }
+
+// A named instrument definition sharing the graph block body shape: let
+// bindings followed by one result expression (the mono voice signal).
+voice = { "voice" ~ padding ~ "{" ~ padding ~ graph_body? ~ padding ~ "}" }
 graph_body = { graph_entry ~ (padding ~ ";" ~ padding ~ graph_entry)* }
 graph_entry = { graph_binding | graph_result }
 graph_binding = { identifier ~ padding ~ assign_op ~ padding ~ pipe_expr }
