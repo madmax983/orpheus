@@ -712,3 +712,61 @@ fn strict_mode_rejects_mixed_alternation_types() {
 
     assert!(error.to_string().contains("Pattern<Sample>"));
 }
+
+#[test]
+fn degrade_preserves_pattern_types() {
+    let sample_typed = infer_module("drums = degrade(bd sn)", ReplMode::Strict).unwrap();
+    let number_typed = infer_module("melody = degrade(1 2)", ReplMode::Strict).unwrap();
+
+    assert_eq!(sample_typed.type_of("drums").to_string(), "Pattern<Sample>");
+    assert_eq!(
+        number_typed.type_of("melody").to_string(),
+        "Pattern<Number>"
+    );
+}
+
+#[test]
+fn degrade_by_preserves_sample_pattern_types() {
+    let typed = infer_module("drums = degrade_by(0.25, bd sn)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn sometimes_by_infers_a_polymorphic_pattern_transform_function() {
+    let typed = infer_module("warp = sometimes_by(0.5, fast(2))", ReplMode::Strict).unwrap();
+
+    match typed.type_of("warp") {
+        Type::Function(args, ret) => {
+            assert_eq!(args.len(), 1);
+            assert_eq!(args[0], *ret.clone());
+            assert!(matches!(args[0], Type::Pattern(_)));
+        }
+        other => panic!("expected function type, got {other:?}"),
+    }
+}
+
+#[test]
+fn sometimes_by_preserves_sample_pattern_types() {
+    let typed = infer_module("drums = sometimes_by(0.5, rev, bd sn)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn often_and_rarely_preserve_sample_pattern_types() {
+    let often_typed = infer_module("drums = often(rev, bd sn)", ReplMode::Strict).unwrap();
+    let rarely_typed = infer_module("drums = rarely(rev, bd sn)", ReplMode::Strict).unwrap();
+
+    assert_eq!(often_typed.type_of("drums").to_string(), "Pattern<Sample>");
+    assert_eq!(rarely_typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn almost_always_and_almost_never_preserve_sample_pattern_types() {
+    let always_typed = infer_module("drums = almost_always(rev, bd sn)", ReplMode::Strict).unwrap();
+    let never_typed = infer_module("drums = almost_never(rev, bd sn)", ReplMode::Strict).unwrap();
+
+    assert_eq!(always_typed.type_of("drums").to_string(), "Pattern<Sample>");
+    assert_eq!(never_typed.type_of("drums").to_string(), "Pattern<Sample>");
+}

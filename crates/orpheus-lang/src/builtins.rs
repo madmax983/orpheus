@@ -91,6 +91,13 @@ fn lookup_pattern_transform(name: &str) -> Option<Value> {
         "every" => Some(builtin_function_value(BuiltinKind::Every)),
         "when" => Some(builtin_function_value(BuiltinKind::When)),
         "sometimes" => Some(builtin_function_value(BuiltinKind::Sometimes)),
+        "degrade" => Some(builtin_function_value(BuiltinKind::Degrade)),
+        "degrade_by" => Some(builtin_function_value(BuiltinKind::DegradeBy)),
+        "sometimes_by" => Some(builtin_function_value(BuiltinKind::SometimesBy)),
+        "often" => Some(builtin_function_value(BuiltinKind::Often)),
+        "rarely" => Some(builtin_function_value(BuiltinKind::Rarely)),
+        "almost_always" => Some(builtin_function_value(BuiltinKind::AlmostAlways)),
+        "almost_never" => Some(builtin_function_value(BuiltinKind::AlmostNever)),
         "within" => Some(builtin_function_value(BuiltinKind::Within)),
         "mask" => Some(builtin_function_value(BuiltinKind::Mask)),
         "strum" => Some(builtin_function_value(BuiltinKind::Strum)),
@@ -353,6 +360,13 @@ impl BuiltinKind {
             Self::Every => "every",
             Self::When => "when",
             Self::Sometimes => "sometimes",
+            Self::Degrade => "degrade",
+            Self::DegradeBy => "degrade_by",
+            Self::SometimesBy => "sometimes_by",
+            Self::Often => "often",
+            Self::Rarely => "rarely",
+            Self::AlmostAlways => "almost_always",
+            Self::AlmostNever => "almost_never",
             Self::Within => "within",
             Self::Mask => "mask",
             Self::Strum => "strum",
@@ -429,7 +443,12 @@ impl BuiltinKind {
 
     const fn arity(self) -> usize {
         match self {
-            Self::Every | Self::Arp | Self::Slice | Self::SliceIdx | Self::Lsystem => 3,
+            Self::Every
+            | Self::Arp
+            | Self::Slice
+            | Self::SliceIdx
+            | Self::Lsystem
+            | Self::SometimesBy => 3,
             Self::When | Self::Within => 4,
             Self::PitchClassSet
             | Self::Rev
@@ -443,8 +462,14 @@ impl BuiltinKind {
             | Self::Au
             | Self::MidiCc
             | Self::Hex
-            | Self::Bin => 1,
+            | Self::Bin
+            | Self::Degrade => 1,
             Self::Sometimes
+            | Self::DegradeBy
+            | Self::Often
+            | Self::Rarely
+            | Self::AlmostAlways
+            | Self::AlmostNever
             | Self::Mask
             | Self::Roll
             | Self::Invert
@@ -494,11 +519,40 @@ impl BuiltinKind {
         }
     }
 
+    /// The fixed transform probability baked into the `sometimes_by` wrappers.
+    ///
+    /// # Panics
+    ///
+    /// Panics when called on a builtin that is not one of the wrappers; the
+    /// only call site is their shared `execute` arm.
+    fn fixed_sometimes_by_probability(self) -> f64 {
+        match self {
+            Self::Often => 0.75,
+            Self::Rarely => 0.25,
+            Self::AlmostAlways => 0.9,
+            Self::AlmostNever => 0.1,
+            _ => unreachable!("`{}` has no fixed sometimes_by probability", self.name()),
+        }
+    }
+
     fn execute(self, function: &BuiltinFn, args: Vec<Value>) -> Result<Value, EvalError> {
         match self {
             Self::Every => apply_every(args),
             Self::When => apply_when(args),
             Self::Sometimes => apply_sometimes(args, function.site_salt.unwrap_or_default()),
+            Self::Degrade => apply_degrade(args, function.site_salt.unwrap_or_default()),
+            Self::DegradeBy => apply_degrade_by(args, function.site_salt.unwrap_or_default()),
+            Self::SometimesBy => {
+                apply_sometimes_by(args, function.site_salt.unwrap_or_default(), self.name())
+            }
+            Self::Often | Self::Rarely | Self::AlmostAlways | Self::AlmostNever => {
+                apply_sometimes_by_wrapper(
+                    args,
+                    function.site_salt.unwrap_or_default(),
+                    self.name(),
+                    self.fixed_sometimes_by_probability(),
+                )
+            }
             Self::Within => apply_within(args),
             Self::Mask => apply_mask(args),
             Self::Strum => apply_strum(args),
@@ -741,6 +795,164 @@ fn apply_sometimes(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError>
             )))
         },
         "sometimes",
+    )
+}
+
+/// Extracts a probability argument, requiring a finite constant in `[0, 1]`.
+fn extract_probability(value: Value, builtin_name: &str) -> Result<f64, EvalError> {
+    let probability = extract_constant_number(value, builtin_name)?;
+    if !probability.is_finite() || !(0.0..=1.0).contains(&probability) {
+        return Err(EvalError::new(format!(
+            "`{builtin_name}` requires a probability within [0.0, 1.0]"
+        )));
+    }
+    Ok(probability)
+}
+
+fn apply_degrade(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`degrade` requires a pattern argument"))?;
+
+    apply_pattern_transform(
+        pattern,
+        |p| {
+            Ok(Value::SamplePattern(
+                p.degrade_with_site_salt(0.5, site_salt, false),
+            ))
+        },
+        |p| {
+            Ok(Value::NumberPattern(
+                p.degrade_with_site_salt(0.5, site_salt, false),
+            ))
+        },
+        "degrade",
+    )
+}
+
+fn apply_degrade_by(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let probability = extract_probability(
+        args.next()
+            .ok_or_else(|| EvalError::new("`degrade_by` requires a probability argument"))?,
+        "degrade_by",
+    )?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`degrade_by` requires a pattern argument"))?;
+
+    apply_pattern_transform(
+        pattern,
+        |p| {
+            Ok(Value::SamplePattern(p.degrade_with_site_salt(
+                probability,
+                site_salt,
+                false,
+            )))
+        },
+        |p| {
+            Ok(Value::NumberPattern(p.degrade_with_site_salt(
+                probability,
+                site_salt,
+                false,
+            )))
+        },
+        "degrade_by",
+    )
+}
+
+fn apply_sometimes_by(args: Vec<Value>, site_salt: u64, name: &str) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let probability = extract_probability(
+        args.next()
+            .ok_or_else(|| EvalError::new(format!("`{name}` requires a probability argument")))?,
+        name,
+    )?;
+    let transform = args
+        .next()
+        .ok_or_else(|| EvalError::new(format!("`{name}` requires a transform argument")))?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new(format!("`{name}` requires a pattern argument")))?;
+
+    apply_sometimes_by_probability(probability, &transform, pattern, site_salt, name, "second")
+}
+
+/// Shared implementation of the fixed-probability `sometimes_by` wrappers
+/// (`often`, `rarely`, `almost_always`, `almost_never`).
+fn apply_sometimes_by_wrapper(
+    args: Vec<Value>,
+    site_salt: u64,
+    name: &str,
+    probability: f64,
+) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let transform = args
+        .next()
+        .ok_or_else(|| EvalError::new(format!("`{name}` requires a transform argument")))?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new(format!("`{name}` requires a pattern argument")))?;
+
+    apply_sometimes_by_probability(probability, &transform, pattern, site_salt, name, "first")
+}
+
+/// Tidal semantics: `sometimesBy x f p = overlay (degradeBy x p) (f (unDegradeBy x p))`.
+///
+/// The untouched layer keeps events whose per-event coin is at or above the
+/// probability; the transform is applied to the exact complement. Both layers
+/// share the same site salt, so every event appears exactly once — either
+/// transformed or untouched, never both, never dropped.
+fn apply_sometimes_by_probability(
+    probability: f64,
+    transform: &Value,
+    pattern: Value,
+    site_salt: u64,
+    name: &str,
+    transform_position: &str,
+) -> Result<Value, EvalError> {
+    apply_pattern_transform(
+        pattern,
+        |p| {
+            let transform_fn =
+                extract_unary_pattern_transform(transform.clone(), name, transform_position)?;
+            let untouched = p
+                .clone()
+                .degrade_with_site_salt(probability, site_salt, false);
+            let selected = p.degrade_with_site_salt(probability, site_salt, true);
+            let transformed =
+                apply_function_value(transform_fn, vec![Value::SamplePattern(selected)])?;
+            let Value::SamplePattern(transformed) = transformed else {
+                return Err(EvalError::new(format!(
+                    "`{name}` transform must return a sample pattern"
+                )));
+            };
+            Ok(Value::SamplePattern(SamplePatternValue::stack(vec![
+                untouched,
+                transformed,
+            ])))
+        },
+        |p| {
+            let transform_fn =
+                extract_unary_pattern_transform(transform.clone(), name, transform_position)?;
+            let untouched = p
+                .clone()
+                .degrade_with_site_salt(probability, site_salt, false);
+            let selected = p.degrade_with_site_salt(probability, site_salt, true);
+            let transformed =
+                apply_function_value(transform_fn, vec![Value::NumberPattern(selected)])?;
+            let Value::NumberPattern(transformed) = transformed else {
+                return Err(EvalError::new(format!(
+                    "`{name}` transform must return a number pattern"
+                )));
+            };
+            Ok(Value::NumberPattern(NumberPatternValue::stack(vec![
+                untouched,
+                transformed,
+            ])))
+        },
+        name,
     )
 }
 
