@@ -19,6 +19,7 @@ use crate::midi_input;
 use crate::value::{
     ArpDirectionValue, BuiltinFn, BuiltinKind, FunctionValue, GatePatternValue, NumberPatternValue,
     PitchClassSetValue, PluginPatternValue, SamplePatternValue, Value,
+    positive_rational_tempo_factor,
 };
 
 /// Checks if an identifier string corresponds to a known built-in audio sample.
@@ -1533,7 +1534,7 @@ fn apply_degrees(args: Vec<Value>) -> Result<Value, EvalError> {
 
 fn apply_fast(args: Vec<Value>) -> Result<Value, EvalError> {
     let mut args = args.into_iter();
-    let factor = extract_positive_rational_factor(
+    let factor = extract_tempo_factor_control(
         args.next()
             .ok_or_else(|| EvalError::new("`fast` requires a factor argument"))?,
         "fast",
@@ -1542,17 +1543,25 @@ fn apply_fast(args: Vec<Value>) -> Result<Value, EvalError> {
         .next()
         .ok_or_else(|| EvalError::new("`fast` requires a pattern argument"))?;
 
-    apply_pattern_transform(
-        pattern,
-        |p| Ok(Value::SamplePattern(p.fast_rational(factor))),
-        |p| Ok(Value::NumberPattern(p.fast_rational(factor))),
-        "fast",
-    )
+    match factor {
+        TempoFactorControl::Constant(factor) => apply_pattern_transform(
+            pattern,
+            |p| Ok(Value::SamplePattern(p.fast_rational(factor))),
+            |p| Ok(Value::NumberPattern(p.fast_rational(factor))),
+            "fast",
+        ),
+        TempoFactorControl::Pattern(control) => apply_pattern_transform(
+            pattern,
+            |p| Ok(Value::SamplePattern(p.fast_pattern(control.clone()))),
+            |p| Ok(Value::NumberPattern(p.fast_pattern(control.clone()))),
+            "fast",
+        ),
+    }
 }
 
 fn apply_slow(args: Vec<Value>) -> Result<Value, EvalError> {
     let mut args = args.into_iter();
-    let factor = extract_positive_rational_factor(
+    let factor = extract_tempo_factor_control(
         args.next()
             .ok_or_else(|| EvalError::new("`slow` requires a factor argument"))?,
         "slow",
@@ -1561,12 +1570,20 @@ fn apply_slow(args: Vec<Value>) -> Result<Value, EvalError> {
         .next()
         .ok_or_else(|| EvalError::new("`slow` requires a pattern argument"))?;
 
-    apply_pattern_transform(
-        pattern,
-        |p| Ok(Value::SamplePattern(p.slow_rational(factor))),
-        |p| Ok(Value::NumberPattern(p.slow_rational(factor))),
-        "slow",
-    )
+    match factor {
+        TempoFactorControl::Constant(factor) => apply_pattern_transform(
+            pattern,
+            |p| Ok(Value::SamplePattern(p.slow_rational(factor))),
+            |p| Ok(Value::NumberPattern(p.slow_rational(factor))),
+            "slow",
+        ),
+        TempoFactorControl::Pattern(control) => apply_pattern_transform(
+            pattern,
+            |p| Ok(Value::SamplePattern(p.slow_pattern(control.clone()))),
+            |p| Ok(Value::NumberPattern(p.slow_pattern(control.clone()))),
+            "slow",
+        ),
+    }
 }
 
 fn apply_shift(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -2986,53 +3003,45 @@ fn extract_positive_integer_factor(value: Value, builtin_name: &str) -> Result<i
     Ok(integer)
 }
 
-/// Extracts a positive rational tempo factor for `fast`/`slow`.
+/// The tempo factor of `fast`/`slow`: either a constant exact rational (the
+/// historical path) or a number pattern driving the tempo per factor event.
+#[derive(Debug)]
+enum TempoFactorControl {
+    Constant(Rational),
+    Pattern(NumberPatternValue),
+}
+
+/// Extracts the tempo factor for `fast`/`slow`.
 ///
-/// Decimal literals convert to exact rationals through [`f64_to_rational`],
-/// which parses the shortest round-trip decimal rendering of the `f64`
-/// rather than its bit pattern: `1.5` becomes `3/2`, `0.75` becomes `3/4`,
-/// and `0.1` becomes exactly `1/10` (not the nearest binary float
-/// `3602879701896397/2^55`). The factor as written is therefore preserved
-/// exactly up to f64's ~17 significant decimal digits.
+/// A plain constant number keeps the historical exact-rational constant
+/// path: decimal literals convert through
+/// [`positive_rational_tempo_factor`] (`1.5` becomes `3/2`, `0.1` exactly
+/// `1/10`), with the numerator and denominator each bounded by 1024 after
+/// reduction. Constancy is decided structurally
+/// ([`NumberPatternValue::cycle_invariant_constant`]), so cycle-varying
+/// factors such as `<1 2>` are never mistaken for the value they take on
+/// cycle 0.
 ///
-/// Bounds extend the historical integer rule (`1..=1024`) to rationals:
-/// after reduction, the numerator and denominator must each be at most
-/// 1024, so accepted factors lie in `[1/1024, 1024]`. Factors that are
-/// zero, negative, or non-finite are rejected, as are decimals whose
-/// reduced denominator exceeds 1024 (e.g. `0.123456789`).
-fn extract_positive_rational_factor(
+/// Any other number pattern (an alternation, a sequence, `choose(1, 2)`)
+/// selects the patterned-tempo path (Tidal `fast "<1 2>" p`). Factor values
+/// visible in the unit cycle are validated eagerly with the same rules as
+/// constants; later cycles are validated per event at query time.
+fn extract_tempo_factor_control(
     value: Value,
     builtin_name: &str,
-) -> Result<Rational, EvalError> {
-    let number = extract_constant_number(value, builtin_name)?;
-
-    if !number.is_finite() || number <= 0.0 {
-        return Err(EvalError::new(format!(
-            "`{builtin_name}` requires a positive factor"
-        )));
+) -> Result<TempoFactorControl, EvalError> {
+    let pattern = extract_number_pattern(value, builtin_name)?;
+    if let Some(number) = pattern.cycle_invariant_constant() {
+        return Ok(TempoFactorControl::Constant(
+            positive_rational_tempo_factor(number, builtin_name)?,
+        ));
     }
 
-    let factor = f64_to_rational(number, &format!("`{builtin_name}` factor"))?;
+    validate_numeric_control_pattern(&pattern, builtin_name, |value| {
+        positive_rational_tempo_factor(value, builtin_name).map(|_| ())
+    })?;
 
-    if factor.numerator() <= 0 {
-        return Err(EvalError::new(format!(
-            "`{builtin_name}` requires a positive factor"
-        )));
-    }
-
-    if factor.denominator() > 1024 {
-        return Err(EvalError::new(format!(
-            "`{builtin_name}` factor denominator exceeded the maximum allowed bound of 1024"
-        )));
-    }
-
-    if factor.numerator() > 1024 {
-        return Err(EvalError::new(format!(
-            "`{builtin_name}` factor exceeded the maximum allowed bound of 1024"
-        )));
-    }
-
-    Ok(factor)
+    Ok(TempoFactorControl::Pattern(pattern))
 }
 
 fn extract_constant_rational_offset(
@@ -4160,7 +4169,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_positive_rational_factor_converts_decimals_exactly() {
+    fn extract_tempo_factor_control_converts_constant_decimals_exactly() {
         // Conversion goes through the decimal-literal rendering of the f64,
         // so common decimals map to their exact written fractions.
         let cases = [
@@ -4171,20 +4180,23 @@ mod tests {
             (1024.0, 1024, 1),
         ];
         for (input, numerator, denominator) in cases {
-            let factor = super::extract_positive_rational_factor(
+            let control = super::extract_tempo_factor_control(
                 crate::value::Value::NumberPattern(crate::value::NumberPatternValue::constant(
                     input,
                 )),
                 "fast",
             )
             .unwrap();
+            let super::TempoFactorControl::Constant(factor) = control else {
+                panic!("expected the constant path for {input}");
+            };
             assert_eq!(factor.numerator(), numerator, "numerator for {input}");
             assert_eq!(factor.denominator(), denominator, "denominator for {input}");
         }
     }
 
     #[test]
-    fn extract_positive_rational_factor_rejects_out_of_bounds_values() {
+    fn extract_tempo_factor_control_rejects_out_of_bounds_constants() {
         let rejected = [
             (0.0, "requires a positive factor"),
             (-1.5, "requires a positive factor"),
@@ -4202,7 +4214,7 @@ mod tests {
             ),
         ];
         for (input, fragment) in rejected {
-            let error = super::extract_positive_rational_factor(
+            let error = super::extract_tempo_factor_control(
                 crate::value::Value::NumberPattern(crate::value::NumberPatternValue::constant(
                     input,
                 )),
@@ -4215,6 +4227,26 @@ mod tests {
                 "error `{message}` for {input} missing `{fragment}`"
             );
         }
+    }
+
+    #[test]
+    fn extract_tempo_factor_control_keeps_cycle_varying_factors_as_patterns() {
+        // A single-child alternation looks constant over the unit cycle but
+        // is not a plain literal, so it must take the pattern path — only
+        // structural constants take the exact-rational constant path.
+        let alternation = crate::value::NumberPatternValue::slowcat(vec![
+            crate::value::NumberPatternValue::constant(1.0),
+            crate::value::NumberPatternValue::constant(2.0),
+        ]);
+        let control = super::extract_tempo_factor_control(
+            crate::value::Value::NumberPattern(alternation),
+            "fast",
+        )
+        .unwrap();
+        assert!(
+            matches!(control, super::TempoFactorControl::Pattern(_)),
+            "expected the patterned-tempo path for <1 2>"
+        );
     }
 
     #[test]

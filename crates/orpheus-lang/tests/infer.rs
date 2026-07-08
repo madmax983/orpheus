@@ -1135,3 +1135,14 @@ fn fast_and_slow_accept_fractional_factors_and_preserve_pattern_types() {
     assert_eq!(sample_typed.type_of("drums").to_string(), "Pattern<Sample>");
     assert_eq!(number_typed.type_of("swing").to_string(), "Pattern<Number>");
 }
+
+#[test]
+fn fast_and_slow_accept_patterned_factors_and_preserve_pattern_types() {
+    // The factor position is Pattern<Number>, so a constant number, an
+    // alternation, or a sequence all type-check in the first argument.
+    let sample_typed = infer_module("drums = fast(<1 2>, bd sn)", ReplMode::Strict).unwrap();
+    let number_typed = infer_module("swing = slow(1 2, 1 2 3)", ReplMode::Strict).unwrap();
+
+    assert_eq!(sample_typed.type_of("drums").to_string(), "Pattern<Sample>");
+    assert_eq!(number_typed.type_of("swing").to_string(), "Pattern<Number>");
+}

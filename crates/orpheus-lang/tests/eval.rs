@@ -2789,10 +2789,12 @@ fn strict_mode_rejects_unresolved_identifiers() {
 
 #[test]
 fn builtin_type_errors_report_which_argument_shape_is_required() {
+    // The factor may be a number pattern (patterned tempo), but never a
+    // sample pattern.
     assert_eval_error_contains(
         "drums = fast(bd, bd sn)",
         ReplMode::Loose,
-        &["`fast` requires a constant number argument"],
+        &["`fast` requires a number pattern argument"],
     );
     assert_eval_error_contains(
         "drums = every(2, fast, bd sn)",
@@ -5902,5 +5904,226 @@ fn function_calls_keep_call_semantics_with_inline_euclid_support() {
         "drums = bd fast(2, sn)",
         ReplMode::Loose,
         &["function call `fast` cannot appear inside a pattern sequence"],
+    );
+}
+
+// --- patterned tempo factors for fast/slow (Tidal `fast "<1 2>" p`) ---
+
+#[test]
+fn fast_patterned_factor_alternates_tempo_per_cycle() {
+    // fast(<1 2>, bd sn): cycle 0 plays at 1x (plain bd sn), cycle 1 plays
+    // at 2x (fast(2, bd sn) restricted to cycle 1).
+    let module = eval_module("drums = fast(<1 2>, bd sn)", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 2);
+
+    assert_eq!(
+        exact_sample_spans(&events),
+        vec![
+            (0, 1, 1, 2, "bd".to_owned()),
+            (1, 2, 1, 1, "sn".to_owned()),
+            (1, 1, 5, 4, "bd".to_owned()),
+            (5, 4, 3, 2, "sn".to_owned()),
+            (3, 2, 7, 4, "bd".to_owned()),
+            (7, 4, 2, 1, "sn".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn fast_factor_with_subcycle_structure_switches_tempo_mid_cycle() {
+    // fast(1 2, bd sn): the factor pattern changes mid-cycle, so the first
+    // half plays at 1x and the second half at 2x. Events are clipped to the
+    // factor event's part: sn's 1x rendition would start at 1/2, outside the
+    // 1x factor's [0, 1/2) window, so it never sounds at 1x.
+    let module = eval_module("drums = fast(1 2, bd sn)", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 1);
+
+    assert_eq!(
+        exact_sample_spans(&events),
+        vec![
+            (0, 1, 1, 2, "bd".to_owned()),
+            (1, 2, 3, 4, "bd".to_owned()),
+            (3, 4, 1, 1, "sn".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn fast_patterned_factor_with_equal_values_matches_constant_fast() {
+    let patterned = eval_module("drums = fast(<2 2>, bd sn)", ReplMode::Loose).unwrap();
+    let constant = eval_module("drums = fast(2, bd sn)", ReplMode::Loose).unwrap();
+
+    assert_eq!(
+        exported_sample_events(patterned.get("drums").unwrap(), 4),
+        exported_sample_events(constant.get("drums").unwrap(), 4),
+    );
+}
+
+#[test]
+fn slow_patterned_factor_alternates_tempo_per_cycle() {
+    // slow(<1 2>, bd sn): cycle 0 plays plain; cycle 1 plays slow(2, bd sn)
+    // restricted to [1, 2), which is sn stretched over the whole cycle.
+    let module = eval_module("drums = slow(<1 2>, bd sn)", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 2);
+
+    assert_eq!(
+        exact_sample_spans(&events),
+        vec![
+            (0, 1, 1, 2, "bd".to_owned()),
+            (1, 2, 1, 1, "sn".to_owned()),
+            (1, 1, 2, 1, "sn".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn slow_patterned_factor_is_the_reciprocal_of_fast() {
+    // slow with a patterned factor is fast with the per-event reciprocal.
+    let slowed = eval_module("drums = slow(<1 2>, bd sn)", ReplMode::Loose).unwrap();
+    let fasted = eval_module("drums = fast(<1 0.5>, bd sn)", ReplMode::Loose).unwrap();
+
+    assert_eq!(
+        exported_sample_events(slowed.get("drums").unwrap(), 4),
+        exported_sample_events(fasted.get("drums").unwrap(), 4),
+    );
+}
+
+#[test]
+fn patterned_tempo_composes_with_slowcat() {
+    // Under cat, the fast(<1 2>, ...) child keeps its own localized cycle
+    // counter: it plays on global cycles 0 and 2, which it sees as its own
+    // cycles 0 and 1 — 1x first, then 2x.
+    let module = eval_module("drums = cat(fast(<1 2>, bd sn), cp)", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 4);
+
+    assert_eq!(
+        exact_sample_spans(&events),
+        vec![
+            (0, 1, 1, 2, "bd".to_owned()),
+            (1, 2, 1, 1, "sn".to_owned()),
+            (1, 1, 2, 1, "cp".to_owned()),
+            (2, 1, 9, 4, "bd".to_owned()),
+            (9, 4, 5, 2, "sn".to_owned()),
+            (5, 2, 11, 4, "bd".to_owned()),
+            (11, 4, 3, 1, "sn".to_owned()),
+            (3, 1, 4, 1, "cp".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn patterned_tempo_composes_with_every() {
+    // every localizes the transformed cycle to the pattern's own cycle 0, so
+    // the alternation always contributes its first factor on transformed
+    // cycles: every(2, fast(<2 3>)) plays 2x on even cycles, plain on odd.
+    let module = eval_module("drums = bd sn |> every(2, fast(<2 3>))", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 2);
+
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event["sample"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["bd", "sn", "bd", "sn", "bd", "sn"]
+    );
+}
+
+#[test]
+fn fast_patterned_factor_with_random_choice_is_chunking_stable() {
+    // fast(choose(1, 2), ...) draws a site-salted factor per cycle; the
+    // resulting pattern must agree between one whole-span query and
+    // cycle-by-cycle queries, and every cycle must play at 1x or 2x.
+    let module = eval_module("m = fast(choose(1, 2), 0 1)", ReplMode::Loose).unwrap();
+    let pattern = module.get("m").unwrap().as_number_pattern().unwrap();
+
+    let whole_span = TimeSpan::new(Rational::zero(), Rational::new(8, 1).unwrap()).unwrap();
+    let whole_events = pattern.try_query(&whole_span).unwrap();
+
+    let mut chunked_events = Vec::new();
+    let mut cycle_counts = Vec::new();
+    for cycle in 0..8 {
+        let span = TimeSpan::new(
+            Rational::new(cycle, 1).unwrap(),
+            Rational::new(cycle + 1, 1).unwrap(),
+        )
+        .unwrap();
+        let cycle_events = pattern.try_query(&span).unwrap();
+        cycle_counts.push(cycle_events.len());
+        chunked_events.extend(cycle_events);
+    }
+
+    assert_eq!(whole_events, chunked_events);
+    assert!(
+        cycle_counts.iter().all(|count| [2, 4].contains(count)),
+        "each cycle must play at 1x (2 events) or 2x (4 events), got {cycle_counts:?}"
+    );
+    // Determinism: re-querying yields the identical event list.
+    assert_eq!(pattern.try_query(&whole_span).unwrap(), whole_events);
+}
+
+#[test]
+fn fast_patterned_factor_values_are_validated_like_constants() {
+    // A factor value visible in the first cycle is rejected at eval time,
+    // wrapped in the shared control-pattern error shape.
+    assert_eval_error_contains(
+        "drums = fast(0 2, bd sn)",
+        ReplMode::Loose,
+        &[
+            "`fast` control pattern is invalid",
+            "`fast` requires a positive factor",
+        ],
+    );
+    assert_eval_error_contains(
+        "drums = slow(2 4096, bd sn)",
+        ReplMode::Loose,
+        &[
+            "`slow` control pattern is invalid",
+            "`slow` factor exceeded the maximum allowed bound of 1024",
+        ],
+    );
+}
+
+#[test]
+fn fast_patterned_factor_rejects_invalid_later_cycle_values_at_query_time() {
+    // <1 0> hides the invalid factor on cycle 1: evaluation succeeds (only
+    // the unit cycle is validated eagerly), and querying a span that reaches
+    // the bad value reports the same error as the constant path.
+    let module = eval_module("drums = fast(<1 0>, bd sn)", ReplMode::Loose).unwrap();
+    let unique = EXPORT_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!(
+        "orpheus-lang-eval-export-invalid-tempo-{}-{unique}.json",
+        std::process::id()
+    ));
+
+    let error = export_sample_pattern_to_json(
+        module.get("drums").unwrap().as_sample_pattern().unwrap(),
+        &path,
+        2,
+    )
+    .unwrap_err();
+    let _ = fs::remove_file(&path);
+
+    assert!(
+        error
+            .to_string()
+            .contains("`fast` requires a positive factor"),
+        "unexpected error: {error}"
+    );
+
+    // The bad denominator bound is enforced per event at query time too.
+    let module = eval_module("drums = fast(<1 0.0001>, bd sn)", ReplMode::Loose).unwrap();
+    let error = export_sample_pattern_to_json(
+        module.get("drums").unwrap().as_sample_pattern().unwrap(),
+        &path,
+        2,
+    )
+    .unwrap_err();
+    let _ = fs::remove_file(&path);
+
+    assert!(
+        error
+            .to_string()
+            .contains("`fast` factor denominator exceeded the maximum allowed bound of 1024"),
+        "unexpected error: {error}"
     );
 }
