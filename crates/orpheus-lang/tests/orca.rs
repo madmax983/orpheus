@@ -3,7 +3,13 @@
 //! Each test pins one of the reference Orca semantics documented in
 //! `docs/design/orca-surface.md`.
 
-use orpheus_lang::orca::{Grid, OrcaEngine, OrcaEvent, frame_span};
+use orpheus_dsp::EngineHandle;
+use orpheus_lang::ReplSession;
+use orpheus_lang::orca::{
+    DEFAULT_GRID_FRAMES_PER_CYCLE, DEFAULT_SAMPLE_TOKEN, Grid, ORCA_PATTERN_NAME, OrcaEngine,
+    OrcaEvent, OrcaPublisher, frame_span, materialize_cycle, playhead_frame,
+    sample_event_from_orca,
+};
 use orpheus_pattern::Rational;
 
 fn engine(rows: &[&str]) -> OrcaEngine {
@@ -288,4 +294,220 @@ fn grid_rejects_malformed_input() {
     assert!(Grid::from_rows(&["ab", "abc"]).is_err());
     assert!(Grid::from_rows(&[".#."]).is_err());
     assert!(Grid::from_rows(&[]).is_err());
+}
+
+// ---------------------------------------------------------------------------
+// Publish bridge (v1): OrcaEvent -> Event<SampleEvent> -> session publication.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn orca_event_converts_to_sample_event_with_frame_span() {
+    let orca_event = OrcaEvent {
+        frame: 3,
+        x: 2,
+        y: 1,
+        note: 'c',
+        value: 12,
+    };
+    let event =
+        sample_event_from_orca(&orca_event, 3, 16, DEFAULT_SAMPLE_TOKEN).expect("valid frame span");
+
+    assert_eq!(event.whole, None, "unclipped unit-cycle event");
+    assert_eq!(event.part.start(), &Rational::new(3, 16).expect("rational"));
+    assert_eq!(event.part.end(), &Rational::new(4, 16).expect("rational"));
+    assert_eq!(event.value.sample(), DEFAULT_SAMPLE_TOKEN);
+    // Base-36 note value 12 maps to +12 semitones: exactly one octave up.
+    assert!((event.value.rate() - 2.0).abs() < 1e-12);
+}
+
+#[test]
+fn orca_event_with_value_zero_keeps_base_rate() {
+    let orca_event = OrcaEvent {
+        frame: 0,
+        x: 0,
+        y: 0,
+        note: '0',
+        value: 0,
+    };
+    let event = sample_event_from_orca(&orca_event, 0, 16, "bd").expect("valid frame span");
+    assert_eq!(event.value.sample(), "bd");
+    assert!((event.value.rate() - 1.0).abs() < 1e-12);
+}
+
+#[test]
+fn orca_event_conversion_rejects_zero_frames_per_cycle() {
+    let orca_event = OrcaEvent {
+        frame: 0,
+        x: 0,
+        y: 0,
+        note: '0',
+        value: 0,
+    };
+    assert!(sample_event_from_orca(&orca_event, 0, 0, "bd").is_err());
+}
+
+#[test]
+fn materialize_cycle_stamps_ordered_frame_spans() {
+    // `.D4.` bangs below itself when frame % 4 == 0; `:` east of the bang cell
+    // emits note `c`. Over one 8-frame cycle: events at frames 0 and 4.
+    let mut orca = engine(&[".D4.", "..:c"]);
+    let events = materialize_cycle(&mut orca, 8, DEFAULT_SAMPLE_TOKEN).expect("materializes");
+
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].part.start(), &Rational::zero());
+    assert_eq!(
+        events[0].part.end(),
+        &Rational::new(1, 8).expect("rational")
+    );
+    assert_eq!(
+        events[1].part.start(),
+        &Rational::new(4, 8).expect("rational")
+    );
+    assert_eq!(
+        events[1].part.end(),
+        &Rational::new(5, 8).expect("rational")
+    );
+    assert!(
+        events
+            .windows(2)
+            .all(|pair| pair[0].part.start() <= pair[1].part.start()),
+        "events are ordered by span start"
+    );
+}
+
+#[test]
+fn materialize_cycle_supports_multiple_events_per_frame() {
+    // Two independent `D1` operators bang every frame; each feeds its own `:`.
+    let mut orca = engine(&[".D1.D1.", "..:a.:b"]);
+    let events = materialize_cycle(&mut orca, 2, DEFAULT_SAMPLE_TOKEN).expect("materializes");
+
+    assert_eq!(events.len(), 4, "two events per frame over two frames");
+    assert_eq!(
+        events[0].part, events[1].part,
+        "same-frame events share a span"
+    );
+    assert_eq!(
+        events[2].part.start(),
+        &Rational::new(1, 2).expect("rational")
+    );
+    // Scan order within a frame: `:a` (west) before `:b` (east).
+    assert!((events[0].value.rate() - (10.0 / 12.0_f64).exp2()).abs() < 1e-12);
+    assert!((events[1].value.rate() - (11.0 / 12.0_f64).exp2()).abs() < 1e-12);
+}
+
+#[test]
+fn materialize_cycle_advances_grid_state_across_calls() {
+    // A running grid is not cycle-periodic: `E` keeps moving east, so cycle 2
+    // starts from where cycle 1 left the grid.
+    let mut orca = engine(&["E......."]);
+    materialize_cycle(&mut orca, 3, DEFAULT_SAMPLE_TOKEN).expect("materializes");
+    assert_eq!(orca.grid().rows(), vec!["...E....".to_owned()]);
+    materialize_cycle(&mut orca, 3, DEFAULT_SAMPLE_TOKEN).expect("materializes");
+    assert_eq!(orca.grid().rows(), vec!["......E.".to_owned()]);
+}
+
+#[test]
+fn publisher_republishes_at_each_cycle_boundary() {
+    // `.D8.` bangs on frames 0, 8, 16, ... With 4 grid frames per cycle the
+    // grid is not cycle-periodic: cycle 0 fires, cycle 1 is silent, cycle 2
+    // fires again. Each engine cycle boundary must produce a fresh batch.
+    let orca = engine(&[".D8.", "..:c"]);
+    let mut publisher = OrcaPublisher::new(orca, 4, DEFAULT_SAMPLE_TOKEN);
+
+    assert!(
+        publisher.poll(0).expect("materializes").is_none(),
+        "a stopped publisher never publishes"
+    );
+
+    publisher.start();
+    let cycle0 = publisher
+        .poll(0)
+        .expect("materializes")
+        .expect("first poll publishes cycle 0");
+    assert_eq!(cycle0.len(), 1, "frame 0 fires in cycle 0");
+
+    assert!(
+        publisher.poll(0).expect("materializes").is_none(),
+        "same cycle boundary: no re-publish"
+    );
+
+    let cycle1 = publisher
+        .poll(44_100)
+        .expect("materializes")
+        .expect("new cycle boundary publishes cycle 1");
+    assert!(cycle1.is_empty(), "frames 4..8 are silent");
+
+    let cycle2 = publisher
+        .poll(88_200)
+        .expect("materializes")
+        .expect("new cycle boundary publishes cycle 2");
+    assert_eq!(cycle2.len(), 1, "frame 8 fires in cycle 2");
+}
+
+#[test]
+fn publisher_stop_halts_and_restart_republishes() {
+    let orca = engine(&[".D1.", "..:c"]);
+    let mut publisher = OrcaPublisher::new(orca, 2, DEFAULT_SAMPLE_TOKEN);
+    publisher.start();
+    assert!(publisher.is_running());
+    assert!(publisher.poll(0).expect("materializes").is_some());
+
+    publisher.stop();
+    assert!(!publisher.is_running());
+    assert!(publisher.poll(44_100).expect("materializes").is_none());
+
+    publisher.start();
+    assert!(
+        publisher.poll(44_100).expect("materializes").is_some(),
+        "restart forgets the last boundary and publishes immediately"
+    );
+}
+
+#[test]
+fn publisher_default_grid_matches_documented_dimensions() {
+    let publisher = OrcaPublisher::with_default_grid();
+    assert_eq!(publisher.engine().grid().width(), 16);
+    assert_eq!(publisher.engine().grid().height(), 8);
+    assert_eq!(publisher.frames_per_cycle(), DEFAULT_GRID_FRAMES_PER_CYCLE);
+    assert!(!publisher.is_running());
+}
+
+#[test]
+fn playhead_frame_maps_engine_position_to_grid_frame() {
+    // Halfway through a 44100-frame cycle with 16 grid frames -> frame 8.
+    assert_eq!(playhead_frame(22_050, 0, 44_100, 16), Some(8));
+    assert_eq!(playhead_frame(0, 0, 44_100, 16), Some(0));
+    // Mid-stream: offsets are relative to the current cycle start.
+    assert_eq!(playhead_frame(88_200 + 22_050, 88_200, 44_100, 16), Some(8));
+    // The playhead clamps to the final frame at the cycle's last sample.
+    assert_eq!(playhead_frame(44_099, 0, 44_100, 16), Some(15));
+    assert_eq!(playhead_frame(44_100 + 7, 0, 44_100, 16), Some(15));
+    // Degenerate clocks report no playhead.
+    assert_eq!(playhead_frame(10, 0, 0, 16), None);
+    assert_eq!(playhead_frame(10, 0, 44_100, 0), None);
+}
+
+#[test]
+fn session_publishes_materialized_grid_cycle_as_binding() {
+    let mut session = ReplSession::with_engine(EngineHandle::stub());
+    let mut orca = engine(&[".D1.", "..:c"]);
+    let events = materialize_cycle(&mut orca, 4, DEFAULT_SAMPLE_TOKEN).expect("materializes");
+    assert_eq!(events.len(), 4);
+
+    session
+        .publish_sample_events(ORCA_PATTERN_NAME, events)
+        .expect("publishes to the stub engine");
+    assert!(
+        session
+            .binding_summaries()
+            .iter()
+            .any(|summary| summary == "orca: Pattern<Sample>"),
+        "the grid publishes under a session binding"
+    );
+
+    // Re-publishing the next cycle under the same name must also succeed.
+    let next_cycle = materialize_cycle(&mut orca, 4, DEFAULT_SAMPLE_TOKEN).expect("materializes");
+    session
+        .publish_sample_events(ORCA_PATTERN_NAME, next_cycle)
+        .expect("re-publishes at the cycle boundary");
 }
