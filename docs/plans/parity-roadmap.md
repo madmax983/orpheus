@@ -186,5 +186,8 @@ Module: `crates/orpheus-dsp/src/graph/` (ADR 0004).
   split-then-merge (lowered onto `Mrg`), plus `delay`/`gain` stages — and
   per-program polyphony via the `poly = n` pragma binding
   (`GraphVoiceSpec::with_polyphony`, 1..=64) with a `release = s` tail floor;
-  remaining: voice stealing, voice bodies that reference pattern-side control
-  signals
+  voice stealing on pool exhaustion shipped (ADR 0009 addendum): steals the
+  most-released, else oldest, voice with a click-free envelope retrigger and
+  a 2 ms gain/pan handover ramp, configurable via the `steal = oldest|off`
+  pragma (`GraphVoiceSpec::with_steal_policy`, default on);
+  remaining: voice bodies that reference pattern-side control signals

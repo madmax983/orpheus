@@ -138,3 +138,5 @@ floors the release tail so feedback tails ring out past the longest envelope
 release (0–30 s; envelope-derived releases still win when longer). Pools are
 still built off-thread and swapped at cycle boundaries; the counting-
 allocator suite covers the new node kinds and a non-default pool size.
+(A third pragma, `steal = oldest|off`, later joined these two when voice
+stealing shipped; see ADR 0009's addendum.)

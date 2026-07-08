@@ -67,7 +67,7 @@ A thread-local counting-allocator test enforces this.
   language-level syntax for defining programs remains out of scope.
 - Polyphony is bounded and explicit: a program's 9th simultaneous note is
   dropped. Voice stealing can be added later inside `GraphVoiceBank` without
-  engine changes.
+  engine changes. (Shipped; see the addendum below.)
 - The static program table is the extension point for a future
   `EngineCommand::ReplaceGraphVoicePrograms` (mirroring `ReplaceSampleBank`)
   once user-defined graphs exist; the pool build/prepare lifecycle already
@@ -77,3 +77,33 @@ A thread-local counting-allocator test enforces this.
   bus sends; revisit if parity with sample voices is needed.
 - Existing voices are untouched: sample and analog rendering is byte-for-byte
   identical to the pre-integration engine.
+
+## Addendum: voice stealing on pool exhaustion
+
+The deferred stealing item shipped inside `GraphVoiceBank`, with no engine
+changes (the trigger path is unchanged).
+
+**Policy.** When a trigger arrives and every pooled voice for the program is
+sounding, the note steals one of them, per standard synth practice: prefer
+the voice furthest into its release tail (gate expired, smallest remaining
+release), else the oldest by trigger time. Age is a monotonic per-bank
+trigger counter stamped on each note at trigger time — plain fields, so the
+decision is a single allocation-free, lock-free scan of the program's slots.
+
+**Click-free handover.** A steal does not reset the voice's graph state.
+Instead the new note holds the gate low for exactly one frame, so the graph's
+gate-driven envelopes (`adsr`/`ar`) see a falling then rising edge and
+restart their attack from the *current* level — the click-free retrigger
+`EnvCore` already guarantees. The note's gain and pan then ramp linearly from
+the stolen note's values to the new note's over `VOICE_STEAL_RAMP_SECONDS`
+(2 ms); frequency switches immediately, which is safe because the oscillators
+are phase-continuous. Residual graph state (delay lines, feedback tails)
+rings into the new note, like retriggering an analog mono synth. Two accepted
+edges: a body whose output is not envelope-shaped (e.g. a bare `osc * gate`)
+clicks on a steal exactly as it does at any gate edge, and a steal across
+tracks moves the voice's output to the new track without a crossfade.
+
+**Configuration.** `GraphVoiceSpec::with_steal_policy` selects
+`StealPolicy::Oldest` (the default — stealing on) or `StealPolicy::Off` (the
+original drop behavior); the language surface exposes it as the
+`steal = oldest|off` pragma binding, alongside ADR 0010's `poly`/`release`.

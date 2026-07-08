@@ -334,9 +334,12 @@ fn bank_with_feedback_delay_merge_and_custom_polyphony_renders_without_allocatin
     for _ in 0..3 {
         assert!(bank.trigger("echoverb", track, 2_048, 220.0, 0.8, 0.0));
     }
+    // The pool is exhausted: the fourth note steals the oldest voice. The
+    // steal decision, the one-frame gate gap, and the gain/pan handover ramp
+    // all sit inside the counted region, so they must be allocation-free too.
     assert!(
-        !bank.trigger("echoverb", track, 2_048, 220.0, 0.8, 0.0),
-        "the poly-3 pool must drop a fourth simultaneous note"
+        bank.trigger("echoverb", track, 2_048, 440.0, 0.6, 0.25),
+        "the poly-3 pool must steal for a fourth simultaneous note"
     );
     let mut energy = 0.0_f32;
     for _ in 0..4_096 {
@@ -350,6 +353,6 @@ fn bank_with_feedback_delay_merge_and_custom_polyphony_renders_without_allocatin
     assert_eq!(
         after - before,
         0,
-        "bank trigger/render with feedback, delay, merge, and poly 3 must not allocate"
+        "bank trigger/render with feedback, delay, merge, poly 3, and a steal must not allocate"
     );
 }
