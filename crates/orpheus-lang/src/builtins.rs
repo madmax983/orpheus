@@ -1172,12 +1172,70 @@ fn apply_euclid(args: Vec<Value>, invert: bool, name: &str) -> Result<Value, Eva
     )))
 }
 
+/// A pulses/steps/rotation argument of the inline euclid sugar: either an
+/// eagerly validated cycle-invariant constant (the historical path) or a
+/// cycle-varying number pattern whose per-cycle values gate the token
+/// (Tidal's `bd(<3 5>, 8)`).
+enum InlineEuclidArg {
+    Constant(f64),
+    Pattern(NumberPatternValue),
+}
+
+impl InlineEuclidArg {
+    const fn constant(&self) -> Option<f64> {
+        match self {
+            Self::Constant(value) => Some(*value),
+            Self::Pattern(_) => None,
+        }
+    }
+
+    fn into_control(self) -> NumberPatternValue {
+        match self {
+            Self::Constant(value) => {
+                NumberPatternValue::from_nodes(vec![orpheus_pattern::PatternNode::atom(value)])
+            }
+            Self::Pattern(pattern) => pattern,
+        }
+    }
+}
+
+/// Extracts one inline-euclid argument. Constancy is decided structurally
+/// ([`NumberPatternValue::cycle_invariant_constant`], matching the patterned
+/// tempo-factor precedent); constants are validated immediately, while
+/// cycle-varying patterns have their unit-cycle values validated eagerly and
+/// their later cycles validated at query time.
+fn extract_inline_euclid_arg<F>(
+    value: Value,
+    context: &str,
+    validate: F,
+) -> Result<InlineEuclidArg, EvalError>
+where
+    F: Fn(f64) -> Result<(), EvalError>,
+{
+    let pattern = extract_number_pattern(value, context)?;
+    if let Some(number) = pattern.cycle_invariant_constant() {
+        validate(number)?;
+        return Ok(InlineEuclidArg::Constant(number));
+    }
+
+    validate_numeric_control_pattern(&pattern, "inline euclid", validate)?;
+    Ok(InlineEuclidArg::Pattern(pattern))
+}
+
 /// Implements the inline euclid grammar sugar `token(pulses, steps[, rot])`
 /// (Tidal's `bd(3, 8)`) on an already evaluated pattern value.
 ///
 /// Equivalent to `mask(euclid(pulses, steps, rot), token*steps)`: the token
 /// repeats once per step and only the Bjorklund onsets survive, so each hit
 /// is one step wide.
+///
+/// Arguments may also be cycle-varying number patterns (`bd(<3 5>, 8)`,
+/// `bd(3, 8, <0 2>)`): on cycle `k` the gate becomes
+/// `euclid(pulses_k, steps_k, rotation_k)` with each control sampled at that
+/// cycle (`PatternRuntime::EuclidPattern`/`query_euclid_pattern`, value.rs).
+/// Per-cycle values share the constant path's validation rules; values
+/// visible in the unit cycle are validated eagerly, later cycles when their
+/// cycle is queried.
 pub fn apply_inline_euclid(pattern: Value, args: Vec<Value>) -> Result<Value, EvalError> {
     if !(2..=3).contains(&args.len()) {
         return Err(EvalError::new(format!(
@@ -1187,20 +1245,22 @@ pub fn apply_inline_euclid(pattern: Value, args: Vec<Value>) -> Result<Value, Ev
     }
 
     let mut args = args.into_iter();
-    let pulses = extract_whole_number(
+    let pulses = extract_inline_euclid_arg(
         args.next()
             .ok_or_else(|| EvalError::new("inline euclid requires a pulses argument"))?,
         "inline euclid pulses",
-        false,
+        |value| whole_number_from_f64(value, "inline euclid pulses", false).map(|_| ()),
     )?;
-    let steps = extract_whole_number(
+    let steps = extract_inline_euclid_arg(
         args.next()
             .ok_or_else(|| EvalError::new("inline euclid requires a steps argument"))?,
         "inline euclid steps",
-        true,
+        |value| whole_number_from_f64(value, "inline euclid steps", true).map(|_| ()),
     )?;
 
-    if pulses > steps {
+    if let (Some(pulses_value), Some(steps_value)) = (pulses.constant(), steps.constant())
+        && pulses_value > steps_value
+    {
         return Err(EvalError::new(
             "inline euclid requires pulses less than or equal to steps",
         ));
@@ -1208,17 +1268,56 @@ pub fn apply_inline_euclid(pattern: Value, args: Vec<Value>) -> Result<Value, Ev
 
     let rotation = args
         .next()
-        .map(|value| extract_euclid_rotation(value, "inline euclid"))
-        .transpose()?
-        .unwrap_or(0);
+        .map(|value| {
+            extract_inline_euclid_arg(value, "inline euclid", |rotation| {
+                euclid_rotation_from_f64(rotation, "inline euclid").map(|_| ())
+            })
+        })
+        .transpose()?;
 
-    let gate = GatePatternValue::Number(NumberPatternValue::from_nodes(build_euclid_nodes(
-        pulses, steps, rotation, false,
-    )));
-    let factor = i64::from(steps);
+    // The historical all-constant construction: one gate pattern shared by
+    // every cycle.
+    if let (Some(pulses_value), Some(steps_value)) = (pulses.constant(), steps.constant()) {
+        let rotation_value = match &rotation {
+            None => Some(0),
+            Some(arg) => arg
+                .constant()
+                .map(|value| euclid_rotation_from_f64(value, "inline euclid"))
+                .transpose()?,
+        };
+        if let Some(rotation_value) = rotation_value {
+            let pulses_value = whole_number_from_f64(pulses_value, "inline euclid pulses", false)?;
+            let steps_value = whole_number_from_f64(steps_value, "inline euclid steps", true)?;
+            let gate = GatePatternValue::Number(NumberPatternValue::from_nodes(
+                build_euclid_nodes(pulses_value, steps_value, rotation_value, false),
+            ));
+            let factor = i64::from(steps_value);
+            return match pattern {
+                Value::SamplePattern(hits) => {
+                    Ok(Value::SamplePattern(hits.fast(factor).mask(gate)))
+                }
+                Value::NumberPattern(hits) => {
+                    Ok(Value::NumberPattern(hits.fast(factor).mask(gate)))
+                }
+                other => Err(EvalError::new(format!(
+                    "cannot call a {}",
+                    other.kind_name()
+                ))),
+            };
+        }
+    }
+
+    // At least one argument varies by cycle: gate per cycle at query time.
+    let pulses = pulses.into_control();
+    let steps = steps.into_control();
+    let rotation = rotation.map(InlineEuclidArg::into_control);
     match pattern {
-        Value::SamplePattern(hits) => Ok(Value::SamplePattern(hits.fast(factor).mask(gate))),
-        Value::NumberPattern(hits) => Ok(Value::NumberPattern(hits.fast(factor).mask(gate))),
+        Value::SamplePattern(hits) => Ok(Value::SamplePattern(
+            hits.euclid_pattern(pulses, steps, rotation),
+        )),
+        Value::NumberPattern(hits) => Ok(Value::NumberPattern(
+            hits.euclid_pattern(pulses, steps, rotation),
+        )),
         other => Err(EvalError::new(format!(
             "cannot call a {}",
             other.kind_name()
@@ -1308,6 +1407,16 @@ fn apply_euclid_full(args: Vec<Value>) -> Result<Value, EvalError> {
 
 fn extract_euclid_rotation(value: Value, name: &str) -> Result<i64, EvalError> {
     let number = extract_constant_number(value, name)?;
+    euclid_rotation_from_f64(number, name)
+}
+
+/// Validates a raw numeric value as a euclid rotation (a whole number with
+/// magnitude at most 1024).
+///
+/// Shared between constant argument extraction ([`extract_euclid_rotation`])
+/// and per-cycle validation of patterned inline-euclid rotations
+/// (`query_euclid_pattern`, value.rs), so both paths raise identical errors.
+pub fn euclid_rotation_from_f64(number: f64, name: &str) -> Result<i64, EvalError> {
     if !number.is_finite() || number.fract().abs() > f64::EPSILON {
         return Err(EvalError::new(format!(
             "`{name}` requires a whole number rotation"
@@ -3124,7 +3233,7 @@ fn extract_pattern_gate(
     }
 }
 
-fn build_euclid_nodes(
+pub fn build_euclid_nodes(
     pulses: u32,
     steps: u32,
     rotation: i64,
@@ -3231,6 +3340,20 @@ fn extract_whole_number(
     positive_only: bool,
 ) -> Result<u32, EvalError> {
     let number = extract_constant_number(value, context)?;
+    whole_number_from_f64(number, context, positive_only)
+}
+
+/// Validates a raw numeric value as a bounded whole number (`0..=1024`, or
+/// `1..=1024` with `positive_only`).
+///
+/// Shared between constant argument extraction ([`extract_whole_number`])
+/// and per-cycle validation of patterned inline-euclid arguments
+/// (`query_euclid_pattern`, value.rs), so both paths raise identical errors.
+pub fn whole_number_from_f64(
+    number: f64,
+    context: &str,
+    positive_only: bool,
+) -> Result<u32, EvalError> {
     let valid = number.is_finite()
         && number >= 0.0
         && number.fract().abs() <= f64::EPSILON

@@ -32,6 +32,7 @@ use crate::pedal::compile_graph;
 use crate::pitch::parse_named_pitch_literal;
 use crate::value::{
     FunctionValue, NumberPatternValue, SampleEvent, SamplePatternValue, UserFn, Value,
+    positive_rational_tempo_factor,
 };
 use crate::voice::compile_voice;
 
@@ -448,8 +449,9 @@ impl Evaluator {
     /// Returns `true` when a call in sequence-step position has the inline
     /// euclid shape `token(pulses, steps[, rotation])` (Tidal's `bd(3, 8)`):
     /// the callee is an identifier that does not name a builtin function and
-    /// every argument is a numeric literal. Calls on real functions
-    /// (`fast(2, sn)`) keep function-call semantics.
+    /// every argument is a numeric literal or an alternation of them
+    /// (`bd(<3 5>, 8)`, driving per-cycle euclid gating). Calls on real
+    /// functions (`fast(2, sn)`) keep function-call semantics.
     fn is_inline_euclid_call(callee: &Expr, args: &[Expr]) -> bool {
         let Expr::Ident(name) = callee else {
             return false;
@@ -457,7 +459,18 @@ impl Evaluator {
         if matches!(builtin_value(name), Some(Value::Function(_))) {
             return false;
         }
-        (2..=3).contains(&args.len()) && args.iter().all(|arg| matches!(arg, Expr::Number(_)))
+        (2..=3).contains(&args.len()) && args.iter().all(Self::is_inline_euclid_arg)
+    }
+
+    /// Returns `true` for expressions the inline euclid sugar accepts as a
+    /// pulses/steps/rotation argument in sequence-step position: numeric
+    /// literals and `<a b>` alternations over them.
+    fn is_inline_euclid_arg(arg: &Expr) -> bool {
+        match arg {
+            Expr::Number(_) => true,
+            Expr::Alternation(items) => items.iter().all(Self::is_inline_euclid_arg),
+            _ => false,
+        }
     }
 
     /// Evaluates a tight postfix step operator (`a*n`, `a/n`, `a?`) applied
@@ -472,11 +485,25 @@ impl Evaluator {
         let value = self.eval_expr_in_meter(inner, meter)?;
         match *op {
             StepOp::Fast(factor) => {
-                let factor = step_factor_as_bounded_integer(factor, "*")?;
-                Self::apply_step_transform(value, "*", |p| p.fast(factor), |p| p.fast(factor))
+                // Decimal factors share `fast`/`slow`'s exact
+                // decimal-to-rational conversion and bounds, so `bd*1.5`
+                // plays at exactly 3/2 speed (and `bd*0.5` equals `bd/2`).
+                let factor = positive_rational_tempo_factor(factor, "*")?;
+                Self::apply_step_transform(
+                    value,
+                    "*",
+                    |p| p.fast_rational(factor),
+                    |p| p.fast_rational(factor),
+                )
             }
             StepOp::Slow(factor) => {
-                Self::apply_step_transform(value, "/", |p| p.slow(factor), |p| p.slow(factor))
+                let factor = positive_rational_tempo_factor(factor, "/")?;
+                Self::apply_step_transform(
+                    value,
+                    "/",
+                    |p| p.slow_rational(factor),
+                    |p| p.slow_rational(factor),
+                )
             }
             StepOp::Replicate(_) => Err(EvalError::new(
                 "`!` replication can only appear on pattern sequence steps",
@@ -1500,27 +1527,6 @@ const fn derive_site_seed(base: u64, role: u64, ordinal: u64) -> u64 {
 
 fn expr_key(expr: &Expr) -> usize {
     std::ptr::from_ref(expr) as usize
-}
-
-/// Re-validates a raw mini-notation `*` factor at evaluation time.
-///
-/// The parser normally rejects invalid factors, but the raw value is kept in
-/// the AST so `graph { ... }` rewriting can reuse it; this keeps evaluation
-/// safe even for programmatically constructed expressions.
-fn step_factor_as_bounded_integer(factor: f64, symbol: &str) -> Result<i64, EvalError> {
-    if !factor.is_finite() || factor.fract() != 0.0 {
-        return Err(EvalError::new(format!(
-            "mini-notation `{symbol}` factor must be an integer between 1 and 1024"
-        )));
-    }
-    #[allow(clippy::cast_possible_truncation)]
-    let integer = factor as i64;
-    if !(1..=1024).contains(&integer) {
-        return Err(EvalError::new(format!(
-            "mini-notation `{symbol}` factor must be an integer between 1 and 1024"
-        )));
-    }
-    Ok(integer)
 }
 
 fn extract_constant_number_value(value: Value, context: &str) -> Result<f64, EvalError> {

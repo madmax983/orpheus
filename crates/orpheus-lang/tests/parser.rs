@@ -538,7 +538,19 @@ fn parses_tight_slash_as_slow() {
     let expr = binding_expr("drums = bd/2 sn");
     assert_eq!(
         expr,
-        Expr::Seq(vec![modified(ident("bd"), StepOp::Slow(2)), ident("sn")])
+        Expr::Seq(vec![modified(ident("bd"), StepOp::Slow(2.0)), ident("sn")])
+    );
+}
+
+#[test]
+fn parses_decimal_step_factors_as_tempo_modifiers() {
+    assert_eq!(
+        binding_expr("drums = bd*1.5 sn"),
+        Expr::Seq(vec![modified(ident("bd"), StepOp::Fast(1.5)), ident("sn")])
+    );
+    assert_eq!(
+        binding_expr("drums = bd/1.5 sn"),
+        Expr::Seq(vec![modified(ident("bd"), StepOp::Slow(1.5)), ident("sn")])
     );
 }
 
@@ -660,11 +672,49 @@ fn tight_star_inside_pedal_graphs_stays_multiplication() {
 }
 
 #[test]
+fn tight_decimal_star_inside_pedal_graphs_stays_multiplication() {
+    // Decimal factors above 1 must not turn pedal-DSL products into
+    // mini-notation repetition now that `bd*1.5` is valid outside graphs.
+    let source = "drivebox = graph { dry = input ; mix(dry*1.5, dry) |> output }";
+    let module = parse_module(source).unwrap();
+    match &module.statements[0] {
+        Stmt::Binding { expr, .. } => match expr {
+            Expr::Graph { result, .. } => {
+                let (lhs, _) = assert_is_pipe(result);
+                let args = assert_is_call(lhs, "mix");
+                let (mul_lhs, mul_rhs) = assert_is_binary(&args[0], BinaryOp::Mul);
+                assert_is_ident(mul_lhs, "dry");
+                assert_is_number(mul_rhs, 1.5);
+            }
+            other => panic!("unexpected AST: {other:#?}"),
+        },
+    }
+}
+
+#[test]
+fn tight_decimal_star_inside_voice_blocks_stays_multiplication() {
+    let source = "beep = voice { osc = sine(freq) ; osc*1.5 }";
+    let module = parse_module(source).unwrap();
+    match &module.statements[0] {
+        Stmt::Binding { expr, .. } => match expr {
+            Expr::Voice { result, .. } => {
+                let (mul_lhs, mul_rhs) = assert_is_binary(result, BinaryOp::Mul);
+                assert_is_ident(mul_lhs, "osc");
+                assert_is_number(mul_rhs, 1.5);
+            }
+            other => panic!("unexpected AST: {other:#?}"),
+        },
+    }
+}
+
+#[test]
 fn rejects_out_of_bounds_step_operator_factors() {
-    assert_parse_fails_mentioning("drums = bd*0 sn", &["`*`", "1", "1024"]);
-    assert_parse_fails_mentioning("drums = bd*1025 sn", &["`*`", "1", "1024"]);
-    assert_parse_fails_mentioning("drums = bd*1.5 sn", &["`*`", "integer"]);
-    assert_parse_fails_mentioning("drums = bd/0 sn", &["`/`", "1", "1024"]);
+    assert_parse_fails_mentioning("drums = bd*0 sn", &["`*`", "positive factor"]);
+    assert_parse_fails_mentioning("drums = bd*1025 sn", &["`*`", "1024"]);
+    assert_parse_fails_mentioning("drums = bd*1024.5 sn", &["`*`", "1024"]);
+    assert_parse_fails_mentioning("drums = bd*0.123456789 sn", &["`*`", "denominator", "1024"]);
+    assert_parse_fails_mentioning("drums = bd/0 sn", &["`/`", "positive factor"]);
+    assert_parse_fails_mentioning("drums = bd/1024.5 sn", &["`/`", "1024"]);
     assert_parse_fails_mentioning("drums = bd!0 sn", &["`!`", "1", "1024"]);
     assert_parse_fails_mentioning("drums = bd?1.5 sn", &["`?`", "probability"]);
     assert_parse_fails_mentioning("drums = {bd sn}%0", &["polymeter", "1", "1024"]);
@@ -816,6 +866,27 @@ fn parses_inline_euclid_calls_as_sequence_steps() {
                 Expr::Call {
                     callee: Box::new(Expr::Ident("bd".to_owned())),
                     args: vec![Expr::Number(3.0), Expr::Number(8.0)],
+                }
+            );
+            assert!(matches!(&items[1], Expr::Ident(name) if name == "sn"));
+        }
+        other => panic!("unexpected AST: {other:#?}"),
+    }
+}
+
+#[test]
+fn parses_inline_euclid_alternation_args_as_sequence_steps() {
+    let expr = binding_expr("drums = bd(<3 5>, 8) sn");
+    match &expr {
+        Expr::Seq(items) => {
+            assert_eq!(
+                items[0],
+                Expr::Call {
+                    callee: Box::new(Expr::Ident("bd".to_owned())),
+                    args: vec![
+                        Expr::Alternation(vec![Expr::Number(3.0), Expr::Number(5.0)]),
+                        Expr::Number(8.0),
+                    ],
                 }
             );
             assert!(matches!(&items[1], Expr::Ident(name) if name == "sn"));
