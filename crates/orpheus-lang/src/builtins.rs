@@ -118,9 +118,17 @@ fn lookup_pattern_transform(name: &str) -> Option<Value> {
         "load_scl" => Some(builtin_function_value(BuiltinKind::LoadScl)),
         "tune" => Some(builtin_function_value(BuiltinKind::Tune)),
         "cat" | "slowcat" => Some(builtin_function_value(BuiltinKind::Cat)),
+        "randcat" => Some(builtin_function_value(BuiltinKind::RandCat)),
+        "wrandcat" => Some(builtin_function_value(BuiltinKind::WRandCat)),
         "append" => Some(builtin_function_value(BuiltinKind::Append)),
         "iter" => Some(builtin_function_value(BuiltinKind::Iter)),
         "iter_back" => Some(builtin_function_value(BuiltinKind::IterBack)),
+        "off" => Some(builtin_function_value(BuiltinKind::Off)),
+        "rot" => Some(builtin_function_value(BuiltinKind::Rot)),
+        "chunk" => Some(builtin_function_value(BuiltinKind::Chunk)),
+        "chunk_back" => Some(builtin_function_value(BuiltinKind::ChunkBack)),
+        "shuffle" => Some(builtin_function_value(BuiltinKind::Shuffle)),
+        "scramble" => Some(builtin_function_value(BuiltinKind::Scramble)),
         "vst" => Some(builtin_function_value(BuiltinKind::Vst)),
         "au" => Some(builtin_function_value(BuiltinKind::Au)),
         "notes" => Some(builtin_function_value(BuiltinKind::Notes)),
@@ -422,6 +430,14 @@ impl BuiltinKind {
             Self::Choose => "choose",
             Self::WChoose => "wchoose",
             Self::IRand => "irand",
+            Self::RandCat => "randcat",
+            Self::WRandCat => "wrandcat",
+            Self::Off => "off",
+            Self::Rot => "rot",
+            Self::Chunk => "chunk",
+            Self::ChunkBack => "chunk_back",
+            Self::Shuffle => "shuffle",
+            Self::Scramble => "scramble",
             Self::Jux => "jux",
             Self::Through => "through",
             Self::MidiCc => "midi_cc",
@@ -448,7 +464,10 @@ impl BuiltinKind {
     /// Variadic builtins still curry when given fewer than `arity()` arguments,
     /// but execute with any argument count at or above it.
     const fn is_variadic(self) -> bool {
-        matches!(self, Self::Cat | Self::Choose | Self::WChoose)
+        matches!(
+            self,
+            Self::Cat | Self::Choose | Self::WChoose | Self::RandCat | Self::WRandCat
+        )
     }
 
     const fn arity(self) -> usize {
@@ -459,8 +478,11 @@ impl BuiltinKind {
             | Self::SliceIdx
             | Self::Lsystem
             | Self::Range
+            | Self::Off
+            | Self::Chunk
+            | Self::ChunkBack
             | Self::SometimesBy => 3,
-            Self::When | Self::Within | Self::WChoose => 4,
+            Self::When | Self::Within | Self::WChoose | Self::WRandCat => 4,
             Self::PitchClassSet
             | Self::Rev
             | Self::Sample
@@ -522,9 +544,13 @@ impl BuiltinKind {
             | Self::MidiCc
             | Self::Tune
             | Self::Cat
+            | Self::RandCat
             | Self::Append
             | Self::Iter
             | Self::IterBack
+            | Self::Rot
+            | Self::Shuffle
+            | Self::Scramble
             | Self::Segment
             | Self::Choose
             | Self::Notes => 2,
@@ -626,8 +652,20 @@ impl BuiltinKind {
             Self::LoadScl => apply_load_scl(args),
             Self::Tune => apply_tune(args),
             Self::Cat | Self::Append => apply_cat(args, self.name()),
+            Self::RandCat => apply_randcat(args, function.site_salt.unwrap_or_default()),
+            Self::WRandCat => apply_wrandcat_patterns(args, function.site_salt.unwrap_or_default()),
             Self::Iter => apply_iter(args, false),
             Self::IterBack => apply_iter(args, true),
+            Self::Off => apply_off(args),
+            Self::Rot => apply_rot(args),
+            Self::Chunk => apply_chunk(args, false),
+            Self::ChunkBack => apply_chunk(args, true),
+            Self::Shuffle => {
+                apply_shuffle_slots(args, false, function.site_salt.unwrap_or_default())
+            }
+            Self::Scramble => {
+                apply_shuffle_slots(args, true, function.site_salt.unwrap_or_default())
+            }
             Self::Vst => apply_vst(args),
             Self::Au => apply_au(args),
             Self::Notes => apply_plugin_notes(args),
@@ -1317,6 +1355,288 @@ fn apply_cat(args: Vec<Value>, builtin_name: &str) -> Result<Value, EvalError> {
     Err(EvalError::new(format!(
         "`{builtin_name}` requires all patterns to be the same pattern kind"
     )))
+}
+
+/// Implements `randcat(p1, p2, ...)`: like `cat`, but each cycle plays one
+/// argument pattern chosen uniformly at random, deterministically from the
+/// call-site salt and the cycle number.
+fn apply_randcat(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
+    if args.len() < 2 {
+        return Err(EvalError::new(
+            "`randcat` requires at least two pattern arguments",
+        ));
+    }
+    build_randcat(args, None, site_salt, "randcat")
+}
+
+/// Implements `wrandcat(p1, w1, p2, w2, ...)`: `randcat` drawing among
+/// interleaved pattern/weight pairs proportionally to the weights.
+/// Zero-weight patterns are never played; negative weights are rejected.
+fn apply_wrandcat_patterns(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
+    if args.len() < 4 || !args.len().is_multiple_of(2) {
+        return Err(EvalError::new(
+            "`wrandcat` requires interleaved pattern/weight pairs: an even number of arguments like `wrandcat(p1, w1, p2, w2)`",
+        ));
+    }
+
+    let mut patterns = Vec::with_capacity(args.len() / 2);
+    let mut weights = Vec::with_capacity(args.len() / 2);
+    let mut args = args.into_iter();
+    while let Some(pattern) = args.next() {
+        let weight = extract_constant_number(
+            args.next().expect("even argument count checked above"),
+            "wrandcat",
+        )?;
+        if !weight.is_finite() || weight < 0.0 {
+            return Err(EvalError::new(
+                "`wrandcat` requires non-negative finite weights",
+            ));
+        }
+        patterns.push(pattern);
+        weights.push(weight);
+    }
+
+    let total: f64 = weights.iter().sum();
+    if total <= 0.0 {
+        return Err(EvalError::new(
+            "`wrandcat` requires at least one positive weight",
+        ));
+    }
+
+    // Drop zero-weight patterns so they can never be drawn, and normalize the
+    // rest into cumulative upper bounds in (0, 1] (the `wchoose` convention).
+    let mut kept_patterns = Vec::with_capacity(patterns.len());
+    let mut cumulative_weights = Vec::with_capacity(patterns.len());
+    let mut cumulative = 0.0;
+    for (pattern, weight) in patterns.into_iter().zip(weights) {
+        if weight <= 0.0 {
+            continue;
+        }
+        cumulative += weight / total;
+        kept_patterns.push(pattern);
+        cumulative_weights.push(cumulative);
+    }
+
+    build_randcat(
+        kept_patterns,
+        Some(cumulative_weights),
+        site_salt,
+        "wrandcat",
+    )
+}
+
+/// Builds the `RandCat` runtime from same-kind pattern arguments (shared by
+/// `randcat` and `wrandcat`).
+fn build_randcat(
+    args: Vec<Value>,
+    cumulative_weights: Option<Vec<f64>>,
+    site_salt: u64,
+    builtin_name: &str,
+) -> Result<Value, EvalError> {
+    if args
+        .iter()
+        .all(|value| matches!(value, Value::SamplePattern(_)))
+    {
+        let patterns = args
+            .into_iter()
+            .map(|value| match value {
+                Value::SamplePattern(pattern) => pattern,
+                _ => unreachable!("all arguments were checked to be sample patterns"),
+            })
+            .collect();
+        return Ok(Value::SamplePattern(
+            SamplePatternValue::randcat_with_site_salt(patterns, cumulative_weights, site_salt),
+        ));
+    }
+
+    if args
+        .iter()
+        .all(|value| matches!(value, Value::NumberPattern(_)))
+    {
+        let patterns = args
+            .into_iter()
+            .map(|value| match value {
+                Value::NumberPattern(pattern) => pattern,
+                _ => unreachable!("all arguments were checked to be number patterns"),
+            })
+            .collect();
+        return Ok(Value::NumberPattern(
+            NumberPatternValue::randcat_with_site_salt(patterns, cumulative_weights, site_salt),
+        ));
+    }
+
+    Err(EvalError::new(format!(
+        "`{builtin_name}` requires all patterns to be the same pattern kind"
+    )))
+}
+
+/// Implements `off(t, f, pattern)`: overlay the pattern with a copy shifted
+/// later by `t` of a cycle and passed through the transform `f` — i.e.
+/// `stack(pattern, f(shift(t, pattern)))`.
+fn apply_off(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let offset = extract_constant_rational_offset(
+        args.next()
+            .ok_or_else(|| EvalError::new("`off` requires a time-offset argument"))?,
+        "off",
+    )?;
+    let transform = args
+        .next()
+        .ok_or_else(|| EvalError::new("`off` requires a transform argument"))?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`off` requires a pattern argument"))?;
+
+    apply_pattern_transform(
+        pattern,
+        |p| {
+            let transform_fn = extract_unary_pattern_transform(transform.clone(), "off", "second")?;
+            let shifted = p.clone().shift(offset);
+            let transformed =
+                apply_function_value(transform_fn, vec![Value::SamplePattern(shifted)])?;
+            let Value::SamplePattern(transformed) = transformed else {
+                return Err(EvalError::new(
+                    "`off` transform must return a sample pattern",
+                ));
+            };
+            Ok(Value::SamplePattern(SamplePatternValue::stack(vec![
+                p,
+                transformed,
+            ])))
+        },
+        |p| {
+            let transform_fn = extract_unary_pattern_transform(transform.clone(), "off", "second")?;
+            let shifted = p.clone().shift(offset);
+            let transformed =
+                apply_function_value(transform_fn, vec![Value::NumberPattern(shifted)])?;
+            let Value::NumberPattern(transformed) = transformed else {
+                return Err(EvalError::new(
+                    "`off` transform must return a number pattern",
+                ));
+            };
+            Ok(Value::NumberPattern(NumberPatternValue::stack(vec![
+                p,
+                transformed,
+            ])))
+        },
+        "off",
+    )
+}
+
+/// Implements `rot(n, pattern)`: rotate the cycle's event values forward by
+/// `n` onsets while the rhythmic structure stays put. `rot(0)` is the
+/// identity; the rotation wraps and negative `n` rotates backwards.
+fn apply_rot(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let steps = extract_rot_steps(
+        args.next()
+            .ok_or_else(|| EvalError::new("`rot` requires a step-count argument"))?,
+    )?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`rot` requires a pattern argument"))?;
+
+    apply_pattern_transform(
+        pattern,
+        |p| Ok(Value::SamplePattern(p.rot(steps))),
+        |p| Ok(Value::NumberPattern(p.rot(steps))),
+        "rot",
+    )
+}
+
+fn extract_rot_steps(value: Value) -> Result<i64, EvalError> {
+    let number = extract_constant_number(value, "rot")?;
+    if !number.is_finite() || number.fract().abs() > f64::EPSILON {
+        return Err(EvalError::new("`rot` requires a whole number of steps"));
+    }
+    if number.abs() > 1024.0 {
+        return Err(EvalError::new(
+            "`rot` steps exceeded the maximum allowed bound of 1024",
+        ));
+    }
+    #[allow(clippy::cast_possible_truncation)]
+    Ok(number.round() as i64)
+}
+
+/// Implements `chunk(n, f, pattern)` / `chunk_back`: on cycle `k`, apply the
+/// transform only within part `k mod n` of the cycle, so the transformed
+/// window sweeps once around the cycle every `n` cycles (in reverse for
+/// `chunk_back`).
+fn apply_chunk(args: Vec<Value>, back: bool) -> Result<Value, EvalError> {
+    let builtin_name = if back { "chunk_back" } else { "chunk" };
+    let mut args = args.into_iter();
+    let parts = extract_positive_integer_factor(
+        args.next().ok_or_else(|| {
+            EvalError::new(format!("`{builtin_name}` requires a part-count argument"))
+        })?,
+        builtin_name,
+    )?;
+    let transform = args
+        .next()
+        .ok_or_else(|| EvalError::new(format!("`{builtin_name}` requires a transform argument")))?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new(format!("`{builtin_name}` requires a pattern argument")))?;
+
+    apply_pattern_transform(
+        pattern,
+        |p| {
+            Ok(Value::SamplePattern(p.chunk(
+                parts,
+                back,
+                extract_unary_pattern_transform(transform.clone(), builtin_name, "second")?,
+            )))
+        },
+        |p| {
+            Ok(Value::NumberPattern(p.chunk(
+                parts,
+                back,
+                extract_unary_pattern_transform(transform.clone(), builtin_name, "second")?,
+            )))
+        },
+        builtin_name,
+    )
+}
+
+/// Implements `shuffle(n, pattern)` and `scramble(n, pattern)`: split the
+/// cycle into `n` equal slots and play them rearranged each cycle — a random
+/// permutation for `shuffle` (each slot exactly once) or independent random
+/// draws with repeats for `scramble`.
+fn apply_shuffle_slots(
+    args: Vec<Value>,
+    independent: bool,
+    site_salt: u64,
+) -> Result<Value, EvalError> {
+    let builtin_name = if independent { "scramble" } else { "shuffle" };
+    let mut args = args.into_iter();
+    let slots = extract_positive_integer_factor(
+        args.next().ok_or_else(|| {
+            EvalError::new(format!("`{builtin_name}` requires a slot-count argument"))
+        })?,
+        builtin_name,
+    )?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new(format!("`{builtin_name}` requires a pattern argument")))?;
+
+    apply_pattern_transform(
+        pattern,
+        |p| {
+            Ok(Value::SamplePattern(p.shuffle_slots_with_site_salt(
+                slots,
+                independent,
+                site_salt,
+            )))
+        },
+        |p| {
+            Ok(Value::NumberPattern(p.shuffle_slots_with_site_salt(
+                slots,
+                independent,
+                site_salt,
+            )))
+        },
+        builtin_name,
+    )
 }
 
 /// Implements `iter`/`iter_back`: on cycle `k`, rotate the pattern by

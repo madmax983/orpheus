@@ -850,3 +850,96 @@ fn bare_rand_and_rand_call_coerce_in_argument_position() {
     let called = infer_module("m = segment(4, rand())", ReplMode::Strict).unwrap();
     assert_eq!(called.type_of("m").to_string(), "Pattern<Number>");
 }
+
+#[test]
+fn randcat_preserves_pattern_types() {
+    let sample_typed = infer_module("drums = randcat(bd, sn cp)", ReplMode::Strict).unwrap();
+    let number_typed = infer_module("melody = randcat(0 1, 2 3)", ReplMode::Strict).unwrap();
+
+    assert_eq!(sample_typed.type_of("drums").to_string(), "Pattern<Sample>");
+    assert_eq!(
+        number_typed.type_of("melody").to_string(),
+        "Pattern<Number>"
+    );
+}
+
+#[test]
+fn variadic_randcat_accepts_more_than_two_patterns() {
+    let typed = infer_module("drums = randcat(bd, sn, cp)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn strict_mode_rejects_mixed_randcat_patterns() {
+    let error = infer_module("drums = randcat(bd, 1 2, cp)", ReplMode::Strict).unwrap_err();
+
+    assert!(error.to_string().contains("Pattern"));
+}
+
+#[test]
+fn wrandcat_preserves_pattern_types() {
+    let typed = infer_module("drums = wrandcat(bd, 1, sn, 3)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn variadic_wrandcat_accepts_more_than_two_pairs() {
+    let typed = infer_module("drums = wrandcat(bd, 1, sn, 2, cp, 3)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn off_preserves_pattern_types() {
+    let sample_typed = infer_module("drums = off(0.25, rev, bd sn)", ReplMode::Strict).unwrap();
+    let number_typed =
+        infer_module("melody = 0 3 |> off(0.5, transpose(12))", ReplMode::Strict).unwrap();
+
+    assert_eq!(sample_typed.type_of("drums").to_string(), "Pattern<Sample>");
+    assert_eq!(
+        number_typed.type_of("melody").to_string(),
+        "Pattern<Number>"
+    );
+}
+
+#[test]
+fn rot_preserves_pattern_types() {
+    let sample_typed = infer_module("drums = rot(1, bd sn cp)", ReplMode::Strict).unwrap();
+    let number_typed = infer_module("melody = 10 20 30 |> rot(2)", ReplMode::Strict).unwrap();
+
+    assert_eq!(sample_typed.type_of("drums").to_string(), "Pattern<Sample>");
+    assert_eq!(
+        number_typed.type_of("melody").to_string(),
+        "Pattern<Number>"
+    );
+}
+
+#[test]
+fn chunk_and_chunk_back_preserve_pattern_types() {
+    let chunk_typed = infer_module("drums = chunk(4, rev, bd sn cp hh)", ReplMode::Strict).unwrap();
+    let back_typed = infer_module(
+        "melody = 0 1 2 3 |> chunk_back(4, transpose(12))",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(chunk_typed.type_of("drums").to_string(), "Pattern<Sample>");
+    assert_eq!(back_typed.type_of("melody").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn shuffle_and_scramble_preserve_pattern_types() {
+    let shuffle_typed = infer_module("drums = shuffle(4, bd sn cp hh)", ReplMode::Strict).unwrap();
+    let scramble_typed = infer_module("melody = 0 1 2 3 |> scramble(4)", ReplMode::Strict).unwrap();
+
+    assert_eq!(
+        shuffle_typed.type_of("drums").to_string(),
+        "Pattern<Sample>"
+    );
+    assert_eq!(
+        scramble_typed.type_of("melody").to_string(),
+        "Pattern<Number>"
+    );
+}

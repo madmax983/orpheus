@@ -286,11 +286,38 @@ pub fn wchoose_scheme() -> TypeScheme {
 }
 
 fn install_cycle_alternation_builtins(env: &mut TypeEnv, alpha: TypeVarId) {
-    for name in ["cat", "slowcat", "append"] {
+    for name in ["cat", "slowcat", "append", "randcat"] {
         env.insert(name, pattern_concat_scheme(alpha));
     }
-    for name in ["iter", "iter_back"] {
+    env.insert("wrandcat", wrandcat_scheme(alpha));
+    for name in ["iter", "iter_back", "rot", "shuffle", "scramble"] {
         env.insert(name, numeric_pattern_transform_scheme(alpha));
+    }
+    // `off`, `chunk`, and `chunk_back` share `every`'s shape:
+    // Pattern<Number> -> (Pattern<a> -> Pattern<a>) -> Pattern<a> -> Pattern<a>.
+    for name in ["off", "chunk", "chunk_back"] {
+        env.insert(name, every_transform_scheme(alpha));
+    }
+}
+
+/// The two-pair base scheme for `wrandcat(p1, w1, p2, w2)`:
+/// `Pattern<a> -> Pattern<Number> -> Pattern<a> -> Pattern<Number> -> Pattern<a>`.
+///
+/// `wrandcat` is variadic at runtime; calls with more than four arguments are
+/// special-cased during inference.
+pub fn wrandcat_scheme(alpha: TypeVarId) -> TypeScheme {
+    let alpha_pattern = Type::pattern(Type::Var(alpha));
+    TypeScheme {
+        vars: vec![alpha],
+        ty: Type::curried(
+            vec![
+                alpha_pattern.clone(),
+                Type::pattern(Type::Number),
+                alpha_pattern.clone(),
+                Type::pattern(Type::Number),
+            ],
+            alpha_pattern,
+        ),
     }
 }
 
