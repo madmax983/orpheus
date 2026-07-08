@@ -36,8 +36,8 @@ pub use engine::{
 pub use graph::*;
 pub use graph_voice::{
     DEFAULT_GRAPH_VOICE_POLYPHONY, GraphVoice, GraphVoiceBank, GraphVoiceProgram, GraphVoiceSpec,
-    GraphVoiceSpecError, MAX_GRAPH_VOICE_POLYPHONY, MAX_VOICE_DELAY_SECONDS, VoiceNodeSpec,
-    VoiceSignalRef, builtin_graph_voice_programs,
+    GraphVoiceSpecError, MAX_GRAPH_VOICE_POLYPHONY, MAX_VOICE_DELAY_SECONDS,
+    MODULATED_VOICE_DELAY_MAX_SECONDS, VoiceNodeSpec, VoiceSignalRef, builtin_graph_voice_programs,
 };
 pub use offline::{
     OfflineRenderError, render_events_to_file, render_events_to_file_with_bank,

@@ -14,7 +14,8 @@ use std::cell::Cell;
 
 use orpheus_dsp::{
     GraphVoiceBank, GraphVoiceSpec, Node, Processor, TrackId, VoiceNodeSpec, VoiceSignalRef, adsr,
-    bind, builtin_graph_voice_programs, constant, gain_node, pan, par, seq, sine,
+    bind, builtin_graph_voice_programs, constant, fdelay, gain_node, pan, par, passthrough, seq,
+    sine, sum, wire,
 };
 
 struct CountingAllocator;
@@ -170,6 +171,110 @@ fn warmed_combinator_processor_processes_without_allocating() {
         after - before,
         0,
         "combinator processing must not allocate after the first block"
+    );
+}
+
+#[test]
+fn warmed_fdelay_chorus_processor_processes_without_allocating() {
+    // The fractional-delay chorus patch: a 1.5 Hz sine LFO sweeping fdelay's
+    // delay-time signal input. The delay buffer is allocated at construction
+    // and the interpolated read path must be allocation-free after warm-up.
+    const FRAMES: usize = 512;
+
+    let lfo = seq(constant(1.5), sine(SR)).unwrap();
+    let scaled = seq(par(lfo, constant(0.002)), gain_node()).unwrap();
+    let swept = seq(par(scaled, constant(0.0075)), sum(2)).unwrap();
+    let wet = seq(par(passthrough(1), swept), fdelay(SR, 0.02)).unwrap();
+    let mixed = seq(par(passthrough(1), wet), sum(2)).unwrap();
+    let chorus = seq(wire(&[0, 0]), mixed).unwrap();
+
+    let mut processor = Processor::new(chorus);
+    let audio = vec![0.5_f32; FRAMES];
+    let mut out = vec![0.0_f32; FRAMES];
+
+    // Warm-up: lazy-but-once scratch growth happens here, off the hot path.
+    processor.process(&[&audio], &mut [&mut out], FRAMES);
+
+    let before = allocation_count();
+    for _ in 0..16 {
+        processor.process(&[&audio], &mut [&mut out], FRAMES);
+    }
+    let after = allocation_count();
+
+    assert!(out.iter().any(|&s| s.abs() > 0.01));
+    assert_eq!(
+        after - before,
+        0,
+        "fdelay chorus processing must not allocate after the first block"
+    );
+}
+
+#[test]
+fn voice_with_signal_driven_delay_renders_without_allocating() {
+    // A voice-body flanger: an LFO (sine x depth + offset) drives the
+    // fractional delay's seconds input. Prepared voices must render the
+    // modulated read path without allocating.
+    let spec = GraphVoiceSpec::new(
+        "flange",
+        0.05,
+        vec![
+            VoiceNodeSpec::Sine {
+                freq: VoiceSignalRef::Freq,
+            },
+            VoiceNodeSpec::Ar {
+                gate: VoiceSignalRef::Gate,
+                attack_s: 0.001,
+                release_s: 0.05,
+            },
+            VoiceNodeSpec::Mul {
+                left: VoiceSignalRef::Node(0),
+                right: VoiceSignalRef::Node(1),
+            },
+            VoiceNodeSpec::Constant { value: 2.0 },
+            VoiceNodeSpec::Sine {
+                freq: VoiceSignalRef::Node(3),
+            },
+            VoiceNodeSpec::Constant { value: 0.002 },
+            VoiceNodeSpec::Mul {
+                left: VoiceSignalRef::Node(4),
+                right: VoiceSignalRef::Node(5),
+            },
+            VoiceNodeSpec::Constant { value: 0.005 },
+            VoiceNodeSpec::Add {
+                left: VoiceSignalRef::Node(6),
+                right: VoiceSignalRef::Node(7),
+            },
+            VoiceNodeSpec::FractionalDelay {
+                input: VoiceSignalRef::Node(2),
+                seconds: VoiceSignalRef::Node(8),
+                max_seconds: 0.02,
+            },
+            VoiceNodeSpec::Add {
+                left: VoiceSignalRef::Node(2),
+                right: VoiceSignalRef::Node(9),
+            },
+        ],
+        VoiceSignalRef::Node(10),
+    )
+    .expect("flange spec should validate");
+
+    let mut voice = spec.build_voice(SR);
+    voice.prepare();
+
+    let before = allocation_count();
+    let mut energy = 0.0_f32;
+    for frame in 0..4_096_u32 {
+        let gate = if frame < 2_048 { 1.0 } else { 0.0 };
+        let (left, right) = voice.process_frame(gate, 220.0, 0.8, 0.0);
+        energy += left.abs() + right.abs();
+    }
+    let after = allocation_count();
+
+    assert!(energy > 0.0, "prepared flange voice should produce audio");
+    assert_eq!(
+        after - before,
+        0,
+        "signal-driven delay voices must not allocate after prepare()"
     );
 }
 

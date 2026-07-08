@@ -354,15 +354,43 @@ fn voice_fan_rejects_non_stage_branches() {
 }
 
 #[test]
-fn voice_delay_requires_a_literal_time_within_bounds() {
-    let message = eval_error("bad = voice { sine(freq) |> delay(freq) }");
-    assert!(
-        message.contains("delay") && message.contains("literal"),
-        "unexpected error: {message}"
-    );
-
+fn voice_fixed_delay_rejects_literal_times_beyond_the_cap() {
     let message = eval_error("bad = voice { sine(freq) |> delay(30) }");
     assert!(message.contains("delay"), "unexpected error: {message}");
+}
+
+#[test]
+fn voice_delay_accepts_a_signal_time_for_modulation() {
+    // A bound LFO signal may drive the delay time (`delay(x, lfo)`): the
+    // stage lowers onto the fractional delay line, so the output audibly
+    // moves relative to the same patch with a fixed literal time.
+    let mut modulated = compiled_voice(
+        "flange = voice { lfo = sine(2) * 0.002 + 0.005 ; \
+         dry = sine(freq) * ar(gate, 0.001, 0.05) ; \
+         wet = dry |> delay(lfo) ; dry + wet }",
+        "flange",
+    );
+    let mut fixed = compiled_voice(
+        "flange = voice { dry = sine(freq) * ar(gate, 0.001, 0.05) ; \
+         wet = dry |> delay(0.005) ; dry + wet }",
+        "flange",
+    );
+
+    let mut difference = 0.0_f32;
+    let mut energy = 0.0_f32;
+    for _ in 0..9_600 {
+        let (ml, _) = modulated.process_frame(1.0, 220.0, 1.0, 0.0);
+        let (fl, _) = fixed.process_frame(1.0, 220.0, 1.0, 0.0);
+        assert!(ml.is_finite(), "modulated voice output must be finite");
+        difference += (ml - fl).abs();
+        energy += ml.abs();
+    }
+    assert!(energy > 1.0, "the flanged voice must be audible");
+    assert!(
+        difference > 1.0,
+        "an LFO-driven delay time must move the output away from the fixed \
+         delay (total |diff| = {difference})"
+    );
 }
 
 #[test]

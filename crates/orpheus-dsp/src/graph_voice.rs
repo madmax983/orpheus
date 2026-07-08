@@ -20,8 +20,9 @@ use thiserror::Error;
 
 use crate::SampleTrigger;
 use crate::graph::{
-    Node, Processor, Seq, adsr, ar, bind, constant, delay_line, feedback, gain_node, ladder_filter,
-    merge, noise, pan, par, passthrough, pulse, saw, seq, sine, soft_sat, sum, tri, wire,
+    Node, Processor, Seq, adsr, ar, bind, constant, delay_line, fdelay, feedback, gain_node,
+    ladder_filter, merge, noise, pan, par, passthrough, pulse, saw, seq, sine, soft_sat, sum, tri,
+    wire,
 };
 use crate::routing::TrackId;
 
@@ -41,6 +42,15 @@ pub const MAX_GRAPH_VOICE_POLYPHONY: usize = 64;
 /// seconds. Delay capacity is allocated per pooled voice at build time, so
 /// the cap keeps bank construction memory bounded.
 pub const MAX_VOICE_DELAY_SECONDS: f32 = 10.0;
+
+/// The capacity given to a signal-driven [`VoiceNodeSpec::FractionalDelay`]
+/// when the language surface does not name one, in seconds.
+///
+/// Modulated delays exist for chorus/flanger/doppler work in the millisecond
+/// range; one second of headroom covers echo-style modulation while keeping
+/// the per-voice buffer (allocated for every pooled voice at build time)
+/// modest.
+pub const MODULATED_VOICE_DELAY_MAX_SECONDS: f32 = 1.0;
 
 /// Output trim applied to graph voices, matching the analog-voice headroom
 /// convention in `voice.rs`.
@@ -273,6 +283,18 @@ pub enum VoiceNodeSpec {
         /// at [`MAX_VOICE_DELAY_SECONDS`].
         seconds: f32,
     },
+    /// A fractional delay line whose delay time is a signal (modulatable at
+    /// audio rate) — the chorus/flanger building block.
+    FractionalDelay {
+        /// The audio signal to delay.
+        input: VoiceSignalRef,
+        /// The delay time in seconds, read every sample and clamped to
+        /// \[0, `max_seconds`\] at render time.
+        seconds: VoiceSignalRef,
+        /// The line's capacity in seconds, fixed at build time (the buffer is
+        /// allocated off-thread) and capped at [`MAX_VOICE_DELAY_SECONDS`].
+        max_seconds: f32,
+    },
     /// Sums any number of signals (fan-in), lowered onto the merge
     /// combinator.
     Merge {
@@ -297,6 +319,7 @@ impl VoiceNodeSpec {
             Self::Drive { input, amount } => vec![*input, *amount],
             Self::Mul { left, right } | Self::Add { left, right } => vec![*left, *right],
             Self::Delay { input, .. } => vec![*input],
+            Self::FractionalDelay { input, seconds, .. } => vec![*input, *seconds],
             Self::Merge { inputs } => inputs.clone(),
         }
     }
@@ -332,6 +355,10 @@ impl VoiceNodeSpec {
                 f(right);
             }
             Self::Delay { input, .. } => f(input),
+            Self::FractionalDelay { input, seconds, .. } => {
+                f(input);
+                f(seconds);
+            }
             Self::Merge { inputs } => {
                 for input in inputs {
                     f(input);
@@ -362,6 +389,9 @@ impl VoiceNodeSpec {
                 .iter()
                 .all(|value| value.is_finite() && *value >= 0.0),
             Self::Delay { seconds, .. } => seconds.is_finite() && *seconds >= 0.0,
+            Self::FractionalDelay { max_seconds, .. } => {
+                max_seconds.is_finite() && *max_seconds > 0.0
+            }
             Self::Sine { .. }
             | Self::Saw { .. }
             | Self::Tri { .. }
@@ -490,6 +520,11 @@ impl GraphVoiceSpec {
             }
             if let VoiceNodeSpec::Delay { seconds, .. } = node
                 && *seconds > MAX_VOICE_DELAY_SECONDS
+            {
+                return Err(GraphVoiceSpecError::DelayTooLong { node: index });
+            }
+            if let VoiceNodeSpec::FractionalDelay { max_seconds, .. } = node
+                && *max_seconds > MAX_VOICE_DELAY_SECONDS
             {
                 return Err(GraphVoiceSpecError::DelayTooLong { node: index });
             }
@@ -742,6 +777,9 @@ impl GraphVoiceSpec {
                 delay_line(delay_seconds_to_samples(*seconds, sample_rate_hz)),
                 passthrough(bus),
             ),
+            VoiceNodeSpec::FractionalDelay { max_seconds, .. } => {
+                par(fdelay(sample_rate_hz, *max_seconds), passthrough(bus))
+            }
             VoiceNodeSpec::Merge { inputs } => {
                 let width = channel_index(inputs.len());
                 let fan_in = merge(passthrough(width), passthrough(1))
