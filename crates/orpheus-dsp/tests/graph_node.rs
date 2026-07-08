@@ -2,7 +2,9 @@
 
 #![allow(clippy::cast_precision_loss)]
 
-use orpheus_dsp::{Node, constant, delay_line, one_pole, passthrough, sine, sum, wire};
+use orpheus_dsp::{
+    Node, adsr, ar, constant, delay_line, one_pole, pan, passthrough, sine, sum, wire,
+};
 
 const SR: f32 = 48_000.0;
 const FRAMES: usize = 128;
@@ -276,4 +278,325 @@ fn wire_node_duplicates_channel() {
     assert!(out0.iter().all(|&s| (s - 7.0).abs() < f32::EPSILON));
     assert!(out1.iter().all(|&s| (s - 7.0).abs() < f32::EPSILON));
     assert!(out2.iter().all(|&s| (s - 7.0).abs() < f32::EPSILON));
+}
+
+// ---------------------------------------------------------------------------
+// AdsrNode
+// ---------------------------------------------------------------------------
+
+/// Renders an ADSR envelope with constant parameters and the given gate signal.
+fn render_adsr(
+    node: &mut dyn Node,
+    gate: &[f32],
+    attack_s: f32,
+    decay_s: f32,
+    sustain_level: f32,
+    release_s: f32,
+) -> Vec<f32> {
+    let frames = gate.len();
+    let a = vec![attack_s; frames];
+    let d = vec![decay_s; frames];
+    let s = vec![sustain_level; frames];
+    let r = vec![release_s; frames];
+    let mut out = vec![0.0_f32; frames];
+    node.process(&[gate, &a, &d, &s, &r], &mut [&mut out], frames);
+    out
+}
+
+#[test]
+fn adsr_node_channel_counts() {
+    let node = adsr(SR);
+    assert_eq!(node.inputs(), 5);
+    assert_eq!(node.outputs(), 1);
+}
+
+#[test]
+fn adsr_attack_ramps_to_one_in_attack_time() {
+    let mut node = adsr(SR);
+    let attack_samples = 480_usize; // 10 ms at 48 kHz
+    let gate = vec![1.0_f32; 2048];
+    let out = render_adsr(
+        &mut node,
+        &gate,
+        attack_samples as f32 / SR,
+        0.005,
+        0.5,
+        0.01,
+    );
+
+    let first_peak = out
+        .iter()
+        .position(|&v| v >= 1.0 - 1e-4)
+        .expect("attack should reach 1.0");
+    assert!(
+        first_peak.abs_diff(attack_samples - 1) <= 2,
+        "attack should complete after ~{attack_samples} samples, peaked at {first_peak}"
+    );
+    // Envelope rises monotonically during the attack segment.
+    assert!(out[..first_peak].windows(2).all(|w| w[1] >= w[0]));
+    // And starts near zero.
+    assert!(out[0] < 0.01);
+}
+
+#[test]
+fn adsr_decay_settles_to_sustain_level() {
+    let mut node = adsr(SR);
+    let attack_samples = 48_usize;
+    let decay_samples = 480_usize;
+    let sustain = 0.5_f32;
+    let gate = vec![1.0_f32; 4800];
+    let out = render_adsr(
+        &mut node,
+        &gate,
+        attack_samples as f32 / SR,
+        decay_samples as f32 / SR,
+        sustain,
+        0.01,
+    );
+
+    let peak = out
+        .iter()
+        .position(|&v| v >= 1.0 - 1e-4)
+        .expect("attack should reach 1.0");
+    let expected_settle = attack_samples + decay_samples - 1;
+    let settle = peak
+        + out[peak..]
+            .iter()
+            .position(|&v| (v - sustain).abs() < 1e-3)
+            .expect("decay should settle to sustain");
+    assert!(
+        settle.abs_diff(expected_settle) <= 4,
+        "decay should settle near sample {expected_settle}, settled at {settle}"
+    );
+    // Once settled, it stays exactly at sustain while the gate is held.
+    assert!(
+        out[settle + 8..]
+            .iter()
+            .all(|&v| (v - sustain).abs() < 1e-3)
+    );
+}
+
+#[test]
+fn adsr_holds_sustain_while_gate_held() {
+    let mut node = adsr(SR);
+    let gate = vec![1.0_f32; 48_000]; // one full second, gate never falls
+    let out = render_adsr(&mut node, &gate, 0.001, 0.002, 0.6, 0.01);
+
+    assert!((out[47_999] - 0.6).abs() < 1e-3);
+    assert!((out[24_000] - 0.6).abs() < 1e-3);
+}
+
+#[test]
+fn adsr_release_decays_to_zero_in_release_time() {
+    let mut node = adsr(SR);
+    let gate_off = 2400_usize;
+    let release_samples = 480_usize;
+    let mut gate = vec![0.0_f32; 4800];
+    gate[..gate_off].fill(1.0);
+    let out = render_adsr(
+        &mut node,
+        &gate,
+        0.001,
+        0.002,
+        0.5,
+        release_samples as f32 / SR,
+    );
+
+    // Sustaining right before the gate falls.
+    assert!((out[gate_off - 1] - 0.5).abs() < 1e-3);
+
+    let expected_zero = gate_off + release_samples - 1;
+    let first_zero = gate_off
+        + out[gate_off..]
+            .iter()
+            .position(|&v| v <= 1e-4)
+            .expect("release should reach zero");
+    assert!(
+        first_zero.abs_diff(expected_zero) <= 2,
+        "release should reach zero near sample {expected_zero}, reached at {first_zero}"
+    );
+    // Stays silent afterwards.
+    assert!(out[first_zero..].iter().all(|&v| v <= 1e-4));
+}
+
+#[test]
+fn adsr_retrigger_restarts_attack_without_discontinuity() {
+    let mut node = adsr(SR);
+    let attack_samples = 480_usize;
+    let release_samples = 960_usize;
+    // Gate: on, off mid-note, back on while the release is still audible.
+    let mut gate = vec![1.0_f32; 4000];
+    gate[2000..2200].fill(0.0);
+    let out = render_adsr(
+        &mut node,
+        &gate,
+        attack_samples as f32 / SR,
+        480.0 / SR,
+        0.5,
+        release_samples as f32 / SR,
+    );
+
+    // Still mid-release (nonzero) when retriggered.
+    assert!(out[2199] > 0.1);
+    // Retrigger resumes rising from the current level.
+    assert!(out[2210] > out[2199]);
+
+    // No discontinuity anywhere: per-sample delta bounded by the steepest
+    // segment slope (attack: 1/480 per sample).
+    let max_step = 1.0 / attack_samples as f32 + 1e-5;
+    for (i, w) in out.windows(2).enumerate() {
+        assert!(
+            (w[1] - w[0]).abs() <= max_step,
+            "discontinuity at sample {i}: {} -> {}",
+            w[0],
+            w[1]
+        );
+    }
+}
+
+#[test]
+fn adsr_reset_returns_to_idle() {
+    let mut node = adsr(SR);
+    let gate = vec![1.0_f32; 512];
+    let out1 = render_adsr(&mut node, &gate, 0.005, 0.005, 0.5, 0.01);
+    node.reset();
+    let out2 = render_adsr(&mut node, &gate, 0.005, 0.005, 0.5, 0.01);
+    assert_eq!(out1, out2);
+}
+
+// ---------------------------------------------------------------------------
+// ArNode
+// ---------------------------------------------------------------------------
+
+#[test]
+fn ar_node_channel_counts() {
+    let node = ar(SR);
+    assert_eq!(node.inputs(), 3);
+    assert_eq!(node.outputs(), 1);
+}
+
+#[test]
+fn ar_reaches_one_in_attack_time_then_holds() {
+    let mut node = ar(SR);
+    let attack_samples = 480_usize;
+    let frames = 2400;
+    let gate = vec![1.0_f32; frames];
+    let a = vec![attack_samples as f32 / SR; frames];
+    let r = vec![0.01_f32; frames];
+    let mut out = vec![0.0_f32; frames];
+    node.process(&[&gate, &a, &r], &mut [&mut out], frames);
+
+    let first_peak = out
+        .iter()
+        .position(|&v| v >= 1.0 - 1e-4)
+        .expect("attack should reach 1.0");
+    assert!(
+        first_peak.abs_diff(attack_samples - 1) <= 2,
+        "attack should complete after ~{attack_samples} samples, peaked at {first_peak}"
+    );
+    // No decay stage: holds at full level while the gate is high.
+    assert!(out[first_peak..].iter().all(|&v| v >= 1.0 - 1e-3));
+}
+
+#[test]
+fn ar_releases_to_zero_after_gate_falls() {
+    let mut node = ar(SR);
+    let gate_off = 2400_usize;
+    let release_samples = 480_usize;
+    let frames = 4800;
+    let mut gate = vec![0.0_f32; frames];
+    gate[..gate_off].fill(1.0);
+    let a = vec![0.001_f32; frames];
+    let r = vec![release_samples as f32 / SR; frames];
+    let mut out = vec![0.0_f32; frames];
+    node.process(&[&gate, &a, &r], &mut [&mut out], frames);
+
+    assert!(out[gate_off - 1] >= 1.0 - 1e-3);
+
+    let expected_zero = gate_off + release_samples - 1;
+    let first_zero = gate_off
+        + out[gate_off..]
+            .iter()
+            .position(|&v| v <= 1e-4)
+            .expect("release should reach zero");
+    assert!(
+        first_zero.abs_diff(expected_zero) <= 2,
+        "release should reach zero near sample {expected_zero}, reached at {first_zero}"
+    );
+    assert!(out[first_zero..].iter().all(|&v| v <= 1e-4));
+}
+
+// ---------------------------------------------------------------------------
+// PanNode
+// ---------------------------------------------------------------------------
+
+/// Pans a constant-1.0 signal at `position`, returning one (L, R) sample pair.
+fn pan_gains(position: f32) -> (f32, f32) {
+    let mut node = pan();
+    let audio = vec![1.0_f32; 4];
+    let pos = vec![position; 4];
+    let mut left = vec![0.0_f32; 4];
+    let mut right = vec![0.0_f32; 4];
+    node.process(&[&audio, &pos], &mut [&mut left, &mut right], 4);
+    (left[0], right[0])
+}
+
+#[test]
+fn pan_node_channel_counts() {
+    let node = pan();
+    assert_eq!(node.inputs(), 2);
+    assert_eq!(node.outputs(), 2);
+}
+
+#[test]
+fn pan_center_is_minus_three_db_per_side() {
+    let (l, r) = pan_gains(0.0);
+    assert!((l - std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-4);
+    assert!((r - std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-4);
+}
+
+#[test]
+fn pan_hard_left_silences_right() {
+    let (l, r) = pan_gains(-1.0);
+    assert!((l - 1.0).abs() < 1e-6);
+    assert!(r.abs() < 1e-6);
+}
+
+#[test]
+fn pan_hard_right_silences_left() {
+    let (l, r) = pan_gains(1.0);
+    assert!(l.abs() < 1e-6);
+    assert!((r - 1.0).abs() < 1e-6);
+}
+
+#[test]
+fn pan_preserves_energy_across_positions() {
+    for i in 0..=20_u16 {
+        let position = f32::from(i).mul_add(0.1, -1.0);
+        let (l, r) = pan_gains(position);
+        let energy = l.mul_add(l, r * r);
+        assert!(
+            (energy - 1.0).abs() < 1e-4,
+            "energy at position {position} was {energy}"
+        );
+    }
+}
+
+#[test]
+fn pan_clamps_out_of_range_positions() {
+    assert_eq!(pan_gains(-2.0), pan_gains(-1.0));
+    assert_eq!(pan_gains(2.0), pan_gains(1.0));
+}
+
+#[test]
+fn pan_scales_audio_linearly() {
+    let mut node = pan();
+    let audio = vec![0.5_f32; 4];
+    let pos = vec![0.0_f32; 4];
+    let mut left = vec![0.0_f32; 4];
+    let mut right = vec![0.0_f32; 4];
+    node.process(&[&audio, &pos], &mut [&mut left, &mut right], 4);
+    let expected = 0.5 * std::f32::consts::FRAC_1_SQRT_2;
+    assert!((left[0] - expected).abs() < 1e-4);
+    assert!((right[0] - expected).abs() < 1e-4);
 }

@@ -79,11 +79,13 @@ Module: `crates/orpheus-dsp/src/graph/` (ADR 0004).
 - [x] `Processor` + `pipe`/`bind`
 - [ ] biquad filter node
 - [ ] SVF (state-variable filter) node
-- [ ] ADSR / AR envelope nodes
+- [x] ADSR / AR envelope nodes — `adsr`/`ar`
+  (`crates/orpheus-dsp/src/graph/primitives.rs`)
 - [ ] fractional / modulatable delay line
 - [ ] sample-playback node
-- [ ] `MixNode` adapter — crossfade exists in
-  `crates/orpheus-dsp/src/synth/mix.rs` but has no graph adapter
-- [ ] `PanNode` — 1-in/2-out equal-power panner
+- [x] `MixNode` adapter — `mix_node` wraps the crossfade in
+  `crates/orpheus-dsp/src/synth/mix.rs` (`graph/adapters.rs`)
+- [x] `PanNode` — `pan`, 2-in (audio, position)/2-out equal-power panner
+  (`crates/orpheus-dsp/src/graph/primitives.rs`)
 - [ ] engine integration of `graph/` — ADR 0004 follow-up; the graph module is
   currently unreferenced by `engine.rs`/`voice.rs`/`pedal/`

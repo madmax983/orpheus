@@ -5,7 +5,7 @@
 //! block-based graph system.
 
 use super::node::Node;
-use crate::synth::{Gain, LadderFilter, Noise, PulseOsc, SawOsc, SoftSat, TriOsc};
+use crate::synth::{Gain, LadderFilter, Mix, Noise, PulseOsc, SawOsc, SoftSat, TriOsc};
 
 // ---------------------------------------------------------------------------
 // SawNode
@@ -261,4 +261,42 @@ pub const fn soft_sat() -> SoftSatNode {
     SoftSatNode {
         sat: SoftSat::new(),
     }
+}
+
+// ---------------------------------------------------------------------------
+// MixNode
+// ---------------------------------------------------------------------------
+
+/// Linear crossfade between two signals. 3 inputs (left, right, balance), 1 output.
+///
+/// Balance is clamped to \[0, 1\]: 0 selects `left`, 1 selects `right`.
+pub struct MixNode {
+    mix: Mix,
+}
+
+impl Node for MixNode {
+    fn inputs(&self) -> u32 {
+        3
+    }
+    fn outputs(&self) -> u32 {
+        1
+    }
+    fn process(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], frames: usize) {
+        let left = inputs[0];
+        let right = inputs[1];
+        let balance = inputs[2];
+        let out = &mut outputs[0];
+        for i in 0..frames {
+            out[i] = self.mix.process(left[i], right[i], balance[i]);
+        }
+    }
+    fn reset(&mut self) {
+        self.mix.reset();
+    }
+}
+
+/// Creates a crossfade mixer node. 3 inputs (left, right, balance), 1 output.
+#[must_use]
+pub const fn mix_node() -> MixNode {
+    MixNode { mix: Mix::new() }
 }

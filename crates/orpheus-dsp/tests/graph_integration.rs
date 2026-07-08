@@ -7,8 +7,8 @@
 )]
 
 use orpheus_dsp::{
-    Node, Processor, constant, delay_line, feedback, gain_node, ladder_filter, merge, noise, par,
-    passthrough, saw, seq, sine, soft_sat, split, sum,
+    Node, Processor, adsr, bind, constant, delay_line, feedback, gain_node, ladder_filter, merge,
+    noise, pan, par, passthrough, saw, seq, sine, soft_sat, split, sum,
 };
 
 const SR: f32 = 48_000.0;
@@ -361,4 +361,63 @@ fn processor_reset_preserves_graph_determinism() {
     let out2 = render_source(&mut proc, FRAMES);
 
     assert_eq!(out1, out2);
+}
+
+// ---------------------------------------------------------------------------
+// Gated stereo voice: sine * ADSR envelope → equal-power pan
+// ---------------------------------------------------------------------------
+
+#[test]
+fn gated_voice_with_envelope_and_pan_starts_and_stops() {
+    // A complete playable stereo voice, built purely from graph nodes:
+    //
+    //   carrier:  constant(440) → sine            (0 in, 1 out)
+    //   envelope: adsr with bound A/D/S/R params  (1 in: gate, 1 out: level)
+    //   voice:    par(carrier, envelope) → gain   (1 in: gate, 1 out: audio)
+    //   stereo:   voice → pan with bound position (1 in: gate, 2 out: L/R)
+
+    let attack_s = 0.005_f32; // 240 samples
+    let release_s = 0.01_f32; // 480 samples
+
+    let carrier = seq(constant(440.0), sine(SR)).unwrap();
+    let envelope = bind(
+        adsr(SR),
+        &[(1, attack_s), (2, 0.005), (3, 0.6), (4, release_s)],
+    )
+    .unwrap();
+    let voice = seq(par(carrier, envelope), gain_node()).unwrap();
+    let stereo = seq(voice, bind(pan(), &[(1, -0.5)]).unwrap()).unwrap();
+
+    let mut proc = Processor::new(stereo);
+    assert_eq!(proc.inputs(), 1); // gate
+    assert_eq!(proc.outputs(), 2); // L, R
+
+    let frames = 9600; // 200 ms
+    let gate_off = 4800; // gate held for 100 ms, then released
+    let mut gate = vec![0.0_f32; frames];
+    gate[..gate_off].fill(1.0);
+
+    let mut left = vec![0.0_f32; frames];
+    let mut right = vec![0.0_f32; frames];
+    proc.process(&[&gate], &mut [&mut left, &mut right], frames);
+
+    // Finite and bounded everywhere.
+    assert!(left.iter().chain(right.iter()).all(|s| s.is_finite()));
+    assert!(left.iter().chain(right.iter()).all(|&s| s.abs() <= 1.0));
+
+    // Audible on both channels while the gate is held (after the attack).
+    let attack_done = 480;
+    assert!(left[attack_done..gate_off].iter().any(|&s| s.abs() > 0.05));
+    assert!(right[attack_done..gate_off].iter().any(|&s| s.abs() > 0.05));
+
+    // Panned left of center: left channel carries more energy.
+    let left_energy: f32 = left[attack_done..gate_off].iter().map(|s| s * s).sum();
+    let right_energy: f32 = right[attack_done..gate_off].iter().map(|s| s * s).sum();
+    assert!(left_energy > right_energy);
+
+    // Near-silence after the release completes (release is 480 samples;
+    // check from double that after gate-off).
+    let silent_from = gate_off + 960;
+    assert!(left[silent_from..].iter().all(|&s| s.abs() < 1e-3));
+    assert!(right[silent_from..].iter().all(|&s| s.abs() < 1e-3));
 }

@@ -23,14 +23,14 @@ pub use processor::Processor;
 
 // Primitives (new nodes)
 pub use primitives::{
-    ConstNode, DelayNode, OnePoleNode, PassthroughNode, SineNode, SumNode, WireNode, constant,
-    delay_line, one_pole, passthrough, sine, sum, wire,
+    AdsrNode, ArNode, ConstNode, DelayNode, OnePoleNode, PanNode, PassthroughNode, SineNode,
+    SumNode, WireNode, adsr, ar, constant, delay_line, one_pole, pan, passthrough, sine, sum, wire,
 };
 
 // Adapters (existing synth/ primitive wrappers)
 pub use adapters::{
-    GainNode, LadderFilterNode, NoiseNode, PulseNode, SawNode, SoftSatNode, TriNode, gain_node,
-    ladder_filter, noise, pulse, saw, soft_sat, tri,
+    GainNode, LadderFilterNode, MixNode, NoiseNode, PulseNode, SawNode, SoftSatNode, TriNode,
+    gain_node, ladder_filter, mix_node, noise, pulse, saw, soft_sat, tri,
 };
 
 // Combinators
