@@ -1,0 +1,8 @@
+#!/usr/bin/expect -f
+spawn cargo run --bin orpheus
+expect "> "
+send "drums = bd sn\r"
+expect "> "
+send ":explain drums\r"
+expect "> "
+send ":quit\r"

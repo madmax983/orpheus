@@ -1,0 +1,3 @@
+#!/usr/bin/expect -f
+spawn sh -c "echo 'plug = vst(\"test\")\n:explain plug\n:quit\n' | cargo run --bin orpheus"
+expect eof
