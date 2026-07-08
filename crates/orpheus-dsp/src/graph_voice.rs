@@ -276,20 +276,16 @@ impl VoiceNodeSpec {
                 sustain,
                 release_s,
                 ..
-            } => {
-                [*attack_s, *decay_s, *sustain, *release_s]
-                    .iter()
-                    .all(|value| value.is_finite() && *value >= 0.0)
-            }
+            } => [*attack_s, *decay_s, *sustain, *release_s]
+                .iter()
+                .all(|value| value.is_finite() && *value >= 0.0),
             Self::Ar {
                 attack_s,
                 release_s,
                 ..
-            } => {
-                [*attack_s, *release_s]
-                    .iter()
-                    .all(|value| value.is_finite() && *value >= 0.0)
-            }
+            } => [*attack_s, *release_s]
+                .iter()
+                .all(|value| value.is_finite() && *value >= 0.0),
             Self::Sine { .. }
             | Self::Saw { .. }
             | Self::Tri { .. }
@@ -678,6 +674,7 @@ impl Clone for GraphVoiceBank {
 
 impl GraphVoiceBank {
     /// Builds and prepares the pool for every built-in program.
+    #[must_use]
     pub fn with_builtin_programs(sample_rate_hz: f32) -> Self {
         Self::with_user_programs(sample_rate_hz, Vec::new())
     }
@@ -688,10 +685,14 @@ impl GraphVoiceBank {
     /// Construction compiles and warms every pooled voice, so it allocates;
     /// call it off the audio thread and hand the finished bank to the engine
     /// (via [`crate::EngineCommand::ReplaceGraphVoicePrograms`]).
+    #[must_use]
     pub fn with_user_programs(sample_rate_hz: f32, user_specs: Vec<GraphVoiceSpec>) -> Self {
         let mut slots = Vec::new();
         for program in builtin_graph_voice_programs() {
-            if user_specs.iter().any(|spec| spec.token() == program.token()) {
+            if user_specs
+                .iter()
+                .any(|spec| spec.token() == program.token())
+            {
                 continue;
             }
             let release_frames = program.release_frames(sample_rate_hz);
@@ -733,6 +734,7 @@ impl GraphVoiceBank {
     }
 
     /// Whether `token` names a pooled graph voice program.
+    #[must_use]
     pub fn has_program(&self, token: &str) -> bool {
         self.slots.iter().any(|slot| &*slot.token == token)
     }

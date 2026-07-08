@@ -254,7 +254,8 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
                 | Value::String(_)
                 | Value::Tuning(_)
                 | Value::PluginPattern(_)
-                | Value::Pedal(_) | Value::Voice(_) => unreachable!(),
+                | Value::Pedal(_)
+                | Value::Voice(_) => unreachable!(),
             })
             .collect();
         return Ok(Value::SamplePattern(SamplePatternValue::stack(patterns)));
@@ -275,7 +276,8 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
                 | Value::String(_)
                 | Value::Tuning(_)
                 | Value::PluginPattern(_)
-                | Value::Pedal(_) | Value::Voice(_) => unreachable!(),
+                | Value::Pedal(_)
+                | Value::Voice(_) => unreachable!(),
             })
             .collect();
         return Ok(Value::NumberPattern(
@@ -773,7 +775,8 @@ fn apply_every(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::String(_)
         | Value::Tuning(_)
         | Value::PluginPattern(_)
-        | Value::Pedal(_) | Value::Voice(_) => Err(EvalError::new(
+        | Value::Pedal(_)
+        | Value::Voice(_) => Err(EvalError::new(
             "`every` expected a pattern as its final argument",
         )),
     }
@@ -2314,7 +2317,8 @@ fn extract_tuning(value: Value) -> Result<crate::value::TuningValue, EvalError> 
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::Pedal(_) | Value::Voice(_)
+        | Value::Pedal(_)
+        | Value::Voice(_)
         | Value::PluginPattern(_)
         | Value::String(_) => Err(EvalError::new(
             "`tune` expected a tuning value; construct one via `tuning(...)` or `load_scl(\"...\")`",
@@ -2353,7 +2357,8 @@ fn apply_onset(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::Function(_)
         | Value::Tuning(_)
         | Value::PluginPattern(_)
-        | Value::Pedal(_) | Value::Voice(_)
+        | Value::Pedal(_)
+        | Value::Voice(_)
         | Value::String(_) => Err(EvalError::new(
             "`onset` expected a sample pattern as its final argument",
         )),
@@ -2408,7 +2413,8 @@ fn apply_slice(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::Function(_)
         | Value::Tuning(_)
         | Value::PluginPattern(_)
-        | Value::Pedal(_) | Value::Voice(_)
+        | Value::Pedal(_)
+        | Value::Voice(_)
         | Value::String(_) => Err(EvalError::new(
             "`slice` expected a sample pattern as its final argument",
         )),
@@ -2597,7 +2603,8 @@ fn apply_slice_idx(args: Vec<Value>) -> Result<Value, EvalError> {
         | Value::Function(_)
         | Value::Tuning(_)
         | Value::PluginPattern(_)
-        | Value::Pedal(_) | Value::Voice(_)
+        | Value::Pedal(_)
+        | Value::Voice(_)
         | Value::String(_) => Err(EvalError::new(
             "`slice_idx` expected a sample pattern as its final argument",
         )),
@@ -2664,7 +2671,8 @@ fn apply_sample_numeric_control(
         | Value::Function(_)
         | Value::Tuning(_)
         | Value::PluginPattern(_)
-        | Value::Pedal(_) | Value::Voice(_)
+        | Value::Pedal(_)
+        | Value::Voice(_)
         | Value::String(_) => Err(EvalError::new(format!(
             "`{builtin_name}` expected a sample pattern as its final argument"
         ))),
@@ -2744,7 +2752,8 @@ fn extract_unary_pattern_transform(
         | Value::String(_)
         | Value::Tuning(_)
         | Value::PluginPattern(_)
-        | Value::Pedal(_) | Value::Voice(_) => Err(EvalError::new(message)),
+        | Value::Pedal(_)
+        | Value::Voice(_) => Err(EvalError::new(message)),
     }
 }
 
@@ -2763,7 +2772,8 @@ fn extract_pattern_gate(
         | Value::Function(_)
         | Value::Tuning(_)
         | Value::PluginPattern(_)
-        | Value::Pedal(_) | Value::Voice(_)
+        | Value::Pedal(_)
+        | Value::Voice(_)
         | Value::String(_) => Err(EvalError::new(message)),
     }
 }
@@ -3604,7 +3614,8 @@ fn extract_number_pattern(
         | Value::Function(_)
         | Value::Tuning(_)
         | Value::PluginPattern(_)
-        | Value::Pedal(_) | Value::Voice(_)
+        | Value::Pedal(_)
+        | Value::Voice(_)
         | Value::String(_) => Err(EvalError::new(format!(
             "`{builtin_name}` requires a number pattern argument"
         ))),
@@ -3625,7 +3636,8 @@ fn extract_sample_pattern(
         | Value::Function(_)
         | Value::Tuning(_)
         | Value::PluginPattern(_)
-        | Value::Pedal(_) | Value::Voice(_)
+        | Value::Pedal(_)
+        | Value::Voice(_)
         | Value::String(_) => Err(EvalError::new(format!(
             "`{builtin_name}` expected a sample pattern argument"
         ))),
@@ -3660,7 +3672,8 @@ fn extract_plugin_pattern(
         | Value::ArpDirection(_)
         | Value::PitchClassSet(_)
         | Value::Function(_)
-        | Value::Pedal(_) | Value::Voice(_)
+        | Value::Pedal(_)
+        | Value::Voice(_)
         | Value::Tuning(_)
         | Value::String(_) => Err(EvalError::new(format!(
             "`{builtin_name}` requires a plugin argument"
@@ -3681,7 +3694,8 @@ fn extract_constant_number(value: Value, builtin_name: &str) -> Result<f64, Eval
         | Value::Function(_)
         | Value::Tuning(_)
         | Value::PluginPattern(_)
-        | Value::Pedal(_) | Value::Voice(_)
+        | Value::Pedal(_)
+        | Value::Voice(_)
         | Value::String(_) => Err(EvalError::new(format!(
             "`{builtin_name}` requires a constant number argument"
         ))),
@@ -3697,7 +3711,8 @@ fn extract_string(value: Value, builtin_name: &str) -> Result<String, EvalError>
         | Value::PitchClassSet(_)
         | Value::Tuning(_)
         | Value::PluginPattern(_)
-        | Value::Pedal(_) | Value::Voice(_)
+        | Value::Pedal(_)
+        | Value::Voice(_)
         | Value::Function(_) => Err(EvalError::new(format!(
             "`{builtin_name}` requires a string argument"
         ))),
@@ -3713,7 +3728,8 @@ fn extract_arp_direction(value: &Value) -> Result<ArpDirectionValue, EvalError> 
         | Value::Function(_)
         | Value::Tuning(_)
         | Value::PluginPattern(_)
-        | Value::Pedal(_) | Value::Voice(_)
+        | Value::Pedal(_)
+        | Value::Voice(_)
         | Value::String(_) => Err(EvalError::new(
             "`arp` requires a direction argument like `up`, `down`, `pingpong`, or `updown`",
         )),
@@ -3731,7 +3747,8 @@ fn extract_pitch_class_set(value: Value) -> Result<PitchClassSetValue, EvalError
         | Value::ArpDirection(_)
         | Value::Tuning(_)
         | Value::PluginPattern(_)
-        | Value::Pedal(_) | Value::Voice(_)
+        | Value::Pedal(_)
+        | Value::Voice(_)
         | Value::Function(_) => Err(EvalError::new(
             "`degrees` requires a pitch class set as its first argument",
         )),

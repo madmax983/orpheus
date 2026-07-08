@@ -766,7 +766,7 @@ fn format_graph_source_into(bindings: &[GraphBinding], result: &Expr, buf: &mut 
 }
 
 /// Formats a `voice { ... }` block back into canonical source text.
-pub(crate) fn format_voice_source_into(bindings: &[GraphBinding], result: &Expr, buf: &mut String) {
+pub fn format_voice_source_into(bindings: &[GraphBinding], result: &Expr, buf: &mut String) {
     format_block_source_into("voice", bindings, result, buf);
 }
 

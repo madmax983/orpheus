@@ -22,8 +22,7 @@ use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnec
 use orpheus_dsp::{
     DEFAULT_ANALOG_BASE_FREQUENCY_HZ, EngineCommand, EngineHandle, GeneratorCycle, GeneratorId,
     GraphVoiceBank, PatternUpdate, SampleBank, SampleLibraryWatcher, SampleLibraryWatcherConfig,
-    TransportSnapshot,
-    load_sample_bank_from_directory, render_routing_snapshot_to_stem_wavs,
+    TransportSnapshot, load_sample_bank_from_directory, render_routing_snapshot_to_stem_wavs,
 };
 use orpheus_pattern::Rational;
 
@@ -965,7 +964,8 @@ impl ReplSession {
             Value::ArpDirection(_)
             | Value::PitchClassSet(_)
             | Value::Function(_)
-            | Value::Pedal(_) | Value::Voice(_)
+            | Value::Pedal(_)
+            | Value::Voice(_)
             | Value::PluginPattern(_)
             | Value::Tuning(_)
             | Value::String(_) => {

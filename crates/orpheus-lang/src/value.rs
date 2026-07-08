@@ -751,7 +751,7 @@ impl fmt::Display for Value {
                     FunctionValue::User(_) => "User",
                 }
             ),
-            Self::Pedal(_) | Self::Voice(_) => write!(f, "Pedal"),
+            Self::Pedal(_) => write!(f, "Pedal"),
             Self::Voice(_) => write!(f, "Voice"),
             Self::PluginPattern(_) => write!(f, "Plugin"),
             Self::Tuning(_) => write!(f, "Tuning"),
@@ -779,7 +779,8 @@ impl Value {
             | Self::ArpDirection(_)
             | Self::PitchClassSet(_)
             | Self::Function(_)
-            | Self::Pedal(_) | Self::Voice(_)
+            | Self::Pedal(_)
+            | Self::Voice(_)
             | Self::PluginPattern(_)
             | Self::Tuning(_)
             | Self::String(_) => None,
@@ -805,7 +806,8 @@ impl Value {
             | Self::PitchClassSet(_)
             | Self::Tuning(_)
             | Self::Function(_)
-            | Self::Pedal(_) | Self::Voice(_)
+            | Self::Pedal(_)
+            | Self::Voice(_)
             | Self::PluginPattern(_)
             | Self::String(_) => None,
         }
@@ -829,7 +831,8 @@ impl Value {
             | Self::NumberPattern(_)
             | Self::ArpDirection(_)
             | Self::Function(_)
-            | Self::Pedal(_) | Self::Voice(_)
+            | Self::Pedal(_)
+            | Self::Voice(_)
             | Self::PluginPattern(_)
             | Self::Tuning(_)
             | Self::String(_) => None,
@@ -850,7 +853,8 @@ impl Value {
             | Self::ArpDirection(_)
             | Self::PitchClassSet(_)
             | Self::Function(_)
-            | Self::Pedal(_) | Self::Voice(_)
+            | Self::Pedal(_)
+            | Self::Voice(_)
             | Self::PluginPattern(_)
             | Self::String(_) => None,
         }
@@ -866,7 +870,8 @@ impl Value {
             | Self::ArpDirection(_)
             | Self::PitchClassSet(_)
             | Self::Function(_)
-            | Self::Pedal(_) | Self::Voice(_)
+            | Self::Pedal(_)
+            | Self::Voice(_)
             | Self::Tuning(_)
             | Self::String(_) => None,
         }
@@ -890,7 +895,8 @@ impl Value {
             | Self::NumberPattern(_)
             | Self::PitchClassSet(_)
             | Self::Function(_)
-            | Self::Pedal(_) | Self::Voice(_)
+            | Self::Pedal(_)
+            | Self::Voice(_)
             | Self::PluginPattern(_)
             | Self::Tuning(_)
             | Self::String(_) => None,
@@ -955,7 +961,7 @@ impl Value {
             Self::ArpDirection(_) => "arp direction",
             Self::PitchClassSet(_) => "pitch class set",
             Self::Function(_) => "function",
-            Self::Pedal(_) | Self::Voice(_) => "pedal",
+            Self::Pedal(_) => "pedal",
             Self::Voice(_) => "voice",
             Self::PluginPattern(_) => "plugin",
             Self::Tuning(_) => "tuning",
@@ -1606,7 +1612,8 @@ impl PatternRuntimeValue for SampleEvent {
             | Value::ArpDirection(_)
             | Value::PitchClassSet(_)
             | Value::Function(_)
-            | Value::Pedal(_) | Value::Voice(_)
+            | Value::Pedal(_)
+            | Value::Voice(_)
             | Value::PluginPattern(_)
             | Value::Tuning(_)
             | Value::String(_) => Err(EvalError::new(
@@ -1698,7 +1705,8 @@ impl PatternRuntimeValue for f64 {
             | Value::ArpDirection(_)
             | Value::PitchClassSet(_)
             | Value::Function(_)
-            | Value::Pedal(_) | Value::Voice(_)
+            | Value::Pedal(_)
+            | Value::Voice(_)
             | Value::PluginPattern(_)
             | Value::Tuning(_)
             | Value::String(_) => Err(EvalError::new(

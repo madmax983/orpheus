@@ -30,10 +30,10 @@ use crate::builtins::{builtin_value, is_sample_identifier, stack_values};
 use crate::parser::parse_module;
 use crate::pedal::compile_graph;
 use crate::pitch::parse_named_pitch_literal;
-use crate::voice::compile_voice;
 use crate::value::{
     FunctionValue, NumberPatternValue, SampleEvent, SamplePatternValue, UserFn, Value,
 };
+use crate::voice::compile_voice;
 
 /// Runtime evaluation error for bootstrap Orpheus modules.
 ///

@@ -77,13 +77,8 @@ impl VoiceValue {
     /// Returns [`EvalError`] when `token` is not a valid single-word pattern
     /// token or the DSP layer rejects the spec.
     pub fn to_spec(&self, token: &str) -> Result<GraphVoiceSpec, EvalError> {
-        GraphVoiceSpec::new(
-            token,
-            self.release_seconds,
-            self.nodes.clone(),
-            self.output,
-        )
-        .map_err(|error| EvalError::new(format!("voice `{token}` is not playable: {error}")))
+        GraphVoiceSpec::new(token, self.release_seconds, self.nodes.clone(), self.output)
+            .map_err(|error| EvalError::new(format!("voice `{token}` is not playable: {error}")))
     }
 }
 
@@ -323,9 +318,7 @@ impl VoiceCompiler {
         piped: Option<VoiceSignalRef>,
     ) -> Result<VoiceSignalRef, EvalError> {
         if !args.is_empty() || piped.is_some() {
-            return Err(EvalError::new(
-                "`noise` is a source and takes no arguments",
-            ));
+            return Err(EvalError::new("`noise` is a source and takes no arguments"));
         }
         self.push(VoiceNodeSpec::Noise {
             seed: VOICE_NOISE_SEED,
@@ -425,6 +418,7 @@ impl VoiceCompiler {
     }
 }
 
+#[derive(Clone, Copy)]
 enum GateSource<'a> {
     Reference(VoiceSignalRef),
     Expression(&'a Expr),
