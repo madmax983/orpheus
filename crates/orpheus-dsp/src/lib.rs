@@ -41,7 +41,7 @@ pub use graph_voice::{
     VoiceSignalRef, builtin_graph_voice_programs,
 };
 pub use offline::{
-    OfflineRenderError, render_events_to_file, render_events_to_file_with_bank,
+    GeneratorCycleSpec, OfflineRenderError, render_events_to_file, render_events_to_file_with_bank,
     render_events_to_wav, render_routing_snapshot_to_stem_wavs,
     render_routing_snapshot_to_stereo_for_test,
 };

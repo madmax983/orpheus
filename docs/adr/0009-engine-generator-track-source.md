@@ -139,9 +139,11 @@ invoked inside `begin_cycle`. It fails three ways:
   behavior); the section 10.2 limitation is resolved.
 - Grid playback no longer recompiles routing or touches the binding table per
   cycle; the `orca` binding is a display artifact updated at start/stop.
-- Offline rendering (`offline.rs`) treats generator tracks as silent: their
-  buffers live in the real-time engine, not the snapshot. Exporting a grid
-  performance is future work (record the delivered buffers).
+- Offline rendering (`offline.rs`) originally treated generator tracks as
+  silent: their buffers live in the real-time engine, not the snapshot. This
+  is now resolved — see the addendum below: `render_routing_snapshot_to_stem_wavs`
+  accepts pre-materialized `generator_cycles` and schedules them exactly like a
+  sample pattern, so exported stems include the grid performance.
 - The whole-extent duration rule changes one general behavior: a looping
   pattern event clipped at the cycle end now rings into the next cycle each
   time it re-triggers (overlapping its next incarnation) instead of being
@@ -151,3 +153,74 @@ invoked inside `begin_cycle`. It fails three ways:
   boundary along with everything else).
 - `MAX_GENERATORS` fixes the slot table at 8; ids outside the range are
   rejected as engine errors at delivery time.
+
+## Addendum: offline stem export via pre-materialized cycles
+
+- Date: 2026-07-08
+
+The original decision left offline stem export rendering generator tracks
+silent (see Consequences), because their cycle buffers live only in the
+real-time engine. This addendum closes that gap without violating the two
+hard constraints above — `orpheus-dsp` must not depend on `orpheus-lang`,
+and no thread other than the UI thread may tick a grid.
+
+### The dsp seam (generic, still Orca-agnostic)
+
+- **`GeneratorCycleSpec`** (`offline.rs`): `{ generator_id: GeneratorId,
+  cycles: Vec<Box<[Event<SampleTrigger>]>> }` — one pre-materialized buffer
+  per cycle index, handed to the renderer out-of-band, mirroring exactly how
+  `GraphVoiceSpec` threads user voice programs into offline export.
+- **`render_routing_snapshot_to_stem_wavs(.., generator_cycles:
+  &[GeneratorCycleSpec], ..)`** gains a `generator_cycles` parameter
+  (positioned right after `graph_voice_specs`). `schedule_snapshot_cycles`
+  now has a `TrackSource::Generator(id)` arm that, per cycle, looks up the
+  matching spec and schedules `spec.cycles.get(cycle).or_else(|| cycles.last())`
+  through the *same* `Scheduler::schedule_cycle_events` call `SamplePattern`
+  uses. `.or_else(last)` reproduces the engine's starvation-loops-last-buffer
+  rule; a bounded export normally supplies exactly `cycle_count` buffers. A
+  generator with no matching spec (or an empty buffer list) renders silent.
+  `orpheus-dsp` still knows nothing about Orca — it only replays boxed event
+  buffers. The `render_routing_snapshot_to_stereo_for_test` helper stays
+  generator-silent (it passes an empty slice internally); stem export is the
+  audible generator surface.
+
+### The lang glue (Orca-specific)
+
+- Materialization stays on the UI thread. Rather than recompute cycles at
+  export time (which would require the session to own the grid, its
+  `frames_per_cycle`, and its sample token), `ReplSession` **records the cycle
+  buffers it already ships**: `push_generator_cycle` appends each delivered
+  `[Event<SampleTrigger>]` buffer to a per-`GeneratorId` record (bounded by
+  `MAX_RECORDED_GENERATOR_CYCLES`), and `start_generator_source` resets that
+  record so cycle 0 is grid start. A private `generator_cycle_specs(cycle_count)`
+  helper (mirroring `graph_voice_specs()`) turns the record into
+  `Vec<GeneratorCycleSpec>`, which `export_stems` threads into the renderer.
+  This keeps the generic `start_/push_/stop_generator_source` signatures
+  unchanged (so the TUI and existing tests are untouched) and adds no
+  Orca coupling to the session's generator seam.
+- `orpheus_lang::orca::materialize_generator_cycles(engine, cycle_count,
+  frames_per_cycle, sample_token)` is added as the deterministic batch
+  materializer — a clone of the poll loop that never advances the caller's
+  live playhead — reusing `materialize_cycle` + `sample_trigger_from_event`.
+  It is the right tool for a host that would rather recompute N cycles from a
+  grid than replay delivered ones.
+
+### Wiring tradeoff
+
+Recording delivered buffers (rather than retaining the grid engine in the
+session) was chosen as the smallest ownership-respecting change: `:export
+stems` is a session command reached through `eval_line` even in the TUI, so
+the export data must live in session-held state, and the session already
+converts these exact buffers in `push_generator_cycle`. The tradeoff is that
+export reflects the cycles actually delivered from grid start (looping the
+last for any surplus, matching RT starvation), rather than fast-forwarding a
+grid that has not yet played; the record is bounded per slot to keep a
+long-running grid from growing it without limit.
+
+### Audio-thread analysis
+
+Unchanged from the base decision: all materialization and recording happen
+off the audio thread (on the UI/lang thread and, for export, in the offline
+renderer). The real-time render path is untouched, allocation-free, and
+lock-free; the recorded buffers are plain owned data the audio thread never
+reads.

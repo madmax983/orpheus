@@ -41,5 +41,6 @@ pub use grid::{BANG, COMMENT, EMPTY, Grid, GridError, is_valid_glyph};
 pub use publish::{
     CycleIoEvent, DEFAULT_GRID_FRAMES_PER_CYCLE, DEFAULT_GRID_HEIGHT, DEFAULT_GRID_WIDTH,
     DEFAULT_SAMPLE_TOKEN, ORCA_GENERATOR_ID, ORCA_PATTERN_NAME, OrcaCycle, OrcaPublisher,
-    materialize_cycle, materialize_cycle_io, midi_note_id, playhead_frame, sample_event_from_orca,
+    materialize_cycle, materialize_cycle_io, materialize_generator_cycles, midi_note_id,
+    playhead_frame, sample_event_from_orca,
 };
