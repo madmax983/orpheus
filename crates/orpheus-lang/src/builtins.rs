@@ -125,6 +125,8 @@ fn lookup_pattern_transform(name: &str) -> Option<Value> {
         "cat" | "slowcat" => Some(builtin_function_value(BuiltinKind::Cat)),
         "randcat" => Some(builtin_function_value(BuiltinKind::RandCat)),
         "wrandcat" => Some(builtin_function_value(BuiltinKind::WRandCat)),
+        "pchoose" => Some(builtin_function_value(BuiltinKind::PChoose)),
+        "wpchoose" => Some(builtin_function_value(BuiltinKind::WPChoose)),
         "markov" => Some(builtin_function_value(BuiltinKind::Markov)),
         "append" => Some(builtin_function_value(BuiltinKind::Append)),
         "iter" => Some(builtin_function_value(BuiltinKind::Iter)),
@@ -445,6 +447,8 @@ impl BuiltinKind {
             Self::Scan => "scan",
             Self::RandCat => "randcat",
             Self::WRandCat => "wrandcat",
+            Self::PChoose => "pchoose",
+            Self::WPChoose => "wpchoose",
             Self::Markov => "markov",
             Self::Off => "off",
             Self::Rot => "rot",
@@ -485,6 +489,8 @@ impl BuiltinKind {
                 | Self::WChoose
                 | Self::RandCat
                 | Self::WRandCat
+                | Self::PChoose
+                | Self::WPChoose
                 | Self::Markov
                 | Self::Euclid
                 | Self::EuclidInv
@@ -509,6 +515,7 @@ impl BuiltinKind {
             | Self::Within
             | Self::WChoose
             | Self::WRandCat
+            | Self::WPChoose
             | Self::EuclidFull => 4,
             Self::PitchClassSet
             | Self::Rev
@@ -575,6 +582,7 @@ impl BuiltinKind {
             | Self::Tune
             | Self::Cat
             | Self::RandCat
+            | Self::PChoose
             | Self::Append
             | Self::Iter
             | Self::IterBack
@@ -691,6 +699,8 @@ impl BuiltinKind {
             Self::Cat | Self::Append => apply_cat(args, self.name()),
             Self::RandCat => apply_randcat(args, function.site_salt.unwrap_or_default()),
             Self::WRandCat => apply_wrandcat_patterns(args, function.site_salt.unwrap_or_default()),
+            Self::PChoose => apply_pchoose(args, function.site_salt.unwrap_or_default()),
+            Self::WPChoose => apply_wpchoose(args, function.site_salt.unwrap_or_default()),
             Self::Markov => apply_markov(args, function.site_salt.unwrap_or_default()),
             Self::Iter => apply_iter(args, false),
             Self::IterBack => apply_iter(args, true),
@@ -1604,17 +1614,71 @@ fn apply_randcat(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
             "`randcat` requires at least two pattern arguments",
         ));
     }
-    build_randcat(args, None, site_salt, "randcat")
+    build_randcat(
+        args,
+        None,
+        site_salt,
+        "randcat",
+        ChoiceGranularity::PerCycle,
+    )
 }
 
 /// Implements `wrandcat(p1, w1, p2, w2, ...)`: `randcat` drawing among
 /// interleaved pattern/weight pairs proportionally to the weights.
 /// Zero-weight patterns are never played; negative weights are rejected.
 fn apply_wrandcat_patterns(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
-    if args.len() < 4 || !args.len().is_multiple_of(2) {
+    let (patterns, cumulative_weights) = collect_weighted_patterns(args, "wrandcat")?;
+    build_randcat(
+        patterns,
+        Some(cumulative_weights),
+        site_salt,
+        "wrandcat",
+        ChoiceGranularity::PerCycle,
+    )
+}
+
+/// Implements `pchoose(p1, p2, ...)`: per-slot random choice among the
+/// argument patterns. Each cycle splits into as many equal slots as the
+/// busiest argument's event count that cycle, and every slot independently
+/// plays one argument's slice of the slot, chosen uniformly at
+/// deterministic, call-site-salted random.
+fn apply_pchoose(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
+    if args.len() < 2 {
         return Err(EvalError::new(
-            "`wrandcat` requires interleaved pattern/weight pairs: an even number of arguments like `wrandcat(p1, w1, p2, w2)`",
+            "`pchoose` requires at least two pattern arguments",
         ));
+    }
+    build_randcat(args, None, site_salt, "pchoose", ChoiceGranularity::PerSlot)
+}
+
+/// Implements `wpchoose(p1, w1, p2, w2, ...)`: `pchoose` drawing among
+/// interleaved pattern/weight pairs proportionally to the weights.
+/// Zero-weight patterns are never played; negative weights are rejected.
+fn apply_wpchoose(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
+    let (patterns, cumulative_weights) = collect_weighted_patterns(args, "wpchoose")?;
+    build_randcat(
+        patterns,
+        Some(cumulative_weights),
+        site_salt,
+        "wpchoose",
+        ChoiceGranularity::PerSlot,
+    )
+}
+
+/// Collects interleaved `pattern, weight` argument pairs into the patterns
+/// that can actually be drawn and their normalized cumulative upper bounds
+/// in `(0, 1]` (the `wchoose` convention). Shared by `wrandcat` and
+/// `wpchoose`: zero-weight patterns are dropped so they can never be drawn;
+/// negative, non-finite, and all-zero weights are rejected.
+fn collect_weighted_patterns(
+    args: Vec<Value>,
+    builtin_name: &str,
+) -> Result<(Vec<Value>, Vec<f64>), EvalError> {
+    if args.len() < 4 || !args.len().is_multiple_of(2) {
+        return Err(EvalError::new(format!(
+            "`{builtin_name}` requires interleaved pattern/weight pairs: an even number of \
+             arguments like `{builtin_name}(p1, w1, p2, w2)`",
+        )));
     }
 
     let mut patterns = Vec::with_capacity(args.len() / 2);
@@ -1623,12 +1687,12 @@ fn apply_wrandcat_patterns(args: Vec<Value>, site_salt: u64) -> Result<Value, Ev
     while let Some(pattern) = args.next() {
         let weight = extract_constant_number(
             args.next().expect("even argument count checked above"),
-            "wrandcat",
+            builtin_name,
         )?;
         if !weight.is_finite() || weight < 0.0 {
-            return Err(EvalError::new(
-                "`wrandcat` requires non-negative finite weights",
-            ));
+            return Err(EvalError::new(format!(
+                "`{builtin_name}` requires non-negative finite weights"
+            )));
         }
         patterns.push(pattern);
         weights.push(weight);
@@ -1636,9 +1700,9 @@ fn apply_wrandcat_patterns(args: Vec<Value>, site_salt: u64) -> Result<Value, Ev
 
     let total: f64 = weights.iter().sum();
     if total <= 0.0 {
-        return Err(EvalError::new(
-            "`wrandcat` requires at least one positive weight",
-        ));
+        return Err(EvalError::new(format!(
+            "`{builtin_name}` requires at least one positive weight"
+        )));
     }
 
     // Drop zero-weight patterns so they can never be drawn, and normalize the
@@ -1655,21 +1719,25 @@ fn apply_wrandcat_patterns(args: Vec<Value>, site_salt: u64) -> Result<Value, Ev
         cumulative_weights.push(cumulative);
     }
 
-    build_randcat(
-        kept_patterns,
-        Some(cumulative_weights),
-        site_salt,
-        "wrandcat",
-    )
+    Ok((kept_patterns, cumulative_weights))
 }
 
-/// Builds the `RandCat` runtime from same-kind pattern arguments (shared by
-/// `randcat` and `wrandcat`).
+/// Whether a random pattern choice draws once per cycle (`randcat`/
+/// `wrandcat`) or once per cycle slot (`pchoose`/`wpchoose`).
+#[derive(Clone, Copy)]
+enum ChoiceGranularity {
+    PerCycle,
+    PerSlot,
+}
+
+/// Builds the `RandCat` or `ChooseSlots` runtime from same-kind pattern
+/// arguments (shared by `randcat`/`wrandcat` and `pchoose`/`wpchoose`).
 fn build_randcat(
     args: Vec<Value>,
     cumulative_weights: Option<Vec<f64>>,
     site_salt: u64,
     builtin_name: &str,
+    granularity: ChoiceGranularity,
 ) -> Result<Value, EvalError> {
     if args
         .iter()
@@ -1682,9 +1750,16 @@ fn build_randcat(
                 _ => unreachable!("all arguments were checked to be sample patterns"),
             })
             .collect();
-        return Ok(Value::SamplePattern(
-            SamplePatternValue::randcat_with_site_salt(patterns, cumulative_weights, site_salt),
-        ));
+        return Ok(Value::SamplePattern(match granularity {
+            ChoiceGranularity::PerCycle => {
+                SamplePatternValue::randcat_with_site_salt(patterns, cumulative_weights, site_salt)
+            }
+            ChoiceGranularity::PerSlot => SamplePatternValue::choose_slots_with_site_salt(
+                patterns,
+                cumulative_weights,
+                site_salt,
+            ),
+        }));
     }
 
     if args
@@ -1698,9 +1773,16 @@ fn build_randcat(
                 _ => unreachable!("all arguments were checked to be number patterns"),
             })
             .collect();
-        return Ok(Value::NumberPattern(
-            NumberPatternValue::randcat_with_site_salt(patterns, cumulative_weights, site_salt),
-        ));
+        return Ok(Value::NumberPattern(match granularity {
+            ChoiceGranularity::PerCycle => {
+                NumberPatternValue::randcat_with_site_salt(patterns, cumulative_weights, site_salt)
+            }
+            ChoiceGranularity::PerSlot => NumberPatternValue::choose_slots_with_site_salt(
+                patterns,
+                cumulative_weights,
+                site_salt,
+            ),
+        }));
     }
 
     Err(EvalError::new(format!(

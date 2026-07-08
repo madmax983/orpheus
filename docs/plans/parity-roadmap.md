@@ -67,7 +67,19 @@ File paths point the next contributor at the relevant implementation sites.
   `docs/design/specs/probabilistic_pattern_sequencing_spec.md`; constant
   numeric values only in v1 (`wchoose` takes interleaved `v1, w1, v2, w2, ...`
   pairs); `PatternRuntime::Choose` (value.rs), `apply_choose`/`apply_wchoose`
-  (builtins.rs)
+  (builtins.rs); pattern-valued per-event choice is `pchoose`/`wpchoose`
+- [x] `pchoose` / `wpchoose` — pattern-valued per-slot random choice (the
+  spec's `choose([bd, sn, cp])` gap; per-event Tidal analogue of
+  `randcat`-per-step): each cycle splits into as many equal slots as the
+  busiest argument's event count that cycle, and every slot independently
+  plays one argument's slice of the slot, chosen at deterministic,
+  site-salted random — uniformly, or by interleaved `p1, w1, p2, w2, ...`
+  weights sharing the `wchoose`/`wrandcat` validation (negative/all-zero
+  weights rejected, zero-weight patterns never drawn). Children keep their
+  natural (global) timeline, unlike `randcat`'s localized cycle counters;
+  `PatternRuntime::ChooseSlots` (value.rs), `apply_pchoose`/`apply_wpchoose`
+  (builtins.rs); remaining: `chooseBy` driven by an external selector
+  pattern
 - [x] `markov` — spec:
   `docs/design/specs/probabilistic_pattern_sequencing_spec.md`; first-order
   Markov chain over state patterns:

@@ -892,6 +892,58 @@ fn variadic_wrandcat_accepts_more_than_two_pairs() {
 }
 
 #[test]
+fn pchoose_preserves_pattern_types() {
+    let sample_typed = infer_module("drums = pchoose(bd*2, sn cp)", ReplMode::Strict).unwrap();
+    let number_typed = infer_module("melody = pchoose(0 1, 2 3)", ReplMode::Strict).unwrap();
+
+    assert_eq!(sample_typed.type_of("drums").to_string(), "Pattern<Sample>");
+    assert_eq!(
+        number_typed.type_of("melody").to_string(),
+        "Pattern<Number>"
+    );
+}
+
+#[test]
+fn variadic_pchoose_accepts_more_than_two_patterns() {
+    let typed = infer_module("drums = pchoose(bd, sn, cp)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn strict_mode_rejects_mixed_pchoose_patterns() {
+    let error = infer_module("drums = pchoose(bd, 1 2, cp)", ReplMode::Strict).unwrap_err();
+
+    assert!(error.to_string().contains("Pattern"));
+}
+
+#[test]
+fn wpchoose_preserves_pattern_types() {
+    let typed = infer_module("drums = wpchoose(bd, 1, sn, 3)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn variadic_wpchoose_accepts_more_than_two_pairs() {
+    let typed = infer_module("drums = wpchoose(bd, 1, sn, 2, cp, 3)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn variadic_wpchoose_rejects_non_number_weights() {
+    let error =
+        infer_module("drums = wpchoose(bd, 1, sn, bd, cp, 1)", ReplMode::Strict).unwrap_err();
+
+    assert!(
+        error
+            .to_string()
+            .contains("`wpchoose` weights must be numbers")
+    );
+}
+
+#[test]
 fn markov_preserves_pattern_types() {
     let sample_typed =
         infer_module("drums = markov(bd, 0, 1, sn, 1, 0)", ReplMode::Strict).unwrap();
