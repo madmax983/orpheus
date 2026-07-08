@@ -10,6 +10,11 @@
 //! `hundredrabbits/Orca` main-branch `library.js`), including a per-frame
 //! `V`/`K` variable store and a deterministic `R`: randomness is hashed from
 //! (frame, position) via [`frame_position_hash`] so grid runs replay exactly.
+//!
+//! v3 adds the IO operator family (`:` `%` `!` `?` `;` `=` `$`): always
+//! passive but acting only when banged, locking their data ports eastward on
+//! every frame, and emitting typed [`OrcaIoEvent`] payloads instead of
+//! driving real transports.
 
 use std::collections::BTreeMap;
 
@@ -23,19 +28,79 @@ const KEYS: &[u8; 36] = b"0123456789abcdefghijklmnopqrstuvwxyz";
 /// Cardinal neighbor offsets, in Orca's E/W/S/N order.
 const CARDINALS: [(i64, i64); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
 
-/// A structured note event emitted by an output operator (`:`) during a tick.
+/// A MIDI note message, the shared payload of the `:` (polyphonic) and `%`
+/// (monophonic) operators. Port semantics match reference `library.js`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MidiNote {
+    /// MIDI channel, 0-15 (the operator aborts above 15).
+    pub channel: u8,
+    /// Octave, clamped to 0-8.
+    pub octave: u8,
+    /// The note glyph, case preserved: uppercase letters are naturals,
+    /// lowercase are sharps (see the reference `transpose.js` table, mirrored
+    /// by [`super::publish::midi_note_id`]).
+    pub note: char,
+    /// Velocity, clamped to 0-16; an empty port defaults to `f` (15).
+    pub velocity: u8,
+    /// Note length in grid frames, clamped to 0-32; an empty port defaults
+    /// to 1.
+    pub length: u8,
+}
+
+/// Typed payloads for the IO operator family. No transport is attached in
+/// v3: events are collected per tick so future consumers (real MIDI out,
+/// UDP/OSC sockets, a command interpreter) can drain them.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum OrcaIoEvent {
+    /// `:` — polyphonic MIDI note.
+    Midi(MidiNote),
+    /// `%` — monophonic MIDI note (the transport cuts the previous note).
+    MidiMono(MidiNote),
+    /// `!` — MIDI control change; `value` is scaled to 0-127 via
+    /// `ceil(127 * raw / 35)`.
+    MidiCc {
+        /// MIDI channel, 0-15 (the operator aborts above 15).
+        channel: u8,
+        /// Knob (controller) number, 0-35.
+        knob: u8,
+        /// Controller value scaled to 0-127.
+        value: u8,
+    },
+    /// `?` — MIDI pitch bend; `lsb`/`msb` are scaled to 0-127.
+    MidiPb {
+        /// MIDI channel, clamped to 0-15 (no abort, unlike `:`/`%`/`!`).
+        channel: u8,
+        /// Least significant byte, scaled to 0-127.
+        lsb: u8,
+        /// Most significant byte, scaled to 0-127.
+        msb: u8,
+    },
+    /// `;` — UDP message: the eastward glyphs up to the first empty cell.
+    Udp(String),
+    /// `=` — OSC message. The wire format (future transport) prepends `/` to
+    /// the path glyph and sends each arg glyph as its base-36 value.
+    Osc {
+        /// The single path glyph east of the operator.
+        path: char,
+        /// Raw arg glyphs (cells east of the path, up to the first empty).
+        args: String,
+    },
+    /// `$` — self command: the raw command string (e.g. `bpm90`), for a host
+    /// command interpreter.
+    Command(String),
+}
+
+/// A structured event emitted by an IO operator during a tick.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OrcaEvent {
     /// Frame index at which the event fired.
     pub frame: u64,
-    /// Column of the output operator that emitted the event.
+    /// Column of the operator that emitted the event.
     pub x: usize,
-    /// Row of the output operator that emitted the event.
+    /// Row of the operator that emitted the event.
     pub y: usize,
-    /// The note glyph read from the operator's note port.
-    pub note: char,
-    /// Base-36 value of the note glyph (0-35).
-    pub value: u8,
+    /// The typed IO payload.
+    pub io: OrcaIoEvent,
 }
 
 /// Maps grid frame `frame` of `frames_per_cycle` onto the exact rational span
@@ -76,6 +141,27 @@ fn key_of(value: u64) -> char {
 /// Converts a base-36 value to `i64` for signed offset arithmetic.
 fn to_i64(value: u64) -> i64 {
     i64::try_from(value).expect("base-36 values fit in i64")
+}
+
+/// Converts an already-clamped port value to `u8` for IO event payloads.
+fn to_u8(value: u64) -> u8 {
+    u8::try_from(value).expect("clamped port values fit in u8")
+}
+
+/// Applies a port's default glyph: the reference substitutes the default
+/// when the cell reads `.` or `*` (`operator.js` `listen`).
+const fn defaulted(glyph: char, default: char) -> char {
+    if glyph == EMPTY || glyph == BANG {
+        default
+    } else {
+        glyph
+    }
+}
+
+/// Scales a base-36 port value onto 0-127 the way the reference scales CC
+/// values and pitch-bend bytes: `ceil(127 * raw / 35)`.
+fn scale_to_127(raw: u64) -> u8 {
+    to_u8((127 * raw.min(35)).div_ceil(35))
 }
 
 /// Deterministic pseudo-random `u64` for the `R` operator, hashed from the
@@ -224,7 +310,13 @@ impl OrcaEngine {
             'X' | 'x' => self.op_write(x, y),
             'Y' | 'y' => self.op_jymper(x, y, glyph),
             'Z' | 'z' => self.op_lerp(x, y),
-            ':' => self.op_out(x, y),
+            ':' => self.op_midi(x, y, false),
+            '%' => self.op_midi(x, y, true),
+            '!' => self.op_cc(x, y),
+            '?' => self.op_pb(x, y),
+            ';' => self.op_udp(x, y),
+            '=' => self.op_osc(x, y),
+            '$' => self.op_self(x, y),
             // Digits are inert data.
             _ => {}
         }
@@ -495,19 +587,167 @@ impl OrcaEngine {
         self.write_port(x, y, dx, 0, west, false);
     }
 
-    /// Output (simplified `:`): locks its note port every frame; when banged,
-    /// emits an [`OrcaEvent`] carrying the note glyph and its base-36 value.
-    fn op_out(&mut self, x: usize, y: usize) {
-        let note = self.read_and_lock(x, y, 1, 0);
-        if self.has_bang_neighbor(x, y) {
-            self.events.push(OrcaEvent {
-                frame: self.frame,
-                x,
-                y,
-                note,
-                value: u8::try_from(value_of(note) % 36).expect("base-36 value fits in u8"),
-            });
+    /// MIDI note output (`:` polyphonic, `%` monophonic). Port layout east
+    /// of the operator: channel `{1,0}` (aborts above 15), octave `{2,0}`
+    /// (clamp 0-8), note `{3,0}` (must not be empty or a digit), velocity
+    /// `{4,0}` (default `f`, clamp 0-16), length `{5,0}` (default `1`, clamp
+    /// 0-32). All five ports are locked on every frame the operator runs —
+    /// the reference locks ports unconditionally after `operation()` — but
+    /// an event is only emitted with a `*` in a cardinal neighbor.
+    fn op_midi(&mut self, x: usize, y: usize, mono: bool) {
+        let channel_glyph = self.read_and_lock(x, y, 1, 0);
+        let octave_glyph = self.read_and_lock(x, y, 2, 0);
+        let note = self.read_and_lock(x, y, 3, 0);
+        let velocity_glyph = self.read_and_lock(x, y, 4, 0);
+        let length_glyph = self.read_and_lock(x, y, 5, 0);
+        if !self.has_bang_neighbor(x, y) {
+            return;
         }
+        if channel_glyph == EMPTY || octave_glyph == EMPTY || note == EMPTY {
+            return;
+        }
+        if note.is_ascii_digit() {
+            return;
+        }
+        let channel = value_of(channel_glyph);
+        if channel > 15 {
+            return;
+        }
+        let payload = MidiNote {
+            channel: to_u8(channel),
+            octave: to_u8(value_of(octave_glyph).min(8)),
+            note,
+            velocity: to_u8(value_of(defaulted(velocity_glyph, 'f')).min(16)),
+            length: to_u8(value_of(defaulted(length_glyph, '1')).min(32)),
+        };
+        let io = if mono {
+            OrcaIoEvent::MidiMono(payload)
+        } else {
+            OrcaIoEvent::Midi(payload)
+        };
+        self.emit(x, y, io);
+    }
+
+    /// MIDI control change (`!`). Ports east: channel `{1,0}` (aborts above
+    /// 15), knob `{2,0}`, value `{3,0}` scaled to 0-127. Channel and knob
+    /// must be non-empty; an empty value reads as 0.
+    fn op_cc(&mut self, x: usize, y: usize) {
+        let channel_glyph = self.read_and_lock(x, y, 1, 0);
+        let knob_glyph = self.read_and_lock(x, y, 2, 0);
+        let value_glyph = self.read_and_lock(x, y, 3, 0);
+        if !self.has_bang_neighbor(x, y) {
+            return;
+        }
+        if channel_glyph == EMPTY || knob_glyph == EMPTY {
+            return;
+        }
+        let channel = value_of(channel_glyph);
+        if channel > 15 {
+            return;
+        }
+        self.emit(
+            x,
+            y,
+            OrcaIoEvent::MidiCc {
+                channel: to_u8(channel),
+                knob: to_u8(value_of(knob_glyph)),
+                value: scale_to_127(value_of(value_glyph)),
+            },
+        );
+    }
+
+    /// MIDI pitch bend (`?`). Ports east: channel `{1,0}` clamped to 0-15
+    /// (no abort), lsb `{2,0}` and msb `{3,0}` each scaled to 0-127. Channel
+    /// and lsb must be non-empty; an empty msb reads as 0.
+    fn op_pb(&mut self, x: usize, y: usize) {
+        let channel_glyph = self.read_and_lock(x, y, 1, 0);
+        let lsb_glyph = self.read_and_lock(x, y, 2, 0);
+        let msb_glyph = self.read_and_lock(x, y, 3, 0);
+        if !self.has_bang_neighbor(x, y) {
+            return;
+        }
+        if channel_glyph == EMPTY || lsb_glyph == EMPTY {
+            return;
+        }
+        self.emit(
+            x,
+            y,
+            OrcaIoEvent::MidiPb {
+                channel: to_u8(value_of(channel_glyph).min(15)),
+                lsb: scale_to_127(value_of(lsb_glyph)),
+                msb: scale_to_127(value_of(msb_glyph)),
+            },
+        );
+    }
+
+    /// UDP output (`;`): concatenates (and locks) the eastward glyphs up to
+    /// the first empty cell and emits them as a message when banged. The
+    /// reference has no empty-message guard, so an empty message still emits.
+    fn op_udp(&mut self, x: usize, y: usize) {
+        let message = self.read_message(x, y, 1);
+        if !self.has_bang_neighbor(x, y) {
+            return;
+        }
+        self.emit(x, y, OrcaIoEvent::Udp(message));
+    }
+
+    /// OSC output (`=`): the path is the single glyph east (`{1,0}`), the
+    /// args are the glyphs from `{2,0}` east up to the first empty cell. No
+    /// event without a path.
+    fn op_osc(&mut self, x: usize, y: usize) {
+        let args = self.read_message(x, y, 2);
+        let path = self.read_and_lock(x, y, 1, 0);
+        if !self.has_bang_neighbor(x, y) {
+            return;
+        }
+        if path == EMPTY {
+            return;
+        }
+        self.emit(x, y, OrcaIoEvent::Osc { path, args });
+    }
+
+    /// Self command (`$`): reads (and locks) the eastward glyphs up to the
+    /// first empty cell and emits them as a command string when banged.
+    /// Unlike `;`, an empty command emits nothing. Command interpretation
+    /// (e.g. orca-js `bpm`/`frame`) is a host concern, not an engine one.
+    fn op_self(&mut self, x: usize, y: usize) {
+        let command = self.read_message(x, y, 1);
+        if !self.has_bang_neighbor(x, y) {
+            return;
+        }
+        if command.is_empty() {
+            return;
+        }
+        self.emit(x, y, OrcaIoEvent::Command(command));
+    }
+
+    /// Reads and locks the eastward message cells starting at offset
+    /// `start`, stopping at the first empty cell, the grid edge, or 36
+    /// glyphs (the reference IO message loop).
+    fn read_message(&mut self, x: usize, y: usize, start: i64) -> String {
+        let mut message = String::new();
+        for dx in start..=36 {
+            let Some((px, py)) = self.offset(x, y, dx, 0) else {
+                break;
+            };
+            self.lock(px, py);
+            let glyph = self.grid.glyph_at(px, py).unwrap_or(EMPTY);
+            if glyph == EMPTY {
+                break;
+            }
+            message.push(glyph);
+        }
+        message
+    }
+
+    /// Records an IO event fired by the operator at `(x, y)` this frame.
+    fn emit(&mut self, x: usize, y: usize, io: OrcaIoEvent) {
+        self.events.push(OrcaEvent {
+            frame: self.frame,
+            x,
+            y,
+            io,
+        });
     }
 
     /// Applies a signed offset to a position, returning `None` when the

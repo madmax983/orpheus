@@ -1700,7 +1700,7 @@ impl ReplSession {
     /// use orpheus_lang::orca::{OrcaEngine, materialize_cycle};
     ///
     /// let mut session = ReplSession::with_engine(EngineHandle::stub());
-    /// let mut grid = OrcaEngine::from_rows(&[".D1.", "..:c"]).unwrap();
+    /// let mut grid = OrcaEngine::from_rows(&[".D1...", "..:04c"]).unwrap();
     /// let events = materialize_cycle(&mut grid, 4, "tri").unwrap();
     /// session.publish_sample_events("orca", events).unwrap();
     /// assert!(
