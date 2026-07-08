@@ -5,9 +5,13 @@ use std::time::{Duration, Instant};
 use orpheus_dsp::EngineHandle;
 
 use crate::orca::transport::{
-    ScheduledIoEvent, TransportHandle, cycle_schedule, midi_output_names,
+    DEFAULT_UDP_LISTEN, ScheduledIoEvent, TransportHandle, UdpCommandListener, cycle_schedule,
+    midi_output_names,
 };
-use crate::orca::{CycleIoEvent, ORCA_GENERATOR_ID, ORCA_PATTERN_NAME, OrcaPublisher};
+use crate::orca::{
+    CommandOutcome, CycleIoEvent, ORCA_GENERATOR_ID, ORCA_PATTERN_NAME, OrcaCommand, OrcaPublisher,
+    adjusted_frame, parse_command,
+};
 use crate::session::{MixerView, ReplSession, TransportView};
 
 pub const STATUS_TOAST_TTL: Duration = Duration::from_secs(3);
@@ -24,7 +28,7 @@ pub const COMMAND_HINTS: [(&str, &str); 18] = [
     (":open", ":open <path>"),
     (
         ":orca",
-        ":orca [midi <list|connect <port>|disconnect> | udp <host:port> | osc <host:port>]",
+        ":orca [midi <list|connect <port>|disconnect|clock on|off> | udp <host:port> | osc <host:port> | listen [on|off|<host:port>]]",
     ),
     (":play", ":play"),
     (":quit", ":quit"),
@@ -48,6 +52,10 @@ pub struct SharedState {
     /// events) are scheduled onto it, keeping sockets and MIDI off both
     /// the audio thread and the TUI tick.
     pub orca_io: TransportHandle,
+    /// The optional UDP command listener (`:orca listen`, reference input
+    /// port 49160): received datagrams run through the same `$` command
+    /// interpreter as grid commands. Off by default.
+    pub orca_listener: Option<UdpCommandListener>,
     pub transcript: Vec<String>,
     pub history: Vec<String>,
     pub history_index: Option<usize>,
@@ -80,6 +88,7 @@ impl SharedState {
             session: ReplSession::with_engine(engine),
             orca: OrcaPublisher::with_default_grid(),
             orca_io: TransportHandle::spawn(),
+            orca_listener: None,
             transcript,
             history: Vec::new(),
             history_index: None,
@@ -186,22 +195,147 @@ impl SharedState {
                     Ok(format!("available MIDI output ports: {}", names.join(", ")))
                 }
             }
+            ["midi", "clock", "on"] => {
+                self.orca_io.set_clock_enabled(true);
+                if self.orca.is_running() {
+                    let frame_duration = self.grid_frame_duration();
+                    self.orca_io.start_clock(frame_duration);
+                    Ok("orca MIDI clock on (ticking)".to_owned())
+                } else {
+                    Ok("orca MIDI clock on; ticks start with the grid".to_owned())
+                }
+            }
+            ["midi", "clock", "off"] => {
+                self.orca_io.set_clock_enabled(false);
+                self.orca_io.stop_clock();
+                Ok("orca MIDI clock off".to_owned())
+            }
             ["midi", "connect", port @ ..] if !port.is_empty() => {
                 self.orca_io.connect_midi(&port.join(" "))
             }
             ["midi", "disconnect"] => self.orca_io.disconnect_midi(),
+            ["listen"] | ["listen", "on"] => self.start_orca_listener(DEFAULT_UDP_LISTEN),
+            ["listen", "off"] => {
+                if self.orca_listener.take().is_some() {
+                    Ok("orca UDP listener stopped".to_owned())
+                } else {
+                    Err("no orca UDP listener is running".to_owned())
+                }
+            }
+            ["listen", target] => {
+                let address = parse_socket_target(target)?;
+                self.start_orca_listener(address)
+            }
             _ => Err(orca_usage().to_owned()),
         }
+    }
+
+    /// Binds (or rebinds) the UDP command listener, surfacing bind
+    /// failures as status errors — never a panic.
+    fn start_orca_listener(&mut self, address: SocketAddr) -> Result<String, String> {
+        // Drop any previous listener first so rebinding the same port works.
+        self.orca_listener = None;
+        let listener = UdpCommandListener::bind(address)
+            .map_err(|error| format!("orca UDP listener failed to bind {address}: {error}"))?;
+        let bound = listener.local_addr();
+        self.orca_listener = Some(listener);
+        Ok(format!("orca UDP listener on {bound}"))
     }
 
     fn orca_io_summary(&self) -> String {
         let config = self.orca_io.config();
         format!(
-            "orca transports: udp -> {}, osc -> {}, midi -> {}",
+            "orca transports: udp -> {}, osc -> {}, midi -> {}, clock {}, listen {}",
             config.udp_target,
             config.osc_target,
             self.orca_io.midi_port().unwrap_or("<disconnected>"),
+            if self.orca_io.clock_enabled() {
+                "on"
+            } else {
+                "off"
+            },
+            self.orca_listener.as_ref().map_or_else(
+                || "off".to_owned(),
+                |listener| listener.local_addr().to_string()
+            ),
         )
+    }
+
+    /// The wall-clock duration of one grid frame at the current transport
+    /// tempo (the MIDI clock tick anchor).
+    fn grid_frame_duration(&self) -> Duration {
+        let snapshot = self.session.transport_snapshot();
+        let (_, frame_duration) = cycle_schedule(
+            Instant::now(),
+            snapshot.tempo_bpm(),
+            snapshot.current_frame(),
+            snapshot.current_cycle_start_frame(),
+            snapshot.frames_per_cycle(),
+            self.orca.frames_per_cycle(),
+            snapshot.is_playing(),
+        );
+        frame_duration
+    }
+
+    /// Interprets one `$`/UDP command string (design doc section 13.1):
+    /// supported commands apply, recognized-but-divergent and unknown
+    /// commands surface as status-line notes and change nothing.
+    pub fn apply_orca_command(&mut self, raw: &str) {
+        match parse_command(raw) {
+            CommandOutcome::Apply(command) => self.run_orca_command(command),
+            CommandOutcome::Divergent(name) => self.set_status_message(
+                format!("orca command `{name}` has no Orpheus mapping (ignored)"),
+                false,
+            ),
+            CommandOutcome::NoOp(name) => self.set_status_message(
+                format!("orca command `{name}` ignored (missing or invalid value)"),
+                false,
+            ),
+            CommandOutcome::Unknown(name) => {
+                self.set_status_message(format!("orca: unknown command `{name}`"), true);
+            }
+        }
+    }
+
+    fn run_orca_command(&mut self, command: OrcaCommand) {
+        match command {
+            OrcaCommand::Bpm(bpm) => {
+                // Grid-driven tempo reaches the global transport (ADR
+                // 0011), through the same `:tempo` path the status bar
+                // uses; the value was already clamped to 60-300.
+                match self.session.eval_line(&format!(":tempo {bpm}")) {
+                    Ok(message) => self.set_status_message(format!("orca: {message}"), false),
+                    Err(error) => self.set_status_message(error, true),
+                }
+                if self.orca_io.clock_enabled() {
+                    self.orca_io
+                        .set_clock_frame_duration(self.grid_frame_duration());
+                }
+            }
+            OrcaCommand::Frame(frame) => {
+                self.orca.engine_mut().set_frame(frame);
+                self.set_status_message(format!("orca frame set to {frame}"), false);
+            }
+            OrcaCommand::Rewind(by) => self.move_orca_frame(-by),
+            OrcaCommand::Skip(by) => self.move_orca_frame(by),
+            OrcaCommand::Play => {
+                if !self.orca.is_running() {
+                    self.toggle_orca_running();
+                }
+            }
+            OrcaCommand::Stop => {
+                if self.orca.is_running() {
+                    self.toggle_orca_running();
+                }
+            }
+        }
+    }
+
+    fn move_orca_frame(&mut self, delta: i64) {
+        let engine = self.orca.engine_mut();
+        let frame = adjusted_frame(engine.frame(), delta);
+        engine.set_frame(frame);
+        self.set_status_message(format!("orca frame set to {frame}"), false);
     }
 
     /// Stamps a materialized cycle's IO events with wall-clock deadlines
@@ -233,6 +367,11 @@ impl SharedState {
             })
             .collect();
         self.orca_io.schedule(events);
+        // Tempo follow: retune the MIDI clock tick period each cycle from
+        // the same frame duration the events were scheduled under.
+        if self.orca_io.clock_enabled() {
+            self.orca_io.set_clock_frame_duration(frame_duration);
+        }
     }
 
     pub fn set_status_message(&mut self, message: impl Into<String>, is_error: bool) {
@@ -262,6 +401,11 @@ impl SharedState {
     pub fn toggle_orca_running(&mut self) {
         if self.orca.is_running() {
             self.orca.stop();
+            // MIDI clock stops with the grid (0xFC), like the reference's
+            // `clock.stop()` when `isClock` is set.
+            if self.orca_io.clock_enabled() {
+                self.orca_io.stop_clock();
+            }
             match self
                 .session
                 .stop_generator_source(ORCA_PATTERN_NAME, ORCA_GENERATOR_ID)
@@ -271,6 +415,11 @@ impl SharedState {
             }
         } else {
             self.orca.start();
+            // MIDI clock starts with the grid (0xFA, then ticks).
+            if self.orca_io.clock_enabled() {
+                let frame_duration = self.grid_frame_duration();
+                self.orca_io.start_clock(frame_duration);
+            }
             let cycle_start = self
                 .session
                 .transport_snapshot()
@@ -321,6 +470,21 @@ impl SharedState {
         }
         for message in self.orca_io.poll_status() {
             self.set_status_message(message, true);
+        }
+        // `$` commands fired at their deadlines on the IO thread, and any
+        // datagrams the UDP listener received, run through the shared
+        // command interpreter here on the TUI side — never the audio
+        // thread (design doc section 13.1).
+        for command in self.orca_io.poll_commands() {
+            self.apply_orca_command(&command);
+        }
+        let received = self
+            .orca_listener
+            .as_ref()
+            .map(UdpCommandListener::poll)
+            .unwrap_or_default();
+        for command in received {
+            self.apply_orca_command(&command);
         }
     }
 
@@ -491,7 +655,7 @@ impl SharedState {
 }
 
 const fn orca_usage() -> &'static str {
-    "usage: :orca [midi <list|connect <port>|disconnect> | udp <host:port> | osc <host:port>]"
+    "usage: :orca [midi <list|connect <port>|disconnect|clock on|off> | udp <host:port> | osc <host:port> | listen [on|off|<host:port>]]"
 }
 
 /// Parses a transport target: `host:port`, or a bare port aimed at
@@ -869,6 +1033,190 @@ mod tests {
             messages.iter().any(|bytes| bytes[0] == 0x90),
             "expected a note-on, got: {messages:?}",
         );
+    }
+
+    #[test]
+    fn orca_bpm_command_reaches_the_session_tempo_path() {
+        let mut state = SharedState::new(EngineHandle::stub());
+        state.apply_orca_command("bpm:140");
+        let (message, is_error) = state.status_message.clone().expect("status set");
+        assert!(!is_error, "unexpected error: {message}");
+        // The session's own `:tempo` confirmation is the seam session
+        // tests assert on.
+        assert!(message.contains("tempo set to 140 BPM"), "got: {message}");
+    }
+
+    #[test]
+    fn orca_bpm_command_clamps_to_the_reference_range() {
+        let mut state = SharedState::new(EngineHandle::stub());
+        state.apply_orca_command("bpm:20");
+        let (message, _) = state.status_message.clone().expect("status set");
+        assert!(message.contains("tempo set to 60 BPM"), "got: {message}");
+        state.apply_orca_command("apm:9999");
+        let (message, _) = state.status_message.clone().expect("status set");
+        assert!(message.contains("tempo set to 300 BPM"), "got: {message}");
+    }
+
+    #[test]
+    fn orca_frame_rewind_and_skip_commands_move_the_grid_frame() {
+        let mut state = SharedState::new(EngineHandle::stub());
+        state.apply_orca_command("frame:12");
+        assert_eq!(state.orca.engine().frame(), 12);
+        state.apply_orca_command("rewind:4");
+        assert_eq!(state.orca.engine().frame(), 8);
+        state.apply_orca_command("skip:3");
+        assert_eq!(state.orca.engine().frame(), 11);
+        // Rewinding past zero clamps like the reference's setFrame.
+        state.apply_orca_command("rewind:100");
+        assert_eq!(state.orca.engine().frame(), 0);
+    }
+
+    #[test]
+    fn orca_play_and_stop_commands_drive_the_grid_clock() {
+        let mut state = SharedState::new(EngineHandle::stub());
+        assert!(!state.orca.is_running());
+        state.apply_orca_command("play");
+        assert!(state.orca.is_running());
+        // A second play is a no-op, like the reference's early return.
+        state.apply_orca_command("play");
+        assert!(state.orca.is_running());
+        state.apply_orca_command("stop");
+        assert!(!state.orca.is_running());
+    }
+
+    #[test]
+    fn orca_unknown_and_divergent_commands_no_op_with_a_status_note() {
+        let mut state = SharedState::new(EngineHandle::stub());
+        let frame = state.orca.engine().frame();
+        state.apply_orca_command("frobnicate:9");
+        let (message, is_error) = state.status_message.clone().expect("status set");
+        assert!(is_error);
+        assert!(
+            message.contains("unknown command `frobnicate`"),
+            "got: {message}"
+        );
+
+        state.apply_orca_command("write:E;2;3");
+        let (message, is_error) = state.status_message.clone().expect("status set");
+        assert!(!is_error);
+        assert!(
+            message.contains("`write` has no Orpheus mapping"),
+            "got: {message}"
+        );
+        assert_eq!(state.orca.engine().frame(), frame, "nothing changed");
+        assert!(!state.orca.is_running(), "nothing changed");
+    }
+
+    #[test]
+    fn orca_midi_clock_command_toggles_the_config_flag() {
+        let mut state = SharedState::new(EngineHandle::stub());
+        assert!(!state.orca_io.clock_enabled(), "clock defaults off");
+
+        state.input = ":orca midi clock on".to_owned();
+        state.submit_line();
+        let (message, is_error) = state.status_message.clone().expect("status set");
+        assert!(!is_error, "unexpected error: {message}");
+        assert!(message.contains("MIDI clock on"), "got: {message}");
+        assert!(state.orca_io.clock_enabled());
+
+        state.input = ":orca midi clock off".to_owned();
+        state.submit_line();
+        assert!(!state.orca_io.clock_enabled());
+
+        state.input = ":orca midi clock sideways".to_owned();
+        state.submit_line();
+        let (message, is_error) = state.status_message.clone().expect("status set");
+        assert!(is_error);
+        assert!(message.starts_with("usage: :orca"), "got: {message}");
+    }
+
+    #[test]
+    fn orca_summary_reports_clock_and_listener_state() {
+        let mut state = SharedState::new(EngineHandle::stub());
+        state.input = ":orca".to_owned();
+        state.submit_line();
+        let (message, _) = state.status_message.clone().expect("status set");
+        assert!(message.contains("clock off"), "got: {message}");
+        assert!(message.contains("listen off"), "got: {message}");
+    }
+
+    #[test]
+    fn orca_listen_command_binds_and_routes_datagrams_to_the_interpreter() {
+        use std::net::UdpSocket;
+
+        let mut state = SharedState::new(EngineHandle::stub());
+        state.input = ":orca listen 127.0.0.1:0".to_owned();
+        state.submit_line();
+        let (message, is_error) = state.status_message.clone().expect("status set");
+        assert!(!is_error, "unexpected error: {message}");
+        let address = state
+            .orca_listener
+            .as_ref()
+            .expect("listener running")
+            .local_addr();
+        assert!(message.contains(&address.to_string()), "got: {message}");
+
+        let sender = UdpSocket::bind("127.0.0.1:0").expect("bind sender");
+        sender.send_to(b"frame:7", address).expect("send datagram");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while state.orca.engine().frame() != 7 && Instant::now() < deadline {
+            state.poll_orca();
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(state.orca.engine().frame(), 7, "datagram command applied");
+
+        state.input = ":orca listen off".to_owned();
+        state.submit_line();
+        assert!(state.orca_listener.is_none());
+    }
+
+    #[test]
+    fn orca_listen_bind_failure_surfaces_on_the_status_line() {
+        use std::net::UdpSocket;
+
+        let holder = UdpSocket::bind("127.0.0.1:0").expect("bind holder");
+        let address = holder.local_addr().expect("local addr");
+        let mut state = SharedState::new(EngineHandle::stub());
+        state.input = format!(":orca listen {address}");
+        state.submit_line();
+        let (message, is_error) = state.status_message.clone().expect("status set");
+        assert!(is_error);
+        assert!(message.contains("failed to bind"), "got: {message}");
+        assert!(state.orca_listener.is_none());
+    }
+
+    #[test]
+    fn orca_grid_dollar_command_round_trips_through_the_io_thread() {
+        let mut state = SharedState::new(EngineHandle::stub());
+        {
+            let grid = state.orca.engine_mut().grid_mut();
+            // `D` bangs below every frame; `$` east of the bang cell reads
+            // `bpm:90` and emits it as a command.
+            grid.set(1, 0, 'D');
+            grid.set(1, 1, '.');
+            grid.set(2, 1, '$');
+            grid.set(3, 1, 'b');
+            grid.set(4, 1, 'p');
+            grid.set(5, 1, 'm');
+            grid.set(6, 1, ':');
+            grid.set(7, 1, '9');
+            grid.set(8, 1, '0');
+        }
+        state.toggle_orca_running();
+        assert!(state.orca.is_running());
+        // The stub transport is stopped, so the command fires immediately
+        // on the IO thread; poll until it comes back and applies.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut applied = false;
+        while !applied && Instant::now() < deadline {
+            state.poll_orca();
+            applied = state
+                .status_message
+                .as_ref()
+                .is_some_and(|(message, _)| message.contains("tempo set to 90 BPM"));
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(applied, "grid $bpm:90 reached the session tempo path");
     }
 
     #[test]

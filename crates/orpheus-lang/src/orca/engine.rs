@@ -240,6 +240,15 @@ impl OrcaEngine {
         self.frame
     }
 
+    /// Sets the frame counter the next [`Self::tick`] will evaluate — the
+    /// host half of the reference's `frame`/`rewind`/`skip` commands
+    /// (`clock.js` `setFrame` writes `orca.f` directly). Frame-phased
+    /// operators (`C`, `D`, `U`) re-anchor to the new counter; grid state
+    /// is untouched.
+    pub const fn set_frame(&mut self, frame: u64) {
+        self.frame = frame;
+    }
+
     /// Events emitted by the most recent [`Self::tick`].
     #[must_use]
     pub fn events(&self) -> &[OrcaEvent] {
