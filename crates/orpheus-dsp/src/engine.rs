@@ -10,7 +10,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use thiserror::Error;
 
-use crate::command::{EngineCommand, PatternUpdate, new_command_queue};
+use orpheus_pattern::Event;
+
+use crate::command::{EngineCommand, PatternUpdate, SampleTrigger, new_command_queue};
 use crate::effects::BusEffectState;
 use crate::graph_voice::{GraphVoiceBank, graph_note_params};
 use crate::plugin_host::PluginProcessor;
@@ -24,6 +26,10 @@ const DEFAULT_CHANNELS: u16 = 2;
 pub const DEFAULT_TEMPO_BPM: f32 = 120.0;
 const BEATS_PER_CYCLE: f64 = 4.0;
 const MAX_ACTIVE_VOICES: usize = 32;
+/// Number of engine-side generator slots addressable by
+/// [`crate::routing::GeneratorId`] (ADR 0009). Slots are preallocated at
+/// engine construction so the audio thread never grows the table.
+pub const MAX_GENERATORS: usize = 8;
 
 /// A UI-readable snapshot of the transport clock.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -227,6 +233,9 @@ pub enum EngineError {
     /// The engine was asked to play a sample or voice token that does not exist.
     #[error("unknown built-in voice token `{0}`")]
     UnknownVoice(String),
+    /// A generator cycle addressed a slot outside the engine's fixed table.
+    #[error("generator id must be below {MAX_GENERATORS}")]
+    InvalidGeneratorId,
     /// The interleaved output slice length cannot be evenly divided into frames.
     #[error("output buffer length must be a whole number of frames")]
     MisalignedOutputBuffer,
@@ -254,6 +263,13 @@ struct EngineCore {
     active_pattern_name: Option<Box<str>>,
     pending_pattern_name: Option<Box<str>>,
     pending_sample_bank: Option<SampleBank>,
+    /// Cycle buffers delivered over the ring but not yet adopted; one fixed
+    /// slot per generator id, filled by `PushGeneratorCycle` (latest wins).
+    generator_pending: Vec<Option<Box<[Event<SampleTrigger>]>>>,
+    /// The buffer each generator slot schedules at cycle boundaries. When no
+    /// fresh pending buffer arrives the previous one is re-scheduled, so a
+    /// starved generator loops its last cycle instead of falling silent.
+    generator_active: Vec<Box<[Event<SampleTrigger>]>>,
     prime_initial_routing: bool,
     last_swap_frame: Option<u64>,
     track_mix_buffer: Vec<(f32, f32)>,
@@ -297,6 +313,12 @@ impl EngineCore {
             active_pattern_name: None,
             pending_pattern_name: None,
             pending_sample_bank: None,
+            generator_pending: std::iter::repeat_with(|| None)
+                .take(MAX_GENERATORS)
+                .collect(),
+            generator_active: std::iter::repeat_with(|| Vec::new().into_boxed_slice())
+                .take(MAX_GENERATORS)
+                .collect(),
             prime_initial_routing: false,
             last_swap_frame: None,
             track_mix_buffer,
@@ -322,10 +344,19 @@ impl EngineCore {
                 Ok(())
             }
             EngineCommand::SwapRoutingSnapshot(snapshot) => {
-                self.prime_initial_routing =
-                    self.current_frame == 0 && routing_snapshot_has_main_plugin(&snapshot);
+                self.prime_initial_routing = self.current_frame == 0
+                    && (routing_snapshot_has_main_plugin(&snapshot)
+                        || routing_snapshot_has_generator(&snapshot));
                 self.pending_routing = Some(snapshot);
                 self.pending_pattern_name = None;
+                Ok(())
+            }
+            EngineCommand::PushGeneratorCycle(cycle) => {
+                let slot = usize::try_from(cycle.generator_id().get())
+                    .ok()
+                    .filter(|slot| *slot < MAX_GENERATORS)
+                    .ok_or(EngineError::InvalidGeneratorId)?;
+                self.generator_pending[slot] = Some(cycle.into_events());
                 Ok(())
             }
             EngineCommand::ReplaceSampleBank(sample_bank) => {
@@ -379,19 +410,45 @@ impl EngineCore {
             self.last_swap_frame = Some(self.current_frame);
         }
 
+        // Adopt freshly delivered generator cycle buffers: a boxed-slice move
+        // plus one boundary-time drop of the retired buffer, the same
+        // adoption discipline as the routing snapshot swap above.
+        for slot in 0..MAX_GENERATORS {
+            if let Some(events) = self.generator_pending[slot].take() {
+                self.generator_active[slot] = events;
+            }
+        }
+
         self.sync_bus_effect_timing()?;
         for processor in self.plugin_processors.iter_mut().flatten() {
             processor.begin_cycle();
         }
 
         for track in self.active_routing.tracks() {
-            if let TrackSource::SamplePattern(events) = track.source() {
-                self.scheduler.schedule_cycle_events(
-                    track.id(),
-                    self.current_cycle_start_frame,
-                    self.frames_per_cycle,
-                    events.iter(),
-                )?;
+            match track.source() {
+                TrackSource::SamplePattern(events) => {
+                    self.scheduler.schedule_cycle_events(
+                        track.id(),
+                        self.current_cycle_start_frame,
+                        self.frames_per_cycle,
+                        events.iter(),
+                    )?;
+                }
+                TrackSource::Generator(generator_id) => {
+                    let Some(events) = usize::try_from(generator_id.get())
+                        .ok()
+                        .and_then(|slot| self.generator_active.get(slot))
+                    else {
+                        return Err(EngineError::InvalidGeneratorId);
+                    };
+                    self.scheduler.schedule_cycle_events(
+                        track.id(),
+                        self.current_cycle_start_frame,
+                        self.frames_per_cycle,
+                        events.iter(),
+                    )?;
+                }
+                TrackSource::Unbound | TrackSource::Plugin(_) => {}
             }
         }
 
@@ -576,7 +633,9 @@ impl EngineCore {
             .iter()
             .map(|track| match track.source() {
                 TrackSource::Plugin(source) => Some(PluginProcessor::new(source, self.sample_rate)),
-                TrackSource::Unbound | TrackSource::SamplePattern(_) => None,
+                TrackSource::Unbound
+                | TrackSource::SamplePattern(_)
+                | TrackSource::Generator(_) => None,
             })
             .collect();
         self.resize_mix_buffers();
@@ -1121,9 +1180,16 @@ fn routing_snapshot_has_audio(snapshot: &RoutingSnapshot) -> bool {
     snapshot.tracks().iter().any(|track| {
         matches!(
             track.source(),
-            TrackSource::SamplePattern(_) | TrackSource::Plugin(_)
+            TrackSource::SamplePattern(_) | TrackSource::Plugin(_) | TrackSource::Generator(_)
         )
     })
+}
+
+fn routing_snapshot_has_generator(snapshot: &RoutingSnapshot) -> bool {
+    snapshot
+        .tracks()
+        .iter()
+        .any(|track| matches!(track.source(), TrackSource::Generator(_)))
 }
 
 fn routing_snapshot_has_main_plugin(snapshot: &RoutingSnapshot) -> bool {

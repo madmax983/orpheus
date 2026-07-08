@@ -1,12 +1,18 @@
 //! Publish bridge: [`OrcaEvent`]s into session-publishable event batches.
 //!
-//! This is the v1 seam described in `docs/design/orca-surface.md` section 1.2
-//! and ADR 0008: a materialized grid cycle is a unit-cycle
-//! `Vec<Event<SampleEvent>>`, exactly the shape the existing
-//! `SamplePatternValue::from_events` -> `ReplSession::publish_sample_events`
-//! path consumes. Because a running grid is generally *not* cycle-periodic,
-//! [`OrcaPublisher::poll`] re-materializes and re-publishes the next cycle's
-//! events at every engine cycle boundary instead of publishing once.
+//! A materialized grid cycle is a unit-cycle `Vec<Event<SampleEvent>>`
+//! (`docs/design/orca-surface.md` section 1.2). Because a running grid is
+//! generally *not* cycle-periodic, [`OrcaPublisher::poll`] re-materializes
+//! the next cycle's events at every engine cycle boundary instead of
+//! publishing once.
+//!
+//! As of v5 (ADR 0009) the materialized batches feed a first-class engine
+//! generator source: the hosting surface ships each batch to
+//! [`ORCA_GENERATOR_ID`] via `ReplSession::push_generator_cycle`, and the
+//! engine schedules one delivered buffer per cycle boundary from a
+//! `TrackSource::Generator` track. The v1-v4 per-cycle *re-publish* path
+//! (`ReplSession::publish_sample_events` per boundary, ADR 0008) remains
+//! available as a fallback for hosts without generator wiring.
 //!
 //! Note mapping (v3, superseding the base-36 mapping of ADR 0008): a MIDI
 //! note event's glyph and octave are transposed to a MIDI note number via
@@ -22,9 +28,12 @@
 //! `docs/design/orca-surface.md` section 10): velocity becomes the event's
 //! linear gain through the reference `io/midi.js` scaling
 //! `floor(velocity * 127 / 16) / 127`, and length `L` stretches the event's
-//! span to `L` grid frames, clamped at the cycle end because the per-cycle
-//! re-publish model (ADR 0008) cannot sustain a note across a boundary.
+//! span to `L` grid frames. A span crossing the cycle end keeps its full
+//! extent as the event's `whole`; since v5 the engine scheduler derives
+//! trigger durations from that extent, so the note sustains across the
+//! boundary (resolving the documented v4 clamp limitation).
 
+use orpheus_dsp::GeneratorId;
 use orpheus_pattern::{Event, PatternError, Rational, TimeSpan};
 
 use crate::value::SampleEvent;
@@ -42,6 +51,9 @@ pub const DEFAULT_SAMPLE_TOKEN: &str = "tri";
 
 /// The session binding name under which grid cycles are published.
 pub const ORCA_PATTERN_NAME: &str = "orca";
+
+/// The engine generator slot reserved for the Orca grid surface (ADR 0009).
+pub const ORCA_GENERATOR_ID: GeneratorId = GeneratorId::new(0);
 
 /// Default grid width for a freshly spawned surface (one column per frame at
 /// the default 16 frames per cycle).
@@ -152,10 +164,11 @@ fn velocity_gain(velocity: u8) -> f64 {
 /// exactly `L` frames: `[N/F, (N+L)/F)`. A length of `0` (press and release
 /// within the same frame pass) collapses to one frame, the shortest span the
 /// unit-cycle event model can carry. When the span crosses the cycle end the
-/// playable `part` is clamped at `1` and the full extent is preserved as the
-/// event's `whole` — the per-cycle re-publish model re-materializes the next
-/// cycle from scratch, so the truncated tail never sounds (a documented
-/// limitation, not reference behavior).
+/// `part` is clipped at `1` (Tidal-style: the portion inside the published
+/// cycle window) and the full extent is preserved as the event's `whole`,
+/// which the engine scheduler converts into the trigger's duration — the
+/// note therefore sustains across the boundary (ADR 0009), matching the
+/// reference behavior.
 fn note_spans(
     frame_in_cycle: u64,
     length: u8,
@@ -281,8 +294,15 @@ pub const fn playhead_frame(
 /// The publisher owns the grid engine and a boundary tracker. The hosting
 /// surface polls it with the latest `TransportSnapshot::current_cycle_start_frame`;
 /// on the first poll after [`Self::start`] and on every boundary change it
-/// materializes the next grid cycle for publication one cycle ahead of
-/// playback (the engine adopts published patterns at the following boundary).
+/// materializes the next grid cycle, one cycle ahead of playback (the engine
+/// adopts delivered buffers at the following boundary).
+///
+/// What happens to the returned batch is the host's choice: the TUI ships it
+/// to the engine generator slot [`ORCA_GENERATOR_ID`] via
+/// `ReplSession::push_generator_cycle` (v5, ADR 0009); hosts without
+/// generator wiring may fall back to re-publishing the batch as a pattern
+/// binding via `ReplSession::publish_sample_events` (ADR 0008), losing
+/// cross-cycle sustain.
 #[derive(Clone, Debug)]
 pub struct OrcaPublisher {
     engine: OrcaEngine,

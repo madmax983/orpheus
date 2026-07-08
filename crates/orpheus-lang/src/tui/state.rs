@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use orpheus_dsp::EngineHandle;
 
-use crate::orca::{ORCA_PATTERN_NAME, OrcaPublisher};
+use crate::orca::{ORCA_GENERATOR_ID, ORCA_PATTERN_NAME, OrcaPublisher};
 use crate::session::{MixerView, ReplSession, TransportView};
 
 pub const STATUS_TOAST_TTL: Duration = Duration::from_secs(3);
@@ -157,29 +157,50 @@ impl SharedState {
         }
     }
 
-    /// Starts or stops the Orca grid clock. Starting publishes the first grid
-    /// cycle immediately; stopping publishes an empty cycle so the grid falls
-    /// silent at the next engine cycle boundary.
+    /// Starts or stops the Orca grid clock (ADR 0009). Starting binds the
+    /// grid to its engine generator slot and delivers the first cycle;
+    /// stopping delivers an empty cycle so the grid falls silent at the next
+    /// engine cycle boundary (voices already sounding ring out their full
+    /// note length).
     pub fn toggle_orca_running(&mut self) {
         if self.orca.is_running() {
             self.orca.stop();
             match self
                 .session
-                .publish_sample_events(ORCA_PATTERN_NAME, Vec::new())
+                .stop_generator_source(ORCA_PATTERN_NAME, ORCA_GENERATOR_ID)
             {
                 Ok(()) => self.set_status_message("orca grid stopped", false),
                 Err(error) => self.set_status_message(error, true),
             }
         } else {
             self.orca.start();
-            self.set_status_message("orca grid running", false);
-            self.poll_orca();
+            let cycle_start = self
+                .session
+                .transport_snapshot()
+                .current_cycle_start_frame();
+            match self.orca.poll(cycle_start) {
+                Ok(Some(events)) => {
+                    match self.session.start_generator_source(
+                        ORCA_PATTERN_NAME,
+                        ORCA_GENERATOR_ID,
+                        events,
+                    ) {
+                        Ok(()) => self.set_status_message("orca grid running", false),
+                        Err(error) => self.set_status_message(error, true),
+                    }
+                }
+                // The first poll after start always materializes.
+                Ok(None) => {}
+                Err(error) => {
+                    self.set_status_message(format!("orca cycle failed: {error}"), true);
+                }
+            }
         }
     }
 
-    /// Re-publishes the next grid cycle when the engine has crossed a cycle
-    /// boundary since the last poll. Called on every TUI tick; a no-op while
-    /// the grid clock is stopped or mid-cycle.
+    /// Delivers the next grid cycle to the engine generator slot when the
+    /// engine has crossed a cycle boundary since the last poll. Called on
+    /// every TUI tick; a no-op while the grid clock is stopped or mid-cycle.
     pub fn poll_orca(&mut self) {
         let cycle_start = self
             .session
@@ -187,10 +208,7 @@ impl SharedState {
             .current_cycle_start_frame();
         match self.orca.poll(cycle_start) {
             Ok(Some(events)) => {
-                if let Err(error) = self
-                    .session
-                    .publish_sample_events(ORCA_PATTERN_NAME, events)
-                {
+                if let Err(error) = self.session.push_generator_cycle(ORCA_GENERATOR_ID, events) {
                     self.set_status_message(error, true);
                 }
             }

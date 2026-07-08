@@ -10,7 +10,7 @@ use orpheus_pattern::Event;
 use rtrb::{Consumer, Producer, RingBuffer};
 
 use crate::pedal::{NodeRef, PedalGraphProgram};
-use crate::routing::RoutingSnapshot;
+use crate::routing::{GeneratorId, RoutingSnapshot};
 use crate::sample_bank::SampleBank;
 
 /// Immutable pedal metadata attached to triggers off the audio thread.
@@ -494,6 +494,55 @@ impl PatternUpdate {
     }
 }
 
+/// One pre-materialized generator cycle ready for audio-thread scheduling
+/// (ADR 0009).
+///
+/// Events are cycle-relative like a [`PatternUpdate`]: `part` positions lie
+/// within the unit cycle, while an event whose `whole` extends past the
+/// cycle end sustains across the boundary. The buffer is materialized and
+/// boxed off the audio thread; the engine only moves it between slots.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GeneratorCycle {
+    generator_id: GeneratorId,
+    events: Box<[Event<SampleTrigger>]>,
+}
+
+impl GeneratorCycle {
+    /// Creates a generator cycle buffer from fully evaluated events.
+    #[must_use]
+    pub fn new(generator_id: GeneratorId, events: Vec<Event<SampleTrigger>>) -> Self {
+        Self {
+            generator_id,
+            events: events.into_boxed_slice(),
+        }
+    }
+
+    /// Creates an empty cycle: the generator falls silent at the next
+    /// boundary (and keeps looping silence until a new buffer arrives).
+    #[must_use]
+    pub fn silent(generator_id: GeneratorId) -> Self {
+        Self::new(generator_id, Vec::new())
+    }
+
+    /// The generator slot this cycle targets.
+    #[must_use]
+    pub const fn generator_id(&self) -> GeneratorId {
+        self.generator_id
+    }
+
+    /// The cycle-relative events in this buffer.
+    #[must_use]
+    pub const fn events(&self) -> &[Event<SampleTrigger>] {
+        &self.events
+    }
+
+    /// Consumes the update, returning the boxed event buffer.
+    #[must_use]
+    pub fn into_events(self) -> Box<[Event<SampleTrigger>]> {
+        self.events
+    }
+}
+
 /// Commands sent from the UI thread to the audio engine.
 #[derive(Clone, Debug, PartialEq)]
 pub enum EngineCommand {
@@ -503,6 +552,9 @@ pub enum EngineCommand {
     LoadPattern(PatternUpdate),
     /// Swaps in a validated routing snapshot at the next cycle boundary.
     SwapRoutingSnapshot(RoutingSnapshot),
+    /// Delivers the next cycle buffer for a generator track source; adopted
+    /// at the next cycle boundary (ADR 0009).
+    PushGeneratorCycle(GeneratorCycle),
     /// Replaces the sample bank at the next cycle boundary.
     ReplaceSampleBank(SampleBank),
     /// Updates the transport tempo in beats per minute.

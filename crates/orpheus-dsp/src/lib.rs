@@ -27,8 +27,12 @@ mod synth;
 mod transient;
 mod voice;
 
-pub use command::{EngineCommand, PatternUpdate, PedalProgram, SampleTrigger, new_command_queue};
-pub use engine::{EngineError, EngineHandle, RenderEngine, TransportSnapshot, frames_per_cycle};
+pub use command::{
+    EngineCommand, GeneratorCycle, PatternUpdate, PedalProgram, SampleTrigger, new_command_queue,
+};
+pub use engine::{
+    EngineError, EngineHandle, MAX_GENERATORS, RenderEngine, TransportSnapshot, frames_per_cycle,
+};
 pub use graph::*;
 pub use graph_voice::{GraphVoice, GraphVoiceProgram, builtin_graph_voice_programs};
 pub use offline::{
@@ -45,15 +49,15 @@ pub use plugin_host::{
     PluginParameterLane, PluginProcessor, PluginTrackSource,
 };
 pub use routing::{
-    BusEffectSpec, BusId, BusView, DelaySpec, ReverbSpec, RoutingError, RoutingSnapshot,
-    RoutingSnapshotBuilder, TrackId, TrackSource, TrackView,
+    BusEffectSpec, BusId, BusView, DelaySpec, GeneratorId, ReverbSpec, RoutingError,
+    RoutingSnapshot, RoutingSnapshotBuilder, TrackId, TrackSource, TrackView,
 };
 pub use sample::{DecodedSample, SampleError, load_wav_for_test};
 pub use sample_bank::{
     SampleBank, SampleBankError, SampleLibraryReload, SampleLibraryScanError, SampleLibraryWatcher,
     SampleLibraryWatcherConfig, load_builtin_sample_for_test, load_sample_bank_from_directory,
 };
-pub use scheduler::Scheduler;
+pub use scheduler::{ScheduledTrigger, Scheduler};
 pub use synth::{
     AnalogVoice, AnalogVoiceParams, Gain, LadderFilter, Mix, Noise, OscShape, PhaseAccumulator,
     PulseOsc, SawOsc, SoftSat, TriOsc,

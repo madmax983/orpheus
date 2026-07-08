@@ -20,7 +20,7 @@ use crossterm::style::Stylize;
 use ratatui::style::{Color as TuiColor, Modifier as TuiModifier, Style as TuiStyle};
 use ratatui::text::{Line, Span};
 
-use orpheus_dsp::{RoutingSnapshot, SampleTrigger, TrackSource};
+use orpheus_dsp::{GeneratorId, RoutingSnapshot, SampleTrigger, TrackSource};
 use orpheus_pattern::Event;
 use orpheus_pattern::Rational;
 
@@ -56,6 +56,11 @@ use crate::export::sample_trigger_from_event;
 #[derive(Clone, Debug, Default)]
 pub struct MixerState {
     compatibility_main_binding: Option<String>,
+    /// Bindings backed by an engine-side generator slot (ADR 0009). Tracks
+    /// bound to these names compile to [`TrackSource::Generator`] instead of
+    /// a static sample pattern, so per-cycle buffers pushed over the ring
+    /// keep flowing regardless of snapshot recompiles.
+    generator_bindings: BTreeMap<String, GeneratorId>,
     tracks: BTreeMap<String, MixerTrack>,
     buses: BTreeMap<String, MixerBus>,
 }
@@ -101,6 +106,14 @@ impl Default for MixerTrack {
 impl MixerState {
     pub(crate) fn note_sample_binding(&mut self, name: &str) {
         self.compatibility_main_binding = Some(name.to_owned());
+    }
+
+    /// Marks `name` as backed by the engine generator slot `generator_id`
+    /// (ADR 0009). Snapshot compiles resolve the binding to
+    /// [`TrackSource::Generator`] from here on.
+    pub(crate) fn note_generator_binding(&mut self, name: &str, generator_id: GeneratorId) {
+        self.generator_bindings
+            .insert(name.to_owned(), generator_id);
     }
 
     pub(crate) fn has_routing_state(&self) -> bool {
@@ -563,7 +576,10 @@ impl MixerState {
         if !self.has_explicit_bound_tracks() {
             builder = match self.compatibility_main_binding.as_deref() {
                 Some(binding_name) => builder
-                    .track_with_source("main", compile_track_source(binding_name, bindings)?)
+                    .track_with_source(
+                        "main",
+                        compile_track_source(binding_name, bindings, &self.generator_bindings)?,
+                    )
                     .route("main", "master"),
                 None => builder.main_track(),
             };
@@ -575,7 +591,9 @@ impl MixerState {
 
         for (track_name, track) in &self.tracks {
             let source = match track.binding_name.as_deref() {
-                Some(binding_name) => compile_track_source(binding_name, bindings)?,
+                Some(binding_name) => {
+                    compile_track_source(binding_name, bindings, &self.generator_bindings)?
+                }
                 None => TrackSource::Unbound,
             };
             builder = builder
@@ -655,7 +673,14 @@ fn ensure_sample_binding(
 fn compile_track_source(
     binding_name: &str,
     bindings: &BTreeMap<String, Value>,
+    generator_bindings: &BTreeMap<String, GeneratorId>,
 ) -> Result<TrackSource, String> {
+    // Generator-backed bindings (ADR 0009) take precedence over the display
+    // binding of the same name: the audible events arrive per cycle over the
+    // command ring, not from the statically compiled pattern.
+    if let Some(generator_id) = generator_bindings.get(binding_name) {
+        return Ok(TrackSource::Generator(*generator_id));
+    }
     ensure_sample_binding(binding_name, bindings)?;
     let value = bindings
         .get(binding_name)
