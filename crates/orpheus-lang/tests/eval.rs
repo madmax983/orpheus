@@ -4883,7 +4883,7 @@ fn run_rejects_non_positive_step_counts() {
 }
 
 #[test]
-fn scan_grows_the_prefix_each_cycle_and_clamps_at_full() {
+fn scan_grows_the_prefix_each_cycle_and_wraps_like_slowcat() {
     let module = eval_module("ramp = scan(3)", ReplMode::Loose).unwrap();
     let pattern = module.get("ramp").unwrap().as_number_pattern().unwrap();
 
@@ -4896,12 +4896,36 @@ fn scan_grows_the_prefix_each_cycle_and_clamps_at_full() {
             .collect()
     };
 
+    // Tidal `scan n = slowcat $ map run [1 .. n]`: cycle k plays
+    // run((k mod n) + 1), restarting the growth loop after the full run.
     assert_eq!(cycle_values(0), [0.0]);
     assert_eq!(cycle_values(1), [0.0, 1.0]);
     assert_eq!(cycle_values(2), [0.0, 1.0, 2.0]);
-    // Clamps at the full run once the prefix is complete (cycles n and n + 1).
-    assert_eq!(cycle_values(3), [0.0, 1.0, 2.0]);
-    assert_eq!(cycle_values(4), [0.0, 1.0, 2.0]);
+    assert_eq!(cycle_values(3), [0.0]);
+    assert_eq!(cycle_values(4), [0.0, 1.0]);
+    assert_eq!(cycle_values(5), [0.0, 1.0, 2.0]);
+    assert_eq!(cycle_values(6), [0.0]);
+}
+
+#[test]
+fn scan_handles_negative_cycles_with_slowcat_modulo() {
+    let module = eval_module("ramp = scan(3)", ReplMode::Loose).unwrap();
+    let pattern = module.get("ramp").unwrap().as_number_pattern().unwrap();
+
+    let cycle_values = |cycle: i64| -> Vec<f64> {
+        pattern
+            .try_query(&cycle_time_span(cycle))
+            .unwrap()
+            .into_iter()
+            .map(|event| event.value)
+            .collect()
+    };
+
+    // Like `slowcat`, negative cycles use a euclidean modulo: cycle -1 plays
+    // run(3), cycle -2 plays run(2), cycle -3 wraps back to run(1).
+    assert_eq!(cycle_values(-1), [0.0, 1.0, 2.0]);
+    assert_eq!(cycle_values(-2), [0.0, 1.0]);
+    assert_eq!(cycle_values(-3), [0.0]);
 }
 
 #[test]

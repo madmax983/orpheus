@@ -1266,9 +1266,9 @@ fn apply_run(args: Vec<Value>) -> Result<Value, EvalError> {
     Ok(Value::NumberPattern(NumberPatternValue::from_nodes(nodes)))
 }
 
-/// Implements `scan(n)` (Tidal `scan`): cycle `k` plays `run(min(k + 1, n))`,
-/// growing the counting prefix one step per cycle and clamping at the full
-/// ramp.
+/// Implements `scan(n)` (Tidal `scan = slowcat $ map run [1 .. n]`): cycle
+/// `k` plays `run((k mod n) + 1)`, growing the counting prefix one step per
+/// cycle and restarting at `run(1)` after the full ramp.
 fn apply_scan(args: Vec<Value>) -> Result<Value, EvalError> {
     let steps = extract_whole_number(
         args.into_iter()
