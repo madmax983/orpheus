@@ -96,6 +96,33 @@ impl Rational {
         }
     }
 
+    /// A rational representation of a whole integer value.
+    ///
+    /// Integers are already in normalized form (`value / 1`), so this
+    /// constructor is infallible — a convenience for call sites that would
+    /// otherwise thread a `Result` through [`Rational::new`].
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_pattern::Rational;
+    ///
+    /// let three = Rational::from_integer(3);
+    /// assert_eq!(three.numerator(), 3);
+    /// assert_eq!(three.denominator(), 1);
+    ///
+    /// let negative = Rational::from_integer(-2);
+    /// assert_eq!(negative.numerator(), -2);
+    /// assert_eq!(negative.denominator(), 1);
+    /// ```
+    #[must_use]
+    pub fn from_integer(value: i64) -> Self {
+        Self {
+            numerator: i128::from(value),
+            denominator: 1,
+        }
+    }
+
     /// The signed upper half of the rational fraction.
     ///
     /// In the context of Orpheus time, the numerator dictates how many subdivisions of

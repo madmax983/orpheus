@@ -7,7 +7,11 @@ File paths point the next contributor at the relevant implementation sites.
 ## Tidal: pattern transforms
 
 - [x] `fast` / `slow` — `crates/orpheus-lang/src/value.rs` (`PatternRuntime::Fast`/`Slow`)
-  - [~] integer factors only; Tidal allows rational and patterned factors
+  - [x] rational factors — `fast(1.5, ...)` / `slow(0.5, ...)`; decimal
+    literals convert to exact rationals (numerator and denominator each
+    bounded by 1024; `extract_positive_rational_factor`, builtins.rs)
+  - [ ] patterned factors (Tidal `fast "<1 2>"`); mini-notation `a*n`/`a/n`
+    factors also stay integer literals for now
 - [x] `rev` — `PatternRuntime::Rev`
 - [x] `every` — cycle-localized transforms (`query_transform_cycles`, value.rs)
 - [x] `when` — cycle-offset transform (period + offset); real Tidal

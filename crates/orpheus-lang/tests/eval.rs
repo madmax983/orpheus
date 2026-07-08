@@ -5231,3 +5231,208 @@ fn whenmod_rejects_thresholds_at_or_above_the_period() {
         &["`whenmod`", "threshold less than the period"],
     );
 }
+
+// --- rational (non-integer) factors for fast/slow ---
+
+/// Extracts each event's `(start_num, start_den, end_num, end_den, sample)`
+/// from exported JSON so spans can be asserted as exact rationals.
+fn exact_sample_spans(events: &[JsonValue]) -> Vec<(i64, i64, i64, i64, String)> {
+    events
+        .iter()
+        .map(|event| {
+            (
+                event["start_num"].as_i64().unwrap(),
+                event["start_den"].as_i64().unwrap(),
+                event["end_num"].as_i64().unwrap(),
+                event["end_den"].as_i64().unwrap(),
+                event["sample"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn fast_accepts_fractional_factors_with_exact_rational_spans() {
+    let module = eval_module("drums = fast(1.5, bd sn)", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 2);
+
+    assert_eq!(
+        exact_sample_spans(&events),
+        vec![
+            (0, 1, 1, 3, "bd".to_owned()),
+            (1, 3, 2, 3, "sn".to_owned()),
+            (2, 3, 1, 1, "bd".to_owned()),
+            (1, 1, 4, 3, "sn".to_owned()),
+            (4, 3, 5, 3, "bd".to_owned()),
+            (5, 3, 2, 1, "sn".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn fast_three_halves_over_two_cycles_matches_fast_three_over_one_cycle_stretched() {
+    // fast(3/2, p) over [0, 2) plays exactly what fast(3, p) plays over
+    // [0, 1), stretched by 2: event k's exact rational start doubles.
+    let fractional = eval_module("drums = fast(1.5, bd sn)", ReplMode::Loose).unwrap();
+    let integral = eval_module("drums = fast(3, bd sn)", ReplMode::Loose).unwrap();
+    let fractional_events = exported_sample_events(fractional.get("drums").unwrap(), 2);
+    let integral_events = exported_sample_events(integral.get("drums").unwrap(), 1);
+
+    assert_eq!(fractional_events.len(), integral_events.len());
+    for (frac, int) in fractional_events.iter().zip(&integral_events) {
+        assert_eq!(frac["sample"], int["sample"]);
+        let frac_start = Rational::checked_from_parts(
+            i128::from(frac["start_num"].as_i64().unwrap()),
+            i128::from(frac["start_den"].as_i64().unwrap()),
+        )
+        .unwrap();
+        let int_start = Rational::checked_from_parts(
+            i128::from(int["start_num"].as_i64().unwrap()) * 2,
+            i128::from(int["start_den"].as_i64().unwrap()),
+        )
+        .unwrap();
+        assert_eq!(frac_start, int_start);
+    }
+}
+
+#[test]
+fn slow_fractional_factor_is_inverted_by_fast_with_the_same_factor() {
+    let round_trip =
+        eval_module("drums = fast(1.5, slow(1.5, bd sn cp))", ReplMode::Loose).unwrap();
+    let plain = eval_module("drums = bd sn cp", ReplMode::Loose).unwrap();
+
+    let round_trip_events = exported_sample_events(round_trip.get("drums").unwrap(), 6);
+    let plain_events = exported_sample_events(plain.get("drums").unwrap(), 6);
+
+    assert_eq!(round_trip_events, plain_events);
+}
+
+#[test]
+fn slow_one_half_is_equivalent_to_fast_two() {
+    let slowed = eval_module("drums = slow(0.5, bd sn)", ReplMode::Loose).unwrap();
+    let fasted = eval_module("drums = fast(2, bd sn)", ReplMode::Loose).unwrap();
+
+    assert_eq!(
+        exported_sample_events(slowed.get("drums").unwrap(), 3),
+        exported_sample_events(fasted.get("drums").unwrap(), 3),
+    );
+}
+
+#[test]
+fn integer_fast_factors_keep_their_existing_exact_behavior() {
+    let module = eval_module("drums = fast(2, bd sn)", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 1);
+
+    assert_eq!(
+        exact_sample_spans(&events),
+        vec![
+            (0, 1, 1, 4, "bd".to_owned()),
+            (1, 4, 1, 2, "sn".to_owned()),
+            (1, 2, 3, 4, "bd".to_owned()),
+            (3, 4, 1, 1, "sn".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn fast_boundary_integer_factors_still_work() {
+    let identity = eval_module("drums = fast(1, bd sn)", ReplMode::Loose).unwrap();
+    let plain = eval_module("drums = bd sn", ReplMode::Loose).unwrap();
+    assert_eq!(
+        exported_sample_events(identity.get("drums").unwrap(), 2),
+        exported_sample_events(plain.get("drums").unwrap(), 2),
+    );
+
+    let max = eval_module("drums = fast(1024, bd)", ReplMode::Loose).unwrap();
+    assert_eq!(
+        exported_sample_events(max.get("drums").unwrap(), 1).len(),
+        1024
+    );
+}
+
+#[test]
+fn fast_fractional_wholes_straddle_cycle_boundaries_with_exact_parts() {
+    // fast(0.75, bd sn) = slow(4/3): sn's whole is [2/3, 4/3), which
+    // straddles the cycle-0/cycle-1 boundary. Its clipped part inside a
+    // 1-cycle export window ends exactly at 1.
+    let module = eval_module("drums = fast(0.75, bd sn)", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 1);
+
+    assert_eq!(
+        exact_sample_spans(&events),
+        vec![(0, 1, 2, 3, "bd".to_owned()), (2, 3, 1, 1, "sn".to_owned()),]
+    );
+}
+
+#[test]
+fn fast_decimal_point_one_becomes_exactly_one_tenth() {
+    // 0.1 converts to the exact rational 1/10 (decimal-literal rendering,
+    // not the f64 bit pattern), so fast(0.1, bd) == slow(10, bd): one bd
+    // spanning exactly [0, 10).
+    let module = eval_module("drums = fast(0.1, bd)", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 10);
+
+    assert_eq!(
+        exact_sample_spans(&events),
+        vec![(0, 1, 10, 1, "bd".to_owned())]
+    );
+}
+
+#[test]
+fn fast_rejects_non_positive_and_out_of_range_fractional_factors() {
+    assert_eval_error_contains(
+        "drums = fast(0, bd sn)",
+        ReplMode::Loose,
+        &["`fast` requires a positive factor"],
+    );
+    assert_eval_error_contains(
+        "drums = fast(-1.5, bd sn)",
+        ReplMode::Loose,
+        &["`fast` requires a positive factor"],
+    );
+    // 0.0001 = 1/10000: the reduced denominator exceeds the 1024 bound.
+    assert_eval_error_contains(
+        "drums = fast(0.0001, bd sn)",
+        ReplMode::Loose,
+        &["`fast` factor denominator exceeded the maximum allowed bound of 1024"],
+    );
+    // 0.123456789 = 123456789/1000000000: reduced denominator is still huge.
+    assert_eval_error_contains(
+        "drums = fast(0.123456789, bd sn)",
+        ReplMode::Loose,
+        &["`fast` factor denominator exceeded the maximum allowed bound of 1024"],
+    );
+    assert_eval_error_contains(
+        "drums = slow(1024.5, bd sn)",
+        ReplMode::Loose,
+        &["`slow` factor exceeded the maximum allowed bound of 1024"],
+    );
+}
+
+#[test]
+fn fractional_fast_composes_with_slowcat_and_every() {
+    let module = eval_module("drums = cat(fast(1.5, bd sn), cp)", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 2);
+    // Cycle 0 plays fast(3/2, bd sn) => bd sn bd at thirds; cycle 1 plays cp.
+    assert_eq!(
+        exact_sample_spans(&events),
+        vec![
+            (0, 1, 1, 3, "bd".to_owned()),
+            (1, 3, 2, 3, "sn".to_owned()),
+            (2, 3, 1, 1, "bd".to_owned()),
+            (1, 1, 2, 1, "cp".to_owned()),
+        ]
+    );
+
+    let every = eval_module("drums = bd sn |> every(2, fast(1.5))", ReplMode::Loose).unwrap();
+    let every_events = exported_sample_events(every.get("drums").unwrap(), 2);
+    // Cycle 0 is transformed: fast(3/2, bd sn) plays bd sn bd at thirds
+    // within cycle 0. Cycle 1 is the plain bd sn.
+    assert_eq!(
+        every_events
+            .iter()
+            .map(|event| event["sample"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["bd", "sn", "bd", "bd", "sn"]
+    );
+}
