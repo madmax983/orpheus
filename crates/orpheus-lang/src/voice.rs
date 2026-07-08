@@ -21,8 +21,8 @@ use comfy_table::Cell;
 use crossterm::style::Stylize;
 use orpheus_dsp::{
     DEFAULT_GRAPH_VOICE_POLYPHONY, GraphVoiceSpec, MAX_GRAPH_VOICE_POLYPHONY,
-    MAX_VOICE_DELAY_SECONDS, MODULATED_VOICE_DELAY_MAX_SECONDS, StealPolicy, VoiceNodeSpec,
-    VoiceSignalRef,
+    MAX_VOICE_DELAY_SECONDS, MODULATED_VOICE_DELAY_MAX_SECONDS, SampleBank, StealPolicy,
+    VoiceNodeSpec, VoiceSignalRef,
 };
 
 use crate::ast::{BinaryOp, Expr, GraphBinding};
@@ -132,13 +132,24 @@ impl VoiceValue {
 
 /// Compiles a `voice { ... }` block into a [`VoiceValue`].
 ///
+/// `samples` resolves `sample("name")` stages: the named buffer's shared
+/// handle is embedded in the compiled node DAG here, at definition time, so
+/// the audio thread never touches the bank and an unknown name errors
+/// immediately. A voice therefore keeps the buffer it was defined with until
+/// it is redefined, even if the bank is reloaded afterwards.
+///
 /// # Errors
 ///
 /// Returns [`EvalError`] when the body references an unbound name, calls an
-/// unknown stage, passes the wrong number of arguments, or drives an envelope
-/// segment with anything but a number literal.
-pub fn compile_voice(bindings: &[GraphBinding], result: &Expr) -> Result<VoiceValue, EvalError> {
-    let mut compiler = VoiceCompiler::default();
+/// unknown stage, passes the wrong number of arguments, drives an envelope
+/// segment with anything but a number literal, or names a sample that is not
+/// loaded in `samples`.
+pub fn compile_voice(
+    bindings: &[GraphBinding],
+    result: &Expr,
+    samples: &SampleBank,
+) -> Result<VoiceValue, EvalError> {
+    let mut compiler = VoiceCompiler::new(samples);
 
     for binding in bindings {
         match binding.name.as_str() {
@@ -197,8 +208,9 @@ pub fn compile_voice(bindings: &[GraphBinding], result: &Expr) -> Result<VoiceVa
     })
 }
 
-#[derive(Default)]
-struct VoiceCompiler {
+struct VoiceCompiler<'bank> {
+    /// The loaded sample bank `sample("name")` stages resolve against.
+    samples: &'bank SampleBank,
     resolved: BTreeMap<String, VoiceSignalRef>,
     nodes: Vec<VoiceNodeSpec>,
     max_release: f32,
@@ -214,7 +226,20 @@ struct VoiceCompiler {
     steal: Option<StealPolicy>,
 }
 
-impl VoiceCompiler {
+impl<'bank> VoiceCompiler<'bank> {
+    const fn new(samples: &'bank SampleBank) -> Self {
+        Self {
+            samples,
+            resolved: BTreeMap::new(),
+            nodes: Vec::new(),
+            max_release: 0.0,
+            feedback_scopes: Vec::new(),
+            polyphony: None,
+            release_floor: None,
+            steal: None,
+        }
+    }
+
     /// Handles the `poly = <integer literal>` pragma binding.
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     fn set_polyphony(&mut self, expr: &Expr) -> Result<(), EvalError> {
@@ -406,10 +431,11 @@ impl VoiceCompiler {
             "delay" => self.compile_delay(args, piped),
             "feedback" => self.compile_feedback(args, piped),
             "fan" => self.compile_fan(args, piped),
+            "sample" => self.compile_sample(args, piped),
             other => Err(EvalError::new(format!(
                 "unknown voice stage `{other}`; available stages are `sine`, `saw`, `tri`, \
-                 `pulse`, `noise`, `adsr`, `ar`, `lowpass`, `drive`, `gain`, `delay`, \
-                 `feedback`, and `fan`"
+                 `pulse`, `noise`, `sample`, `adsr`, `ar`, `lowpass`, `drive`, `gain`, \
+                 `delay`, `feedback`, and `fan`"
             ))),
         }
     }
@@ -632,6 +658,77 @@ impl VoiceCompiler {
                 max_seconds: MODULATED_VOICE_DELAY_MAX_SECONDS,
             })
         }
+    }
+
+    /// Compiles `sample("name"[, rate])` — one-shot playback of a preloaded
+    /// sample-bank buffer, so hybrid sample+synth instruments compose (e.g.
+    /// `voice { s = sample("bd") ; s * ar(gate, 0.001, 0.2) }`).
+    ///
+    /// The note gate triggers playback implicitly: a rising edge restarts
+    /// the buffer from the top and the level is otherwise ignored (one-shot,
+    /// like the engine's sample voices). The optional `rate` argument is a
+    /// SIGNAL (1.0 = native pitch, the default). The name must be a string
+    /// literal: the buffer's shared handle is resolved and embedded here,
+    /// before the audio thread runs, so an unknown name errors at definition
+    /// time.
+    fn compile_sample(
+        &mut self,
+        args: &[Expr],
+        piped: Option<VoiceSignalRef>,
+    ) -> Result<VoiceSignalRef, EvalError> {
+        if piped.is_some() {
+            return Err(EvalError::new(
+                "`sample` is a source and cannot be a pipe target; call it directly \
+                 with a sample name (e.g. `sample(\"bd\")` or `sample(\"bd\", 2)`)",
+            ));
+        }
+        let (name_expr, rate_expr) = match args {
+            [name] => (name, None),
+            [name, rate] => (name, Some(rate)),
+            _ => {
+                return Err(EvalError::new(
+                    "`sample` expects a sample name plus an optional rate signal \
+                     (e.g. `sample(\"bd\")` or `sample(\"bd\", 2)`)",
+                ));
+            }
+        };
+        let Expr::String(name) = name_expr else {
+            return Err(EvalError::new(
+                "`sample` requires its name to be a string literal — the buffer is \
+                 resolved before the audio thread runs (e.g. `sample(\"bd\")`)",
+            ));
+        };
+        let Some(sample) = self.samples.get_by_token(name) else {
+            let available = self.samples.available_tokens();
+            return Err(EvalError::new(if available.is_empty() {
+                format!("unknown sample `{name}`: no samples are loaded")
+            } else {
+                format!(
+                    "unknown sample `{name}`; loaded samples: {}",
+                    available.join(", ")
+                )
+            }));
+        };
+        let sample = sample.clone();
+
+        // One-shot playback survives the gate falling, so the release tail
+        // must cover the buffer's duration at native rate (capped like the
+        // `release` pragma so note lifetimes stay bounded).
+        #[allow(clippy::cast_possible_truncation)]
+        let duration_seconds = sample
+            .duration_seconds()
+            .min(MAX_VOICE_RELEASE_FLOOR_SECONDS) as f32;
+        self.max_release = self.max_release.max(duration_seconds);
+
+        let rate = match rate_expr {
+            Some(expr) => self.compile_expr(expr)?,
+            None => self.push(VoiceNodeSpec::Constant { value: 1.0 })?,
+        };
+        self.push(VoiceNodeSpec::Sample {
+            gate: VoiceSignalRef::Gate,
+            rate,
+            sample,
+        })
     }
 
     /// Compiles `feedback(body)` — a one-sample feedback loop around `body`.

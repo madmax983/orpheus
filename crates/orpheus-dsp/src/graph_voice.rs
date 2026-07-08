@@ -23,10 +23,11 @@ use thiserror::Error;
 use crate::SampleTrigger;
 use crate::graph::{
     Node, Processor, Seq, adsr, ar, bind, constant, delay_line, fdelay, feedback, gain_node,
-    ladder_filter, merge, noise, pan, par, passthrough, pulse, saw, seq, sine, soft_sat, sum, tri,
-    wire,
+    ladder_filter, merge, noise, pan, par, passthrough, pulse, sample_player, saw, seq, sine,
+    soft_sat, sum, tri, wire,
 };
 use crate::routing::TrackId;
+use crate::sample_bank::PlaybackSample;
 
 /// Default pooled voices per program (ADR 0009).
 ///
@@ -326,6 +327,22 @@ pub enum VoiceNodeSpec {
         /// The signals to sum; must be non-empty.
         inputs: Vec<VoiceSignalRef>,
     },
+    /// One-shot playback of a preloaded sample-bank buffer.
+    ///
+    /// The buffer is resolved to its shared `Arc` handle when the spec is
+    /// built (off-thread, so an unknown sample name errors at definition
+    /// time and rendering never touches the bank). A rising `gate` edge
+    /// restarts playback from the top; the level is otherwise ignored
+    /// (one-shot, like the engine's sample voices). Playback ends at the
+    /// buffer end — no looping.
+    Sample {
+        /// The trigger signal (typically [`VoiceSignalRef::Gate`]).
+        gate: VoiceSignalRef,
+        /// The playback-rate signal (1.0 = native pitch), read every frame.
+        rate: VoiceSignalRef,
+        /// The preloaded mono buffer, shared with the sample bank.
+        sample: PlaybackSample,
+    },
 }
 
 impl VoiceNodeSpec {
@@ -346,6 +363,7 @@ impl VoiceNodeSpec {
             Self::Delay { input, .. } => vec![*input],
             Self::FractionalDelay { input, seconds, .. } => vec![*input, *seconds],
             Self::Merge { inputs } => inputs.clone(),
+            Self::Sample { gate, rate, .. } => vec![*gate, *rate],
         }
     }
 
@@ -389,6 +407,10 @@ impl VoiceNodeSpec {
                     f(input);
                 }
             }
+            Self::Sample { gate, rate, .. } => {
+                f(gate);
+                f(rate);
+            }
         }
     }
 
@@ -426,7 +448,8 @@ impl VoiceNodeSpec {
             | Self::Drive { .. }
             | Self::Mul { .. }
             | Self::Add { .. }
-            | Self::Merge { .. } => true,
+            | Self::Merge { .. }
+            | Self::Sample { .. } => true,
         }
     }
 }
@@ -826,6 +849,9 @@ impl GraphVoiceSpec {
                 let fan_in = merge(passthrough(width), passthrough(1))
                     .unwrap_or_else(|error| panic!("voice merge fan-in must compose: {error}"));
                 par(fan_in, passthrough(bus))
+            }
+            VoiceNodeSpec::Sample { sample, .. } => {
+                par(sample_player(sample, sample_rate_hz), passthrough(bus))
             }
         };
 

@@ -140,3 +140,43 @@ still built off-thread and swapped at cycle boundaries; the counting-
 allocator suite covers the new node kinds and a non-default pool size.
 (A third pragma, `steal = oldest|off`, later joined these two when voice
 stealing shipped; see ADR 0009's addendum.)
+
+## Addendum: `sample("name")` source stage
+
+The sample-playback gap on the Faust-parity roadmap closed as one more voice
+stage over one new graph primitive, giving voice bodies hybrid sample+synth
+instruments: `kit = voice { s = sample("bd") ; s * ar(gate, 0.001, 0.2) }`
+sends a preloaded drum hit through the same envelope/filter/feedback
+vocabulary as any oscillator.
+
+**One node, one-shot semantics.** `SamplePlayerNode`
+(`crates/orpheus-dsp/src/graph/sample_player.rs`) is a 2-in (gate, rate)/
+1-out player over a sample bank buffer (the bank stores mono, stereo files
+downmix at load). A rising gate edge restarts playback from the top; the
+gate level is otherwise ignored — one-shot, matching the engine's sample
+voices, and composing with ADR 0009's rectangular event-span gate. The rate
+is a signal input (1.0 = native pitch), read every frame; fractional
+playhead positions interpolate linearly, and playback ends at the buffer end
+(loop mode is a follow-up). In a voice body the note gate triggers the stage
+implicitly and the optional second argument is the rate signal.
+
+**Buffers resolve at definition time.** `VoiceNodeSpec::Sample` carries the
+resolved `PlaybackSample` — an `Arc` handle to the bank's decoded frames —
+not a name. The evaluator now holds the sample bank (the session threads its
+live bank through `eval_into_bindings_with_samples`; plain `eval_module`
+and loaded files use the built-in bank), so `compile_voice` looks the name
+up when the `voice { ... }` block evaluates: an unknown sample errors
+immediately with the loaded-token list, spec validation still cannot fail
+later, and the audio thread never touches the bank. Two accepted
+consequences: a voice keeps the buffer it was defined with until it is
+redefined, even if the bank reloads underneath it; and files loaded through
+the strict loader resolve against the built-in bank only (threading the
+session bank through the loader is a follow-up).
+
+**Deterministic voice end still holds.** A one-shot must survive gates
+shorter than the buffer, so the stage extends the program's release tail to
+at least the sample's duration at native rate, capped by the same 30 s bound
+as the `release` pragma (longer samples truncate at the note lifetime's
+end). The counting-allocator suite covers a hybrid sample+sine voice: pool
+build resolves the handle off-thread, and trigger/render stay
+allocation-free.

@@ -27,7 +27,7 @@ use orpheus_dsp::{
 };
 use orpheus_pattern::Rational;
 
-use crate::eval::eval_into_bindings;
+use crate::eval::eval_into_bindings_with_samples;
 use crate::export::render_sample_pattern_to_file_with_bank;
 use crate::export::sample_trigger_from_event;
 use crate::loader::load_file_runtime_strict;
@@ -421,8 +421,13 @@ impl ReplSession {
         else {
             return Err("no bindings were produced".into());
         };
-        let Some((value_name, value)) = eval_into_bindings(source, self.mode, &mut self.bindings)
-            .map_err(|error| error.to_string())?
+        let Some((value_name, value)) = eval_into_bindings_with_samples(
+            source,
+            self.mode,
+            &mut self.bindings,
+            &self.sample_bank,
+        )
+        .map_err(|error| error.to_string())?
         else {
             return Err("no bindings were produced".into());
         };

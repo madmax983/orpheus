@@ -47,7 +47,7 @@ pub use ascii_roll::render_ascii_roll;
 pub use ast::{BinaryOp, Expr, GraphBinding, Module, StepOp, Stmt};
 pub use diagnostics::{LoadError, ParseError, TypeError};
 pub use error::EvalError;
-pub use eval::{eval_module, render_span};
+pub use eval::{eval_module, eval_module_with_samples, render_span};
 pub use export::{
     RenderError, export_number_pattern_to_csv, export_number_pattern_to_json,
     export_number_pattern_to_md, export_sample_pattern_to_csv, export_sample_pattern_to_json,
@@ -98,7 +98,9 @@ pub use voice::{VoiceValue, compile_voice};
 #[doc(hidden)]
 pub use builtins::{apply_builtin_function, builtin_value, is_sample_identifier, stack_values};
 #[doc(hidden)]
-pub use eval::{apply_function_value, eval_into_bindings, f64_to_rational};
+pub use eval::{
+    apply_function_value, eval_into_bindings, eval_into_bindings_with_samples, f64_to_rational,
+};
 #[doc(hidden)]
 pub use export::escape_json_string;
 #[doc(hidden)]
