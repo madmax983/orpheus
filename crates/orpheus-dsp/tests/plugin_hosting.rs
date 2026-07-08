@@ -10,10 +10,13 @@ fn vst3_descriptor_uses_standard_os_search_paths() {
     let paths = descriptor.search_paths();
 
     assert_eq!(descriptor.identifier(), "Serum");
+    // The VST3 spec uses lowercase `vst3` directories on Linux (e.g.
+    // `/usr/lib/vst3`, `~/.vst3`) and uppercase `VST3` folders on macOS and
+    // Windows, so match case-insensitively to stay correct on every platform.
     assert!(
         paths
             .iter()
-            .any(|path| path.to_string_lossy().contains("VST3")),
+            .any(|path| path.to_string_lossy().to_ascii_lowercase().contains("vst3")),
         "expected default VST3 search paths, got {paths:?}"
     );
 }
