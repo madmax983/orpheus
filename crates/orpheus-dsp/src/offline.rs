@@ -20,7 +20,7 @@ use crate::effects::BusEffectState;
 use crate::engine::{DEFAULT_SAMPLE_RATE, DEFAULT_TEMPO_BPM, EngineError, frames_per_cycle};
 use crate::graph_voice::{GraphVoiceBank, GraphVoiceSpec, graph_note_params};
 use crate::plugin_host::PluginProcessor;
-use crate::routing::{RoutingSnapshot, TrackId, TrackSource};
+use crate::routing::{GeneratorId, RoutingSnapshot, TrackId, TrackSource};
 use crate::sample_bank::SampleBank;
 use crate::scheduler::{ScheduledTrigger, Scheduler};
 use crate::voice::ActiveVoice;
@@ -29,6 +29,27 @@ const OFFLINE_CHANNELS: u16 = 2;
 const MAX_ACTIVE_VOICES: usize = 32;
 const PCM_BITS_PER_SAMPLE: u8 = 16;
 const FLAC_BLOCK_SIZE: usize = 1024;
+
+/// Pre-materialized generator cycle buffers for offline export (ADR 0009).
+///
+/// A [`TrackSource::Generator`] never stores its events in the routing
+/// snapshot: the live engine receives them one cycle at a time over the
+/// lock-free command ring, so offline rendering must be handed the same
+/// buffers out-of-band. This mirrors how [`GraphVoiceSpec`] threads
+/// user-defined voice programs into the offline renderer — the DSP crate stays
+/// entirely generator-agnostic (it never ticks a grid or depends on
+/// `orpheus-lang`); it only consumes "one boxed cycle of events per index".
+#[derive(Clone, Debug)]
+pub struct GeneratorCycleSpec {
+    /// The generator slot these buffers belong to.
+    pub generator_id: GeneratorId,
+    /// One materialized cycle buffer per cycle index (index 0 is the first
+    /// exported cycle). A bounded export normally supplies exactly
+    /// `cycle_count` buffers; when fewer are present the renderer re-schedules
+    /// the last buffer, mirroring the live engine's
+    /// starvation-loops-last-buffer behavior.
+    pub cycles: Vec<Box<[Event<SampleTrigger>]>>,
+}
 
 /// Errors raised while rendering an offline export.
 #[derive(Debug, Error)]
@@ -156,7 +177,10 @@ pub fn render_routing_snapshot_to_stereo_for_test(
     let total_frames_usize =
         usize::try_from(total_frames).map_err(|_| EngineError::FrameOverflow)?;
     let mut scheduler = Scheduler::default();
-    schedule_snapshot_cycles(snapshot, cycle_count, frames_per_cycle, &mut scheduler)?;
+    // The stereo test helper never carries generator buffers; generator tracks
+    // render silent here. Stem export is the audible generator surface and
+    // takes `generator_cycles` explicitly.
+    schedule_snapshot_cycles(snapshot, cycle_count, frames_per_cycle, &[], &mut scheduler)?;
 
     let mut active_voices: Vec<Option<ActiveVoice>> =
         (0..MAX_ACTIVE_VOICES).map(|_| None).collect();
@@ -230,12 +254,14 @@ pub fn render_routing_snapshot_to_stereo_for_test(
 /// # Panics
 ///
 /// Panics if a track ID, a bus ID, or the sample rate cannot fit into a `usize`.
+#[allow(clippy::too_many_arguments)]
 pub fn render_routing_snapshot_to_stem_wavs(
     snapshot: &RoutingSnapshot,
     cycle_count: u64,
     tempo_bpm: f32,
     sample_bank: &SampleBank,
     graph_voice_specs: &[GraphVoiceSpec],
+    generator_cycles: &[GeneratorCycleSpec],
     output_dir: impl AsRef<Path>,
     include_buses: bool,
 ) -> Result<Vec<PathBuf>, OfflineRenderError> {
@@ -256,7 +282,13 @@ pub fn render_routing_snapshot_to_stem_wavs(
     let total_frames_usize =
         usize::try_from(total_frames).map_err(|_| EngineError::FrameOverflow)?;
     let mut scheduler = Scheduler::default();
-    schedule_snapshot_cycles(snapshot, cycle_count, frames_per_cycle, &mut scheduler)?;
+    schedule_snapshot_cycles(
+        snapshot,
+        cycle_count,
+        frames_per_cycle,
+        generator_cycles,
+        &mut scheduler,
+    )?;
 
     let mut active_voices: Vec<Option<ActiveVoice>> =
         (0..MAX_ACTIVE_VOICES).map(|_| None).collect();
@@ -387,6 +419,7 @@ fn schedule_snapshot_cycles(
     snapshot: &RoutingSnapshot,
     cycle_count: u64,
     frames_per_cycle: u64,
+    generator_cycles: &[GeneratorCycleSpec],
     scheduler: &mut Scheduler,
 ) -> Result<(), OfflineRenderError> {
     for cycle in 0..cycle_count {
@@ -394,13 +427,39 @@ fn schedule_snapshot_cycles(
             .checked_mul(frames_per_cycle)
             .ok_or(EngineError::FrameOverflow)?;
         for track in snapshot.tracks() {
-            if let TrackSource::SamplePattern(events) = track.source() {
-                scheduler.schedule_cycle_events(
-                    track.id(),
-                    cycle_start,
-                    frames_per_cycle,
-                    events.iter(),
-                )?;
+            match track.source() {
+                TrackSource::SamplePattern(events) => {
+                    scheduler.schedule_cycle_events(
+                        track.id(),
+                        cycle_start,
+                        frames_per_cycle,
+                        events.iter(),
+                    )?;
+                }
+                // Generator tracks (ADR 0009) carry no events in the snapshot:
+                // schedule the pre-materialized buffer supplied out-of-band for
+                // this cycle. A short buffer list re-schedules its last entry,
+                // matching the live engine's starvation-loops-last semantics.
+                TrackSource::Generator(id) => {
+                    if let Some(spec) = generator_cycles
+                        .iter()
+                        .find(|spec| spec.generator_id == *id)
+                    {
+                        let events = usize::try_from(cycle)
+                            .ok()
+                            .and_then(|index| spec.cycles.get(index))
+                            .or_else(|| spec.cycles.last());
+                        if let Some(events) = events {
+                            scheduler.schedule_cycle_events(
+                                track.id(),
+                                cycle_start,
+                                frames_per_cycle,
+                                events.iter(),
+                            )?;
+                        }
+                    }
+                }
+                TrackSource::Unbound | TrackSource::Plugin(_) => {}
             }
         }
     }
@@ -575,8 +634,10 @@ fn plugin_processors_for_snapshot(snapshot: &RoutingSnapshot) -> Vec<Option<Plug
         .iter()
         .map(|track| match track.source() {
             TrackSource::Plugin(source) => Some(PluginProcessor::new(source, DEFAULT_SAMPLE_RATE)),
-            // Generator sources render silent offline: their cycle buffers
-            // live in the real-time engine, not the snapshot (ADR 0009).
+            // Generator sources have no plugin processor: their pre-materialized
+            // cycle buffers are scheduled as sample triggers in
+            // `schedule_snapshot_cycles` via the `generator_cycles` seam (ADR
+            // 0009 addendum), exactly like `SamplePattern` tracks.
             TrackSource::Unbound | TrackSource::SamplePattern(_) | TrackSource::Generator(_) => {
                 None
             }

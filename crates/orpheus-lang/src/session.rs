@@ -20,12 +20,12 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use orpheus_dsp::{
-    DEFAULT_ANALOG_BASE_FREQUENCY_HZ, EngineCommand, EngineHandle, GeneratorCycle, GeneratorId,
-    GraphVoiceBank, GraphVoiceSpec, PatternUpdate, SampleBank, SampleLibraryWatcher,
-    SampleLibraryWatcherConfig, TransportSnapshot, load_sample_bank_from_directory,
-    render_routing_snapshot_to_stem_wavs,
+    DEFAULT_ANALOG_BASE_FREQUENCY_HZ, EngineCommand, EngineHandle, GeneratorCycle,
+    GeneratorCycleSpec, GeneratorId, GraphVoiceBank, GraphVoiceSpec, PatternUpdate, SampleBank,
+    SampleLibraryWatcher, SampleLibraryWatcherConfig, SampleTrigger, TransportSnapshot,
+    load_sample_bank_from_directory, render_routing_snapshot_to_stem_wavs,
 };
-use orpheus_pattern::Rational;
+use orpheus_pattern::{Event, Rational};
 
 use crate::eval::eval_into_bindings;
 use crate::export::render_sample_pattern_to_file_with_bank;
@@ -38,6 +38,14 @@ use crate::value::{SampleEvent, SamplePatternValue};
 use crate::{ReplMode, Type, Value};
 
 const SESSION_HISTORY_LIMIT: usize = 50;
+
+/// Upper bound on the number of delivered generator cycle buffers retained per
+/// slot for offline stem export (ADR 0009 addendum). Buffers are tiny (one
+/// grid cycle of events), but a long-running grid would otherwise grow the
+/// record without bound; once the cap is reached, later cycles are not
+/// recorded and an export past this length loops the last retained cycle,
+/// matching the engine's starvation-loops-last-buffer behavior.
+const MAX_RECORDED_GENERATOR_CYCLES: usize = 4096;
 
 /// Represents the interactive state of an Orpheus environment.
 ///
@@ -67,6 +75,13 @@ pub struct ReplSession {
     bindings: BTreeMap<String, Value>,
     type_bindings: BTreeMap<String, Type>,
     mixer: MixerState,
+    /// Per-slot record of the generator cycle buffers delivered to the engine
+    /// since the source last started, keyed by [`GeneratorId`] (ADR 0009
+    /// addendum). Offline stem export replays these buffers so generator
+    /// tracks (e.g. the Orca grid) are audible in exported stems, exactly as
+    /// they were delivered from grid start. Purely off-thread bookkeeping — the
+    /// audio path never reads it.
+    generator_cycles: BTreeMap<GeneratorId, Vec<Box<[Event<SampleTrigger>]>>>,
     pattern_display: RefCell<PatternDisplayState>,
     midi_output: MidiOutputState,
     midi_input: MidiInputState,
@@ -372,6 +387,7 @@ impl ReplSession {
             bindings: BTreeMap::new(),
             type_bindings: BTreeMap::new(),
             mixer: MixerState::default(),
+            generator_cycles: BTreeMap::new(),
             pattern_display: RefCell::new(PatternDisplayState::default()),
             midi_output: MidiOutputState::default(),
             midi_input: MidiInputState::default(),
@@ -861,12 +877,14 @@ impl ReplSession {
 
         let tempo_bpm = self.transport_snapshot().tempo_bpm();
         let graph_voice_specs = self.graph_voice_specs()?;
+        let generator_cycles = self.generator_cycle_specs(cycles);
         let written = render_routing_snapshot_to_stem_wavs(
             &snapshot,
             cycles,
             tempo_bpm,
             &self.sample_bank,
             &graph_voice_specs,
+            &generator_cycles,
             &export_dir,
             include_buses,
         )
@@ -1824,6 +1842,9 @@ impl ReplSession {
         self.mixer.note_sample_binding(name);
         self.enqueue_mixer_snapshot()?;
         self.pattern_display.borrow_mut().last_loaded_pattern_name = Some(name.to_owned());
+        // Restart the export record from grid start: the first delivered cycle
+        // (below) becomes exported cycle 0 (ADR 0009 addendum).
+        self.generator_cycles.insert(generator_id, Vec::new());
         self.push_generator_cycle(generator_id, events)
     }
 
@@ -1842,7 +1863,7 @@ impl ReplSession {
         generator_id: GeneratorId,
         events: Vec<orpheus_pattern::Event<SampleEvent>>,
     ) -> Result<(), String> {
-        let triggers = events
+        let triggers: Vec<Event<SampleTrigger>> = events
             .into_iter()
             .map(|event| orpheus_pattern::Event {
                 whole: event.whole,
@@ -1850,12 +1871,42 @@ impl ReplSession {
                 value: sample_trigger_from_event(&event.value),
             })
             .collect();
+        self.record_generator_cycle(generator_id, triggers.clone().into_boxed_slice());
         self.engine
             .enqueue(EngineCommand::PushGeneratorCycle(GeneratorCycle::new(
                 generator_id,
                 triggers,
             )))
             .map_err(|error| format!("failed to enqueue generator cycle: {error}"))
+    }
+
+    /// Appends a delivered generator cycle buffer to the per-slot export record
+    /// (ADR 0009 addendum), bounded by [`MAX_RECORDED_GENERATOR_CYCLES`].
+    fn record_generator_cycle(
+        &mut self,
+        generator_id: GeneratorId,
+        triggers: Box<[Event<SampleTrigger>]>,
+    ) {
+        let recorded = self.generator_cycles.entry(generator_id).or_default();
+        if recorded.len() < MAX_RECORDED_GENERATOR_CYCLES {
+            recorded.push(triggers);
+        }
+    }
+
+    /// Builds one [`GeneratorCycleSpec`] per active generator slot for offline
+    /// stem export, mirroring [`Self::graph_voice_specs`]. Each spec carries up
+    /// to `cycle_count` recorded cycle buffers in delivery order (from grid
+    /// start); the offline renderer loops the last buffer if fewer were
+    /// recorded, matching the live engine's starvation semantics.
+    fn generator_cycle_specs(&self, cycle_count: u64) -> Vec<GeneratorCycleSpec> {
+        let max = usize::try_from(cycle_count).unwrap_or(usize::MAX);
+        self.generator_cycles
+            .iter()
+            .map(|(generator_id, recorded)| GeneratorCycleSpec {
+                generator_id: *generator_id,
+                cycles: recorded.iter().take(max).cloned().collect(),
+            })
+            .collect()
     }
 
     /// Silences a generator source at the next cycle boundary.
@@ -3148,6 +3199,41 @@ mod tests {
             .map(Result::unwrap)
             .any(|sample| sample != 0);
         assert!(nonzero, "graph voice stem should contain rendered audio");
+
+        let _ = std::fs::remove_dir_all(rendered_dir);
+    }
+
+    #[test]
+    fn export_stems_command_renders_generator_track_audibly() {
+        use crate::orca::{ORCA_GENERATOR_ID, ORCA_PATTERN_NAME, OrcaEngine, materialize_cycle};
+
+        let mut session = ReplSession::new();
+
+        // A banging note grid: `D1` fires the `:04c` note every frame.
+        let mut grid = OrcaEngine::from_rows(&[".D1...", "..:04c"]).unwrap();
+        let events = materialize_cycle(&mut grid, 16, "tri").unwrap();
+        assert!(!events.is_empty(), "the grid must emit notes to export");
+
+        session
+            .start_generator_source(ORCA_PATTERN_NAME, ORCA_GENERATOR_ID, events)
+            .unwrap();
+        session.eval_line(":track new orca_track").unwrap();
+        session.eval_line(":track bind orca_track orca").unwrap();
+
+        let message = session.eval_line(":export stems 1").unwrap();
+        assert!(message.contains("exported"), "got: {message}");
+        let rendered_dir = parse_exported_stem_dir(&message);
+        let path = rendered_dir.join("orca_track.wav");
+        assert!(path.exists(), "missing generator stem `orca_track.wav`");
+        let mut reader = hound::WavReader::open(&path).unwrap();
+        let nonzero = reader
+            .samples::<i16>()
+            .map(Result::unwrap)
+            .any(|sample| sample != 0);
+        assert!(
+            nonzero,
+            "generator stem should contain audio from its delivered cycles"
+        );
 
         let _ = std::fs::remove_dir_all(rendered_dir);
     }

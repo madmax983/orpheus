@@ -6,10 +6,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use orpheus_dsp::{
-    EngineCommand, EngineHandle, NodeRef, PedalNode, PedalProgram, PedalStage, RoutingSnapshot,
-    SampleBank, SampleTrigger, TrackSource, load_sample_bank_from_directory,
-    render_events_to_file_with_bank, render_routing_snapshot_to_stem_wavs,
-    render_routing_snapshot_to_stereo_for_test,
+    EngineCommand, EngineHandle, GeneratorCycleSpec, GeneratorId, NodeRef, PedalNode, PedalProgram,
+    PedalStage, RoutingSnapshot, SampleBank, SampleTrigger, TrackSource,
+    load_sample_bank_from_directory, render_events_to_file_with_bank,
+    render_routing_snapshot_to_stem_wavs, render_routing_snapshot_to_stereo_for_test,
 };
 use orpheus_pattern::{Event, Rational, TimeSpan};
 
@@ -722,9 +722,17 @@ fn stem_export_renders_sample_builtin_synth_and_graph_voice_stems() {
         .unwrap();
 
     let output_dir = temp_directory("stem-generator-sources-out");
-    let written =
-        render_routing_snapshot_to_stem_wavs(&snapshot, 1, 480.0, &bank, &[], &output_dir, false)
-            .unwrap();
+    let written = render_routing_snapshot_to_stem_wavs(
+        &snapshot,
+        1,
+        480.0,
+        &bank,
+        &[],
+        &[],
+        &output_dir,
+        false,
+    )
+    .unwrap();
 
     for stem in ["drums", "lead", "pad"] {
         let stem_path = output_dir.join(format!("{stem}.wav"));
@@ -745,6 +753,107 @@ fn stem_export_renders_sample_builtin_synth_and_graph_voice_stems() {
             "stem `{stem}` should contain nonzero audio in the event window"
         );
     }
+
+    fs::remove_dir_all(output_dir).unwrap();
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn stem_export_renders_generator_track_from_pre_materialized_cycles() {
+    let directory = temp_directory("stem-generator-cycles");
+    write_wav(directory.join("pulse.wav"), &[1.0, 0.5, 0.25, 0.125]);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+
+    let generator_id = GeneratorId::new(0);
+    let snapshot = RoutingSnapshot::builder()
+        .track_with_source("orca", TrackSource::Generator(generator_id))
+        .route("orca", "master")
+        .build()
+        .unwrap();
+
+    let cycle = vec![Event {
+        whole: None,
+        part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+        value: SampleTrigger::named("pulse"),
+    }]
+    .into_boxed_slice();
+    let generator_cycles = vec![GeneratorCycleSpec {
+        generator_id,
+        cycles: vec![cycle],
+    }];
+
+    let output_dir = temp_directory("stem-generator-cycles-out");
+    let written = render_routing_snapshot_to_stem_wavs(
+        &snapshot,
+        1,
+        480.0,
+        &bank,
+        &[],
+        &generator_cycles,
+        &output_dir,
+        false,
+    )
+    .unwrap();
+
+    let stem_path = output_dir.join("orca.wav");
+    assert!(
+        written.contains(&stem_path),
+        "expected `orca.wav` in written stems {written:?}"
+    );
+    let mut reader = hound::WavReader::open(&stem_path).unwrap();
+    let samples = reader
+        .samples::<i16>()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let window = &samples[..samples.len() / 2];
+    assert!(
+        window.iter().any(|sample| *sample != 0),
+        "generator stem should contain audio from its pre-materialized cycle"
+    );
+
+    fs::remove_dir_all(output_dir).unwrap();
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn stem_export_renders_generator_track_silent_without_cycles() {
+    // Documents the seam / old behavior: with no matching generator spec the
+    // generator track produces a silent stem (its buffers live only in the RT
+    // engine, never in the snapshot).
+    let directory = temp_directory("stem-generator-empty");
+    write_wav(directory.join("pulse.wav"), &[1.0, 0.5, 0.25, 0.125]);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+
+    let snapshot = RoutingSnapshot::builder()
+        .track_with_source("orca", TrackSource::Generator(GeneratorId::new(0)))
+        .route("orca", "master")
+        .build()
+        .unwrap();
+
+    let output_dir = temp_directory("stem-generator-empty-out");
+    let written = render_routing_snapshot_to_stem_wavs(
+        &snapshot,
+        1,
+        480.0,
+        &bank,
+        &[],
+        &[],
+        &output_dir,
+        false,
+    )
+    .unwrap();
+
+    let stem_path = output_dir.join("orca.wav");
+    assert!(written.contains(&stem_path));
+    let mut reader = hound::WavReader::open(&stem_path).unwrap();
+    let samples = reader
+        .samples::<i16>()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert!(
+        samples.iter().all(|sample| *sample == 0),
+        "a generator track with no supplied cycles renders silent"
+    );
 
     fs::remove_dir_all(output_dir).unwrap();
     fs::remove_dir_all(directory).unwrap();

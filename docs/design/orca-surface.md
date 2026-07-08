@@ -632,9 +632,22 @@ path (`publish_sample_events` per boundary) remains a supported fallback
 for hosts without generator wiring; it plays correctly but re-clips note
 tails at cycle boundaries on the round-trip through a pattern binding.
 
-Offline stem export treats generator tracks as silent (their buffers live
-in the real-time engine, not the snapshot); recording a grid performance
-is future work.
+Offline stem export renders generator tracks audibly (ADR 0009 addendum,
+shipped). Because a generator's buffers live in the real-time engine, not
+the snapshot, `ReplSession` records each cycle it delivers over
+`push_generator_cycle` (keyed by `GeneratorId`, reset from grid start on
+`start_generator_source`, bounded per slot). At export time
+`export_stems` replays those recorded buffers through the new
+`orpheus-dsp` `generator_cycles` seam
+(`render_routing_snapshot_to_stem_wavs(.., generator_cycles: &[GeneratorCycleSpec], ..)`),
+which schedules the buffer for cycle `n` (or loops the last delivered
+buffer past the recorded end, matching the engine's starvation semantics)
+through the same path a `SamplePattern` track uses — so the `orca` stem
+is sample-accurate audio, not silence. `orpheus-dsp` stays
+Orca-agnostic: it consumes pre-materialized buffers and never ticks a
+grid. `orpheus_lang::orca::materialize_generator_cycles` provides the
+deterministic batch materializer (a clone of the poll loop) for hosts
+that would rather recompute cycles than replay delivered ones.
 
 ---
 
@@ -938,6 +951,6 @@ through the transport snapshot, which is the right layering.
 
 The Orca surface is complete as scoped. Remaining ideas, none of them
 reference gaps: per-event target overrides, `.orca` persistence,
-`Pattern<T>` for the grid, a grid language surface, lock-set proofs
-(sections 6/7.3), and recording grid performances in offline export
-(section 11.3).
+`Pattern<T>` for the grid, a grid language surface, and lock-set proofs
+(sections 6/7.3). Recording grid performances in offline stem export
+(section 11.3) is now shipped (ADR 0009 addendum).

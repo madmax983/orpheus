@@ -33,9 +33,10 @@
 //! trigger durations from that extent, so the note sustains across the
 //! boundary (resolving the documented v4 clamp limitation).
 
-use orpheus_dsp::GeneratorId;
+use orpheus_dsp::{GeneratorId, SampleTrigger};
 use orpheus_pattern::{Event, PatternError, Rational, TimeSpan};
 
+use crate::export::sample_trigger_from_event;
 use crate::value::SampleEvent;
 
 use super::engine::{OrcaEngine, OrcaEvent, OrcaIoEvent};
@@ -314,6 +315,46 @@ pub fn materialize_cycle_io(
     Ok(OrcaCycle { audio, io })
 }
 
+/// Deterministically materializes `cycle_count` consecutive grid cycles into
+/// per-cycle [`SampleTrigger`] buffers for offline stem export (ADR 0009
+/// addendum).
+///
+/// This is the batch, off-thread equivalent of the live poll loop: it clones
+/// `engine` so the caller's live playhead is never advanced, then advances the
+/// clone one grid cycle at a time via [`materialize_cycle`], converting each
+/// note event with [`sample_trigger_from_event`] — exactly the mapping
+/// `ReplSession::push_generator_cycle` applies before shipping a cycle to the
+/// engine. The result feeds `orpheus_dsp`'s `generator_cycles` export seam
+/// (`GeneratorCycleSpec::cycles`): one boxed buffer per cycle index, in play
+/// order from the grid's current state.
+///
+/// # Errors
+///
+/// Propagates rational-construction errors from note-span materialization.
+pub fn materialize_generator_cycles(
+    engine: &OrcaEngine,
+    cycle_count: u64,
+    frames_per_cycle: u64,
+    sample_token: &str,
+) -> Result<Vec<Box<[Event<SampleTrigger>]>>, PatternError> {
+    let mut clone = engine.clone();
+    let mut cycles = Vec::with_capacity(usize::try_from(cycle_count).unwrap_or(0));
+    for _ in 0..cycle_count {
+        let events = materialize_cycle(&mut clone, frames_per_cycle, sample_token)?;
+        let triggers = events
+            .iter()
+            .map(|event| Event {
+                whole: event.whole,
+                part: event.part,
+                value: sample_trigger_from_event(&event.value),
+            })
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        cycles.push(triggers);
+    }
+    Ok(cycles)
+}
+
 /// Maps the audio engine's transport position onto the current grid frame.
 ///
 /// `current_frame` and `cycle_start_frame` are absolute audio frames from
@@ -458,5 +499,44 @@ impl OrcaPublisher {
         }
         self.last_cycle_start = Some(cycle_start_frame);
         materialize_cycle_io(&mut self.engine, self.frames_per_cycle, &self.sample_token).map(Some)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn materialize_generator_cycles_is_deterministic_and_preserves_the_source() {
+        let mut engine = OrcaEngine::from_rows(&[".D1...", "..:04c"]).expect("well-formed grid");
+        let frame_before = engine.frame();
+
+        let cycles = materialize_generator_cycles(&engine, 3, 4, "tri").expect("materializes");
+        assert_eq!(cycles.len(), 3);
+        assert!(
+            cycles.iter().any(|cycle| !cycle.is_empty()),
+            "a banging note grid must produce audible triggers"
+        );
+
+        // Cloning the engine keeps the caller's live playhead untouched.
+        assert_eq!(
+            engine.frame(),
+            frame_before,
+            "materialization must not advance the source engine"
+        );
+
+        // The batch matches the live poll loop cycle-for-cycle: advancing the
+        // source engine one cycle at a time yields the same event counts and
+        // trigger tokens the batch produced.
+        for cycle in &cycles {
+            let expected = materialize_cycle(&mut engine, 4, "tri").expect("materializes");
+            assert_eq!(cycle.len(), expected.len());
+            for (trigger, event) in cycle.iter().zip(&expected) {
+                assert_eq!(
+                    trigger.value.token(),
+                    sample_trigger_from_event(&event.value).token()
+                );
+            }
+        }
     }
 }
