@@ -246,7 +246,89 @@ Explicitly not part of v0 (each is a candidate v1+ work item):
   twice per frame) are natural Verus candidates once the engine shape
   stabilizes; premature for a spike.
 
-## 7. What the spike must prove
+## 7. v2: the full pure-operator set
+
+**Status: implemented.** v2 expands the engine from the v0 eight to the full
+`A`-`Z` operator set of main-branch orca-js (every letter; semantics verified
+operator-by-operator against `library.js`/`operator.js`). Movement (`N S E
+W`), `A`, `C`, `D`, and `:` are unchanged from v0.
+
+### 7.1 New operator table
+
+Offsets are `{x, y}` relative to the operator; output cells are locked when
+written. *Sensitive* outputs are uppercased iff the glyph east of the
+operator is an uppercase letter; all other outputs copy glyphs verbatim.
+The sensitive set matches the reference exactly: `A B C I L M R Z`.
+
+| Glyph | Name | Inputs | Output | Semantics |
+|---|---|---|---|---|
+| `B` | subtract | a `{-1,0}`, b `{+1,0}` | `{0,+1}` sensitive | `keyOf(abs(b - a))` |
+| `F` | if | a `{-1,0}`, b `{+1,0}` | `{0,+1}` **bang** | `*` iff the glyphs are equal (raw comparison, case-sensitive; `.` == `.`), else `.` |
+| `G` | generate | x `{-3,0}`, y `{-2,0}`, len `{-1,0}` (min 1) | block at `{x+i, y+1}` | copies the `len` glyphs east of `G`, verbatim, locking operands and written cells |
+| `H` | halt | — | — | locks the cell below; writes nothing (in orca-js the value round-trips through a write that always refuses it) |
+| `I` | increment | step `{-1,0}`, mod `{+1,0}` | `{0,+1}` sensitive, reader | reads its own output cell as state; `keyOf((val + step) mod m)`, `'0'` when mod empty; empty step means +0 (no default in main-branch orca-js) |
+| `J` | jumper | north `{0,-1}` | below last consecutive `J` | chain head copies the value past the whole column in one frame; a `J` under a `J` is dormant |
+| `K` | konkat | len `{-1,0}` (min 1) | `{i+1,+1}` per key | reads each eastward glyph as a variable name and writes its value beneath it |
+| `L` | lesser | a `{-1,0}`, b `{+1,0}` | `{0,+1}` sensitive | `keyOf(min(a, b))` |
+| `M` | multiply | a `{-1,0}`, b `{+1,0}` | `{0,+1}` sensitive | `keyOf((a * b) mod 36)` |
+| `O` | read | x `{-2,0}`, y `{-1,0}` | `{0,+1}` | outputs the glyph at relative `{x+1, y}`, verbatim |
+| `P` | push | key `{-2,0}`, len `{-1,0}` (min 1), val `{+1,0}` | `{key mod len, +1}` | writes val into one slot of the row below, locking the whole `len`-wide row |
+| `Q` | query | x `{-3,0}`, y `{-2,0}`, len `{-1,0}` (min 1) | `{i-len+1,+1}` | reads `len` glyphs starting at relative `{x+1, y}`, writes them ending directly below `Q` |
+| `R` | random | a `{-1,0}`, b `{+1,0}` | `{0,+1}` sensitive | uniform value in the **inclusive** range spanned by the operands (descending operands swap, per orca-js main); deterministic, see 7.2 |
+| `T` | track | key `{-2,0}`, len `{-1,0}` (min 1) | `{0,+1}` | locks the `len` cells east and outputs glyph `key mod len` of them, verbatim |
+| `U` | uclid | step `{-1,0}` (min 0), max `{+1,0}` (min 1) | `{0,+1}` **bang** | bang iff `(step * (frame + max - 1)) mod max + step >= max`; no port defaults, so an empty step never bangs |
+| `V` | variable | write `{-1,0}`, read `{+1,0}` | `{0,+1}` (read form only) | write form stores `variables[write] = read`; read form outputs the stored glyph (or `.`), verbatim. The store clears every frame, so writers must precede readers in scan order |
+| `X` | write | x `{-2,0}`, y `{-1,0}`, val `{+1,0}` | `{x, y+1}` | writes val, verbatim, at the offset |
+| `Y` | jymper | west `{-1,0}` | east of last consecutive `Y` | horizontal analog of `J` |
+| `Z` | lerp | rate `{-1,0}`, target `{+1,0}` | `{0,+1}` sensitive, reader | steps its own output toward the target by ±rate per frame, clamping when close; empty rate (no default) holds the value |
+
+### 7.2 Deterministic `R` (and why replayability matters)
+
+The reference implementation draws `R` from `Math.random()`, which would make
+a grid's evolution non-reproducible. That breaks two things Orpheus cares
+about:
+
+1. **Replayable livecoding.** A grid materialized into a cycle (section 1.2)
+   should publish the same events if the same cycle is materialized again —
+   saving a session, re-running a set, or A/B-ing an edit must not reroll
+   every `R` on the grid.
+2. **The pattern seam.** Grid state at frame `N` being a pure function of
+   (initial grid, `N`) is the precondition for the grid ever implementing
+   `Pattern<T>` directly (query = simulate frames), flagged in section 1.2 as
+   "random operators would need a frame-keyed seeded PRNG". v2 supplies it.
+
+The implementation mirrors how the degrade family already gets deterministic
+per-event randomness (`event_coin` in `crates/orpheus-lang/src/value.rs`,
+which hashes each event's onset with a site salt): XOR the identifying inputs
+with distinct bit-rotations, then apply the SplitMix64 finalizer. For `R` the
+identifying inputs are the **frame number and the operator's grid position**
+(`frame_position_hash(frame, x, y)` in `orca/engine.rs`), so:
+
+- the same grid replays identically, frame for frame;
+- two `R`s with the same operands on the same frame still draw independently
+  (position decorrelates them);
+- a given draw is stable regardless of when the engine was started or how
+  cycles are chunked — the same property the degrade family guarantees under
+  arbitrary query-window chunking.
+
+One deliberate divergence: orca-js `parseInt(Math.random() * (b - a + 1) + a)`
+draws from `[a, b]` inclusive; we match that (including the descending-range
+swap and `a == b` returning `a`) but with the hash in place of
+`Math.random()`.
+
+### 7.3 Still out of scope after v2
+
+- **IO operators**: MIDI (`:` full port layout, `%`, `!`, `?`), UDP (`;`),
+  OSC (`=`), and the self-command (`$`) beyond the existing simplified `:`
+  event output.
+- **Comments (`#`)** — the grid glyph alphabet still rejects `#`.
+- **Engine-side generator track source** (the per-cycle re-publish from v1
+  remains the integration path).
+- **`Pattern<T>` implementation for the grid** — now unblocked by
+  deterministic `R`, but not implemented.
+- **Persistence, language surface, proofs** as listed in section 6.
+
+## 8. What the spike must prove
 
 1. Orca frame semantics implement cleanly in safe Rust with a per-frame lock
    set and immediate writes (tests: movement, collision, bang lifetime,

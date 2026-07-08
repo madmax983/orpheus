@@ -5,6 +5,13 @@
 //! writes, a per-frame lock set, uppercase operators running every frame,
 //! lowercase operators running only with a `*` in a cardinal neighbor cell,
 //! and bangs living for exactly one frame.
+//!
+//! v2 implements the full `A`-`Z` pure-operator set (verified against
+//! `hundredrabbits/Orca` main-branch `library.js`), including a per-frame
+//! `V`/`K` variable store and a deterministic `R`: randomness is hashed from
+//! (frame, position) via [`frame_position_hash`] so grid runs replay exactly.
+
+use std::collections::BTreeMap;
 
 use orpheus_pattern::{PatternError, Rational, TimeSpan};
 
@@ -66,6 +73,31 @@ fn key_of(value: u64) -> char {
     char::from(KEYS[index])
 }
 
+/// Converts a base-36 value to `i64` for signed offset arithmetic.
+fn to_i64(value: u64) -> i64 {
+    i64::try_from(value).expect("base-36 values fit in i64")
+}
+
+/// Deterministic pseudo-random `u64` for the `R` operator, hashed from the
+/// frame number and the operator's grid position.
+///
+/// This mirrors the degrade family's `event_coin` (see
+/// `crates/orpheus-lang/src/value.rs`): XOR the inputs with distinct
+/// rotations so they decorrelate, then apply the `SplitMix64` finalizer. The
+/// same (frame, position) always yields the same value, so grids containing
+/// `R` remain deterministic, replayable functions of (initial grid, frame) —
+/// the property the publish bridge and any future `Pattern<T>` impl rely on.
+fn frame_position_hash(frame: u64, x: usize, y: usize) -> u64 {
+    let column = u64::try_from(x).expect("grid coordinates fit in u64");
+    let row = u64::try_from(y).expect("grid coordinates fit in u64");
+    let mut state = frame ^ column.rotate_left(11) ^ row.rotate_left(43);
+    state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    state = (state ^ (state >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    state = (state ^ (state >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    state ^= state >> 31;
+    state
+}
+
 /// The grid engine: grid state plus the frame counter and per-frame lock set.
 #[derive(Clone, Debug)]
 pub struct OrcaEngine {
@@ -73,6 +105,10 @@ pub struct OrcaEngine {
     frame: u64,
     locks: Vec<bool>,
     events: Vec<OrcaEvent>,
+    /// Per-frame `V`/`K` variable store, cleared at the start of every tick
+    /// (matching orca-js `release()`): writers must precede readers in scan
+    /// order.
+    variables: BTreeMap<char, char>,
 }
 
 impl OrcaEngine {
@@ -85,6 +121,7 @@ impl OrcaEngine {
             frame: 0,
             locks,
             events: Vec::new(),
+            variables: BTreeMap::new(),
         }
     }
 
@@ -130,6 +167,7 @@ impl OrcaEngine {
     pub fn tick(&mut self) -> &[OrcaEvent] {
         self.events.clear();
         self.locks.fill(false);
+        self.variables.clear();
 
         let mut snapshot = Vec::new();
         for y in 0..self.grid.height() {
@@ -165,10 +203,29 @@ impl OrcaEngine {
             'E' | 'e' => self.op_move(x, y, glyph, 1, 0),
             'W' | 'w' => self.op_move(x, y, glyph, -1, 0),
             'A' | 'a' => self.op_add(x, y),
+            'B' | 'b' => self.op_subtract(x, y),
             'C' | 'c' => self.op_clock(x, y),
             'D' | 'd' => self.op_delay(x, y),
+            'F' | 'f' => self.op_if(x, y),
+            'G' | 'g' => self.op_generate(x, y),
+            'H' | 'h' => self.op_halt(x, y),
+            'I' | 'i' => self.op_increment(x, y),
+            'J' | 'j' => self.op_jumper(x, y, glyph),
+            'K' | 'k' => self.op_konkat(x, y),
+            'L' | 'l' => self.op_lesser(x, y),
+            'M' | 'm' => self.op_multiply(x, y),
+            'O' | 'o' => self.op_read(x, y),
+            'P' | 'p' => self.op_push(x, y),
+            'Q' | 'q' => self.op_query(x, y),
+            'R' | 'r' => self.op_random(x, y),
+            'T' | 't' => self.op_track(x, y),
+            'U' | 'u' => self.op_uclid(x, y),
+            'V' | 'v' => self.op_variable(x, y),
+            'X' | 'x' => self.op_write(x, y),
+            'Y' | 'y' => self.op_jymper(x, y, glyph),
+            'Z' | 'z' => self.op_lerp(x, y),
             ':' => self.op_out(x, y),
-            // Digits are inert data; unimplemented letters are no-ops in v0.
+            // Digits are inert data.
             _ => {}
         }
     }
@@ -193,10 +250,30 @@ impl OrcaEngine {
 
     /// Add: writes `keyOf((left + right) mod 36)` below, case-sensitive.
     fn op_add(&mut self, x: usize, y: usize) {
-        let left = self.read_and_lock(x, y, -1, 0);
-        let right = self.read_and_lock(x, y, 1, 0);
-        let sum = value_of(left) + value_of(right);
-        self.write_value_below(x, y, Some(key_of(sum)));
+        let left = value_of(self.read_and_lock(x, y, -1, 0));
+        let right = value_of(self.read_and_lock(x, y, 1, 0));
+        self.write_port(x, y, 0, 1, Some(key_of(left + right)), true);
+    }
+
+    /// Subtract: writes `keyOf(|right - left|)` below, case-sensitive.
+    fn op_subtract(&mut self, x: usize, y: usize) {
+        let left = value_of(self.read_and_lock(x, y, -1, 0));
+        let right = value_of(self.read_and_lock(x, y, 1, 0));
+        self.write_port(x, y, 0, 1, Some(key_of(left.abs_diff(right))), true);
+    }
+
+    /// Lesser: writes `keyOf(min(left, right))` below, case-sensitive.
+    fn op_lesser(&mut self, x: usize, y: usize) {
+        let left = value_of(self.read_and_lock(x, y, -1, 0));
+        let right = value_of(self.read_and_lock(x, y, 1, 0));
+        self.write_port(x, y, 0, 1, Some(key_of(left.min(right))), true);
+    }
+
+    /// Multiply: writes `keyOf((left * right) mod 36)` below, case-sensitive.
+    fn op_multiply(&mut self, x: usize, y: usize) {
+        let left = value_of(self.read_and_lock(x, y, -1, 0));
+        let right = value_of(self.read_and_lock(x, y, 1, 0));
+        self.write_port(x, y, 0, 1, Some(key_of(left * right)), true);
     }
 
     /// Clock: writes `keyOf(floor(frame / rate) mod m)` below every frame.
@@ -205,7 +282,7 @@ impl OrcaEngine {
         let rate = value_of(self.read_and_lock(x, y, -1, 0)).max(1);
         let modulo = value_of(self.read_and_lock(x, y, 1, 0));
         let output = (modulo > 0).then(|| key_of((self.frame / rate) % modulo));
-        self.write_value_below(x, y, output);
+        self.write_port(x, y, 0, 1, output, true);
     }
 
     /// Delay: bangs below when `frame mod (rate * m) == 0`, or always when
@@ -214,10 +291,208 @@ impl OrcaEngine {
         let rate = value_of(self.read_and_lock(x, y, -1, 0)).max(1);
         let modulo = value_of(self.read_and_lock(x, y, 1, 0)).max(1);
         let fires = self.frame.is_multiple_of(rate * modulo) || modulo == 1;
-        if let Some((ox, oy)) = self.offset(x, y, 0, 1) {
-            self.grid.set(ox, oy, if fires { BANG } else { EMPTY });
-            self.lock(ox, oy);
+        self.bang_below(x, y, fires);
+    }
+
+    /// If: bangs below when the operand glyphs are equal (raw glyph
+    /// comparison, case-sensitive; two empty cells compare equal).
+    fn op_if(&mut self, x: usize, y: usize) {
+        let left = self.read_port(x, y, -1, 0);
+        let right = self.read_port(x, y, 1, 0);
+        self.bang_below(x, y, left == right);
+    }
+
+    /// Uclid: bangs below on the Euclidean rhythm
+    /// `(step * (frame + max - 1)) mod max + step >= max`. No port defaults
+    /// (matching main-branch orca-js): an empty step never bangs.
+    fn op_uclid(&mut self, x: usize, y: usize) {
+        let step = value_of(self.read_and_lock(x, y, -1, 0));
+        let max = value_of(self.read_and_lock(x, y, 1, 0)).max(1);
+        let bucket = (step * (self.frame + max - 1)) % max + step;
+        self.bang_below(x, y, bucket >= max);
+    }
+
+    /// Random: writes a uniform value from the inclusive range spanned by
+    /// the operands, case-sensitive. Deterministic: the draw is
+    /// [`frame_position_hash`] of the frame number and operator position, so
+    /// identical grids replay identically.
+    fn op_random(&mut self, x: usize, y: usize) {
+        let a = value_of(self.read_and_lock(x, y, -1, 0));
+        let b = value_of(self.read_and_lock(x, y, 1, 0));
+        // orca-js main swaps a descending range, making [min, max] inclusive
+        // either way; equal operands return the operand.
+        let (low, high) = if a <= b { (a, b) } else { (b, a) };
+        let value = low + frame_position_hash(self.frame, x, y) % (high - low + 1);
+        self.write_port(x, y, 0, 1, Some(key_of(value)), true);
+    }
+
+    /// Increment: reads its own output cell as state and rewrites it stepped
+    /// by `step` (left, empty means +0), wrapping mod `m` (right); an empty
+    /// mod outputs `0`. Case-sensitive.
+    fn op_increment(&mut self, x: usize, y: usize) {
+        let step = value_of(self.read_and_lock(x, y, -1, 0));
+        let modulo = value_of(self.read_and_lock(x, y, 1, 0));
+        let value = value_of(self.port_glyph(x, y, 0, 1).unwrap_or(EMPTY));
+        let output = if modulo == 0 {
+            '0'
+        } else {
+            key_of((value + step) % modulo)
+        };
+        self.write_port(x, y, 0, 1, Some(output), true);
+    }
+
+    /// Lerp: steps its own output cell toward `target` (right) by `rate`
+    /// (left, empty means 0) per frame, clamping onto the target when close.
+    /// Case-sensitive.
+    fn op_lerp(&mut self, x: usize, y: usize) {
+        let rate = self.read_value(x, y, -1, 0);
+        let target = self.read_value(x, y, 1, 0);
+        let value = to_i64(value_of(self.port_glyph(x, y, 0, 1).unwrap_or(EMPTY)));
+        let delta = if value <= target - rate {
+            rate
+        } else if value >= target + rate {
+            -rate
+        } else {
+            target - value
+        };
+        let next = u64::try_from((value + delta).rem_euclid(36)).expect("rem_euclid(36) >= 0");
+        self.write_port(x, y, 0, 1, Some(key_of(next)), true);
+    }
+
+    /// Halt: locks the cell below so its operator never executes. Writes
+    /// nothing (in orca-js the halted glyph's value round-trips through a
+    /// write that always refuses it).
+    fn op_halt(&mut self, x: usize, y: usize) {
+        self.lock_offset(x, y, 0, 1);
+    }
+
+    /// Variable: with a `write` operand (west), stores `variables[write] =
+    /// read` and outputs nothing; otherwise with a `read` operand (east),
+    /// outputs the stored glyph (or `.`) below, verbatim. The store is
+    /// cleared every frame, so writers must precede readers in scan order.
+    fn op_variable(&mut self, x: usize, y: usize) {
+        let write = self.read_and_lock(x, y, -1, 0);
+        let read = self.read_and_lock(x, y, 1, 0);
+        if write != EMPTY {
+            self.variables.insert(write, read);
+        } else if read != EMPTY {
+            let value = self.variables.get(&read).copied().unwrap_or(EMPTY);
+            self.write_port(x, y, 0, 1, Some(value), false);
         }
+    }
+
+    /// Konkat: treats each of the `len` glyphs east as a variable name,
+    /// locking it and writing the variable's value (or `.`) beneath it.
+    fn op_konkat(&mut self, x: usize, y: usize) {
+        let len = self.read_value(x, y, -1, 0).max(1);
+        for offset in 0..len {
+            let key = self.read_and_lock(x, y, offset + 1, 0);
+            if key == EMPTY {
+                continue;
+            }
+            let value = self.variables.get(&key).copied().unwrap_or(EMPTY);
+            self.write_port(x, y, offset + 1, 1, Some(value), false);
+        }
+    }
+
+    /// Generate: copies the `len` glyphs east of the operator to the block
+    /// starting at relative `{x, y + 1}`, verbatim, locking both the
+    /// operands and the written cells.
+    fn op_generate(&mut self, x: usize, y: usize) {
+        let dx = self.read_value(x, y, -3, 0);
+        let dy = self.read_value(x, y, -2, 0) + 1;
+        let len = self.read_value(x, y, -1, 0).max(1);
+        for offset in 0..len {
+            let glyph = self.read_port(x, y, offset + 1, 0);
+            self.write_port(x, y, dx + offset, dy, glyph, false);
+        }
+    }
+
+    /// Read (`O`): reads the glyph at relative `{x + 1, y}` and outputs it
+    /// below, verbatim.
+    fn op_read(&mut self, x: usize, y: usize) {
+        let dx = self.read_value(x, y, -2, 0);
+        let dy = self.read_value(x, y, -1, 0);
+        let glyph = self.read_port(x, y, dx + 1, dy);
+        self.write_port(x, y, 0, 1, glyph, false);
+    }
+
+    /// Push: locks the `len`-wide row below and writes the value operand
+    /// into slot `key mod len` of it, verbatim.
+    fn op_push(&mut self, x: usize, y: usize) {
+        let key = self.read_value(x, y, -2, 0);
+        let len = self.read_value(x, y, -1, 0).max(1);
+        let value = self.read_port(x, y, 1, 0);
+        for offset in 0..len {
+            self.lock_offset(x, y, offset, 1);
+        }
+        self.write_port(x, y, key % len, 1, value, false);
+    }
+
+    /// Query: reads `len` glyphs starting at relative `{x + 1, y}` and
+    /// writes them, verbatim, so the last lands directly below the operator.
+    fn op_query(&mut self, x: usize, y: usize) {
+        let dx = self.read_value(x, y, -3, 0);
+        let dy = self.read_value(x, y, -2, 0);
+        let len = self.read_value(x, y, -1, 0).max(1);
+        for offset in 0..len {
+            let glyph = self.read_port(x, y, dx + offset + 1, dy);
+            self.write_port(x, y, offset - len + 1, 1, glyph, false);
+        }
+    }
+
+    /// Track: locks the `len` cells east on its own row and outputs the
+    /// glyph at index `key mod len`, verbatim, below.
+    fn op_track(&mut self, x: usize, y: usize) {
+        let key = self.read_value(x, y, -2, 0);
+        let len = self.read_value(x, y, -1, 0).max(1);
+        for offset in 0..len {
+            self.lock_offset(x, y, offset + 1, 0);
+        }
+        let glyph = self.port_glyph(x, y, (key % len) + 1, 0);
+        self.write_port(x, y, 0, 1, glyph, false);
+    }
+
+    /// Write (`X`): writes the value operand, verbatim, at relative
+    /// `{x, y + 1}`.
+    fn op_write(&mut self, x: usize, y: usize) {
+        let dx = self.read_value(x, y, -2, 0);
+        let dy = self.read_value(x, y, -1, 0) + 1;
+        let value = self.read_port(x, y, 1, 0);
+        self.write_port(x, y, dx, dy, value, false);
+    }
+
+    /// Jumper (`J`): the head of a column of jumpers copies the glyph above
+    /// it, verbatim, to below the last consecutive jumper; a jumper directly
+    /// below a `J` is a dormant chain body (orca-js compares against the
+    /// literal uppercase glyph).
+    fn op_jumper(&mut self, x: usize, y: usize, glyph: char) {
+        let north = self.port_glyph(x, y, 0, -1);
+        if north == Some('J') {
+            return;
+        }
+        self.lock_offset(x, y, 0, -1);
+        let mut dy = 1;
+        while self.port_glyph(x, y, 0, dy) == Some(glyph) {
+            dy += 1;
+        }
+        self.write_port(x, y, 0, dy, north, false);
+    }
+
+    /// Jymper (`Y`): the horizontal analog of [`Self::op_jumper`] — copies
+    /// the glyph west of the chain head to east of the last consecutive
+    /// jymper.
+    fn op_jymper(&mut self, x: usize, y: usize, glyph: char) {
+        let west = self.port_glyph(x, y, -1, 0);
+        if west == Some('Y') {
+            return;
+        }
+        self.lock_offset(x, y, -1, 0);
+        let mut dx = 1;
+        while self.port_glyph(x, y, dx, 0) == Some(glyph) {
+            dx += 1;
+        }
+        self.write_port(x, y, dx, 0, west, false);
     }
 
     /// Output (simplified `:`): locks its note port every frame; when banged,
@@ -245,36 +520,78 @@ impl OrcaEngine {
         self.grid.in_bounds(nx, ny).then_some((nx, ny))
     }
 
-    /// Reads an operand port relative to the operator and locks its cell so
-    /// the glyph acts as data instead of executing later this frame.
-    /// Out-of-bounds ports read as empty.
-    fn read_and_lock(&mut self, x: usize, y: usize, dx: i64, dy: i64) -> char {
-        self.offset(x, y, dx, dy).map_or(EMPTY, |(px, py)| {
-            self.lock(px, py);
-            self.grid.glyph_at(px, py).unwrap_or(EMPTY)
-        })
+    /// The glyph at a signed offset from the operator, without locking;
+    /// `None` out of bounds.
+    fn port_glyph(&self, x: usize, y: usize, dx: i64, dy: i64) -> Option<char> {
+        self.offset(x, y, dx, dy)
+            .and_then(|(px, py)| self.grid.glyph_at(px, py))
     }
 
-    /// Writes a value-port output into the cell below the operator, applying
-    /// Orca's case rule: the output is uppercased iff the glyph east of the
-    /// operator is an uppercase letter. The output cell is locked even when
-    /// nothing is written.
-    fn write_value_below(&mut self, x: usize, y: usize, output: Option<char>) {
-        let Some((ox, oy)) = self.offset(x, y, 0, 1) else {
+    /// Reads an operand port and locks its cell so the glyph acts as data
+    /// instead of executing later this frame; `None` out of bounds.
+    fn read_port(&mut self, x: usize, y: usize, dx: i64, dy: i64) -> Option<char> {
+        let (px, py) = self.offset(x, y, dx, dy)?;
+        self.lock(px, py);
+        self.grid.glyph_at(px, py)
+    }
+
+    /// [`Self::read_port`] with out-of-bounds ports reading as empty.
+    fn read_and_lock(&mut self, x: usize, y: usize, dx: i64, dy: i64) -> char {
+        self.read_port(x, y, dx, dy).unwrap_or(EMPTY)
+    }
+
+    /// Reads an operand port as a base-36 value, for offset arithmetic.
+    fn read_value(&mut self, x: usize, y: usize, dx: i64, dy: i64) -> i64 {
+        to_i64(value_of(self.read_and_lock(x, y, dx, dy)))
+    }
+
+    /// Locks the cell at a signed offset from the operator, if in bounds.
+    fn lock_offset(&mut self, x: usize, y: usize, dx: i64, dy: i64) {
+        if let Some((px, py)) = self.offset(x, y, dx, dy) {
+            self.lock(px, py);
+        }
+    }
+
+    /// Writes a value-port output at a signed offset from the operator. The
+    /// output cell is locked even when nothing is written (out-of-bounds
+    /// inputs produce no write, matching orca-js). A `sensitive` output
+    /// applies Orca's case rule: uppercased iff the glyph east of the
+    /// operator is an uppercase letter; non-sensitive outputs are copied
+    /// verbatim.
+    fn write_port(
+        &mut self,
+        x: usize,
+        y: usize,
+        dx: i64,
+        dy: i64,
+        output: Option<char>,
+        sensitive: bool,
+    ) {
+        let Some((ox, oy)) = self.offset(x, y, dx, dy) else {
             return;
         };
         self.lock(ox, oy);
-        if let Some(glyph) = output {
-            let uppercase = self
-                .offset(x, y, 1, 0)
-                .and_then(|(px, py)| self.grid.glyph_at(px, py))
+        let Some(glyph) = output else {
+            return;
+        };
+        let uppercase = sensitive
+            && self
+                .port_glyph(x, y, 1, 0)
                 .is_some_and(|right| right.is_ascii_uppercase());
-            let glyph = if uppercase {
-                glyph.to_ascii_uppercase()
-            } else {
-                glyph
-            };
-            self.grid.set(ox, oy, glyph);
+        let glyph = if uppercase {
+            glyph.to_ascii_uppercase()
+        } else {
+            glyph
+        };
+        self.grid.set(ox, oy, glyph);
+    }
+
+    /// Writes a bang-port output below the operator: `*` when firing, `.`
+    /// otherwise, locking the cell (matching orca-js `bang()`).
+    fn bang_below(&mut self, x: usize, y: usize, fires: bool) {
+        if let Some((ox, oy)) = self.offset(x, y, 0, 1) {
+            self.grid.set(ox, oy, if fires { BANG } else { EMPTY });
+            self.lock(ox, oy);
         }
     }
 
