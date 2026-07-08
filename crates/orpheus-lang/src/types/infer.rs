@@ -194,6 +194,24 @@ impl Inferencer {
                     return Ok(ty);
                 }
                 let mut callee_ty = self.infer_expr(callee)?;
+                if matches!(self.resolve(callee_ty.clone()), Type::Pattern(_))
+                    && (2..=3).contains(&args.len())
+                {
+                    // Inline euclid sugar `bd(3, 8[, rot])`: "calling" a
+                    // pattern euclidean-gates it, so the call keeps the
+                    // pattern's own type and takes numeric arguments.
+                    for arg in args {
+                        let actual = self.infer_expr(arg)?;
+                        self.unify(actual.clone(), Type::pattern(Type::Number))
+                            .map_err(|_| {
+                                TypeError::new(format!(
+                                    "inline euclid arguments must all be numbers; found {}",
+                                    self.resolve(actual)
+                                ))
+                            })?;
+                    }
+                    return Ok(self.resolve(callee_ty));
+                }
                 for arg in args {
                     let arg_ty = self.infer_expr(arg)?;
                     callee_ty = self.apply_argument(callee_ty, arg_ty)?;

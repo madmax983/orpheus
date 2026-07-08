@@ -114,8 +114,13 @@ File paths point the next contributor at the relevant implementation sites.
   `Expr::Polymeter` (ast.rs), `eval_polymeter` (eval.rs) via `fast(n, slowcat)`
 - [x] `?` random removal — `StepOp::Degrade` with optional `?p` probability
   suffix, reusing `PatternRuntime::Degrade` with per-site salts
-- [ ] in-sequence commas (inline stacks)
-- [ ] inline euclid syntax (`bd(3,8)`)
+- [x] in-sequence commas (inline stacks) — `group_layer` rule (orpheus.pest):
+  `(bd sn, hh hh hh)` desugars to a stack of groups squeezed to the group
+  span (`build_group`, parser.rs); a bare top-level comma stacks whole lines
+  (`binding_lines` rule, `build_binding_lines`)
+- [x] inline euclid syntax (`bd(3,8)`) — calls on pattern values desugar to
+  `mask(euclid(pulses, steps, rot), token*steps)` (`apply_inline_euclid`,
+  builtins.rs; `eval_call_with_args`/`is_inline_euclid_call`, eval.rs)
 
 ## Faust: graph combinators and primitives
 

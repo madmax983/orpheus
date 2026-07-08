@@ -1,7 +1,12 @@
 module = { SOI ~ padding ~ binding ~ padding ~ EOI }
 
-binding = { binding_head ~ padding ~ "=" ~ padding ~ pipe_expr }
+binding = { binding_head ~ padding ~ "=" ~ padding ~ binding_lines }
 binding_head = { identifier ~ (required_padding ~ identifier)* }
+
+// A bare top-level comma stacks whole pattern lines (Tidal's `bd sn, hh*4`):
+// commas inside parentheses or braces are consumed by the nested rules, so
+// only line-level commas reach this rule.
+binding_lines = { pipe_expr ~ (padding ~ "," ~ padding ~ pipe_expr)* }
 
 pipe_expr = { sequence ~ (padding ~ pipe_op ~ padding ~ pipe_target)* }
 pipe_target = { application }
@@ -23,7 +28,10 @@ replicate_modifier = { "!" ~ modifier_number }
 degrade_modifier = { "?" ~ modifier_number? }
 modifier_number = @{ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
 
-group = { "(" ~ padding ~ sum_expr ~ (required_padding ~ sum_expr)* ~ padding ~ ")" }
+// Subdivision group `( ... )`. Comma-separated layers play simultaneously,
+// each squeezed to the full group span (Tidal's `[bd sn, hh hh hh]`).
+group = { "(" ~ padding ~ group_layer ~ (padding ~ "," ~ padding ~ group_layer)* ~ padding ~ ")" }
+group_layer = { sum_expr ~ (required_padding ~ sum_expr)* }
 
 alternation = { "<" ~ padding ~ sum_expr ~ (required_padding ~ sum_expr)* ~ padding ~ ">" }
 

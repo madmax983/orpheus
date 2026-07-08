@@ -734,3 +734,130 @@ fn voice_block_parses_fan_branches_as_call_arguments() {
         },
     }
 }
+
+// --- in-sequence comma stacking + inline euclid sugar ---
+
+#[test]
+fn parses_group_commas_as_stacked_groups() {
+    let expr = binding_expr("drums = (bd sn, hh hh hh)");
+    assert_eq!(
+        expr,
+        Expr::Stack(vec![
+            Expr::Group(vec![
+                Expr::Ident("bd".to_owned()),
+                Expr::Ident("sn".to_owned()),
+            ]),
+            Expr::Group(vec![
+                Expr::Ident("hh".to_owned()),
+                Expr::Ident("hh".to_owned()),
+                Expr::Ident("hh".to_owned()),
+            ]),
+        ])
+    );
+}
+
+#[test]
+fn parses_group_comma_inside_a_sequence_step() {
+    let expr = binding_expr("drums = bd (sn, hh hh)");
+    match &expr {
+        Expr::Seq(items) => {
+            assert!(matches!(items[0], Expr::Ident(_)));
+            assert!(matches!(&items[1], Expr::Stack(layers) if layers.len() == 2));
+        }
+        other => panic!("unexpected AST: {other:#?}"),
+    }
+}
+
+#[test]
+fn single_layer_groups_are_unchanged_by_comma_support() {
+    let expr = binding_expr("drums = bd (sn cp)");
+    match &expr {
+        Expr::Seq(items) => {
+            assert!(matches!(&items[1], Expr::Group(inner) if inner.len() == 2));
+        }
+        other => panic!("unexpected AST: {other:#?}"),
+    }
+}
+
+#[test]
+fn parses_top_level_comma_as_stacked_lines() {
+    let expr = binding_expr("drums = bd sn, hh*4");
+    assert_eq!(
+        expr,
+        Expr::Stack(vec![
+            Expr::Seq(vec![
+                Expr::Ident("bd".to_owned()),
+                Expr::Ident("sn".to_owned()),
+            ]),
+            Expr::Modified {
+                inner: Box::new(Expr::Ident("hh".to_owned())),
+                op: StepOp::Fast(4.0),
+            },
+        ])
+    );
+}
+
+#[test]
+fn top_level_commas_keep_function_call_arguments_intact() {
+    let stack_expr = binding_expr("drums = stack(bd ~, ~ sn)");
+    assert!(matches!(stack_expr, Expr::Stack(layers) if layers.len() == 2));
+
+    let call_expr = binding_expr("drums = fast(2, bd sn)");
+    assert!(matches!(&call_expr, Expr::Call { args, .. } if args.len() == 2));
+}
+
+#[test]
+fn parses_inline_euclid_calls_as_sequence_steps() {
+    let expr = binding_expr("drums = bd(3, 8) sn");
+    match &expr {
+        Expr::Seq(items) => {
+            assert_eq!(
+                items[0],
+                Expr::Call {
+                    callee: Box::new(Expr::Ident("bd".to_owned())),
+                    args: vec![Expr::Number(3.0), Expr::Number(8.0)],
+                }
+            );
+            assert!(matches!(&items[1], Expr::Ident(name) if name == "sn"));
+        }
+        other => panic!("unexpected AST: {other:#?}"),
+    }
+}
+
+#[test]
+fn inline_euclid_composes_with_step_modifiers_and_alternation() {
+    let doubled = binding_expr("drums = bd(3, 8)*2");
+    assert!(matches!(
+        &doubled,
+        Expr::Modified {
+            inner,
+            op: StepOp::Fast(_),
+        } if matches!(inner.as_ref(), Expr::Call { .. })
+    ));
+
+    let alternating = binding_expr("drums = <bd(3, 8) sn>");
+    match &alternating {
+        Expr::Alternation(items) => {
+            assert!(matches!(&items[0], Expr::Call { .. }));
+            assert!(matches!(&items[1], Expr::Ident(name) if name == "sn"));
+        }
+        other => panic!("unexpected AST: {other:#?}"),
+    }
+}
+
+#[test]
+fn polymeter_commas_still_separate_subsequences() {
+    let expr = binding_expr("drums = {bd sn, hh hh hh}%4");
+    match &expr {
+        Expr::Polymeter { groups, steps } => {
+            assert_eq!(groups.len(), 2);
+            assert_eq!(*steps, Some(4));
+        }
+        other => panic!("unexpected AST: {other:#?}"),
+    }
+}
+
+#[test]
+fn alternations_still_reject_commas() {
+    assert_parse_error_contains("drums = <bd, sn>", &["parse error"]);
+}
