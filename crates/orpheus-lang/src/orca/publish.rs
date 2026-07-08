@@ -8,16 +8,21 @@
 //! [`OrcaPublisher::poll`] re-materializes and re-publishes the next cycle's
 //! events at every engine cycle boundary instead of publishing once.
 //!
-//! Note mapping (ADR 0008): an emitted note glyph's base-36 value (0-35) is
-//! interpreted as a chromatic semitone offset above the configured sample
-//! token's base pitch, applied as the playback-rate multiplier
-//! `2^(value / 12)` — a three-octave range with no floats in the time domain.
+//! Note mapping (v3, superseding the base-36 mapping of ADR 0008): a MIDI
+//! note event's glyph and octave are transposed to a MIDI note number via
+//! [`midi_note_id`] (the exact reference `transpose.js`/`io/midi.js` table,
+//! lowercase glyphs are sharps) and interpreted as a semitone offset
+//! relative to middle C (60), applied as the playback-rate multiplier
+//! `2^(semitones / 12)`. `:03C` therefore plays the sample token at its base
+//! pitch. Non-note IO events (CC, pitch bend, UDP, OSC, `$` commands) stay
+//! on the engine's per-tick event list for future transports and do not
+//! reach the audio path.
 
 use orpheus_pattern::{Event, PatternError};
 
 use crate::value::SampleEvent;
 
-use super::engine::{OrcaEngine, OrcaEvent, frame_span};
+use super::engine::{OrcaEngine, OrcaEvent, OrcaIoEvent, frame_span};
 use super::grid::Grid;
 
 /// Default grid frames per musical cycle: Orca's convention of 16th-note
@@ -38,13 +43,99 @@ pub const DEFAULT_GRID_WIDTH: usize = 16;
 /// Default grid height for a freshly spawned surface.
 pub const DEFAULT_GRID_HEIGHT: usize = 8;
 
-/// Converts one [`OrcaEvent`] fired at `frame_in_cycle` of `frames_per_cycle`
-/// into an unclipped unit-cycle [`Event<SampleEvent>`].
+/// The MIDI note number the audio bridge treats as the sample token's base
+/// pitch: middle C, i.e. `:03C`.
+const MIDDLE_C: i16 = 60;
+
+/// Chromatic index (0-11, where odd indices between naturals are sharps)
+/// and octave offset for a note glyph, transcribing the reference
+/// `transpose.js` table exactly. Uppercase letters are naturals, lowercase
+/// are sharps; letters past `G` wrap upward through the octaves, and the
+/// nonexistent sharps `e`/`l`/`s`/`z` and `b`/`i`/`p`/`w` "catch" to the
+/// next natural (`F` and `C` respectively).
+const fn transpose_entry(note: char) -> Option<(u8, u8)> {
+    // Chromatic order within an octave: C c D d E F f G g A a B.
+    Some(match note {
+        'C' => (0, 0),
+        'c' => (1, 0),
+        'D' => (2, 0),
+        'd' => (3, 0),
+        'E' => (4, 0),
+        'F' | 'e' => (5, 0),
+        'f' => (6, 0),
+        'G' => (7, 0),
+        'g' => (8, 0),
+        'A' | 'H' => (9, 0),
+        'a' | 'h' => (10, 0),
+        'B' | 'I' => (11, 0),
+        'J' | 'b' | 'i' => (0, 1),
+        'j' => (1, 1),
+        'K' => (2, 1),
+        'k' => (3, 1),
+        'L' => (4, 1),
+        'M' | 'l' => (5, 1),
+        'm' => (6, 1),
+        'N' => (7, 1),
+        'n' => (8, 1),
+        'O' => (9, 1),
+        'o' => (10, 1),
+        'P' => (11, 1),
+        'Q' | 'p' => (0, 2),
+        'q' => (1, 2),
+        'R' => (2, 2),
+        'r' => (3, 2),
+        'S' => (4, 2),
+        'T' | 's' => (5, 2),
+        't' => (6, 2),
+        'U' => (7, 2),
+        'u' => (8, 2),
+        'V' => (9, 2),
+        'v' => (10, 2),
+        'W' => (11, 2),
+        'X' | 'w' => (0, 3),
+        'x' => (1, 3),
+        'Y' => (2, 3),
+        'y' => (3, 3),
+        'Z' => (4, 3),
+        'z' => (5, 3),
+        _ => return None,
+    })
+}
+
+/// The MIDI note number for a note glyph at `octave`.
 ///
-/// The event occupies the exact rational span
+/// Matches the reference `io/midi.js` `transpose()`: the glyph's octave
+/// offset is added and clamped to 0-8, then the result is
+/// `octave * 12 + chromatic + 24`, clamped to 127. Returns `None` for
+/// glyphs outside the transpose table (the reference silently drops those
+/// notes at send time).
+#[must_use]
+pub const fn midi_note_id(note: char, octave: u8) -> Option<u8> {
+    let Some((chromatic, offset)) = transpose_entry(note) else {
+        return None;
+    };
+    let octave = min_u8(octave.saturating_add(offset), 8);
+    // Max is 8 * 12 + 11 + 24 = 131: no overflow in u8 arithmetic.
+    Some(min_u8(octave * 12 + chromatic + 24, 127))
+}
+
+/// `const`-compatible `u8::min`.
+const fn min_u8(value: u8, ceiling: u8) -> u8 {
+    if value < ceiling { value } else { ceiling }
+}
+
+/// Converts one [`OrcaEvent`] fired at `frame_in_cycle` of `frames_per_cycle`
+/// into an unclipped unit-cycle [`Event<SampleEvent>`], or `None` when the
+/// event does not reach the audio path.
+///
+/// Only the MIDI-note family (`:` [`OrcaIoEvent::Midi`], `%`
+/// [`OrcaIoEvent::MidiMono`]) becomes audible; other IO events — and notes
+/// whose glyph falls outside the transpose table — return `Ok(None)`. A
+/// note event occupies the exact rational span
 /// `[frame_in_cycle / frames_per_cycle, (frame_in_cycle + 1) / frames_per_cycle)`
-/// and triggers `sample_token` repitched by the note's base-36 value in
-/// semitones.
+/// and triggers `sample_token` repitched by the note's [`midi_note_id`]
+/// relative to middle C (`:03C` plays the base pitch). Velocity and length
+/// are carried on the event but not yet consumed by the audio bridge.
 ///
 /// # Errors
 ///
@@ -55,23 +146,34 @@ pub fn sample_event_from_orca(
     frame_in_cycle: u64,
     frames_per_cycle: u64,
     sample_token: &str,
-) -> Result<Event<SampleEvent>, PatternError> {
+) -> Result<Option<Event<SampleEvent>>, PatternError> {
+    let (OrcaIoEvent::Midi(note) | OrcaIoEvent::MidiMono(note)) = &event.io else {
+        return Ok(None);
+    };
+    let Some(id) = midi_note_id(note.note, note.octave) else {
+        return Ok(None);
+    };
     let part = frame_span(frame_in_cycle, frames_per_cycle)?;
-    let value = SampleEvent::named(sample_token).repitched(f64::from(event.value));
-    Ok(Event {
+    let semitones = f64::from(i16::from(id) - MIDDLE_C);
+    let value = SampleEvent::named(sample_token).repitched(semitones);
+    Ok(Some(Event {
         whole: None,
         part,
         value,
-    })
+    }))
 }
 
 /// Advances `engine` by one full grid cycle (`frames_per_cycle` ticks) and
-/// returns the emitted events stamped with their cycle-relative frame spans.
+/// returns the emitted MIDI-note events stamped with their cycle-relative
+/// frame spans.
 ///
 /// Events are ordered by frame, and within a frame by the engine's row-major
-/// scan order; same-frame events share a span. Calling this repeatedly yields
-/// consecutive grid cycles: the grid state carries over, which is what makes
-/// non-periodic grids (a moving `E`) evolve across cycles.
+/// scan order; same-frame events share a span. Non-note IO events (CC,
+/// pitch bend, UDP, OSC, commands) are skipped — they remain on the engine's
+/// per-tick event list for future transport consumers. Calling this
+/// repeatedly yields consecutive grid cycles: the grid state carries over,
+/// which is what makes non-periodic grids (a moving `E`) evolve across
+/// cycles.
 ///
 /// # Errors
 ///
@@ -85,12 +187,11 @@ pub fn materialize_cycle(
     let mut events = Vec::new();
     for frame_in_cycle in 0..frames_per_cycle {
         for orca_event in engine.tick() {
-            events.push(sample_event_from_orca(
-                orca_event,
-                frame_in_cycle,
-                frames_per_cycle,
-                sample_token,
-            )?);
+            if let Some(event) =
+                sample_event_from_orca(orca_event, frame_in_cycle, frames_per_cycle, sample_token)?
+            {
+                events.push(event);
+            }
         }
     }
     Ok(events)

@@ -6,9 +6,9 @@
 use orpheus_dsp::EngineHandle;
 use orpheus_lang::ReplSession;
 use orpheus_lang::orca::{
-    DEFAULT_GRID_FRAMES_PER_CYCLE, DEFAULT_SAMPLE_TOKEN, Grid, ORCA_PATTERN_NAME, OrcaEngine,
-    OrcaEvent, OrcaPublisher, frame_span, materialize_cycle, playhead_frame,
-    sample_event_from_orca,
+    DEFAULT_GRID_FRAMES_PER_CYCLE, DEFAULT_SAMPLE_TOKEN, Grid, MidiNote, ORCA_PATTERN_NAME,
+    OrcaEngine, OrcaEvent, OrcaIoEvent, OrcaPublisher, frame_span, materialize_cycle,
+    playhead_frame, sample_event_from_orca,
 };
 use orpheus_pattern::Rational;
 
@@ -215,8 +215,9 @@ fn moved_operator_is_not_reexecuted_in_the_same_frame() {
 #[test]
 fn output_operator_emits_event_when_banged() {
     // `.D2.` bangs below itself on even frames; the bang cell is west of `:`,
-    // whose note port holds `c` (base-36 value 12).
-    let mut orca = engine(&[".D2.", "..:c"]);
+    // whose ports read channel `0`, octave `4`, note `c` (velocity and
+    // length fall back to the reference defaults).
+    let mut orca = engine(&[".D2...", "..:04c"]);
     let events = orca.tick().to_vec();
     assert_eq!(
         events,
@@ -224,8 +225,13 @@ fn output_operator_emits_event_when_banged() {
             frame: 0,
             x: 2,
             y: 1,
-            note: 'c',
-            value: 12,
+            io: OrcaIoEvent::Midi(MidiNote {
+                channel: 0,
+                octave: 4,
+                note: 'c',
+                velocity: 15,
+                length: 1,
+            }),
         }]
     );
     let events = orca.tick().to_vec();
@@ -236,19 +242,28 @@ fn output_operator_emits_event_when_banged() {
 }
 
 #[test]
-fn output_operator_locks_its_note_port() {
-    // The note port holds a lowercase `d` (delay) next to a bang; the port
-    // lock must keep it inert data rather than a running operator.
-    let mut orca = engine(&[".D1.", "..:d", "...."]);
+fn output_operator_locks_its_data_ports() {
+    // An uppercase `E` sits in the length port of a banged `:`. The port
+    // lock must keep it inert data rather than a moving operator, and the
+    // note event must read the explicit velocity (`f` = 15) either way.
+    let mut orca = engine(&[".D1.....", "..:04cfE"]);
     orca.tick();
     assert_eq!(
-        orca.grid().glyph_at(3, 2),
-        Some('.'),
-        "the note glyph is data: it must not bang below itself"
+        orca.grid().rows()[1],
+        ".*:04cfE",
+        "the length glyph is data: E must not move (the `*` is D's bang)"
     );
     assert_eq!(orca.events().len(), 1);
-    assert_eq!(orca.events()[0].note, 'd');
-    assert_eq!(orca.events()[0].value, 13);
+    assert_eq!(
+        orca.events()[0].io,
+        OrcaIoEvent::Midi(MidiNote {
+            channel: 0,
+            octave: 4,
+            note: 'c',
+            velocity: 15,
+            length: 14,
+        })
+    );
 }
 
 #[test]
@@ -300,49 +315,49 @@ fn grid_rejects_malformed_input() {
 // Publish bridge (v1): OrcaEvent -> Event<SampleEvent> -> session publication.
 // ---------------------------------------------------------------------------
 
-#[test]
-fn orca_event_converts_to_sample_event_with_frame_span() {
-    let orca_event = OrcaEvent {
+const fn note_event(octave: u8, note: char) -> OrcaEvent {
+    OrcaEvent {
         frame: 3,
         x: 2,
         y: 1,
-        note: 'c',
-        value: 12,
-    };
-    let event =
-        sample_event_from_orca(&orca_event, 3, 16, DEFAULT_SAMPLE_TOKEN).expect("valid frame span");
+        io: OrcaIoEvent::Midi(MidiNote {
+            channel: 0,
+            octave,
+            note,
+            velocity: 15,
+            length: 1,
+        }),
+    }
+}
+
+#[test]
+fn orca_event_converts_to_sample_event_with_frame_span() {
+    let orca_event = note_event(4, 'C');
+    let event = sample_event_from_orca(&orca_event, 3, 16, DEFAULT_SAMPLE_TOKEN)
+        .expect("valid frame span")
+        .expect("note events map to sample events");
 
     assert_eq!(event.whole, None, "unclipped unit-cycle event");
     assert_eq!(event.part.start(), &Rational::new(3, 16).expect("rational"));
     assert_eq!(event.part.end(), &Rational::new(4, 16).expect("rational"));
     assert_eq!(event.value.sample(), DEFAULT_SAMPLE_TOKEN);
-    // Base-36 note value 12 maps to +12 semitones: exactly one octave up.
+    // Octave 4 C is MIDI 72, +12 semitones above middle C: one octave up.
     assert!((event.value.rate() - 2.0).abs() < 1e-12);
 }
 
 #[test]
-fn orca_event_with_value_zero_keeps_base_rate() {
-    let orca_event = OrcaEvent {
-        frame: 0,
-        x: 0,
-        y: 0,
-        note: '0',
-        value: 0,
-    };
-    let event = sample_event_from_orca(&orca_event, 0, 16, "bd").expect("valid frame span");
+fn orca_event_at_middle_c_keeps_base_rate() {
+    let orca_event = note_event(3, 'C');
+    let event = sample_event_from_orca(&orca_event, 0, 16, "bd")
+        .expect("valid frame span")
+        .expect("note events map to sample events");
     assert_eq!(event.value.sample(), "bd");
     assert!((event.value.rate() - 1.0).abs() < 1e-12);
 }
 
 #[test]
 fn orca_event_conversion_rejects_zero_frames_per_cycle() {
-    let orca_event = OrcaEvent {
-        frame: 0,
-        x: 0,
-        y: 0,
-        note: '0',
-        value: 0,
-    };
+    let orca_event = note_event(3, 'C');
     assert!(sample_event_from_orca(&orca_event, 0, 0, "bd").is_err());
 }
 
@@ -350,7 +365,7 @@ fn orca_event_conversion_rejects_zero_frames_per_cycle() {
 fn materialize_cycle_stamps_ordered_frame_spans() {
     // `.D4.` bangs below itself when frame % 4 == 0; `:` east of the bang cell
     // emits note `c`. Over one 8-frame cycle: events at frames 0 and 4.
-    let mut orca = engine(&[".D4.", "..:c"]);
+    let mut orca = engine(&[".D4...", "..:04c"]);
     let events = materialize_cycle(&mut orca, 8, DEFAULT_SAMPLE_TOKEN).expect("materializes");
 
     assert_eq!(events.len(), 2);
@@ -378,7 +393,7 @@ fn materialize_cycle_stamps_ordered_frame_spans() {
 #[test]
 fn materialize_cycle_supports_multiple_events_per_frame() {
     // Two independent `D1` operators bang every frame; each feeds its own `:`.
-    let mut orca = engine(&[".D1.D1.", "..:a.:b"]);
+    let mut orca = engine(&[".D1......D1...", "..:04C....:04c"]);
     let events = materialize_cycle(&mut orca, 2, DEFAULT_SAMPLE_TOKEN).expect("materializes");
 
     assert_eq!(events.len(), 4, "two events per frame over two frames");
@@ -390,9 +405,10 @@ fn materialize_cycle_supports_multiple_events_per_frame() {
         events[2].part.start(),
         &Rational::new(1, 2).expect("rational")
     );
-    // Scan order within a frame: `:a` (west) before `:b` (east).
-    assert!((events[0].value.rate() - (10.0 / 12.0_f64).exp2()).abs() < 1e-12);
-    assert!((events[1].value.rate() - (11.0 / 12.0_f64).exp2()).abs() < 1e-12);
+    // Scan order within a frame: `:04C` (west, octave 4 C = +12 semitones)
+    // before `:04c` (east, octave 4 C# = +13 semitones).
+    assert!((events[0].value.rate() - 2.0).abs() < 1e-12);
+    assert!((events[1].value.rate() - (13.0 / 12.0_f64).exp2()).abs() < 1e-12);
 }
 
 #[test]
@@ -411,7 +427,7 @@ fn publisher_republishes_at_each_cycle_boundary() {
     // `.D8.` bangs on frames 0, 8, 16, ... With 4 grid frames per cycle the
     // grid is not cycle-periodic: cycle 0 fires, cycle 1 is silent, cycle 2
     // fires again. Each engine cycle boundary must produce a fresh batch.
-    let orca = engine(&[".D8.", "..:c"]);
+    let orca = engine(&[".D8...", "..:04c"]);
     let mut publisher = OrcaPublisher::new(orca, 4, DEFAULT_SAMPLE_TOKEN);
 
     assert!(
@@ -446,7 +462,7 @@ fn publisher_republishes_at_each_cycle_boundary() {
 
 #[test]
 fn publisher_stop_halts_and_restart_republishes() {
-    let orca = engine(&[".D1.", "..:c"]);
+    let orca = engine(&[".D1...", "..:04c"]);
     let mut publisher = OrcaPublisher::new(orca, 2, DEFAULT_SAMPLE_TOKEN);
     publisher.start();
     assert!(publisher.is_running());
@@ -490,7 +506,7 @@ fn playhead_frame_maps_engine_position_to_grid_frame() {
 #[test]
 fn session_publishes_materialized_grid_cycle_as_binding() {
     let mut session = ReplSession::with_engine(EngineHandle::stub());
-    let mut orca = engine(&[".D1.", "..:c"]);
+    let mut orca = engine(&[".D1...", "..:04c"]);
     let events = materialize_cycle(&mut orca, 4, DEFAULT_SAMPLE_TOKEN).expect("materializes");
     assert_eq!(events.len(), 4);
 

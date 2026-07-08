@@ -320,7 +320,7 @@ swap and `a == b` returning `a`) but with the hash in place of
 
 - **IO operators**: MIDI (`:` full port layout, `%`, `!`, `?`), UDP (`;`),
   OSC (`=`), and the self-command (`$`) beyond the existing simplified `:`
-  event output.
+  event output. *(Implemented in v3 — section 9.)*
 - **Comments (`#`)** — the grid glyph alphabet still rejects `#`.
 - **Engine-side generator track source** (the per-cycle re-publish from v1
   remains the integration path).
@@ -338,3 +338,128 @@ swap and `a == b` returning `a`) but with the hash in place of
    floats.
 3. Grid output materializes into a plain `Vec` of structured events, i.e. the
    shape the existing unit-cycle publication path already consumes.
+
+## 9. v3: the IO operator family
+
+**Status: implemented.** v3 replaces the simplified `:` of v0-v2 with the
+full IO operator family of main-branch orca-js: `:` (MIDI note), `%` (mono
+MIDI note), `!` (MIDI control change), `?` (MIDI pitch bend), `;` (UDP),
+`=` (OSC), and `$` (self command). Semantics were verified against
+`library.js`/`operator.js` plus the io layer (`core/io/midi.js`,
+`core/transpose.js`, `core/io/osc.js`, `commander.js`).
+
+**No real transports are attached.** Each operator emits a typed event that
+the engine collects per tick — exactly how the simplified `:` already
+published — so future transports (real MIDI out, UDP/OSC sockets, a command
+interpreter) can attach as consumers without touching the engine.
+
+### 9.1 Shared IO semantics
+
+All seven operators follow the same reference pattern, distinct from both
+uppercase-passive and lowercase-active letters:
+
+- **Always passive, but act only when banged.** They are parsed as passive
+  regardless of case (they are punctuation, so the engine's
+  "non-lowercase = passive" rule covers them) and run every frame, but
+  their operation aborts without a `*` in a cardinal neighbor cell.
+- **Data ports lock eastward on every frame they run**, banged or not
+  (`operator.js` locks all non-bang ports unconditionally after
+  `operation()`). A letter operator sitting in an IO port cell is claimed
+  as data and never executes. The message-style operators (`;` `=` `$`)
+  lock every eastward cell they scan, up to and including the terminating
+  empty cell (36 glyphs max).
+- **No grid writes.** IO operators only read the grid and emit events.
+
+### 9.2 The event type
+
+`OrcaEvent` (in `orca/engine.rs`) is now `{ frame, x, y, io: OrcaIoEvent }`
+with:
+
+```rust
+pub enum OrcaIoEvent {
+    Midi(MidiNote),                                  // `:`
+    MidiMono(MidiNote),                              // `%`
+    MidiCc { channel: u8, knob: u8, value: u8 },     // `!`
+    MidiPb { channel: u8, lsb: u8, msb: u8 },        // `?`
+    Udp(String),                                     // `;`
+    Osc { path: char, args: String },                // `=`
+    Command(String),                                 // `$`
+}
+
+pub struct MidiNote {
+    pub channel: u8,  // 0-15 (the operator aborts above 15)
+    pub octave: u8,   // clamped 0-8
+    pub note: char,   // glyph, case preserved: lowercase = sharp
+    pub velocity: u8, // clamped 0-16, empty port defaults to `f` (15)
+    pub length: u8,   // grid frames, clamped 0-32, empty defaults to 1
+}
+```
+
+### 9.3 Operator table (ports east of the operator, offsets `{+n,0}`)
+
+| Glyph | Emits | Ports | Abort conditions (after the bang check) |
+|---|---|---|---|
+| `:` | `Midi` | channel `{1}`, octave `{2}` clamp 0-8, note `{3}`, velocity `{4}` default `f` clamp 0-16, length `{5}` default `1` clamp 0-32 | channel/octave/note empty; note is a digit; channel > 15 |
+| `%` | `MidiMono` | identical to `:` | identical to `:` |
+| `!` | `MidiCc` | channel `{1}`, knob `{2}`, value `{3}` scaled `ceil(127·raw/35)` | channel or knob empty; channel > 15 |
+| `?` | `MidiPb` | channel `{1}` **clamped** 0-15 (no abort), lsb `{2}`, msb `{3}`, both scaled to 0-127 | channel or lsb empty |
+| `;` | `Udp` | glyphs `{1..36}` until the first empty cell | none — an empty message still emits (reference has no guard) |
+| `=` | `Osc` | path `{1}` (single glyph), args `{2..36}` until empty | path empty |
+| `$` | `Command` | glyphs `{1..36}` until empty | message empty |
+
+Notes carried verbatim from the reference: velocity/length defaults apply
+when the cell reads `.` *or* `*`; the note glyph keeps its case (sharps);
+`?` clamps its channel where the others abort.
+
+### 9.4 How MIDI notes reach audio today
+
+`Midi` and `MidiMono` events flow through the existing v1 publish seam
+(`materialize_cycle` → `publish_sample_events`), superseding ADR 0008's
+base-36-value note mapping:
+
+1. `midi_note_id(note, octave)` (in `orca/publish.rs`) transcribes the
+   reference transpose table exactly: uppercase letters are naturals,
+   lowercase are sharps, letters past `G` wrap upward through the octaves
+   (`H`=A, `J`=C+1oct, …), and the nonexistent sharps catch upward
+   (`e`→F, `b`→C+1oct). MIDI number = `clamp(octave + tableOffset, 0, 8)
+   · 12 + chromatic + 24`, clamped to 127. Glyphs outside the table
+   (digits, `*`) yield no note — the reference drops those at send time.
+2. The MIDI number becomes a semitone offset **relative to middle C (60)**
+   applied as a playback-rate multiplier `2^(semitones/12)` on the
+   configured sample token, so `:03C` plays the token at its base pitch —
+   the same `repitched` path the simplified `:` used.
+3. Velocity and length ride on the event but are not yet consumed by the
+   audio bridge (future: velocity → gain, length → note-off/envelope).
+
+`MidiCc`, `MidiPb`, `Udp`, `Osc`, and `Command` events never reach the
+audio path; they stay on the engine's per-tick event list for future
+consumers.
+
+### 9.5 `$` command semantics
+
+`$` emits the raw eastward message (e.g. `bpm140`) as
+`OrcaIoEvent::Command`. In orca-js the string goes to the UI commander,
+which interprets `bpm`, `frame`, `write`, port selection, etc. — host
+concerns, not grid semantics — so v3 deliberately emits without
+interpreting. A host-side command interpreter (BPM changes routed to the
+publisher clock, `frame` adjustments to the engine) is future work.
+
+### 9.6 Future transport story (explicitly future work)
+
+- **Real MIDI out**: drain `Midi`/`MidiMono`/`MidiCc`/`MidiPb` events into
+  a MIDI device. The reference behaviors to reproduce live in
+  `io/midi.js`: a note stack with per-frame length countdown and note-off,
+  duplicate retrigger, mono cutting the previous note, velocity scaled
+  `(v/16)·127`.
+- **UDP/OSC sockets**: reference defaults are UDP out 49161 and OSC 49162;
+  the OSC wire format prepends `/` to the path glyph and sends each arg
+  glyph as its base-36 integer value. The event payloads carry raw glyphs
+  so transports own that conversion.
+- **Command interpreter** for `$` (section 9.5).
+- **Comments (`#`)** remain out of scope; the glyph alphabet still rejects
+  `#`.
+
+Two deliberate, documented divergences from the reference: the engine stops
+the message scan at the grid edge (orca-js keeps scanning out of bounds and
+appends empty strings — observably identical), and events are plain data
+rather than calls into a live `client.io` singleton.

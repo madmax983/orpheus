@@ -26,7 +26,8 @@ pub enum GridError {
         /// Width of the offending row.
         found: usize,
     },
-    /// Only `.`, `*`, `:`, and ASCII alphanumerics are valid glyphs.
+    /// Only `.`, `*`, the IO glyphs (`:` `%` `!` `?` `;` `=` `$`), and
+    /// ASCII alphanumerics are valid glyphs.
     #[error("invalid glyph {glyph:?} at ({x}, {y})")]
     InvalidGlyph {
         /// The rejected character.
@@ -38,10 +39,14 @@ pub enum GridError {
     },
 }
 
-/// Returns `true` when `glyph` may appear on the grid.
+/// Returns `true` when `glyph` may appear on the grid: `.`, `*`, the IO
+/// operator glyphs, or an ASCII alphanumeric.
 #[must_use]
 pub const fn is_valid_glyph(glyph: char) -> bool {
-    glyph == EMPTY || glyph == BANG || glyph == ':' || glyph.is_ascii_alphanumeric()
+    matches!(
+        glyph,
+        EMPTY | BANG | ':' | '%' | '!' | '?' | ';' | '=' | '$'
+    ) || glyph.is_ascii_alphanumeric()
 }
 
 /// A `width x height` field of glyphs, row-major, `.` meaning empty.

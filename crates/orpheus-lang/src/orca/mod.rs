@@ -4,9 +4,11 @@
 //! Orca semantics: row-major single-pass frame evaluation with immediate
 //! writes, a per-frame lock set, uppercase-every-frame vs. lowercase-on-bang
 //! execution, one-frame `*` bang lifetime, base-36 values, movement
-//! operators that explode into bangs on collision or out-of-bounds, and (as
-//! of v2) the full `A`-`Z` pure-operator set with a deterministic,
-//! replayable `R` (randomness hashed from frame and position).
+//! operators that explode into bangs on collision or out-of-bounds, (as of
+//! v2) the full `A`-`Z` pure-operator set with a deterministic, replayable
+//! `R` (randomness hashed from frame and position), and (as of v3) the IO
+//! operator family (`:` `%` `!` `?` `;` `=` `$`) emitting typed
+//! [`OrcaIoEvent`] payloads with no transport attached yet.
 //!
 //! The key seam to the rest of Orpheus is [`frame_span`], which maps grid
 //! frame `N` of `F` frames-per-cycle onto the exact rational
@@ -23,9 +25,10 @@ mod engine;
 mod grid;
 mod publish;
 
-pub use engine::{OrcaEngine, OrcaEvent, frame_span};
+pub use engine::{MidiNote, OrcaEngine, OrcaEvent, OrcaIoEvent, frame_span};
 pub use grid::{BANG, EMPTY, Grid, GridError, is_valid_glyph};
 pub use publish::{
     DEFAULT_GRID_FRAMES_PER_CYCLE, DEFAULT_GRID_HEIGHT, DEFAULT_GRID_WIDTH, DEFAULT_SAMPLE_TOKEN,
-    ORCA_PATTERN_NAME, OrcaPublisher, materialize_cycle, playhead_frame, sample_event_from_orca,
+    ORCA_PATTERN_NAME, OrcaPublisher, materialize_cycle, midi_note_id, playhead_frame,
+    sample_event_from_orca,
 };
