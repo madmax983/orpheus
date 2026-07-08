@@ -1197,6 +1197,17 @@ impl SampleEvent {
         self.pedal_program.as_ref()
     }
 
+    /// Returns a copy repitched by `semitones` through the same playback-rate
+    /// multiplier the `pitch` transform uses (`2^(semitones / 12)`).
+    ///
+    /// Used by the Orca publish bridge to map a grid note's base-36 value onto
+    /// a chromatic offset above the sample's base pitch.
+    #[must_use]
+    pub(crate) fn repitched(mut self, semitones: f64) -> Self {
+        self.rate *= semitones_to_rate_multiplier(semitones);
+        self
+    }
+
     fn clone_with(&self, mutate: impl FnOnce(&mut Self)) -> Self {
         let mut cloned = self.clone();
         mutate(&mut cloned);

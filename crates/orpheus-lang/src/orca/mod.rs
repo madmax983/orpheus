@@ -9,12 +9,22 @@
 //!
 //! The key seam to the rest of Orpheus is [`frame_span`], which maps grid
 //! frame `N` of `F` frames-per-cycle onto the exact rational
-//! [`orpheus_pattern::TimeSpan`] `[N/F, (N+1)/F)`. Emitted [`OrcaEvent`]s are
-//! plain data; audio wiring is intentionally out of scope for the spike. See
-//! `docs/design/orca-surface.md`.
+//! [`orpheus_pattern::TimeSpan`] `[N/F, (N+1)/F)`. The v1 publish bridge
+//! ([`publish`]) materializes grid cycles into unit-cycle
+//! `Vec<Event<SampleEvent>>` batches for the existing session publication
+//! path, re-publishing at every engine cycle boundary because running grids
+//! are not cycle-periodic. See `docs/design/orca-surface.md` and ADR 0008.
+//!
+//! The grid engine ([`Grid`], [`OrcaEngine`]) stays TUI-free; the TUI pane
+//! hosting this surface lives in the `tui` module.
 
 mod engine;
 mod grid;
+mod publish;
 
 pub use engine::{OrcaEngine, OrcaEvent, frame_span};
-pub use grid::{BANG, EMPTY, Grid, GridError};
+pub use grid::{BANG, EMPTY, Grid, GridError, is_valid_glyph};
+pub use publish::{
+    DEFAULT_GRID_FRAMES_PER_CYCLE, DEFAULT_GRID_HEIGHT, DEFAULT_GRID_WIDTH, DEFAULT_SAMPLE_TOKEN,
+    ORCA_PATTERN_NAME, OrcaPublisher, materialize_cycle, playhead_frame, sample_event_from_orca,
+};

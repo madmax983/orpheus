@@ -33,6 +33,7 @@ use crate::loader::load_file_runtime_strict;
 use crate::midi_input;
 use crate::mixer::MixerState;
 use crate::types::infer_into_bindings;
+use crate::value::{SampleEvent, SamplePatternValue};
 use crate::{ReplMode, Type, Value};
 
 const SESSION_HISTORY_LIMIT: usize = 50;
@@ -1675,6 +1676,50 @@ impl ReplSession {
         }
 
         Ok(())
+    }
+
+    /// Publishes a materialized `Event<SampleEvent>` list as the sample
+    /// pattern binding `name`, replacing any previous binding of that name.
+    ///
+    /// This is the publication seam for generator surfaces such as the Orca
+    /// grid pane (ADR 0008): the caller re-materializes its next cycle and
+    /// calls this again at every engine cycle boundary. Publication reuses the
+    /// same path as evaluated patterns, so mixer routing and track binding
+    /// apply unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the engine command queue rejects the update or
+    /// the mixer snapshot fails to compile.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::EngineHandle;
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_lang::orca::{OrcaEngine, materialize_cycle};
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// let mut grid = OrcaEngine::from_rows(&[".D1.", "..:c"]).unwrap();
+    /// let events = materialize_cycle(&mut grid, 4, "tri").unwrap();
+    /// session.publish_sample_events("orca", events).unwrap();
+    /// assert!(
+    ///     session
+    ///         .binding_summaries()
+    ///         .iter()
+    ///         .any(|summary| summary == "orca: Pattern<Sample>")
+    /// );
+    /// ```
+    pub fn publish_sample_events(
+        &mut self,
+        name: &str,
+        events: Vec<orpheus_pattern::Event<SampleEvent>>,
+    ) -> Result<(), String> {
+        let value = Value::SamplePattern(SamplePatternValue::from_events(events));
+        self.bindings.insert(name.to_owned(), value.clone());
+        self.type_bindings
+            .insert(name.to_owned(), Type::pattern(Type::Sample));
+        self.push_pattern_update(name, &value)
     }
 
     /// Compiles a summary of all active bindings and their inferred types.
