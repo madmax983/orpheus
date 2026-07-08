@@ -21,7 +21,8 @@ use comfy_table::Cell;
 use crossterm::style::Stylize;
 use orpheus_dsp::{
     DEFAULT_GRAPH_VOICE_POLYPHONY, GraphVoiceSpec, MAX_GRAPH_VOICE_POLYPHONY,
-    MAX_VOICE_DELAY_SECONDS, MODULATED_VOICE_DELAY_MAX_SECONDS, VoiceNodeSpec, VoiceSignalRef,
+    MAX_VOICE_DELAY_SECONDS, MODULATED_VOICE_DELAY_MAX_SECONDS, StealPolicy, VoiceNodeSpec,
+    VoiceSignalRef,
 };
 
 use crate::ast::{BinaryOp, Expr, GraphBinding};
@@ -59,6 +60,7 @@ pub struct VoiceValue {
     output: VoiceSignalRef,
     release_seconds: f32,
     polyphony: Option<usize>,
+    steal: Option<StealPolicy>,
 }
 
 impl VoiceValue {
@@ -92,6 +94,16 @@ impl VoiceValue {
         self.polyphony
     }
 
+    /// The pool-exhaustion policy requested by a `steal = ...` pragma, when
+    /// present.
+    ///
+    /// `None` means the engine default ([`StealPolicy::Oldest`]: steal the
+    /// most-released, else oldest, voice).
+    #[must_use]
+    pub const fn steal(&self) -> Option<StealPolicy> {
+        self.steal
+    }
+
     /// Builds the engine-side program spec, using `token` (the binding name)
     /// as the pattern token.
     ///
@@ -105,12 +117,16 @@ impl VoiceValue {
                 .map_err(|error| {
                     EvalError::new(format!("voice `{token}` is not playable: {error}"))
                 })?;
-        match self.polyphony {
+        let spec = match self.polyphony {
             Some(polyphony) => spec.with_polyphony(polyphony).map_err(|error| {
                 EvalError::new(format!("voice `{token}` is not playable: {error}"))
-            }),
-            None => Ok(spec),
-        }
+            })?,
+            None => spec,
+        };
+        Ok(match self.steal {
+            Some(steal) => spec.with_steal_policy(steal),
+            None => spec,
+        })
     }
 }
 
@@ -132,6 +148,10 @@ pub fn compile_voice(bindings: &[GraphBinding], result: &Expr) -> Result<VoiceVa
             }
             "release" => {
                 compiler.set_release_floor(&binding.expr)?;
+                continue;
+            }
+            "steal" => {
+                compiler.set_steal_policy(&binding.expr)?;
                 continue;
             }
             "gate" | "freq" => {
@@ -173,6 +193,7 @@ pub fn compile_voice(bindings: &[GraphBinding], result: &Expr) -> Result<VoiceVa
             .max(release_floor)
             .max(DEFAULT_VOICE_RELEASE_SECONDS),
         polyphony: compiler.polyphony,
+        steal: compiler.steal,
     })
 }
 
@@ -188,6 +209,9 @@ struct VoiceCompiler {
     polyphony: Option<usize>,
     /// The release-tail floor requested by a `release = ...` pragma binding.
     release_floor: Option<f32>,
+    /// The pool-exhaustion policy requested by a `steal = ...` pragma
+    /// binding.
+    steal: Option<StealPolicy>,
 }
 
 impl VoiceCompiler {
@@ -234,6 +258,30 @@ impl VoiceCompiler {
             ))),
         }
     }
+
+    /// Handles the `steal = oldest|off` pragma binding, which sets what the
+    /// program does when a trigger arrives and its voice pool is exhausted.
+    fn set_steal_policy(&mut self, expr: &Expr) -> Result<(), EvalError> {
+        if self.steal.is_some() {
+            return Err(EvalError::new("voice `steal` is set twice"));
+        }
+        match expr {
+            Expr::Ident(name) if name == "oldest" => {
+                self.steal = Some(StealPolicy::Oldest);
+                Ok(())
+            }
+            Expr::Ident(name) if name == "off" => {
+                self.steal = Some(StealPolicy::Off);
+                Ok(())
+            }
+            _ => Err(EvalError::new(
+                "voice `steal` must be `oldest` (steal the most-released, else \
+                 oldest, voice when the pool is full — the default) or `off` \
+                 (drop extra notes)",
+            )),
+        }
+    }
+
     fn push(&mut self, node: VoiceNodeSpec) -> Result<VoiceSignalRef, EvalError> {
         let index = u32::try_from(self.nodes.len())
             .map_err(|_| EvalError::new("voice body exceeded the supported node count"))?;
@@ -718,11 +766,17 @@ impl Explain for VoiceValue {
             || format!("{DEFAULT_GRAPH_VOICE_POLYPHONY} (default)"),
             |polyphony| polyphony.to_string(),
         );
+        let steal = match self.steal {
+            None => "oldest (default)".to_string(),
+            Some(StealPolicy::Oldest) => "oldest".to_string(),
+            Some(StealPolicy::Off) => "off".to_string(),
+        };
         let title = format!(
-            "{} {binding_name}\nRelease Tail: {}s\nPolyphony: {}\nSource: {}",
+            "{} {binding_name}\nRelease Tail: {}s\nPolyphony: {}\nSteal: {}\nSource: {}",
             "Voice Program:".cyan().bold(),
             self.release_seconds.to_string().yellow(),
             polyphony.yellow(),
+            steal.yellow(),
             self.source.as_str().green()
         );
         let mut table = crate::explain::explain_table(["Node", "Spec"]);

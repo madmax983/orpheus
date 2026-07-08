@@ -8,7 +8,7 @@
 
 use orpheus_dsp::{
     EngineCommand, EngineHandle, GraphVoiceBank, GraphVoiceSpec, GraphVoiceSpecError,
-    PatternUpdate, SampleTrigger, VoiceNodeSpec, VoiceSignalRef,
+    PatternUpdate, SampleTrigger, StealPolicy, VoiceNodeSpec, VoiceSignalRef,
 };
 use orpheus_pattern::{Event, Rational, TimeSpan};
 
@@ -526,7 +526,12 @@ fn spec_polyphony_defaults_and_validates_bounds() {
 
 #[test]
 fn bank_pools_follow_per_program_polyphony() {
-    let duo = pluck_spec("duo").with_polyphony(2).unwrap();
+    // `steal = off` keeps the original ADR 0009 drop-on-exhaustion behavior,
+    // which makes the pool boundary directly observable here.
+    let duo = pluck_spec("duo")
+        .with_polyphony(2)
+        .unwrap()
+        .with_steal_policy(StealPolicy::Off);
     let mut bank = GraphVoiceBank::with_user_programs(SR, vec![duo]);
 
     let track = orpheus_dsp::TrackId::new(0);
@@ -534,12 +539,16 @@ fn bank_pools_follow_per_program_polyphony() {
     assert!(bank.trigger("duo", track, 10, 220.0, 0.5, 0.0));
     assert!(
         !bank.trigger("duo", track, 10, 220.0, 0.5, 0.0),
-        "a poly-2 program must drop its third simultaneous note"
+        "a poly-2 steal-off program must drop its third simultaneous note"
     );
 
-    // Built-in programs keep the default pool of 8.
+    // Built-in programs keep the default pool of 8 — with the default steal
+    // policy, so the 9th trigger is accepted by stealing a sounding voice.
     for _ in 0..8 {
         assert!(bank.trigger("gsine", track, 10, 220.0, 0.5, 0.0));
     }
-    assert!(!bank.trigger("gsine", track, 10, 220.0, 0.5, 0.0));
+    assert!(
+        bank.trigger("gsine", track, 10, 220.0, 0.5, 0.0),
+        "a default-policy program must steal, not drop, when exhausted"
+    );
 }

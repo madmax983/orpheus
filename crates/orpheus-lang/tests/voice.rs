@@ -291,6 +291,61 @@ fn voice_poly_pragma_sets_program_pool_size() {
 }
 
 #[test]
+fn voice_steal_pragma_sets_pool_exhaustion_policy() {
+    use orpheus_dsp::StealPolicy;
+
+    let Value::Voice(voice) =
+        eval_voice("lead = voice { steal = off ; sine(freq) * ar(gate, 0.001, 0.05) }")
+    else {
+        panic!("expected a voice value");
+    };
+    assert_eq!(
+        voice.to_spec("lead").unwrap().steal_policy(),
+        StealPolicy::Off
+    );
+
+    let Value::Voice(voice) =
+        eval_voice("lead = voice { steal = oldest ; sine(freq) * ar(gate, 0.001, 0.05) }")
+    else {
+        panic!("expected a voice value");
+    };
+    assert_eq!(
+        voice.to_spec("lead").unwrap().steal_policy(),
+        StealPolicy::Oldest
+    );
+
+    // Without the pragma, stealing is on by default (ADR 0009 addendum).
+    let Value::Voice(voice) = eval_voice(PLUCK) else {
+        panic!("expected a voice value");
+    };
+    assert_eq!(voice.steal(), None);
+    assert_eq!(
+        voice.to_spec("pluck").unwrap().steal_policy(),
+        StealPolicy::Oldest
+    );
+}
+
+#[test]
+fn voice_steal_pragma_rejects_invalid_values() {
+    for source in [
+        "bad = voice { steal = 5 ; sine(freq) }",
+        "bad = voice { steal = newest ; sine(freq) }",
+    ] {
+        let message = eval_error(source);
+        assert!(
+            message.contains("steal") && message.contains("oldest") && message.contains("off"),
+            "unexpected error: {message}"
+        );
+    }
+
+    let message = eval_error("bad = voice { steal = off ; steal = oldest ; sine(freq) }");
+    assert!(
+        message.contains("steal") && message.contains("twice"),
+        "unexpected error: {message}"
+    );
+}
+
+#[test]
 fn voice_release_pragma_floors_but_never_shortens_the_tail() {
     let Value::Voice(voice) =
         eval_voice("pad = voice { release = 0.25 ; sine(freq) * ar(gate, 0.001, 0.05) }")

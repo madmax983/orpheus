@@ -14,7 +14,9 @@
 //! warmed with [`GraphVoice::prepare`] so lazy-but-once scratch growth also
 //! happens off-thread. Triggering and rendering a pooled voice performs no
 //! heap allocation; finished voices are reset in place and reused instead of
-//! being dropped on the audio thread.
+//! being dropped on the audio thread. When a program's pool is exhausted the
+//! trigger steals a sounding voice per its [`StealPolicy`] (default: the
+//! most-released, else oldest, note) with a click-free handover.
 
 use thiserror::Error;
 
@@ -55,6 +57,29 @@ pub const MODULATED_VOICE_DELAY_MAX_SECONDS: f32 = 1.0;
 /// Output trim applied to graph voices, matching the analog-voice headroom
 /// convention in `voice.rs`.
 const GRAPH_OUTPUT_TRIM: f32 = 0.35;
+
+/// Length of the linear gain/pan ramp applied when a sounding voice is
+/// stolen, in seconds.
+///
+/// A steal keeps the voice's graph state (so the envelope restarts click-free
+/// from its current level) but swaps the note's control values; the ramp
+/// smooths the gain/pan jump between the old and new note over a few
+/// milliseconds so the handover never steps the output discontinuously.
+pub const VOICE_STEAL_RAMP_SECONDS: f32 = 0.002;
+
+/// What a program does when a trigger arrives and every pooled voice is
+/// already sounding (ADR 0009 addendum).
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum StealPolicy {
+    /// Steal a sounding voice, per standard synth practice: prefer the voice
+    /// furthest into its release tail, else the oldest by trigger time. The
+    /// default.
+    #[default]
+    Oldest,
+    /// Never steal: triggers beyond the pool size are dropped (the original
+    /// ADR 0009 behavior).
+    Off,
+}
 
 /// A named, buildable graph voice program.
 ///
@@ -487,6 +512,7 @@ pub struct GraphVoiceSpec {
     nodes: Vec<VoiceNodeSpec>,
     output: VoiceSignalRef,
     polyphony: usize,
+    steal: StealPolicy,
 }
 
 impl GraphVoiceSpec {
@@ -566,6 +592,7 @@ impl GraphVoiceSpec {
             nodes,
             output,
             polyphony: DEFAULT_GRAPH_VOICE_POLYPHONY,
+            steal: StealPolicy::default(),
         })
     }
 
@@ -590,6 +617,20 @@ impl GraphVoiceSpec {
     #[must_use]
     pub const fn polyphony(&self) -> usize {
         self.polyphony
+    }
+
+    /// Overrides what the program does when a trigger arrives and its pool is
+    /// exhausted (default: [`StealPolicy::Oldest`]).
+    #[must_use]
+    pub const fn with_steal_policy(mut self, steal: StealPolicy) -> Self {
+        self.steal = steal;
+        self
+    }
+
+    /// The program's pool-exhaustion policy.
+    #[must_use]
+    pub const fn steal_policy(&self) -> StealPolicy {
+        self.steal
     }
 
     /// The pattern-token this program is selected by.
@@ -905,12 +946,84 @@ struct GraphVoiceNote {
     freq_hz: f32,
     gain: f32,
     pan: f32,
+    /// Monotonic per-bank trigger counter, set when the note starts; the
+    /// steal policy uses it as the note's age (smaller = older).
+    trigger_seq: u64,
+    /// Frames the gate is forced low after a steal (one frame), so the
+    /// graph's gate-driven envelopes see a falling then rising edge and
+    /// restart their attack click-free from the current level.
+    retrigger_gap_frames: u32,
+    /// Remaining frames of the post-steal linear gain/pan ramp from the
+    /// stolen note's control values to this note's.
+    ramp_frames_remaining: u32,
+    gain_step: f32,
+    pan_step: f32,
+    target_gain: f32,
+    target_pan: f32,
+}
+
+impl GraphVoiceNote {
+    /// A note starting on an idle pooled voice: controls apply immediately.
+    fn fresh(
+        track_id: TrackId,
+        gate_frames: u32,
+        release_frames: u32,
+        freq_hz: f32,
+        gain: f32,
+        pan: f32,
+        trigger_seq: u64,
+    ) -> Self {
+        Self {
+            track_id,
+            gate_frames_remaining: gate_frames.max(1),
+            release_frames_remaining: release_frames,
+            freq_hz,
+            gain,
+            pan,
+            trigger_seq,
+            retrigger_gap_frames: 0,
+            ramp_frames_remaining: 0,
+            gain_step: 0.0,
+            pan_step: 0.0,
+            target_gain: gain,
+            target_pan: pan,
+        }
+    }
+
+    /// Converts a fresh note into one stealing a sounding voice: the gate
+    /// drops for one frame so the envelope retriggers from its current level,
+    /// and gain/pan ramp linearly from the stolen note's current values over
+    /// `ramp_frames`.
+    #[allow(clippy::cast_precision_loss)]
+    fn begin_steal_handover(&mut self, stolen_from: &Self, ramp_frames: u32) {
+        let ramp_frames = ramp_frames.max(1);
+        self.retrigger_gap_frames = 1;
+        self.ramp_frames_remaining = ramp_frames;
+        self.gain_step = (self.target_gain - stolen_from.gain) / ramp_frames as f32;
+        self.pan_step = (self.target_pan - stolen_from.pan) / ramp_frames as f32;
+        self.gain = stolen_from.gain;
+        self.pan = stolen_from.pan;
+    }
+
+    /// The steal ranking key: minimising it lexicographically prefers voices
+    /// already releasing (gate expired), then — among releasing voices — the
+    /// one furthest into its release tail, then the oldest by trigger time.
+    const fn steal_preference(&self) -> (bool, u32, u64) {
+        let gated = self.gate_frames_remaining > 0;
+        let release_progress = if gated {
+            0
+        } else {
+            self.release_frames_remaining
+        };
+        (gated, release_progress, self.trigger_seq)
+    }
 }
 
 #[derive(Debug)]
 struct GraphVoiceSlot {
     token: Box<str>,
     release_frames: u32,
+    steal: StealPolicy,
     voice: GraphVoice,
     note: Option<GraphVoiceNote>,
 }
@@ -925,6 +1038,11 @@ pub struct GraphVoiceBank {
     sample_rate_hz: f32,
     user_specs: Vec<GraphVoiceSpec>,
     slots: Vec<GraphVoiceSlot>,
+    /// Monotonic trigger counter stamping each note's age for the steal
+    /// policy. A plain field write per trigger; never wraps in practice.
+    next_trigger_seq: u64,
+    /// [`VOICE_STEAL_RAMP_SECONDS`] in frames at the bank's sample rate.
+    steal_ramp_frames: u32,
 }
 
 /// Two banks are interchangeable when they were built for the same sample
@@ -974,6 +1092,7 @@ impl GraphVoiceBank {
                 slots.push(GraphVoiceSlot {
                     token: program.token().into(),
                     release_frames,
+                    steal: StealPolicy::default(),
                     voice,
                     note: None,
                 });
@@ -987,6 +1106,7 @@ impl GraphVoiceBank {
                 slots.push(GraphVoiceSlot {
                     token: spec.token().into(),
                     release_frames,
+                    steal: spec.steal_policy(),
                     voice,
                     note: None,
                 });
@@ -996,6 +1116,8 @@ impl GraphVoiceBank {
             sample_rate_hz,
             user_specs,
             slots,
+            next_trigger_seq: 0,
+            steal_ramp_frames: release_seconds_to_frames(VOICE_STEAL_RAMP_SECONDS, sample_rate_hz),
         }
     }
 
@@ -1011,10 +1133,19 @@ impl GraphVoiceBank {
         self.slots.iter().any(|slot| &*slot.token == token)
     }
 
-    /// Starts a note on an idle pooled voice for `token`.
+    /// Starts a note on a pooled voice for `token`.
     ///
-    /// Returns `false` (dropping the trigger) when the token names no program
-    /// or every pooled voice for it is already sounding. Never allocates.
+    /// An idle voice is claimed when one exists. When the program's pool is
+    /// exhausted, the note steals a sounding voice per the program's
+    /// [`StealPolicy`] — preferring the voice furthest into its release tail,
+    /// else the oldest by trigger time. The steal is click-free: the voice's
+    /// graph state is kept (its envelopes retrigger from the current level
+    /// after a one-frame gate gap) and the note's gain/pan ramp linearly from
+    /// the stolen note's values over [`VOICE_STEAL_RAMP_SECONDS`].
+    ///
+    /// Returns `false` (dropping the trigger) when the token names no
+    /// program, or the pool is exhausted and stealing is
+    /// [`StealPolicy::Off`]. Never allocates.
     pub fn trigger(
         &mut self,
         token: &str,
@@ -1024,23 +1155,69 @@ impl GraphVoiceBank {
         gain: f32,
         pan: f32,
     ) -> bool {
-        let Some(slot) = self
-            .slots
-            .iter_mut()
-            .find(|slot| &*slot.token == token && slot.note.is_none())
-        else {
-            return false;
-        };
+        let mut idle: Option<usize> = None;
+        let mut victim: Option<(usize, (bool, u32, u64))> = None;
+        for (index, slot) in self.slots.iter().enumerate() {
+            if &*slot.token != token {
+                continue;
+            }
+            match &slot.note {
+                None => {
+                    idle = Some(index);
+                    break;
+                }
+                Some(note) => {
+                    if slot.steal == StealPolicy::Off {
+                        continue;
+                    }
+                    let preference = note.steal_preference();
+                    if victim.is_none_or(|(_, best)| preference < best) {
+                        victim = Some((index, preference));
+                    }
+                }
+            }
+        }
 
-        slot.note = Some(GraphVoiceNote {
-            track_id,
-            gate_frames_remaining: gate_frames.max(1),
-            release_frames_remaining: slot.release_frames,
-            freq_hz,
-            gain,
-            pan,
-        });
-        true
+        if let Some(index) = idle {
+            let trigger_seq = self.next_trigger_seq;
+            self.next_trigger_seq += 1;
+            let slot = &mut self.slots[index];
+            slot.note = Some(GraphVoiceNote::fresh(
+                track_id,
+                gate_frames,
+                slot.release_frames,
+                freq_hz,
+                gain,
+                pan,
+                trigger_seq,
+            ));
+            return true;
+        }
+
+        if let Some((index, _)) = victim {
+            let trigger_seq = self.next_trigger_seq;
+            self.next_trigger_seq += 1;
+            let slot = &mut self.slots[index];
+            let stolen_from = slot
+                .note
+                .unwrap_or_else(|| unreachable!("steal victims are sounding notes"));
+            // Deliberately no `slot.voice.reset()`: keeping the graph state
+            // is what makes the handover click-free (ADR 0009 addendum).
+            let mut note = GraphVoiceNote::fresh(
+                track_id,
+                gate_frames,
+                slot.release_frames,
+                freq_hz,
+                gain,
+                pan,
+                trigger_seq,
+            );
+            note.begin_steal_handover(&stolen_from, self.steal_ramp_frames);
+            slot.note = Some(note);
+            return true;
+        }
+
+        false
     }
 
     /// Renders one frame of every sounding voice into the per-track mix.
@@ -1053,11 +1230,30 @@ impl GraphVoiceBank {
                 continue;
             };
 
-            let gate = if note.gate_frames_remaining > 0 {
+            // A freshly stolen voice holds its gate low for one frame so the
+            // graph's envelopes see a rising edge on the next frame and
+            // restart click-free from their current level.
+            let in_retrigger_gap = note.retrigger_gap_frames > 0;
+            let gate = if !in_retrigger_gap && note.gate_frames_remaining > 0 {
                 1.0
             } else {
                 0.0
             };
+
+            // Post-steal handover: gain/pan ramp linearly from the stolen
+            // note's control values to this note's, landing exactly on the
+            // targets at the ramp's end.
+            if note.ramp_frames_remaining > 0 {
+                note.ramp_frames_remaining -= 1;
+                if note.ramp_frames_remaining == 0 {
+                    note.gain = note.target_gain;
+                    note.pan = note.target_pan;
+                } else {
+                    note.gain += note.gain_step;
+                    note.pan += note.pan_step;
+                }
+            }
+
             let (left, right) = slot
                 .voice
                 .process_frame(gate, note.freq_hz, note.gain, note.pan);
@@ -1069,7 +1265,9 @@ impl GraphVoiceBank {
                 *mix_right += right;
             }
 
-            if note.gate_frames_remaining > 0 {
+            if in_retrigger_gap {
+                note.retrigger_gap_frames -= 1;
+            } else if note.gate_frames_remaining > 0 {
                 note.gate_frames_remaining -= 1;
             } else if note.release_frames_remaining > 0 {
                 note.release_frames_remaining -= 1;
@@ -1167,9 +1365,170 @@ mod tests {
             assert!(bank.trigger("gsine", track(0), 10, 220.0, 0.5, 0.0));
         }
         assert!(
-            !bank.trigger("gsine", track(0), 10, 220.0, 0.5, 0.0),
-            "the pool is exhausted, the trigger must be dropped"
+            bank.trigger("gsine", track(0), 10, 220.0, 0.5, 0.0),
+            "the pool is exhausted, the trigger must steal a sounding voice"
         );
+        let sounding = bank.slots.iter().filter(|slot| slot.note.is_some()).count();
+        assert_eq!(
+            sounding, DEFAULT_GRAPH_VOICE_POLYPHONY,
+            "stealing must reuse a pooled voice, not grow the pool"
+        );
+    }
+
+    /// A minimal sustained voice (sine x ADSR) for steal-policy tests.
+    fn steal_test_spec(polyphony: usize, steal: StealPolicy) -> GraphVoiceSpec {
+        GraphVoiceSpec::new(
+            "lead",
+            0.02,
+            vec![
+                VoiceNodeSpec::Sine {
+                    freq: VoiceSignalRef::Freq,
+                },
+                VoiceNodeSpec::Adsr {
+                    gate: VoiceSignalRef::Gate,
+                    attack_s: 0.001,
+                    decay_s: 0.005,
+                    sustain: 0.8,
+                    release_s: 0.02,
+                },
+                VoiceNodeSpec::Mul {
+                    left: VoiceSignalRef::Node(0),
+                    right: VoiceSignalRef::Node(1),
+                },
+            ],
+            VoiceSignalRef::Node(2),
+        )
+        .expect("steal test spec should validate")
+        .with_polyphony(polyphony)
+        .expect("test polyphony is within bounds")
+        .with_steal_policy(steal)
+    }
+
+    fn sounding_freqs(bank: &GraphVoiceBank) -> Vec<f32> {
+        bank.slots
+            .iter()
+            .filter_map(|slot| slot.note.as_ref().map(|note| note.freq_hz))
+            .collect()
+    }
+
+    #[test]
+    fn exhausted_pool_steals_the_oldest_gated_voice() {
+        let mut bank =
+            GraphVoiceBank::with_user_programs(SR, vec![steal_test_spec(2, StealPolicy::Oldest)]);
+        assert!(bank.trigger("lead", track(0), 10_000, 220.0, 0.5, 0.0));
+        assert!(bank.trigger("lead", track(0), 10_000, 330.0, 0.5, 0.0));
+        assert!(bank.trigger("lead", track(0), 10_000, 440.0, 0.5, 0.0));
+
+        let freqs = sounding_freqs(&bank);
+        assert!(
+            !freqs.contains(&220.0) && freqs.contains(&330.0) && freqs.contains(&440.0),
+            "the oldest note (220 Hz) must be stolen, got {freqs:?}"
+        );
+    }
+
+    #[test]
+    fn steal_prefers_the_voice_furthest_into_release() {
+        let mut bank =
+            GraphVoiceBank::with_user_programs(SR, vec![steal_test_spec(3, StealPolicy::Oldest)]);
+        // 220 Hz releases first (gate 2), 330 Hz later (gate 5), 550 Hz stays
+        // gated; after 8 frames the 220 Hz note is furthest into release.
+        assert!(bank.trigger("lead", track(0), 2, 220.0, 0.5, 0.0));
+        assert!(bank.trigger("lead", track(0), 5, 330.0, 0.5, 0.0));
+        assert!(bank.trigger("lead", track(0), 10_000, 550.0, 0.5, 0.0));
+        let mut mix = vec![(0.0_f32, 0.0_f32); 1];
+        for _ in 0..8 {
+            bank.render_frame(&mut mix);
+        }
+
+        assert!(bank.trigger("lead", track(0), 10_000, 440.0, 0.5, 0.0));
+        let freqs = sounding_freqs(&bank);
+        assert!(
+            !freqs.contains(&220.0) && freqs.contains(&330.0) && freqs.contains(&550.0),
+            "the most-released note (220 Hz) must be stolen, got {freqs:?}"
+        );
+    }
+
+    #[test]
+    fn steal_prefers_releasing_voices_over_older_gated_ones() {
+        let mut bank =
+            GraphVoiceBank::with_user_programs(SR, vec![steal_test_spec(2, StealPolicy::Oldest)]);
+        // 220 Hz is oldest but still gated; 330 Hz is newer but releasing.
+        assert!(bank.trigger("lead", track(0), 10_000, 220.0, 0.5, 0.0));
+        assert!(bank.trigger("lead", track(0), 2, 330.0, 0.5, 0.0));
+        let mut mix = vec![(0.0_f32, 0.0_f32); 1];
+        for _ in 0..5 {
+            bank.render_frame(&mut mix);
+        }
+
+        assert!(bank.trigger("lead", track(0), 10_000, 440.0, 0.5, 0.0));
+        let freqs = sounding_freqs(&bank);
+        assert!(
+            freqs.contains(&220.0) && !freqs.contains(&330.0),
+            "the releasing note (330 Hz) must be stolen before the older gated one, got {freqs:?}"
+        );
+    }
+
+    #[test]
+    fn no_steal_occurs_while_the_pool_has_idle_voices() {
+        let mut bank =
+            GraphVoiceBank::with_user_programs(SR, vec![steal_test_spec(3, StealPolicy::Oldest)]);
+        assert!(bank.trigger("lead", track(0), 10_000, 220.0, 0.5, 0.0));
+        assert!(bank.trigger("lead", track(0), 10_000, 330.0, 0.5, 0.0));
+        assert!(bank.trigger("lead", track(0), 10_000, 440.0, 0.5, 0.0));
+
+        let freqs = sounding_freqs(&bank);
+        assert!(
+            freqs.contains(&220.0) && freqs.contains(&330.0) && freqs.contains(&440.0),
+            "a poly-3 pool must fit three notes without stealing, got {freqs:?}"
+        );
+    }
+
+    #[test]
+    fn steal_policy_off_drops_triggers_when_the_pool_is_exhausted() {
+        let mut bank =
+            GraphVoiceBank::with_user_programs(SR, vec![steal_test_spec(2, StealPolicy::Off)]);
+        assert!(bank.trigger("lead", track(0), 10_000, 220.0, 0.5, 0.0));
+        assert!(bank.trigger("lead", track(0), 10_000, 330.0, 0.5, 0.0));
+        assert!(
+            !bank.trigger("lead", track(0), 10_000, 440.0, 0.5, 0.0),
+            "steal = off must keep the original drop behavior"
+        );
+        let freqs = sounding_freqs(&bank);
+        assert!(freqs.contains(&220.0) && freqs.contains(&330.0));
+    }
+
+    #[test]
+    fn stolen_notes_ramp_gain_and_pan_from_the_stolen_values() {
+        let mut bank =
+            GraphVoiceBank::with_user_programs(SR, vec![steal_test_spec(1, StealPolicy::Oldest)]);
+        assert!(bank.trigger("lead", track(0), 10_000, 220.0, 0.2, -1.0));
+        assert!(bank.trigger("lead", track(0), 10_000, 440.0, 0.8, 1.0));
+
+        let lead_slot = |bank: &GraphVoiceBank| {
+            bank.slots
+                .iter()
+                .position(|slot| &*slot.token == "lead")
+                .expect("the lead program has a pooled slot")
+        };
+        let slot_index = lead_slot(&bank);
+        let note = bank.slots[slot_index]
+            .note
+            .expect("the stolen note is sounding");
+        assert_eq!(note.retrigger_gap_frames, 1, "one-frame gate gap");
+        assert_eq!(note.ramp_frames_remaining, bank.steal_ramp_frames);
+        assert!((note.gain - 0.2).abs() < 1e-6, "gain starts at old value");
+        assert!((note.pan - -1.0).abs() < 1e-6, "pan starts at old value");
+
+        let mut mix = vec![(0.0_f32, 0.0_f32); 1];
+        for _ in 0..bank.steal_ramp_frames {
+            bank.render_frame(&mut mix);
+        }
+        let note = bank.slots[slot_index]
+            .note
+            .expect("the note is still sounding");
+        assert_eq!(note.ramp_frames_remaining, 0);
+        assert!((note.gain - 0.8).abs() < 1e-6, "gain lands on the target");
+        assert!((note.pan - 1.0).abs() < 1e-6, "pan lands on the target");
     }
 
     #[test]
