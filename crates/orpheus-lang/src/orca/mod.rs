@@ -1,0 +1,20 @@
+//! Orca-inspired grid livecoding surface (R&D spike).
+//!
+//! This module hosts a self-contained, TUI-free grid engine implementing a
+//! minimal subset of Orca semantics: row-major single-pass frame evaluation
+//! with immediate writes, a per-frame lock set, uppercase-every-frame vs.
+//! lowercase-on-bang execution, one-frame `*` bang lifetime, base-36 values,
+//! and movement operators that explode into bangs on collision or
+//! out-of-bounds.
+//!
+//! The key seam to the rest of Orpheus is [`frame_span`], which maps grid
+//! frame `N` of `F` frames-per-cycle onto the exact rational
+//! [`orpheus_pattern::TimeSpan`] `[N/F, (N+1)/F)`. Emitted [`OrcaEvent`]s are
+//! plain data; audio wiring is intentionally out of scope for the spike. See
+//! `docs/design/orca-surface.md`.
+
+mod engine;
+mod grid;
+
+pub use engine::{OrcaEngine, OrcaEvent, frame_span};
+pub use grid::{BANG, EMPTY, Grid, GridError};

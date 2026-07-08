@@ -21,6 +21,7 @@ pub(crate) mod midi_export;
 mod midi_input;
 pub(crate) mod mixer;
 pub(crate) mod number_roll;
+pub mod orca;
 pub(crate) mod osu_export;
 mod parser;
 mod pedal;
