@@ -13,9 +13,9 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 
 use orpheus_dsp::{
-    GraphVoiceBank, GraphVoiceSpec, Node, PlaybackSample, Processor, TrackId, VoiceNodeSpec,
-    VoiceSignalRef, adsr, bind, builtin_graph_voice_programs, constant, fdelay, gain_node, pan,
-    par, passthrough, sample_player, seq, sine, sum, wire,
+    GraphVoiceBank, GraphVoiceSpec, Node, PlaybackSample, Processor, SvfMode, TrackId,
+    VoiceNodeSpec, VoiceSignalRef, adsr, bind, builtin_graph_voice_programs, constant, fdelay,
+    gain_node, pan, par, passthrough, sample_player, seq, sine, sum, wire,
 };
 
 struct CountingAllocator;
@@ -454,5 +454,90 @@ fn bank_with_feedback_delay_merge_and_custom_polyphony_renders_without_allocatin
         after - before,
         0,
         "bank trigger/render with feedback, delay, merge, poly 3, and a steal must not allocate"
+    );
+}
+
+#[test]
+fn voice_with_svf_and_eq_peak_filters_renders_without_allocating() {
+    // The new filter stages: a saw through an LFO-swept SVF lowpass (per-
+    // sample coefficient updates) into a peaking EQ boost. Pool build
+    // compiles and warms the voices off-thread; trigger/render must then be
+    // allocation-free.
+    let spec = GraphVoiceSpec::new(
+        "acid",
+        0.05,
+        vec![
+            // Saw carrier.
+            VoiceNodeSpec::Saw {
+                freq: VoiceSignalRef::Freq,
+            },
+            // Cutoff LFO: sine(2 Hz) * 600 + 900.
+            VoiceNodeSpec::Constant { value: 2.0 },
+            VoiceNodeSpec::Sine {
+                freq: VoiceSignalRef::Node(1),
+            },
+            VoiceNodeSpec::Constant { value: 600.0 },
+            VoiceNodeSpec::Mul {
+                left: VoiceSignalRef::Node(2),
+                right: VoiceSignalRef::Node(3),
+            },
+            VoiceNodeSpec::Constant { value: 900.0 },
+            VoiceNodeSpec::Add {
+                left: VoiceSignalRef::Node(4),
+                right: VoiceSignalRef::Node(5),
+            },
+            // Swept SVF lowpass.
+            VoiceNodeSpec::Constant { value: 0.7 },
+            VoiceNodeSpec::Svf {
+                input: VoiceSignalRef::Node(0),
+                cutoff_hz: VoiceSignalRef::Node(6),
+                q: VoiceSignalRef::Node(7),
+                mode: SvfMode::Lowpass,
+            },
+            // Peaking EQ boost at 500 Hz.
+            VoiceNodeSpec::Constant { value: 500.0 },
+            VoiceNodeSpec::Constant { value: 1.5 },
+            VoiceNodeSpec::Constant { value: 6.0 },
+            VoiceNodeSpec::EqPeak {
+                input: VoiceSignalRef::Node(8),
+                freq_hz: VoiceSignalRef::Node(9),
+                q: VoiceSignalRef::Node(10),
+                gain_db: VoiceSignalRef::Node(11),
+            },
+            // Gate-driven envelope.
+            VoiceNodeSpec::Ar {
+                gate: VoiceSignalRef::Gate,
+                attack_s: 0.001,
+                release_s: 0.05,
+            },
+            VoiceNodeSpec::Mul {
+                left: VoiceSignalRef::Node(12),
+                right: VoiceSignalRef::Node(13),
+            },
+        ],
+        VoiceSignalRef::Node(14),
+    )
+    .expect("filtered voice spec should validate");
+
+    let mut bank = GraphVoiceBank::with_user_programs(SR, vec![spec]);
+    let track = TrackId::new(0);
+    let mut mix = vec![(0.0_f32, 0.0_f32); 1];
+
+    let before = allocation_count();
+    assert!(bank.trigger("acid", track, 2_048, 110.0, 0.8, 0.0));
+    let mut energy = 0.0_f32;
+    for _ in 0..4_096 {
+        mix[0] = (0.0, 0.0);
+        bank.render_frame(&mut mix);
+        assert!(mix[0].0.is_finite() && mix[0].1.is_finite());
+        energy += mix[0].0.abs() + mix[0].1.abs();
+    }
+    let after = allocation_count();
+
+    assert!(energy > 0.0, "the filtered voice should be audible");
+    assert_eq!(
+        after - before,
+        0,
+        "SVF/EQ-filtered voices must not allocate after the pool is built"
     );
 }

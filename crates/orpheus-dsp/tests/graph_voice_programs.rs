@@ -8,7 +8,7 @@
 
 use orpheus_dsp::{
     EngineCommand, EngineHandle, GraphVoiceBank, GraphVoiceSpec, GraphVoiceSpecError,
-    PatternUpdate, SampleTrigger, StealPolicy, VoiceNodeSpec, VoiceSignalRef,
+    PatternUpdate, SampleTrigger, StealPolicy, SvfMode, VoiceNodeSpec, VoiceSignalRef,
 };
 use orpheus_pattern::{Event, Rational, TimeSpan};
 
@@ -550,5 +550,201 @@ fn bank_pools_follow_per_program_polyphony() {
     assert!(
         bank.trigger("gsine", track, 10, 220.0, 0.5, 0.0),
         "a default-policy program must steal, not drop, when exhausted"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Multi-mode SVF and peaking-EQ voice nodes (ADR 0010 addendum): `Svf` picks
+// one response of the TPT state-variable filter, `EqPeak` is the RBJ peaking
+// biquad; both take their parameters as signals.
+// ---------------------------------------------------------------------------
+
+/// Saw carrier through one SVF response, shaped by an AR envelope.
+fn svf_spec(token: &str, mode: SvfMode, cutoff_hz: f32, q: f32) -> GraphVoiceSpec {
+    GraphVoiceSpec::new(
+        token,
+        0.03,
+        vec![
+            VoiceNodeSpec::Saw {
+                freq: VoiceSignalRef::Freq,
+            },
+            VoiceNodeSpec::Constant { value: cutoff_hz },
+            VoiceNodeSpec::Constant { value: q },
+            VoiceNodeSpec::Svf {
+                input: VoiceSignalRef::Node(0),
+                cutoff_hz: VoiceSignalRef::Node(1),
+                q: VoiceSignalRef::Node(2),
+                mode,
+            },
+            VoiceNodeSpec::Ar {
+                gate: VoiceSignalRef::Gate,
+                attack_s: 0.001,
+                release_s: 0.03,
+            },
+            VoiceNodeSpec::Mul {
+                left: VoiceSignalRef::Node(3),
+                right: VoiceSignalRef::Node(4),
+            },
+        ],
+        VoiceSignalRef::Node(5),
+    )
+    .expect("svf spec should validate")
+}
+
+/// Sine carrier through the peaking EQ (centered on the carrier), shaped by
+/// an AR envelope. `render_left` drives the voice at 110 Hz, so the bell
+/// sits exactly on the carrier.
+fn eq_peak_spec(token: &str, gain_db: f32) -> GraphVoiceSpec {
+    GraphVoiceSpec::new(
+        token,
+        0.03,
+        vec![
+            VoiceNodeSpec::Sine {
+                freq: VoiceSignalRef::Freq,
+            },
+            VoiceNodeSpec::Constant { value: 110.0 },
+            VoiceNodeSpec::Constant { value: 1.0 },
+            VoiceNodeSpec::Constant { value: gain_db },
+            VoiceNodeSpec::EqPeak {
+                input: VoiceSignalRef::Node(0),
+                freq_hz: VoiceSignalRef::Node(1),
+                q: VoiceSignalRef::Node(2),
+                gain_db: VoiceSignalRef::Node(3),
+            },
+            VoiceNodeSpec::Ar {
+                gate: VoiceSignalRef::Gate,
+                attack_s: 0.001,
+                release_s: 0.03,
+            },
+            VoiceNodeSpec::Mul {
+                left: VoiceSignalRef::Node(4),
+                right: VoiceSignalRef::Node(5),
+            },
+        ],
+        VoiceSignalRef::Node(6),
+    )
+    .expect("eq peak spec should validate")
+}
+
+/// Renders `frames` left-channel samples of a fully gated compiled voice.
+fn render_left(spec: &GraphVoiceSpec, frames: usize) -> Vec<f32> {
+    let mut voice = spec.build_voice(SR);
+    voice.prepare();
+    (0..frames)
+        .map(|_| voice.process_frame(1.0, 110.0, 0.8, 0.0).0)
+        .collect()
+}
+
+/// Mean absolute second difference — a high-frequency-content proxy.
+///
+/// The second difference weights a component by frequency squared, so a
+/// saw's high harmonics dominate the measure while its fundamental's steady
+/// ramp (which dominates a plain first difference) contributes little.
+#[allow(clippy::cast_precision_loss)]
+fn brightness(samples: &[f32]) -> f32 {
+    let curvature: f32 = samples
+        .windows(3)
+        .map(|w| 2.0f32.mul_add(-w[1], w[2] + w[0]).abs())
+        .sum();
+    curvature / (samples.len() as f32 - 2.0)
+}
+
+#[test]
+fn svf_lowpass_spec_darkens_a_bright_saw() {
+    let raw = render_left(&pluck_spec("raw"), 4_096);
+    let filtered = render_left(&svf_spec("dark", SvfMode::Lowpass, 300.0, 0.7), 4_096);
+
+    let raw_energy: f32 = raw.iter().map(|s| s.abs()).sum();
+    let filtered_energy: f32 = filtered.iter().map(|s| s.abs()).sum();
+    assert!(raw_energy > 1.0 && filtered_energy > 1.0, "both audible");
+    assert!(
+        brightness(&filtered) < brightness(&raw) * 0.5,
+        "a 300 Hz SVF lowpass must strip the saw's highs: filtered {} vs raw {}",
+        brightness(&filtered),
+        brightness(&raw)
+    );
+}
+
+#[test]
+fn svf_spec_modes_produce_distinct_responses() {
+    let low = render_left(&svf_spec("lp", SvfMode::Lowpass, 800.0, 0.7), 2_048);
+    let high = render_left(&svf_spec("hp", SvfMode::Highpass, 800.0, 0.7), 2_048);
+    let band = render_left(&svf_spec("bp", SvfMode::Bandpass, 800.0, 0.7), 2_048);
+    let notch = render_left(&svf_spec("br", SvfMode::Notch, 800.0, 0.7), 2_048);
+
+    for samples in [&low, &high, &band, &notch] {
+        assert!(samples.iter().all(|s| s.is_finite()));
+        assert!(samples.iter().any(|s| s.abs() > 0.001), "mode is audible");
+    }
+    assert!(
+        brightness(&high) > brightness(&low) * 2.0,
+        "the highpass response must be brighter than the lowpass: {} vs {}",
+        brightness(&high),
+        brightness(&low)
+    );
+    assert_ne!(band, notch, "bandpass and notch must differ");
+}
+
+#[test]
+fn eq_peak_spec_boosts_its_centered_band() {
+    let flat = render_left(&eq_peak_spec("flat", 0.0), 4_096);
+    let boosted = render_left(&eq_peak_spec("loud", 12.0), 4_096);
+
+    let flat_energy: f32 = flat.iter().map(|s| s.abs()).sum();
+    let boosted_energy: f32 = boosted.iter().map(|s| s.abs()).sum();
+    assert!(flat_energy > 1.0, "the 0 dB voice is audible");
+    assert!(
+        boosted_energy > flat_energy * 2.0,
+        "+12 dB at the carrier frequency must boost the band: {boosted_energy} vs {flat_energy}"
+    );
+}
+
+#[test]
+fn spec_validation_covers_svf_and_eq_peak_refs() {
+    // Forward references through the new nodes' inputs are rejected like any
+    // other node input.
+    let error = GraphVoiceSpec::new(
+        "bad",
+        0.02,
+        vec![VoiceNodeSpec::Svf {
+            input: VoiceSignalRef::Node(3),
+            cutoff_hz: VoiceSignalRef::Freq,
+            q: VoiceSignalRef::Freq,
+            mode: SvfMode::Lowpass,
+        }],
+        VoiceSignalRef::Node(0),
+    )
+    .expect_err("forward svf input must be rejected");
+    assert_eq!(
+        error,
+        GraphVoiceSpecError::ForwardReference {
+            node: 0,
+            reference: 3
+        }
+    );
+
+    let error = GraphVoiceSpec::new(
+        "bad",
+        0.02,
+        vec![
+            VoiceNodeSpec::Sine {
+                freq: VoiceSignalRef::Freq,
+            },
+            VoiceNodeSpec::EqPeak {
+                input: VoiceSignalRef::Node(0),
+                freq_hz: VoiceSignalRef::Node(0),
+                q: VoiceSignalRef::Node(0),
+                gain_db: VoiceSignalRef::Node(1),
+            },
+        ],
+        VoiceSignalRef::Node(1),
+    )
+    .expect_err("self-referential eq gain must be rejected");
+    assert_eq!(
+        error,
+        GraphVoiceSpecError::ForwardReference {
+            node: 1,
+            reference: 1
+        }
     );
 }

@@ -21,16 +21,23 @@ const MAX_FREQUENCY_RATIO: f32 = 0.49;
 /// Lowest accepted cutoff/center frequency in Hertz.
 ///
 /// Strictly positive so the biquad coefficient formulas never degenerate
-/// (`alpha = 0` would place the poles exactly on the unit circle).
-const MIN_FREQUENCY_HZ: f32 = 1.0;
+/// (`alpha = 0` would place the poles exactly on the unit circle). Public so
+/// definition-time surfaces can range-check literal parameters against the
+/// same bound the render-time clamp uses.
+pub const FILTER_MIN_FREQUENCY_HZ: f32 = 1.0;
 
-/// Q clamp bounds shared by both filters. Anywhere inside these bounds the
-/// pole radius stays strictly inside the unit circle.
-const MIN_Q: f32 = 0.05;
-const MAX_Q: f32 = 100.0;
+/// Lower Q clamp bound shared by both filters.
+///
+/// Anywhere inside the `[FILTER_MIN_Q, FILTER_MAX_Q]` bounds the pole radius
+/// stays strictly inside the unit circle. Public for the same
+/// definition-time range checks as [`FILTER_MIN_FREQUENCY_HZ`].
+pub const FILTER_MIN_Q: f32 = 0.05;
+/// Upper Q clamp bound; see [`FILTER_MIN_Q`].
+pub const FILTER_MAX_Q: f32 = 100.0;
 
-/// Peaking gain clamp in decibels (either direction).
-const MAX_GAIN_DB: f32 = 40.0;
+/// Peaking gain clamp in decibels (either direction). Public for the same
+/// definition-time range checks as [`FILTER_MIN_FREQUENCY_HZ`].
+pub const FILTER_MAX_GAIN_DB: f32 = 40.0;
 
 /// Clamps `value` to `[lo, hi]`, falling back to `fallback` for non-finite
 /// input (`f32::clamp` propagates NaN).
@@ -102,8 +109,13 @@ impl Node for SvfNode {
         };
         let max_cutoff = self.sample_rate_hz * MAX_FREQUENCY_RATIO;
         for i in 0..frames {
-            let fc = sanitize(cutoff[i], MIN_FREQUENCY_HZ, max_cutoff, MIN_FREQUENCY_HZ);
-            let quality = sanitize(q[i], MIN_Q, MAX_Q, FRAC_1_SQRT_2);
+            let fc = sanitize(
+                cutoff[i],
+                FILTER_MIN_FREQUENCY_HZ,
+                max_cutoff,
+                FILTER_MIN_FREQUENCY_HZ,
+            );
+            let quality = sanitize(q[i], FILTER_MIN_Q, FILTER_MAX_Q, FRAC_1_SQRT_2);
             let g = (PI * fc / self.sample_rate_hz).tan();
             let k = 1.0 / quality;
             let a1 = 1.0 / g.mul_add(g + k, 1.0);
@@ -200,9 +212,14 @@ impl BiquadNode {
     /// Recomputes the normalized cookbook coefficients for the block.
     fn update_coefficients(&mut self, freq_hz: f32, q: f32, gain_db: f32) {
         let max_freq = self.sample_rate_hz * MAX_FREQUENCY_RATIO;
-        let freq = sanitize(freq_hz, MIN_FREQUENCY_HZ, max_freq, MIN_FREQUENCY_HZ);
-        let quality = sanitize(q, MIN_Q, MAX_Q, FRAC_1_SQRT_2);
-        let gain = sanitize(gain_db, -MAX_GAIN_DB, MAX_GAIN_DB, 0.0);
+        let freq = sanitize(
+            freq_hz,
+            FILTER_MIN_FREQUENCY_HZ,
+            max_freq,
+            FILTER_MIN_FREQUENCY_HZ,
+        );
+        let quality = sanitize(q, FILTER_MIN_Q, FILTER_MAX_Q, FRAC_1_SQRT_2);
+        let gain = sanitize(gain_db, -FILTER_MAX_GAIN_DB, FILTER_MAX_GAIN_DB, 0.0);
 
         let w0 = TAU * freq / self.sample_rate_hz;
         let (sin_w0, cos_w0) = w0.sin_cos();

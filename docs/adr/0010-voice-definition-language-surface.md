@@ -180,3 +180,24 @@ as the `release` pragma (longer samples truncate at the note lifetime's
 end). The counting-allocator suite covers a hybrid sample+sine voice: pool
 build resolves the handle off-thread, and trigger/render stay
 allocation-free.
+
+## Addendum: multi-mode SVF and peaking-EQ filter stages
+
+The graph layer's multi-mode filters (TPT SVF and RBJ biquad, ADR 0004
+follow-up) reached voice bodies as five stages: `svf_lp`/`svf_hp`/`svf_bp`/
+`svf_notch` take `(input, cutoff_hz, q)` — the `lowpass` convention, one
+stage name per response rather than a mode argument, since voice-body
+identifiers resolve as signals and cannot carry an enum — and
+`eq_peak(x, freq_hz, q, gain_db)` exposes the peaking biquad (shelving modes
+remain a filters.rs follow-up). All parameters are signals, and the SVF
+recomputes coefficients per sample, so `saw(freq) |> svf_lp(lfo, 0.7)`
+sweeps the cutoff at audio rate. Lowering keeps the one-output-per-node bus
+shape by pairing the four-output `SvfNode` with a fixed-width channel
+selector (`wire_with_inputs`, a `wire` variant whose input width is explicit
+so unselected responses are dropped); `EqPeak` lowers directly onto
+`biquad(sr, Peaking)`. Number-literal parameters are range-checked at
+definition time against the same public clamp bounds the nodes apply at
+render time (`FILTER_MIN_FREQUENCY_HZ`, `FILTER_MIN_Q`/`FILTER_MAX_Q`,
+`FILTER_MAX_GAIN_DB`); bound signals clamp per sample instead. The
+counting-allocator suite covers an LFO-swept SVF plus peaking boost through
+a pooled bank.

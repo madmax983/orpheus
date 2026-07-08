@@ -686,3 +686,197 @@ fn session_plays_echo_voice_from_pattern_token() {
         "echo voice should be audible from a pattern token"
     );
 }
+
+// ---------------------------------------------------------------------------
+// SVF and peaking-EQ filter stages (ADR 0010 addendum): `svf_lp`/`svf_hp`/
+// `svf_bp`/`svf_notch` expose the TPT state-variable filter (per-sample
+// coefficients, so cutoff/Q may be modulated by bound signals) and
+// `eq_peak(x, freq, q, gain_db)` exposes the RBJ peaking biquad.
+// ---------------------------------------------------------------------------
+
+/// Renders `frames` left-channel samples of a fully gated compiled voice.
+fn render_gated_left(source: &str, token: &str, frames: usize) -> Vec<f32> {
+    let mut voice = compiled_voice(source, token);
+    (0..frames)
+        .map(|_| voice.process_frame(1.0, 110.0, 0.8, 0.0).0)
+        .collect()
+}
+
+/// Mean absolute second difference — a high-frequency-content proxy. The
+/// second difference weights a component by frequency squared, so a saw's
+/// high harmonics dominate the measure while its fundamental's steady ramp
+/// (which dominates a plain first difference) contributes little.
+#[allow(clippy::cast_precision_loss)]
+fn brightness(samples: &[f32]) -> f32 {
+    let curvature: f32 = samples
+        .windows(3)
+        .map(|w| 2.0f32.mul_add(-w[1], w[2] + w[0]).abs())
+        .sum();
+    curvature / (samples.len() as f32 - 2.0)
+}
+
+#[test]
+fn voice_svf_stages_compile_in_all_four_modes() {
+    for stage in ["svf_lp", "svf_hp", "svf_bp", "svf_notch"] {
+        let source = format!(
+            "v = voice {{ f = saw(freq) |> {stage}(1200, 0.7) ; f * ar(gate, 0.001, 0.05) }}"
+        );
+        let Value::Voice(voice) = eval_voice(&source) else {
+            panic!("expected a voice value for stage {stage}");
+        };
+        assert!(voice.to_spec("v").is_ok(), "{stage} spec must validate");
+    }
+}
+
+#[test]
+fn voice_svf_lowpass_darkens_a_bright_saw() {
+    let raw = render_gated_left(
+        "v = voice { saw(freq) * ar(gate, 0.001, 0.05) }",
+        "v",
+        4_096,
+    );
+    // Direct-call form (no pipe): the input is the first argument.
+    let filtered = render_gated_left(
+        "v = voice { osc = saw(freq) ; svf_lp(osc, 300, 0.7) * ar(gate, 0.001, 0.05) }",
+        "v",
+        4_096,
+    );
+
+    assert!(filtered.iter().map(|s| s.abs()).sum::<f32>() > 1.0);
+    assert!(
+        brightness(&filtered) < brightness(&raw) * 0.5,
+        "a 300 Hz SVF lowpass must strip the saw's highs: {} vs {}",
+        brightness(&filtered),
+        brightness(&raw)
+    );
+}
+
+#[test]
+fn voice_eq_peak_boosts_the_centered_band() {
+    // The carrier sits exactly on the peaking filter's center frequency, so
+    // a +12 dB bell boosts it audibly over the 0 dB (identity) bell.
+    let flat = render_gated_left(
+        "v = voice { s = sine(freq) |> eq_peak(110, 1, 0) ; s * ar(gate, 0.001, 0.05) }",
+        "v",
+        4_096,
+    );
+    let boosted = render_gated_left(
+        "v = voice { s = sine(freq) |> eq_peak(110, 1, 12) ; s * ar(gate, 0.001, 0.05) }",
+        "v",
+        4_096,
+    );
+
+    let flat_energy: f32 = flat.iter().map(|s| s.abs()).sum();
+    let boosted_energy: f32 = boosted.iter().map(|s| s.abs()).sum();
+    assert!(flat_energy > 1.0, "the 0 dB voice must be audible");
+    assert!(
+        boosted_energy > flat_energy * 2.0,
+        "+12 dB at the carrier frequency must boost the band: {boosted_energy} vs {flat_energy}"
+    );
+}
+
+#[test]
+fn voice_svf_cutoff_accepts_a_bound_lfo_signal() {
+    // Params are signals: an LFO sweeping the cutoff must render finite
+    // audio that audibly moves relative to the fixed-cutoff patch.
+    let swept = render_gated_left(
+        "v = voice { lfo = sine(2) * 400 + 800 ; f = saw(freq) |> svf_lp(lfo, 0.7) ; \
+         f * ar(gate, 0.001, 0.05) }",
+        "v",
+        9_600,
+    );
+    let fixed = render_gated_left(
+        "v = voice { f = saw(freq) |> svf_lp(800, 0.7) ; f * ar(gate, 0.001, 0.05) }",
+        "v",
+        9_600,
+    );
+
+    assert!(
+        swept.iter().all(|s| s.is_finite()),
+        "LFO-modulated cutoff must never produce NaN/inf"
+    );
+    assert!(swept.iter().map(|s| s.abs()).sum::<f32>() > 1.0);
+    let difference: f32 = swept.iter().zip(&fixed).map(|(a, b)| (a - b).abs()).sum();
+    assert!(
+        difference > 1.0,
+        "a swept cutoff must move the output away from the fixed one ({difference})"
+    );
+}
+
+#[test]
+fn voice_svf_stages_reject_wrong_arity() {
+    let message = eval_error("bad = voice { saw(freq) |> svf_lp(800) }");
+    assert!(message.contains("svf_lp"), "unexpected error: {message}");
+
+    let message = eval_error("bad = voice { svf_hp(saw(freq), 800, 0.7, 1) }");
+    assert!(message.contains("svf_hp"), "unexpected error: {message}");
+}
+
+#[test]
+fn voice_svf_stages_reject_bad_literal_ranges_at_definition_time() {
+    // Cutoff below the filter's 1 Hz floor.
+    let message = eval_error("bad = voice { saw(freq) |> svf_lp(0, 0.7) }");
+    assert!(
+        message.contains("svf_lp") && message.contains("cutoff"),
+        "unexpected error: {message}"
+    );
+
+    let message = eval_error("bad = voice { saw(freq) |> svf_bp(-100, 0.7) }");
+    assert!(message.contains("svf_bp"), "unexpected error: {message}");
+
+    // Q outside the [0.05, 100] clamp bounds.
+    let message = eval_error("bad = voice { saw(freq) |> svf_lp(800, 500) }");
+    assert!(
+        message.contains("svf_lp") && message.contains('Q'),
+        "unexpected error: {message}"
+    );
+    let message = eval_error("bad = voice { saw(freq) |> svf_notch(800, 0.001) }");
+    assert!(message.contains("svf_notch"), "unexpected error: {message}");
+}
+
+#[test]
+fn voice_eq_peak_rejects_bad_literal_ranges_and_arity() {
+    let message = eval_error("bad = voice { sine(freq) |> eq_peak(800, 1) }");
+    assert!(message.contains("eq_peak"), "unexpected error: {message}");
+
+    // Gain outside the +/-40 dB clamp bounds.
+    let message = eval_error("bad = voice { sine(freq) |> eq_peak(800, 1, 100) }");
+    assert!(
+        message.contains("eq_peak") && message.contains("gain"),
+        "unexpected error: {message}"
+    );
+
+    let message = eval_error("bad = voice { sine(freq) |> eq_peak(0, 1, 6) }");
+    assert!(message.contains("eq_peak"), "unexpected error: {message}");
+}
+
+#[test]
+fn voice_unknown_stage_error_lists_the_filter_stages() {
+    let message = eval_error("bad = voice { warble(freq) }");
+    assert!(
+        message.contains("svf_lp") && message.contains("eq_peak"),
+        "the available-stage list should include the filter stages: {message}"
+    );
+}
+
+#[test]
+fn session_plays_svf_filtered_voice_from_pattern_token() {
+    let mut session = ReplSession::with_engine(EngineHandle::stub());
+    session.eval_line(":tempo 1200").unwrap();
+    session
+        .eval_line(
+            "acid = voice { f = saw(freq) |> svf_lp(900, 0.6) |> eq_peak(500, 1.5, 6) ; \
+             f * ar(gate, 0.001, 0.05) }",
+        )
+        .unwrap();
+    let _ = session.render_test_block_for_tui(1);
+    session.eval_line("line = acid ~ ~ ~").unwrap();
+    let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
+
+    let rendered = session.render_test_block_for_tui(9_600);
+    assert!(rendered.iter().all(|sample| sample.is_finite()));
+    assert!(
+        rendered.iter().any(|sample| sample.abs() > 0.01),
+        "the SVF-filtered voice should be audible from a pattern token"
+    );
+}
