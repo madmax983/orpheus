@@ -3135,11 +3135,20 @@ impl NumberPatternValue {
     /// cycles. Only `PatternRuntime::Cycle` repeats identically by
     /// construction, so only it qualifies.
     pub(crate) fn cycle_invariant_constant(&self) -> Option<f64> {
-        if matches!(self.pattern, PatternRuntime::Cycle(_)) {
+        if self.is_cycle_invariant_literal() {
             self.constant_value().ok()
         } else {
             None
         }
+    }
+
+    /// Returns `true` when this pattern is a plain cycle literal
+    /// (`PatternRuntime::Cycle`), which repeats identically on every cycle
+    /// by construction. Cycle-varying runtimes (`<1 2>`, `choose(...)`,
+    /// one-shot event streams) return `false` even when their first cycle
+    /// looks like a plain literal, because later cycles can differ.
+    pub(crate) const fn is_cycle_invariant_literal(&self) -> bool {
+        matches!(self.pattern, PatternRuntime::Cycle(_))
     }
 
     /// Evaluates the pattern over an arbitrary rational time span.
@@ -5252,6 +5261,53 @@ where
     Ok(composed)
 }
 
+/// Samples a control pattern cycle by cycle over **full** cycle spans and
+/// clips the resulting events to the query window (mirroring
+/// `query_tempo_pattern` and `query_segment`'s full-slot strategy).
+///
+/// Discrete cycle-local controls produce the same events either way, but
+/// continuous controls (`rand`, `choose`, `irand`) draw one deterministic,
+/// site-salted value per cycle instead of one value per query span, keeping
+/// arbitrarily chunked queries identical to whole-span queries.
+fn sample_control_events_by_cycle(
+    control: &PatternRuntime<f64>,
+    span: &TimeSpan,
+) -> Result<Vec<Event<f64>>, EvalError> {
+    if span.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut events = Vec::with_capacity(8);
+    let start_cycle = floor_rational(span.start());
+    let end_cycle = ceil_rational(span.end());
+
+    for cycle in start_cycle..end_cycle {
+        let full_cycle_span = cycle_span(cycle)?;
+        let Some(query_slice) = clip_span(&full_cycle_span, span)? else {
+            continue;
+        };
+
+        for control_event in control.try_query(&full_cycle_span)? {
+            let Some(part) = clip_span(&control_event.part, &query_slice)? else {
+                continue;
+            };
+            if events.len() == 100_000 {
+                return Err(EvalError::new(
+                    "evaluation exceeded the maximum allowed event limit",
+                ));
+            }
+            events.push(Event {
+                whole: None,
+                part,
+                value: control_event.value,
+            });
+        }
+    }
+
+    sort_events(&mut events);
+    Ok(events)
+}
+
 fn apply_control_pattern<T>(
     inner: &PatternRuntime<T>,
     control: &PatternRuntime<f64>,
@@ -5262,7 +5318,7 @@ where
     T: PatternRuntimeValue,
 {
     let source_events = inner.try_query(span)?;
-    let control_events = control.try_query(span)?;
+    let control_events = sample_control_events_by_cycle(control, span)?;
     for event in &control_events {
         kind.validate(event.value)?;
     }
@@ -5320,7 +5376,7 @@ where
     T: PatternRuntimeValue,
 {
     let source_events = inner.try_query(span)?;
-    let control_events = control.try_query(span)?;
+    let control_events = sample_control_events_by_cycle(control, span)?;
     for event in &control_events {
         ControlPatternKind::validate_pitch(event.value)?;
     }
@@ -5395,8 +5451,8 @@ where
     T: PatternRuntimeValue,
 {
     let source_events = inner.try_query(span)?;
-    let start_events = start_control.try_query(span)?;
-    let end_events = end_control.try_query(span)?;
+    let start_events = sample_control_events_by_cycle(start_control, span)?;
+    let end_events = sample_control_events_by_cycle(end_control, span)?;
     validate_slice_endpoint_events(&start_events, "slice start")?;
     validate_slice_endpoint_events(&end_events, "slice end")?;
     if start_events.is_empty() && end_events.is_empty() {
@@ -5446,7 +5502,7 @@ where
     T: PatternRuntimeValue,
 {
     let source_events = inner.try_query(span)?;
-    let control_events = control.try_query(span)?;
+    let control_events = sample_control_events_by_cycle(control, span)?;
     validate_slice_idx_control_events(&control_events, segments)?;
     if control_events.is_empty() {
         return Ok(source_events);
@@ -5483,7 +5539,7 @@ where
     T: PatternRuntimeValue,
 {
     let source_events = inner.try_query(span)?;
-    let control_events = control.try_query(span)?;
+    let control_events = sample_control_events_by_cycle(control, span)?;
     validate_onset_control_events(&control_events)?;
     if control_events.is_empty() {
         return Ok(source_events);

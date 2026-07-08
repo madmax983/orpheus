@@ -2441,6 +2441,11 @@ fn apply_tuning(args: Vec<Value>) -> Result<Value, EvalError> {
             .ok_or_else(|| EvalError::new("`tuning` requires a ratio list argument"))?,
         "tuning",
     )?;
+    if !pattern.is_cycle_invariant_literal() {
+        return Err(EvalError::new(
+            "`tuning` requires a cycle-invariant ratio list; got a pattern that varies by cycle",
+        ));
+    }
     let events = pattern.try_query(&TimeSpan::unit())?;
     if events.is_empty() {
         return Err(EvalError::new("`tuning` requires at least one ratio value"));
@@ -2525,6 +2530,11 @@ fn apply_plugin_notes(args: Vec<Value>) -> Result<Value, EvalError> {
             .ok_or_else(|| EvalError::new("`notes` requires a plugin argument"))?,
         "notes",
     )?;
+    if !notes.is_cycle_invariant_literal() {
+        return Err(EvalError::new(
+            "`notes` requires a cycle-invariant note pattern; got a pattern that varies by cycle",
+        ));
+    }
     let note_events = notes.try_query_unit()?;
     let events = note_events
         .iter()
@@ -2552,6 +2562,11 @@ fn apply_plugin_param(args: Vec<Value>) -> Result<Value, EvalError> {
             .ok_or_else(|| EvalError::new("`p` requires a plugin argument"))?,
         "p",
     )?;
+    if !control.is_cycle_invariant_literal() {
+        return Err(EvalError::new(
+            "`p` requires a cycle-invariant control pattern; got a pattern that varies by cycle",
+        ));
+    }
     let control_events = control.try_query_unit()?;
     let events = control_events
         .iter()
@@ -3266,7 +3281,7 @@ enum SliceIndexControl {
 
 fn extract_gain_control(value: Value) -> Result<NumericControl, EvalError> {
     let pattern = extract_number_pattern(value, "gain")?;
-    if let Ok(gain) = pattern.constant_value() {
+    if let Some(gain) = pattern.cycle_invariant_constant() {
         if !gain.is_finite() {
             return Err(EvalError::new("`gain` requires a finite numeric value"));
         }
@@ -3291,7 +3306,7 @@ fn extract_unit_interval_control(
     builtin_name: &str,
 ) -> Result<NumericControl, EvalError> {
     let pattern = extract_number_pattern(value, builtin_name)?;
-    if let Ok(number) = pattern.constant_value() {
+    if let Some(number) = pattern.cycle_invariant_constant() {
         if !number.is_finite() || !(0.0..=1.0).contains(&number) {
             return Err(EvalError::new(format!(
                 "`{builtin_name}` requires a finite number within [0, 1]"
@@ -3318,7 +3333,7 @@ fn extract_positive_finite_control(
     builtin_name: &str,
 ) -> Result<NumericControl, EvalError> {
     let pattern = extract_number_pattern(value, builtin_name)?;
-    if let Ok(number) = pattern.constant_value() {
+    if let Some(number) = pattern.cycle_invariant_constant() {
         if !number.is_finite() || number <= f64::EPSILON {
             return Err(EvalError::new(format!(
                 "`{builtin_name}` requires a positive finite numeric value"
@@ -3345,7 +3360,7 @@ fn extract_delay_time_control(
     builtin_name: &str,
 ) -> Result<NumericControl, EvalError> {
     let pattern = extract_number_pattern(value, builtin_name)?;
-    if let Ok(number) = pattern.constant_value() {
+    if let Some(number) = pattern.cycle_invariant_constant() {
         if !number.is_finite() || number <= f64::EPSILON || number > 1.0 {
             return Err(EvalError::new(format!(
                 "`{builtin_name}` requires a positive finite numeric value within (0, 1]"
@@ -3372,7 +3387,7 @@ fn extract_compressor_ratio_control(
     builtin_name: &str,
 ) -> Result<NumericControl, EvalError> {
     let pattern = extract_number_pattern(value, builtin_name)?;
-    if let Ok(number) = pattern.constant_value() {
+    if let Some(number) = pattern.cycle_invariant_constant() {
         if !number.is_finite() || number < 1.0 {
             return Err(EvalError::new(format!(
                 "`{builtin_name}` requires a finite numeric value >= 1"
@@ -3396,7 +3411,7 @@ fn extract_compressor_ratio_control(
 
 fn extract_pan_control(value: Value) -> Result<NumericControl, EvalError> {
     let pattern = extract_number_pattern(value, "pan")?;
-    if let Ok(pan) = pattern.constant_value() {
+    if let Some(pan) = pattern.cycle_invariant_constant() {
         if !pan.is_finite() || !(-1.0..=1.0).contains(&pan) {
             return Err(EvalError::new(
                 "`pan` requires a finite number within [-1, 1]",
@@ -3423,7 +3438,7 @@ fn extract_filter_cutoff_control(
     builtin_name: &str,
 ) -> Result<NumericControl, EvalError> {
     let pattern = extract_number_pattern(value, builtin_name)?;
-    if let Ok(cutoff_hz) = pattern.constant_value() {
+    if let Some(cutoff_hz) = pattern.cycle_invariant_constant() {
         if !cutoff_hz.is_finite() || cutoff_hz <= f64::EPSILON {
             return Err(EvalError::new(format!(
                 "`{builtin_name}` requires a positive finite numeric value"
@@ -3447,7 +3462,7 @@ fn extract_filter_cutoff_control(
 
 fn extract_rate_control(value: Value) -> Result<NumericControl, EvalError> {
     let pattern = extract_number_pattern(value, "rate")?;
-    if let Ok(rate) = pattern.constant_value() {
+    if let Some(rate) = pattern.cycle_invariant_constant() {
         if !rate.is_finite() || rate.abs() <= f64::EPSILON {
             return Err(EvalError::new(
                 "`rate` requires a finite non-zero numeric value",
@@ -3471,7 +3486,7 @@ fn extract_rate_control(value: Value) -> Result<NumericControl, EvalError> {
 
 fn extract_resonance_control(value: Value) -> Result<NumericControl, EvalError> {
     let pattern = extract_number_pattern(value, "res")?;
-    if let Ok(resonance) = pattern.constant_value() {
+    if let Some(resonance) = pattern.cycle_invariant_constant() {
         if !resonance.is_finite() || !(0.0..=1.0).contains(&resonance) {
             return Err(EvalError::new(
                 "`res` requires a finite number within [0, 1]",
@@ -3495,7 +3510,7 @@ fn extract_resonance_control(value: Value) -> Result<NumericControl, EvalError> 
 
 fn extract_drive_control(value: Value) -> Result<NumericControl, EvalError> {
     let pattern = extract_number_pattern(value, "drive")?;
-    if let Ok(drive) = pattern.constant_value() {
+    if let Some(drive) = pattern.cycle_invariant_constant() {
         if !drive.is_finite() || drive < 0.0 {
             return Err(EvalError::new(
                 "`drive` requires a finite non-negative numeric value",
@@ -3519,7 +3534,7 @@ fn extract_drive_control(value: Value) -> Result<NumericControl, EvalError> {
 
 fn extract_pulse_width_control(value: Value) -> Result<NumericControl, EvalError> {
     let pattern = extract_number_pattern(value, "pw")?;
-    if let Ok(pulse_width) = pattern.constant_value() {
+    if let Some(pulse_width) = pattern.cycle_invariant_constant() {
         if !pulse_width.is_finite() || !(0.0..1.0).contains(&pulse_width) {
             return Err(EvalError::new(
                 "`pw` requires a finite number in the open interval (0, 1)",
@@ -3546,7 +3561,7 @@ fn extract_slice_endpoint_control(
     context: &str,
 ) -> Result<NumericControl, EvalError> {
     let pattern = extract_number_pattern(value, context)?;
-    if let Ok(number) = pattern.constant_value() {
+    if let Some(number) = pattern.cycle_invariant_constant() {
         if !number.is_finite() || !(0.0..=1.0).contains(&number) {
             return Err(EvalError::new(format!(
                 "`{context}` must be within the closed interval [0, 1]"
@@ -3581,7 +3596,7 @@ fn extract_finite_numeric_control(
     builtin_name: &str,
 ) -> Result<NumericControl, EvalError> {
     let pattern = extract_number_pattern(value, builtin_name)?;
-    if let Ok(semitones) = pattern.constant_value() {
+    if let Some(semitones) = pattern.cycle_invariant_constant() {
         if !semitones.is_finite() {
             return Err(EvalError::new(format!(
                 "`{builtin_name}` requires a finite numeric value"
@@ -3616,6 +3631,11 @@ fn validate_degree_pattern(pattern: &NumberPatternValue) -> Result<(), EvalError
 }
 
 fn extract_pitch_class_values(pattern: &NumberPatternValue) -> Result<Vec<i32>, EvalError> {
+    if !pattern.is_cycle_invariant_literal() {
+        return Err(EvalError::new(
+            "`pitch_class_set` requires a cycle-invariant pitch-class set; got a pattern that varies by cycle",
+        ));
+    }
     let events = pattern.try_query(&TimeSpan::unit())?;
     let mut pitch_classes = Vec::with_capacity(events.len());
     for event in events {
@@ -3626,6 +3646,11 @@ fn extract_pitch_class_values(pattern: &NumberPatternValue) -> Result<Vec<i32>, 
 
 fn extract_interval_set(value: Value) -> Result<Vec<f64>, EvalError> {
     let pattern = extract_number_pattern(value, "chord")?;
+    if !pattern.is_cycle_invariant_literal() {
+        return Err(EvalError::new(
+            "`chord` requires a cycle-invariant interval set; got a pattern that varies by cycle",
+        ));
+    }
     let events = pattern.try_query(&TimeSpan::unit())?;
     let mut intervals = Vec::with_capacity(events.len());
     for event in events {
@@ -3702,7 +3727,7 @@ fn whole_number_from_pitch_class_value(value: f64) -> Result<i32, EvalError> {
 
 fn extract_onset_index_control(value: Value) -> Result<OnsetIndexControl, EvalError> {
     let pattern = extract_number_pattern(value, "onset")?;
-    if let Ok(index) = pattern.constant_value() {
+    if let Some(index) = pattern.cycle_invariant_constant() {
         return Ok(OnsetIndexControl::Constant(validate_onset_index_constant(
             index,
         )?));
@@ -3715,7 +3740,7 @@ fn extract_onset_index_control(value: Value) -> Result<OnsetIndexControl, EvalEr
 
 fn extract_slice_idx_control(value: Value, segments: u32) -> Result<SliceIndexControl, EvalError> {
     let pattern = extract_number_pattern(value, "slice_idx")?;
-    if let Ok(index) = pattern.constant_value() {
+    if let Some(index) = pattern.cycle_invariant_constant() {
         return Ok(SliceIndexControl::Constant(validate_slice_idx_constant(
             index, segments,
         )?));
@@ -4014,7 +4039,7 @@ fn extract_plugin_pattern(
 
 fn extract_constant_number(value: Value, builtin_name: &str) -> Result<f64, EvalError> {
     match value {
-        Value::NumberPattern(pattern) => pattern.constant_value().map_err(|_| {
+        Value::NumberPattern(pattern) => pattern.cycle_invariant_constant().ok_or_else(|| {
             EvalError::new(format!(
                 "`{builtin_name}` requires a constant number argument"
             ))
@@ -4246,6 +4271,23 @@ mod tests {
         assert!(
             matches!(control, super::TempoFactorControl::Pattern(_)),
             "expected the patterned-tempo path for <1 2>"
+        );
+    }
+
+    #[test]
+    fn extract_onset_index_control_keeps_cycle_varying_patterns() {
+        // <0 1> selects onset 0 on cycle 0 and onset 1 on cycle 1; treating
+        // it as the constant 0 silently collapses the alternation.
+        let alternation = crate::value::NumberPatternValue::slowcat(vec![
+            crate::value::NumberPatternValue::constant(0.0),
+            crate::value::NumberPatternValue::constant(1.0),
+        ]);
+        let control =
+            super::extract_onset_index_control(crate::value::Value::NumberPattern(alternation))
+                .unwrap();
+        assert!(
+            matches!(control, super::OnsetIndexControl::Pattern(_)),
+            "expected the patterned path for <0 1>"
         );
     }
 

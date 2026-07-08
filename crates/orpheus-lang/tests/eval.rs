@@ -6127,3 +6127,269 @@ fn fast_patterned_factor_rejects_invalid_later_cycle_values_at_query_time() {
         "unexpected error: {error}"
     );
 }
+
+// === Control-pattern audit: cycle-varying arguments must not freeze at their
+// === cycle-0 value (see PR: control-pattern audit).
+
+/// Every numeric control whose argument alternates per cycle (`<a b>`) must
+/// apply `a` on cycle 0 and `b` on cycle 1 instead of freezing at `a`.
+#[test]
+#[allow(clippy::too_many_lines)]
+fn alternating_numeric_controls_vary_per_cycle() {
+    let cases: &[(&str, &str, f64, f64)] = &[
+        (
+            r#"lead = sample("vox_ah") |> gain(<0.25 0.75>)"#,
+            "gain",
+            0.25,
+            0.75,
+        ),
+        (
+            r#"lead = sample("vox_ah") |> pan(<-1 1>)"#,
+            "pan",
+            -1.0,
+            1.0,
+        ),
+        (
+            r#"lead = sample("vox_ah") |> rate(<1 2>)"#,
+            "rate",
+            1.0,
+            2.0,
+        ),
+        (
+            r#"lead = sample("vox_ah") |> pitch(<0 12>)"#,
+            "rate",
+            1.0,
+            2.0,
+        ),
+        (
+            r#"lead = sample("vox_ah") |> lpf(<400 4000>)"#,
+            "lpf_cutoff_hz",
+            400.0,
+            4000.0,
+        ),
+        (
+            r#"lead = sample("vox_ah") |> hpf(<100 1000>)"#,
+            "hpf_cutoff_hz",
+            100.0,
+            1000.0,
+        ),
+        (
+            r#"lead = sample("vox_ah") |> cutoff(<500 5000>)"#,
+            "lpf_cutoff_hz",
+            500.0,
+            5000.0,
+        ),
+        (
+            r#"lead = sample("vox_ah") |> delay(<0.2 0.8>)"#,
+            "delay_mix",
+            0.2,
+            0.8,
+        ),
+        (
+            r#"lead = sample("vox_ah") |> delay_time(<0.25 0.5>)"#,
+            "delay_time",
+            0.25,
+            0.5,
+        ),
+        (
+            r#"lead = sample("vox_ah") |> delay_feedback(<0.1 0.6>)"#,
+            "delay_feedback",
+            0.1,
+            0.6,
+        ),
+        (
+            r#"lead = sample("vox_ah") |> reverb(<0.2 0.9>)"#,
+            "reverb_mix",
+            0.2,
+            0.9,
+        ),
+        (
+            r#"lead = sample("vox_ah") |> res(<0.1 0.9>)"#,
+            "resonance",
+            0.1,
+            0.9,
+        ),
+        (
+            r#"lead = sample("vox_ah") |> drive(<0 0.5>)"#,
+            "drive",
+            0.0,
+            0.5,
+        ),
+        (
+            r#"lead = sample("vox_ah") |> pw(<0.25 0.75>)"#,
+            "pulse_width",
+            0.25,
+            0.75,
+        ),
+        (
+            r#"lead = sample("vox_ah") |> compressor_ratio(<2 8>)"#,
+            "compressor_ratio",
+            2.0,
+            8.0,
+        ),
+        (
+            r#"lead = sample("vox_ah") |> chorus_rate(<0.5 2>)"#,
+            "chorus_rate",
+            0.5,
+            2.0,
+        ),
+        (
+            r#"lead = sample("vox_ah") |> slice(<0 0.5>, 1)"#,
+            "slice_start",
+            0.0,
+            0.5,
+        ),
+        (
+            r#"lead = sample("vox_ah") |> slice_idx(<0 2>, 4)"#,
+            "slice_start",
+            0.0,
+            0.5,
+        ),
+    ];
+
+    for (program, field, cycle0, cycle1) in cases {
+        let module = eval_module(program, ReplMode::Loose).unwrap();
+        let events = exported_sample_events(module.get("lead").unwrap(), 2);
+        assert_eq!(events.len(), 2, "expected one event per cycle: {program}");
+
+        let observed: Vec<f64> = events
+            .iter()
+            .map(|event| event[*field].as_f64().unwrap())
+            .collect();
+        assert!(
+            (observed[0] - cycle0).abs() < 1e-9 && (observed[1] - cycle1).abs() < 1e-9,
+            "{program}: expected {field} = [{cycle0}, {cycle1}] on cycles 0/1, got {observed:?}"
+        );
+    }
+}
+
+#[test]
+fn transpose_alternating_control_varies_per_cycle_with_exact_spans() {
+    let module = eval_module("m = 60 |> transpose(<0 12>)", ReplMode::Loose).unwrap();
+    let pattern = module.get("m").unwrap().as_number_pattern().unwrap();
+
+    let span = TimeSpan::new(Rational::zero(), Rational::new(2, 1).unwrap()).unwrap();
+    let events = pattern.try_query(&span).unwrap();
+
+    let spans: Vec<(i128, i128, i128, i128, f64)> = events
+        .iter()
+        .map(|event| {
+            (
+                event.part.start().numerator(),
+                event.part.start().denominator(),
+                event.part.end().numerator(),
+                event.part.end().denominator(),
+                event.value,
+            )
+        })
+        .collect();
+    assert_eq!(spans, vec![(0, 1, 1, 1, 60.0), (1, 1, 2, 1, 72.0)]);
+}
+
+#[test]
+fn gain_alternation_with_equal_values_matches_constant_gain() {
+    let patterned = eval_module(
+        r#"lead = sample("vox_ah") |> gain(<0.5 0.5>)"#,
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let constant = eval_module(r#"lead = sample("vox_ah") |> gain(0.5)"#, ReplMode::Loose).unwrap();
+
+    assert_eq!(
+        exported_sample_events(patterned.get("lead").unwrap(), 4),
+        exported_sample_events(constant.get("lead").unwrap(), 4),
+    );
+}
+
+#[test]
+fn transpose_random_choice_control_is_chunking_stable() {
+    // transpose(choose(0, 12), ...) draws a site-salted semitone offset per
+    // cycle; chunked queries must agree with one whole-span query and every
+    // value must come from the offered options.
+    let module = eval_module("m = 0 |> transpose(choose(0, 12))", ReplMode::Loose).unwrap();
+    let pattern = module.get("m").unwrap().as_number_pattern().unwrap();
+
+    let whole_span = TimeSpan::new(Rational::zero(), Rational::new(8, 1).unwrap()).unwrap();
+    let whole_events = pattern.try_query(&whole_span).unwrap();
+
+    let mut chunked_events = Vec::new();
+    for cycle in 0..8 {
+        let span = TimeSpan::new(
+            Rational::new(cycle, 1).unwrap(),
+            Rational::new(cycle + 1, 1).unwrap(),
+        )
+        .unwrap();
+        chunked_events.extend(pattern.try_query(&span).unwrap());
+    }
+
+    assert_eq!(whole_events, chunked_events);
+    assert!(
+        whole_events
+            .iter()
+            .all(|event| event.value.abs() < 1e-9 || (event.value - 12.0).abs() < 1e-9),
+        "each cycle must transpose by 0 or 12, got {whole_events:?}"
+    );
+    // Determinism: re-querying yields the identical event list.
+    assert_eq!(pattern.try_query(&whole_span).unwrap(), whole_events);
+}
+
+/// Arguments that must be constant by contract now reject cycle-varying
+/// patterns with an explicit error instead of silently using the cycle-0
+/// value.
+#[test]
+fn cycle_varying_arguments_to_constant_only_builtins_error() {
+    let cases: &[(&str, &str)] = &[
+        (
+            "drums = bd sn |> every(<1 2>, rev)",
+            "requires a constant number argument",
+        ),
+        (
+            "drums = bd sn |> every(choose(2, 4), rev)",
+            "requires a constant number argument",
+        ),
+        (
+            "drums = hh hh hh hh |> degrade_by(<0.1 0.9>)",
+            "requires a constant number argument",
+        ),
+        (
+            "drums = euclid(<3 5>, 8, hh)",
+            "requires a constant number argument",
+        ),
+        (
+            "drums = bd sn |> shift(<0.25 0.5>)",
+            "requires a constant number argument",
+        ),
+        (
+            "m = range(<0 1>, 1, choose(0, 1))",
+            "requires a constant number argument",
+        ),
+        (
+            "drums = bd sn cp sn |> within(<0 0.5>, 0.5, rev)",
+            "requires a constant number argument",
+        ),
+        (
+            "pad = chord(c4, <0 4>)",
+            "`chord` requires a cycle-invariant interval set",
+        ),
+        (
+            "s = pitch_class_set(<0 3>)",
+            "`pitch_class_set` requires a cycle-invariant pitch-class set",
+        ),
+        (
+            "t = tuning(<1 2>)",
+            "`tuning` requires a cycle-invariant ratio list",
+        ),
+        (
+            r#"synth = notes(<60 64>, vst("TestSynth"))"#,
+            "`notes` requires a cycle-invariant note pattern",
+        ),
+        (
+            r#"synth = p("cutoff", <0.2 0.8>, vst("TestSynth"))"#,
+            "`p` requires a cycle-invariant control pattern",
+        ),
+    ];
+
+    for (program, fragment) in cases {
+        assert_eval_error_contains(program, ReplMode::Loose, &[fragment]);
+    }
+}

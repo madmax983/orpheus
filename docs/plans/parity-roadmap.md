@@ -34,6 +34,24 @@ File paths point the next contributor at the relevant implementation sites.
 - [~] `chaos` — ≈ Tidal `shuffle`, but no subdivision-count argument
 - [x] patternable controls — `gain`/`pan`/`cutoff`/`lpf`/`hpf`/etc. accept
   number patterns (`apply_sample_numeric_control`, builtins.rs)
+- [x] control-pattern audit — cycle-varying control arguments (`<a b>`,
+  `choose(...)`, `rand`, `irand`) no longer freeze at their cycle-0 value.
+  Patterned per cycle (constancy decided structurally via
+  `cycle_invariant_constant`; controls sampled cycle by cycle through
+  `sample_control_events_by_cycle`, value.rs): `gain`, `pan`, `rate`,
+  `pitch`, `transpose`, `lpf`/`hpf`/`cutoff`, `res`, `drive`, `pw`,
+  `delay`/`delay_time`/`delay_feedback`, `reverb`/`reverb_room`/
+  `reverb_damp`, `chorus`/`chorus_depth`/`chorus_rate`, `compressor`/
+  `compressor_threshold`/`compressor_ratio`, `slice`, `slice_idx`, `onset`.
+  Constant-by-contract (cycle-varying arguments now raise an explicit
+  eval error instead of silently collapsing): counts/periods/offsets/bounds
+  (`every`, `when`, `whenmod`, `euclid` pulses/steps/rotation, `run`,
+  `scan`, `iter`, `chunk`, `shuffle_slots`, `segment`, `irand`, `rot`,
+  `shift`, `off`, `within`, `range` bounds, `strum`, `roll`, `arp` steps,
+  `invert`, `drop`, `wolfram`, `lsystem`, `markov`/`wchoose` weights,
+  `choose` options, `degrade_by`/`sometimes_by` probabilities, `midi_cc`
+  controller) and unit-cycle set builders (`chord` intervals,
+  `pitch_class_set`, `tuning` ratios, plugin `notes`/`p` lanes)
 - [x] `cat` / `slowcat` / `append` — PR #1382; `PatternRuntime::SlowCat`
   (value.rs), `apply_cat` (builtins.rs); children keep localized cycle counters
 - [x] `randcat` / `wrandcat` — one child pattern per cycle chosen uniformly
