@@ -4448,6 +4448,228 @@ fn wrandcat_rejects_negative_weights_and_all_zero_weights() {
     );
 }
 
+// --- markov: state-transition pattern sequencing ---
+//
+// `markov(s0, w0_0, ..., w0_{k-1}, s1, w1_0, ..., w1_{k-1}, ...)` takes `k`
+// state patterns, each followed by its `k` outgoing transition weights (in
+// state order). Cycle 0 plays the first state; each later cycle draws the
+// next state from the current state's weight row, deterministically from the
+// call-site salt and the cycle number. Cycles before 0 clamp to the initial
+// state.
+
+#[test]
+fn markov_queries_are_deterministic_across_repeats() {
+    let source = "m = markov(0 1, 1, 2, 2 3 4, 3, 1)";
+    let first = number_event_keys(source, "m", 16);
+    let second = number_event_keys(source, "m", 16);
+    assert!(!first.is_empty());
+    assert_eq!(first, second);
+}
+
+#[test]
+fn markov_is_chunking_stable() {
+    let module = eval_module("m = markov(0 1, 1, 2, 2 3, 3, 1)", ReplMode::Loose).unwrap();
+    let pattern = module.get("m").unwrap().as_number_pattern().unwrap();
+
+    let span = orpheus_lang::render_span(8).unwrap();
+    let whole = pattern.try_query(&span).unwrap();
+    let mut chunked = Vec::new();
+    for cycle in 0..8 {
+        chunked.extend(pattern.try_query(&cycle_time_span(cycle)).unwrap());
+    }
+
+    assert!(!whole.is_empty());
+    assert_eq!(whole.len(), chunked.len());
+    for (a, b) in whole.iter().zip(chunked.iter()) {
+        assert_eq!(a.part.start(), b.part.start());
+        assert!((a.value - b.value).abs() < f64::EPSILON);
+    }
+}
+
+#[test]
+fn markov_state_sequence_is_stable_across_queries() {
+    let source = "m = markov(0, 1, 2, 1, 3, 1)";
+    let first = number_values_per_cycle(source, "m", 20);
+    let second = number_values_per_cycle(source, "m", 20);
+    assert_eq!(first, second);
+    // Querying a late cycle alone must agree with the full walk.
+    let module = eval_module(source, ReplMode::Loose).unwrap();
+    let pattern = module.get("m").unwrap().as_number_pattern().unwrap();
+    for cycle in [5_i64, 13, 19] {
+        let alone: Vec<f64> = pattern
+            .try_query(&cycle_time_span(cycle))
+            .unwrap()
+            .into_iter()
+            .map(|event| event.value)
+            .collect();
+        let index = usize::try_from(cycle).unwrap();
+        assert_eq!(alone, first[index], "cycle {cycle} diverged");
+    }
+}
+
+#[test]
+fn markov_deterministic_matrix_walks_the_exact_state_sequence() {
+    // From state 0 all mass goes to state 1 and vice versa: the chain must
+    // alternate 0, 1, 0, 1, ... starting from the initial state on cycle 0.
+    let per_cycle = number_values_per_cycle("m = markov(0, 0, 1, 1, 1, 0)", "m", 8);
+    for (cycle, values) in per_cycle.iter().enumerate() {
+        let expected = if cycle % 2 == 0 { 0.0 } else { 1.0 };
+        assert_eq!(values.as_slice(), [expected], "cycle {cycle}");
+    }
+}
+
+#[test]
+fn markov_three_state_rotation_cycles_through_all_states() {
+    // 0 -> 1 -> 2 -> 0 -> ... with a deterministic three-state matrix.
+    let per_cycle =
+        number_values_per_cycle("m = markov(0, 0, 1, 0, 1, 0, 0, 1, 2, 1, 0, 0)", "m", 9);
+    for (cycle, values) in per_cycle.iter().enumerate() {
+        #[allow(clippy::cast_precision_loss)]
+        let expected = (cycle % 3) as f64;
+        assert_eq!(values.as_slice(), [expected], "cycle {cycle}");
+    }
+}
+
+#[test]
+fn markov_weights_bias_state_occupancy() {
+    // Both rows put weight 3 on state 1 and weight 1 on state 0, so the
+    // stationary occupancy of state 1 is 3/4; allow a wide margin.
+    let per_cycle = number_values_per_cycle("m = markov(0, 1, 3, 1, 1, 3)", "m", 128);
+    let ones = per_cycle
+        .iter()
+        .filter(|values| values.as_slice() == [1.0])
+        .count();
+    assert!(
+        (70..=122).contains(&ones),
+        "expected state 1 on roughly three quarters of cycles, got {ones}/128"
+    );
+}
+
+#[test]
+fn markov_zero_weight_transitions_never_occur() {
+    // State 0 only loops onto itself, so the chain can never leave it.
+    let per_cycle = number_values_per_cycle("m = markov(0, 1, 0, 1, 1, 0)", "m", 32);
+    for values in &per_cycle {
+        assert_eq!(values.as_slice(), [0.0]);
+    }
+
+    // No row ever puts mass on state 2, so its pattern is never played.
+    let per_cycle =
+        number_values_per_cycle("m = markov(0, 1, 1, 0, 1, 1, 1, 0, 2, 1, 0, 0)", "m", 64);
+    for values in &per_cycle {
+        assert_ne!(values.as_slice(), [2.0], "unreachable state 2 was played");
+    }
+}
+
+#[test]
+fn markov_negative_cycles_clamp_to_the_initial_state() {
+    let module = eval_module("m = markov(0, 0, 1, 1, 1, 0)", ReplMode::Loose).unwrap();
+    let pattern = module.get("m").unwrap().as_number_pattern().unwrap();
+    for cycle in [-3_i64, -2, -1] {
+        let values: Vec<f64> = pattern
+            .try_query(&cycle_time_span(cycle))
+            .unwrap()
+            .into_iter()
+            .map(|event| event.value)
+            .collect();
+        assert_eq!(
+            values,
+            [0.0],
+            "cycle {cycle} did not play the initial state"
+        );
+    }
+}
+
+#[test]
+fn markov_localizes_child_cycles_like_slowcat() {
+    // The deterministic alternator plays its `every(2, ...)` first state on
+    // even cycles; that child advances a localized (`cycle div 2`) counter,
+    // so it is transformed exactly when `(k div 2) mod 2 == 0`.
+    let per_cycle = number_values_per_cycle(
+        "m = markov(every(2, transpose(100), 0 1), 0, 1, 7, 1, 0)",
+        "m",
+        16,
+    );
+    for (cycle, values) in per_cycle.iter().enumerate() {
+        if cycle % 2 == 0 {
+            let expected = if (cycle / 2) % 2 == 0 {
+                [100.0, 101.0]
+            } else {
+                [0.0, 1.0]
+            };
+            assert_eq!(values.as_slice(), expected, "cycle {cycle}");
+        } else {
+            assert_eq!(values.as_slice(), [7.0], "cycle {cycle}");
+        }
+    }
+}
+
+#[test]
+fn markov_composes_under_fast_and_slowcat() {
+    // fast(2, ...) squeezes chain cycles 2k and 2k+1 into cycle k: the
+    // alternator always yields [0, 1] within each cycle.
+    let per_cycle = number_values_per_cycle("m = fast(2, markov(0, 0, 1, 1, 1, 0))", "m", 8);
+    for (cycle, values) in per_cycle.iter().enumerate() {
+        assert_eq!(values.as_slice(), [0.0, 1.0], "cycle {cycle}");
+    }
+
+    // Under slowcat the markov child only advances on the cycles it plays
+    // (localized `cycle div 2` counter), so it still alternates 0, 1, 0, ...
+    let per_cycle = number_values_per_cycle("m = slowcat(markov(0, 0, 1, 1, 1, 0), 7)", "m", 12);
+    for (cycle, values) in per_cycle.iter().enumerate() {
+        if cycle % 2 == 0 {
+            let expected = if (cycle / 2) % 2 == 0 { 0.0 } else { 1.0 };
+            assert_eq!(values.as_slice(), [expected], "cycle {cycle}");
+        } else {
+            assert_eq!(values.as_slice(), [7.0], "cycle {cycle}");
+        }
+    }
+}
+
+#[test]
+fn markov_supports_sample_patterns() {
+    let module = eval_module("drums = markov(bd, 0, 1, sn, 1, 0)", ReplMode::Loose).unwrap();
+    let names = exported_sample_names(module.get("drums").unwrap(), 8);
+    assert_eq!(
+        names,
+        vec!["bd", "sn", "bd", "sn", "bd", "sn", "bd", "sn"],
+        "deterministic alternating chain over samples"
+    );
+}
+
+#[test]
+fn markov_requires_matching_pattern_kinds() {
+    assert_eval_error_contains(
+        "m = markov(bd, 0, 1, 1 2, 1, 0)",
+        ReplMode::Loose,
+        &["`markov`", "same pattern kind"],
+    );
+}
+
+#[test]
+fn markov_rejects_malformed_argument_shapes() {
+    // 7 arguments is not k * (k + 1) for any k >= 2.
+    assert_eval_error_contains(
+        "m = markov(0, 1, 1, 1, 1, 1, 1)",
+        ReplMode::Loose,
+        &["`markov`", "transition weights"],
+    );
+}
+
+#[test]
+fn markov_rejects_negative_weights_and_all_zero_rows() {
+    assert_eval_error_contains(
+        "m = markov(0, -1.0, 1, 1, 1, 1)",
+        ReplMode::Loose,
+        &["`markov`", "non-negative"],
+    );
+    assert_eval_error_contains(
+        "m = markov(0, 0, 0, 1, 1, 1)",
+        ReplMode::Loose,
+        &["`markov`", "positive"],
+    );
+}
+
 #[test]
 fn off_overlays_a_shifted_transformed_copy() {
     let events = number_event_keys("m = 0 3 |> off(0.25, transpose(12))", "m", 1);

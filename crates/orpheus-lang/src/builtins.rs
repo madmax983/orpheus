@@ -125,6 +125,7 @@ fn lookup_pattern_transform(name: &str) -> Option<Value> {
         "cat" | "slowcat" => Some(builtin_function_value(BuiltinKind::Cat)),
         "randcat" => Some(builtin_function_value(BuiltinKind::RandCat)),
         "wrandcat" => Some(builtin_function_value(BuiltinKind::WRandCat)),
+        "markov" => Some(builtin_function_value(BuiltinKind::Markov)),
         "append" => Some(builtin_function_value(BuiltinKind::Append)),
         "iter" => Some(builtin_function_value(BuiltinKind::Iter)),
         "iter_back" => Some(builtin_function_value(BuiltinKind::IterBack)),
@@ -444,6 +445,7 @@ impl BuiltinKind {
             Self::Scan => "scan",
             Self::RandCat => "randcat",
             Self::WRandCat => "wrandcat",
+            Self::Markov => "markov",
             Self::Off => "off",
             Self::Rot => "rot",
             Self::Chunk => "chunk",
@@ -483,6 +485,7 @@ impl BuiltinKind {
                 | Self::WChoose
                 | Self::RandCat
                 | Self::WRandCat
+                | Self::Markov
                 | Self::Euclid
                 | Self::EuclidInv
                 | Self::EuclidFull
@@ -582,6 +585,7 @@ impl BuiltinKind {
             | Self::Choose
             | Self::Notes => 2,
             Self::PluginParam => 3,
+            Self::Markov => 6,
             Self::Rand => 0,
         }
     }
@@ -687,6 +691,7 @@ impl BuiltinKind {
             Self::Cat | Self::Append => apply_cat(args, self.name()),
             Self::RandCat => apply_randcat(args, function.site_salt.unwrap_or_default()),
             Self::WRandCat => apply_wrandcat_patterns(args, function.site_salt.unwrap_or_default()),
+            Self::Markov => apply_markov(args, function.site_salt.unwrap_or_default()),
             Self::Iter => apply_iter(args, false),
             Self::IterBack => apply_iter(args, true),
             Self::Off => apply_off(args),
@@ -1701,6 +1706,138 @@ fn build_randcat(
     Err(EvalError::new(format!(
         "`{builtin_name}` requires all patterns to be the same pattern kind"
     )))
+}
+
+/// Implements `markov(s0, w0_0, ..., w0_{k-1}, s1, w1_0, ..., w1_{k-1}, ...)`:
+/// `k` state patterns, each followed by its `k` outgoing transition weights
+/// (in state order). Cycle 0 plays the first state; each later cycle plays
+/// the state drawn from the current state's weight row, deterministically
+/// from the call-site salt and the cycle number. Zero-weight transitions are
+/// never taken; negative weights and all-zero rows are rejected.
+fn apply_markov(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
+    let state_count = markov_state_count(args.len()).ok_or_else(|| {
+        EvalError::new(
+            "`markov` requires at least two states, each state pattern followed by its \
+             transition weights: `markov(s0, w00, w01, s1, w10, w11, ...)` with \
+             k * (k + 1) arguments for k states",
+        )
+    })?;
+
+    let mut patterns = Vec::with_capacity(state_count);
+    let mut rows = Vec::with_capacity(state_count);
+    let mut args = args.into_iter();
+    for _ in 0..state_count {
+        let pattern = args
+            .next()
+            .expect("argument count was checked to be k * (k + 1)");
+        let mut weights = Vec::with_capacity(state_count);
+        for _ in 0..state_count {
+            let weight = extract_constant_number(
+                args.next()
+                    .expect("argument count was checked to be k * (k + 1)"),
+                "markov",
+            )?;
+            if !weight.is_finite() || weight < 0.0 {
+                return Err(EvalError::new(
+                    "`markov` requires non-negative finite transition weights",
+                ));
+            }
+            weights.push(weight);
+        }
+        patterns.push(pattern);
+        rows.push(markov_cumulative_row(&weights)?);
+    }
+
+    build_markov(patterns, rows, site_salt)
+}
+
+/// Solves `k * (k + 1) == argument_count` for the number of `markov` states
+/// `k >= 2` (each state pattern is followed by its `k` transition weights).
+pub const fn markov_state_count(argument_count: usize) -> Option<usize> {
+    let mut k = 2;
+    while k * (k + 1) <= argument_count {
+        if k * (k + 1) == argument_count {
+            return Some(k);
+        }
+        k += 1;
+    }
+    None
+}
+
+/// Normalizes one state's outgoing weights into cumulative upper bounds.
+///
+/// Entries from the last positive weight onward are pinned to exactly `1.0`
+/// so every unit coin in `[0, 1)` lands on a positive-weight transition;
+/// zero-weight entries keep a bound equal to their predecessor's, so the
+/// strict `coin < upper` draw can never select them.
+fn markov_cumulative_row(weights: &[f64]) -> Result<Vec<f64>, EvalError> {
+    let total: f64 = weights.iter().sum();
+    if total <= 0.0 {
+        return Err(EvalError::new(
+            "`markov` requires at least one positive outgoing weight per state",
+        ));
+    }
+    let last_positive = weights
+        .iter()
+        .rposition(|weight| *weight > 0.0)
+        .expect("a positive weight exists because the row total is positive");
+
+    let mut cumulative = 0.0;
+    Ok(weights
+        .iter()
+        .enumerate()
+        .map(|(index, weight)| {
+            if index >= last_positive {
+                1.0
+            } else {
+                cumulative += weight / total;
+                cumulative
+            }
+        })
+        .collect())
+}
+
+/// Builds the `Markov` runtime from same-kind state pattern arguments.
+fn build_markov(
+    args: Vec<Value>,
+    row_cumulative_weights: Vec<Vec<f64>>,
+    site_salt: u64,
+) -> Result<Value, EvalError> {
+    if args
+        .iter()
+        .all(|value| matches!(value, Value::SamplePattern(_)))
+    {
+        let patterns = args
+            .into_iter()
+            .map(|value| match value {
+                Value::SamplePattern(pattern) => pattern,
+                _ => unreachable!("all arguments were checked to be sample patterns"),
+            })
+            .collect();
+        return Ok(Value::SamplePattern(
+            SamplePatternValue::markov_with_site_salt(patterns, row_cumulative_weights, site_salt),
+        ));
+    }
+
+    if args
+        .iter()
+        .all(|value| matches!(value, Value::NumberPattern(_)))
+    {
+        let patterns = args
+            .into_iter()
+            .map(|value| match value {
+                Value::NumberPattern(pattern) => pattern,
+                _ => unreachable!("all arguments were checked to be number patterns"),
+            })
+            .collect();
+        return Ok(Value::NumberPattern(
+            NumberPatternValue::markov_with_site_salt(patterns, row_cumulative_weights, site_salt),
+        ));
+    }
+
+    Err(EvalError::new(
+        "`markov` requires all state patterns to be the same pattern kind",
+    ))
 }
 
 /// Implements `off(t, f, pattern)`: overlay the pattern with a copy shifted

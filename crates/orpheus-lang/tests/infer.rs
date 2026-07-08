@@ -892,6 +892,69 @@ fn variadic_wrandcat_accepts_more_than_two_pairs() {
 }
 
 #[test]
+fn markov_preserves_pattern_types() {
+    let sample_typed =
+        infer_module("drums = markov(bd, 0, 1, sn, 1, 0)", ReplMode::Strict).unwrap();
+    let number_typed =
+        infer_module("melody = markov(0 1, 1, 2, 2 3, 3, 1)", ReplMode::Strict).unwrap();
+
+    assert_eq!(sample_typed.type_of("drums").to_string(), "Pattern<Sample>");
+    assert_eq!(
+        number_typed.type_of("melody").to_string(),
+        "Pattern<Number>"
+    );
+}
+
+#[test]
+fn variadic_markov_accepts_three_states() {
+    let typed = infer_module(
+        "drums = markov(bd, 0, 1, 0, sn, 0, 0, 1, cp, 1, 0, 0)",
+        ReplMode::Strict,
+    )
+    .unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn strict_mode_rejects_mixed_markov_state_patterns() {
+    // The two-state base form is checked by the environment scheme.
+    let error = infer_module("drums = markov(bd, 0, 1, 1 2, 1, 0)", ReplMode::Strict).unwrap_err();
+    assert!(error.to_string().contains("Sample"));
+
+    // The variadic form is checked by the block-structured special case.
+    let error = infer_module(
+        "drums = markov(bd, 0, 1, 0, sn, 0, 0, 1, 1 2, 1, 0, 0)",
+        ReplMode::Strict,
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("markov"));
+    assert!(error.to_string().contains("same type"));
+}
+
+#[test]
+fn strict_mode_rejects_non_number_markov_weights() {
+    let error = infer_module(
+        "drums = markov(bd, 0, 1, 0, sn, 0, 0, 1, cp, bd, 0, 0)",
+        ReplMode::Strict,
+    )
+    .unwrap_err();
+
+    assert!(error.to_string().contains("markov"));
+}
+
+#[test]
+fn strict_mode_rejects_malformed_markov_argument_counts() {
+    let error = infer_module(
+        "drums = markov(bd, 0, 1, sn, 1, 0, cp, 1)",
+        ReplMode::Strict,
+    )
+    .unwrap_err();
+
+    assert!(error.to_string().contains("markov"));
+}
+
+#[test]
 fn off_preserves_pattern_types() {
     let sample_typed = infer_module("drums = off(0.25, rev, bd sn)", ReplMode::Strict).unwrap();
     let number_typed =

@@ -141,6 +141,9 @@ pub enum BuiltinKind {
     RandCat,
     /// Weighted `randcat` taking interleaved `pattern, weight` pairs (Tidal `wrandcat`).
     WRandCat,
+    /// Plays one state pattern per cycle following a first-order Markov
+    /// chain over per-state transition weights (Tidal `markovPat`).
+    Markov,
     /// Overlays a time-shifted, transformed copy of the pattern (Tidal `off`).
     Off,
     /// Rotates event values across a cycle's onsets while keeping the rhythm (Tidal `rot`).
@@ -262,6 +265,7 @@ impl fmt::Display for BuiltinKind {
             Self::Scan => "scan",
             Self::RandCat => "randcat",
             Self::WRandCat => "wrandcat",
+            Self::Markov => "markov",
             Self::Off => "off",
             Self::Rot => "rot",
             Self::Chunk => "chunk",
@@ -1926,6 +1930,23 @@ impl SamplePatternValue {
         }
     }
 
+    pub(crate) fn markov_with_site_salt(
+        patterns: Vec<Self>,
+        row_cumulative_weights: Vec<Vec<f64>>,
+        site_salt: u64,
+    ) -> Self {
+        Self {
+            pattern: PatternRuntime::Markov {
+                site_salt,
+                row_cumulative_weights,
+                children: patterns
+                    .into_iter()
+                    .map(|pattern| pattern.pattern)
+                    .collect(),
+            },
+        }
+    }
+
     pub(crate) fn rot(self, n: i64) -> Self {
         Self {
             pattern: PatternRuntime::Rot {
@@ -2688,6 +2709,23 @@ impl NumberPatternValue {
         }
     }
 
+    pub(crate) fn markov_with_site_salt(
+        patterns: Vec<Self>,
+        row_cumulative_weights: Vec<Vec<f64>>,
+        site_salt: u64,
+    ) -> Self {
+        Self {
+            pattern: PatternRuntime::Markov {
+                site_salt,
+                row_cumulative_weights,
+                children: patterns
+                    .into_iter()
+                    .map(|pattern| pattern.pattern)
+                    .collect(),
+            },
+        }
+    }
+
     pub(crate) fn rot(self, n: i64) -> Self {
         Self {
             pattern: PatternRuntime::Rot {
@@ -3101,6 +3139,20 @@ enum PatternRuntime<T> {
         cumulative_weights: Option<Vec<f64>>,
         children: Vec<Self>,
     },
+    /// Plays one child per cycle following a first-order Markov chain
+    /// (Tidal `markovPat`): cycle 0 plays child 0, and each later cycle
+    /// draws the next state from the current state's row of normalized
+    /// cumulative transition bounds using one deterministic per-cycle PRNG
+    /// draw. The walk is replayed from the initial state on every query, so
+    /// the state at cycle `k` is a pure function of the site salt and `k`
+    /// and chunked queries see identical states; cycles before 0 clamp to
+    /// the initial state. Like `SlowCat`, the chosen child is queried at
+    /// the localized cycle `cycle div n`.
+    Markov {
+        site_salt: u64,
+        row_cumulative_weights: Vec<Vec<f64>>,
+        children: Vec<Self>,
+    },
     /// Rotates each cycle's event values forward by `n` onsets while keeping
     /// the rhythmic structure (Tidal `rot`): onsets stay put, values shift
     /// and wrap. Negative `n` rotates backwards.
@@ -3492,8 +3544,8 @@ impl<T> PatternRuntime<T> {
             CompressorRatioPattern, CompressorThreshold, CompressorThresholdPattern, Cycle,
             Degrade, Degrees, Delay, DelayFeedback, DelayFeedbackPattern, DelayPattern, DelayTime,
             DelayTimePattern, Drive, DrivePattern, Drop, Every, ExplicitCycle, Fast, Gain,
-            GainPattern, Hpf, HpfPattern, IRand, Invert, Iter, Lpf, LpfPattern, Mask, Onset,
-            OnsetPattern, Pan, PanPattern, Pedal, Pitch, PitchPattern, PulseWidth,
+            GainPattern, Hpf, HpfPattern, IRand, Invert, Iter, Lpf, LpfPattern, Markov, Mask,
+            Onset, OnsetPattern, Pan, PanPattern, Pedal, Pitch, PitchPattern, PulseWidth,
             PulseWidthPattern, Rand, RandCat, Range, Rate, RatePattern, Res, ResPattern, Rev,
             Reverb, ReverbDamp, ReverbDampPattern, ReverbPattern, ReverbRoom, ReverbRoomPattern,
             Roll, Rot, Scan, Segment, Shift, ShuffleSlots, Slice, SliceIdxPattern, SlicePattern,
@@ -3571,6 +3623,18 @@ impl<T> PatternRuntime<T> {
             } => RandCat {
                 site_salt,
                 cumulative_weights,
+                children: children
+                    .into_iter()
+                    .map(|child| child.with_tuning(table))
+                    .collect(),
+            },
+            Markov {
+                site_salt,
+                row_cumulative_weights,
+                children,
+            } => Markov {
+                site_salt,
+                row_cumulative_weights,
                 children: children
                     .into_iter()
                     .map(|child| child.with_tuning(table))
@@ -3943,6 +4007,9 @@ impl<T> PatternRuntime<T> {
             Self::RandCat { children, .. } => children
                 .first()
                 .map_or(Ok(cycle), |child| child.absolute_cycle(cycle)),
+            Self::Markov { children, .. } => children
+                .first()
+                .map_or(Ok(cycle), |child| child.absolute_cycle(cycle)),
             Self::Cycle(_)
             | Self::Stream(_)
             | Self::Rand { .. }
@@ -4073,6 +4140,11 @@ where
                 cumulative_weights,
                 children,
             } => query_randcat(children, cumulative_weights.as_deref(), *site_salt, span),
+            Self::Markov {
+                site_salt,
+                row_cumulative_weights,
+                children,
+            } => query_markov(children, row_cumulative_weights, *site_salt, span),
             Self::Iter { n, back, inner } => query_iter(inner, *n, *back, span),
             Self::Rot { n, inner } => query_rot(inner, *n, span),
             Self::Chunk {
@@ -6213,6 +6285,90 @@ where
 
     sort_events(&mut events);
     Ok(events)
+}
+
+/// Queries a `Markov` runtime: cycle 0 plays child 0 (the initial state) and
+/// each later cycle plays the state drawn from the previous state's
+/// transition row, consuming one deterministic per-cycle PRNG draw per chain
+/// step. The walk is replayed from the initial state on every query — no
+/// cache — so the state at cycle `k` is a pure function of the site salt and
+/// `k`, making chunked and repeated queries identical. Cycles before 0 clamp
+/// to the initial state. Like `slowcat`, the chosen child is queried at the
+/// localized cycle `cycle div n` and translated back, so cycle-dependent
+/// children (`every`, ...) advance on their own compressed timeline.
+fn query_markov<T>(
+    children: &[PatternRuntime<T>],
+    row_cumulative_weights: &[Vec<f64>],
+    site_salt: u64,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() || children.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let child_count = i128::try_from(children.len())
+        .map_err(|_| EvalError::new("`markov` state count exceeded evaluator limits"))?;
+    let mut events = Vec::with_capacity(8);
+    let start_cycle = floor_rational(span.start());
+    let end_cycle = ceil_rational(span.end());
+
+    for cycle in start_cycle..end_cycle {
+        let repeated_cycle_span = cycle_span(cycle)?;
+        let Some(query_slice) = clip_span(&repeated_cycle_span, span)? else {
+            continue;
+        };
+
+        let index = markov_state(site_salt, row_cumulative_weights, cycle);
+        let child = &children[index.min(children.len() - 1)];
+        let child_cycle = cycle.div_euclid(child_count);
+        let forward = cycle.checked_sub(child_cycle).ok_or_else(|| {
+            EvalError::new("cycle index overflowed while localizing a `markov` child")
+        })?;
+        let forward_offset = rational_from_parts(forward, 1)?;
+        let local_offset = rational_sub(&Rational::zero(), &forward_offset)?;
+        let local_query = translate_span(&query_slice, &local_offset)?;
+        let mut child_events = child.try_query(&local_query)?;
+        shift_events(&mut child_events, &forward_offset)?;
+        if events.len() + child_events.len() > 100_000 {
+            return Err(EvalError::new(
+                "evaluation exceeded the maximum allowed event limit",
+            ));
+        }
+        events.extend(child_events);
+    }
+
+    sort_events(&mut events);
+    Ok(events)
+}
+
+/// Walks the Markov chain deterministically from the initial state (state 0)
+/// up to `cycle`, drawing one per-cycle unit coin per step against the
+/// normalized cumulative transition rows. Cycles at or before 0 are the
+/// initial state, so time-travel into negative cycles is well-defined.
+///
+/// Zero-weight transitions carry a cumulative bound equal to the previous
+/// entry, so the strict `coin < upper` comparison can never select them; the
+/// last positive-weight entry of every row is pinned to exactly `1.0` by the
+/// builtin, so every coin in `[0, 1)` lands on a positive-weight transition.
+fn markov_state(site_salt: u64, row_cumulative_weights: &[Vec<f64>], cycle: i128) -> usize {
+    let mut state = 0_usize;
+    if row_cumulative_weights.is_empty() {
+        return state;
+    }
+    let mut step = 1_i128;
+    while step <= cycle {
+        let coin = prng_unit_coin(deterministic_prng(site_salt, step));
+        let row = &row_cumulative_weights[state.min(row_cumulative_weights.len() - 1)];
+        state = row
+            .iter()
+            .position(|upper| coin < *upper)
+            .unwrap_or_else(|| row.len().saturating_sub(1));
+        step += 1;
+    }
+    state
 }
 
 /// Maps a PRNG draw to a uniform coin in `[0, 1)` using its top 53 bits.

@@ -64,6 +64,18 @@ File paths point the next contributor at the relevant implementation sites.
   numeric values only in v1 (`wchoose` takes interleaved `v1, w1, v2, w2, ...`
   pairs); `PatternRuntime::Choose` (value.rs), `apply_choose`/`apply_wchoose`
   (builtins.rs)
+- [x] `markov` — spec:
+  `docs/design/specs/probabilistic_pattern_sequencing_spec.md`; first-order
+  Markov chain over state patterns:
+  `markov(s0, w0_0, ..., w0_{k-1}, s1, w1_0, ..., ...)` takes `k` state
+  patterns each followed by its `k` outgoing transition weights (`k * (k+1)`
+  arguments, no list syntax exists yet — Tidal's `markovPat` list/matrix
+  shape is the remaining gap). Cycle 0 plays state 0; each later cycle draws
+  the next state from the current state's row at deterministic, site-salted
+  random (the walk is replayed per query, so chunked/repeated queries and
+  time-travel are stable; negative cycles clamp to the initial state);
+  `PatternRuntime::Markov` (value.rs), `apply_markov` (builtins.rs); children
+  keep localized (`cycle div n`) cycle counters like `slowcat`
 - [x] `shuffle` / `scramble` with an explicit subdivision count —
   `PatternRuntime::ShuffleSlots` (value.rs), `apply_shuffle_slots`
   (builtins.rs); site-salted per-cycle slot permutation (`shuffle`) or
