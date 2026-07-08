@@ -21,8 +21,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use orpheus_dsp::{
     DEFAULT_ANALOG_BASE_FREQUENCY_HZ, EngineCommand, EngineHandle, GeneratorCycle, GeneratorId,
-    GraphVoiceBank, PatternUpdate, SampleBank, SampleLibraryWatcher, SampleLibraryWatcherConfig,
-    TransportSnapshot, load_sample_bank_from_directory, render_routing_snapshot_to_stem_wavs,
+    GraphVoiceBank, GraphVoiceSpec, PatternUpdate, SampleBank, SampleLibraryWatcher,
+    SampleLibraryWatcherConfig, TransportSnapshot, load_sample_bank_from_directory,
+    render_routing_snapshot_to_stem_wavs,
 };
 use orpheus_pattern::Rational;
 
@@ -859,11 +860,13 @@ impl ReplSession {
         };
 
         let tempo_bpm = self.transport_snapshot().tempo_bpm();
+        let graph_voice_specs = self.graph_voice_specs()?;
         let written = render_routing_snapshot_to_stem_wavs(
             &snapshot,
             cycles,
             tempo_bpm,
             &self.sample_bank,
+            &graph_voice_specs,
             &export_dir,
             include_buses,
         )
@@ -1634,16 +1637,24 @@ impl ReplSession {
     /// never on the audio thread — mirroring the sample bank swap discipline
     /// (ADR 0009/0010).
     fn sync_graph_voice_programs(&mut self) -> Result<(), String> {
+        let specs = self.graph_voice_specs()?;
+        let bank = GraphVoiceBank::with_user_programs(self.engine.sample_rate_hz(), specs);
+        self.engine
+            .enqueue(EngineCommand::ReplaceGraphVoicePrograms(bank))
+            .map_err(|error| format!("failed to enqueue graph voice programs: {error}"))
+    }
+
+    /// Compiles every `voice { ... }` binding to its graph voice program spec,
+    /// keyed by the binding name — the same set the live engine's bank is
+    /// built from, reused by offline stem export.
+    fn graph_voice_specs(&self) -> Result<Vec<GraphVoiceSpec>, String> {
         let mut specs = Vec::new();
         for (name, value) in &self.bindings {
             if let Value::Voice(voice) = value {
                 specs.push(voice.to_spec(name).map_err(|error| error.to_string())?);
             }
         }
-        let bank = GraphVoiceBank::with_user_programs(self.engine.sample_rate_hz(), specs);
-        self.engine
-            .enqueue(EngineCommand::ReplaceGraphVoicePrograms(bank))
-            .map_err(|error| format!("failed to enqueue graph voice programs: {error}"))
+        Ok(specs)
     }
 
     fn has_voice_bindings(&self) -> bool {
@@ -3109,6 +3120,34 @@ mod tests {
         let rendered_dir = parse_exported_stem_dir(&message);
         assert!(rendered_dir.join("drums_track.wav").exists());
         assert!(rendered_dir.join("bass_track.wav").exists());
+
+        let _ = std::fs::remove_dir_all(rendered_dir);
+    }
+
+    #[test]
+    fn export_stems_command_renders_graph_voice_tracks_audibly() {
+        let mut session = ReplSession::new();
+
+        session
+            .eval_line(
+                "pluck = voice { osc = saw(freq) ; env = adsr(gate, 0.001, 0.02, 0.5, 0.05) ; osc * env }",
+            )
+            .unwrap();
+        session.eval_line("lead = pluck pluck").unwrap();
+        session.eval_line(":track new lead_track").unwrap();
+        session.eval_line(":track bind lead_track lead").unwrap();
+
+        let message = session.eval_line(":export stems 1").unwrap();
+        assert!(message.contains("exported 1 stem(s)"));
+        let rendered_dir = parse_exported_stem_dir(&message);
+        let path = rendered_dir.join("lead_track.wav");
+        assert!(path.exists(), "missing stem `lead_track.wav`");
+        let mut reader = hound::WavReader::open(&path).unwrap();
+        let nonzero = reader
+            .samples::<i16>()
+            .map(Result::unwrap)
+            .any(|sample| sample != 0);
+        assert!(nonzero, "graph voice stem should contain rendered audio");
 
         let _ = std::fs::remove_dir_all(rendered_dir);
     }

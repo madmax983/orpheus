@@ -18,6 +18,7 @@ use thiserror::Error;
 use crate::SampleTrigger;
 use crate::effects::BusEffectState;
 use crate::engine::{DEFAULT_SAMPLE_RATE, DEFAULT_TEMPO_BPM, EngineError, frames_per_cycle};
+use crate::graph_voice::{GraphVoiceBank, GraphVoiceSpec, graph_note_params};
 use crate::plugin_host::PluginProcessor;
 use crate::routing::{RoutingSnapshot, TrackId, TrackSource};
 use crate::sample_bank::SampleBank;
@@ -159,6 +160,7 @@ pub fn render_routing_snapshot_to_stereo_for_test(
 
     let mut active_voices: Vec<Option<ActiveVoice>> =
         (0..MAX_ACTIVE_VOICES).map(|_| None).collect();
+    let mut graph_voices = offline_graph_voice_bank(&[]);
     let mut track_mix_buffer = vec![(0.0_f32, 0.0_f32); snapshot.tracks().len()];
     let mut bus_mix_buffer = vec![(0.0_f32, 0.0_f32); snapshot.buses().len()];
     let mut bus_effect_states = snapshot
@@ -180,10 +182,12 @@ pub fn render_routing_snapshot_to_stereo_for_test(
             frames_per_cycle,
             &mut scheduler,
             &mut active_voices,
+            &mut graph_voices,
             sample_bank,
         )?;
         let mut mix_state = SnapshotMixState {
             active_voices: &mut active_voices,
+            graph_voices: &mut graph_voices,
             track_mix_buffer: &mut track_mix_buffer,
             bus_mix_buffer: &mut bus_mix_buffer,
             bus_effect_states: &mut bus_effect_states,
@@ -208,6 +212,12 @@ pub fn render_routing_snapshot_to_stereo_for_test(
 /// Track stems are written for bound, unmuted tracks. When `include_buses` is
 /// true, bus stems are also written as post-effect stereo files.
 ///
+/// Tokens the sample bank and built-in synth fallbacks do not resolve are
+/// routed to the graph voice bank exactly like the live engine (ADR 0009):
+/// built-in graph programs (e.g. `gsine`) are always available, and
+/// `graph_voice_specs` supplies the user-defined `voice { ... }` programs to
+/// register alongside them.
+///
 /// Returns the final deterministic file paths that were generated and written
 /// to the disk output directory. This is useful for providing feedback to the user
 /// about where their rendered stems are located.
@@ -225,6 +235,7 @@ pub fn render_routing_snapshot_to_stem_wavs(
     cycle_count: u64,
     tempo_bpm: f32,
     sample_bank: &SampleBank,
+    graph_voice_specs: &[GraphVoiceSpec],
     output_dir: impl AsRef<Path>,
     include_buses: bool,
 ) -> Result<Vec<PathBuf>, OfflineRenderError> {
@@ -249,6 +260,7 @@ pub fn render_routing_snapshot_to_stem_wavs(
 
     let mut active_voices: Vec<Option<ActiveVoice>> =
         (0..MAX_ACTIVE_VOICES).map(|_| None).collect();
+    let mut graph_voices = offline_graph_voice_bank(graph_voice_specs);
     let mut track_mix_buffer = vec![(0.0_f32, 0.0_f32); snapshot.tracks().len()];
     let mut bus_mix_buffer = vec![(0.0_f32, 0.0_f32); snapshot.buses().len()];
     let mut track_stem_frame = vec![(0.0_f32, 0.0_f32); snapshot.tracks().len()];
@@ -281,10 +293,12 @@ pub fn render_routing_snapshot_to_stem_wavs(
             frames_per_cycle,
             &mut scheduler,
             &mut active_voices,
+            &mut graph_voices,
             sample_bank,
         )?;
         let mut mix_state = SnapshotMixState {
             active_voices: &mut active_voices,
+            graph_voices: &mut graph_voices,
             track_mix_buffer: &mut track_mix_buffer,
             bus_mix_buffer: &mut bus_mix_buffer,
             bus_effect_states: &mut bus_effect_states,
@@ -360,6 +374,15 @@ fn write_rendered_stem_wavs(
     Ok(written_paths)
 }
 
+/// Builds the pooled graph voice bank the offline renderer triggers, mirroring
+/// the live engine's bank: every built-in program plus the supplied user
+/// `voice { ... }` specs. Offline rendering runs off the audio thread, so
+/// building (which allocates) here is fine.
+fn offline_graph_voice_bank(graph_voice_specs: &[GraphVoiceSpec]) -> GraphVoiceBank {
+    #[allow(clippy::cast_precision_loss)]
+    GraphVoiceBank::with_user_programs(DEFAULT_SAMPLE_RATE as f32, graph_voice_specs.to_vec())
+}
+
 fn schedule_snapshot_cycles(
     snapshot: &RoutingSnapshot,
     cycle_count: u64,
@@ -390,11 +413,13 @@ fn activate_due_snapshot_voices(
     frames_per_cycle: u64,
     scheduler: &mut Scheduler,
     active_voices: &mut [Option<ActiveVoice>],
+    graph_voices: &mut GraphVoiceBank,
     sample_bank: &SampleBank,
 ) -> Result<(), OfflineRenderError> {
     while let Some(trigger) = scheduler.pop_due(frame) {
         activate_voice(
             active_voices,
+            graph_voices,
             sample_bank,
             &trigger,
             DEFAULT_SAMPLE_RATE,
@@ -407,6 +432,7 @@ fn activate_due_snapshot_voices(
 
 struct SnapshotMixState<'a> {
     active_voices: &'a mut [Option<ActiveVoice>],
+    graph_voices: &'a mut GraphVoiceBank,
     track_mix_buffer: &'a mut [(f32, f32)],
     bus_mix_buffer: &'a mut [(f32, f32)],
     bus_effect_states: &'a mut [Option<BusEffectState>],
@@ -427,6 +453,7 @@ fn mix_snapshot_frame(
     state.track_mix_buffer.fill((0.0, 0.0));
     state.bus_mix_buffer.fill((0.0, 0.0));
     mix_offline_voices_into_tracks(state.active_voices, state.track_mix_buffer);
+    state.graph_voices.render_frame(state.track_mix_buffer);
     mix_offline_plugins_into_tracks(
         snapshot,
         state.plugin_processors,
@@ -496,6 +523,7 @@ fn mix_snapshot_frame_with_stems(
     stem_frame.tracks.fill((0.0, 0.0));
     stem_frame.buses.fill((0.0, 0.0));
     mix_offline_voices_into_tracks(state.active_voices, state.track_mix_buffer);
+    state.graph_voices.render_frame(state.track_mix_buffer);
     mix_offline_plugins_into_tracks(
         snapshot,
         state.plugin_processors,
@@ -633,12 +661,17 @@ fn render_events_to_pcm(
 
     let mut active_voices: Vec<Option<ActiveVoice>> =
         (0..MAX_ACTIVE_VOICES).map(|_| None).collect();
+    let mut graph_voices = offline_graph_voice_bank(&[]);
+    // Every event is scheduled on track 0, so one mix slot collects both the
+    // sample/synth voices and the graph voices.
+    let mut track_mix_buffer = [(0.0_f32, 0.0_f32); 1];
     let mut rendered = Vec::with_capacity(total_samples);
 
     for frame in 0..total_frames {
         while let Some(trigger) = scheduler.pop_due(frame) {
             activate_voice(
                 &mut active_voices,
+                &mut graph_voices,
                 sample_bank,
                 &trigger,
                 DEFAULT_SAMPLE_RATE,
@@ -646,7 +679,10 @@ fn render_events_to_pcm(
             )?;
         }
 
-        let (left, right) = mix_voices(&mut active_voices);
+        track_mix_buffer[0] = (0.0, 0.0);
+        mix_offline_voices_into_tracks(&mut active_voices, &mut track_mix_buffer);
+        graph_voices.render_frame(&mut track_mix_buffer);
+        let (left, right) = track_mix_buffer[0];
         rendered.push(i32::from(float_to_pcm16(left)));
         rendered.push(i32::from(float_to_pcm16(right)));
     }
@@ -741,58 +777,67 @@ fn write_flac(path: &Path, samples: &[i32]) -> Result<(), OfflineRenderError> {
 
 fn activate_voice(
     active_voices: &mut [Option<ActiveVoice>],
+    graph_voices: &mut GraphVoiceBank,
     sample_bank: &SampleBank,
     scheduled_trigger: &ScheduledTrigger,
     sample_rate: u32,
     frames_per_cycle: u64,
 ) -> Result<(), OfflineRenderError> {
     if let Some(slot) = active_voices.iter_mut().find(|slot| slot.is_none()) {
-        *slot = Some(
-            if let Some((sample, resolved_trigger)) =
-                sample_bank.resolve_trigger(&scheduled_trigger.trigger)
-            {
-                ActiveVoice::from_sample(
-                    scheduled_trigger.track_id,
-                    sample,
-                    sample_rate,
-                    frames_per_cycle,
-                    &resolved_trigger,
-                )
-            } else if let Some(voice) = scheduled_trigger.fallback_voice {
-                ActiveVoice::from_trigger(
-                    scheduled_trigger.track_id,
-                    voice,
-                    sample_rate,
-                    frames_per_cycle,
-                    &scheduled_trigger.trigger,
-                    scheduled_trigger.duration_frames,
-                    crate::DEFAULT_ANALOG_BASE_FREQUENCY_HZ,
-                )
-            } else {
-                return Err(OfflineRenderError::UnknownSampleToken(
-                    scheduled_trigger.trigger.token().into(),
-                ));
-            },
-        );
-    }
-
-    Ok(())
-}
-
-fn mix_voices(active_voices: &mut [Option<ActiveVoice>]) -> (f32, f32) {
-    let mut left = 0.0_f32;
-    let mut right = 0.0_f32;
-    for slot in active_voices {
-        if let Some(voice) = slot.as_mut() {
-            if let Some((voice_left, voice_right)) = voice.next_stereo_frame() {
-                left += voice_left;
-                right += voice_right;
-            } else {
-                *slot = None;
-            }
+        if let Some((sample, resolved_trigger)) =
+            sample_bank.resolve_trigger(&scheduled_trigger.trigger)
+        {
+            *slot = Some(ActiveVoice::from_sample(
+                scheduled_trigger.track_id,
+                sample,
+                sample_rate,
+                frames_per_cycle,
+                &resolved_trigger,
+            ));
+            return Ok(());
         }
+        if let Some(voice) = scheduled_trigger.fallback_voice {
+            *slot = Some(ActiveVoice::from_trigger(
+                scheduled_trigger.track_id,
+                voice,
+                sample_rate,
+                frames_per_cycle,
+                &scheduled_trigger.trigger,
+                scheduled_trigger.duration_frames,
+                crate::DEFAULT_ANALOG_BASE_FREQUENCY_HZ,
+            ));
+            return Ok(());
+        }
+    } else if sample_bank
+        .resolve_trigger(&scheduled_trigger.trigger)
+        .is_some()
+        || scheduled_trigger.fallback_voice.is_some()
+    {
+        // Every voice slot is sounding: drop the trigger, matching the live
+        // engine's allocation discipline.
+        return Ok(());
     }
-    (left.clamp(-1.0, 1.0), right.clamp(-1.0, 1.0))
+
+    // Tokens the sample bank and built-in fallbacks do not own may name a
+    // pooled graph voice program, exactly as in the live engine (ADR 0009).
+    let token = scheduled_trigger.trigger.token();
+    if graph_voices.has_program(token) {
+        let (freq_hz, gain, pan) = graph_note_params(
+            &scheduled_trigger.trigger,
+            crate::DEFAULT_ANALOG_BASE_FREQUENCY_HZ,
+        );
+        let _ = graph_voices.trigger(
+            token,
+            scheduled_trigger.track_id,
+            scheduled_trigger.duration_frames,
+            freq_hz,
+            gain,
+            pan,
+        );
+        return Ok(());
+    }
+
+    Err(OfflineRenderError::UnknownSampleToken(token.into()))
 }
 
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
