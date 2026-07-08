@@ -10,6 +10,7 @@
 
 mod adapters;
 mod combinators;
+mod filters;
 mod helpers;
 mod node;
 mod primitives;
@@ -27,6 +28,9 @@ pub use primitives::{
     OnePoleNode, PanNode, PassthroughNode, SineNode, SumNode, WireNode, adsr, ar, constant,
     delay_line, fdelay, one_pole, pan, passthrough, sine, sum, wire,
 };
+
+// Filters (multi-mode: TPT SVF + RBJ biquad)
+pub use filters::{BiquadMode, BiquadNode, SvfNode, biquad, svf};
 
 // Adapters (existing synth/ primitive wrappers)
 pub use adapters::{

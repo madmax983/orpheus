@@ -173,8 +173,18 @@ Module: `crates/orpheus-dsp/src/graph/` (ADR 0004).
 - [x] `sum` / `passthrough` / `constant` / `wire`
 - [x] `soft_sat`
 - [x] `Processor` + `pipe`/`bind`
-- [ ] biquad filter node
-- [ ] SVF (state-variable filter) node
+- [x] biquad filter node — `biquad(sample_rate_hz, mode)`, RBJ Audio EQ
+  Cookbook in transposed direct form II; modes lowpass/highpass/bandpass/
+  notch/peaking (peaking adds a gain\_db input channel); coefficients
+  recomputed per block from the block-start parameter values
+  (`crates/orpheus-dsp/src/graph/filters.rs`); remaining: shelving modes
+  (lowshelf/highshelf), voice-body exposure
+- [x] SVF (state-variable filter) node — `svf(sample_rate_hz)`, Cytomic/
+  Andrew Simper TPT topology, per-sample coefficients so cutoff/Q may sweep
+  at audio rate; 3-in (audio, cutoff\_hz, q)/4-out (lowpass, highpass,
+  bandpass, notch) split source with exact `lp + bp + hp == input`
+  complementarity (`crates/orpheus-dsp/src/graph/filters.rs`); remaining:
+  voice-body exposure (e.g. an `svf` stage in `voice { ... }`)
 - [x] ADSR / AR envelope nodes — `adsr`/`ar`
   (`crates/orpheus-dsp/src/graph/primitives.rs`)
 - [x] fractional / modulatable delay line — `fdelay(sample_rate_hz,
