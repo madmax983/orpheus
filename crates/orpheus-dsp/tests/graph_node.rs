@@ -4,6 +4,7 @@
 
 use orpheus_dsp::{
     Node, adsr, ar, constant, delay_line, one_pole, pan, passthrough, sine, sum, wire,
+    wire_with_inputs,
 };
 
 const SR: f32 = 48_000.0;
@@ -599,4 +600,24 @@ fn pan_scales_audio_linearly() {
     let expected = 0.5 * std::f32::consts::FRAC_1_SQRT_2;
     assert!((left[0] - expected).abs() < 1e-4);
     assert!((right[0] - expected).abs() < 1e-4);
+}
+
+#[test]
+fn wire_with_inputs_drops_unselected_channels() {
+    // An explicit input width lets the mapping ignore trailing channels —
+    // the selector shape used to pick one response from a multi-output
+    // filter (e.g. the SVF's [lowpass, highpass, bandpass, notch]).
+    let mut node = wire_with_inputs(&[1], 4);
+    assert_eq!(node.inputs(), 4);
+    assert_eq!(node.outputs(), 1);
+
+    let in0 = vec![10.0_f32; FRAMES];
+    let in1 = vec![20.0_f32; FRAMES];
+    let in2 = vec![30.0_f32; FRAMES];
+    let in3 = vec![40.0_f32; FRAMES];
+    let mut out = vec![0.0_f32; FRAMES];
+
+    node.process(&[&in0, &in1, &in2, &in3], &mut [&mut out], FRAMES);
+
+    assert!(out.iter().all(|&s| (s - 20.0).abs() < f32::EPSILON));
 }

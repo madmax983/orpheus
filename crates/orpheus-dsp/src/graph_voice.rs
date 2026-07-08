@@ -22,9 +22,9 @@ use thiserror::Error;
 
 use crate::SampleTrigger;
 use crate::graph::{
-    Node, Processor, Seq, adsr, ar, bind, constant, delay_line, fdelay, feedback, gain_node,
-    ladder_filter, merge, noise, pan, par, passthrough, pulse, sample_player, saw, seq, sine,
-    soft_sat, sum, tri, wire,
+    BiquadMode, Node, Processor, Seq, adsr, ar, bind, biquad, constant, delay_line, fdelay,
+    feedback, gain_node, ladder_filter, merge, noise, pan, par, passthrough, pulse, sample_player,
+    saw, seq, sine, soft_sat, sum, svf, tri, wire, wire_with_inputs,
 };
 use crate::routing::TrackId;
 use crate::sample_bank::PlaybackSample;
@@ -209,6 +209,37 @@ pub enum VoiceSignalRef {
     Feedback(u32),
 }
 
+/// The response selected from the four simultaneous outputs of the TPT
+/// state-variable filter ([`crate::graph::SvfNode`]).
+///
+/// The node computes all four responses every sample; a
+/// [`VoiceNodeSpec::Svf`] keeps exactly one of them, so the spec DAG's
+/// one-output-per-node bus accounting holds.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SvfMode {
+    /// 12 dB/octave low-pass.
+    Lowpass,
+    /// 12 dB/octave high-pass.
+    Highpass,
+    /// Band-pass, normalized to unity gain at the center frequency.
+    Bandpass,
+    /// Band-reject with a null at the center frequency.
+    Notch,
+}
+
+impl SvfMode {
+    /// The SVF output channel carrying this response
+    /// (`[lowpass, highpass, bandpass, notch]`).
+    const fn output_channel(self) -> u32 {
+        match self {
+            Self::Lowpass => 0,
+            Self::Highpass => 1,
+            Self::Bandpass => 2,
+            Self::Notch => 3,
+        }
+    }
+}
+
 /// One node in a declarative [`GraphVoiceSpec`].
 ///
 /// Each variant maps onto one existing graph-module primitive; the spec is a
@@ -278,6 +309,37 @@ pub enum VoiceNodeSpec {
         cutoff_hz: VoiceSignalRef,
         /// The resonance signal.
         resonance: VoiceSignalRef,
+    },
+    /// One response of the TPT state-variable filter ([`SvfMode`] picks
+    /// which), with coefficients recomputed every sample — cutoff and Q are
+    /// signals and may sweep at audio rate (e.g. an LFO on the cutoff).
+    Svf {
+        /// The audio signal to filter.
+        input: VoiceSignalRef,
+        /// The cutoff/center frequency signal in Hertz (clamped to
+        /// \[1, 0.49 x sample rate\] at render time).
+        cutoff_hz: VoiceSignalRef,
+        /// The Q signal (clamped to \[0.05, 100\] at render time).
+        q: VoiceSignalRef,
+        /// Which of the filter's four simultaneous responses this node
+        /// outputs.
+        mode: SvfMode,
+    },
+    /// An RBJ-cookbook peaking (bell) EQ biquad, with coefficients
+    /// recomputed once per processed block from the block-start parameter
+    /// values.
+    EqPeak {
+        /// The audio signal to filter.
+        input: VoiceSignalRef,
+        /// The center frequency signal in Hertz (clamped to
+        /// \[1, 0.49 x sample rate\] at render time).
+        freq_hz: VoiceSignalRef,
+        /// The Q (bandwidth) signal (clamped to \[0.05, 100\] at render
+        /// time).
+        q: VoiceSignalRef,
+        /// The bell gain signal in decibels — positive boosts, negative cuts
+        /// (clamped to \[-40, 40\] at render time).
+        gain_db: VoiceSignalRef,
     },
     /// Soft saturation.
     Drive {
@@ -358,6 +420,18 @@ impl VoiceNodeSpec {
                 cutoff_hz,
                 resonance,
             } => vec![*input, *cutoff_hz, *resonance],
+            Self::Svf {
+                input,
+                cutoff_hz,
+                q,
+                ..
+            } => vec![*input, *cutoff_hz, *q],
+            Self::EqPeak {
+                input,
+                freq_hz,
+                q,
+                gain_db,
+            } => vec![*input, *freq_hz, *q, *gain_db],
             Self::Drive { input, amount } => vec![*input, *amount],
             Self::Mul { left, right } | Self::Add { left, right } => vec![*left, *right],
             Self::Delay { input, .. } => vec![*input],
@@ -388,6 +462,27 @@ impl VoiceNodeSpec {
                 f(input);
                 f(cutoff_hz);
                 f(resonance);
+            }
+            Self::Svf {
+                input,
+                cutoff_hz,
+                q,
+                ..
+            } => {
+                f(input);
+                f(cutoff_hz);
+                f(q);
+            }
+            Self::EqPeak {
+                input,
+                freq_hz,
+                q,
+                gain_db,
+            } => {
+                f(input);
+                f(freq_hz);
+                f(q);
+                f(gain_db);
             }
             Self::Drive { input, amount } => {
                 f(input);
@@ -445,6 +540,8 @@ impl VoiceNodeSpec {
             | Self::Pulse { .. }
             | Self::Noise { .. }
             | Self::Lowpass { .. }
+            | Self::Svf { .. }
+            | Self::EqPeak { .. }
             | Self::Drive { .. }
             | Self::Mul { .. }
             | Self::Add { .. }
@@ -834,6 +931,20 @@ impl GraphVoiceSpec {
                 par(envelope, passthrough(bus))
             }
             VoiceNodeSpec::Lowpass { .. } => par(ladder_filter(sample_rate_hz), passthrough(bus)),
+            VoiceNodeSpec::Svf { mode, .. } => {
+                // The SVF computes [lowpass, highpass, bandpass, notch]
+                // simultaneously; a fixed-width wire keeps the selected
+                // response and drops the rest, preserving the bus's
+                // one-output-per-node shape.
+                let select = wire_with_inputs(&[mode.output_channel()], 4);
+                let filter = seq(svf(sample_rate_hz), select)
+                    .unwrap_or_else(|error| panic!("svf response selector must compose: {error}"));
+                par(filter, passthrough(bus))
+            }
+            VoiceNodeSpec::EqPeak { .. } => par(
+                biquad(sample_rate_hz, BiquadMode::Peaking),
+                passthrough(bus),
+            ),
             VoiceNodeSpec::Drive { .. } => par(soft_sat(), passthrough(bus)),
             VoiceNodeSpec::Mul { .. } => par(gain_node(), passthrough(bus)),
             VoiceNodeSpec::Add { .. } => par(sum(2), passthrough(bus)),

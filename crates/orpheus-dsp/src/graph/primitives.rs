@@ -692,3 +692,27 @@ pub fn wire(mapping: &[u32]) -> WireNode {
         input_count,
     }
 }
+
+/// Creates a channel routing node with an explicit input width.
+///
+/// Like [`wire`], `mapping[i]` specifies which input channel feeds output
+/// channel `i`, but the node consumes exactly `inputs` channels instead of
+/// inferring `max(mapping) + 1` — so channels above the highest mapped index
+/// are dropped. This is the selector shape for keeping a subset of a
+/// multi-output node's channels (e.g. one response of the four-output SVF).
+///
+/// # Panics
+///
+/// Panics if `mapping` is empty or any mapped index is `>= inputs`.
+#[must_use]
+pub fn wire_with_inputs(mapping: &[u32], inputs: u32) -> WireNode {
+    assert!(!mapping.is_empty(), "wire mapping must not be empty");
+    assert!(
+        mapping.iter().all(|&index| index < inputs),
+        "wire mapping indices must be within the declared input width"
+    );
+    WireNode {
+        mapping: mapping.to_vec(),
+        input_count: inputs,
+    }
+}

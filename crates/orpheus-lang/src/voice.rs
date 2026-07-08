@@ -2,7 +2,8 @@
 //!
 //! A voice block describes a playable instrument over the graph vocabulary
 //! that `orpheus-dsp` exposes (oscillators, gate-driven envelopes, the ladder
-//! low-pass filter, saturation, and arithmetic mixing). The compiler lowers
+//! low-pass filter, the multi-mode SVF and peaking-EQ filters, saturation,
+//! and arithmetic mixing). The compiler lowers
 //! the block into a flat, declarative [`VoiceNodeSpec`] DAG; the session
 //! attaches the binding name as the pattern token and ships the finished
 //! [`GraphVoiceSpec`] to the engine (ADR 0009/0010).
@@ -20,9 +21,10 @@ use std::collections::BTreeMap;
 use comfy_table::Cell;
 use crossterm::style::Stylize;
 use orpheus_dsp::{
-    DEFAULT_GRAPH_VOICE_POLYPHONY, GraphVoiceSpec, MAX_GRAPH_VOICE_POLYPHONY,
-    MAX_VOICE_DELAY_SECONDS, MODULATED_VOICE_DELAY_MAX_SECONDS, SampleBank, StealPolicy,
-    VoiceNodeSpec, VoiceSignalRef,
+    DEFAULT_GRAPH_VOICE_POLYPHONY, FILTER_MAX_GAIN_DB, FILTER_MAX_Q, FILTER_MIN_FREQUENCY_HZ,
+    FILTER_MIN_Q, GraphVoiceSpec, MAX_GRAPH_VOICE_POLYPHONY, MAX_VOICE_DELAY_SECONDS,
+    MODULATED_VOICE_DELAY_MAX_SECONDS, SampleBank, StealPolicy, SvfMode, VoiceNodeSpec,
+    VoiceSignalRef,
 };
 
 use crate::ast::{BinaryOp, Expr, GraphBinding};
@@ -426,6 +428,8 @@ impl<'bank> VoiceCompiler<'bank> {
             "adsr" => self.compile_adsr(args, piped),
             "ar" => self.compile_ar(args, piped),
             "lowpass" => self.compile_lowpass(args, piped),
+            "svf_lp" | "svf_hp" | "svf_bp" | "svf_notch" => self.compile_svf(name, args, piped),
+            "eq_peak" => self.compile_eq_peak(args, piped),
             "drive" => self.compile_drive(args, piped),
             "gain" => self.compile_gain(args, piped),
             "delay" => self.compile_delay(args, piped),
@@ -434,8 +438,9 @@ impl<'bank> VoiceCompiler<'bank> {
             "sample" => self.compile_sample(args, piped),
             other => Err(EvalError::new(format!(
                 "unknown voice stage `{other}`; available stages are `sine`, `saw`, `tri`, \
-                 `pulse`, `noise`, `sample`, `adsr`, `ar`, `lowpass`, `drive`, `gain`, \
-                 `delay`, `feedback`, and `fan`"
+                 `pulse`, `noise`, `sample`, `adsr`, `ar`, `lowpass`, `svf_lp`, `svf_hp`, \
+                 `svf_bp`, `svf_notch`, `eq_peak`, `drive`, `gain`, `delay`, `feedback`, \
+                 and `fan`"
             ))),
         }
     }
@@ -595,6 +600,81 @@ impl<'bank> VoiceCompiler<'bank> {
             input: signals[0],
             cutoff_hz: signals[1],
             resonance: signals[2],
+        })
+    }
+
+    /// Compiles `svf_lp`/`svf_hp`/`svf_bp`/`svf_notch` — one response of the
+    /// TPT state-variable filter, `(input, cutoff_hz, q)` like `lowpass`.
+    /// The SVF recomputes its coefficients every sample, so cutoff and Q may
+    /// be bound signals (`saw(freq) |> svf_lp(lfo, 0.7)` sweeps the cutoff
+    /// with an LFO). Literal parameters are range-checked here at definition
+    /// time; signal parameters clamp at render time instead.
+    fn compile_svf(
+        &mut self,
+        name: &str,
+        args: &[Expr],
+        piped: Option<VoiceSignalRef>,
+    ) -> Result<VoiceSignalRef, EvalError> {
+        let (input, cutoff_expr, q_expr) = match piped {
+            Some(input) if args.len() == 2 => (input, &args[0], &args[1]),
+            None if args.len() == 3 => (self.compile_expr(&args[0])?, &args[1], &args[2]),
+            _ => {
+                return Err(EvalError::new(format!(
+                    "`{name}` expects an input signal plus cutoff and Q \
+                     (e.g. `x |> {name}(1200, 0.7)`)"
+                )));
+            }
+        };
+        filter_frequency_literal_in_range(name, "cutoff", cutoff_expr)?;
+        filter_q_literal_in_range(name, q_expr)?;
+        let cutoff_hz = self.compile_expr(cutoff_expr)?;
+        let q = self.compile_expr(q_expr)?;
+        let mode = match name {
+            "svf_lp" => SvfMode::Lowpass,
+            "svf_hp" => SvfMode::Highpass,
+            "svf_bp" => SvfMode::Bandpass,
+            "svf_notch" => SvfMode::Notch,
+            _ => unreachable!("svf dispatch is exhaustive"),
+        };
+        self.push(VoiceNodeSpec::Svf {
+            input,
+            cutoff_hz,
+            q,
+            mode,
+        })
+    }
+
+    /// Compiles `eq_peak(input, freq_hz, q, gain_db)` — the RBJ peaking
+    /// (bell) EQ biquad. Positive gains boost the band around `freq_hz`,
+    /// negative gains cut it; all three parameters are signals. Literal
+    /// parameters are range-checked here at definition time; signal
+    /// parameters clamp at render time instead.
+    fn compile_eq_peak(
+        &mut self,
+        args: &[Expr],
+        piped: Option<VoiceSignalRef>,
+    ) -> Result<VoiceSignalRef, EvalError> {
+        let (input, freq_expr, q_expr, gain_expr) = match piped {
+            Some(input) if args.len() == 3 => (input, &args[0], &args[1], &args[2]),
+            None if args.len() == 4 => (self.compile_expr(&args[0])?, &args[1], &args[2], &args[3]),
+            _ => {
+                return Err(EvalError::new(
+                    "`eq_peak` expects an input signal plus center frequency, Q, and \
+                     gain in dB (e.g. `x |> eq_peak(800, 1.5, 6)`)",
+                ));
+            }
+        };
+        filter_frequency_literal_in_range("eq_peak", "center frequency", freq_expr)?;
+        filter_q_literal_in_range("eq_peak", q_expr)?;
+        filter_gain_literal_in_range("eq_peak", gain_expr)?;
+        let freq_hz = self.compile_expr(freq_expr)?;
+        let q = self.compile_expr(q_expr)?;
+        let gain_db = self.compile_expr(gain_expr)?;
+        self.push(VoiceNodeSpec::EqPeak {
+            input,
+            freq_hz,
+            q,
+            gain_db,
         })
     }
 
@@ -854,6 +934,55 @@ fn delay_literal(expr: &Expr) -> Result<f32, EvalError> {
              {MAX_VOICE_DELAY_SECONDS} (the delay buffer is allocated before the audio \
              thread runs)"
         ))),
+    }
+}
+
+/// Rejects a number-literal filter frequency below the DSP layer's 1 Hz
+/// floor at definition time. Non-literal (signal) parameters pass: they
+/// clamp to the same bounds at render time.
+fn filter_frequency_literal_in_range(
+    stage: &str,
+    parameter: &str,
+    expr: &Expr,
+) -> Result<(), EvalError> {
+    match expr {
+        Expr::Number(value)
+            if !(value.is_finite() && *value >= f64::from(FILTER_MIN_FREQUENCY_HZ)) =>
+        {
+            Err(EvalError::new(format!(
+                "`{stage}` requires a literal {parameter} of at least \
+                 {FILTER_MIN_FREQUENCY_HZ} Hz (a bound signal clamps at render time instead)"
+            )))
+        }
+        _ => Ok(()),
+    }
+}
+
+/// Rejects a number-literal filter Q outside the DSP layer's clamp bounds at
+/// definition time. Non-literal (signal) parameters pass: they clamp to the
+/// same bounds at render time.
+fn filter_q_literal_in_range(stage: &str, expr: &Expr) -> Result<(), EvalError> {
+    let bounds = f64::from(FILTER_MIN_Q)..=f64::from(FILTER_MAX_Q);
+    match expr {
+        Expr::Number(value) if !bounds.contains(value) => Err(EvalError::new(format!(
+            "`{stage}` requires a literal Q between {FILTER_MIN_Q} and {FILTER_MAX_Q} \
+             (a bound signal clamps at render time instead)"
+        ))),
+        _ => Ok(()),
+    }
+}
+
+/// Rejects a number-literal EQ gain outside the DSP layer's +/-40 dB clamp
+/// bounds at definition time. Non-literal (signal) parameters pass: they
+/// clamp to the same bounds at render time.
+fn filter_gain_literal_in_range(stage: &str, expr: &Expr) -> Result<(), EvalError> {
+    let max = f64::from(FILTER_MAX_GAIN_DB);
+    match expr {
+        Expr::Number(value) if !(-max..=max).contains(value) => Err(EvalError::new(format!(
+            "`{stage}` requires a literal gain between -{FILTER_MAX_GAIN_DB} and \
+             {FILTER_MAX_GAIN_DB} dB (a bound signal clamps at render time instead)"
+        ))),
+        _ => Ok(()),
     }
 }
 

@@ -27,11 +27,14 @@ pub use processor::Processor;
 pub use primitives::{
     AdsrNode, ArNode, ConstNode, DelayNode, FractionalDelayNode, MAX_FRACTIONAL_DELAY_SECONDS,
     OnePoleNode, PanNode, PassthroughNode, SineNode, SumNode, WireNode, adsr, ar, constant,
-    delay_line, fdelay, one_pole, pan, passthrough, sine, sum, wire,
+    delay_line, fdelay, one_pole, pan, passthrough, sine, sum, wire, wire_with_inputs,
 };
 
 // Filters (multi-mode: TPT SVF + RBJ biquad)
-pub use filters::{BiquadMode, BiquadNode, SvfNode, biquad, svf};
+pub use filters::{
+    BiquadMode, BiquadNode, FILTER_MAX_GAIN_DB, FILTER_MAX_Q, FILTER_MIN_FREQUENCY_HZ,
+    FILTER_MIN_Q, SvfNode, biquad, svf,
+};
 
 // Adapters (existing synth/ primitive wrappers)
 pub use adapters::{
