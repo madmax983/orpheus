@@ -292,6 +292,17 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Creates a new, unbound instance of a builtin function, ready to be
+    /// partially applied or fully evaluated.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    ///
+    /// let fast_fn = BuiltinFn::new(BuiltinKind::Fast);
+    /// // The function starts with no bound arguments and no random salt.
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -301,6 +312,21 @@ impl BuiltinFn {
         }
     }
 
+    /// Attaches a deterministic random seed to this builtin execution site.
+    ///
+    /// This salt is derived from the AST node's position and is used to ensure
+    /// that functions like `rand` or `sometimes` produce stable, replayable
+    /// results that differ from other identical calls in the same pattern.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    ///
+    /// // Two 'rand' calls with the same salt produce the same sequence of values.
+    /// let r1 = BuiltinFn::new(BuiltinKind::Rand).with_site_salt(12345);
+    /// let r2 = BuiltinFn::new(BuiltinKind::Rand).with_site_salt(12345);
+    /// ```
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

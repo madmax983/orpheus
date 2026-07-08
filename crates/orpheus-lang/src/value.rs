@@ -38,10 +38,13 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Applies a transform strictly every `N` cycles (Tidal `every`).
     Every,
+    /// Applies a transform conditionally based on a cyclic conditional function.
     When,
     /// Applies a transform on cycles where `cycle mod period >= threshold` (Tidal `whenmod`).
     WhenMod,
+    /// Applies a transform randomly to 50% of the events.
     Sometimes,
     /// Randomly drops each event with probability 0.5, per event, deterministically.
     Degrade,
@@ -57,37 +60,65 @@ pub enum BuiltinKind {
     AlmostAlways,
     /// `sometimes_by(0.1, ...)`: applies the transform to very few events.
     AlmostNever,
+    /// Restricts a transform to a specific rational segment within a cycle.
     Within,
+    /// Filters events in the right pattern using gates from the left pattern.
     Mask,
+    /// Spreads overlapping events across time (Tidal `strum`).
     Strum,
+    /// Repeats an event multiple times within its original duration.
     Roll,
+    /// Arpeggiates chords into individual note sequences.
     Arp,
+    /// Inverts chord voicings up or down within an octave.
     Invert,
+    /// Drops specific events from a sequence based on index.
     Drop,
+    /// Constructs chord shapes from a base note and interval list.
     Chord,
+    /// Spreads `N` pulses evenly across `M` steps (Euclidean rhythms).
     Euclid,
     /// Inverted euclidean gates: open exactly where `euclid` rests (Tidal `euclidInv`).
     EuclidInv,
     /// Two-pattern euclidean split: hits on the gates, rests on the complement (Tidal `euclidFull`).
     EuclidFull,
+    /// Generates sequences using Lindenmayer systems.
     Lsystem,
+    /// Generates sequences using elementary cellular automata.
     Wolfram,
+    /// Constructs a set of pitch classes for diatonic or chromatic selection.
     PitchClassSet,
+    /// Selects notes from a scale or pitch class set by index.
     Degrees,
+    /// Compresses a pattern in time, playing it faster.
     Fast,
+    /// Expands a pattern in time, playing it slower.
     Slow,
+    /// Time-shifts a pattern forwards or backwards by a rational fraction.
     Shift,
+    /// Reverses the flow of time within each cycle.
     Rev,
+    /// DSP: Applies gain/volume scaling.
     Gain,
+    /// DSP: Activates a standard delay line effect.
     Delay,
+    /// DSP: Modulates the time offset of the delay line.
     DelayTime,
+    /// DSP: Modulates the feedback ratio of the delay line.
     DelayFeedback,
+    /// DSP: Activates a high-pass filter.
     Hpf,
+    /// DSP: Activates a low-pass filter.
     Lpf,
+    /// DSP: Activates a reverb effect.
     Reverb,
+    /// DSP: Modulates the simulated room size of the reverb.
     ReverbRoom,
+    /// DSP: Modulates the high-frequency damping of the reverb.
     ReverbDamp,
+    /// DSP: Modulates the cutoff frequency of a filter.
     Cutoff,
+    /// DSP: Activates a chorus effect.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

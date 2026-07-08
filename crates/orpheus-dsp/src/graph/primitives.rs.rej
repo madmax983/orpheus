@@ -1,0 +1,12 @@
+--- crates/orpheus-dsp/src/graph/primitives.rs
++++ crates/orpheus-dsp/src/graph/primitives.rs
+@@ -328,7 +328,7 @@
+ /// [`EnvCore`].
+ ///
+ /// Unlike trigger-based AD envelopes, this node sustains indefinitely while
+-/// `gate > 0.5`. When `gate` drops below `0.5`, the envelope begins its release
+-/// attack from the current level, avoiding clicks. See [`EnvCore`] for the
++/// `gate > 0.5`. When `gate` drops below `0.5`, the envelope begins its
++/// release from the current level, avoiding clicks. See `EnvCore` for the
+ /// underlying state machine implementation.
+ #[derive(Clone)]

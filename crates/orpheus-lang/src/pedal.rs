@@ -115,6 +115,23 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Creates a new validated AST node for the DSP graph.
+    ///
+    /// The node encapsulates its semantic kind, its expected audio/control signal type,
+    /// and a generated string representation for rendering.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalNode, PedalNodeKind, SignalKind};
+    ///
+    /// let node = ValidatedPedalNode::new(
+    ///     SignalKind::Audio,
+    ///     PedalNodeKind::Oscillator,
+    ///     "osc(~pitch)"
+    /// );
+    /// assert_eq!(node.summary(), "osc(~pitch)");
+    /// ```
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +147,13 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Identifies the underlying hardware representation to dictate how this node connects into the larger DSP graph.
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Provides a human-readable description of this node's structure for error reporting and UI visualization.
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +168,19 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Binds an existing validated node to a new string identifier.
+    ///
+    /// This represents `let name = node;` in a pedal definition block.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalBinding, ValidatedPedalNode, PedalNodeKind, SignalKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Oscillator, "osc");
+    /// let binding = ValidatedPedalBinding::new("my_osc", node);
+    /// assert_eq!(binding.name(), "my_osc");
+    /// ```
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +189,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// The string identifier bound to this signal for references downstream.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// The underlying signal structure representing this bound variable.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node

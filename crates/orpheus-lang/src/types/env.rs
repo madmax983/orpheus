@@ -26,11 +26,26 @@ use crate::types::{Type, TypeVarId};
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
+    /// The set of generic type variables explicitly universally quantified in this scheme.
     pub vars: Vec<TypeVarId>,
+    /// The structural type body that relies on the quantified variables.
     pub ty: Type,
 }
 
 impl TypeScheme {
+    /// Creates a type scheme containing no generic variables.
+    ///
+    /// This is used for builtins like `bd` or constants where the type is fixed
+    /// and cannot be specialized differently at different call sites.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::types::{TypeScheme, Type};
+    ///
+    /// let scheme = TypeScheme::monomorphic(Type::Number);
+    /// assert!(scheme.vars.is_empty());
+    /// ```
     #[must_use]
     pub const fn monomorphic(ty: Type) -> Self {
         Self {
@@ -196,6 +211,19 @@ impl TypeEnv {
         self.entries.get(name)
     }
 
+    /// Yields all registered type schemes currently held in this environment.
+    ///
+    /// This is used internally during debugging or when flattening the environment
+    /// to inspect the entire set of available builtins and loaded variables.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::types::TypeEnv;
+    ///
+    /// let env = TypeEnv::with_builtins();
+    /// assert!(env.values().count() > 0);
+    /// ```
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }

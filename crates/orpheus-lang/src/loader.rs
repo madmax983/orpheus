@@ -35,12 +35,20 @@ struct ImportSpec {
 ///     type_bindings: BTreeMap::new(),
 ///     value_bindings: BTreeMap::new(),
 ///     last_binding_name: None,
+///     value_bindings: BTreeMap::new(),
+///     last_binding_name: None,
 /// };
 /// ```
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
+    /// The map of top-level binding names to their inferred strong types.
+    /// Used by the language server to provide hover information and completions.
     pub type_bindings: BTreeMap<String, Type>,
+    /// The map of top-level binding names to their evaluated runtime values.
+    /// Used by the live engine to inject the file's results into the active mix.
     pub value_bindings: BTreeMap<String, Value>,
+    /// The name of the final binding evaluated in the file, if any.
+    /// Determines the default playback target when the file is loaded via CLI.
     pub last_binding_name: Option<String>,
 }
 

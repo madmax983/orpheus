@@ -328,7 +328,7 @@ impl EnvCore {
 ///
 /// The gate opens on a rising edge (or any positive gate while idle) and
 /// closes when it falls to <= 0. Retriggering while active restarts the
-/// attack from the current level, avoiding clicks. See `EnvCore` for the
+/// attack from the current level, avoiding clicks. See [`EnvCore`] for the
 /// segment semantics.
 #[derive(Debug, Clone)]
 pub struct AdsrNode {
