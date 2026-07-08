@@ -19,7 +19,8 @@ use crate::diagnostics::{ParseError, TypeError};
 use crate::parser::parse_module;
 use crate::pitch::parse_named_pitch_literal;
 use crate::types::env::{
-    TypeEnv, TypeScheme, choose_scheme, pattern_concat_scheme, wchoose_scheme, wrandcat_scheme,
+    TypeEnv, TypeScheme, choose_scheme, euclid_full_scheme, euclid_scheme, pattern_concat_scheme,
+    wchoose_scheme, wrandcat_scheme,
 };
 use crate::types::{Type, TypeVarId, TypedModule};
 
@@ -404,8 +405,57 @@ impl Inferencer {
                 }
                 self.infer_wrandcat_pairs(args)
             }
+            "euclid" | "euclid_inv" if args.len() > 2 => {
+                if self.env.get(name) != Some(&euclid_scheme()) {
+                    return Ok(None);
+                }
+                if args.len() > 3 {
+                    return Err(TypeError::new(format!(
+                        "`{name}` accepts at most 3 arguments (pulses, steps, rotation)"
+                    )));
+                }
+                let context = format!("`{name}` arguments");
+                self.infer_number_pattern_arguments(args, &context)
+            }
+            "euclid_full" if args.len() > 4 => {
+                if self.env.get(name) != Some(&euclid_full_scheme(TypeVarId::new(0))) {
+                    return Ok(None);
+                }
+                if args.len() > 5 {
+                    return Err(TypeError::new(
+                        "`euclid_full` accepts at most 5 arguments \
+                         (pulses, steps, rotation, hits, rests)",
+                    ));
+                }
+                self.infer_euclid_full_with_rotation(args)
+            }
             _ => Ok(None),
         }
+    }
+
+    /// Types the five-argument `euclid_full(pulses, steps, rotation, hits,
+    /// rests)` form: the first three arguments must be number patterns and
+    /// the two trailing patterns must agree on one pattern type, which the
+    /// call returns.
+    fn infer_euclid_full_with_rotation(
+        &mut self,
+        args: &[Expr],
+    ) -> Result<Option<Type>, TypeError> {
+        for arg in &args[..3] {
+            let actual = self.infer_expr(arg)?;
+            self.unify(actual.clone(), Type::pattern(Type::Number))
+                .map_err(|_| {
+                    TypeError::new(format!(
+                        "`euclid_full` pulses, steps, and rotation must be numbers; found {}",
+                        self.resolve(actual)
+                    ))
+                })?;
+        }
+
+        let ty = self.infer_homogeneous(&args[3..], "`euclid_full` hit and rest patterns")?;
+        let element = self.fresh_var_type();
+        self.unify(ty.clone(), Type::pattern(element))?;
+        Ok(Some(self.resolve(ty)))
     }
 
     /// Types variadic `wrandcat(p1, w1, p2, w2, ...)` calls: the even-indexed

@@ -4687,3 +4687,301 @@ fn shuffle_and_scramble_reject_non_positive_slot_counts() {
         &["`scramble`", "positive integer"],
     );
 }
+
+// --- euclid rotation / euclid_inv / euclid_full / run / scan / whenmod ---
+
+/// Materializes a number pattern's unit-cycle events as `(start, end)` part
+/// boundary pairs.
+fn number_part_spans(source: &str, name: &str) -> Vec<(Rational, Rational)> {
+    let module = eval_module(source, ReplMode::Loose).unwrap();
+    module
+        .get(name)
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit()
+        .into_iter()
+        .map(|event| (*event.part.start(), *event.part.end()))
+        .collect()
+}
+
+fn eighth(numerator: i64) -> (Rational, Rational) {
+    (
+        Rational::new(numerator, 8).unwrap(),
+        Rational::new(numerator + 1, 8).unwrap(),
+    )
+}
+
+#[test]
+fn euclid_rotation_shifts_gates_left() {
+    // Base (3, 8) is x..x..x. (gates at steps 0, 3, 6); rotating by 1 plays
+    // original step `i + 1` at step `i`, giving gates at steps 2, 5, 7.
+    assert_eq!(
+        number_part_spans("clave = euclid(3, 8, 1)", "clave"),
+        vec![eighth(2), eighth(5), eighth(7)]
+    );
+    // Rotation 2 shifts gates to steps 1, 4, 6.
+    assert_eq!(
+        number_part_spans("clave = euclid(3, 8, 2)", "clave"),
+        vec![eighth(1), eighth(4), eighth(6)]
+    );
+}
+
+#[test]
+fn euclid_rotation_wraps_and_accepts_negative_offsets() {
+    let base = number_part_spans("clave = euclid(3, 8)", "clave");
+    assert_eq!(number_part_spans("clave = euclid(3, 8, 8)", "clave"), base);
+    assert_eq!(number_part_spans("clave = euclid(3, 8, 0)", "clave"), base);
+    // Rotating by -1 is the same as rotating by steps - 1.
+    assert_eq!(
+        number_part_spans("clave = euclid(3, 8, -1)", "clave"),
+        number_part_spans("clave = euclid(3, 8, 7)", "clave")
+    );
+}
+
+#[test]
+fn euclid_two_arg_form_is_unchanged_by_rotation_support() {
+    assert_eq!(
+        number_part_spans("clave = euclid(3, 8)", "clave"),
+        vec![eighth(0), eighth(3), eighth(6)]
+    );
+}
+
+#[test]
+fn euclid_rejects_fractional_or_excess_rotation_arguments() {
+    assert_eval_error_contains(
+        "clave = euclid(3, 8, 0.5)",
+        ReplMode::Loose,
+        &["`euclid`", "rotation", "whole number"],
+    );
+    assert_eval_error_contains(
+        "clave = euclid(3, 8, 1, 2)",
+        ReplMode::Loose,
+        &["`euclid`", "at most"],
+    );
+}
+
+#[test]
+fn euclid_inv_plays_exactly_where_euclid_rests() {
+    let hits = number_part_spans("clave = euclid(3, 8)", "clave");
+    let rests = number_part_spans("clave = euclid_inv(3, 8)", "clave");
+
+    assert_eq!(hits.len(), 3);
+    assert_eq!(rests.len(), 5);
+    for span in &rests {
+        assert!(!hits.contains(span), "euclid_inv overlaps euclid: {span:?}");
+    }
+    let mut union = hits;
+    union.extend(rests);
+    union.sort();
+    assert_eq!(union, (0..8).map(eighth).collect::<Vec<_>>());
+}
+
+#[test]
+fn euclid_inv_honors_rotation() {
+    // euclid(3, 8, 1) gates land on steps 2, 5, 7; the inversion covers the rest.
+    assert_eq!(
+        number_part_spans("clave = euclid_inv(3, 8, 1)", "clave"),
+        vec![eighth(0), eighth(1), eighth(3), eighth(4), eighth(6)]
+    );
+}
+
+#[test]
+fn euclid_full_plays_hits_and_rests_from_two_patterns() {
+    let module = eval_module("drums = euclid_full(3, 8, bd*8, sn*8)", ReplMode::Loose).unwrap();
+    let events = module
+        .get("drums")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    assert_eq!(events.len(), 8);
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event.value.sample().to_owned())
+            .collect::<Vec<_>>(),
+        vec!["bd", "sn", "sn", "bd", "sn", "sn", "bd", "sn"]
+    );
+}
+
+#[test]
+fn euclid_full_accepts_a_rotation_argument() {
+    let module = eval_module("drums = euclid_full(3, 8, 1, bd*8, sn*8)", ReplMode::Loose).unwrap();
+    let events = module
+        .get("drums")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .query_unit()
+        .unwrap();
+
+    // Gates rotate to steps 2, 5, 7.
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event.value.sample().to_owned())
+            .collect::<Vec<_>>(),
+        vec!["sn", "sn", "bd", "sn", "sn", "bd", "sn", "bd"]
+    );
+}
+
+#[test]
+fn euclid_full_rejects_mismatched_pattern_kinds() {
+    assert_eval_error_contains(
+        "drums = euclid_full(3, 8, bd*8, 1 2)",
+        ReplMode::Loose,
+        &["`euclid_full`", "same kind"],
+    );
+}
+
+#[test]
+fn run_counts_upward_once_per_cycle() {
+    let module = eval_module("ramp = run(4)", ReplMode::Loose).unwrap();
+    let events = module
+        .get("ramp")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .query_unit();
+
+    assert_eq!(events.len(), 4);
+    for (index, event) in events.iter().enumerate() {
+        let index_i64 = i64::try_from(index).unwrap();
+        assert_eq!(event.part.start(), &Rational::new(index_i64, 4).unwrap());
+        assert_eq!(event.part.end(), &Rational::new(index_i64 + 1, 4).unwrap());
+        #[allow(clippy::cast_precision_loss)]
+        let expected = index as f64;
+        assert!((event.value - expected).abs() < f64::EPSILON);
+    }
+}
+
+#[test]
+fn run_repeats_the_same_ramp_every_cycle() {
+    let module = eval_module("ramp = run(3)", ReplMode::Loose).unwrap();
+    let pattern = module.get("ramp").unwrap().as_number_pattern().unwrap();
+    let span = orpheus_lang::render_span(2).unwrap();
+    let values = pattern
+        .try_query(&span)
+        .unwrap()
+        .into_iter()
+        .map(|event| event.value)
+        .collect::<Vec<_>>();
+
+    assert_eq!(values, [0.0, 1.0, 2.0, 0.0, 1.0, 2.0]);
+}
+
+#[test]
+fn run_rejects_non_positive_step_counts() {
+    assert_eval_error_contains(
+        "ramp = run(0)",
+        ReplMode::Loose,
+        &["`run`", "positive whole number"],
+    );
+}
+
+#[test]
+fn scan_grows_the_prefix_each_cycle_and_clamps_at_full() {
+    let module = eval_module("ramp = scan(3)", ReplMode::Loose).unwrap();
+    let pattern = module.get("ramp").unwrap().as_number_pattern().unwrap();
+
+    let cycle_values = |cycle: i64| -> Vec<f64> {
+        pattern
+            .try_query(&cycle_time_span(cycle))
+            .unwrap()
+            .into_iter()
+            .map(|event| event.value)
+            .collect()
+    };
+
+    assert_eq!(cycle_values(0), [0.0]);
+    assert_eq!(cycle_values(1), [0.0, 1.0]);
+    assert_eq!(cycle_values(2), [0.0, 1.0, 2.0]);
+    // Clamps at the full run once the prefix is complete (cycles n and n + 1).
+    assert_eq!(cycle_values(3), [0.0, 1.0, 2.0]);
+    assert_eq!(cycle_values(4), [0.0, 1.0, 2.0]);
+}
+
+#[test]
+fn scan_subdivides_each_cycle_into_its_prefix_length() {
+    let module = eval_module("ramp = scan(3)", ReplMode::Loose).unwrap();
+    let pattern = module.get("ramp").unwrap().as_number_pattern().unwrap();
+    let events = pattern.try_query(&cycle_time_span(1)).unwrap();
+
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].part.start(), &Rational::new(1, 1).unwrap());
+    assert_eq!(events[0].part.end(), &Rational::new(3, 2).unwrap());
+    assert_eq!(events[1].part.start(), &Rational::new(3, 2).unwrap());
+    assert_eq!(events[1].part.end(), &Rational::new(2, 1).unwrap());
+}
+
+#[test]
+fn scan_is_stable_regardless_of_query_window_chunking() {
+    let module = eval_module("ramp = scan(4)", ReplMode::Loose).unwrap();
+    let pattern = module.get("ramp").unwrap().as_number_pattern().unwrap();
+
+    let span = orpheus_lang::render_span(6).unwrap();
+    let whole = pattern.try_query(&span).unwrap();
+    let mut chunked = Vec::new();
+    for cycle in 0..6 {
+        chunked.extend(pattern.try_query(&cycle_time_span(cycle)).unwrap());
+    }
+
+    assert_eq!(whole.len(), chunked.len());
+    for (a, b) in whole.iter().zip(chunked.iter()) {
+        assert_eq!(a.part.start(), b.part.start());
+        assert!((a.value - b.value).abs() < f64::EPSILON);
+    }
+}
+
+#[test]
+fn scan_rejects_non_positive_step_counts() {
+    assert_eval_error_contains(
+        "ramp = scan(0)",
+        ReplMode::Loose,
+        &["`scan`", "positive whole number"],
+    );
+}
+
+#[test]
+fn whenmod_applies_transform_when_cycle_mod_reaches_threshold() {
+    let module = eval_module("drums = bd sn |> whenmod(4, 2, rev)", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 8);
+
+    // rev applies on cycles where cycle mod 4 >= 2: cycles 2, 3, 6, 7.
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event["sample"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec![
+            "bd", "sn", "bd", "sn", "sn", "bd", "sn", "bd", "bd", "sn", "bd", "sn", "sn", "bd",
+            "sn", "bd",
+        ]
+    );
+}
+
+#[test]
+fn whenmod_with_zero_threshold_transforms_every_cycle() {
+    let module = eval_module("drums = bd sn |> whenmod(3, 0, rev)", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 3);
+
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event["sample"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["sn", "bd", "sn", "bd", "sn", "bd"]
+    );
+}
+
+#[test]
+fn whenmod_rejects_thresholds_at_or_above_the_period() {
+    assert_eval_error_contains(
+        "drums = bd sn |> whenmod(3, 3, rev)",
+        ReplMode::Loose,
+        &["`whenmod`", "threshold less than the period"],
+    );
+}

@@ -93,7 +93,7 @@ impl TypeEnv {
             env.insert(name, number_pattern_control_scheme());
         }
 
-        env.insert("euclid", euclid_scheme());
+        install_euclidean_and_counting_builtins(&mut env, alpha);
         env.insert(
             "pitch_class_set",
             TypeScheme::monomorphic(Type::curried(
@@ -435,11 +435,51 @@ fn mask_scheme() -> TypeScheme {
     }
 }
 
-fn euclid_scheme() -> TypeScheme {
+fn install_euclidean_and_counting_builtins(env: &mut TypeEnv, alpha: TypeVarId) {
+    // `whenmod` shares `when`'s shape (period, threshold, transform, pattern).
+    env.insert("whenmod", when_transform_scheme(alpha));
+    env.insert("euclid", euclid_scheme());
+    // `euclid_inv` mirrors `euclid`; both are variadic at runtime (an
+    // optional third rotation argument) and special-cased during inference.
+    env.insert("euclid_inv", euclid_scheme());
+    env.insert("euclid_full", euclid_full_scheme(alpha));
+    // `run` and `scan` build counting number patterns from a step count.
+    env.insert("run", unary_number_pattern_scheme());
+    env.insert("scan", unary_number_pattern_scheme());
+}
+
+/// The two-argument base scheme shared by `euclid` and `euclid_inv`:
+/// `Pattern<Number> -> Pattern<Number> -> Pattern<Number>`.
+///
+/// Both accept an optional third rotation argument at runtime; three-argument
+/// calls are special-cased during inference.
+pub fn euclid_scheme() -> TypeScheme {
     TypeScheme::monomorphic(Type::curried(
         vec![Type::pattern(Type::Number), Type::pattern(Type::Number)],
         Type::pattern(Type::Number),
     ))
+}
+
+/// The four-argument base scheme for `euclid_full(pulses, steps, hits, rests)`:
+/// `Pattern<Number> -> Pattern<Number> -> Pattern<a> -> Pattern<a> -> Pattern<a>`.
+///
+/// `euclid_full` accepts an optional rotation as a third argument at runtime
+/// (`euclid_full(pulses, steps, rotation, hits, rests)`); five-argument calls
+/// are special-cased during inference.
+pub fn euclid_full_scheme(alpha: TypeVarId) -> TypeScheme {
+    let alpha_pattern = Type::pattern(Type::Var(alpha));
+    TypeScheme {
+        vars: vec![alpha],
+        ty: Type::curried(
+            vec![
+                Type::pattern(Type::Number),
+                Type::pattern(Type::Number),
+                alpha_pattern.clone(),
+                alpha_pattern.clone(),
+            ],
+            alpha_pattern,
+        ),
+    }
 }
 
 fn arp_scheme() -> TypeScheme {

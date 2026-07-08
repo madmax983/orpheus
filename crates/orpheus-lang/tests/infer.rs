@@ -943,3 +943,71 @@ fn shuffle_and_scramble_preserve_pattern_types() {
         "Pattern<Number>"
     );
 }
+
+#[test]
+fn euclid_rotation_infers_number_patterns() {
+    let typed = infer_module("clave = euclid(3, 8, 2)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("clave").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn euclid_inv_infers_number_patterns() {
+    let two_arg = infer_module("clave = euclid_inv(3, 8)", ReplMode::Strict).unwrap();
+    let three_arg = infer_module("clave = euclid_inv(3, 8, 1)", ReplMode::Strict).unwrap();
+
+    assert_eq!(two_arg.type_of("clave").to_string(), "Pattern<Number>");
+    assert_eq!(three_arg.type_of("clave").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn euclid_full_preserves_pattern_types() {
+    let samples = infer_module("drums = euclid_full(3, 8, bd*8, sn*8)", ReplMode::Strict).unwrap();
+    let rotated =
+        infer_module("drums = euclid_full(3, 8, 1, bd*8, sn*8)", ReplMode::Strict).unwrap();
+    let numbers = infer_module("line = euclid_full(3, 8, 1 2, 3 4)", ReplMode::Strict).unwrap();
+
+    assert_eq!(samples.type_of("drums").to_string(), "Pattern<Sample>");
+    assert_eq!(rotated.type_of("drums").to_string(), "Pattern<Sample>");
+    assert_eq!(numbers.type_of("line").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn euclid_full_rejects_mismatched_pattern_kinds() {
+    let error = infer_module("drums = euclid_full(3, 8, bd*8, 1 2)", ReplMode::Strict).unwrap_err();
+
+    assert!(
+        error.to_string().contains("type mismatch"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn run_and_scan_infer_number_patterns() {
+    let run_typed = infer_module("ramp = run(4)", ReplMode::Strict).unwrap();
+    let scan_typed = infer_module("ramp = scan(4)", ReplMode::Strict).unwrap();
+
+    assert_eq!(run_typed.type_of("ramp").to_string(), "Pattern<Number>");
+    assert_eq!(scan_typed.type_of("ramp").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn whenmod_preserves_sample_pattern_types() {
+    let typed = infer_module("drums = whenmod(4, 2, rev, bd sn)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn whenmod_infers_a_polymorphic_pattern_transform_function() {
+    let typed = infer_module("warp = whenmod(4, 2, fast(2))", ReplMode::Strict).unwrap();
+
+    match typed.type_of("warp") {
+        Type::Function(args, ret) => {
+            assert_eq!(args.len(), 1);
+            assert_eq!(args[0], *ret.clone());
+            assert!(matches!(args[0], Type::Pattern(_)));
+        }
+        other => panic!("expected function type, got {other:?}"),
+    }
+}
