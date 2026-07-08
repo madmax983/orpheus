@@ -386,7 +386,7 @@ impl Inferencer {
             return Ok(None);
         };
         match name.as_str() {
-            "cat" | "slowcat" | "randcat" if args.len() > 2 => {
+            "cat" | "slowcat" | "randcat" | "pchoose" if args.len() > 2 => {
                 if self.env.get(name) != Some(&pattern_concat_scheme(TypeVarId::new(0))) {
                     return Ok(None);
                 }
@@ -408,11 +408,11 @@ impl Inferencer {
                 }
                 self.infer_number_pattern_arguments(args, "`wchoose` value/weight pairs")
             }
-            "wrandcat" if args.len() > 4 => {
+            "wrandcat" | "wpchoose" if args.len() > 4 => {
                 if self.env.get(name) != Some(&wrandcat_scheme(TypeVarId::new(0))) {
                     return Ok(None);
                 }
-                self.infer_wrandcat_pairs(args)
+                self.infer_wrandcat_pairs(name, args)
             }
             "markov" if args.len() > 6 => {
                 if self.env.get(name) != Some(&markov_scheme(TypeVarId::new(0))) {
@@ -473,14 +473,19 @@ impl Inferencer {
         Ok(Some(self.resolve(ty)))
     }
 
-    /// Types variadic `wrandcat(p1, w1, p2, w2, ...)` calls: the even-indexed
-    /// pattern arguments must agree on one pattern type, the odd-indexed
-    /// weights must be numbers, and the call returns the shared pattern type.
-    fn infer_wrandcat_pairs(&mut self, args: &[Expr]) -> Result<Option<Type>, TypeError> {
+    /// Types variadic `wrandcat`/`wpchoose` `(p1, w1, p2, w2, ...)` calls:
+    /// the even-indexed pattern arguments must agree on one pattern type,
+    /// the odd-indexed weights must be numbers, and the call returns the
+    /// shared pattern type.
+    fn infer_wrandcat_pairs(
+        &mut self,
+        name: &str,
+        args: &[Expr],
+    ) -> Result<Option<Type>, TypeError> {
         if !args.len().is_multiple_of(2) {
-            return Err(TypeError::new(
-                "`wrandcat` requires interleaved pattern/weight pairs",
-            ));
+            return Err(TypeError::new(format!(
+                "`{name}` requires interleaved pattern/weight pairs",
+            )));
         }
 
         let mut pattern_ty: Option<Type> = None;
@@ -490,14 +495,14 @@ impl Inferencer {
                 self.unify(actual.clone(), Type::pattern(Type::Number))
                     .map_err(|_| {
                         TypeError::new(format!(
-                            "`wrandcat` weights must be numbers; found {}",
+                            "`{name}` weights must be numbers; found {}",
                             self.resolve(actual)
                         ))
                     })?;
             } else if let Some(expected) = pattern_ty.clone() {
                 self.unify(expected.clone(), actual.clone()).map_err(|_| {
                     TypeError::new(format!(
-                        "`wrandcat` patterns must all have the same type; expected {}, found {}",
+                        "`{name}` patterns must all have the same type; expected {}, found {}",
                         self.resolve(expected),
                         self.resolve(actual)
                     ))
@@ -508,7 +513,9 @@ impl Inferencer {
         }
 
         let ty = pattern_ty.ok_or_else(|| {
-            TypeError::new("`wrandcat` requires at least one pattern/weight pair")
+            TypeError::new(format!(
+                "`{name}` requires at least one pattern/weight pair"
+            ))
         })?;
         let element = self.fresh_var_type();
         self.unify(ty.clone(), Type::pattern(element))?;

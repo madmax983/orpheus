@@ -286,10 +286,14 @@ pub fn wchoose_scheme() -> TypeScheme {
 }
 
 fn install_cycle_alternation_builtins(env: &mut TypeEnv, alpha: TypeVarId) {
-    for name in ["cat", "slowcat", "append", "randcat"] {
+    // `pchoose` shares `randcat`'s shape (same-kind patterns in, one out)
+    // and `wpchoose` shares `wrandcat`'s interleaved pattern/weight shape;
+    // both draw per cycle slot instead of per cycle at runtime.
+    for name in ["cat", "slowcat", "append", "randcat", "pchoose"] {
         env.insert(name, pattern_concat_scheme(alpha));
     }
     env.insert("wrandcat", wrandcat_scheme(alpha));
+    env.insert("wpchoose", wrandcat_scheme(alpha));
     env.insert("markov", markov_scheme(alpha));
     for name in ["iter", "iter_back", "rot", "shuffle", "scramble"] {
         env.insert(name, numeric_pattern_transform_scheme(alpha));

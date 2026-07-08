@@ -141,6 +141,11 @@ pub enum BuiltinKind {
     RandCat,
     /// Weighted `randcat` taking interleaved `pattern, weight` pairs (Tidal `wrandcat`).
     WRandCat,
+    /// Plays one randomly chosen argument pattern per cycle slot, on a grid
+    /// as fine as the busiest argument (per-slot `randcat`).
+    PChoose,
+    /// Weighted `pchoose` taking interleaved `pattern, weight` pairs.
+    WPChoose,
     /// Plays one state pattern per cycle following a first-order Markov
     /// chain over per-state transition weights (Tidal `markovPat`).
     Markov,
@@ -265,6 +270,8 @@ impl fmt::Display for BuiltinKind {
             Self::Scan => "scan",
             Self::RandCat => "randcat",
             Self::WRandCat => "wrandcat",
+            Self::PChoose => "pchoose",
+            Self::WPChoose => "wpchoose",
             Self::Markov => "markov",
             Self::Off => "off",
             Self::Rot => "rot",
@@ -1930,6 +1937,23 @@ impl SamplePatternValue {
         }
     }
 
+    pub(crate) fn choose_slots_with_site_salt(
+        patterns: Vec<Self>,
+        cumulative_weights: Option<Vec<f64>>,
+        site_salt: u64,
+    ) -> Self {
+        Self {
+            pattern: PatternRuntime::ChooseSlots {
+                site_salt,
+                cumulative_weights,
+                children: patterns
+                    .into_iter()
+                    .map(|pattern| pattern.pattern)
+                    .collect(),
+            },
+        }
+    }
+
     pub(crate) fn markov_with_site_salt(
         patterns: Vec<Self>,
         row_cumulative_weights: Vec<Vec<f64>>,
@@ -2717,6 +2741,23 @@ impl NumberPatternValue {
         }
     }
 
+    pub(crate) fn choose_slots_with_site_salt(
+        patterns: Vec<Self>,
+        cumulative_weights: Option<Vec<f64>>,
+        site_salt: u64,
+    ) -> Self {
+        Self {
+            pattern: PatternRuntime::ChooseSlots {
+                site_salt,
+                cumulative_weights,
+                children: patterns
+                    .into_iter()
+                    .map(|pattern| pattern.pattern)
+                    .collect(),
+            },
+        }
+    }
+
     pub(crate) fn markov_with_site_salt(
         patterns: Vec<Self>,
         row_cumulative_weights: Vec<Vec<f64>>,
@@ -3155,6 +3196,23 @@ enum PatternRuntime<T> {
         cumulative_weights: Option<Vec<f64>>,
         children: Vec<Self>,
     },
+    /// Per-slot random choice among pattern values (`pchoose`/`wpchoose`):
+    /// each cycle splits into as many equal slots as the busiest child's
+    /// event count that cycle, and every slot independently picks one child
+    /// at deterministic site-salted random and plays that child's own
+    /// events within the slot.
+    ///
+    /// `cumulative_weights` holds each child's normalized cumulative upper
+    /// bound in `(0, 1]` for the weighted `wpchoose` form; `None` draws
+    /// uniformly. Unlike `RandCat`, children keep their natural (global)
+    /// timeline — each slot is a window onto the chosen child's current
+    /// cycle — so cycle-dependent children (`every`, ...) stay aligned with
+    /// the surrounding cycle count.
+    ChooseSlots {
+        site_salt: u64,
+        cumulative_weights: Option<Vec<f64>>,
+        children: Vec<Self>,
+    },
     /// Plays one child per cycle following a first-order Markov chain
     /// (Tidal `markovPat`): cycle 0 plays child 0, and each later cycle
     /// draws the next state from the current state's row of normalized
@@ -3555,18 +3613,19 @@ impl<T> PatternRuntime<T> {
     #[allow(clippy::too_many_lines, clippy::match_same_arms)]
     fn with_tuning(self, table: &TuningTable) -> Self {
         use PatternRuntime::{
-            Arp, Chaos, Choose, Chorus, ChorusDepth, ChorusDepthPattern, ChorusPattern, ChorusRate,
-            ChorusRatePattern, Chunk, Compressor, CompressorPattern, CompressorRatio,
-            CompressorRatioPattern, CompressorThreshold, CompressorThresholdPattern, Cycle,
-            Degrade, Degrees, Delay, DelayFeedback, DelayFeedbackPattern, DelayPattern, DelayTime,
-            DelayTimePattern, Drive, DrivePattern, Drop, Every, ExplicitCycle, Fast, Gain,
-            GainPattern, Hpf, HpfPattern, IRand, Invert, Iter, Lpf, LpfPattern, Markov, Mask,
-            Onset, OnsetPattern, Pan, PanPattern, Pedal, Pitch, PitchPattern, PulseWidth,
-            PulseWidthPattern, Rand, RandCat, Range, Rate, RatePattern, Res, ResPattern, Rev,
-            Reverb, ReverbDamp, ReverbDampPattern, ReverbPattern, ReverbRoom, ReverbRoomPattern,
-            Roll, Rot, Scan, Segment, Shift, ShuffleSlots, Slice, SliceIdxPattern, SlicePattern,
-            Slow, SlowCat, Sometimes, Stack, Stream, Strum, Transpose, TransposePattern,
-            TunedPitch, TunedPitchPattern, When, WhenMod, Within,
+            Arp, Chaos, Choose, ChooseSlots, Chorus, ChorusDepth, ChorusDepthPattern,
+            ChorusPattern, ChorusRate, ChorusRatePattern, Chunk, Compressor, CompressorPattern,
+            CompressorRatio, CompressorRatioPattern, CompressorThreshold,
+            CompressorThresholdPattern, Cycle, Degrade, Degrees, Delay, DelayFeedback,
+            DelayFeedbackPattern, DelayPattern, DelayTime, DelayTimePattern, Drive, DrivePattern,
+            Drop, Every, ExplicitCycle, Fast, Gain, GainPattern, Hpf, HpfPattern, IRand, Invert,
+            Iter, Lpf, LpfPattern, Markov, Mask, Onset, OnsetPattern, Pan, PanPattern, Pedal,
+            Pitch, PitchPattern, PulseWidth, PulseWidthPattern, Rand, RandCat, Range, Rate,
+            RatePattern, Res, ResPattern, Rev, Reverb, ReverbDamp, ReverbDampPattern,
+            ReverbPattern, ReverbRoom, ReverbRoomPattern, Roll, Rot, Scan, Segment, Shift,
+            ShuffleSlots, Slice, SliceIdxPattern, SlicePattern, Slow, SlowCat, Sometimes, Stack,
+            Stream, Strum, Transpose, TransposePattern, TunedPitch, TunedPitchPattern, When,
+            WhenMod, Within,
         };
 
         macro_rules! recurse {
@@ -3637,6 +3696,18 @@ impl<T> PatternRuntime<T> {
                 cumulative_weights,
                 children,
             } => RandCat {
+                site_salt,
+                cumulative_weights,
+                children: children
+                    .into_iter()
+                    .map(|child| child.with_tuning(table))
+                    .collect(),
+            },
+            ChooseSlots {
+                site_salt,
+                cumulative_weights,
+                children,
+            } => ChooseSlots {
                 site_salt,
                 cumulative_weights,
                 children: children
@@ -4020,10 +4091,9 @@ impl<T> PatternRuntime<T> {
             Self::SlowCat(children) => children
                 .first()
                 .map_or(Ok(cycle), |child| child.absolute_cycle(cycle)),
-            Self::RandCat { children, .. } => children
-                .first()
-                .map_or(Ok(cycle), |child| child.absolute_cycle(cycle)),
-            Self::Markov { children, .. } => children
+            Self::RandCat { children, .. }
+            | Self::ChooseSlots { children, .. }
+            | Self::Markov { children, .. } => children
                 .first()
                 .map_or(Ok(cycle), |child| child.absolute_cycle(cycle)),
             Self::Cycle(_)
@@ -4156,6 +4226,11 @@ where
                 cumulative_weights,
                 children,
             } => query_randcat(children, cumulative_weights.as_deref(), *site_salt, span),
+            Self::ChooseSlots {
+                site_salt,
+                cumulative_weights,
+                children,
+            } => query_choose_slots(children, cumulative_weights.as_deref(), *site_salt, span),
             Self::Markov {
                 site_salt,
                 row_cumulative_weights,
@@ -6309,6 +6384,126 @@ where
 
     sort_events(&mut events);
     Ok(events)
+}
+
+/// Queries a `ChooseSlots` runtime (`pchoose`/`wpchoose`): each cycle splits
+/// into as many equal slots as the busiest child's event count that cycle,
+/// and every slot independently picks one child at deterministic
+/// site-salted random — uniformly, or proportionally to the normalized
+/// cumulative weights — and plays that child's own events within the slot.
+///
+/// The slot grid always derives from full-cycle child queries and the picks
+/// are pure functions of the site salt, cycle, and slot index, so queries
+/// are deterministic and chunking-stable at any granularity. Children play
+/// on their natural timeline (no `slowcat`-style localized cycle counters):
+/// each slot is a window onto the chosen child's current cycle.
+fn query_choose_slots<T>(
+    children: &[PatternRuntime<T>],
+    cumulative_weights: Option<&[f64]>,
+    site_salt: u64,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() || children.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut events = Vec::with_capacity(8);
+    let start_cycle = floor_rational(span.start());
+    let end_cycle = ceil_rational(span.end());
+
+    for cycle in start_cycle..end_cycle {
+        let cycle_span = cycle_span(cycle)?;
+        let Some(query_slice) = clip_span(&cycle_span, span)? else {
+            continue;
+        };
+
+        // The grid derives from the full cycle regardless of the query
+        // slice, keeping chunked queries identical to whole ones.
+        let mut slot_count = 0_usize;
+        for child in children {
+            slot_count = slot_count.max(child.try_query(&cycle_span)?.len());
+        }
+        if slot_count == 0 {
+            continue;
+        }
+        if slot_count > 100_000 {
+            return Err(EvalError::new(
+                "`pchoose` slot count exceeded evaluator limits",
+            ));
+        }
+        let slots = slot_count as i128;
+
+        let picks = choose_slot_picks(
+            site_salt,
+            cycle,
+            slot_count,
+            children.len(),
+            cumulative_weights,
+        );
+        for (slot, pick) in picks.into_iter().enumerate() {
+            let slot_index = slot as i128;
+            let slot_span = within_window_span(
+                cycle,
+                &rational_from_parts(slot_index, slots)?,
+                &rational_from_parts(slot_index + 1, slots)?,
+            )?;
+            let Some(slot_query) = clip_span(&slot_span, &query_slice)? else {
+                continue;
+            };
+            let child = &children[pick.min(children.len() - 1)];
+            let slot_events = child.try_query(&slot_query)?;
+            if events.len() + slot_events.len() > 100_000 {
+                return Err(EvalError::new(
+                    "evaluation exceeded the maximum allowed event limit",
+                ));
+            }
+            events.extend(slot_events);
+        }
+    }
+
+    sort_events(&mut events);
+    Ok(events)
+}
+
+/// Computes the child index played by each slot on one cycle of
+/// `pchoose`/`wpchoose`. Seeded by the site salt and cycle number, then
+/// advanced per slot with the same LCG `shuffle` uses (consuming the high 32
+/// bits); uniform over the children when `cumulative_weights` is `None`,
+/// proportional to the weights otherwise.
+fn choose_slot_picks(
+    site_salt: u64,
+    cycle: i128,
+    slot_count: usize,
+    child_count: usize,
+    cumulative_weights: Option<&[f64]>,
+) -> Vec<usize> {
+    let mut state = deterministic_prng(site_salt, cycle);
+    let mut advance = move || {
+        state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        state >> 32
+    };
+
+    (0..slot_count)
+        .map(|_| {
+            let draw = advance();
+            cumulative_weights.map_or_else(
+                || usize::try_from(draw % (child_count as u64)).unwrap_or(0),
+                |uppers| {
+                    #[allow(clippy::cast_precision_loss)]
+                    let coin = draw as f64 / (1_u64 << 32) as f64;
+                    uppers
+                        .iter()
+                        .position(|upper| coin < *upper)
+                        .unwrap_or_else(|| uppers.len().saturating_sub(1))
+                },
+            )
+        })
+        .collect()
 }
 
 /// Queries a `Markov` runtime: cycle 0 plays child 0 (the initial state) and

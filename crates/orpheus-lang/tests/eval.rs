@@ -4448,6 +4448,293 @@ fn wrandcat_rejects_negative_weights_and_all_zero_weights() {
     );
 }
 
+// --- pchoose/wpchoose: per-slot random choice among pattern values ---
+//
+// `pchoose(p1, p2, ...)` splits each cycle into as many equal slots as the
+// busiest argument has events that cycle, and each slot independently plays
+// the slot-slice of one argument chosen at deterministic, site-salted
+// random. `wpchoose(p1, w1, p2, w2, ...)` biases the per-slot draw by the
+// interleaved weights (the `wchoose`/`wrandcat` convention).
+
+/// Float equality within `f64::EPSILON`, for asserting on drawn values.
+fn is_value(actual: f64, expected: f64) -> bool {
+    (actual - expected).abs() < f64::EPSILON
+}
+
+#[test]
+fn pchoose_plays_only_argument_pattern_events_per_slot() {
+    let per_cycle = number_values_per_cycle("m = pchoose(0 1, 2 3)", "m", 32);
+    let mut saw_first = false;
+    let mut saw_second = false;
+    let mut saw_mixed_cycle = false;
+    for (cycle, values) in per_cycle.iter().enumerate() {
+        let [a, b] = values.as_slice() else {
+            panic!("cycle {cycle}: expected exactly two slot events, got {values:?}");
+        };
+        assert!(
+            is_value(*a, 0.0) || is_value(*a, 2.0),
+            "cycle {cycle}: slot 0 played a non-argument value {a}"
+        );
+        assert!(
+            is_value(*b, 1.0) || is_value(*b, 3.0),
+            "cycle {cycle}: slot 1 played a non-argument value {b}"
+        );
+        if is_value(*a, 0.0) && is_value(*b, 1.0) {
+            saw_first = true;
+        }
+        if is_value(*a, 2.0) && is_value(*b, 3.0) {
+            saw_second = true;
+        }
+        if is_value(*a, 0.0) != is_value(*b, 1.0) {
+            saw_mixed_cycle = true;
+        }
+    }
+    assert!(saw_first, "pchoose never played its first argument");
+    assert!(saw_second, "pchoose never played its second argument");
+    assert!(
+        saw_mixed_cycle,
+        "pchoose never mixed arguments within one cycle, so it is not per-slot"
+    );
+}
+
+#[test]
+fn pchoose_queries_are_deterministic_across_repeats() {
+    let first = number_event_keys("m = pchoose(0 1, 2 3)", "m", 16);
+    let second = number_event_keys("m = pchoose(0 1, 2 3)", "m", 16);
+    assert_eq!(first, second);
+}
+
+#[test]
+fn pchoose_is_chunking_stable_at_cycle_and_sub_cycle_granularity() {
+    let module = eval_module("m = pchoose(0 1, 2 3)", ReplMode::Loose).unwrap();
+    let pattern = module.get("m").unwrap().as_number_pattern().unwrap();
+
+    let span = orpheus_lang::render_span(8).unwrap();
+    let whole = pattern.try_query(&span).unwrap();
+
+    let mut per_cycle = Vec::new();
+    for cycle in 0..8 {
+        per_cycle.extend(pattern.try_query(&cycle_time_span(cycle)).unwrap());
+    }
+
+    let mut half_cycle = Vec::new();
+    for half in 0..16 {
+        let chunk = TimeSpan::new(
+            Rational::new(half, 2).unwrap(),
+            Rational::new(half + 1, 2).unwrap(),
+        )
+        .unwrap();
+        half_cycle.extend(pattern.try_query(&chunk).unwrap());
+    }
+
+    assert!(!whole.is_empty());
+    for chunked in [per_cycle, half_cycle] {
+        assert_eq!(whole.len(), chunked.len());
+        for (a, b) in whole.iter().zip(chunked.iter()) {
+            assert_eq!(a.part.start(), b.part.start());
+            assert!((a.value - b.value).abs() < f64::EPSILON);
+        }
+    }
+}
+
+#[test]
+fn pchoose_call_sites_have_distinct_streams() {
+    let module = eval_module("a = pchoose(0, 1)\nb = pchoose(0, 1)", ReplMode::Loose).unwrap();
+    let span = orpheus_lang::render_span(32).unwrap();
+    let a = module
+        .get("a")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .try_query(&span)
+        .unwrap();
+    let b = module
+        .get("b")
+        .unwrap()
+        .as_number_pattern()
+        .unwrap()
+        .try_query(&span)
+        .unwrap();
+
+    assert_eq!(a.len(), b.len());
+    let differs = a
+        .iter()
+        .zip(b.iter())
+        .any(|(left, right)| (left.value - right.value).abs() > f64::EPSILON);
+    assert!(differs, "distinct call sites must produce distinct streams");
+}
+
+#[test]
+fn pchoose_choice_is_roughly_uniform_over_many_slots() {
+    let per_cycle = number_values_per_cycle("m = pchoose(0 0 0 0, 1 1 1 1)", "m", 128);
+    let draws: Vec<f64> = per_cycle.into_iter().flatten().collect();
+    assert_eq!(draws.len(), 512);
+    let ones = draws.iter().filter(|value| is_value(**value, 1.0)).count();
+    #[allow(clippy::cast_precision_loss)]
+    let ratio = ones as f64 / draws.len() as f64;
+    assert!(
+        (0.35..=0.65).contains(&ratio),
+        "expected roughly uniform per-slot draws, got ratio {ratio}"
+    );
+}
+
+#[test]
+fn pchoose_slot_grid_follows_the_busiest_argument() {
+    let per_cycle = number_values_per_cycle("m = pchoose(0 1 2 3, 9)", "m", 32);
+    let mut saw_mixed_cycle = false;
+    for (cycle, values) in per_cycle.iter().enumerate() {
+        assert_eq!(
+            values.len(),
+            4,
+            "cycle {cycle}: expected the four-slot grid of the busiest argument"
+        );
+        for (slot, value) in values.iter().enumerate() {
+            #[allow(clippy::cast_precision_loss)]
+            let own = slot as f64;
+            assert!(
+                is_value(*value, own) || is_value(*value, 9.0),
+                "cycle {cycle} slot {slot}: expected {own} or 9, got {value}"
+            );
+        }
+        if values.iter().any(|v| is_value(*v, 9.0)) && values.iter().any(|v| !is_value(*v, 9.0)) {
+            saw_mixed_cycle = true;
+        }
+    }
+    assert!(
+        saw_mixed_cycle,
+        "pchoose never mixed the sparse and dense arguments within one cycle"
+    );
+}
+
+#[test]
+fn pchoose_composes_under_slowcat() {
+    // Even cycles play the pchoose slots, odd cycles play the constant.
+    let per_cycle = number_values_per_cycle("m = cat(pchoose(0 1, 2 3), 7)", "m", 16);
+    for (cycle, values) in per_cycle.iter().enumerate() {
+        if cycle % 2 == 0 {
+            let [a, b] = values.as_slice() else {
+                panic!("cycle {cycle}: expected two slot events, got {values:?}");
+            };
+            assert!(
+                is_value(*a, 0.0) || is_value(*a, 2.0),
+                "cycle {cycle}: bad slot 0 value {a}"
+            );
+            assert!(
+                is_value(*b, 1.0) || is_value(*b, 3.0),
+                "cycle {cycle}: bad slot 1 value {b}"
+            );
+        } else {
+            assert_eq!(values.as_slice(), [7.0], "cycle {cycle}");
+        }
+    }
+}
+
+#[test]
+fn pchoose_composes_under_fast() {
+    let per_cycle = number_values_per_cycle("m = pchoose(0, 1) |> fast(2)", "m", 32);
+    let mut draws = Vec::new();
+    for (cycle, values) in per_cycle.iter().enumerate() {
+        assert_eq!(
+            values.len(),
+            2,
+            "cycle {cycle}: fast(2) should squeeze two one-slot cycles into one"
+        );
+        draws.extend(values.iter().copied());
+    }
+    assert!(draws.iter().all(|v| is_value(*v, 0.0) || is_value(*v, 1.0)));
+    assert!(draws.iter().any(|v| is_value(*v, 0.0)));
+    assert!(draws.iter().any(|v| is_value(*v, 1.0)));
+}
+
+#[test]
+fn pchoose_supports_sample_patterns_from_mini_notation() {
+    let module = eval_module("drums = pchoose(bd*2, sn cp)", ReplMode::Loose).unwrap();
+    let names = exported_sample_names(module.get("drums").unwrap(), 32);
+    assert_eq!(
+        names.len(),
+        64,
+        "expected exactly two slot events per cycle"
+    );
+    for pair in names.chunks(2) {
+        assert!(
+            pair[0] == "bd" || pair[0] == "sn",
+            "slot 0 played a non-argument sample {}",
+            pair[0]
+        );
+        assert!(
+            pair[1] == "bd" || pair[1] == "cp",
+            "slot 1 played a non-argument sample {}",
+            pair[1]
+        );
+    }
+    for expected in ["bd", "sn", "cp"] {
+        assert!(
+            names.iter().any(|name| name == expected),
+            "pchoose never played `{expected}`"
+        );
+    }
+}
+
+#[test]
+fn pchoose_requires_matching_pattern_kinds() {
+    assert_eval_error_contains(
+        "drums = pchoose(bd, 1 2)",
+        ReplMode::Loose,
+        &["`pchoose`", "same pattern kind"],
+    );
+}
+
+#[test]
+fn wpchoose_zero_weight_patterns_are_never_played() {
+    let per_cycle = number_values_per_cycle("m = wpchoose(0, 1, 1, 0)", "m", 32);
+    for values in &per_cycle {
+        assert_eq!(values.as_slice(), [0.0]);
+    }
+}
+
+#[test]
+fn wpchoose_weights_bias_the_choice() {
+    let per_cycle = number_values_per_cycle("m = wpchoose(0 0 0 0, 1, 1 1 1 1, 3)", "m", 128);
+    let draws: Vec<f64> = per_cycle.into_iter().flatten().collect();
+    assert_eq!(draws.len(), 512);
+    let ones = draws.iter().filter(|value| is_value(**value, 1.0)).count();
+    // Expected 384 of 512 (weight 3 of 4); allow a wide deterministic margin.
+    assert!(
+        (300..=460).contains(&ones),
+        "expected the weight-3 pattern on roughly three quarters of slots, got {ones}/512"
+    );
+}
+
+#[test]
+fn wpchoose_requires_pattern_weight_pairs() {
+    assert_eval_error_contains(
+        "m = wpchoose(0, 1, 2, 3, 4)",
+        ReplMode::Loose,
+        &["`wpchoose`", "pattern/weight pairs"],
+    );
+}
+
+#[test]
+fn wpchoose_rejects_negative_weights_and_all_zero_weights() {
+    assert_eval_error_contains(
+        "m = wpchoose(0, -1.0, 1, 1)",
+        ReplMode::Loose,
+        &["`wpchoose`", "non-negative"],
+    );
+    assert_eval_error_contains(
+        "m = wpchoose(0, 0, 1, 0)",
+        ReplMode::Loose,
+        &["`wpchoose`", "positive weight"],
+    );
+}
+
+#[test]
+fn wpchoose_queries_are_deterministic_across_repeats() {
+    let first = number_event_keys("m = wpchoose(0 1, 1, 2 3, 2)", "m", 16);
+    let second = number_event_keys("m = wpchoose(0 1, 1, 2 3, 2)", "m", 16);
+    assert_eq!(first, second);
+}
+
 // --- markov: state-transition pattern sequencing ---
 //
 // `markov(s0, w0_0, ..., w0_{k-1}, s1, w1_0, ..., w1_{k-1}, ...)` takes `k`
