@@ -123,7 +123,10 @@ pub fn frame_span(frame: u64, frames_per_cycle: u64) -> Result<TimeSpan, Pattern
 
 /// The base-36 value of a glyph: `.`/`*` are 0, digits are themselves,
 /// letters are 10-35 regardless of case.
-const fn value_of(glyph: char) -> u64 {
+///
+/// Visible outside this (private) module so the OSC transport encodes arg
+/// glyphs with the same table; not re-exported from the `orca` module.
+pub const fn value_of(glyph: char) -> u64 {
     match glyph {
         '0'..='9' => glyph as u64 - '0' as u64,
         'a'..='z' => glyph as u64 - 'a' as u64 + 10,

@@ -14,12 +14,13 @@ lilypond_export = []
 [dependencies]
 comfy-table.workspace = true
 crossterm.workspace = true
-midir = "0.10"
+midir.workspace = true
 orpheus-dsp.workspace = true
 orpheus-pattern.workspace = true
 pest = "2.8.6"
 pest_derive = "2.8.6"
 ratatui.workspace = true
+rosc.workspace = true
 ratatui-hypertile.workspace = true
 ratatui-hypertile-extras.workspace = true
 thiserror.workspace = true
