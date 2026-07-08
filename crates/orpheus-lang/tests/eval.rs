@@ -5723,3 +5723,184 @@ fn fractional_fast_composes_with_slowcat_and_every() {
         vec!["bd", "sn", "bd", "bd", "sn"]
     );
 }
+
+// --- in-sequence comma stacking + inline euclid sugar (grammar parity) ---
+
+#[test]
+fn group_commas_match_the_equivalent_stack_call() {
+    let sugar = eval_module("drums = (bd sn, hh hh hh)", ReplMode::Loose).unwrap();
+    let explicit = eval_module("drums = stack((bd sn), (hh hh hh))", ReplMode::Loose).unwrap();
+    assert_eq!(
+        exported_sample_events(sugar.get("drums").unwrap(), 2),
+        exported_sample_events(explicit.get("drums").unwrap(), 2),
+    );
+}
+
+#[test]
+fn group_comma_layers_each_fill_the_group_slot() {
+    let module = eval_module("drums = bd (sn, hh hh)", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 1);
+    let mut spans = exact_sample_spans(&events);
+    spans.sort();
+    assert_eq!(
+        spans,
+        vec![
+            (0, 1, 1, 2, "bd".to_owned()),
+            (1, 2, 1, 1, "sn".to_owned()),
+            (1, 2, 3, 4, "hh".to_owned()),
+            (3, 4, 1, 1, "hh".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn top_level_comma_stacks_whole_pattern_lines() {
+    let sugar = eval_module("drums = bd sn, hh*4", ReplMode::Loose).unwrap();
+    let explicit = eval_module("drums = stack(bd sn, hh*4)", ReplMode::Loose).unwrap();
+    assert_eq!(
+        exported_sample_events(sugar.get("drums").unwrap(), 2),
+        exported_sample_events(explicit.get("drums").unwrap(), 2),
+    );
+}
+
+#[test]
+fn polymeter_commas_are_unchanged_by_group_comma_support() {
+    let module = eval_module("drums = {bd sn, hh hh hh}", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 1);
+    let mut spans = exact_sample_spans(&events);
+    spans.sort();
+    assert_eq!(
+        spans,
+        vec![
+            (0, 1, 1, 2, "bd".to_owned()),
+            (0, 1, 1, 2, "hh".to_owned()),
+            (1, 2, 1, 1, "hh".to_owned()),
+            (1, 2, 1, 1, "sn".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn inline_euclid_gates_a_sample_token() {
+    // bd(3, 8) plays the Bjorklund x..x..x. rhythm: onsets at steps 0, 3,
+    // and 6, each one eighth wide.
+    let module = eval_module("drums = bd(3, 8)", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 1);
+    assert_eq!(
+        exact_sample_spans(&events),
+        vec![
+            (0, 1, 1, 8, "bd".to_owned()),
+            (3, 8, 1, 2, "bd".to_owned()),
+            (3, 4, 7, 8, "bd".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn inline_euclid_matches_the_masked_fast_pattern() {
+    let sugar = eval_module("drums = bd(3, 8)", ReplMode::Loose).unwrap();
+    let explicit = eval_module("drums = mask(euclid(3, 8), bd*8)", ReplMode::Loose).unwrap();
+    assert_eq!(
+        exported_sample_events(sugar.get("drums").unwrap(), 2),
+        exported_sample_events(explicit.get("drums").unwrap(), 2),
+    );
+}
+
+#[test]
+fn inline_euclid_accepts_a_rotation_argument() {
+    // Rotating (3, 8) by 1 plays original step `i + 1` at step `i`, moving
+    // the gates to steps 2, 5, and 7.
+    let module = eval_module("drums = bd(3, 8, 1)", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 1);
+    assert_eq!(
+        exact_sample_spans(&events),
+        vec![
+            (1, 4, 3, 8, "bd".to_owned()),
+            (5, 8, 3, 4, "bd".to_owned()),
+            (7, 8, 1, 1, "bd".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn inline_euclid_step_shares_the_sequence_with_other_steps() {
+    let module = eval_module("drums = bd(3, 8) sn", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 1);
+    assert_eq!(
+        exact_sample_spans(&events),
+        vec![
+            (0, 1, 1, 16, "bd".to_owned()),
+            (3, 16, 1, 4, "bd".to_owned()),
+            (3, 8, 7, 16, "bd".to_owned()),
+            (1, 2, 1, 1, "sn".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn inline_euclid_composes_with_step_modifiers_alternation_and_polymeter() {
+    let doubled = eval_module("drums = bd(3, 8)*2", ReplMode::Loose).unwrap();
+    assert_eq!(
+        exported_sample_events(doubled.get("drums").unwrap(), 1).len(),
+        6
+    );
+
+    let alternating = eval_module("drums = <bd(3, 8) sn>", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(alternating.get("drums").unwrap(), 2);
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event["sample"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["bd", "bd", "bd", "sn"]
+    );
+
+    let polymetric = eval_module("drums = {bd(3, 8) hh, sn}%2", ReplMode::Loose).unwrap();
+    // Group 1 packs the gated bd (3 hits) and hh into cycle 0 at two steps
+    // per cycle; group 2 repeats its single sn step twice.
+    assert_eq!(
+        exported_sample_events(polymetric.get("drums").unwrap(), 1).len(),
+        6
+    );
+}
+
+#[test]
+fn inline_euclid_applies_to_number_patterns_too() {
+    assert_eq!(
+        number_part_spans("melody = c4(3, 8)", "melody"),
+        vec![eighth(0), eighth(3), eighth(6)]
+    );
+}
+
+#[test]
+fn inline_euclid_validates_its_arguments() {
+    assert_eval_error_contains(
+        "drums = bd(9, 8)",
+        ReplMode::Loose,
+        &["pulses less than or equal to steps"],
+    );
+    assert_eval_error_contains(
+        "drums = bd(3, 8, 1, 2)",
+        ReplMode::Loose,
+        &["2 or 3 arguments"],
+    );
+    assert_eval_error_contains(
+        "drums = bd(2.5, 8)",
+        ReplMode::Loose,
+        &["pulses", "whole number"],
+    );
+}
+
+#[test]
+fn function_calls_keep_call_semantics_with_inline_euclid_support() {
+    let module = eval_module("drums = fast(2, bd sn)", ReplMode::Loose).unwrap();
+    assert_eq!(sample_names(module.get("drums").unwrap()).len(), 4);
+
+    // Calls on real functions inside sequences are still rejected with the
+    // existing guidance.
+    assert_eval_error_contains(
+        "drums = bd fast(2, sn)",
+        ReplMode::Loose,
+        &["function call `fast` cannot appear inside a pattern sequence"],
+    );
+}

@@ -262,9 +262,26 @@ fn build_module(pair: Pair<'_, Rule>, depth: usize) -> Result<Module, ParseError
 fn build_binding(pair: Pair<'_, Rule>, depth: usize) -> Result<Stmt, ParseError> {
     let mut inner = pair.into_inner();
     let (name, params) = build_binding_head(next_pair(&mut inner, "binding head")?)?;
-    let mut expr = build_pipe_expr(next_pair(&mut inner, "binding expression")?, depth)?;
+    let mut expr = build_binding_lines(next_pair(&mut inner, "binding expression")?, depth)?;
     finalize_step_modifiers(&mut expr, false)?;
     Ok(Stmt::Binding { name, params, expr })
+}
+
+/// Builds a binding's right-hand side. A bare top-level comma stacks whole
+/// pattern lines (Tidal's `bd sn, hh*4`), so multiple comma-separated pipe
+/// expressions collapse into an [`Expr::Stack`].
+fn build_binding_lines(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    let mut lines = pair
+        .into_inner()
+        .map(|line| build_pipe_expr(line, depth))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if lines.len() > 1 {
+        return Ok(Expr::Stack(lines));
+    }
+    lines
+        .pop()
+        .ok_or_else(|| ParseError::new("missing binding expression"))
 }
 
 /// Post-processes tight `*` step modifiers once the full binding AST exists.
@@ -768,12 +785,25 @@ fn build_named_call_arg(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, Pars
     })
 }
 
+/// Builds a `( ... )` subdivision group. Comma-separated layers inside the
+/// parentheses play simultaneously with each layer squeezed to the full
+/// group span, so `(bd sn, hh hh hh)` desugars to a stack of two groups.
 fn build_group(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
     if depth > MAX_AST_DEPTH {
         return Err(ParseError::new("maximum AST depth exceeded"));
     }
-    let (items, _) = build_step_expr_list(pair, depth)?;
-    Ok(Expr::Group(items))
+    let mut layers = Vec::new();
+    for layer_pair in pair.into_inner() {
+        let (items, _) = build_step_expr_list(layer_pair, depth)?;
+        layers.push(Expr::Group(items));
+    }
+
+    if layers.len() > 1 {
+        return Ok(Expr::Stack(layers));
+    }
+    layers
+        .pop()
+        .ok_or_else(|| ParseError::new("missing group items"))
 }
 
 fn build_alternation(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {

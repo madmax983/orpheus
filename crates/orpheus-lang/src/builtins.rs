@@ -1171,6 +1171,60 @@ fn apply_euclid(args: Vec<Value>, invert: bool, name: &str) -> Result<Value, Eva
     )))
 }
 
+/// Implements the inline euclid grammar sugar `token(pulses, steps[, rot])`
+/// (Tidal's `bd(3, 8)`) on an already evaluated pattern value.
+///
+/// Equivalent to `mask(euclid(pulses, steps, rot), token*steps)`: the token
+/// repeats once per step and only the Bjorklund onsets survive, so each hit
+/// is one step wide.
+pub fn apply_inline_euclid(pattern: Value, args: Vec<Value>) -> Result<Value, EvalError> {
+    if !(2..=3).contains(&args.len()) {
+        return Err(EvalError::new(format!(
+            "inline euclid calls take 2 or 3 arguments (pulses, steps, rotation), got {}",
+            args.len()
+        )));
+    }
+
+    let mut args = args.into_iter();
+    let pulses = extract_whole_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("inline euclid requires a pulses argument"))?,
+        "inline euclid pulses",
+        false,
+    )?;
+    let steps = extract_whole_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("inline euclid requires a steps argument"))?,
+        "inline euclid steps",
+        true,
+    )?;
+
+    if pulses > steps {
+        return Err(EvalError::new(
+            "inline euclid requires pulses less than or equal to steps",
+        ));
+    }
+
+    let rotation = args
+        .next()
+        .map(|value| extract_euclid_rotation(value, "inline euclid"))
+        .transpose()?
+        .unwrap_or(0);
+
+    let gate = GatePatternValue::Number(NumberPatternValue::from_nodes(build_euclid_nodes(
+        pulses, steps, rotation, false,
+    )));
+    let factor = i64::from(steps);
+    match pattern {
+        Value::SamplePattern(hits) => Ok(Value::SamplePattern(hits.fast(factor).mask(gate))),
+        Value::NumberPattern(hits) => Ok(Value::NumberPattern(hits.fast(factor).mask(gate))),
+        other => Err(EvalError::new(format!(
+            "cannot call a {}",
+            other.kind_name()
+        ))),
+    }
+}
+
 /// Implements `euclid_full(pulses, steps[, rotation], hits, rests)` (Tidal
 /// `euclidFull`): plays the `hits` pattern on the euclidean gates and the
 /// `rests` pattern on the complementary steps.

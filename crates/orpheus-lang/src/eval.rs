@@ -26,7 +26,7 @@ use orpheus_pattern::{Event, PatternNode, Rational, TimeSpan};
 
 use crate::ReplMode;
 use crate::ast::{Expr, Module, StepOp, Stmt, binding_expr_self_references};
-use crate::builtins::{builtin_value, is_sample_identifier, stack_values};
+use crate::builtins::{apply_inline_euclid, builtin_value, is_sample_identifier, stack_values};
 use crate::parser::parse_module;
 use crate::pedal::compile_graph;
 use crate::pitch::parse_named_pitch_literal;
@@ -429,14 +429,35 @@ impl Evaluator {
 
     /// Returns `true` when any item needs whole-slot pattern evaluation: an
     /// `<a b c>` alternation, a step-modified element (`bd*2`, `bd?`, ...),
-    /// or a `{...}` polymeter. Looks through parenthesized groups so
-    /// `bd (sn <cp hh>)` is detected too.
+    /// a `{...}` polymeter, an in-sequence stack (`(bd sn, hh hh hh)` or an
+    /// explicit `stack(...)` step), or an inline euclid call (`bd(3, 8)`).
+    /// Looks through parenthesized groups so `bd (sn <cp hh>)` is detected
+    /// too.
     fn items_need_slot_evaluation(items: &[Expr]) -> bool {
         items.iter().any(|item| match item {
-            Expr::Alternation(_) | Expr::Modified { .. } | Expr::Polymeter { .. } => true,
+            Expr::Alternation(_)
+            | Expr::Modified { .. }
+            | Expr::Polymeter { .. }
+            | Expr::Stack(_) => true,
             Expr::Group(inner) => Self::items_need_slot_evaluation(inner),
+            Expr::Call { callee, args } => Self::is_inline_euclid_call(callee, args),
             _ => false,
         })
+    }
+
+    /// Returns `true` when a call in sequence-step position has the inline
+    /// euclid shape `token(pulses, steps[, rotation])` (Tidal's `bd(3, 8)`):
+    /// the callee is an identifier that does not name a builtin function and
+    /// every argument is a numeric literal. Calls on real functions
+    /// (`fast(2, sn)`) keep function-call semantics.
+    fn is_inline_euclid_call(callee: &Expr, args: &[Expr]) -> bool {
+        let Expr::Ident(name) = callee else {
+            return false;
+        };
+        if matches!(builtin_value(name), Some(Value::Function(_))) {
+            return false;
+        }
+        (2..=3).contains(&args.len()) && args.iter().all(|arg| matches!(arg, Expr::Number(_)))
     }
 
     /// Evaluates a tight postfix step operator (`a*n`, `a/n`, `a?`) applied
@@ -723,6 +744,16 @@ impl Evaluator {
         let mut evaluated_args = Vec::with_capacity(args.len() + usize::from(piped_arg.is_some()));
         for arg in args {
             evaluated_args.push(self.eval_expr_in_meter(arg, meter)?);
+        }
+        if piped_arg.is_none()
+            && matches!(
+                callee_value,
+                Value::SamplePattern(_) | Value::NumberPattern(_)
+            )
+        {
+            // "Calling" a pattern is the inline euclid sugar `bd(3, 8[, rot])`:
+            // the pattern is euclidean-gated instead of applied as a function.
+            return apply_inline_euclid(callee_value, evaluated_args);
         }
         if let Some(piped) = piped_arg {
             evaluated_args.push(piped);
@@ -1129,6 +1160,10 @@ impl Evaluator {
         };
 
         if name == "sample" && args.len() == 1 {
+            None
+        } else if Self::is_inline_euclid_call(callee, args) {
+            // Inline euclid sugar `bd(3, 8[, rot])` gates a pattern token,
+            // so it is a valid sequence step rather than a function call.
             None
         } else {
             Some(EvalError::new(format!(
