@@ -134,7 +134,7 @@ pub enum BuiltinKind {
     IRand,
     /// Discrete counting ramp `0..n-1`, one pass per cycle (Tidal `run`).
     Run,
-    /// Growing-prefix counting ramp: cycle `k` plays `run(min(k + 1, n))` (Tidal `scan`).
+    /// Growing-prefix counting ramp: cycle `k` plays `run((k mod n) + 1)` (Tidal `scan`).
     Scan,
     /// Plays one randomly chosen child pattern per cycle (Tidal `randcat`).
     RandCat,
@@ -3459,9 +3459,9 @@ enum PatternRuntime<T> {
         site_salt: u64,
     },
     /// Growing-prefix counting ramp (Tidal `scan`): cycle `k` subdivides into
-    /// `p = min(k + 1, n)` equal steps valued `0..p-1`, clamping at the full
-    /// `run(n)` ramp once the prefix is complete. Cycles before cycle zero
-    /// are silent.
+    /// `p = (k mod n) + 1` equal steps valued `0..p-1`, restarting at
+    /// `run(1)` once the full `run(n)` ramp has played. The modulo is
+    /// euclidean, matching `SlowCat`'s negative-cycle convention.
     Scan {
         n: i64,
     },
@@ -5592,12 +5592,13 @@ where
     })
 }
 
-/// Queries a `Scan` runtime (Tidal `scan`, clamped): cycle `k >= 0` plays a
-/// counting ramp of `p = min(k + 1, n)` equal steps valued `0..p-1`; cycles
-/// at or beyond `n - 1` keep playing the full `run(n)` ramp. Cycles before
-/// cycle zero emit nothing. Events carry their full step span as `whole` and
-/// the span clipped to the query window as `part`, so arbitrarily chunked
-/// queries stay consistent with whole-span queries.
+/// Queries a `Scan` runtime (Tidal `scan = slowcat $ map run [1 .. n]`):
+/// cycle `k` plays a counting ramp of `p = (k mod n) + 1` equal steps valued
+/// `0..p-1`, restarting at `run(1)` once the full `run(n)` ramp has played.
+/// Like `SlowCat`, the modulo is euclidean, so negative cycles wrap
+/// consistently (cycle `-1` plays `run(n)`). Events carry their full step
+/// span as `whole` and the span clipped to the query window as `part`, so
+/// arbitrarily chunked queries stay consistent with whole-span queries.
 fn query_scan<T>(n: i64, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError>
 where
     T: PatternRuntimeValue,
@@ -5612,15 +5613,9 @@ where
     let end_cycle = ceil_rational(span.end());
 
     for cycle in start_cycle..end_cycle {
-        let prefix = cycle
-            .checked_add(1)
-            .ok_or_else(|| {
-                EvalError::new("`scan` cycle index exceeded the supported evaluator range")
-            })?
-            .min(n);
-        if prefix <= 0 {
-            continue;
-        }
+        // `rem_euclid(n)` is at most `n - 1`, so the prefix stays in `[1, n]`
+        // and cannot overflow.
+        let prefix = cycle.rem_euclid(n) + 1;
 
         let cycle_base = cycle.checked_mul(prefix).ok_or_else(|| {
             EvalError::new("`scan` cycle index exceeded the supported evaluator range")

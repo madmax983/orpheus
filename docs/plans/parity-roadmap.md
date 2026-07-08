@@ -56,7 +56,8 @@ File paths point the next contributor at the relevant implementation sites.
   `rand |> segment(8) |> range(200, 2000) |> cutoff` works end-to-end
 - [x] `run` / `scan` — integer ramp patterns; `run(n)` counts `0..n-1` once
   per cycle (`apply_run`, builtins.rs), `scan(n)` grows the prefix one step
-  per cycle and clamps at the full ramp (`PatternRuntime::Scan`, value.rs)
+  per cycle and wraps back to `run(1)` after the full ramp, matching Tidal's
+  `slowcat $ map run [1 .. n]` (`PatternRuntime::Scan`, value.rs)
 - [x] `irand` — integer random source; `PatternRuntime::IRand` (value.rs)
 - [x] `choose` / `wchoose` — spec:
   `docs/design/specs/probabilistic_pattern_sequencing_spec.md`; constant
