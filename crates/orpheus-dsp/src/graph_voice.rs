@@ -5,9 +5,15 @@
 //! stereo voice as a compiled graph [`Processor`] with the fixed interface
 //!
 //! ```text
-//! inputs:  [gate, freq_hz, gain, pan]   (params as signals, ADR 0004)
+//! inputs:  [gate, freq_hz, gain, pan, p1..p4]   (params as signals, ADR 0004)
 //! outputs: [left, right]
 //! ```
+//!
+//! The trailing `p1..p4` channels are general-purpose per-note parameters set
+//! by the pattern side (ADR 0010 addendum): each is sampled at trigger time
+//! and held constant for the note, exactly like the gain and pan fields.
+//! Notes triggered without explicit values read
+//! [`DEFAULT_VOICE_PARAM_VALUE`] (0.0).
 //!
 //! Allocation discipline: programs are compiled into a fixed pool of
 //! [`GraphVoice`]s at engine construction time (off the audio thread) and
@@ -28,6 +34,19 @@ use crate::graph::{
 };
 use crate::routing::TrackId;
 use crate::sample_bank::PlaybackSample;
+
+/// How many general-purpose per-note pattern parameters (`p1`..`p4`) every
+/// graph voice program receives (ADR 0010 addendum).
+///
+/// The parameters ride the fixed voice interface as trailing signal inputs
+/// (`[gate, freq, gain, pan, p1..p4]`), stamped as plain `f32` fields at
+/// trigger time and held for the note, so the audio-thread path stays
+/// allocation-free.
+pub const VOICE_PARAM_COUNT: usize = 4;
+
+/// The value a voice body reads from a per-note parameter (`p1`..`p4`) the
+/// triggering pattern never set.
+pub const DEFAULT_VOICE_PARAM_VALUE: f32 = 0.0;
 
 /// Default pooled voices per program (ADR 0009).
 ///
@@ -85,7 +104,7 @@ pub enum StealPolicy {
 /// A named, buildable graph voice program.
 ///
 /// The builder function compiles a graph with the fixed voice interface:
-/// 4 inputs (gate, freq\_hz, gain, pan) and 2 outputs (left, right).
+/// 8 inputs (gate, freq\_hz, gain, pan, p1..p4) and 2 outputs (left, right).
 #[derive(Clone, Copy, Debug)]
 pub struct GraphVoiceProgram {
     token: &'static str,
@@ -145,7 +164,9 @@ const GSINE_DECAY_SECONDS: f32 = 0.01;
 const GSINE_SUSTAIN_LEVEL: f32 = 0.7;
 const GSINE_RELEASE_SECONDS: f32 = 0.02;
 
-/// Builds the `gsine` voice graph: `[gate, freq, gain, pan] -> [L, R]`.
+/// Builds the `gsine` voice graph:
+/// `[gate, freq, gain, pan, p1..p4] -> [L, R]`. The built-in ignores the
+/// per-note pattern parameters; a leading selector drops them.
 fn build_gsine(sample_rate_hz: f32) -> Processor {
     let envelope = bind(
         adsr(sample_rate_hz),
@@ -158,8 +179,8 @@ fn build_gsine(sample_rate_hz: f32) -> Processor {
     )
     .unwrap_or_else(|error| panic!("gsine envelope bindings must be valid: {error}"));
 
-    // [gate, freq, gain, pan] -> [freq, gate, gain, pan]
-    let reorder = wire(&[1, 0, 2, 3]);
+    // [gate, freq, gain, pan, p1..p4] -> [freq, gate, gain, pan]
+    let reorder = wire_with_inputs(&[1, 0, 2, 3], channel_index(4 + VOICE_PARAM_COUNT));
     // -> [osc, level, gain, pan]
     let sources = par(sine(sample_rate_hz), par(envelope, passthrough(2)));
     // -> [osc * level, gain, pan]
@@ -184,7 +205,7 @@ fn build_gsine(sample_rate_hz: f32) -> Processor {
     )
     .unwrap_or_else(|error| panic!("gsine input reorder must compose: {error}"));
 
-    debug_assert_eq!(graph.inputs(), 4);
+    debug_assert_eq!(graph.inputs(), channel_index(4 + VOICE_PARAM_COUNT));
     debug_assert_eq!(graph.outputs(), 2);
     Processor::new(graph)
 }
@@ -199,6 +220,11 @@ pub enum VoiceSignalRef {
     Gate,
     /// The per-note frequency in Hertz.
     Freq,
+    /// A general-purpose per-note pattern parameter (`p1`..`p4`): index
+    /// `i` is the language surface's `p{i + 1}`, sampled at trigger time and
+    /// held for the note. Must be below [`VOICE_PARAM_COUNT`]. Unset
+    /// parameters read [`DEFAULT_VOICE_PARAM_VALUE`].
+    Param(u32),
     /// The output of the node at this index in the spec's node list.
     Node(u32),
     /// The output of the node at this index, delayed by one sample.
@@ -609,6 +635,19 @@ pub enum GraphVoiceSpecError {
         /// The rejected pool size.
         requested: usize,
     },
+    /// A reference named a per-note pattern parameter index at or above
+    /// [`VOICE_PARAM_COUNT`].
+    #[error(
+        "voice node {node} reads pattern parameter {reference}, but only \
+         {VOICE_PARAM_COUNT} parameters exist"
+    )]
+    ParamOutOfRange {
+        /// The index of the offending node (the node count when the spec's
+        /// output reference is at fault).
+        node: usize,
+        /// The out-of-range parameter index.
+        reference: usize,
+    },
 }
 
 /// A declarative, user-definable graph voice program.
@@ -619,8 +658,9 @@ pub enum GraphVoiceSpecError {
 /// construction so compilation cannot fail. Compilation lowers each node onto
 /// its graph-module primitive and wires the DAG with `seq`/`par`/`wire`
 /// combinators into the fixed voice interface
-/// `[gate, freq_hz, gain, pan] -> [left, right]` (the per-trigger gain and
-/// equal-power pan stages are appended automatically).
+/// `[gate, freq_hz, gain, pan, p1..p4] -> [left, right]` (the per-trigger
+/// gain and equal-power pan stages are appended automatically; `p1..p4` are
+/// the per-note pattern parameters of the ADR 0010 addendum).
 ///
 /// Construction and compilation may allocate and must happen off the audio
 /// thread; the compiled [`GraphVoice`] follows the pooled discipline of
@@ -693,6 +733,12 @@ impl GraphVoiceSpec {
                             reference: target as usize,
                         });
                     }
+                    VoiceSignalRef::Param(target) if target as usize >= VOICE_PARAM_COUNT => {
+                        return Err(GraphVoiceSpecError::ParamOutOfRange {
+                            node: index,
+                            reference: target as usize,
+                        });
+                    }
                     _ => {}
                 }
             }
@@ -702,6 +748,14 @@ impl GraphVoiceSpec {
             && target as usize >= nodes.len()
         {
             return Err(GraphVoiceSpecError::OutputOutOfRange {
+                reference: target as usize,
+            });
+        }
+        if let VoiceSignalRef::Param(target) = output
+            && target as usize >= VOICE_PARAM_COUNT
+        {
+            return Err(GraphVoiceSpecError::ParamOutOfRange {
+                node: nodes.len(),
                 reference: target as usize,
             });
         }
@@ -807,11 +861,12 @@ impl GraphVoiceSpec {
     ///
     /// The graph threads a growing signal bus through one stage per node.
     /// Before stage `k` the bus is `[out_{k-1}, .., out_0, tap_0, ..,
-    /// tap_{K-1}, gate, freq, gain, pan]`, where the `tap` channels carry the
-    /// one-sample-delayed outputs of the nodes read through feedback
-    /// references; the stage wires the node's inputs to the front (a `wire`
-    /// node may duplicate bus channels), runs the node in parallel with a
-    /// passthrough of the whole bus, and thereby prepends its output.
+    /// tap_{K-1}, gate, freq, gain, pan, p1..p4]`, where the `tap` channels
+    /// carry the one-sample-delayed outputs of the nodes read through
+    /// feedback references and `p1..p4` are the per-note pattern parameters;
+    /// the stage wires the node's inputs to the front (a `wire` node may
+    /// duplicate bus channels), runs the node in parallel with a passthrough
+    /// of the whole bus, and thereby prepends its output.
     ///
     /// When the spec contains feedback references the whole DAG becomes the
     /// body of a recursive (`Rec`) composition: the body re-exposes each
@@ -840,9 +895,14 @@ impl GraphVoiceSpec {
         let output_channel = bus_channel(node_count, &taps, self.output);
         let gain_channel = channel_index(node_count + tap_count + 2);
         let pan_channel = channel_index(node_count + tap_count + 3);
+        // The full bus width after every stage: node outputs, feedback taps,
+        // and the fixed [gate, freq, gain, pan, p1..p4] tail. The output
+        // selectors must name it explicitly, since the pattern-parameter
+        // channels they drop sit above every selected channel.
+        let bus_width = channel_index(node_count + tap_count + 4 + VOICE_PARAM_COUNT);
 
         let selected = if taps.is_empty() {
-            let select = wire(&[output_channel, gain_channel, pan_channel]);
+            let select = wire_with_inputs(&[output_channel, gain_channel, pan_channel], bus_width);
             seq(dag, select)
                 .unwrap_or_else(|error| panic!("voice spec output selector must compose: {error}"))
         } else {
@@ -854,7 +914,7 @@ impl GraphVoiceSpec {
                 .map(|&tap| bus_channel(node_count, &taps, VoiceSignalRef::Node(tap)))
                 .collect();
             selection.extend([output_channel, gain_channel, pan_channel]);
-            let body = seq(dag, wire(&selection)).unwrap_or_else(|error| {
+            let body = seq(dag, wire_with_inputs(&selection, bus_width)).unwrap_or_else(|error| {
                 panic!("voice spec loop body selector must compose: {error}")
             });
             let looped = feedback(body, passthrough(channel_index(tap_count)))
@@ -875,7 +935,7 @@ impl GraphVoiceSpec {
             .unwrap_or_else(|error| panic!("voice spec pan stage must compose: {error}"));
         let graph = seq(selected, tail)
             .unwrap_or_else(|error| panic!("voice spec output stage must compose: {error}"));
-        debug_assert_eq!(graph.inputs(), 4);
+        debug_assert_eq!(graph.inputs(), channel_index(4 + VOICE_PARAM_COUNT));
         debug_assert_eq!(graph.outputs(), 2);
         Processor::new(graph)
     }
@@ -883,7 +943,7 @@ impl GraphVoiceSpec {
     /// Builds the stage for node `index`: input wiring followed by the node
     /// running in parallel with a passthrough of the whole bus.
     fn build_stage(index: usize, node: &VoiceNodeSpec, taps: &[u32], sample_rate_hz: f32) -> Seq {
-        let bus_width = index + taps.len() + 4;
+        let bus_width = index + taps.len() + 4 + VOICE_PARAM_COUNT;
         let mut mapping: Vec<u32> = node
             .input_refs()
             .iter()
@@ -972,12 +1032,15 @@ impl GraphVoiceSpec {
 }
 
 /// The bus channel carrying `reference` when `prepended` node outputs sit in
-/// front of the feedback tap channels and the fixed `[gate, freq, gain, pan]`
-/// tail.
+/// front of the feedback tap channels and the fixed
+/// `[gate, freq, gain, pan, p1..p4]` tail.
 fn bus_channel(prepended: usize, taps: &[u32], reference: VoiceSignalRef) -> u32 {
     match reference {
         VoiceSignalRef::Gate => channel_index(prepended + taps.len()),
         VoiceSignalRef::Freq => channel_index(prepended + taps.len() + 1),
+        // Gain and pan occupy the two channels after freq; the per-note
+        // pattern parameters follow them.
+        VoiceSignalRef::Param(index) => channel_index(prepended + taps.len() + 4 + index as usize),
         VoiceSignalRef::Node(index) => {
             // Outputs are prepended, so node j sits at prepended - 1 - j.
             channel_index(prepended - 1 - index as usize)
@@ -1049,16 +1112,49 @@ impl GraphVoice {
         self.reset();
     }
 
-    /// Renders one stereo frame with the given control values.
+    /// Renders one stereo frame with the given control values and the
+    /// default (all-zero) per-note pattern parameters.
     ///
     /// Parameters flow as signals (ADR 0004): the gate, frequency, gain, and
     /// pan are one-frame input channels. This path must stay allocation-free.
     pub fn process_frame(&mut self, gate: f32, freq_hz: f32, gain: f32, pan: f32) -> (f32, f32) {
+        self.process_frame_with_params(
+            gate,
+            freq_hz,
+            gain,
+            pan,
+            &[DEFAULT_VOICE_PARAM_VALUE; VOICE_PARAM_COUNT],
+        )
+    }
+
+    /// Renders one stereo frame with the given control values and per-note
+    /// pattern parameters (`p1`..`p4`, ADR 0010 addendum).
+    ///
+    /// Parameters flow as signals (ADR 0004): every control is a one-frame
+    /// input channel. This path must stay allocation-free.
+    pub fn process_frame_with_params(
+        &mut self,
+        gate: f32,
+        freq_hz: f32,
+        gain: f32,
+        pan: f32,
+        params: &[f32; VOICE_PARAM_COUNT],
+    ) -> (f32, f32) {
         let gate_buf = [gate];
         let freq_buf = [freq_hz];
         let gain_buf = [gain];
         let pan_buf = [pan];
-        let inputs: [&[f32]; 4] = [&gate_buf, &freq_buf, &gain_buf, &pan_buf];
+        let param_bufs = params.map(|value| [value]);
+        let inputs: [&[f32]; 4 + VOICE_PARAM_COUNT] = [
+            &gate_buf,
+            &freq_buf,
+            &gain_buf,
+            &pan_buf,
+            &param_bufs[0],
+            &param_bufs[1],
+            &param_bufs[2],
+            &param_bufs[3],
+        ];
         let mut left = [0.0_f32];
         let mut right = [0.0_f32];
         {
@@ -1083,6 +1179,10 @@ struct GraphVoiceNote {
     freq_hz: f32,
     gain: f32,
     pan: f32,
+    /// The per-note pattern parameters (`p1`..`p4`), sampled at trigger time
+    /// and held for the note (ADR 0010 addendum). Like the frequency — and
+    /// unlike gain/pan — a steal switches them immediately, with no ramp.
+    params: [f32; VOICE_PARAM_COUNT],
     /// Monotonic per-bank trigger counter, set when the note starts; the
     /// steal policy uses it as the note's age (smaller = older).
     trigger_seq: u64,
@@ -1101,6 +1201,7 @@ struct GraphVoiceNote {
 
 impl GraphVoiceNote {
     /// A note starting on an idle pooled voice: controls apply immediately.
+    #[allow(clippy::too_many_arguments)]
     fn fresh(
         track_id: TrackId,
         gate_frames: u32,
@@ -1108,6 +1209,7 @@ impl GraphVoiceNote {
         freq_hz: f32,
         gain: f32,
         pan: f32,
+        params: [f32; VOICE_PARAM_COUNT],
         trigger_seq: u64,
     ) -> Self {
         Self {
@@ -1117,6 +1219,7 @@ impl GraphVoiceNote {
             freq_hz,
             gain,
             pan,
+            params,
             trigger_seq,
             retrigger_gap_frames: 0,
             ramp_frames_remaining: 0,
@@ -1283,6 +1386,9 @@ impl GraphVoiceBank {
     /// Returns `false` (dropping the trigger) when the token names no
     /// program, or the pool is exhausted and stealing is
     /// [`StealPolicy::Off`]. Never allocates.
+    ///
+    /// The note's per-note pattern parameters (`p1`..`p4`) read their
+    /// default; use [`Self::trigger_with_params`] to set them.
     pub fn trigger(
         &mut self,
         token: &str,
@@ -1291,6 +1397,35 @@ impl GraphVoiceBank {
         freq_hz: f32,
         gain: f32,
         pan: f32,
+    ) -> bool {
+        self.trigger_with_params(
+            token,
+            track_id,
+            gate_frames,
+            freq_hz,
+            gain,
+            pan,
+            [DEFAULT_VOICE_PARAM_VALUE; VOICE_PARAM_COUNT],
+        )
+    }
+
+    /// [`Self::trigger`] with explicit per-note pattern parameters
+    /// (`p1`..`p4`, ADR 0010 addendum).
+    ///
+    /// The values are stamped on the note as plain fields and held for its
+    /// whole lifetime — constant signal inputs per note. A steal stamps the
+    /// NEW note's parameters (like frequency, they switch immediately; only
+    /// gain/pan ramp through the handover). Never allocates.
+    #[allow(clippy::too_many_arguments)]
+    pub fn trigger_with_params(
+        &mut self,
+        token: &str,
+        track_id: TrackId,
+        gate_frames: u32,
+        freq_hz: f32,
+        gain: f32,
+        pan: f32,
+        params: [f32; VOICE_PARAM_COUNT],
     ) -> bool {
         let mut idle: Option<usize> = None;
         let mut victim: Option<(usize, (bool, u32, u64))> = None;
@@ -1326,6 +1461,7 @@ impl GraphVoiceBank {
                 freq_hz,
                 gain,
                 pan,
+                params,
                 trigger_seq,
             ));
             return true;
@@ -1347,6 +1483,7 @@ impl GraphVoiceBank {
                 freq_hz,
                 gain,
                 pan,
+                params,
                 trigger_seq,
             );
             note.begin_steal_handover(&stolen_from, self.steal_ramp_frames);
@@ -1391,9 +1528,13 @@ impl GraphVoiceBank {
                 }
             }
 
-            let (left, right) = slot
-                .voice
-                .process_frame(gate, note.freq_hz, note.gain, note.pan);
+            let (left, right) = slot.voice.process_frame_with_params(
+                gate,
+                note.freq_hz,
+                note.gain,
+                note.pan,
+                &note.params,
+            );
 
             if let Ok(track_index) = usize::try_from(note.track_id.get())
                 && let Some((mix_left, mix_right)) = track_mix.get_mut(track_index)
@@ -1452,6 +1593,23 @@ pub fn graph_note_params(trigger: &SampleTrigger, base_hz: f32) -> (f32, f32, f3
     };
 
     (freq_hz, gain, pan)
+}
+
+/// Derives the per-note pattern parameters (`p1`..`p4`) from a scheduled
+/// trigger (ADR 0010 addendum).
+///
+/// Values are narrowed to `f32` for the audio thread; non-finite values fall
+/// back to [`DEFAULT_VOICE_PARAM_VALUE`].
+#[must_use]
+#[allow(clippy::cast_possible_truncation)]
+pub fn graph_note_voice_params(trigger: &SampleTrigger) -> [f32; VOICE_PARAM_COUNT] {
+    trigger.voice_params().map(|value| {
+        if value.is_finite() {
+            value as f32
+        } else {
+            DEFAULT_VOICE_PARAM_VALUE
+        }
+    })
 }
 
 #[cfg(test)]
@@ -1693,6 +1851,188 @@ mod tests {
         let mut mix = vec![(0.0_f32, 0.0_f32); 1];
         bank.render_frame(&mut mix);
         assert_eq!(mix[0], (0.0, 0.0));
+    }
+
+    /// A voice whose audio output IS the gated `p1` parameter, so the
+    /// per-note pattern-parameter plumbing is directly observable.
+    fn param_meter_spec(polyphony: usize) -> GraphVoiceSpec {
+        GraphVoiceSpec::new(
+            "meter",
+            0.001,
+            vec![VoiceNodeSpec::Mul {
+                left: VoiceSignalRef::Param(0),
+                right: VoiceSignalRef::Gate,
+            }],
+            VoiceSignalRef::Node(0),
+        )
+        .expect("param meter spec should validate")
+        .with_polyphony(polyphony)
+        .expect("test polyphony is within bounds")
+    }
+
+    /// The pooled slot index of the (poly-1) `meter` program.
+    fn meter_slot(bank: &GraphVoiceBank) -> usize {
+        bank.slots
+            .iter()
+            .position(|slot| &*slot.token == "meter")
+            .expect("the meter program has a pooled slot")
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp, clippy::suboptimal_flops)] // exact test constants
+    fn voice_params_reach_the_voice_as_ambient_signals() {
+        let spec = param_meter_spec(1);
+        let mut voice = spec.build_voice(SR);
+        voice.prepare();
+
+        let center = std::f32::consts::FRAC_1_SQRT_2;
+        let (left, right) =
+            voice.process_frame_with_params(1.0, 220.0, 1.0, 0.0, &[0.25, 0.0, 0.0, 0.0]);
+        assert!(
+            (left - 0.25 * center).abs() < 1e-6 && (right - 0.25 * center).abs() < 1e-6,
+            "p1 must reach the voice body as a signal: ({left}, {right})"
+        );
+
+        // Each of the four parameters occupies its own input channel.
+        let spec_p4 = GraphVoiceSpec::new(
+            "meter4",
+            0.001,
+            vec![VoiceNodeSpec::Mul {
+                left: VoiceSignalRef::Param(3),
+                right: VoiceSignalRef::Gate,
+            }],
+            VoiceSignalRef::Node(0),
+        )
+        .expect("p4 meter spec should validate");
+        let mut voice = spec_p4.build_voice(SR);
+        voice.prepare();
+        let (left, _) =
+            voice.process_frame_with_params(1.0, 220.0, 1.0, 0.0, &[0.9, 0.8, 0.7, 0.6]);
+        assert!(
+            (left - 0.6 * center).abs() < 1e-6,
+            "p4 must map onto the fourth parameter channel: {left}"
+        );
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)] // exact test constants
+    fn unset_voice_params_read_the_documented_zero_default() {
+        let spec = param_meter_spec(1);
+        let mut voice = spec.build_voice(SR);
+        voice.prepare();
+        let (left, right) = voice.process_frame(1.0, 220.0, 1.0, 0.0);
+        assert_eq!(
+            (left, right),
+            (0.0, 0.0),
+            "a param the pattern never sets must read {DEFAULT_VOICE_PARAM_VALUE}"
+        );
+
+        let mut bank = GraphVoiceBank::with_user_programs(SR, vec![param_meter_spec(1)]);
+        assert!(bank.trigger("meter", track(0), 10, 220.0, 1.0, 0.0));
+        let slot = meter_slot(&bank);
+        let note = bank.slots[slot].note.expect("the note is sounding");
+        assert_eq!(note.params, [DEFAULT_VOICE_PARAM_VALUE; VOICE_PARAM_COUNT]);
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp, clippy::suboptimal_flops)] // exact test constants
+    fn bank_trigger_with_params_stamps_the_note() {
+        let mut bank = GraphVoiceBank::with_user_programs(SR, vec![param_meter_spec(1)]);
+        assert!(bank.trigger_with_params(
+            "meter",
+            track(0),
+            10,
+            220.0,
+            1.0,
+            0.0,
+            [0.25, 0.5, 0.75, 1.0]
+        ));
+        let slot = meter_slot(&bank);
+        let note = bank.slots[slot].note.expect("the note is sounding");
+        assert_eq!(note.params, [0.25, 0.5, 0.75, 1.0]);
+
+        let mut mix = vec![(0.0_f32, 0.0_f32); 1];
+        bank.render_frame(&mut mix);
+        let center = std::f32::consts::FRAC_1_SQRT_2;
+        assert!(
+            (mix[0].0 - 0.25 * center).abs() < 1e-6,
+            "the rendered frame must carry the note's p1: {}",
+            mix[0].0
+        );
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)] // exact test constants
+    fn steal_stamps_the_new_notes_params_not_the_stolen_ones() {
+        let mut bank = GraphVoiceBank::with_user_programs(SR, vec![param_meter_spec(1)]);
+        assert!(bank.trigger_with_params(
+            "meter",
+            track(0),
+            10_000,
+            220.0,
+            0.5,
+            0.0,
+            [0.3, 0.0, 0.0, 0.0]
+        ));
+        assert!(
+            bank.trigger_with_params(
+                "meter",
+                track(0),
+                10_000,
+                440.0,
+                0.5,
+                0.0,
+                [0.9, 0.0, 0.0, 0.0]
+            ),
+            "the poly-1 pool must steal for the second note"
+        );
+        let slot = meter_slot(&bank);
+        let note = bank.slots[slot].note.expect("the stolen note is sounding");
+        assert_eq!(
+            note.params,
+            [0.9, 0.0, 0.0, 0.0],
+            "a steal must stamp the NEW note's params immediately"
+        );
+        assert!((note.freq_hz - 440.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn spec_rejects_out_of_range_param_references() {
+        let out_of_range = channel_index(VOICE_PARAM_COUNT);
+        let error = GraphVoiceSpec::new(
+            "bad",
+            0.01,
+            vec![VoiceNodeSpec::Mul {
+                left: VoiceSignalRef::Param(out_of_range),
+                right: VoiceSignalRef::Gate,
+            }],
+            VoiceSignalRef::Node(0),
+        )
+        .expect_err("param indices at or above VOICE_PARAM_COUNT must be rejected");
+        assert_eq!(
+            error,
+            GraphVoiceSpecError::ParamOutOfRange {
+                node: 0,
+                reference: VOICE_PARAM_COUNT,
+            }
+        );
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)] // exact test constants
+    fn graph_note_voice_params_follow_trigger_fields() {
+        let trigger = SampleTrigger::named("meter")
+            .with_voice_param(0, 880.0)
+            .with_voice_param(3, -0.5)
+            .with_voice_param(VOICE_PARAM_COUNT, 42.0);
+        assert_eq!(graph_note_voice_params(&trigger), [880.0, 0.0, 0.0, -0.5]);
+
+        let non_finite = SampleTrigger::named("meter").with_voice_param(1, f64::NAN);
+        assert_eq!(
+            graph_note_voice_params(&non_finite),
+            [0.0; VOICE_PARAM_COUNT],
+            "non-finite parameter values must fall back to the default"
+        );
     }
 
     #[test]

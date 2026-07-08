@@ -859,6 +859,167 @@ fn voice_unknown_stage_error_lists_the_filter_stages() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Pattern-side control signals (ADR 0010 addendum): the ambient `p1`..`p4`
+// per-note parameters. Patterns set them with the `p1`..`p4` controls
+// (`melody |> p1(<200 800>)`); voice bodies read them as signals sampled at
+// trigger time and held for the note. Unset parameters read 0.
+// ---------------------------------------------------------------------------
+
+const PARAM_ACID: &str = "acid = voice { f = saw(freq) |> svf_lp(p1, 0.7) ; \
+                          f * ar(gate, 0.001, 0.05) }";
+
+#[test]
+fn voice_body_reads_ambient_pattern_params() {
+    // The deferred-item shape: a pattern parameter driving a filter cutoff.
+    let value = eval_voice("v = voice { osc = saw(freq) ; osc |> svf_lp(p1, 0.7) }");
+    let Value::Voice(voice) = value else {
+        panic!("expected a voice value, got {}", value.kind_name());
+    };
+    assert!(voice.to_spec("v").is_ok());
+
+    // All four parameters resolve, in any signal position.
+    let value = eval_voice(
+        "v = voice { osc = pulse(freq + p2, 0.5) ; env = ar(gate, 0.001, 0.05) ; \
+         osc |> svf_lp(p1 + 100, 0.7) |> drive(p3 + 1) |> gain(p4 + 0.5) |> gain(env) }",
+    );
+    let Value::Voice(voice) = value else {
+        panic!("expected a voice value, got {}", value.kind_name());
+    };
+    assert!(voice.to_spec("v").is_ok());
+}
+
+#[test]
+fn voice_body_still_rejects_unknown_ambient_names() {
+    let message = eval_error("bad = voice { saw(freq) |> svf_lp(p5, 0.7) }");
+    assert!(
+        message.contains("p5") && message.contains("p1"),
+        "unknown names must still error and hint at the params: {message}"
+    );
+}
+
+#[test]
+fn voice_body_reserves_the_param_names() {
+    let message = eval_error("bad = voice { p1 = sine(freq) ; p1 }");
+    assert!(
+        message.contains("p1") && message.contains("built-in"),
+        "unexpected error: {message}"
+    );
+}
+
+#[test]
+#[allow(clippy::float_cmp)] // exact control constants pass through unchanged
+fn pattern_controls_stamp_voice_params_per_event() {
+    let bindings = eval_module("lead = bd sn |> p1(300 4000) |> p3(7)", ReplMode::Strict).unwrap();
+    let pattern = bindings
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .clone();
+    let events = pattern.query_unit().unwrap();
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].value.voice_params(), [300.0, 0.0, 7.0, 0.0]);
+    assert_eq!(events[1].value.voice_params(), [4000.0, 0.0, 7.0, 0.0]);
+}
+
+#[test]
+#[allow(clippy::float_cmp)] // the default is exactly zero
+fn voice_params_default_to_zero_when_the_pattern_never_sets_them() {
+    let bindings = eval_module("lead = bd sn", ReplMode::Strict).unwrap();
+    let pattern = bindings
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .clone();
+    let events = pattern.query_unit().unwrap();
+    for event in &events {
+        assert_eq!(event.value.voice_params(), [0.0; 4]);
+    }
+}
+
+#[test]
+fn session_pattern_params_filter_each_note_differently() {
+    // End-to-end: the pattern hands a different p1 (SVF cutoff) to each
+    // note, so the second note is audibly brighter than the first — the
+    // second-difference brightness metric from the filter-stage tests.
+    let mut session = ReplSession::with_engine(EngineHandle::stub());
+    session.eval_line(":tempo 1200").unwrap();
+    session.eval_line(PARAM_ACID).unwrap();
+    let _ = session.render_test_block_for_tui(1);
+    session
+        .eval_line("line = acid acid |> p1(300 6000)")
+        .unwrap();
+    let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
+
+    // One cycle = 9600 frames: the 300 Hz note owns [0, 4800), the 6000 Hz
+    // note [4800, 9600). The bright window starts after the first note's
+    // release tail (2400 frames) has rung out.
+    let rendered = session.render_test_block_for_tui(9_600);
+    assert!(rendered.iter().all(|sample| sample.is_finite()));
+    let left: Vec<f32> = stereo_frames(&rendered)
+        .iter()
+        .map(|&(left, _)| left)
+        .collect();
+    let dark = &left[800..4_600];
+    let bright = &left[7_400..9_400];
+
+    assert!(
+        dark.iter().map(|s| s.abs()).sum::<f32>() > 1.0,
+        "the 300 Hz note must still be audible"
+    );
+    assert!(
+        bright.iter().map(|s| s.abs()).sum::<f32>() > 1.0,
+        "the 6000 Hz note must be audible"
+    );
+    assert!(
+        brightness(bright) > brightness(dark) * 2.0,
+        "a per-note p1 cutoff must brighten the second note: {} vs {}",
+        brightness(bright),
+        brightness(dark)
+    );
+}
+
+#[test]
+fn session_pattern_without_params_uses_the_zero_default() {
+    // A pattern that never sets p1 leaves the SVF cutoff at the documented
+    // default of 0 (clamped to the filter's 1 Hz floor), so the voice renders
+    // far darker than the same voice driven with an open cutoff.
+    let mut session = ReplSession::with_engine(EngineHandle::stub());
+    session.eval_line(":tempo 1200").unwrap();
+    session.eval_line(PARAM_ACID).unwrap();
+    let _ = session.render_test_block_for_tui(1);
+    session.eval_line("line = acid acid").unwrap();
+    let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
+    let unset = session.render_test_block_for_tui(9_600);
+    assert!(unset.iter().all(|sample| sample.is_finite()));
+
+    let mut driven_session = ReplSession::with_engine(EngineHandle::stub());
+    driven_session.eval_line(":tempo 1200").unwrap();
+    driven_session.eval_line(PARAM_ACID).unwrap();
+    let _ = driven_session.render_test_block_for_tui(1);
+    driven_session
+        .eval_line("line = acid acid |> p1(6000)")
+        .unwrap();
+    let _ =
+        driven_session.render_test_block_for_tui(driven_session.frames_until_boundary_for_tui());
+    let driven = driven_session.render_test_block_for_tui(9_600);
+
+    let energy = |samples: &[f32]| samples.iter().map(|s| s.abs()).sum::<f32>();
+    assert!(
+        energy(&driven) > 1.0,
+        "the open-cutoff voice must be audible"
+    );
+    assert!(
+        energy(&unset) < energy(&driven) * 0.25,
+        "an unset p1 must leave the cutoff at its zero default (closed filter): \
+         {} vs {}",
+        energy(&unset),
+        energy(&driven)
+    );
+}
+
 #[test]
 fn session_plays_svf_filtered_voice_from_pattern_token() {
     let mut session = ReplSession::with_engine(EngineHandle::stub());

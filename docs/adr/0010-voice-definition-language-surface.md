@@ -181,6 +181,48 @@ end). The counting-allocator suite covers a hybrid sample+sine voice: pool
 build resolves the handle off-thread, and trigger/render stay
 allocation-free.
 
+## Addendum: pattern-side control signals (`p1`..`p4`)
+
+The last deferred engine-integration item — pattern-side controls reaching
+INSIDE a voice — shipped as four general-purpose per-note parameters rather
+than a re-plumbing of the existing named controls.
+
+**Four ambient parameter signals.** A voice body now sees `p1`..`p4`
+alongside `gate` and `freq`: `acid = voice { f = saw(freq) |> svf_lp(p1,
+0.7) ; f * ar(gate, 0.001, 0.05) }`. On the pattern side, `p1`..`p4` are
+ordinary patternable controls with the same shape as `gain`
+(`melody |> p1(300 6000)` sets each note's `p1` per event;
+`|> p1(<200 800>)` alternates per cycle). A parameter is dimensionless — a
+cutoff in Hertz, a detune amount, a morph position — its meaning is the voice
+body's to define, so any finite number validates.
+
+**Generic parameters, not the named controls.** Wiring `cutoff`/`res`/etc.
+into voice bodies was rejected: those controls already act on the engine
+side, AFTER the voice (sample-voice insert filters and the analog fallback
+path), so reusing the names would either double-apply them or silently
+change meaning depending on the instrument. The generic names make the
+routing explicit and leave every existing control byte-for-byte unchanged.
+(`p`/`param` itself was unavailable — it is the plugin-parameter automation
+builtin — so the surface is the four indexed controls directly.)
+
+**Per-note sample-and-hold semantics.** The parameter value is resolved when
+the event is scheduled (`SampleEvent`/`SampleTrigger` carry a
+`[f64; VOICE_PARAM_COUNT]` field) and stamped on the pooled note as plain
+`f32` fields at trigger time — the allocation-free shape of the gain/pan
+fields from the stealing addendum. Inside the graph the parameters ride the
+fixed interface as four trailing signal inputs
+(`[gate, freq, gain, pan, p1..p4]`), constant for the note's lifetime. A
+steal stamps the NEW note's parameters immediately (like frequency; only
+gain/pan ramp through the handover). Smooth per-note ramping and audio-rate
+pattern control remain follow-ups.
+
+**Documented default: 0.** A body referencing a parameter the pattern never
+sets reads `DEFAULT_VOICE_PARAM_VALUE` (0.0) — chosen over a per-stage
+"neutral" value because a parameter has no intrinsic unit; bodies wanting a
+baseline write it explicitly (`svf_lp(p1 + 200, 0.7)`). Zero composes
+naturally with `+` offsets and multiplies to silence, matching the gate's
+convention.
+
 ## Addendum: multi-mode SVF and peaking-EQ filter stages
 
 The graph layer's multi-mode filters (TPT SVF and RBJ biquad, ADR 0004

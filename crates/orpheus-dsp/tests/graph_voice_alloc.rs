@@ -458,6 +458,93 @@ fn bank_with_feedback_delay_merge_and_custom_polyphony_renders_without_allocatin
 }
 
 #[test]
+fn param_driven_pooled_voice_renders_without_allocating() {
+    // A pattern-parameter-driven instrument (ADR 0010 addendum): a saw
+    // through an SVF lowpass whose cutoff is the per-note `p1` signal.
+    // Params are plain f32 fields stamped at trigger time, so triggering
+    // with params, a param-swapping steal, and rendering must all be
+    // allocation-free once the pool is built.
+    let spec = GraphVoiceSpec::new(
+        "paramlead",
+        0.05,
+        vec![
+            VoiceNodeSpec::Saw {
+                freq: VoiceSignalRef::Freq,
+            },
+            VoiceNodeSpec::Constant { value: 0.7 },
+            VoiceNodeSpec::Svf {
+                input: VoiceSignalRef::Node(0),
+                cutoff_hz: VoiceSignalRef::Param(0),
+                q: VoiceSignalRef::Node(1),
+                mode: SvfMode::Lowpass,
+            },
+            VoiceNodeSpec::Ar {
+                gate: VoiceSignalRef::Gate,
+                attack_s: 0.001,
+                release_s: 0.05,
+            },
+            VoiceNodeSpec::Mul {
+                left: VoiceSignalRef::Node(2),
+                right: VoiceSignalRef::Node(3),
+            },
+        ],
+        VoiceSignalRef::Node(4),
+    )
+    .expect("param-driven voice spec should validate")
+    .with_polyphony(2)
+    .expect("polyphony 2 is within bounds");
+
+    let mut bank = GraphVoiceBank::with_user_programs(SR, vec![spec]);
+    let track = TrackId::new(0);
+    let mut mix = vec![(0.0_f32, 0.0_f32); 1];
+
+    let before = allocation_count();
+    assert!(bank.trigger_with_params(
+        "paramlead",
+        track,
+        2_048,
+        110.0,
+        0.8,
+        0.0,
+        [400.0, 0.0, 0.0, 0.0]
+    ));
+    assert!(bank.trigger_with_params(
+        "paramlead",
+        track,
+        2_048,
+        220.0,
+        0.8,
+        0.0,
+        [4_000.0, 0.0, 0.0, 0.0]
+    ));
+    // Pool exhausted: the third note's steal swaps in its own params.
+    assert!(bank.trigger_with_params(
+        "paramlead",
+        track,
+        2_048,
+        330.0,
+        0.8,
+        0.0,
+        [1_000.0, 0.0, 0.0, 0.0]
+    ));
+    let mut energy = 0.0_f32;
+    for _ in 0..4_096 {
+        mix[0] = (0.0, 0.0);
+        bank.render_frame(&mut mix);
+        assert!(mix[0].0.is_finite() && mix[0].1.is_finite());
+        energy += mix[0].0.abs() + mix[0].1.abs();
+    }
+    let after = allocation_count();
+
+    assert!(energy > 0.0, "the param-driven voice should be audible");
+    assert_eq!(
+        after - before,
+        0,
+        "param-driven trigger/steal/render must not allocate after the pool is built"
+    );
+}
+
+#[test]
 fn voice_with_svf_and_eq_peak_filters_renders_without_allocating() {
     // The new filter stages: a saw through an LFO-swept SVF lowpass (per-
     // sample coefficient updates) into a peaking EQ boost. Pool build

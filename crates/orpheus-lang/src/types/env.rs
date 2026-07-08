@@ -65,6 +65,7 @@ impl TypeEnv {
     ///
     #[must_use]
     #[doc(hidden)]
+    #[allow(clippy::too_many_lines)]
     pub fn with_builtins() -> Self {
         let mut env = Self {
             entries: BTreeMap::new(),
@@ -127,6 +128,7 @@ impl TypeEnv {
         env.insert("chaos", unary_pattern_transform_scheme(alpha));
         for name in [
             "gain", "hpf", "lpf", "cutoff", "res", "drive", "pw", "pan", "pitch", "rate", "onset",
+            "p1", "p2", "p3", "p4",
         ] {
             env.insert(name, sample_control_scheme());
         }

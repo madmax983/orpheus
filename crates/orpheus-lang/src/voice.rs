@@ -8,10 +8,14 @@
 //! attaches the binding name as the pattern token and ships the finished
 //! [`GraphVoiceSpec`] to the engine (ADR 0009/0010).
 //!
-//! Two ambient signals are in scope inside a voice body:
+//! Six ambient signals are in scope inside a voice body:
 //!
 //! - `gate` — 1 while the pattern event span holds, then 0
 //! - `freq` — the note frequency in Hertz (reference frequency x event rate)
+//! - `p1`..`p4` — general-purpose per-note pattern parameters, set from the
+//!   pattern side (`melody |> p1(<200 800>)`), sampled at trigger time and
+//!   held for the note; 0 when the pattern never sets them (ADR 0010
+//!   addendum)
 //!
 //! The result expression is the mono voice signal; the engine appends the
 //! per-trigger gain and equal-power pan stages automatically.
@@ -167,7 +171,7 @@ pub fn compile_voice(
                 compiler.set_steal_policy(&binding.expr)?;
                 continue;
             }
-            "gate" | "freq" => {
+            "gate" | "freq" | "p1" | "p2" | "p3" | "p4" => {
                 return Err(EvalError::new(format!(
                     "`{}` is a built-in voice input and cannot be redefined",
                     binding.name
@@ -328,8 +332,8 @@ impl<'bank> VoiceCompiler<'bank> {
             Expr::Call { callee, args } => self.compile_call(callee, args, None),
             Expr::Group(items) if items.len() == 1 => self.compile_expr(&items[0]),
             _ => Err(EvalError::new(
-                "voice bodies only support the ambient `gate`/`freq` signals, local names, \
-                 number literals, `+`/`*` arithmetic, stage calls, and pipes",
+                "voice bodies only support the ambient `gate`/`freq`/`p1`..`p4` signals, \
+                 local names, number literals, `+`/`*` arithmetic, stage calls, and pipes",
             )),
         }
     }
@@ -338,6 +342,13 @@ impl<'bank> VoiceCompiler<'bank> {
         match name {
             "gate" => Ok(VoiceSignalRef::Gate),
             "freq" => Ok(VoiceSignalRef::Freq),
+            // The per-note pattern parameters (ADR 0010 addendum): set on
+            // the triggering event (`melody |> p1(<200 800>)`), sampled at
+            // trigger time and held for the note; 0 when never set.
+            "p1" => Ok(VoiceSignalRef::Param(0)),
+            "p2" => Ok(VoiceSignalRef::Param(1)),
+            "p3" => Ok(VoiceSignalRef::Param(2)),
+            "p4" => Ok(VoiceSignalRef::Param(3)),
             "fb" => self
                 .feedback_scopes
                 .last()
@@ -350,8 +361,8 @@ impl<'bank> VoiceCompiler<'bank> {
                 }),
             _ => self.resolved.get(name).copied().ok_or_else(|| {
                 EvalError::new(format!(
-                    "unbound voice signal `{name}`; voice bodies see `gate`, `freq`, and \
-                     names bound earlier in the block"
+                    "unbound voice signal `{name}`; voice bodies see `gate`, `freq`, the \
+                     pattern parameters `p1`..`p4`, and names bound earlier in the block"
                 ))
             }),
         }

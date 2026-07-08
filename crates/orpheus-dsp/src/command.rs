@@ -9,7 +9,7 @@ use std::sync::Arc;
 use orpheus_pattern::Event;
 use rtrb::{Consumer, Producer, RingBuffer};
 
-use crate::graph_voice::GraphVoiceBank;
+use crate::graph_voice::{GraphVoiceBank, VOICE_PARAM_COUNT};
 use crate::pedal::{NodeRef, PedalGraphProgram};
 use crate::routing::{GeneratorId, RoutingSnapshot};
 use crate::sample_bank::SampleBank;
@@ -95,6 +95,7 @@ pub struct SampleTrigger {
     slice_start: f64,
     slice_end: f64,
     pan: f64,
+    voice_params: [f64; VOICE_PARAM_COUNT],
     pedal_program: Option<Arc<PedalProgram>>,
 }
 
@@ -137,6 +138,7 @@ impl SampleTrigger {
             slice_start: 0.0,
             slice_end: 1.0,
             pan: 0.0,
+            voice_params: [0.0; VOICE_PARAM_COUNT],
             pedal_program: None,
         }
     }
@@ -300,6 +302,29 @@ impl SampleTrigger {
         self
     }
 
+    /// Sets all per-note voice pattern parameters (`p1`..`p4`) at once.
+    ///
+    /// Graph voice bodies read these as the ambient `p1`..`p4` signals,
+    /// sampled at trigger time and held for the note (ADR 0010 addendum).
+    /// The default is all zeros.
+    #[must_use]
+    pub const fn with_voice_params(mut self, voice_params: [f64; VOICE_PARAM_COUNT]) -> Self {
+        self.voice_params = voice_params;
+        self
+    }
+
+    /// Sets one per-note voice pattern parameter; `index` 0 is `p1`.
+    ///
+    /// Indices at or above [`VOICE_PARAM_COUNT`] are ignored (the language
+    /// surface only produces `p1`..`p4`).
+    #[must_use]
+    pub const fn with_voice_param(mut self, index: usize, value: f64) -> Self {
+        if index < VOICE_PARAM_COUNT {
+            self.voice_params[index] = value;
+        }
+        self
+    }
+
     /// The unique name of the sample in the loaded sample bank.
     #[must_use]
     pub fn with_pedal_program(mut self, pedal_program: Arc<PedalProgram>) -> Self {
@@ -449,6 +474,12 @@ impl SampleTrigger {
     #[must_use]
     pub const fn pan(&self) -> f64 {
         self.pan
+    }
+
+    /// The per-note voice pattern parameters (`p1`..`p4`), zero when unset.
+    #[must_use]
+    pub const fn voice_params(&self) -> [f64; VOICE_PARAM_COUNT] {
+        self.voice_params
     }
 
     #[doc(hidden)]

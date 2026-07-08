@@ -14,7 +14,7 @@ use orpheus_pattern::Event;
 
 use crate::command::{EngineCommand, PatternUpdate, SampleTrigger, new_command_queue};
 use crate::effects::BusEffectState;
-use crate::graph_voice::{GraphVoiceBank, graph_note_params};
+use crate::graph_voice::{GraphVoiceBank, graph_note_params, graph_note_voice_params};
 use crate::plugin_host::PluginProcessor;
 use crate::routing::{BusEffectSpec, RoutingSnapshot, TrackSource};
 use crate::sample_bank::SampleBank;
@@ -553,13 +553,14 @@ impl EngineCore {
         let token = trigger.trigger.token();
         if self.graph_voices.has_program(token) {
             let (freq_hz, gain, pan) = graph_note_params(&trigger.trigger, self.base_hz);
-            let _ = self.graph_voices.trigger(
+            let _ = self.graph_voices.trigger_with_params(
                 token,
                 trigger.track_id,
                 trigger.duration_frames,
                 freq_hz,
                 gain,
                 pan,
+                graph_note_voice_params(&trigger.trigger),
             );
         }
     }

@@ -206,6 +206,10 @@ fn lookup_effect(name: &str) -> Option<Value> {
         "through" => Some(builtin_function_value(BuiltinKind::Through)),
         "cc" | "midi_cc" => Some(builtin_function_value(BuiltinKind::MidiCc)),
         "p" | "param" => Some(builtin_function_value(BuiltinKind::PluginParam)),
+        "p1" => Some(builtin_function_value(BuiltinKind::VoiceParam1)),
+        "p2" => Some(builtin_function_value(BuiltinKind::VoiceParam2)),
+        "p3" => Some(builtin_function_value(BuiltinKind::VoiceParam3)),
+        "p4" => Some(builtin_function_value(BuiltinKind::VoiceParam4)),
         "chaos" => Some(builtin_function_value(BuiltinKind::Chaos)),
         "palindrome" => Some(builtin_function_value(BuiltinKind::Palindrome)),
         _ => None,
@@ -475,6 +479,10 @@ impl BuiltinKind {
             Self::Hex => "hex",
             Self::Bin => "bin",
             Self::PluginParam => "p",
+            Self::VoiceParam1 => "p1",
+            Self::VoiceParam2 => "p2",
+            Self::VoiceParam3 => "p3",
+            Self::VoiceParam4 => "p4",
         }
     }
 
@@ -499,6 +507,7 @@ impl BuiltinKind {
         )
     }
 
+    #[allow(clippy::too_many_lines)]
     const fn arity(self) -> usize {
         match self {
             Self::Every
@@ -592,6 +601,10 @@ impl BuiltinKind {
             | Self::Scramble
             | Self::Segment
             | Self::Choose
+            | Self::VoiceParam1
+            | Self::VoiceParam2
+            | Self::VoiceParam3
+            | Self::VoiceParam4
             | Self::Notes => 2,
             Self::PluginParam => 3,
             Self::Markov => 6,
@@ -721,6 +734,10 @@ impl BuiltinKind {
             Self::Hex => apply_hex(args),
             Self::Bin => apply_bin(args),
             Self::PluginParam => apply_plugin_param(args),
+            Self::VoiceParam1 => apply_voice_param(args, 0),
+            Self::VoiceParam2 => apply_voice_param(args, 1),
+            Self::VoiceParam3 => apply_voice_param(args, 2),
+            Self::VoiceParam4 => apply_voice_param(args, 3),
         }
     }
 }
@@ -2470,6 +2487,28 @@ fn apply_pw(args: Vec<Value>) -> Result<Value, EvalError> {
     )
 }
 
+/// The language-surface names of the per-note voice pattern parameters,
+/// indexed by their zero-based parameter index.
+const VOICE_PARAM_NAMES: [&str; orpheus_dsp::VOICE_PARAM_COUNT] = ["p1", "p2", "p3", "p4"];
+
+/// Applies `p1`..`p4` — the general-purpose per-note voice parameters
+/// (ADR 0010 addendum). The control value is sampled per event and stamped
+/// on it; graph voice bodies read it as the ambient signal of the same name,
+/// held constant for the note. Any finite number is allowed: the meaning of
+/// a parameter (a cutoff in Hertz, a detune amount, a morph position) is the
+/// voice body's to define.
+fn apply_voice_param(args: Vec<Value>, index: usize) -> Result<Value, EvalError> {
+    let name = VOICE_PARAM_NAMES[index];
+    apply_sample_numeric_control(
+        args,
+        name,
+        "value",
+        |value| extract_voice_param_control(value, name),
+        |pattern, value| pattern.voice_param(index, value),
+        |pattern, control| pattern.voice_param_pattern(index, control),
+    )
+}
+
 fn apply_pan(args: Vec<Value>) -> Result<Value, EvalError> {
     apply_sample_numeric_control(
         args,
@@ -3525,6 +3564,33 @@ fn extract_compressor_ratio_control(
         } else {
             Err(EvalError::new(format!(
                 "`{builtin_name}` requires finite control values >= 1"
+            )))
+        }
+    })?;
+
+    Ok(NumericControl::Pattern(pattern))
+}
+
+fn extract_voice_param_control(
+    value: Value,
+    builtin_name: &str,
+) -> Result<NumericControl, EvalError> {
+    let pattern = extract_number_pattern(value, builtin_name)?;
+    if let Some(number) = pattern.cycle_invariant_constant() {
+        if !number.is_finite() {
+            return Err(EvalError::new(format!(
+                "`{builtin_name}` requires a finite numeric value"
+            )));
+        }
+        return Ok(NumericControl::Constant(number));
+    }
+
+    validate_numeric_control_pattern(&pattern, builtin_name, |value| {
+        if value.is_finite() {
+            Ok(())
+        } else {
+            Err(EvalError::new(format!(
+                "`{builtin_name}` requires finite numeric control values"
             )))
         }
     })?;
