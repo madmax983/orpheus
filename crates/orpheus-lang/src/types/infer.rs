@@ -15,12 +15,13 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ReplMode;
 use crate::ast::{BinaryOp, Expr, Module, Stmt, binding_expr_self_references};
+use crate::builtins::markov_state_count;
 use crate::diagnostics::{ParseError, TypeError};
 use crate::parser::parse_module;
 use crate::pitch::parse_named_pitch_literal;
 use crate::types::env::{
-    TypeEnv, TypeScheme, choose_scheme, euclid_full_scheme, euclid_scheme, pattern_concat_scheme,
-    wchoose_scheme, wrandcat_scheme,
+    TypeEnv, TypeScheme, choose_scheme, euclid_full_scheme, euclid_scheme, markov_scheme,
+    pattern_concat_scheme, wchoose_scheme, wrandcat_scheme,
 };
 use crate::types::{Type, TypeVarId, TypedModule};
 
@@ -413,6 +414,12 @@ impl Inferencer {
                 }
                 self.infer_wrandcat_pairs(args)
             }
+            "markov" if args.len() > 6 => {
+                if self.env.get(name) != Some(&markov_scheme(TypeVarId::new(0))) {
+                    return Ok(None);
+                }
+                self.infer_markov_blocks(args)
+            }
             "euclid" | "euclid_inv" if args.len() > 2 => {
                 if self.env.get(name) != Some(&euclid_scheme()) {
                     return Ok(None);
@@ -503,6 +510,52 @@ impl Inferencer {
         let ty = pattern_ty.ok_or_else(|| {
             TypeError::new("`wrandcat` requires at least one pattern/weight pair")
         })?;
+        let element = self.fresh_var_type();
+        self.unify(ty.clone(), Type::pattern(element))?;
+        Ok(Some(self.resolve(ty)))
+    }
+
+    /// Types variadic `markov(s0, w0_0, ..., w0_{k-1}, s1, ...)` calls: the
+    /// argument count must be `k * (k + 1)` for `k >= 2` states, the leading
+    /// pattern of every state block must agree on one pattern type, and each
+    /// block's `k` trailing transition weights must be numbers.
+    fn infer_markov_blocks(&mut self, args: &[Expr]) -> Result<Option<Type>, TypeError> {
+        let Some(state_count) = markov_state_count(args.len()) else {
+            return Err(TypeError::new(
+                "`markov` requires each state pattern followed by its transition weights \
+                 (k * (k + 1) arguments for k >= 2 states)",
+            ));
+        };
+
+        let mut pattern_ty: Option<Type> = None;
+        for (index, arg) in args.iter().enumerate() {
+            let actual = self.infer_expr(arg)?;
+            if index.is_multiple_of(state_count + 1) {
+                if let Some(expected) = pattern_ty.clone() {
+                    self.unify(expected.clone(), actual.clone()).map_err(|_| {
+                        TypeError::new(format!(
+                            "`markov` state patterns must all have the same type; \
+                             expected {}, found {}",
+                            self.resolve(expected),
+                            self.resolve(actual)
+                        ))
+                    })?;
+                } else {
+                    pattern_ty = Some(actual);
+                }
+            } else {
+                self.unify(actual.clone(), Type::pattern(Type::Number))
+                    .map_err(|_| {
+                        TypeError::new(format!(
+                            "`markov` transition weights must be numbers; found {}",
+                            self.resolve(actual)
+                        ))
+                    })?;
+            }
+        }
+
+        let ty =
+            pattern_ty.ok_or_else(|| TypeError::new("`markov` requires at least two states"))?;
         let element = self.fresh_var_type();
         self.unify(ty.clone(), Type::pattern(element))?;
         Ok(Some(self.resolve(ty)))

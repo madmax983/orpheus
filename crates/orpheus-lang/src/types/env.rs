@@ -290,6 +290,7 @@ fn install_cycle_alternation_builtins(env: &mut TypeEnv, alpha: TypeVarId) {
         env.insert(name, pattern_concat_scheme(alpha));
     }
     env.insert("wrandcat", wrandcat_scheme(alpha));
+    env.insert("markov", markov_scheme(alpha));
     for name in ["iter", "iter_back", "rot", "shuffle", "scramble"] {
         env.insert(name, numeric_pattern_transform_scheme(alpha));
     }
@@ -315,6 +316,31 @@ pub fn wrandcat_scheme(alpha: TypeVarId) -> TypeScheme {
                 Type::pattern(Type::Number),
                 alpha_pattern.clone(),
                 Type::pattern(Type::Number),
+            ],
+            alpha_pattern,
+        ),
+    }
+}
+
+/// The two-state base scheme for `markov(s0, w00, w01, s1, w10, w11)`:
+/// each state pattern is followed by its two `Pattern<Number>` transition
+/// weights, returning the shared state pattern type.
+///
+/// `markov` is variadic at runtime; calls with more than six arguments are
+/// special-cased during inference.
+pub fn markov_scheme(alpha: TypeVarId) -> TypeScheme {
+    let alpha_pattern = Type::pattern(Type::Var(alpha));
+    let number_pattern = Type::pattern(Type::Number);
+    TypeScheme {
+        vars: vec![alpha],
+        ty: Type::curried(
+            vec![
+                alpha_pattern.clone(),
+                number_pattern.clone(),
+                number_pattern.clone(),
+                alpha_pattern.clone(),
+                number_pattern.clone(),
+                number_pattern,
             ],
             alpha_pattern,
         ),
