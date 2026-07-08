@@ -20,14 +20,27 @@ use thiserror::Error;
 
 use crate::SampleTrigger;
 use crate::graph::{
-    Node, Processor, Seq, adsr, ar, bind, constant, gain_node, ladder_filter, noise, pan, par,
-    passthrough, pulse, saw, seq, sine, soft_sat, sum, tri, wire,
+    Node, Processor, Seq, adsr, ar, bind, constant, delay_line, feedback, gain_node, ladder_filter,
+    merge, noise, pan, par, passthrough, pulse, saw, seq, sine, soft_sat, sum, tri, wire,
 };
 use crate::routing::TrackId;
 
-/// Pooled voices per program: how many simultaneous notes one graph program
-/// can sound before further triggers are dropped.
-const GRAPH_VOICE_POLYPHONY: usize = 8;
+/// Default pooled voices per program (ADR 0009).
+///
+/// How many simultaneous notes one graph program can sound before further
+/// triggers are dropped. User specs may override it per program via
+/// [`GraphVoiceSpec::with_polyphony`].
+pub const DEFAULT_GRAPH_VOICE_POLYPHONY: usize = 8;
+
+/// The largest per-program polyphony a user spec may request. Pools are
+/// pre-built and pre-warmed per program, so the ceiling keeps bank
+/// construction (and the audio thread's per-frame slot scan) bounded.
+pub const MAX_GRAPH_VOICE_POLYPHONY: usize = 64;
+
+/// The longest fixed delay a [`VoiceNodeSpec::Delay`] node may request, in
+/// seconds. Delay capacity is allocated per pooled voice at build time, so
+/// the cap keeps bank construction memory bounded.
+pub const MAX_VOICE_DELAY_SECONDS: f32 = 10.0;
 
 /// Output trim applied to graph voices, matching the analog-voice headroom
 /// convention in `voice.rs`.
@@ -152,6 +165,12 @@ pub enum VoiceSignalRef {
     Freq,
     /// The output of the node at this index in the spec's node list.
     Node(u32),
+    /// The output of the node at this index, delayed by one sample.
+    ///
+    /// Unlike [`Self::Node`], a feedback reference may point at the current
+    /// node or a later one: it closes a feedback loop, lowered onto the
+    /// recursive (`Rec`) combinator's one-sample delay.
+    Feedback(u32),
 }
 
 /// One node in a declarative [`GraphVoiceSpec`].
@@ -245,6 +264,21 @@ pub enum VoiceNodeSpec {
         /// The right operand.
         right: VoiceSignalRef,
     },
+    /// A fixed delay line.
+    Delay {
+        /// The audio signal to delay.
+        input: VoiceSignalRef,
+        /// The delay length in seconds, fixed at build time (capacity is
+        /// allocated off-thread), clamped to at least one sample and capped
+        /// at [`MAX_VOICE_DELAY_SECONDS`].
+        seconds: f32,
+    },
+    /// Sums any number of signals (fan-in), lowered onto the merge
+    /// combinator.
+    Merge {
+        /// The signals to sum; must be non-empty.
+        inputs: Vec<VoiceSignalRef>,
+    },
 }
 
 impl VoiceNodeSpec {
@@ -262,6 +296,47 @@ impl VoiceNodeSpec {
             } => vec![*input, *cutoff_hz, *resonance],
             Self::Drive { input, amount } => vec![*input, *amount],
             Self::Mul { left, right } | Self::Add { left, right } => vec![*left, *right],
+            Self::Delay { input, .. } => vec![*input],
+            Self::Merge { inputs } => inputs.clone(),
+        }
+    }
+
+    /// Applies `f` to every signal reference this node reads, in place.
+    ///
+    /// Compilers use this to patch placeholder references (e.g. rewriting a
+    /// feedback loop's back-edge once the loop's root node index is known).
+    pub fn map_refs(&mut self, mut f: impl FnMut(&mut VoiceSignalRef)) {
+        match self {
+            Self::Constant { .. } | Self::Noise { .. } => {}
+            Self::Sine { freq } | Self::Saw { freq } | Self::Tri { freq } => f(freq),
+            Self::Pulse { freq, width } => {
+                f(freq);
+                f(width);
+            }
+            Self::Adsr { gate, .. } | Self::Ar { gate, .. } => f(gate),
+            Self::Lowpass {
+                input,
+                cutoff_hz,
+                resonance,
+            } => {
+                f(input);
+                f(cutoff_hz);
+                f(resonance);
+            }
+            Self::Drive { input, amount } => {
+                f(input);
+                f(amount);
+            }
+            Self::Mul { left, right } | Self::Add { left, right } => {
+                f(left);
+                f(right);
+            }
+            Self::Delay { input, .. } => f(input),
+            Self::Merge { inputs } => {
+                for input in inputs {
+                    f(input);
+                }
+            }
         }
     }
 
@@ -286,6 +361,7 @@ impl VoiceNodeSpec {
             } => [*attack_s, *release_s]
                 .iter()
                 .all(|value| value.is_finite() && *value >= 0.0),
+            Self::Delay { seconds, .. } => seconds.is_finite() && *seconds >= 0.0,
             Self::Sine { .. }
             | Self::Saw { .. }
             | Self::Tri { .. }
@@ -294,7 +370,8 @@ impl VoiceNodeSpec {
             | Self::Lowpass { .. }
             | Self::Drive { .. }
             | Self::Mul { .. }
-            | Self::Add { .. } => true,
+            | Self::Add { .. }
+            | Self::Merge { .. } => true,
         }
     }
 }
@@ -331,6 +408,32 @@ pub enum GraphVoiceSpecError {
     /// The release tail was not finite and non-negative.
     #[error("voice program release must be finite and non-negative")]
     InvalidRelease,
+    /// A feedback reference pointed outside the node list.
+    #[error("voice node {node} takes feedback from node {reference}, which does not exist")]
+    FeedbackOutOfRange {
+        /// The index of the offending node.
+        node: usize,
+        /// The out-of-range feedback reference.
+        reference: usize,
+    },
+    /// A merge node listed no input signals.
+    #[error("voice node {node} merges zero signals")]
+    EmptyMerge {
+        /// The index of the offending node.
+        node: usize,
+    },
+    /// A delay node exceeded [`MAX_VOICE_DELAY_SECONDS`].
+    #[error("voice node {node} delays by more than {MAX_VOICE_DELAY_SECONDS} seconds")]
+    DelayTooLong {
+        /// The index of the offending node.
+        node: usize,
+    },
+    /// The requested polyphony was outside `1..=MAX_GRAPH_VOICE_POLYPHONY`.
+    #[error("voice polyphony must be between 1 and {MAX_GRAPH_VOICE_POLYPHONY}, got {requested}")]
+    InvalidPolyphony {
+        /// The rejected pool size.
+        requested: usize,
+    },
 }
 
 /// A declarative, user-definable graph voice program.
@@ -353,6 +456,7 @@ pub struct GraphVoiceSpec {
     release_seconds: f32,
     nodes: Vec<VoiceNodeSpec>,
     output: VoiceSignalRef,
+    polyphony: usize,
 }
 
 impl GraphVoiceSpec {
@@ -384,19 +488,36 @@ impl GraphVoiceSpec {
             if !node.parameters_are_valid() {
                 return Err(GraphVoiceSpecError::InvalidParameter { node: index });
             }
+            if let VoiceNodeSpec::Delay { seconds, .. } = node
+                && *seconds > MAX_VOICE_DELAY_SECONDS
+            {
+                return Err(GraphVoiceSpecError::DelayTooLong { node: index });
+            }
+            if let VoiceNodeSpec::Merge { inputs } = node
+                && inputs.is_empty()
+            {
+                return Err(GraphVoiceSpecError::EmptyMerge { node: index });
+            }
             for reference in node.input_refs() {
-                if let VoiceSignalRef::Node(target) = reference
-                    && target as usize >= index
-                {
-                    return Err(GraphVoiceSpecError::ForwardReference {
-                        node: index,
-                        reference: target as usize,
-                    });
+                match reference {
+                    VoiceSignalRef::Node(target) if target as usize >= index => {
+                        return Err(GraphVoiceSpecError::ForwardReference {
+                            node: index,
+                            reference: target as usize,
+                        });
+                    }
+                    VoiceSignalRef::Feedback(target) if target as usize >= nodes.len() => {
+                        return Err(GraphVoiceSpecError::FeedbackOutOfRange {
+                            node: index,
+                            reference: target as usize,
+                        });
+                    }
+                    _ => {}
                 }
             }
         }
 
-        if let VoiceSignalRef::Node(target) = output
+        if let VoiceSignalRef::Node(target) | VoiceSignalRef::Feedback(target) = output
             && target as usize >= nodes.len()
         {
             return Err(GraphVoiceSpecError::OutputOutOfRange {
@@ -409,7 +530,31 @@ impl GraphVoiceSpec {
             release_seconds,
             nodes,
             output,
+            polyphony: DEFAULT_GRAPH_VOICE_POLYPHONY,
         })
+    }
+
+    /// Overrides the program's pooled polyphony (how many simultaneous notes
+    /// it can sound; further triggers are dropped).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`GraphVoiceSpecError::InvalidPolyphony`] when `polyphony` is
+    /// zero or exceeds [`MAX_GRAPH_VOICE_POLYPHONY`].
+    pub fn with_polyphony(mut self, polyphony: usize) -> Result<Self, GraphVoiceSpecError> {
+        if !(1..=MAX_GRAPH_VOICE_POLYPHONY).contains(&polyphony) {
+            return Err(GraphVoiceSpecError::InvalidPolyphony {
+                requested: polyphony,
+            });
+        }
+        self.polyphony = polyphony;
+        Ok(self)
+    }
+
+    /// How many pooled voices this program gets when a bank is built.
+    #[must_use]
+    pub const fn polyphony(&self) -> usize {
+        self.polyphony
     }
 
     /// The pattern-token this program is selected by.
@@ -440,22 +585,54 @@ impl GraphVoiceSpec {
         release_seconds_to_frames(self.release_seconds, sample_rate_hz)
     }
 
+    /// The distinct node indices read through [`VoiceSignalRef::Feedback`]
+    /// references, sorted. Each becomes one channel of the recursive
+    /// combinator's one-sample feedback path.
+    fn feedback_taps(&self) -> Vec<u32> {
+        let mut taps: Vec<u32> = Vec::new();
+        let mut visit = |reference: VoiceSignalRef| {
+            if let VoiceSignalRef::Feedback(index) = reference
+                && !taps.contains(&index)
+            {
+                taps.push(index);
+            }
+        };
+        for node in &self.nodes {
+            for reference in node.input_refs() {
+                visit(reference);
+            }
+        }
+        visit(self.output);
+        taps.sort_unstable();
+        taps
+    }
+
     /// Lowers the spec DAG onto graph combinators.
     ///
     /// The graph threads a growing signal bus through one stage per node.
-    /// Before stage `k` the bus is `[out_{k-1}, .., out_0, gate, freq, gain,
-    /// pan]`; the stage wires the node's inputs to the front (a `wire` node
-    /// may duplicate bus channels), runs the node in parallel with a
-    /// passthrough of the whole bus, and thereby prepends its output. A final
-    /// selector feeds `[audio, gain, pan]` through the shared gain and
-    /// equal-power pan stages.
+    /// Before stage `k` the bus is `[out_{k-1}, .., out_0, tap_0, ..,
+    /// tap_{K-1}, gate, freq, gain, pan]`, where the `tap` channels carry the
+    /// one-sample-delayed outputs of the nodes read through feedback
+    /// references; the stage wires the node's inputs to the front (a `wire`
+    /// node may duplicate bus channels), runs the node in parallel with a
+    /// passthrough of the whole bus, and thereby prepends its output.
+    ///
+    /// When the spec contains feedback references the whole DAG becomes the
+    /// body of a recursive (`Rec`) composition: the body re-exposes each
+    /// tapped node's live output first, and an identity feedback path delays
+    /// those channels by one sample into the tap inputs. A final selector
+    /// feeds `[audio, gain, pan]` through the shared gain and equal-power pan
+    /// stages.
     fn build_processor(&self, sample_rate_hz: f32) -> Processor {
+        let taps = self.feedback_taps();
         let node_count = self.nodes.len();
+        let tap_count = taps.len();
+
         let mut stages = self
             .nodes
             .iter()
             .enumerate()
-            .map(|(index, node)| Self::build_stage(index, node, sample_rate_hz));
+            .map(|(index, node)| Self::build_stage(index, node, &taps, sample_rate_hz));
         let first = stages
             .next()
             .unwrap_or_else(|| unreachable!("validated specs have at least one node"));
@@ -464,20 +641,43 @@ impl GraphVoiceSpec {
                 .unwrap_or_else(|error| panic!("voice spec stages must compose: {error}"))
         });
 
-        let output_channel = bus_channel(node_count, self.output);
-        let gain_channel = channel_index(node_count + 2);
-        let pan_channel = channel_index(node_count + 3);
-        let select = wire(&[output_channel, gain_channel, pan_channel]);
+        let output_channel = bus_channel(node_count, &taps, self.output);
+        let gain_channel = channel_index(node_count + tap_count + 2);
+        let pan_channel = channel_index(node_count + tap_count + 3);
+
+        let selected = if taps.is_empty() {
+            let select = wire(&[output_channel, gain_channel, pan_channel]);
+            seq(dag, select)
+                .unwrap_or_else(|error| panic!("voice spec output selector must compose: {error}"))
+        } else {
+            // Body outputs: every tapped node's live value first (the
+            // feedback path re-reads them, delayed one sample), then the
+            // audio output and the gain/pan controls.
+            let mut selection: Vec<u32> = taps
+                .iter()
+                .map(|&tap| bus_channel(node_count, &taps, VoiceSignalRef::Node(tap)))
+                .collect();
+            selection.extend([output_channel, gain_channel, pan_channel]);
+            let body = seq(dag, wire(&selection)).unwrap_or_else(|error| {
+                panic!("voice spec loop body selector must compose: {error}")
+            });
+            let looped = feedback(body, passthrough(channel_index(tap_count)))
+                .unwrap_or_else(|error| panic!("voice spec feedback loop must compose: {error}"));
+            // Drop the tap channels: [taps.., audio, gain, pan] -> [audio, gain, pan].
+            let drop_taps = wire(&[
+                channel_index(tap_count),
+                channel_index(tap_count + 1),
+                channel_index(tap_count + 2),
+            ]);
+            seq(looped, drop_taps)
+                .unwrap_or_else(|error| panic!("voice spec tap dropper must compose: {error}"))
+        };
+
         // [audio, gain, pan] -> [audio * gain, pan] -> [left, right]
         let levelled = par(gain_node(), passthrough(1));
-        let tail = seq(
-            select,
-            seq(levelled, pan())
-                .unwrap_or_else(|error| panic!("voice spec pan stage must compose: {error}")),
-        )
-        .unwrap_or_else(|error| panic!("voice spec output selector must compose: {error}"));
-
-        let graph = seq(dag, tail)
+        let tail = seq(levelled, pan())
+            .unwrap_or_else(|error| panic!("voice spec pan stage must compose: {error}"));
+        let graph = seq(selected, tail)
             .unwrap_or_else(|error| panic!("voice spec output stage must compose: {error}"));
         debug_assert_eq!(graph.inputs(), 4);
         debug_assert_eq!(graph.outputs(), 2);
@@ -486,12 +686,12 @@ impl GraphVoiceSpec {
 
     /// Builds the stage for node `index`: input wiring followed by the node
     /// running in parallel with a passthrough of the whole bus.
-    fn build_stage(index: usize, node: &VoiceNodeSpec, sample_rate_hz: f32) -> Seq {
-        let bus_width = index + 4;
+    fn build_stage(index: usize, node: &VoiceNodeSpec, taps: &[u32], sample_rate_hz: f32) -> Seq {
+        let bus_width = index + taps.len() + 4;
         let mut mapping: Vec<u32> = node
             .input_refs()
             .iter()
-            .map(|reference| bus_channel(index, *reference))
+            .map(|reference| bus_channel(index, taps, *reference))
             .collect();
         mapping.extend((0..bus_width).map(channel_index));
         let inputs = wire(&mapping);
@@ -538,6 +738,16 @@ impl GraphVoiceSpec {
             VoiceNodeSpec::Drive { .. } => par(soft_sat(), passthrough(bus)),
             VoiceNodeSpec::Mul { .. } => par(gain_node(), passthrough(bus)),
             VoiceNodeSpec::Add { .. } => par(sum(2), passthrough(bus)),
+            VoiceNodeSpec::Delay { seconds, .. } => par(
+                delay_line(delay_seconds_to_samples(*seconds, sample_rate_hz)),
+                passthrough(bus),
+            ),
+            VoiceNodeSpec::Merge { inputs } => {
+                let width = channel_index(inputs.len());
+                let fan_in = merge(passthrough(width), passthrough(1))
+                    .unwrap_or_else(|error| panic!("voice merge fan-in must compose: {error}"));
+                par(fan_in, passthrough(bus))
+            }
         };
 
         seq(inputs, staged)
@@ -546,15 +756,39 @@ impl GraphVoiceSpec {
 }
 
 /// The bus channel carrying `reference` when `prepended` node outputs sit in
-/// front of the fixed `[gate, freq, gain, pan]` tail.
-fn bus_channel(prepended: usize, reference: VoiceSignalRef) -> u32 {
+/// front of the feedback tap channels and the fixed `[gate, freq, gain, pan]`
+/// tail.
+fn bus_channel(prepended: usize, taps: &[u32], reference: VoiceSignalRef) -> u32 {
     match reference {
-        VoiceSignalRef::Gate => channel_index(prepended),
-        VoiceSignalRef::Freq => channel_index(prepended + 1),
+        VoiceSignalRef::Gate => channel_index(prepended + taps.len()),
+        VoiceSignalRef::Freq => channel_index(prepended + taps.len() + 1),
         VoiceSignalRef::Node(index) => {
             // Outputs are prepended, so node j sits at prepended - 1 - j.
             channel_index(prepended - 1 - index as usize)
         }
+        VoiceSignalRef::Feedback(index) => {
+            let position = taps
+                .iter()
+                .position(|&tap| tap == index)
+                .unwrap_or_else(|| unreachable!("feedback references are collected as taps"));
+            channel_index(prepended + position)
+        }
+    }
+}
+
+/// Converts a fixed delay in seconds to whole samples, clamped to at least
+/// one (the delay-line primitive's minimum).
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss
+)]
+fn delay_seconds_to_samples(seconds: f32, sample_rate_hz: f32) -> usize {
+    let samples = (seconds * sample_rate_hz).round();
+    if samples.is_finite() && samples > 1.0 {
+        samples as usize
+    } else {
+        1
     }
 }
 
@@ -696,7 +930,7 @@ impl GraphVoiceBank {
                 continue;
             }
             let release_frames = program.release_frames(sample_rate_hz);
-            for _ in 0..GRAPH_VOICE_POLYPHONY {
+            for _ in 0..DEFAULT_GRAPH_VOICE_POLYPHONY {
                 let mut voice = program.build_voice(sample_rate_hz);
                 voice.prepare();
                 slots.push(GraphVoiceSlot {
@@ -709,7 +943,7 @@ impl GraphVoiceBank {
         }
         for spec in &user_specs {
             let release_frames = spec.release_frames(sample_rate_hz);
-            for _ in 0..GRAPH_VOICE_POLYPHONY {
+            for _ in 0..spec.polyphony() {
                 let mut voice = spec.build_voice(sample_rate_hz);
                 voice.prepare();
                 slots.push(GraphVoiceSlot {
@@ -891,7 +1125,7 @@ mod tests {
         assert!(!bank.has_program("bd"));
         assert!(!bank.trigger("bd", track(0), 10, 220.0, 0.5, 0.0));
 
-        for _ in 0..GRAPH_VOICE_POLYPHONY {
+        for _ in 0..DEFAULT_GRAPH_VOICE_POLYPHONY {
             assert!(bank.trigger("gsine", track(0), 10, 220.0, 0.5, 0.0));
         }
         assert!(
@@ -913,7 +1147,7 @@ mod tests {
             bank.render_frame(&mut mix);
         }
 
-        for _ in 0..GRAPH_VOICE_POLYPHONY {
+        for _ in 0..DEFAULT_GRAPH_VOICE_POLYPHONY {
             assert!(bank.trigger("gsine", track(0), 2, 220.0, 0.5, 0.0));
         }
     }

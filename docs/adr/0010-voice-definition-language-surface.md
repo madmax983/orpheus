@@ -81,6 +81,51 @@ the graph bank (ADR 0009 unchanged).
   the sample-bank swap already accepts.
 - The voice vocabulary is a curated subset of the graph module: `split`/
   `merge`/`feedback` topologies, audio-rate envelope-segment modulation, and
-  per-program polyphony configuration are deliberate follow-ups.
+  per-program polyphony configuration are deliberate follow-ups. (The first
+  and last landed; see the addendum below.)
 - A bare voice binding referenced outside a pattern is the voice value itself
   (aliasing), not a pattern; tokens only take effect inside sequences.
+
+## Addendum: feedback/fan topologies and per-program polyphony
+
+The deferred topology and polyphony items shipped as an extension of the same
+compilation model, with no grammar changes — every new form is an ordinary
+call or block binding.
+
+**`feedback(body)` with an ambient `fb` signal.** Faust's `~` operator is
+point-free; the voice DSL is applied, so the loop is written as an expression
+instead: inside `feedback(...)` the reserved name `fb` is the loop's previous
+output (one sample late), and the expression's value is its current output.
+A feedback echo reads
+`wet = feedback(dry + fb |> delay(0.25) |> gain(0.6))`. The compiler gives
+the spec DAG one relaxation: a new `VoiceSignalRef::Feedback(i)` may point at
+the current or a later node (validated against the node-list length), closing
+a cycle. Lowering collects the tapped nodes, threads their one-sample-delayed
+values as extra bus channels, and wraps the whole DAG in the `Rec` combinator
+with an identity feedback path — so loops genuinely lower onto `feedback()`
+rather than a bespoke evaluator. `fb` placeholders are patched to the loop's
+root node index after its body compiles, which nests correctly.
+
+**`fan(input, branch, branch, ...)`** (also pipeable:
+`x |> fan(lowpass(500, 0.2), lowpass(3000, 0.2))`) is split-then-merge: the
+input feeds every branch — each branch is a stage call or pipe chain that
+receives it as its piped-in first argument — and the branch outputs are
+summed. Duplication reuses `wire`'s channel fan-out (the split semantics the
+lowering already had); the fan-in is a new n-ary `Merge` spec node lowered
+onto the `Mrg` combinator.
+
+**Supporting stages.** `delay(x, seconds)` exposes the fixed `delay_line`
+(literal seconds, capped at 10 s, capacity allocated at build time) and
+`gain(x, amount)` is `Mul` as a pipeable stage, since `*` cannot follow a
+pipe target grammatically. A fractional/modulatable delay stays a graph-layer
+follow-up.
+
+**Pragma bindings.** Two reserved binding names configure the program rather
+than defining signals, keeping the grammar untouched (named call arguments do
+not survive general evaluation, the same reason `voice` is a block):
+`poly = n` sets the program's pooled polyphony (integer literal, 1–64;
+`GraphVoiceSpec::with_polyphony`, default 8 per ADR 0009), and `release = s`
+floors the release tail so feedback tails ring out past the longest envelope
+release (0–30 s; envelope-derived releases still win when longer). Pools are
+still built off-thread and swapped at cycle boundaries; the counting-
+allocator suite covers the new node kinds and a non-default pool size.

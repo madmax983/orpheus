@@ -683,3 +683,54 @@ fn rejects_oversized_replication() {
     // sequence length budget.
     assert_parse_fails_mentioning("drums = bd!1024", &["maximum AST depth exceeded"]);
 }
+
+#[test]
+fn voice_block_parses_feedback_loops_and_pragma_bindings() {
+    let source = "echo = voice { poly = 4 ; dry = sine(freq) ; feedback(dry + fb |> delay(0.25) |> gain(0.6)) }";
+    let module = parse_module(source).unwrap();
+    match &module.statements[0] {
+        Stmt::Binding { expr, .. } => match expr {
+            Expr::Voice { bindings, result } => {
+                assert_eq!(bindings.len(), 2);
+                assert_eq!(bindings[0].name, "poly");
+                assert_is_number(&bindings[0].expr, 4.0);
+                assert_eq!(bindings[1].name, "dry");
+
+                // feedback(...) is an ordinary call; its single argument is a
+                // left-nested pipe chain over the `dry + fb` sum.
+                let args = assert_is_call(result, "feedback");
+                assert_eq!(args.len(), 1);
+                let (outer_lhs, outer_rhs) = assert_is_pipe(&args[0]);
+                let gain_args = assert_is_call(outer_rhs, "gain");
+                assert_is_number(&gain_args[0], 0.6);
+                let (inner_lhs, inner_rhs) = assert_is_pipe(outer_lhs);
+                let delay_args = assert_is_call(inner_rhs, "delay");
+                assert_is_number(&delay_args[0], 0.25);
+                let (add_lhs, add_rhs) = assert_is_binary(inner_lhs, BinaryOp::Add);
+                assert_is_ident(add_lhs, "dry");
+                assert_is_ident(add_rhs, "fb");
+            }
+            other => panic!("unexpected AST: {other:#?}"),
+        },
+    }
+}
+
+#[test]
+fn voice_block_parses_fan_branches_as_call_arguments() {
+    let source = "bank = voice { fan(saw(freq), lowpass(500, 0.2), lowpass(3000, 0.2)) }";
+    let module = parse_module(source).unwrap();
+    match &module.statements[0] {
+        Stmt::Binding { expr, .. } => match expr {
+            Expr::Voice { bindings, result } => {
+                assert!(bindings.is_empty());
+                let args = assert_is_call(result, "fan");
+                assert_eq!(args.len(), 3);
+                let saw_args = assert_is_call(&args[0], "saw");
+                assert_is_ident(&saw_args[0], "freq");
+                assert_is_call(&args[1], "lowpass");
+                assert_is_call(&args[2], "lowpass");
+            }
+            other => panic!("unexpected AST: {other:#?}"),
+        },
+    }
+}

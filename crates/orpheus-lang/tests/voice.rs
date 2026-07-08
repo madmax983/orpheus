@@ -188,3 +188,226 @@ fn voice_binding_summary_reports_voice_type() {
         session.binding_summaries()
     );
 }
+
+// ---------------------------------------------------------------------------
+// Richer voice-body vocabulary (ADR 0010 addendum): feedback loops, fixed
+// delays, parallel fan/merge, and the `poly`/`release` pragma bindings.
+// ---------------------------------------------------------------------------
+
+const ECHO: &str = "echo = voice { release = 0.5 ; dry = sine(freq) * ar(gate, 0.001, 0.01) ; wet = feedback(dry + fb |> delay(0.05) |> gain(0.5)) ; dry + wet }";
+
+fn compiled_voice(source: &str, token: &str) -> orpheus_dsp::GraphVoice {
+    let Value::Voice(voice) = eval_voice(source) else {
+        panic!("expected a voice value");
+    };
+    let mut compiled = voice.to_spec(token).unwrap().build_voice(48_000.0);
+    compiled.prepare();
+    compiled
+}
+
+#[test]
+fn voice_feedback_echo_produces_repeating_decaying_onsets() {
+    let Value::Voice(voice) = eval_voice(ECHO) else {
+        panic!("expected a voice value");
+    };
+    // The `release = 0.5` pragma floors the release tail above the 0.01 s
+    // envelope so the echo train survives the note end.
+    assert!((voice.release_seconds() - 0.5).abs() < 1e-6);
+
+    let mut compiled = voice.to_spec("echo").unwrap().build_voice(48_000.0);
+    compiled.prepare();
+
+    // A 2 ms blip; the 0.05 s loop delay repeats it every 2400 frames,
+    // decaying by 0.5 per pass.
+    let mut frames = Vec::with_capacity(9_600);
+    for frame in 0..9_600_u32 {
+        let gate = if frame < 96 { 1.0 } else { 0.0 };
+        frames.push(compiled.process_frame(gate, 220.0, 1.0, 0.0));
+    }
+    let energy = |range: std::ops::Range<usize>| {
+        frames[range]
+            .iter()
+            .map(|&(left, _): &(f32, f32)| left.abs())
+            .sum::<f32>()
+    };
+
+    let dry = energy(0..600);
+    let quiet = energy(1_200..2_350);
+    let first_echo = energy(2_400..3_100);
+    let second_echo = energy(4_800..5_500);
+    let third_echo = energy(7_200..7_900);
+
+    assert!(dry > 1.0, "direct blip should be audible, got {dry}");
+    assert!(quiet < dry * 0.01, "pre-echo gap should be silent: {quiet}");
+    assert!(first_echo > dry * 0.2, "first echo missing: {first_echo}");
+    assert!(
+        second_echo > dry * 0.05 && second_echo < first_echo,
+        "second echo should be quieter: {second_echo} vs {first_echo}"
+    );
+    assert!(third_echo < second_echo, "echo train must decay");
+}
+
+#[test]
+fn voice_fan_matches_manually_summed_parallel_branches() {
+    let mut fanned = compiled_voice(
+        "bank = voice { osc = saw(freq) ; fan(osc, lowpass(500, 0.2), lowpass(3000, 0.2)) * ar(gate, 0.001, 0.05) }",
+        "bank",
+    );
+    let mut piped = compiled_voice(
+        "bank = voice { osc = saw(freq) ; mix = osc |> fan(lowpass(500, 0.2), lowpass(3000, 0.2)) ; mix * ar(gate, 0.001, 0.05) }",
+        "bank",
+    );
+    let mut manual = compiled_voice(
+        "bank = voice { osc = saw(freq) ; low = osc |> lowpass(500, 0.2) ; high = osc |> lowpass(3000, 0.2) ; (low + high) * ar(gate, 0.001, 0.05) }",
+        "bank",
+    );
+
+    let mut audible = false;
+    for _ in 0..2_048 {
+        let (fl, fr) = fanned.process_frame(1.0, 110.0, 0.8, 0.0);
+        let (pl, pr) = piped.process_frame(1.0, 110.0, 0.8, 0.0);
+        let (ml, mr) = manual.process_frame(1.0, 110.0, 0.8, 0.0);
+        assert!((fl - ml).abs() < 1e-6 && (fr - mr).abs() < 1e-6);
+        assert!((pl - ml).abs() < 1e-6 && (pr - mr).abs() < 1e-6);
+        audible |= fl.abs() > 0.01;
+    }
+    assert!(audible, "the parallel filter bank should be audible");
+}
+
+#[test]
+fn voice_poly_pragma_sets_program_pool_size() {
+    let Value::Voice(voice) =
+        eval_voice("lead = voice { poly = 4 ; sine(freq) * ar(gate, 0.001, 0.05) }")
+    else {
+        panic!("expected a voice value");
+    };
+    assert_eq!(voice.to_spec("lead").unwrap().polyphony(), 4);
+
+    // Without the pragma the ADR 0009 default of 8 holds.
+    let Value::Voice(voice) = eval_voice(PLUCK) else {
+        panic!("expected a voice value");
+    };
+    assert_eq!(voice.to_spec("pluck").unwrap().polyphony(), 8);
+}
+
+#[test]
+fn voice_release_pragma_floors_but_never_shortens_the_tail() {
+    let Value::Voice(voice) =
+        eval_voice("pad = voice { release = 0.25 ; sine(freq) * ar(gate, 0.001, 0.05) }")
+    else {
+        panic!("expected a voice value");
+    };
+    assert!((voice.release_seconds() - 0.25).abs() < 1e-6);
+
+    // A longer envelope release still wins over a smaller floor.
+    let Value::Voice(voice) =
+        eval_voice("pad = voice { release = 0.01 ; sine(freq) * ar(gate, 0.001, 0.3) }")
+    else {
+        panic!("expected a voice value");
+    };
+    assert!((voice.release_seconds() - 0.3).abs() < 1e-6);
+}
+
+#[test]
+fn voice_body_rejects_fb_outside_feedback_loops() {
+    let message = eval_error("bad = voice { sine(freq) + fb }");
+    assert!(
+        message.contains("fb") && message.contains("feedback"),
+        "unexpected error: {message}"
+    );
+}
+
+#[test]
+fn voice_body_reserves_the_fb_name() {
+    let message = eval_error("bad = voice { fb = sine(freq) ; fb }");
+    assert!(message.contains("fb"), "unexpected error: {message}");
+}
+
+#[test]
+fn voice_feedback_requires_a_processing_stage_in_the_loop() {
+    let message = eval_error("bad = voice { feedback(gate) }");
+    assert!(
+        message.contains("feedback") && message.contains("stage"),
+        "unexpected error: {message}"
+    );
+}
+
+#[test]
+fn voice_feedback_rejects_extra_arguments() {
+    let message = eval_error("bad = voice { feedback(sine(freq), 2) }");
+    assert!(message.contains("feedback"), "unexpected error: {message}");
+}
+
+#[test]
+fn voice_fan_requires_at_least_two_branches() {
+    let message = eval_error("bad = voice { fan(sine(freq)) }");
+    assert!(
+        message.contains("fan") && message.contains("branch"),
+        "unexpected error: {message}"
+    );
+}
+
+#[test]
+fn voice_fan_rejects_non_stage_branches() {
+    let message = eval_error("bad = voice { fan(sine(freq), 2, 3) }");
+    assert!(message.contains("fan"), "unexpected error: {message}");
+}
+
+#[test]
+fn voice_delay_requires_a_literal_time_within_bounds() {
+    let message = eval_error("bad = voice { sine(freq) |> delay(freq) }");
+    assert!(
+        message.contains("delay") && message.contains("literal"),
+        "unexpected error: {message}"
+    );
+
+    let message = eval_error("bad = voice { sine(freq) |> delay(30) }");
+    assert!(message.contains("delay"), "unexpected error: {message}");
+}
+
+#[test]
+fn voice_poly_pragma_enforces_bounds_and_integrality() {
+    for source in [
+        "bad = voice { poly = 0 ; sine(freq) }",
+        "bad = voice { poly = 100 ; sine(freq) }",
+        "bad = voice { poly = 2.5 ; sine(freq) }",
+    ] {
+        let message = eval_error(source);
+        assert!(message.contains("poly"), "unexpected error: {message}");
+    }
+
+    let message = eval_error("bad = voice { poly = 2 ; poly = 4 ; sine(freq) }");
+    assert!(
+        message.contains("poly") && message.contains("twice"),
+        "unexpected error: {message}"
+    );
+}
+
+#[test]
+fn voice_release_pragma_rejects_invalid_values() {
+    let message = eval_error("bad = voice { release = -1 ; sine(freq) }");
+    assert!(message.contains("release"), "unexpected error: {message}");
+
+    let message = eval_error("bad = voice { release = 0.1 ; release = 0.2 ; sine(freq) }");
+    assert!(
+        message.contains("release") && message.contains("twice"),
+        "unexpected error: {message}"
+    );
+}
+
+#[test]
+fn session_plays_echo_voice_from_pattern_token() {
+    let mut session = ReplSession::with_engine(EngineHandle::stub());
+    session.eval_line(":tempo 1200").unwrap();
+    session.eval_line(ECHO).unwrap();
+    let _ = session.render_test_block_for_tui(1);
+    session.eval_line("melody = echo ~ ~ ~").unwrap();
+    let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
+
+    let rendered = session.render_test_block_for_tui(9_600);
+    assert!(rendered.iter().all(|sample| sample.is_finite()));
+    assert!(
+        rendered.iter().any(|sample| sample.abs() > 0.01),
+        "echo voice should be audible from a pattern token"
+    );
+}

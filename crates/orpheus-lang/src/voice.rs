@@ -19,7 +19,10 @@ use std::collections::BTreeMap;
 
 use comfy_table::Cell;
 use crossterm::style::Stylize;
-use orpheus_dsp::{GraphVoiceSpec, VoiceNodeSpec, VoiceSignalRef};
+use orpheus_dsp::{
+    DEFAULT_GRAPH_VOICE_POLYPHONY, GraphVoiceSpec, MAX_GRAPH_VOICE_POLYPHONY,
+    MAX_VOICE_DELAY_SECONDS, VoiceNodeSpec, VoiceSignalRef,
+};
 
 use crate::ast::{BinaryOp, Expr, GraphBinding};
 use crate::error::EvalError;
@@ -35,6 +38,16 @@ const DEFAULT_PULSE_WIDTH: f32 = 0.5;
 /// The PRNG seed for `noise()` nodes; fixed so voices stay deterministic.
 const VOICE_NOISE_SEED: u32 = 0x9E37_79B9;
 
+/// The largest release floor a `release = ...` pragma may request, in
+/// seconds, keeping note lifetimes (and pool residency) bounded.
+const MAX_VOICE_RELEASE_FLOOR_SECONDS: f64 = 30.0;
+
+/// The base value for feedback-loop placeholder references. Each nesting
+/// depth uses `BASE - depth`; the placeholders are rewritten to the loop's
+/// root node index once the loop body has compiled, so they can never
+/// collide with real node indices (which are bounded by the node count).
+const FEEDBACK_PLACEHOLDER_BASE: u32 = u32::MAX;
+
 /// The language-side value for a compiled voice definition.
 ///
 /// Holds the validated node DAG without a pattern token: the token is the
@@ -45,6 +58,7 @@ pub struct VoiceValue {
     nodes: Vec<VoiceNodeSpec>,
     output: VoiceSignalRef,
     release_seconds: f32,
+    polyphony: Option<usize>,
 }
 
 impl VoiceValue {
@@ -69,6 +83,15 @@ impl VoiceValue {
         self.release_seconds
     }
 
+    /// The pooled polyphony requested by a `poly = ...` pragma, when present.
+    ///
+    /// `None` means the engine default (ADR 0009's pool of
+    /// [`DEFAULT_GRAPH_VOICE_POLYPHONY`]).
+    #[must_use]
+    pub const fn polyphony(&self) -> Option<usize> {
+        self.polyphony
+    }
+
     /// Builds the engine-side program spec, using `token` (the binding name)
     /// as the pattern token.
     ///
@@ -77,8 +100,17 @@ impl VoiceValue {
     /// Returns [`EvalError`] when `token` is not a valid single-word pattern
     /// token or the DSP layer rejects the spec.
     pub fn to_spec(&self, token: &str) -> Result<GraphVoiceSpec, EvalError> {
-        GraphVoiceSpec::new(token, self.release_seconds, self.nodes.clone(), self.output)
-            .map_err(|error| EvalError::new(format!("voice `{token}` is not playable: {error}")))
+        let spec =
+            GraphVoiceSpec::new(token, self.release_seconds, self.nodes.clone(), self.output)
+                .map_err(|error| {
+                    EvalError::new(format!("voice `{token}` is not playable: {error}"))
+                })?;
+        match self.polyphony {
+            Some(polyphony) => spec.with_polyphony(polyphony).map_err(|error| {
+                EvalError::new(format!("voice `{token}` is not playable: {error}"))
+            }),
+            None => Ok(spec),
+        }
     }
 }
 
@@ -93,15 +125,32 @@ pub fn compile_voice(bindings: &[GraphBinding], result: &Expr) -> Result<VoiceVa
     let mut compiler = VoiceCompiler::default();
 
     for binding in bindings {
+        match binding.name.as_str() {
+            "poly" => {
+                compiler.set_polyphony(&binding.expr)?;
+                continue;
+            }
+            "release" => {
+                compiler.set_release_floor(&binding.expr)?;
+                continue;
+            }
+            "gate" | "freq" => {
+                return Err(EvalError::new(format!(
+                    "`{}` is a built-in voice input and cannot be redefined",
+                    binding.name
+                )));
+            }
+            "fb" => {
+                return Err(EvalError::new(
+                    "`fb` is reserved for the loop signal inside feedback(...) bodies \
+                     and cannot be redefined",
+                ));
+            }
+            _ => {}
+        }
         if compiler.resolved.contains_key(&binding.name) {
             return Err(EvalError::new(format!(
                 "voice signal `{}` is defined twice",
-                binding.name
-            )));
-        }
-        if matches!(binding.name.as_str(), "gate" | "freq") {
-            return Err(EvalError::new(format!(
-                "`{}` is a built-in voice input and cannot be redefined",
                 binding.name
             )));
         }
@@ -114,11 +163,16 @@ pub fn compile_voice(bindings: &[GraphBinding], result: &Expr) -> Result<VoiceVa
     let mut source = String::with_capacity(128);
     crate::pedal::format_voice_source_into(bindings, result, &mut source);
 
+    let release_floor = compiler.release_floor.unwrap_or(0.0);
     Ok(VoiceValue {
         source,
         nodes: compiler.nodes,
         output,
-        release_seconds: compiler.max_release.max(DEFAULT_VOICE_RELEASE_SECONDS),
+        release_seconds: compiler
+            .max_release
+            .max(release_floor)
+            .max(DEFAULT_VOICE_RELEASE_SECONDS),
+        polyphony: compiler.polyphony,
     })
 }
 
@@ -127,9 +181,59 @@ struct VoiceCompiler {
     resolved: BTreeMap<String, VoiceSignalRef>,
     nodes: Vec<VoiceNodeSpec>,
     max_release: f32,
+    /// Placeholder references for the enclosing `feedback(...)` loops, one
+    /// per nesting level; `fb` resolves to the innermost entry.
+    feedback_scopes: Vec<u32>,
+    /// The pool size requested by a `poly = ...` pragma binding.
+    polyphony: Option<usize>,
+    /// The release-tail floor requested by a `release = ...` pragma binding.
+    release_floor: Option<f32>,
 }
 
 impl VoiceCompiler {
+    /// Handles the `poly = <integer literal>` pragma binding.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    fn set_polyphony(&mut self, expr: &Expr) -> Result<(), EvalError> {
+        if self.polyphony.is_some() {
+            return Err(EvalError::new("voice `poly` is set twice"));
+        }
+        // MAX_GRAPH_VOICE_POLYPHONY (64) is far below f64's exact-integer
+        // ceiling, so the comparison bound is precise.
+        #[allow(clippy::cast_precision_loss)]
+        let max_polyphony = MAX_GRAPH_VOICE_POLYPHONY as f64;
+        match expr {
+            Expr::Number(value)
+                if value.fract() == 0.0 && (1.0..=max_polyphony).contains(value) =>
+            {
+                self.polyphony = Some(*value as usize);
+                Ok(())
+            }
+            _ => Err(EvalError::new(format!(
+                "voice `poly` must be an integer literal between 1 and \
+                 {MAX_GRAPH_VOICE_POLYPHONY} (the pool is built before the audio thread runs)"
+            ))),
+        }
+    }
+
+    /// Handles the `release = <number literal>` pragma binding, which floors
+    /// the release tail (useful when a feedback echo must ring out past the
+    /// longest envelope release).
+    #[allow(clippy::cast_possible_truncation)]
+    fn set_release_floor(&mut self, expr: &Expr) -> Result<(), EvalError> {
+        if self.release_floor.is_some() {
+            return Err(EvalError::new("voice `release` is set twice"));
+        }
+        match expr {
+            Expr::Number(value) if (0.0..=MAX_VOICE_RELEASE_FLOOR_SECONDS).contains(value) => {
+                self.release_floor = Some(*value as f32);
+                Ok(())
+            }
+            _ => Err(EvalError::new(format!(
+                "voice `release` must be a number literal between 0 and \
+                 {MAX_VOICE_RELEASE_FLOOR_SECONDS} seconds"
+            ))),
+        }
+    }
     fn push(&mut self, node: VoiceNodeSpec) -> Result<VoiceSignalRef, EvalError> {
         let index = u32::try_from(self.nodes.len())
             .map_err(|_| EvalError::new("voice body exceeded the supported node count"))?;
@@ -159,6 +263,16 @@ impl VoiceCompiler {
         match name {
             "gate" => Ok(VoiceSignalRef::Gate),
             "freq" => Ok(VoiceSignalRef::Freq),
+            "fb" => self
+                .feedback_scopes
+                .last()
+                .map(|&placeholder| VoiceSignalRef::Feedback(placeholder))
+                .ok_or_else(|| {
+                    EvalError::new(
+                        "`fb` is only available inside a feedback(...) loop body, where it \
+                         is the loop's previous output",
+                    )
+                }),
             _ => self.resolved.get(name).copied().ok_or_else(|| {
                 EvalError::new(format!(
                     "unbound voice signal `{name}`; voice bodies see `gate`, `freq`, and \
@@ -240,9 +354,14 @@ impl VoiceCompiler {
             "ar" => self.compile_ar(args, piped),
             "lowpass" => self.compile_lowpass(args, piped),
             "drive" => self.compile_drive(args, piped),
+            "gain" => self.compile_gain(args, piped),
+            "delay" => self.compile_delay(args, piped),
+            "feedback" => self.compile_feedback(args, piped),
+            "fan" => self.compile_fan(args, piped),
             other => Err(EvalError::new(format!(
                 "unknown voice stage `{other}`; available stages are `sine`, `saw`, `tri`, \
-                 `pulse`, `noise`, `adsr`, `ar`, `lowpass`, and `drive`"
+                 `pulse`, `noise`, `adsr`, `ar`, `lowpass`, `drive`, `gain`, `delay`, \
+                 `feedback`, and `fan`"
             ))),
         }
     }
@@ -416,6 +535,132 @@ impl VoiceCompiler {
             amount: signals[1],
         })
     }
+
+    /// Compiles `gain(input, amount)` — multiplication as a pipeable stage,
+    /// so pipe chains can scale a signal (`x |> delay(0.25) |> gain(0.6)`).
+    fn compile_gain(
+        &mut self,
+        args: &[Expr],
+        piped: Option<VoiceSignalRef>,
+    ) -> Result<VoiceSignalRef, EvalError> {
+        let signals = self.compile_signal_args("gain", args, piped, 2)?;
+        self.push(VoiceNodeSpec::Mul {
+            left: signals[0],
+            right: signals[1],
+        })
+    }
+
+    /// Compiles `delay(input, seconds)` — a fixed delay line. The delay time
+    /// must be a number literal because the line's capacity is allocated
+    /// before the audio thread runs.
+    fn compile_delay(
+        &mut self,
+        args: &[Expr],
+        piped: Option<VoiceSignalRef>,
+    ) -> Result<VoiceSignalRef, EvalError> {
+        let (input, seconds_expr) = match piped {
+            Some(input) if args.len() == 1 => (input, &args[0]),
+            None if args.len() == 2 => (self.compile_expr(&args[0])?, &args[1]),
+            _ => {
+                return Err(EvalError::new(
+                    "`delay` expects an input signal plus a delay time in seconds \
+                     (e.g. `x |> delay(0.25)`)",
+                ));
+            }
+        };
+        let seconds = delay_literal(seconds_expr)?;
+        self.push(VoiceNodeSpec::Delay { input, seconds })
+    }
+
+    /// Compiles `feedback(body)` — a one-sample feedback loop around `body`.
+    ///
+    /// Inside the body the ambient name `fb` is the loop's previous output;
+    /// the whole expression's value is the loop's current output. It lowers
+    /// onto the recursive graph combinator: a placeholder feedback reference
+    /// stands in for `fb` while the body compiles and is patched to the
+    /// body's root node once that index is known.
+    fn compile_feedback(
+        &mut self,
+        args: &[Expr],
+        piped: Option<VoiceSignalRef>,
+    ) -> Result<VoiceSignalRef, EvalError> {
+        if piped.is_some() || args.len() != 1 {
+            return Err(EvalError::new(
+                "`feedback(body)` takes exactly one loop expression; inside it, `fb` is \
+                 the loop's previous output (e.g. `feedback(dry + fb |> delay(0.25) |> \
+                 gain(0.6))`)",
+            ));
+        }
+
+        let depth = u32::try_from(self.feedback_scopes.len())
+            .map_err(|_| EvalError::new("feedback loops are nested too deeply"))?;
+        let placeholder = FEEDBACK_PLACEHOLDER_BASE - depth;
+        let loop_start = self.nodes.len();
+        self.feedback_scopes.push(placeholder);
+        let result = self.compile_expr(&args[0]);
+        self.feedback_scopes.pop();
+
+        let VoiceSignalRef::Node(root) = result? else {
+            return Err(EvalError::new(
+                "a feedback loop body must contain at least one processing stage so its \
+                 output can be fed back",
+            ));
+        };
+        for node in &mut self.nodes[loop_start..] {
+            node.map_refs(|reference| {
+                if *reference == VoiceSignalRef::Feedback(placeholder) {
+                    *reference = VoiceSignalRef::Feedback(root);
+                }
+            });
+        }
+        Ok(VoiceSignalRef::Node(root))
+    }
+
+    /// Compiles `fan(input, branch, branch, ...)` — the input signal is
+    /// duplicated into every branch (split) and the branch outputs are summed
+    /// back into one signal (merge).
+    fn compile_fan(
+        &mut self,
+        args: &[Expr],
+        piped: Option<VoiceSignalRef>,
+    ) -> Result<VoiceSignalRef, EvalError> {
+        let (input, branches) = match piped {
+            Some(input) if args.len() >= 2 => (input, args),
+            None if args.len() >= 3 => (self.compile_expr(&args[0])?, &args[1..]),
+            _ => {
+                return Err(EvalError::new(
+                    "`fan` expects an input signal plus at least two parallel branches \
+                     (e.g. `fan(x, lowpass(500, 0.2), lowpass(3000, 0.2))`)",
+                ));
+            }
+        };
+        let inputs = branches
+            .iter()
+            .map(|branch| self.compile_branch(input, branch))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.push(VoiceNodeSpec::Merge { inputs })
+    }
+
+    /// Compiles one `fan` branch: a stage call or pipe chain that receives
+    /// the fan input as its piped-in first argument.
+    fn compile_branch(
+        &mut self,
+        input: VoiceSignalRef,
+        branch: &Expr,
+    ) -> Result<VoiceSignalRef, EvalError> {
+        match branch {
+            Expr::Pipe { lhs, rhs } => {
+                let head = self.compile_branch(input, lhs)?;
+                self.compile_pipe_target(head, rhs)
+            }
+            Expr::Call { callee, args } => self.compile_call(callee, args, Some(input)),
+            Expr::Ident(name) => self.compile_stage(name, &[], Some(input)),
+            _ => Err(EvalError::new(
+                "`fan` branches must be stage calls or pipe chains; each branch receives \
+                 the fan input as its first argument",
+            )),
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -436,12 +681,34 @@ fn envelope_literal(stage: &str, segment: &str, expr: &Expr) -> Result<f32, Eval
     }
 }
 
+/// Extracts a `delay` time parameter, which must be a number literal within
+/// the DSP layer's cap so the line's capacity is fixed before the audio
+/// thread runs.
+#[allow(clippy::cast_possible_truncation)]
+fn delay_literal(expr: &Expr) -> Result<f32, EvalError> {
+    match expr {
+        Expr::Number(value) if (0.0..=f64::from(MAX_VOICE_DELAY_SECONDS)).contains(value) => {
+            Ok(*value as f32)
+        }
+        _ => Err(EvalError::new(format!(
+            "`delay` requires its seconds parameter to be a number literal between 0 and \
+             {MAX_VOICE_DELAY_SECONDS} (the delay buffer is allocated before the audio \
+             thread runs)"
+        ))),
+    }
+}
+
 impl Explain for VoiceValue {
     fn explain(&self, binding_name: &str) -> String {
+        let polyphony = self.polyphony.map_or_else(
+            || format!("{DEFAULT_GRAPH_VOICE_POLYPHONY} (default)"),
+            |polyphony| polyphony.to_string(),
+        );
         let title = format!(
-            "{} {binding_name}\nRelease Tail: {}s\nSource: {}",
+            "{} {binding_name}\nRelease Tail: {}s\nPolyphony: {}\nSource: {}",
             "Voice Program:".cyan().bold(),
             self.release_seconds.to_string().yellow(),
+            polyphony.yellow(),
             self.source.as_str().green()
         );
         let mut table = crate::explain::explain_table(["Node", "Spec"]);

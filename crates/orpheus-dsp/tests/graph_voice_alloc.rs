@@ -13,8 +13,8 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 
 use orpheus_dsp::{
-    GraphVoiceSpec, Node, Processor, VoiceNodeSpec, VoiceSignalRef, adsr, bind,
-    builtin_graph_voice_programs, constant, gain_node, pan, par, seq, sine,
+    GraphVoiceBank, GraphVoiceSpec, Node, Processor, TrackId, VoiceNodeSpec, VoiceSignalRef, adsr,
+    bind, builtin_graph_voice_programs, constant, gain_node, pan, par, seq, sine,
 };
 
 struct CountingAllocator;
@@ -170,5 +170,81 @@ fn warmed_combinator_processor_processes_without_allocating() {
         after - before,
         0,
         "combinator processing must not allocate after the first block"
+    );
+}
+
+#[test]
+fn bank_with_feedback_delay_merge_and_custom_polyphony_renders_without_allocating() {
+    // The richer vocabulary (feedback taps via `Rec`, fixed delay lines, and
+    // n-ary merge via `Mrg`) must keep the audio-thread discipline: after the
+    // bank is built (which compiles and prepares a non-default pool of 3
+    // voices), triggering and rendering never allocate.
+    let spec = GraphVoiceSpec::new(
+        "echoverb",
+        0.3,
+        vec![
+            // Dry blip: sine x AR envelope.
+            VoiceNodeSpec::Sine {
+                freq: VoiceSignalRef::Freq,
+            },
+            VoiceNodeSpec::Ar {
+                gate: VoiceSignalRef::Gate,
+                attack_s: 0.001,
+                release_s: 0.01,
+            },
+            VoiceNodeSpec::Mul {
+                left: VoiceSignalRef::Node(0),
+                right: VoiceSignalRef::Node(1),
+            },
+            VoiceNodeSpec::Constant { value: 0.5 },
+            // Feedback echo loop: wet = 0.5 * delay(dry + wet).
+            VoiceNodeSpec::Add {
+                left: VoiceSignalRef::Node(2),
+                right: VoiceSignalRef::Feedback(6),
+            },
+            VoiceNodeSpec::Delay {
+                input: VoiceSignalRef::Node(4),
+                seconds: 0.01,
+            },
+            VoiceNodeSpec::Mul {
+                left: VoiceSignalRef::Node(5),
+                right: VoiceSignalRef::Node(3),
+            },
+            // Fan-in of dry and wet through the merge combinator.
+            VoiceNodeSpec::Merge {
+                inputs: vec![VoiceSignalRef::Node(2), VoiceSignalRef::Node(6)],
+            },
+        ],
+        VoiceSignalRef::Node(7),
+    )
+    .expect("echo spec should validate")
+    .with_polyphony(3)
+    .expect("polyphony 3 is within bounds");
+
+    let mut bank = GraphVoiceBank::with_user_programs(SR, vec![spec]);
+    let track = TrackId::new(0);
+    let mut mix = vec![(0.0_f32, 0.0_f32); 1];
+
+    let before = allocation_count();
+    for _ in 0..3 {
+        assert!(bank.trigger("echoverb", track, 2_048, 220.0, 0.8, 0.0));
+    }
+    assert!(
+        !bank.trigger("echoverb", track, 2_048, 220.0, 0.8, 0.0),
+        "the poly-3 pool must drop a fourth simultaneous note"
+    );
+    let mut energy = 0.0_f32;
+    for _ in 0..4_096 {
+        mix[0] = (0.0, 0.0);
+        bank.render_frame(&mut mix);
+        energy += mix[0].0.abs() + mix[0].1.abs();
+    }
+    let after = allocation_count();
+
+    assert!(energy > 0.0, "pooled voices should produce audio");
+    assert_eq!(
+        after - before,
+        0,
+        "bank trigger/render with feedback, delay, merge, and poly 3 must not allocate"
     );
 }
