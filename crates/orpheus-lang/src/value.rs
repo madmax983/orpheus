@@ -126,6 +126,22 @@ pub enum BuiltinKind {
     WChoose,
     /// Continuous pattern of whole numbers in `[0, n)` (Tidal `irand`).
     IRand,
+    /// Plays one randomly chosen child pattern per cycle (Tidal `randcat`).
+    RandCat,
+    /// Weighted `randcat` taking interleaved `pattern, weight` pairs (Tidal `wrandcat`).
+    WRandCat,
+    /// Overlays a time-shifted, transformed copy of the pattern (Tidal `off`).
+    Off,
+    /// Rotates event values across a cycle's onsets while keeping the rhythm (Tidal `rot`).
+    Rot,
+    /// Applies a transform to one part of the cycle, advancing one part per cycle (Tidal `chunk`).
+    Chunk,
+    /// `chunk` sweeping the parts in the reverse direction (Tidal `chunk'`).
+    ChunkBack,
+    /// Plays the cycle's `n` slots in a random permutation each cycle (Tidal `shuffle`).
+    Shuffle,
+    /// Fills the cycle's `n` slots with independent random slot draws (Tidal `scramble`).
+    Scramble,
     /// The jux operation, applying a function to only the left or right channel of a pattern.
     Jux,
     /// Evaluates expressions sequentially but passes the final value through unchanged.
@@ -228,6 +244,14 @@ impl fmt::Display for BuiltinKind {
             Self::Choose => "choose",
             Self::WChoose => "wchoose",
             Self::IRand => "irand",
+            Self::RandCat => "randcat",
+            Self::WRandCat => "wrandcat",
+            Self::Off => "off",
+            Self::Rot => "rot",
+            Self::Chunk => "chunk",
+            Self::ChunkBack => "chunk_back",
+            Self::Shuffle => "shuffle",
+            Self::Scramble => "scramble",
             Self::Jux => "jux",
             Self::Through => "through",
             Self::MidiCc => "midi_cc",
@@ -1843,6 +1867,59 @@ impl SamplePatternValue {
         }
     }
 
+    pub(crate) fn randcat_with_site_salt(
+        patterns: Vec<Self>,
+        cumulative_weights: Option<Vec<f64>>,
+        site_salt: u64,
+    ) -> Self {
+        Self {
+            pattern: PatternRuntime::RandCat {
+                site_salt,
+                cumulative_weights,
+                children: patterns
+                    .into_iter()
+                    .map(|pattern| pattern.pattern)
+                    .collect(),
+            },
+        }
+    }
+
+    pub(crate) fn rot(self, n: i64) -> Self {
+        Self {
+            pattern: PatternRuntime::Rot {
+                n,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn chunk(self, n: i64, back: bool, transform: FunctionValue) -> Self {
+        Self {
+            pattern: PatternRuntime::Chunk {
+                n,
+                back,
+                transform,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn shuffle_slots_with_site_salt(
+        self,
+        n: i64,
+        independent: bool,
+        site_salt: u64,
+    ) -> Self {
+        Self {
+            pattern: PatternRuntime::ShuffleSlots {
+                n,
+                site_salt,
+                independent,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn fast(self, factor: i64) -> Self {
         Self {
             pattern: PatternRuntime::Fast {
@@ -2541,6 +2618,59 @@ impl NumberPatternValue {
         }
     }
 
+    pub(crate) fn randcat_with_site_salt(
+        patterns: Vec<Self>,
+        cumulative_weights: Option<Vec<f64>>,
+        site_salt: u64,
+    ) -> Self {
+        Self {
+            pattern: PatternRuntime::RandCat {
+                site_salt,
+                cumulative_weights,
+                children: patterns
+                    .into_iter()
+                    .map(|pattern| pattern.pattern)
+                    .collect(),
+            },
+        }
+    }
+
+    pub(crate) fn rot(self, n: i64) -> Self {
+        Self {
+            pattern: PatternRuntime::Rot {
+                n,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn chunk(self, n: i64, back: bool, transform: FunctionValue) -> Self {
+        Self {
+            pattern: PatternRuntime::Chunk {
+                n,
+                back,
+                transform,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn shuffle_slots_with_site_salt(
+        self,
+        n: i64,
+        independent: bool,
+        site_salt: u64,
+    ) -> Self {
+        Self {
+            pattern: PatternRuntime::ShuffleSlots {
+                n,
+                site_salt,
+                independent,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn fast(self, factor: i64) -> Self {
         Self {
             pattern: PatternRuntime::Fast {
@@ -2888,6 +3018,45 @@ enum PatternRuntime<T> {
     /// localized cycle `cycle div n` so cycle-dependent children (`every`,
     /// `sometimes`, ...) advance only when they actually play.
     SlowCat(Vec<Self>),
+    /// Plays one child per cycle chosen deterministically at random by
+    /// hashing the site salt with the cycle number (Tidal `randcat`).
+    ///
+    /// `cumulative_weights` holds each child's normalized cumulative upper
+    /// bound in `(0, 1]` for the weighted `wrandcat` form; `None` draws
+    /// uniformly. Like `SlowCat`, the chosen child is queried at the
+    /// localized cycle `cycle div n` so cycle-dependent children stay on
+    /// their own compressed timeline.
+    RandCat {
+        site_salt: u64,
+        cumulative_weights: Option<Vec<f64>>,
+        children: Vec<Self>,
+    },
+    /// Rotates each cycle's event values forward by `n` onsets while keeping
+    /// the rhythmic structure (Tidal `rot`): onsets stay put, values shift
+    /// and wrap. Negative `n` rotates backwards.
+    Rot {
+        n: i64,
+        inner: Box<Self>,
+    },
+    /// On cycle `k`, applies the transform within part `k mod n` of the cycle
+    /// (or the mirrored part when `back` is set), leaving the rest of the
+    /// cycle untouched (Tidal `chunk`).
+    Chunk {
+        n: i64,
+        back: bool,
+        transform: FunctionValue,
+        inner: Box<Self>,
+    },
+    /// Splits each cycle into `n` equal slots and rearranges them
+    /// deterministically at random per cycle: a permutation when
+    /// `independent` is false (Tidal `shuffle`, every slot exactly once) or
+    /// independent draws with repeats when true (Tidal `scramble`).
+    ShuffleSlots {
+        n: i64,
+        site_salt: u64,
+        independent: bool,
+        inner: Box<Self>,
+    },
     /// Rotates the inner pattern by `(cycle mod n) / n` of a cycle on each
     /// cycle; `back` flips the rotation direction.
     Iter {
@@ -3234,17 +3403,17 @@ impl<T> PatternRuntime<T> {
     fn with_tuning(self, table: &TuningTable) -> Self {
         use PatternRuntime::{
             Arp, Chaos, Choose, Chorus, ChorusDepth, ChorusDepthPattern, ChorusPattern, ChorusRate,
-            ChorusRatePattern, Compressor, CompressorPattern, CompressorRatio,
+            ChorusRatePattern, Chunk, Compressor, CompressorPattern, CompressorRatio,
             CompressorRatioPattern, CompressorThreshold, CompressorThresholdPattern, Cycle,
             Degrade, Degrees, Delay, DelayFeedback, DelayFeedbackPattern, DelayPattern, DelayTime,
             DelayTimePattern, Drive, DrivePattern, Drop, Every, ExplicitCycle, Fast, Gain,
             GainPattern, Hpf, HpfPattern, IRand, Invert, Iter, Lpf, LpfPattern, Mask, Onset,
             OnsetPattern, Pan, PanPattern, Pedal, Pitch, PitchPattern, PulseWidth,
-            PulseWidthPattern, Rand, Range, Rate, RatePattern, Res, ResPattern, Rev, Reverb,
-            ReverbDamp, ReverbDampPattern, ReverbPattern, ReverbRoom, ReverbRoomPattern, Roll,
-            Segment, Shift, Slice, SliceIdxPattern, SlicePattern, Slow, SlowCat, Sometimes, Stack,
-            Stream, Strum, Transpose, TransposePattern, TunedPitch, TunedPitchPattern, When,
-            Within,
+            PulseWidthPattern, Rand, RandCat, Range, Rate, RatePattern, Res, ResPattern, Rev,
+            Reverb, ReverbDamp, ReverbDampPattern, ReverbPattern, ReverbRoom, ReverbRoomPattern,
+            Roll, Rot, Segment, Shift, ShuffleSlots, Slice, SliceIdxPattern, SlicePattern, Slow,
+            SlowCat, Sometimes, Stack, Stream, Strum, Transpose, TransposePattern, TunedPitch,
+            TunedPitchPattern, When, Within,
         };
 
         macro_rules! recurse {
@@ -3309,9 +3478,47 @@ impl<T> PatternRuntime<T> {
                     .map(|child| child.with_tuning(table))
                     .collect(),
             ),
+            RandCat {
+                site_salt,
+                cumulative_weights,
+                children,
+            } => RandCat {
+                site_salt,
+                cumulative_weights,
+                children: children
+                    .into_iter()
+                    .map(|child| child.with_tuning(table))
+                    .collect(),
+            },
             Iter { n, back, inner } => Iter {
                 n,
                 back,
+                inner: recurse!(inner),
+            },
+            Rot { n, inner } => Rot {
+                n,
+                inner: recurse!(inner),
+            },
+            Chunk {
+                n,
+                back,
+                transform,
+                inner,
+            } => Chunk {
+                n,
+                back,
+                transform,
+                inner: recurse!(inner),
+            },
+            ShuffleSlots {
+                n,
+                site_salt,
+                independent,
+                inner,
+            } => ShuffleSlots {
+                n,
+                site_salt,
+                independent,
                 inner: recurse!(inner),
             },
             Every {
@@ -3636,6 +3843,9 @@ impl<T> PatternRuntime<T> {
             Self::SlowCat(children) => children
                 .first()
                 .map_or(Ok(cycle), |child| child.absolute_cycle(cycle)),
+            Self::RandCat { children, .. } => children
+                .first()
+                .map_or(Ok(cycle), |child| child.absolute_cycle(cycle)),
             Self::Cycle(_)
             | Self::Stream(_)
             | Self::Rand { .. }
@@ -3643,6 +3853,9 @@ impl<T> PatternRuntime<T> {
             | Self::IRand { .. } => Ok(cycle),
             Self::Segment { inner, .. }
             | Self::Range { inner, .. }
+            | Self::Rot { inner, .. }
+            | Self::Chunk { inner, .. }
+            | Self::ShuffleSlots { inner, .. }
             | Self::Iter { inner, .. }
             | Self::Every { inner, .. }
             | Self::When { inner, .. }
@@ -3756,7 +3969,25 @@ where
             Self::ExplicitCycle { stream, .. } => query_explicit_cycle(stream, span),
             Self::Stack(layers) => query_stack(layers, span),
             Self::SlowCat(children) => query_slowcat(children, span),
+            Self::RandCat {
+                site_salt,
+                cumulative_weights,
+                children,
+            } => query_randcat(children, cumulative_weights.as_deref(), *site_salt, span),
             Self::Iter { n, back, inner } => query_iter(inner, *n, *back, span),
+            Self::Rot { n, inner } => query_rot(inner, *n, span),
+            Self::Chunk {
+                n,
+                back,
+                transform,
+                inner,
+            } => query_chunk(inner, *n, *back, transform, span),
+            Self::ShuffleSlots {
+                n,
+                site_salt,
+                independent,
+                inner,
+            } => query_shuffle_slots(inner, *n, *site_salt, *independent, span),
             Self::Every {
                 period,
                 transform,
@@ -5353,26 +5584,7 @@ fn query_chaos<T>(
 where
     T: PatternRuntimeValue,
 {
-    if span.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let mut events = Vec::with_capacity(8);
-    let start_cycle = floor_rational(span.start());
-    let end_cycle = ceil_rational(span.end());
-
-    for cycle in start_cycle..end_cycle {
-        let cycle_span = cycle_span(cycle)?;
-        let Some(query_slice) = clip_span(&cycle_span, span)? else {
-            continue;
-        };
-
-        // Query the underlying events for this whole cycle to shuffle them accurately
-        let mut cycle_events = inner.try_query(&cycle_span)?;
-        if cycle_events.is_empty() {
-            continue;
-        }
-
+    query_cycle_value_rearranged(inner, span, |cycle, cycle_events| {
         // Shuffle using a deterministic RNG seeded by site_salt and cycle index
         let mut rng_state = deterministic_prng(site_salt, cycle);
         let len = cycle_events.len();
@@ -5389,8 +5601,84 @@ where
                 std::mem::swap(&mut left[i.min(j)].value, &mut right[0].value);
             }
         }
+    })
+}
 
-        // Apply shuffled values back to the original timing structure and clip to the query slice
+/// Queries a `Rot` runtime: each cycle keeps its rhythmic structure while the
+/// event values rotate forward by `n` onsets and wrap (Tidal `rot`). `rot(0)`
+/// is the identity and negative `n` rotates backwards.
+fn query_rot<T>(
+    inner: &PatternRuntime<T>,
+    n: i64,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    query_cycle_value_rearranged(inner, span, |_, cycle_events| {
+        let len = cycle_events.len();
+        if len == 0 {
+            return;
+        }
+        let Ok(len_i128) = i128::try_from(len) else {
+            return;
+        };
+        let Ok(shift) = usize::try_from(i128::from(n).rem_euclid(len_i128)) else {
+            return;
+        };
+        if shift == 0 {
+            return;
+        }
+        // Event `i` takes the value of event `(i + shift) mod len`, keeping
+        // every onset in place.
+        let mut values: Vec<T> = cycle_events
+            .iter()
+            .map(|event| event.value.clone())
+            .collect();
+        values.rotate_left(shift);
+        for (event, value) in cycle_events.iter_mut().zip(values) {
+            event.value = value;
+        }
+    })
+}
+
+/// Queries the inner pattern one whole cycle at a time, lets `rearrange`
+/// permute the cycle's event **values** in place (the timing structure stays
+/// untouched), then clips the rearranged events back to the requested span.
+/// Shared by `chaos` and `rot`.
+fn query_cycle_value_rearranged<T, F>(
+    inner: &PatternRuntime<T>,
+    span: &TimeSpan,
+    mut rearrange: F,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+    F: FnMut(i128, &mut Vec<Event<T>>),
+{
+    if span.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut events = Vec::with_capacity(8);
+    let start_cycle = floor_rational(span.start());
+    let end_cycle = ceil_rational(span.end());
+
+    for cycle in start_cycle..end_cycle {
+        let cycle_span = cycle_span(cycle)?;
+        let Some(query_slice) = clip_span(&cycle_span, span)? else {
+            continue;
+        };
+
+        // Query the underlying events for this whole cycle so the
+        // rearrangement is stable regardless of how the query is chunked.
+        let mut cycle_events = inner.try_query(&cycle_span)?;
+        if cycle_events.is_empty() {
+            continue;
+        }
+
+        rearrange(cycle, &mut cycle_events);
+
+        // Apply rearranged values back to the original timing structure and clip to the query slice
 
         for event in cycle_events {
             if spans_overlap(&event.part, &query_slice) {
@@ -5491,56 +5779,131 @@ where
             continue;
         };
         let window_span = within_window_span(cycle, start, end)?;
-        let Some(window_query) = clip_span(&window_span, &query_slice)? else {
-            let slice_events = inner.try_query(&query_slice)?;
-            if events.len() + slice_events.len() > 100_000 {
-                return Err(EvalError::new(
-                    "evaluation exceeded the maximum allowed event limit",
-                ));
-            }
-            events.extend(slice_events);
-            continue;
-        };
-
-        if let Some(before_window) =
-            clip_between(&query_slice, cycle_span.start(), window_span.start())?
-        {
-            let slice_events = inner.try_query(&before_window)?;
-            if events.len() + slice_events.len() > 100_000 {
-                return Err(EvalError::new(
-                    "evaluation exceeded the maximum allowed event limit",
-                ));
-            }
-            events.extend(slice_events);
-        }
-
-        let absolute_cycle = inner.absolute_cycle(cycle)?;
-        let localized = localize_window_runtime(inner, &window_span, absolute_cycle)?;
-        let local_query = localize_span_to_window(&window_query, &window_span)?;
-        let mut transformed_events =
-            apply_unary_transform(transform, localized)?.try_query(&local_query)?;
-        restore_window_localized_events(&mut transformed_events, &window_span)?;
-        if events.len() + transformed_events.len() > 100_000 {
-            return Err(EvalError::new(
-                "evaluation exceeded the maximum allowed event limit",
-            ));
-        }
-        events.extend(transformed_events);
-
-        if let Some(after_window) = clip_between(&query_slice, window_span.end(), cycle_span.end())?
-        {
-            let slice_events = inner.try_query(&after_window)?;
-            if events.len() + slice_events.len() > 100_000 {
-                return Err(EvalError::new(
-                    "evaluation exceeded the maximum allowed event limit",
-                ));
-            }
-            events.extend(slice_events);
-        }
+        query_cycle_windowed_transform(
+            inner,
+            transform,
+            &cycle_span,
+            &window_span,
+            &query_slice,
+            &mut events,
+        )?;
     }
 
     sort_events(&mut events);
     Ok(events)
+}
+
+/// Queries a `Chunk` runtime: cycle `k` applies the transform within part
+/// `k mod n` of the cycle (Tidal `chunk`), so the transformed window sweeps
+/// once around the cycle every `n` cycles; `back` sweeps in the reverse
+/// direction (Tidal `chunk'`). The part index derives from the pattern's
+/// absolute cycle so `chunk` stays aligned inside `cat`/`randcat` children.
+fn query_chunk<T>(
+    inner: &PatternRuntime<T>,
+    n: i64,
+    back: bool,
+    transform: &FunctionValue,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() {
+        return Ok(Vec::new());
+    }
+    if n <= 0 {
+        return Err(EvalError::new("`chunk` requires a positive part count"));
+    }
+
+    let parts = i128::from(n);
+    let mut events = Vec::with_capacity(8);
+    let start_cycle = floor_rational(span.start());
+    let end_cycle = ceil_rational(span.end());
+
+    for cycle in start_cycle..end_cycle {
+        let cycle_span = cycle_span(cycle)?;
+        let Some(query_slice) = clip_span(&cycle_span, span)? else {
+            continue;
+        };
+        let step = inner.absolute_cycle(cycle)?.rem_euclid(parts);
+        let index = if back { parts - 1 - step } else { step };
+        let window_start = rational_from_parts(index, parts)?;
+        let window_end = rational_from_parts(index + 1, parts)?;
+        let window_span = within_window_span(cycle, &window_start, &window_end)?;
+        query_cycle_windowed_transform(
+            inner,
+            transform,
+            &cycle_span,
+            &window_span,
+            &query_slice,
+            &mut events,
+        )?;
+    }
+
+    sort_events(&mut events);
+    Ok(events)
+}
+
+/// Applies `transform` inside `window_span` of a single cycle, leaving the
+/// rest of `query_slice` untouched, and pushes the results onto `events`.
+/// Shared by `within` (fixed window) and `chunk` (cycle-dependent window).
+fn query_cycle_windowed_transform<T>(
+    inner: &PatternRuntime<T>,
+    transform: &FunctionValue,
+    cycle_span: &TimeSpan,
+    window_span: &TimeSpan,
+    query_slice: &TimeSpan,
+    events: &mut Vec<Event<T>>,
+) -> Result<(), EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    let Some(window_query) = clip_span(window_span, query_slice)? else {
+        let slice_events = inner.try_query(query_slice)?;
+        if events.len() + slice_events.len() > 100_000 {
+            return Err(EvalError::new(
+                "evaluation exceeded the maximum allowed event limit",
+            ));
+        }
+        events.extend(slice_events);
+        return Ok(());
+    };
+
+    if let Some(before_window) = clip_between(query_slice, cycle_span.start(), window_span.start())?
+    {
+        let slice_events = inner.try_query(&before_window)?;
+        if events.len() + slice_events.len() > 100_000 {
+            return Err(EvalError::new(
+                "evaluation exceeded the maximum allowed event limit",
+            ));
+        }
+        events.extend(slice_events);
+    }
+
+    let absolute_cycle = inner.absolute_cycle(floor_rational(cycle_span.start()))?;
+    let localized = localize_window_runtime(inner, window_span, absolute_cycle)?;
+    let local_query = localize_span_to_window(&window_query, window_span)?;
+    let mut transformed_events =
+        apply_unary_transform(transform, localized)?.try_query(&local_query)?;
+    restore_window_localized_events(&mut transformed_events, window_span)?;
+    if events.len() + transformed_events.len() > 100_000 {
+        return Err(EvalError::new(
+            "evaluation exceeded the maximum allowed event limit",
+        ));
+    }
+    events.extend(transformed_events);
+
+    if let Some(after_window) = clip_between(query_slice, window_span.end(), cycle_span.end())? {
+        let slice_events = inner.try_query(&after_window)?;
+        if events.len() + slice_events.len() > 100_000 {
+            return Err(EvalError::new(
+                "evaluation exceeded the maximum allowed event limit",
+            ));
+        }
+        events.extend(slice_events);
+    }
+
+    Ok(())
 }
 
 /// Queries a `SlowCat` runtime: cycle `k` plays child `k mod n`, queried at
@@ -5594,6 +5957,186 @@ where
 
     sort_events(&mut events);
     Ok(events)
+}
+
+/// Queries a `RandCat` runtime: each cycle plays one child chosen
+/// deterministically at random by hashing the site salt with the cycle
+/// number — uniformly, or proportionally to the normalized cumulative
+/// weights when present. Like `slowcat`, the chosen child is queried at the
+/// localized cycle `cycle div n` and translated back, so cycle-dependent
+/// children (`every`, ...) advance on their own compressed timeline.
+fn query_randcat<T>(
+    children: &[PatternRuntime<T>],
+    cumulative_weights: Option<&[f64]>,
+    site_salt: u64,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() || children.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let child_count = i128::try_from(children.len())
+        .map_err(|_| EvalError::new("`randcat` child count exceeded evaluator limits"))?;
+    let mut events = Vec::with_capacity(8);
+    let start_cycle = floor_rational(span.start());
+    let end_cycle = ceil_rational(span.end());
+
+    for cycle in start_cycle..end_cycle {
+        let repeated_cycle_span = cycle_span(cycle)?;
+        let Some(query_slice) = clip_span(&repeated_cycle_span, span)? else {
+            continue;
+        };
+
+        let draw = deterministic_prng(site_salt, cycle);
+        let index = cumulative_weights.map_or_else(
+            || {
+                let uniform = draw % (children.len() as u64);
+                usize::try_from(uniform).unwrap_or(0)
+            },
+            |uppers| {
+                let coin = prng_unit_coin(draw);
+                uppers
+                    .iter()
+                    .position(|upper| coin < *upper)
+                    .unwrap_or_else(|| uppers.len().saturating_sub(1))
+            },
+        );
+        let child = &children[index.min(children.len() - 1)];
+        let child_cycle = cycle.div_euclid(child_count);
+        let forward = cycle.checked_sub(child_cycle).ok_or_else(|| {
+            EvalError::new("cycle index overflowed while localizing a `randcat` child")
+        })?;
+        let forward_offset = rational_from_parts(forward, 1)?;
+        let local_offset = rational_sub(&Rational::zero(), &forward_offset)?;
+        let local_query = translate_span(&query_slice, &local_offset)?;
+        let mut child_events = child.try_query(&local_query)?;
+        shift_events(&mut child_events, &forward_offset)?;
+        if events.len() + child_events.len() > 100_000 {
+            return Err(EvalError::new(
+                "evaluation exceeded the maximum allowed event limit",
+            ));
+        }
+        events.extend(child_events);
+    }
+
+    sort_events(&mut events);
+    Ok(events)
+}
+
+/// Maps a PRNG draw to a uniform coin in `[0, 1)` using its top 53 bits.
+#[allow(clippy::cast_precision_loss)]
+const fn prng_unit_coin(state: u64) -> f64 {
+    (state >> 11) as f64 / (1_u64 << 53) as f64
+}
+
+/// Queries a `ShuffleSlots` runtime: splits each cycle into `n` equal slots
+/// and plays them rearranged per cycle. With `independent == false` the
+/// arrangement is a Fisher-Yates permutation (Tidal `shuffle`: every slot
+/// exactly once, no repeats); with `independent == true` each destination
+/// slot draws its source independently (Tidal `scramble`: repeats allowed).
+/// The arrangement is a pure function of the site salt and cycle number, so
+/// queries are deterministic and chunking-stable.
+fn query_shuffle_slots<T>(
+    inner: &PatternRuntime<T>,
+    n: i64,
+    site_salt: u64,
+    independent: bool,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() {
+        return Ok(Vec::new());
+    }
+    if n <= 0 {
+        return Err(EvalError::new("`shuffle` requires a positive slot count"));
+    }
+
+    let slots = i128::from(n);
+    let slot_count = usize::try_from(n)
+        .map_err(|_| EvalError::new("`shuffle` slot count exceeded evaluator limits"))?;
+    let mut events = Vec::with_capacity(8);
+    let start_cycle = floor_rational(span.start());
+    let end_cycle = ceil_rational(span.end());
+
+    for cycle in start_cycle..end_cycle {
+        let cycle_span = cycle_span(cycle)?;
+        let Some(query_slice) = clip_span(&cycle_span, span)? else {
+            continue;
+        };
+
+        let sources = shuffle_slot_sources(site_salt, cycle, slot_count, independent);
+        for (destination, source) in sources.into_iter().enumerate() {
+            let destination_index = destination as i128;
+            let source_index = source as i128;
+            let destination_span = within_window_span(
+                cycle,
+                &rational_from_parts(destination_index, slots)?,
+                &rational_from_parts(destination_index + 1, slots)?,
+            )?;
+            let Some(destination_query) = clip_span(&destination_span, &query_slice)? else {
+                continue;
+            };
+
+            // Translate the queried window into the source slot, query the
+            // inner pattern there, and shift the events back into place.
+            let source_offset = rational_from_parts(source_index - destination_index, slots)?;
+            let source_query = translate_span(&destination_query, &source_offset)?;
+            let mut slot_events = inner.try_query(&source_query)?;
+            let event_offset = rational_sub(&Rational::zero(), &source_offset)?;
+            shift_events(&mut slot_events, &event_offset)?;
+            if events.len() + slot_events.len() > 100_000 {
+                return Err(EvalError::new(
+                    "evaluation exceeded the maximum allowed event limit",
+                ));
+            }
+            events.extend(slot_events);
+        }
+    }
+
+    sort_events(&mut events);
+    Ok(events)
+}
+
+/// Computes the source slot played by each destination slot on one cycle.
+///
+/// Seeded by the site salt and cycle number, then advanced with the same LCG
+/// `chaos` uses. `independent == false` yields a Fisher-Yates permutation of
+/// `0..slot_count`; `independent == true` yields `slot_count` independent
+/// draws (repeats allowed).
+fn shuffle_slot_sources(
+    site_salt: u64,
+    cycle: i128,
+    slot_count: usize,
+    independent: bool,
+) -> Vec<usize> {
+    let mut state = deterministic_prng(site_salt, cycle);
+    // Advance with an LCG but consume the high 32 bits: the low bits of a
+    // power-of-two-modulus LCG cycle with tiny periods, which would make
+    // consecutive `mod n` draws correlated instead of independent.
+    let mut advance = move || {
+        state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        state >> 32
+    };
+
+    if independent {
+        (0..slot_count)
+            .map(|_| usize::try_from(advance() % (slot_count as u64)).unwrap_or(0))
+            .collect()
+    } else {
+        let mut sources: Vec<usize> = (0..slot_count).collect();
+        for i in (1..slot_count).rev() {
+            let j = usize::try_from(advance() % (i as u64 + 1)).unwrap_or(0);
+            sources.swap(i, j);
+        }
+        sources
+    }
 }
 
 /// Queries an `Iter` runtime: cycle `k` plays the inner pattern rotated

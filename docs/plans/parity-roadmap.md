@@ -25,9 +25,15 @@ File paths point the next contributor at the relevant implementation sites.
   number patterns (`apply_sample_numeric_control`, builtins.rs)
 - [x] `cat` / `slowcat` / `append` — PR #1382; `PatternRuntime::SlowCat`
   (value.rs), `apply_cat` (builtins.rs); children keep localized cycle counters
+- [x] `randcat` / `wrandcat` — one child pattern per cycle chosen uniformly
+  (or by interleaved `p1, w1, p2, w2, ...` weights) at deterministic,
+  site-salted random; `PatternRuntime::RandCat` (value.rs),
+  `apply_randcat`/`apply_wrandcat_patterns` (builtins.rs); children keep
+  localized (`cycle div n`) cycle counters like `slowcat`
 - [x] `iter` / `iter_back` — PR #1382; `PatternRuntime::Iter` (value.rs),
   `apply_iter` (builtins.rs)
-- [ ] `off` — time-shifted overlay of a transformed copy
+- [x] `off` — time-shifted overlay of a transformed copy; `apply_off`
+  (builtins.rs) composes `shift`, the transform, and `stack`
 - [x] `degrade` / `degrade_by` — per-event random removal, deterministic by
   onset hash; `PatternRuntime::Degrade` (value.rs), `apply_degrade`/
   `apply_degrade_by` (builtins.rs)
@@ -35,7 +41,9 @@ File paths point the next contributor at the relevant implementation sites.
   per-event probabilistic transforms with exact-complement selection
   (`apply_sometimes_by_probability`, builtins.rs)
 - [ ] `euclid` rotation / `euclidInv` / `euclidFull`
-- [ ] `chunk` / `rot` — the remaining rotation family beside `iter`
+- [x] `chunk` / `rot` — `PatternRuntime::Chunk`/`Rot` (value.rs),
+  `apply_chunk`/`apply_rot` (builtins.rs); `chunk_back` sweeps the parts in
+  reverse, `rot` rotates event values while onsets stay put
 - [x] `segment` / `range` — sampling continuous patterns into discrete steps;
   `PatternRuntime::Segment`/`Range` (value.rs), `apply_segment`/`apply_range`
   (builtins.rs); bare `rand` is auto-invoked in pattern position so
@@ -47,7 +55,10 @@ File paths point the next contributor at the relevant implementation sites.
   numeric values only in v1 (`wchoose` takes interleaved `v1, w1, v2, w2, ...`
   pairs); `PatternRuntime::Choose` (value.rs), `apply_choose`/`apply_wchoose`
   (builtins.rs)
-- [ ] `shuffle` / `scramble` with an explicit subdivision count
+- [x] `shuffle` / `scramble` with an explicit subdivision count —
+  `PatternRuntime::ShuffleSlots` (value.rs), `apply_shuffle_slots`
+  (builtins.rs); site-salted per-cycle slot permutation (`shuffle`) or
+  independent draws with repeats (`scramble`)
 
 ## Tidal: grammar (Orpheus uses real grammar instead of mini-notation strings)
 

@@ -19,7 +19,7 @@ use crate::diagnostics::{ParseError, TypeError};
 use crate::parser::parse_module;
 use crate::pitch::parse_named_pitch_literal;
 use crate::types::env::{
-    TypeEnv, TypeScheme, choose_scheme, pattern_concat_scheme, wchoose_scheme,
+    TypeEnv, TypeScheme, choose_scheme, pattern_concat_scheme, wchoose_scheme, wrandcat_scheme,
 };
 use crate::types::{Type, TypeVarId, TypedModule};
 
@@ -359,8 +359,9 @@ impl Inferencer {
         }
     }
 
-    /// Types variadic builtin calls (`cat`/`slowcat`, `choose`, `wchoose`)
-    /// with more arguments than their base environment scheme covers.
+    /// Types variadic builtin calls (`cat`/`slowcat`/`randcat`, `choose`,
+    /// `wchoose`, `wrandcat`) with more arguments than their base environment
+    /// scheme covers.
     ///
     /// The environment schemes only cover the curried base-arity forms;
     /// larger argument lists are checked here. Calls where the builtin has
@@ -375,11 +376,12 @@ impl Inferencer {
             return Ok(None);
         };
         match name.as_str() {
-            "cat" | "slowcat" if args.len() > 2 => {
+            "cat" | "slowcat" | "randcat" if args.len() > 2 => {
                 if self.env.get(name) != Some(&pattern_concat_scheme(TypeVarId::new(0))) {
                     return Ok(None);
                 }
-                let ty = self.infer_homogeneous(args, "`cat` patterns")?;
+                let context = format!("`{name}` patterns");
+                let ty = self.infer_homogeneous(args, &context)?;
                 let element = self.fresh_var_type();
                 self.unify(ty.clone(), Type::pattern(element))?;
                 Ok(Some(self.resolve(ty)))
@@ -396,8 +398,56 @@ impl Inferencer {
                 }
                 self.infer_number_pattern_arguments(args, "`wchoose` value/weight pairs")
             }
+            "wrandcat" if args.len() > 4 => {
+                if self.env.get(name) != Some(&wrandcat_scheme(TypeVarId::new(0))) {
+                    return Ok(None);
+                }
+                self.infer_wrandcat_pairs(args)
+            }
             _ => Ok(None),
         }
+    }
+
+    /// Types variadic `wrandcat(p1, w1, p2, w2, ...)` calls: the even-indexed
+    /// pattern arguments must agree on one pattern type, the odd-indexed
+    /// weights must be numbers, and the call returns the shared pattern type.
+    fn infer_wrandcat_pairs(&mut self, args: &[Expr]) -> Result<Option<Type>, TypeError> {
+        if !args.len().is_multiple_of(2) {
+            return Err(TypeError::new(
+                "`wrandcat` requires interleaved pattern/weight pairs",
+            ));
+        }
+
+        let mut pattern_ty: Option<Type> = None;
+        for (index, arg) in args.iter().enumerate() {
+            let actual = self.infer_expr(arg)?;
+            if !index.is_multiple_of(2) {
+                self.unify(actual.clone(), Type::pattern(Type::Number))
+                    .map_err(|_| {
+                        TypeError::new(format!(
+                            "`wrandcat` weights must be numbers; found {}",
+                            self.resolve(actual)
+                        ))
+                    })?;
+            } else if let Some(expected) = pattern_ty.clone() {
+                self.unify(expected.clone(), actual.clone()).map_err(|_| {
+                    TypeError::new(format!(
+                        "`wrandcat` patterns must all have the same type; expected {}, found {}",
+                        self.resolve(expected),
+                        self.resolve(actual)
+                    ))
+                })?;
+            } else {
+                pattern_ty = Some(actual);
+            }
+        }
+
+        let ty = pattern_ty.ok_or_else(|| {
+            TypeError::new("`wrandcat` requires at least one pattern/weight pair")
+        })?;
+        let element = self.fresh_var_type();
+        self.unify(ty.clone(), Type::pattern(element))?;
+        Ok(Some(self.resolve(ty)))
     }
 
     /// Checks every argument against `Pattern<Number>` and returns

@@ -4262,3 +4262,428 @@ filtered = bd |> ctrl
         .collect::<Vec<_>>();
     assert_eq!(cutoffs, cutoffs_again);
 }
+
+// --- randcat/wrandcat + the off/rot/chunk/shuffle/scramble transform family ---
+
+/// Materializes a number pattern one cycle at a time so tests can assert
+/// per-cycle content.
+fn number_values_per_cycle(source: &str, name: &str, cycles: i64) -> Vec<Vec<f64>> {
+    let module = eval_module(source, ReplMode::Loose).unwrap();
+    let pattern = module.get(name).unwrap().as_number_pattern().unwrap();
+    (0..cycles)
+        .map(|cycle| {
+            pattern
+                .try_query(&cycle_time_span(cycle))
+                .unwrap()
+                .into_iter()
+                .map(|event| event.value)
+                .collect()
+        })
+        .collect()
+}
+
+#[test]
+fn randcat_plays_exactly_one_argument_pattern_per_cycle() {
+    let per_cycle = number_values_per_cycle("m = randcat(0 1, 2 3 4)", "m", 32);
+    let mut saw_first = false;
+    let mut saw_second = false;
+    for values in &per_cycle {
+        match values.as_slice() {
+            [a, b] if (*a - 0.0).abs() < f64::EPSILON && (*b - 1.0).abs() < f64::EPSILON => {
+                saw_first = true;
+            }
+            [a, b, c]
+                if (*a - 2.0).abs() < f64::EPSILON
+                    && (*b - 3.0).abs() < f64::EPSILON
+                    && (*c - 4.0).abs() < f64::EPSILON =>
+            {
+                saw_second = true;
+            }
+            other => panic!("cycle played something that is not an argument pattern: {other:?}"),
+        }
+    }
+    assert!(saw_first, "randcat never played its first argument");
+    assert!(saw_second, "randcat never played its second argument");
+}
+
+#[test]
+fn randcat_queries_are_deterministic_across_repeats() {
+    let first = number_event_keys("m = randcat(0 1, 2 3)", "m", 16);
+    let second = number_event_keys("m = randcat(0 1, 2 3)", "m", 16);
+    assert_eq!(first, second);
+}
+
+#[test]
+fn randcat_choice_is_roughly_uniform_over_many_cycles() {
+    let per_cycle = number_values_per_cycle("m = randcat(0, 1)", "m", 128);
+    let zeros = per_cycle
+        .iter()
+        .filter(|values| values.as_slice() == [0.0])
+        .count();
+    assert!(
+        (32..=96).contains(&zeros),
+        "expected a roughly uniform split, got {zeros} zeros out of 128"
+    );
+}
+
+#[test]
+fn randcat_is_chunking_stable() {
+    let module = eval_module("m = randcat(0 1, 2 3)", ReplMode::Loose).unwrap();
+    let pattern = module.get("m").unwrap().as_number_pattern().unwrap();
+
+    let span = orpheus_lang::render_span(8).unwrap();
+    let whole = pattern.try_query(&span).unwrap();
+    let mut chunked = Vec::new();
+    for cycle in 0..8 {
+        chunked.extend(pattern.try_query(&cycle_time_span(cycle)).unwrap());
+    }
+
+    assert!(!whole.is_empty());
+    assert_eq!(whole.len(), chunked.len());
+    for (a, b) in whole.iter().zip(chunked.iter()) {
+        assert_eq!(a.part.start(), b.part.start());
+        assert!((a.value - b.value).abs() < f64::EPSILON);
+    }
+}
+
+#[test]
+fn randcat_localizes_child_cycles_like_slowcat() {
+    // The `every(2, ...)` child advances its own localized cycle counter
+    // (`cycle div 2` with two children), so whenever it plays on global cycle
+    // `k` it is transformed exactly when `(k div 2) mod 2 == 0`, i.e.
+    // `k mod 4 < 2` -- independent of which cycles the PRNG picks it on.
+    let per_cycle =
+        number_values_per_cycle("m = randcat(every(2, transpose(100), 0 1), 7)", "m", 64);
+    let mut saw_transformed = false;
+    let mut saw_untransformed = false;
+    for (cycle, values) in per_cycle.iter().enumerate() {
+        match values.as_slice() {
+            [v] => assert!((*v - 7.0).abs() < f64::EPSILON),
+            [a, b] => {
+                let expect_transformed = cycle % 4 < 2;
+                let expected = if expect_transformed {
+                    saw_transformed = true;
+                    [100.0, 101.0]
+                } else {
+                    saw_untransformed = true;
+                    [0.0, 1.0]
+                };
+                assert!(
+                    (*a - expected[0]).abs() < f64::EPSILON
+                        && (*b - expected[1]).abs() < f64::EPSILON,
+                    "cycle {cycle}: expected {expected:?}, got [{a}, {b}]"
+                );
+            }
+            other => panic!("cycle {cycle} played unexpected content: {other:?}"),
+        }
+    }
+    assert!(saw_transformed, "the every-child never played transformed");
+    assert!(
+        saw_untransformed,
+        "the every-child never played untransformed"
+    );
+}
+
+#[test]
+fn randcat_supports_sample_patterns() {
+    let module = eval_module("drums = randcat(bd, sn)", ReplMode::Loose).unwrap();
+    let names = exported_sample_names(module.get("drums").unwrap(), 32);
+    assert_eq!(names.len(), 32, "expected exactly one event per cycle");
+    assert!(names.iter().all(|name| name == "bd" || name == "sn"));
+    assert!(names.iter().any(|name| name == "bd"));
+    assert!(names.iter().any(|name| name == "sn"));
+}
+
+#[test]
+fn randcat_requires_matching_pattern_kinds() {
+    assert_eval_error_contains(
+        "drums = randcat(bd, 1 2)",
+        ReplMode::Loose,
+        &["`randcat`", "same pattern kind"],
+    );
+}
+
+#[test]
+fn wrandcat_zero_weight_children_are_never_played() {
+    let per_cycle = number_values_per_cycle("m = wrandcat(0, 1, 1, 0)", "m", 32);
+    for values in &per_cycle {
+        assert_eq!(values.as_slice(), [0.0]);
+    }
+}
+
+#[test]
+fn wrandcat_weights_bias_the_choice() {
+    let per_cycle = number_values_per_cycle("m = wrandcat(0, 1, 1, 3)", "m", 128);
+    let ones = per_cycle
+        .iter()
+        .filter(|values| values.as_slice() == [1.0])
+        .count();
+    // Expected 96 of 128 (weight 3 of 4); allow a wide deterministic margin.
+    assert!(
+        (70..=122).contains(&ones),
+        "expected the weight-3 child on roughly three quarters of cycles, got {ones}/128"
+    );
+}
+
+#[test]
+fn wrandcat_requires_pattern_weight_pairs() {
+    assert_eval_error_contains(
+        "m = wrandcat(0, 1, 2, 3, 4)",
+        ReplMode::Loose,
+        &["`wrandcat`", "pattern/weight pairs"],
+    );
+}
+
+#[test]
+fn wrandcat_rejects_negative_weights_and_all_zero_weights() {
+    assert_eval_error_contains(
+        "m = wrandcat(0, -1.0, 1, 1)",
+        ReplMode::Loose,
+        &["`wrandcat`", "non-negative"],
+    );
+    assert_eval_error_contains(
+        "m = wrandcat(0, 0, 1, 0)",
+        ReplMode::Loose,
+        &["`wrandcat`", "positive weight"],
+    );
+}
+
+#[test]
+fn off_overlays_a_shifted_transformed_copy() {
+    let events = number_event_keys("m = 0 3 |> off(0.25, transpose(12))", "m", 1);
+    // Cycle 0 plays the base events (0 at 0, 3 at 1/2) plus the transformed
+    // copy shifted later by 1/4 of a cycle (12 at 1/4, 15 at 3/4). The copy
+    // of the previous cycle's final event also bleeds in as an onset-less
+    // fragment covering [0, 1/4), matching `shift` semantics.
+    assert_eq!(
+        events,
+        vec![
+            (0, 1, 15.0_f64.to_bits()),
+            (0, 1, 0.0_f64.to_bits()),
+            (1, 4, 12.0_f64.to_bits()),
+            (1, 2, 3.0_f64.to_bits()),
+            (3, 4, 15.0_f64.to_bits()),
+        ]
+    );
+}
+
+#[test]
+fn off_keeps_all_original_events() {
+    let base = number_event_keys("m = 0 3", "m", 4);
+    let layered = number_event_keys("m = 0 3 |> off(0.25, transpose(12))", "m", 4);
+    for event in &base {
+        assert!(
+            layered.contains(event),
+            "off dropped an original event: {event:?}"
+        );
+    }
+}
+
+#[test]
+fn off_composes_with_mini_notation_sample_patterns() {
+    let keys = sample_event_keys("drums = bd*2 |> off(0.25, gain(0.5))", "drums", 1);
+    // Base `bd*2` hits at 0 and 1/2, the shifted copy at 1/4 and 3/4, and the
+    // previous cycle's copy bleeds a fragment into the cycle start.
+    assert_eq!(
+        keys,
+        vec![
+            (0, 1, "bd".to_owned()),
+            (0, 1, "bd".to_owned()),
+            (1, 4, "bd".to_owned()),
+            (1, 2, "bd".to_owned()),
+            (3, 4, "bd".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn rot_rotates_values_while_keeping_onsets() {
+    let base = number_event_keys("m = 10 20 30 40", "m", 1);
+    let rotated = number_event_keys("m = 10 20 30 40 |> rot(1)", "m", 1);
+
+    let onsets =
+        |events: &[(i128, i128, u64)]| events.iter().map(|(n, d, _)| (*n, *d)).collect::<Vec<_>>();
+    assert_eq!(onsets(&base), onsets(&rotated), "rot must not move onsets");
+
+    let values = rotated
+        .iter()
+        .map(|(_, _, bits)| f64::from_bits(*bits))
+        .collect::<Vec<_>>();
+    assert_eq!(values, [20.0, 30.0, 40.0, 10.0]);
+}
+
+#[test]
+fn rot_zero_is_identity() {
+    let base = number_event_keys("m = 10 20 30 40", "m", 2);
+    let rotated = number_event_keys("m = 10 20 30 40 |> rot(0)", "m", 2);
+    assert_eq!(base, rotated);
+}
+
+#[test]
+fn rot_wraps_and_supports_negative_steps() {
+    let by_five = number_event_keys("m = 10 20 30 40 |> rot(5)", "m", 1);
+    let by_one = number_event_keys("m = 10 20 30 40 |> rot(1)", "m", 1);
+    assert_eq!(by_five, by_one, "rot must wrap modulo the onset count");
+
+    let backwards = number_event_keys("m = 10 20 30 40 |> rot(-1)", "m", 1);
+    let values = backwards
+        .iter()
+        .map(|(_, _, bits)| f64::from_bits(*bits))
+        .collect::<Vec<_>>();
+    assert_eq!(values, [40.0, 10.0, 20.0, 30.0]);
+}
+
+#[test]
+fn chunk_transforms_one_part_per_cycle_in_rotation() {
+    let per_cycle = number_values_per_cycle("m = 0 1 2 3 |> chunk(4, transpose(100))", "m", 5);
+    assert_eq!(per_cycle[0], [100.0, 1.0, 2.0, 3.0]);
+    assert_eq!(per_cycle[1], [0.0, 101.0, 2.0, 3.0]);
+    assert_eq!(per_cycle[2], [0.0, 1.0, 102.0, 3.0]);
+    assert_eq!(per_cycle[3], [0.0, 1.0, 2.0, 103.0]);
+    assert_eq!(
+        per_cycle[4],
+        [100.0, 1.0, 2.0, 3.0],
+        "cycle 4 wraps to part 0"
+    );
+}
+
+#[test]
+fn chunk_transforms_every_part_exactly_once_over_n_cycles() {
+    let per_cycle = number_values_per_cycle("m = 0 1 2 3 |> chunk(4, transpose(100))", "m", 4);
+    let mut transformed_parts = Vec::new();
+    for values in &per_cycle {
+        let parts = values
+            .iter()
+            .enumerate()
+            .filter(|(_, value)| **value >= 100.0)
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        assert_eq!(parts.len(), 1, "exactly one part per cycle is transformed");
+        transformed_parts.push(parts[0]);
+    }
+    transformed_parts.sort_unstable();
+    assert_eq!(transformed_parts, [0, 1, 2, 3]);
+}
+
+#[test]
+fn chunk_back_sweeps_in_the_reverse_direction() {
+    let per_cycle = number_values_per_cycle("m = 0 1 2 3 |> chunk_back(4, transpose(100))", "m", 2);
+    assert_eq!(per_cycle[0], [0.0, 1.0, 2.0, 103.0]);
+    assert_eq!(per_cycle[1], [0.0, 1.0, 102.0, 3.0]);
+}
+
+#[test]
+fn shuffle_plays_a_permutation_of_the_slots_each_cycle() {
+    let per_cycle = number_values_per_cycle("m = 10 20 30 40 |> shuffle(4)", "m", 16);
+    let mut distinct_orders = std::collections::BTreeSet::new();
+    for (cycle, values) in per_cycle.iter().enumerate() {
+        assert_eq!(values.len(), 4, "cycle {cycle} must keep all four slots");
+        let mut sorted = values.clone();
+        sorted.sort_by(f64::total_cmp);
+        assert_eq!(
+            sorted,
+            [10.0, 20.0, 30.0, 40.0],
+            "cycle {cycle} must be a permutation of the slot values"
+        );
+        distinct_orders.insert(
+            values
+                .iter()
+                .map(|value| value.to_bits())
+                .collect::<Vec<_>>(),
+        );
+    }
+    assert!(
+        distinct_orders.len() >= 2,
+        "shuffle should produce different orders on different cycles"
+    );
+}
+
+#[test]
+fn shuffle_keeps_the_slot_onsets() {
+    let base = number_event_keys("m = 10 20 30 40", "m", 4);
+    let shuffled = number_event_keys("m = 10 20 30 40 |> shuffle(4)", "m", 4);
+    let onsets =
+        |events: &[(i128, i128, u64)]| events.iter().map(|(n, d, _)| (*n, *d)).collect::<Vec<_>>();
+    assert_eq!(onsets(&base), onsets(&shuffled));
+}
+
+#[test]
+fn shuffle_queries_are_deterministic_and_chunking_stable() {
+    let first = number_event_keys("m = 10 20 30 40 |> shuffle(4)", "m", 8);
+    let second = number_event_keys("m = 10 20 30 40 |> shuffle(4)", "m", 8);
+    assert_eq!(first, second);
+
+    let module = eval_module("m = 10 20 30 40 |> shuffle(4)", ReplMode::Loose).unwrap();
+    let pattern = module.get("m").unwrap().as_number_pattern().unwrap();
+    let span = orpheus_lang::render_span(8).unwrap();
+    let whole = pattern.try_query(&span).unwrap();
+    let mut chunked = Vec::new();
+    for cycle in 0..8 {
+        chunked.extend(pattern.try_query(&cycle_time_span(cycle)).unwrap());
+    }
+    assert_eq!(whole.len(), chunked.len());
+    for (a, b) in whole.iter().zip(chunked.iter()) {
+        assert_eq!(a.part.start(), b.part.start());
+        assert!((a.value - b.value).abs() < f64::EPSILON);
+    }
+}
+
+#[test]
+fn scramble_draws_slots_independently_with_repeats() {
+    let per_cycle = number_values_per_cycle("m = 10 20 30 40 |> scramble(4)", "m", 32);
+    let mut saw_repeat = false;
+    for (cycle, values) in per_cycle.iter().enumerate() {
+        assert_eq!(values.len(), 4, "cycle {cycle} must fill all four slots");
+        for value in values {
+            assert!(
+                [10.0, 20.0, 30.0, 40.0].contains(value),
+                "cycle {cycle} drew a value that is not a slot value: {value}"
+            );
+        }
+        let mut sorted = values.clone();
+        sorted.sort_by(f64::total_cmp);
+        sorted.dedup();
+        if sorted.len() < 4 {
+            saw_repeat = true;
+        }
+    }
+    assert!(
+        saw_repeat,
+        "scramble draws with replacement, so 32 cycles should contain a repeat"
+    );
+}
+
+#[test]
+fn scramble_queries_are_deterministic_and_chunking_stable() {
+    let first = number_event_keys("m = 10 20 30 40 |> scramble(4)", "m", 8);
+    let second = number_event_keys("m = 10 20 30 40 |> scramble(4)", "m", 8);
+    assert_eq!(first, second);
+
+    let module = eval_module("m = 10 20 30 40 |> scramble(4)", ReplMode::Loose).unwrap();
+    let pattern = module.get("m").unwrap().as_number_pattern().unwrap();
+    let span = orpheus_lang::render_span(8).unwrap();
+    let whole = pattern.try_query(&span).unwrap();
+    let mut chunked = Vec::new();
+    for cycle in 0..8 {
+        chunked.extend(pattern.try_query(&cycle_time_span(cycle)).unwrap());
+    }
+    assert_eq!(whole.len(), chunked.len());
+    for (a, b) in whole.iter().zip(chunked.iter()) {
+        assert_eq!(a.part.start(), b.part.start());
+        assert!((a.value - b.value).abs() < f64::EPSILON);
+    }
+}
+
+#[test]
+fn shuffle_and_scramble_reject_non_positive_slot_counts() {
+    assert_eval_error_contains(
+        "m = shuffle(0, 0 1)",
+        ReplMode::Loose,
+        &["`shuffle`", "positive integer"],
+    );
+    assert_eval_error_contains(
+        "m = scramble(0, 0 1)",
+        ReplMode::Loose,
+        &["`scramble`", "positive integer"],
+    );
+}
