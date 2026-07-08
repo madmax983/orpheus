@@ -25,7 +25,7 @@ use std::sync::Arc;
 use orpheus_pattern::{Event, PatternNode, Rational, TimeSpan};
 
 use crate::ReplMode;
-use crate::ast::{Expr, Module, Stmt, binding_expr_self_references};
+use crate::ast::{Expr, Module, StepOp, Stmt, binding_expr_self_references};
 use crate::builtins::{builtin_value, is_sample_identifier, stack_values};
 use crate::parser::parse_module;
 use crate::pedal::compile_graph;
@@ -353,6 +353,8 @@ impl Evaluator {
             Expr::SeqSections(sections) => self.eval_seq_sections(sections, meter),
             Expr::Group(items) => self.eval_group(items, meter),
             Expr::Alternation(items) => self.eval_alternation(items, meter),
+            Expr::Modified { .. } => self.eval_modified(expr, meter),
+            Expr::Polymeter { groups, steps } => self.eval_polymeter(groups, *steps, meter),
             Expr::Ident(name) => self.eval_ident(name),
             Expr::Rest => Err(EvalError::new(
                 "rest markers can only appear inside pattern sequences",
@@ -402,7 +404,7 @@ impl Evaluator {
             return Err(error);
         }
 
-        if Self::items_contain_alternation(items) {
+        if Self::items_need_slot_evaluation(items) {
             return self.eval_alternating_items(items, meter, context);
         }
 
@@ -423,14 +425,117 @@ impl Evaluator {
         )))
     }
 
-    /// Returns `true` when any item is an `<a b c>` alternation, looking
-    /// through parenthesized groups so `bd (sn <cp hh>)` is detected too.
-    fn items_contain_alternation(items: &[Expr]) -> bool {
+    /// Returns `true` when any item needs whole-slot pattern evaluation: an
+    /// `<a b c>` alternation, a step-modified element (`bd*2`, `bd?`, ...),
+    /// or a `{...}` polymeter. Looks through parenthesized groups so
+    /// `bd (sn <cp hh>)` is detected too.
+    fn items_need_slot_evaluation(items: &[Expr]) -> bool {
         items.iter().any(|item| match item {
-            Expr::Alternation(_) => true,
-            Expr::Group(inner) => Self::items_contain_alternation(inner),
+            Expr::Alternation(_) | Expr::Modified { .. } | Expr::Polymeter { .. } => true,
+            Expr::Group(inner) => Self::items_need_slot_evaluation(inner),
             _ => false,
         })
+    }
+
+    /// Evaluates a tight postfix step operator (`a*n`, `a/n`, `a?`) applied
+    /// to a sequence element.
+    fn eval_modified(&self, expr: &Expr, meter: Option<&MeterContext>) -> Result<Value, EvalError> {
+        let Expr::Modified { inner, op } = expr else {
+            return Err(EvalError::new(
+                "internal error: expected a step-modified expression",
+            ));
+        };
+
+        let value = self.eval_expr_in_meter(inner, meter)?;
+        match *op {
+            StepOp::Fast(factor) => {
+                let factor = step_factor_as_bounded_integer(factor, "*")?;
+                Self::apply_step_transform(value, "*", |p| p.fast(factor), |p| p.fast(factor))
+            }
+            StepOp::Slow(factor) => {
+                Self::apply_step_transform(value, "/", |p| p.slow(factor), |p| p.slow(factor))
+            }
+            StepOp::Replicate(_) => Err(EvalError::new(
+                "`!` replication can only appear on pattern sequence steps",
+            )),
+            StepOp::Degrade(probability) => {
+                let site_salt = self.expr_site_salt(expr).unwrap_or_default();
+                Self::apply_step_transform(
+                    value,
+                    "?",
+                    |p| p.degrade_with_site_salt(probability, site_salt, false),
+                    |p| p.degrade_with_site_salt(probability, site_salt, false),
+                )
+            }
+        }
+    }
+
+    fn apply_step_transform(
+        value: Value,
+        symbol: &str,
+        sample: impl FnOnce(SamplePatternValue) -> SamplePatternValue,
+        number: impl FnOnce(NumberPatternValue) -> NumberPatternValue,
+    ) -> Result<Value, EvalError> {
+        match value {
+            Value::SamplePattern(pattern) => Ok(Value::SamplePattern(sample(pattern))),
+            Value::NumberPattern(pattern) => Ok(Value::NumberPattern(number(pattern))),
+            other => Err(EvalError::new(format!(
+                "step operator `{symbol}` cannot apply to a {}",
+                other.kind_name()
+            ))),
+        }
+    }
+
+    /// Evaluates `{a b, c d e}%n`: each subsequence is an infinitely
+    /// repeating step list; every cycle plays the next `n` steps of each
+    /// subsequence, all stacked.
+    ///
+    /// Subsequence `k` at cycle `c` shows steps `[c*n, c*n + n)`, which is
+    /// exactly `fast(n, slowcat(steps))` — pure functions of the cycle
+    /// number, so the result stays deterministic and chunking-stable.
+    fn eval_polymeter(
+        &self,
+        groups: &[Vec<Expr>],
+        steps: Option<i64>,
+        meter: Option<&MeterContext>,
+    ) -> Result<Value, EvalError> {
+        let Some(first) = groups.first() else {
+            return Err(EvalError::new(
+                "polymeter requires at least one subsequence",
+            ));
+        };
+        let steps = match steps {
+            Some(steps) => steps,
+            None => i64::try_from(first.len())
+                .map_err(|_| EvalError::new("polymeter length exceeded evaluator limits"))?,
+        };
+        if !(1..=1024).contains(&steps) {
+            return Err(EvalError::new(
+                "polymeter step count must be an integer between 1 and 1024",
+            ));
+        }
+
+        let mut layers = Vec::with_capacity(groups.len());
+        for group in groups {
+            if let Some(error) = Self::unsupported_pattern_item_error(group, "polymeter") {
+                return Err(error);
+            }
+            layers.push(match self.eval_slot_patterns(group, meter, "polymeter")? {
+                SlotPatterns::Samples(patterns) => {
+                    Value::SamplePattern(SamplePatternValue::slowcat(patterns).fast(steps))
+                }
+                SlotPatterns::Numbers(patterns) => {
+                    Value::NumberPattern(NumberPatternValue::slowcat(patterns).fast(steps))
+                }
+            });
+        }
+
+        if layers.len() == 1 {
+            return layers
+                .pop()
+                .ok_or_else(|| EvalError::new("polymeter requires at least one subsequence"));
+        }
+        stack_values(layers)
     }
 
     /// Evaluates `<a b c>`: a slowcat of its elements, playing one element per
@@ -1006,6 +1111,10 @@ impl Evaluator {
             Expr::Group(group_items) | Expr::Alternation(group_items) => {
                 Self::unsupported_pattern_item_error(group_items, context)
             }
+            Expr::Modified { inner, .. } => Self::check_unsupported_pattern_item(inner, context),
+            Expr::Polymeter { groups, .. } => groups
+                .iter()
+                .find_map(|group| Self::unsupported_pattern_item_error(group, context)),
             _ => None,
         }
     }
@@ -1211,6 +1320,8 @@ const ROLE_SECTION_CYCLES: u64 = 0x10;
 const ROLE_SEQ_SECTION_ITEM: u64 = 0x11;
 const ROLE_GROUP_ITEM: u64 = 0x12;
 const ROLE_ALTERNATION_ITEM: u64 = 0x13;
+const ROLE_MODIFIED_INNER: u64 = 0x14;
+const ROLE_POLYMETER_ITEM: u64 = 0x15;
 
 fn collect_expr_site_salts(module: &Module) -> BTreeMap<usize, u64> {
     let mut salts = BTreeMap::new();
@@ -1248,6 +1359,19 @@ fn record_expr_site_salts(expr: &Expr, seed: u64, salts: &mut BTreeMap<usize, u6
         }
         Expr::Group(items) => record_expr_list(items, seed, ROLE_GROUP_ITEM, salts),
         Expr::Alternation(items) => record_expr_list(items, seed, ROLE_ALTERNATION_ITEM, salts),
+        Expr::Modified { inner, .. } => {
+            record_expr_site_salts(inner, derive_site_seed(seed, ROLE_MODIFIED_INNER, 0), salts);
+        }
+        Expr::Polymeter { groups, .. } => {
+            for (index, group) in groups.iter().enumerate() {
+                record_expr_list(
+                    group,
+                    derive_site_seed(seed, ROLE_POLYMETER_ITEM, index as u64),
+                    ROLE_POLYMETER_ITEM,
+                    salts,
+                );
+            }
+        }
         Expr::Graph { bindings, result } => {
             for (index, binding) in bindings.iter().enumerate() {
                 record_expr_site_salts(
@@ -1333,6 +1457,27 @@ const fn derive_site_seed(base: u64, role: u64, ordinal: u64) -> u64 {
 
 fn expr_key(expr: &Expr) -> usize {
     std::ptr::from_ref(expr) as usize
+}
+
+/// Re-validates a raw mini-notation `*` factor at evaluation time.
+///
+/// The parser normally rejects invalid factors, but the raw value is kept in
+/// the AST so `graph { ... }` rewriting can reuse it; this keeps evaluation
+/// safe even for programmatically constructed expressions.
+fn step_factor_as_bounded_integer(factor: f64, symbol: &str) -> Result<i64, EvalError> {
+    if !factor.is_finite() || factor.fract() != 0.0 {
+        return Err(EvalError::new(format!(
+            "mini-notation `{symbol}` factor must be an integer between 1 and 1024"
+        )));
+    }
+    #[allow(clippy::cast_possible_truncation)]
+    let integer = factor as i64;
+    if !(1..=1024).contains(&integer) {
+        return Err(EvalError::new(format!(
+            "mini-notation `{symbol}` factor must be an integer between 1 and 1024"
+        )));
+    }
+    Ok(integer)
 }
 
 fn extract_constant_number_value(value: Value, context: &str) -> Result<f64, EvalError> {

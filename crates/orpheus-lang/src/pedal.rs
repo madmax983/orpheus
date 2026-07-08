@@ -27,7 +27,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use comfy_table::Cell;
 use crossterm::style::Stylize;
 
-use crate::ast::{BinaryOp, Expr, GraphBinding};
+use crate::ast::{BinaryOp, Expr, GraphBinding, StepOp};
 use crate::error::EvalError;
 use crate::explain::Explain;
 
@@ -293,6 +293,8 @@ impl GraphCompiler<'_> {
             | Expr::SeqSections(_)
             | Expr::Group(_)
             | Expr::Alternation(_)
+            | Expr::Modified { .. }
+            | Expr::Polymeter { .. }
             | Expr::Rest => Err(EvalError::new(
                 "pedal graphs only support local names, literals, binary control/audio expressions, stage calls, and pipes in Task 3",
             )),
@@ -872,6 +874,8 @@ fn format_expr_source_into(expr: &Expr, buf: &mut String) {
             format_separated_exprs_into(items, " ", buf);
             buf.push('>');
         }
+        Expr::Modified { inner, op } => format_modified_source_into(inner, *op, buf),
+        Expr::Polymeter { groups, steps } => format_polymeter_source_into(groups, *steps, buf),
         Expr::Ident(name) => buf.push_str(name),
         Expr::Rest => buf.push('~'),
         Expr::Number(value) => {
@@ -882,6 +886,41 @@ fn format_expr_source_into(expr: &Expr, buf: &mut String) {
             use std::fmt::Write;
             let _ = write!(buf, "{value:?}");
         }
+    }
+}
+
+fn format_modified_source_into(inner: &Expr, op: StepOp, buf: &mut String) {
+    use std::fmt::Write;
+    format_expr_source_into(inner, buf);
+    let _ = match op {
+        StepOp::Fast(factor) => write!(buf, "*{factor}"),
+        StepOp::Slow(factor) => write!(buf, "/{factor}"),
+        StepOp::Replicate(count) => write!(buf, "!{count}"),
+        StepOp::Degrade(probability) => {
+            if (probability - 0.5).abs() < f64::EPSILON {
+                buf.push('?');
+                Ok(())
+            } else {
+                write!(buf, "?{probability}")
+            }
+        }
+    };
+}
+
+fn format_polymeter_source_into(groups: &[Vec<Expr>], steps: Option<i64>, buf: &mut String) {
+    use std::fmt::Write;
+    buf.push('{');
+    let mut first = true;
+    for group in groups {
+        if !first {
+            buf.push_str(", ");
+        }
+        format_separated_exprs_into(group, " ", buf);
+        first = false;
+    }
+    buf.push('}');
+    if let Some(steps) = steps {
+        let _ = write!(buf, "%{steps}");
     }
 }
 

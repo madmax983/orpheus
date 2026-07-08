@@ -3544,6 +3544,339 @@ fn often_transforms_more_events_than_rarely() {
     );
 }
 
+// --- mini-notation step operators: `*`, `/`, `!`, `?`, `{...}` polymeter ---
+
+/// Materializes only the onset-bearing events of a number pattern as
+/// comparable `(part start numerator, part start denominator, value bits)`
+/// tuples. Slowed steps (`a/n`) emit onset-less tail fragments on the cycles
+/// where the stretched event continues; those fragments never retrigger, so
+/// onset comparison is the Tidal-accurate equivalence.
+fn number_onset_keys(source: &str, name: &str, cycles: u64) -> Vec<(i128, i128, u64)> {
+    let module = eval_module(source, ReplMode::Loose).unwrap();
+    let pattern = module.get(name).unwrap().as_number_pattern().unwrap();
+    let span = orpheus_lang::render_span(cycles).unwrap();
+    pattern
+        .try_query(&span)
+        .unwrap()
+        .into_iter()
+        .filter(|event| {
+            event
+                .whole
+                .as_ref()
+                .is_none_or(|whole| whole.start() == event.part.start())
+        })
+        .map(|event| {
+            (
+                event.part.start().numerator(),
+                event.part.start().denominator(),
+                event.value.to_bits(),
+            )
+        })
+        .collect()
+}
+
+/// Exports a sample pattern as `(start numerator, start denominator, sample)`
+/// tuples sorted so that simultaneous events compare deterministically.
+fn sample_event_keys(source: &str, name: &str, cycles: u64) -> Vec<(i64, i64, String)> {
+    let module = eval_module(source, ReplMode::Loose).unwrap();
+    let mut keys = exported_sample_events(module.get(name).unwrap(), cycles)
+        .iter()
+        .map(|event| {
+            (
+                event["start_num"].as_i64().unwrap(),
+                event["start_den"].as_i64().unwrap(),
+                event["sample"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect::<Vec<_>>();
+    keys.sort_by(|left, right| {
+        (left.0 * right.1)
+            .cmp(&(right.0 * left.1))
+            .then_with(|| left.2.cmp(&right.2))
+    });
+    keys
+}
+
+#[test]
+fn repetition_squeezes_the_element_into_its_slot() {
+    assert_eq!(
+        sample_event_keys("drums = bd*2 sn", "drums", 2),
+        sample_event_keys("drums = (bd bd) sn", "drums", 2),
+    );
+}
+
+#[test]
+fn repetition_applies_to_groups() {
+    assert_eq!(
+        sample_event_keys("drums = (bd sn)*2 cp", "drums", 2),
+        sample_event_keys("drums = ((bd sn) (bd sn)) cp", "drums", 2),
+    );
+}
+
+#[test]
+fn repetition_applies_to_alternations() {
+    // `<bd sn cp>*2` steps through the alternation twice per cycle, matching
+    // Tidal's `"<bd sn cp>*2"`.
+    let module = eval_module("drums = <bd sn cp>*2", ReplMode::Loose).unwrap();
+    assert_eq!(
+        exported_sample_names(module.get("drums").unwrap(), 3),
+        ["bd", "sn", "cp", "bd", "sn", "cp"]
+    );
+}
+
+#[test]
+fn repetition_by_one_is_identity() {
+    assert_eq!(
+        sample_event_keys("drums = bd*1 sn", "drums", 2),
+        sample_event_keys("drums = bd sn", "drums", 2),
+    );
+}
+
+#[test]
+fn repetition_factor_must_stay_within_bounds() {
+    assert_eval_error_contains("drums = bd*0 sn", ReplMode::Loose, &["`*`", "1", "1024"]);
+    assert_eval_error_contains("drums = bd*1025 sn", ReplMode::Loose, &["`*`", "1", "1024"]);
+    assert_eval_error_contains("drums = bd*1.5 sn", ReplMode::Loose, &["`*`", "integer"]);
+}
+
+#[test]
+fn replication_expands_into_separate_steps() {
+    assert_eq!(
+        sample_event_keys("drums = bd!3 sn", "drums", 2),
+        sample_event_keys("drums = bd bd bd sn", "drums", 2),
+    );
+}
+
+#[test]
+fn replication_count_must_be_positive() {
+    assert_eval_error_contains("drums = bd!0 sn", ReplMode::Loose, &["`!`"]);
+}
+
+#[test]
+fn slow_by_one_is_identity() {
+    assert_eq!(
+        number_onset_keys("m = 0/1 1", "m", 2),
+        number_onset_keys("m = 0 1", "m", 2),
+    );
+}
+
+#[test]
+fn slowed_atom_plays_every_other_cycle_like_an_alternation_with_a_rest() {
+    assert_eq!(
+        number_onset_keys("m = 0/2", "m", 4),
+        number_onset_keys("m = <0 ~>", "m", 4),
+    );
+    assert_eq!(
+        number_onset_keys("m = 0/2 1", "m", 4),
+        number_onset_keys("m = <0 ~> 1", "m", 4),
+    );
+}
+
+#[test]
+fn slowed_group_windows_one_half_per_cycle() {
+    // `(0 1)/2` genuinely slows the inner pair: cycle 0 shows the first half
+    // (the `0`), cycle 1 the second half (the `1`).
+    assert_eq!(
+        number_onset_keys("m = (0 1)/2", "m", 2),
+        vec![(0, 1, 0.0_f64.to_bits()), (1, 1, 1.0_f64.to_bits())],
+    );
+}
+
+#[test]
+fn slow_factor_must_stay_within_bounds() {
+    assert_eval_error_contains("m = 0/0 1", ReplMode::Loose, &["`/`", "1", "1024"]);
+    assert_eval_error_contains("m = 0/1025 1", ReplMode::Loose, &["`/`", "1", "1024"]);
+}
+
+#[test]
+fn degrade_operator_is_deterministic_across_repeats() {
+    let first = number_event_keys("m = (0 1 2 3 4 5 6 7)?", "m", 8);
+    let second = number_event_keys("m = (0 1 2 3 4 5 6 7)?", "m", 8);
+    assert_eq!(first, second);
+    assert!(!first.is_empty(), "`?` should keep some events");
+    assert!(
+        first.len() < 64,
+        "`?` should drop some of the 64 base events"
+    );
+}
+
+#[test]
+fn degrade_operator_is_stable_regardless_of_query_window_chunking() {
+    let module = eval_module("m = (0 1 2 3 4 5 6 7)?", ReplMode::Loose).unwrap();
+    let pattern = module.get("m").unwrap().as_number_pattern().unwrap();
+
+    let span = orpheus_lang::render_span(8).unwrap();
+    let whole = pattern.try_query(&span).unwrap();
+
+    let mut chunked = Vec::new();
+    for cycle in 0..8 {
+        chunked.extend(pattern.try_query(&cycle_time_span(cycle)).unwrap());
+    }
+
+    assert_eq!(whole, chunked);
+}
+
+#[test]
+fn degrade_operator_thins_only_its_own_step() {
+    let events = sample_event_keys("drums = bd? sn", "drums", 32);
+    let sn_count = events.iter().filter(|(_, _, name)| name == "sn").count();
+    let bd_count = events.iter().filter(|(_, _, name)| name == "bd").count();
+    assert_eq!(sn_count, 32, "`sn` has no `?` and must always play");
+    assert!(bd_count > 0, "`bd?` should keep some events");
+    assert!(bd_count < 32, "`bd?` should drop some events");
+}
+
+#[test]
+fn degrade_operator_sites_flip_independently() {
+    // Two `?` sites over identical inner patterns receive distinct site
+    // salts, so stacked layers must not always flip together.
+    let keys = number_event_keys("m = stack((0 1 2 3 4 5 6 7)?, (0 1 2 3 4 5 6 7)?)", "m", 8);
+    let mut counts = std::collections::BTreeMap::new();
+    for key in keys {
+        *counts.entry(key).or_insert(0_u32) += 1;
+    }
+    assert!(
+        counts.values().any(|count| *count == 1),
+        "independent `?` sites should disagree on at least one onset"
+    );
+}
+
+#[test]
+fn degrade_operator_accepts_a_probability_suffix() {
+    assert_eq!(
+        number_event_keys("m = (0 1 2 3)?0.0", "m", 4).len(),
+        16,
+        "`?0.0` keeps every event"
+    );
+    assert!(
+        number_event_keys("m = (0 1 2 3)?1.0", "m", 4).is_empty(),
+        "`?1.0` drops every event"
+    );
+
+    let sparse = number_event_keys("m = (0 1 2 3 4 5 6 7)?0.9", "m", 16).len();
+    let dense = number_event_keys("m = (0 1 2 3 4 5 6 7)?0.1", "m", 16).len();
+    assert!(
+        sparse < dense,
+        "`?0.9` ({sparse}) should keep fewer events than `?0.1` ({dense})"
+    );
+}
+
+#[test]
+fn degrade_operator_rejects_probabilities_outside_the_unit_interval() {
+    assert_eval_error_contains("m = (0 1)?1.5", ReplMode::Loose, &["`?`", "probability"]);
+}
+
+#[test]
+fn polymeter_steps_each_subsequence_against_the_base_step_count() {
+    // `{bd sn, hh cp sn}`: two steps per cycle from each subsequence; the
+    // three-step subsequence wraps across cycles.
+    assert_eq!(
+        sample_event_keys("drums = {bd sn, hh cp sn}", "drums", 4),
+        vec![
+            (0, 1, "bd".to_owned()),
+            (0, 1, "hh".to_owned()),
+            (1, 2, "cp".to_owned()),
+            (1, 2, "sn".to_owned()),
+            (1, 1, "bd".to_owned()),
+            (1, 1, "sn".to_owned()),
+            (3, 2, "hh".to_owned()),
+            (3, 2, "sn".to_owned()),
+            (2, 1, "bd".to_owned()),
+            (2, 1, "cp".to_owned()),
+            (5, 2, "sn".to_owned()),
+            (5, 2, "sn".to_owned()),
+            (3, 1, "bd".to_owned()),
+            (3, 1, "hh".to_owned()),
+            (7, 2, "cp".to_owned()),
+            (7, 2, "sn".to_owned()),
+        ],
+    );
+}
+
+#[test]
+fn polymeter_supports_an_explicit_step_count() {
+    // `{0 1 2}%4` plays four steps per cycle from an infinitely repeating
+    // `0 1 2`, continuing where the previous cycle left off.
+    assert_eq!(
+        number_onset_keys("m = {0 1 2}%4", "m", 2),
+        vec![
+            (0, 1, 0.0_f64.to_bits()),
+            (1, 4, 1.0_f64.to_bits()),
+            (1, 2, 2.0_f64.to_bits()),
+            (3, 4, 0.0_f64.to_bits()),
+            (1, 1, 1.0_f64.to_bits()),
+            (5, 4, 2.0_f64.to_bits()),
+            (3, 2, 0.0_f64.to_bits()),
+            (7, 4, 1.0_f64.to_bits()),
+        ],
+    );
+}
+
+#[test]
+fn polymeter_with_a_single_subsequence_and_matching_steps_is_a_plain_sequence() {
+    assert_eq!(
+        sample_event_keys("drums = {bd sn}", "drums", 2),
+        sample_event_keys("drums = bd sn", "drums", 2),
+    );
+}
+
+#[test]
+fn polymeter_is_stable_regardless_of_query_window_chunking() {
+    let module = eval_module("m = {0 1, 2 3 4}", ReplMode::Loose).unwrap();
+    let pattern = module.get("m").unwrap().as_number_pattern().unwrap();
+
+    let span = orpheus_lang::render_span(6).unwrap();
+    let mut whole = pattern.try_query(&span).unwrap();
+
+    let mut chunked = Vec::new();
+    for cycle in 0..6 {
+        chunked.extend(pattern.try_query(&cycle_time_span(cycle)).unwrap());
+    }
+
+    // Simultaneous events from the stacked subsequences carry no defined
+    // relative order, so canonicalize ties by value before comparing.
+    let canonicalize = |events: &mut Vec<orpheus_pattern::Event<f64>>| {
+        events.sort_by(|left, right| {
+            left.part
+                .start()
+                .cmp(right.part.start())
+                .then_with(|| left.value.total_cmp(&right.value))
+        });
+    };
+    canonicalize(&mut whole);
+    canonicalize(&mut chunked);
+
+    assert_eq!(whole, chunked);
+}
+
+#[test]
+fn polymeter_step_count_must_stay_within_bounds() {
+    assert_eval_error_contains("m = {0 1}%0", ReplMode::Loose, &["polymeter", "1", "1024"]);
+}
+
+#[test]
+fn step_operators_compose_on_a_single_step() {
+    // `bd!2?` replicates first, then degrades each copy independently.
+    let events = sample_event_keys("drums = bd!2? sn", "drums", 32);
+    let sn_count = events.iter().filter(|(_, _, name)| name == "sn").count();
+    let bd_count = events.iter().filter(|(_, _, name)| name == "bd").count();
+    assert_eq!(sn_count, 32);
+    assert!(bd_count > 0, "`bd!2?` should keep some events");
+    assert!(bd_count < 64, "`bd!2?` should drop some events");
+}
+
+#[test]
+fn pedal_graph_arithmetic_still_evaluates_with_tight_multiplication() {
+    // `dry*0.2` inside `graph { ... }` must stay pedal-DSL multiplication
+    // even without spaces around `*`.
+    let module = eval_module(
+        "drivebox = graph { dry = input ; wet = input |> clip(model=silicon_hard) ; mix(dry*0.2 + wet*0.8, dry) |> output }",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    assert!(matches!(module.get("drivebox").unwrap(), Value::Pedal(_)));
+}
+
 #[test]
 fn almost_always_and_almost_never_bracket_the_probability_range() {
     let transformed_count = |source: &str| {

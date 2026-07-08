@@ -50,11 +50,16 @@ File paths point the next contributor at the relevant implementation sites.
 - [x] `~` rest
 - [x] `<a b c>` alternation — PR #1382; `alternation` rule (orpheus.pest),
   `Expr::Alternation` (ast.rs), `eval_alternation`/`eval_alternating_items` (eval.rs)
-- [ ] `*` repetition (`bd*2`)
-- [ ] `/` slow (`bd/2`)
-- [ ] `!` replicate
-- [ ] `{ ... }` polymeter
-- [ ] `?` random removal
+- [x] `*` repetition (`bd*2`) — `step_modifier` rule (orpheus.pest),
+  `Expr::Modified`/`StepOp::Fast` (ast.rs), `eval_modified` (eval.rs)
+- [x] `/` slow (`bd/2`) — `StepOp::Slow`; slot-level `slow` with onset-less
+  tail fragments on the continuation cycles
+- [x] `!` replicate — `StepOp::Replicate`, expanded into separate steps by the
+  parser (`push_expanded_step`); bare `!` is not supported
+- [x] `{ ... }` polymeter — `polymeter` rule with `%n` override,
+  `Expr::Polymeter` (ast.rs), `eval_polymeter` (eval.rs) via `fast(n, slowcat)`
+- [x] `?` random removal — `StepOp::Degrade` with optional `?p` probability
+  suffix, reusing `PatternRuntime::Degrade` with per-site salts
 - [ ] in-sequence commas (inline stacks)
 - [ ] inline euclid syntax (`bd(3,8)`)
 

@@ -7,7 +7,7 @@ use pest::error::Error as PestError;
 use pest::iterators::{Pair, Pairs};
 use pest_derive::Parser;
 
-use crate::ast::{BinaryOp, Expr, GraphBinding, Module, Stmt};
+use crate::ast::{BinaryOp, Expr, GraphBinding, Module, StepOp, Stmt};
 use crate::diagnostics::ParseError;
 
 #[derive(Parser)]
@@ -262,8 +262,107 @@ fn build_module(pair: Pair<'_, Rule>, depth: usize) -> Result<Module, ParseError
 fn build_binding(pair: Pair<'_, Rule>, depth: usize) -> Result<Stmt, ParseError> {
     let mut inner = pair.into_inner();
     let (name, params) = build_binding_head(next_pair(&mut inner, "binding head")?)?;
-    let expr = build_pipe_expr(next_pair(&mut inner, "binding expression")?, depth)?;
+    let mut expr = build_pipe_expr(next_pair(&mut inner, "binding expression")?, depth)?;
+    finalize_step_modifiers(&mut expr, false)?;
     Ok(Stmt::Binding { name, params, expr })
+}
+
+/// Post-processes tight `*` step modifiers once the full binding AST exists.
+///
+/// Inside `graph { ... }` blocks a tight `a*0.2` must remain pedal-DSL
+/// multiplication, so `StepOp::Fast` nodes are rewritten back into
+/// [`Expr::Binary`] products there. Everywhere else the factor is validated
+/// as a mini-notation repetition count.
+fn finalize_step_modifiers(expr: &mut Expr, in_graph: bool) -> Result<(), ParseError> {
+    match expr {
+        Expr::Seq(items)
+        | Expr::Stack(items)
+        | Expr::Stream(items)
+        | Expr::SeqSections(items)
+        | Expr::Group(items)
+        | Expr::Alternation(items) => {
+            for item in items {
+                finalize_step_modifiers(item, in_graph)?;
+            }
+            Ok(())
+        }
+        Expr::Polymeter { groups, .. } => {
+            for group in groups {
+                for item in group {
+                    finalize_step_modifiers(item, in_graph)?;
+                }
+            }
+            Ok(())
+        }
+        Expr::Graph { bindings, result } => {
+            for binding in bindings {
+                finalize_step_modifiers(&mut binding.expr, true)?;
+            }
+            finalize_step_modifiers(result, true)
+        }
+        Expr::Pipe { lhs, rhs } | Expr::Binary { lhs, rhs, .. } => {
+            finalize_step_modifiers(lhs, in_graph)?;
+            finalize_step_modifiers(rhs, in_graph)
+        }
+        Expr::Call { callee, args } => {
+            finalize_step_modifiers(callee, in_graph)?;
+            for arg in args {
+                finalize_step_modifiers(arg, in_graph)?;
+            }
+            Ok(())
+        }
+        Expr::At { start, pattern } => {
+            finalize_step_modifiers(start, in_graph)?;
+            finalize_step_modifiers(pattern, in_graph)
+        }
+        Expr::Meter {
+            beats,
+            unit,
+            pattern,
+        } => {
+            finalize_step_modifiers(beats, in_graph)?;
+            finalize_step_modifiers(unit, in_graph)?;
+            finalize_step_modifiers(pattern, in_graph)
+        }
+        Expr::Beat(value) => finalize_step_modifiers(value, in_graph),
+        Expr::Section { pattern, cycles } => {
+            finalize_step_modifiers(pattern, in_graph)?;
+            finalize_step_modifiers(cycles, in_graph)
+        }
+        Expr::Modified { inner, op } => {
+            finalize_step_modifiers(inner, in_graph)?;
+            if let StepOp::Fast(factor) = *op {
+                if in_graph {
+                    let lhs = std::mem::replace(inner.as_mut(), Expr::Rest);
+                    *expr = Expr::Binary {
+                        lhs: Box::new(lhs),
+                        op: BinaryOp::Mul,
+                        rhs: Box::new(Expr::Number(factor)),
+                    };
+                } else {
+                    validate_step_factor(factor, "*")?;
+                }
+            }
+            Ok(())
+        }
+        Expr::Ident(_) | Expr::Rest | Expr::Number(_) | Expr::String(_) => Ok(()),
+    }
+}
+
+fn validate_step_factor(factor: f64, symbol: &str) -> Result<i64, ParseError> {
+    if !factor.is_finite() || factor.fract() != 0.0 {
+        return Err(ParseError::new(format!(
+            "mini-notation `{symbol}` factor must be an integer between 1 and 1024"
+        )));
+    }
+    #[allow(clippy::cast_possible_truncation)]
+    let integer = factor as i64;
+    if !(1..=1024).contains(&integer) {
+        return Err(ParseError::new(format!(
+            "mini-notation `{symbol}` factor must be an integer between 1 and 1024"
+        )));
+    }
+    Ok(integer)
 }
 
 fn build_pipe_expr(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
@@ -291,19 +390,71 @@ fn build_sequence(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError
     // Enforce sequence length bounds strictly inside the parser. Linear sequences
     // that exceed maximum depth (even if flat) should cause early parse errors rather than
     // blowing up evaluation/recursive walks later or exhausting memory.
-    let mut current_depth = depth;
-    let items = pair
-        .into_inner()
-        .map(|pair| {
-            current_depth += 1;
-            if current_depth > MAX_AST_DEPTH {
-                return Err(ParseError::new("maximum AST depth exceeded"));
-            }
-            build_sum_expr(pair, current_depth)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
+    let (items, current_depth) = build_step_expr_list(pair, depth)?;
     collapse_sequence(items, "sequence", current_depth)
+}
+
+/// Builds the step expressions of a sequence-like rule, expanding `a!n`
+/// replication into separate steps and enforcing the AST depth budget on the
+/// expanded step count.
+fn build_step_expr_list(
+    pair: Pair<'_, Rule>,
+    depth: usize,
+) -> Result<(Vec<Expr>, usize), ParseError> {
+    let mut current_depth = depth;
+    let mut items = Vec::new();
+    for inner_pair in pair.into_inner() {
+        current_depth += 1;
+        if current_depth > MAX_AST_DEPTH {
+            return Err(ParseError::new("maximum AST depth exceeded"));
+        }
+        let item = build_sum_expr(inner_pair, current_depth)?;
+        push_expanded_step(item, &mut items)?;
+        let occupied = depth + items.len();
+        if occupied > MAX_AST_DEPTH {
+            return Err(ParseError::new("maximum AST depth exceeded"));
+        }
+        current_depth = current_depth.max(occupied);
+    }
+    Ok((items, current_depth))
+}
+
+/// Pushes a built step expression, expanding `a!n` replication into `n`
+/// separate steps. Modifiers applied after a replication distribute over
+/// every copy (`bd!2?` degrades each of the two steps independently).
+fn push_expanded_step(expr: Expr, items: &mut Vec<Expr>) -> Result<(), ParseError> {
+    if items.len() > MAX_AST_DEPTH {
+        return Err(ParseError::new("maximum AST depth exceeded"));
+    }
+    match expr {
+        Expr::Modified {
+            inner,
+            op: StepOp::Replicate(count),
+        } => {
+            for _ in 0..count {
+                push_expanded_step((*inner).clone(), items)?;
+            }
+            Ok(())
+        }
+        Expr::Modified { inner, op } => {
+            let mut inner_steps = Vec::new();
+            push_expanded_step(*inner, &mut inner_steps)?;
+            for step in inner_steps {
+                if items.len() > MAX_AST_DEPTH {
+                    return Err(ParseError::new("maximum AST depth exceeded"));
+                }
+                items.push(Expr::Modified {
+                    inner: Box::new(step),
+                    op,
+                });
+            }
+            Ok(())
+        }
+        other => {
+            items.push(other);
+            Ok(())
+        }
+    }
 }
 
 fn build_pipe_target(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
@@ -324,6 +475,7 @@ fn build_expr(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
         Rule::primary => build_expr(first_inner(pair, "primary expression")?, next_depth),
         Rule::group => build_group(pair, next_depth),
         Rule::alternation => build_alternation(pair, next_depth),
+        Rule::polymeter => build_polymeter(pair, next_depth),
         Rule::rest => Ok(Expr::Rest),
         Rule::number => build_number(&pair),
         Rule::string => build_string(&pair),
@@ -387,11 +539,81 @@ fn build_application(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseEr
         if current_depth > MAX_AST_DEPTH {
             return Err(ParseError::new("maximum AST depth exceeded"));
         }
-        let args = build_call_suffix_args(suffix, current_depth)?;
-        expr = build_call_expr(expr, args)?;
+        if suffix.as_rule() == Rule::step_modifier {
+            expr = build_step_modified(expr, suffix)?;
+        } else {
+            let args = build_call_suffix_args(suffix, current_depth)?;
+            expr = build_call_expr(expr, args)?;
+        }
     }
 
     Ok(expr)
+}
+
+/// Wraps a sequence element in a tight postfix step operator (`a*2`, `a/2`,
+/// `a!3`, `a?`, `a?0.3`).
+fn build_step_modified(inner: Expr, pair: Pair<'_, Rule>) -> Result<Expr, ParseError> {
+    let modifier = first_inner(pair, "step modifier")?;
+    let (line, col) = modifier.as_span().start_pos().line_col();
+    let op = match modifier.as_rule() {
+        // `*` factors are validated by `finalize_step_modifiers` once graph
+        // contexts are known, so tight pedal-DSL products like `dry*0.2`
+        // keep working.
+        Rule::repeat_modifier => StepOp::Fast(parse_modifier_number(modifier)?),
+        Rule::slow_modifier => {
+            let factor = parse_modifier_number(modifier)?;
+            let factor = validate_step_factor(factor, "/").map_err(|error| {
+                ParseError::new(format!("parse error at line {line}, col {col}: {error}"))
+            })?;
+            StepOp::Slow(factor)
+        }
+        Rule::replicate_modifier => {
+            let count = parse_modifier_number(modifier)?;
+            let count = validate_step_factor(count, "!").map_err(|error| {
+                ParseError::new(format!("parse error at line {line}, col {col}: {error}"))
+            })?;
+            StepOp::Replicate(count)
+        }
+        Rule::degrade_modifier => {
+            let probability = match modifier.into_inner().next() {
+                None => 0.5,
+                Some(number) => {
+                    let probability = parse_number_literal(&number)?;
+                    if !(0.0..=1.0).contains(&probability) {
+                        return Err(ParseError::new(format!(
+                            "parse error at line {line}, col {col}: mini-notation `?` requires a probability within [0.0, 1.0]"
+                        )));
+                    }
+                    probability
+                }
+            };
+            StepOp::Degrade(probability)
+        }
+        other => {
+            return Err(ParseError::new(format!(
+                "unexpected step modifier while building AST: {other:?}"
+            )));
+        }
+    };
+
+    Ok(Expr::Modified {
+        inner: Box::new(inner),
+        op,
+    })
+}
+
+fn parse_modifier_number(pair: Pair<'_, Rule>) -> Result<f64, ParseError> {
+    let number = first_inner(pair, "step modifier factor")?;
+    parse_number_literal(&number)
+}
+
+fn parse_number_literal(pair: &Pair<'_, Rule>) -> Result<f64, ParseError> {
+    pair.as_str().parse::<f64>().map_err(|error| {
+        ParseError::new(format!(
+            "invalid number literal `{}`: {error}",
+            pair.as_str()
+        ))
+    })
 }
 
 fn build_call_suffix_args(pair: Pair<'_, Rule>, depth: usize) -> Result<Vec<Expr>, ParseError> {
@@ -549,10 +771,7 @@ fn build_group(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
     if depth > MAX_AST_DEPTH {
         return Err(ParseError::new("maximum AST depth exceeded"));
     }
-    let items = pair
-        .into_inner()
-        .map(|pair| build_sum_expr(pair, depth))
-        .collect::<Result<Vec<_>, _>>()?;
+    let (items, _) = build_step_expr_list(pair, depth)?;
     Ok(Expr::Group(items))
 }
 
@@ -560,11 +779,48 @@ fn build_alternation(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseEr
     if depth > MAX_AST_DEPTH {
         return Err(ParseError::new("maximum AST depth exceeded"));
     }
-    let items = pair
-        .into_inner()
-        .map(|pair| build_sum_expr(pair, depth))
-        .collect::<Result<Vec<_>, _>>()?;
+    let (items, _) = build_step_expr_list(pair, depth)?;
     Ok(Expr::Alternation(items))
+}
+
+fn build_polymeter(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("maximum AST depth exceeded"));
+    }
+    let (line, col) = pair.as_span().start_pos().line_col();
+    let mut groups = Vec::new();
+    let mut steps = None;
+
+    for inner_pair in pair.into_inner() {
+        match inner_pair.as_rule() {
+            Rule::polymeter_group => {
+                let (items, _) = build_step_expr_list(inner_pair, depth)?;
+                groups.push(items);
+            }
+            Rule::polymeter_steps => {
+                let count = parse_modifier_number(inner_pair)?;
+                let count = validate_step_factor(count, "%").map_err(|_| {
+                    ParseError::new(format!(
+                        "parse error at line {line}, col {col}: polymeter `%` step count must be an integer between 1 and 1024"
+                    ))
+                })?;
+                steps = Some(count);
+            }
+            other => {
+                return Err(ParseError::new(format!(
+                    "unexpected polymeter rule while building AST: {other:?}"
+                )));
+            }
+        }
+    }
+
+    if groups.is_empty() {
+        return Err(ParseError::new(format!(
+            "parse error at line {line}, col {col}: polymeter requires at least one subsequence"
+        )));
+    }
+
+    Ok(Expr::Polymeter { groups, steps })
 }
 
 fn build_graph(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {

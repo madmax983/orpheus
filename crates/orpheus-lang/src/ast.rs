@@ -98,6 +98,24 @@ pub enum Expr {
     Group(Vec<Self>),
     /// Per-cycle alternation created by `<a b c>`; plays one element per cycle.
     Alternation(Vec<Self>),
+    /// A sequence element with a tight postfix step operator, e.g. `bd*2`,
+    /// `bd/2`, or `bd?`. Replication (`bd!3`) is expanded into separate steps
+    /// by the parser, so `StepOp::Replicate` never survives in step position.
+    Modified {
+        /// The element the operator applies to.
+        inner: Box<Self>,
+        /// The postfix operator.
+        op: StepOp,
+    },
+    /// Polymeter created by `{a b, c d e}%n`; each subsequence wraps its own
+    /// steps while playing `steps` of them per cycle (the first subsequence's
+    /// length when no `%n` suffix is given).
+    Polymeter {
+        /// The comma-separated subsequences.
+        groups: Vec<Vec<Self>>,
+        /// Optional explicit steps-per-cycle override from `%n`.
+        steps: Option<i64>,
+    },
     /// A bare identifier.
     Ident(String),
     /// A rest marker.
@@ -148,6 +166,32 @@ pub enum BinaryOp {
     Assign,
 }
 
+/// Tight postfix mini-notation operators on sequence elements.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::StepOp;
+///
+/// let op = StepOp::Fast(2.0);
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum StepOp {
+    /// `a*n`: repeats the element `n` times within its own slot.
+    ///
+    /// The raw factor is kept as parsed; inside `graph { ... }` blocks the
+    /// parser rewrites it back into pedal-DSL multiplication, elsewhere it
+    /// must be an integer within `1..=1024`.
+    Fast(f64),
+    /// `a/n`: slows the element so it takes `n` cycles to complete.
+    Slow(i64),
+    /// `a!n`: replicates the element as `n` separate sequence steps.
+    Replicate(i64),
+    /// `a?` / `a?p`: randomly removes the element's events with drop
+    /// probability `p` (0.5 for bare `?`).
+    Degrade(f64),
+}
+
 impl Expr {
     fn references_ident(&self, target: &str) -> bool {
         self.references_ident_with_shadow(target, false)
@@ -186,6 +230,10 @@ impl Expr {
                     || pattern.references_ident_with_shadow(target, shadowed)
             }
             Self::Beat(value) => value.references_ident_with_shadow(target, shadowed),
+            Self::Modified { inner, .. } => inner.references_ident_with_shadow(target, shadowed),
+            Self::Polymeter { groups, .. } => groups
+                .iter()
+                .any(|group| Self::references_ident_in_list(group, target, shadowed)),
             Self::Section { pattern, cycles } => {
                 pattern.references_ident_with_shadow(target, shadowed)
                     || cycles.references_ident_with_shadow(target, shadowed)
