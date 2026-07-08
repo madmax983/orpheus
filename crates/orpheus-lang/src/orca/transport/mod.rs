@@ -17,9 +17,17 @@
 //!   scheduled `length` grid frames after the note-on, control change with
 //!   the reference's `+64` knob offset, and raw pitch-bend bytes, sent to a
 //!   [`MidiSink`] (a real `midir` port, or a recording mock in tests).
-//! - **`$` commands** stay uninterpreted: the dispatcher drops them,
-//!   matching the engine-side decision that command interpretation is a
-//!   host concern.
+//! - **`$` commands** (v7) are collected at their wall-clock deadlines and
+//!   handed back to the host ([`TransportHandle::poll_commands`]), which
+//!   interprets them with `orca::parse_command` — interpretation stays a
+//!   host concern, off the IO thread.
+//!
+//! v7 additions on the same worker: **MIDI clock out** (0xFA/0xF8/0xFC,
+//! six ticks per grid frame = 24 PPQN, `io/midi.js` `sendClock*`),
+//! host-configured via `:orca midi clock on|off` and off by default; and
+//! the **UDP command listener** ([`UdpCommandListener`], reference input
+//! port 49160), whose received datagrams feed the same command
+//! interpreter.
 //!
 //! # Threading
 //!
@@ -57,13 +65,22 @@ pub use midi::{
     MidiSink, MidirSink, RecordingMidiSink, cc_bytes, connect_midi_output, midi_output_names,
     note_off_bytes, note_on_bytes, pb_bytes, velocity_byte,
 };
-pub use net::{OscTransport, UdpTransport};
+pub use net::{OscTransport, UdpCommandListener, UdpTransport};
 pub use worker::{TransportCommand, TransportHandle};
 
 /// Default UDP target: the reference client's default *output* port
-/// (`udp.js` `selectOutput(port = 49161)`; `49160` is its input listener).
+/// (`udp.js` `selectOutput(port = 49161)`; `49160` is its input listener,
+/// see [`DEFAULT_UDP_LISTEN`]).
 pub const DEFAULT_UDP_TARGET: SocketAddr =
     SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 49161));
+
+/// Default UDP listener address: the reference client's input port
+/// (`udp.js` `selectInput(port = 49160)`), bound on loopback.
+///
+/// The reference binds all interfaces; `:orca listen <host:port>` opts
+/// into a wider bind explicitly.
+pub const DEFAULT_UDP_LISTEN: SocketAddr =
+    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 49160));
 
 /// Default OSC target (`osc.js` `options.default = 49162`).
 pub const DEFAULT_OSC_TARGET: SocketAddr =

@@ -761,14 +761,183 @@ unprompted.
 
 ### 12.6 Still future work after v6
 
-- **A `$` command interpreter** (section 9.5) — commands still emit
-  uninterpreted and the dispatcher drops them.
+- **A `$` command interpreter** (section 9.5). *(Implemented in v7 —
+  section 13.1.)*
 - **UDP/OSC/MIDI input** (the reference's UDP listener on 49160, MIDI
-  clock in) — Orpheus's own `:midi in` family covers MIDI note input, but
-  nothing routes inbound messages onto the grid.
+  clock in). *(UDP input implemented in v7 — section 13.3; MIDI clock in
+  deliberately skipped — section 13.4.)*
 - **MIDI clock out** (`io/midi.js` `sendClock`), tempo-synced to the
-  engine transport.
+  engine transport. *(Implemented in v7 — section 13.2.)*
 - **Per-event target overrides** (the reference has one global IP; so
   does Orpheus).
 - **`Pattern<T>` for the grid, persistence, language surface, proofs**
   (sections 6/7.3).
+
+---
+
+## 13. v7: command interpreter, MIDI clock out, UDP input
+
+**Status: implemented** (ADR 0011 for the interpreter's session-boundary
+crossing). v7 closes the Orca arc: the remaining reference behaviors with
+a sensible Orpheus mapping are in, and everything skipped is skipped
+deliberately and documented here. After this round the Orca surface is
+considered **complete**; the remaining items in section 13.5 are
+quality-of-life ideas, not gaps against the reference.
+
+### 13.1 The `$` command interpreter
+
+In the reference, `$` (and inbound UDP, section 13.3) inject raw strings
+into `commander.js` `trigger()`. v7 adds the host half:
+`orca::parse_command` (`orca/commands.rs`), a pure, transport-free parser
+transcribing the commander grammar exactly:
+
+- the name is everything before the first `:`, trimmed, `\W`-stripped,
+  lowercased; the value is the remainder of the message after
+  `name.len() + 1` characters (including the reference quirk that the
+  *cleaned* name's length indexes the raw string, so `b*pm:140` resolves
+  to `bpm` but reads a misaligned NaN value and no-ops);
+- every command answers to its first-two-letter shorthand, built in
+  insertion order — so `co` means `color` (which overwrote `copy`), `bp`
+  is `bpm`, `fr` is `frame`;
+- numeric values follow `parseInt` (optional sign, leading digits,
+  trailing junk ignored, no digits = NaN).
+
+**Timing.** Grid `$` events already flowed to the IO thread with
+wall-clock deadlines (section 12.2); the dispatcher now collects each
+command string when its deadline arrives and the TUI drains them on its
+tick (`TransportHandle::poll_commands`) into `apply_orca_command` — so a
+`$bpm` fires when its grid frame *plays*, not when it was materialized a
+cycle earlier. Interpretation runs on the TUI/session side, never the
+audio thread (and never the IO thread).
+
+Command support:
+
+| Command | Shorthand | Reference behavior | Orpheus mapping |
+|---|---|---|---|
+| `bpm:N` | `bp` | `clock.setSpeed(N, N, true)`, clamp 60-300 | **Supported.** Sets the *global* transport tempo via the session `:tempo` path (ADR 0011), clamped to the reference's 60-300 — which doubles as the safety clamp on glyph-typo tempos (the session itself accepts any finite positive BPM). `bpm:0` no-ops (falsy in `setSpeed`). |
+| `apm:N` | `ap` | eased tempo (target only, ±1 per frame) | **Supported, divergent easing:** applies immediately; Orpheus has no tempo easing. |
+| `frame:N` | `fr` | `setFrame(N)`, clamp 0-9999999, NaN no-op | **Supported.** Sets the grid engine frame counter; frame-phased operators (`C` `D` `U`) re-anchor. |
+| `rewind:N` | `re` | `setFrame(f - N)` | **Supported** (saturating at 0; negative N skips forward, as in the reference's unchecked arithmetic). |
+| `skip:N` | `sk` | `setFrame(f + N)` | **Supported.** |
+| `play` | `pl` | starts the global clock | **Supported, scoped:** starts the *grid* clock (`OrcaPublisher`), not the whole Orpheus transport — the grid is one source among many here. Sends MIDI clock start when clock out is enabled (section 13.2). |
+| `stop` | `st` | stops the global clock | **Supported**, same scoping; sends MIDI clock stop when enabled. |
+| `run` | `ru` | single-steps one frame | **Divergent:** meaningless under cycle-ahead materialization (frames are not host-steppable mid-cycle). |
+| `midi:x;y` `udp:x;y` `osc:p` `ip:a` `cc:n` `pg:...` | | select port indices / IP / CC offset / program change | **Divergent:** Orpheus configures transports by name/address through `:orca` (section 12.4); index-based device selection contradicts the exact-name convention. |
+| `copy` `paste` `erase` `find:q` `select:x;y` | | cursor operations | **Divergent:** reference UI concerns; the Orpheus grid pane has its own editing model. |
+| `write:g;x;y` `inject:name` | | write glyphs / cached `.orca` blocks into the grid | **Divergent:** grid editing belongs to the pane; no `.orca` block cache exists (persistence remains future work). |
+| `time` | `ti` | writes a wall-time block at the cursor | **Divergent** (grid write). |
+| `color:a;b;c` | `co` | retheme | **Divergent** (theming). |
+
+Recognized-but-divergent commands and unknown commands both **no-op with
+a status-line note** (the existing toast conventions; unknown commands
+render as errors, matching the reference's console warning). Supported
+commands echo their effect ("orca: tempo set to 140 BPM", "orca frame set
+to 12").
+
+**Grid-driven tempo is deliberate** (ADR 0011): a `$bpm` on the grid
+retunes the same global transport the `:tempo` command does, because in
+Orca that is the entire point of the command — grids that conduct
+themselves. It routes through `ReplSession::eval_line(":tempo N")`, so it
+participates in undo history like any other mutating command (undo
+reverts a grid-driven tempo change), and the 60-300 clamp bounds the
+blast radius of a stray glyph.
+
+### 13.2 MIDI clock out
+
+Transcribed from `io/midi.js` `sendClockStart`/`sendClock`/`sendClockStop`:
+
+- **Start**: one `0xFA`, then `0xF8` ticks; **stop**: one `0xFC`, ticks
+  cease. In the reference these bind to the clock's play/stop; here they
+  bind to the *grid* clock: starting the grid (or `$play`) starts the
+  clock, stopping it (or `$stop`, or quitting — the worker's shutdown
+  flush also emits `0xFC`) stops it.
+- **Rate**: six ticks per grid frame — one frame is a 16th note, so
+  6 × 4 = 24 PPQN, exactly the reference's `frameFrag = frameTime / 6`.
+- **Timing/drift**: the reference re-arms six `setTimeout`s per frame
+  from its UI timer and drifts with it. Orpheus instead self-reschedules
+  each tick on the dispatcher's action heap anchored at the *previous
+  tick's deadline* (`due + period`, never `Instant::now()`), so late
+  wakeups do not accumulate. Rounding: the tick period is
+  `frame_duration / 6` in integer nanoseconds; the sub-nanosecond
+  truncation (< 6 ns/s) is far below MIDI clock jitter tolerances and is
+  re-anchored implicitly whenever the period is refreshed. Tempo changes
+  retune the period from the next tick: on every scheduled cycle
+  (`route_orca_io`) and immediately on a `$bpm`.
+- **Config**: `:orca midi clock on|off`, **default off** — a deliberate
+  divergence: the reference sends clock whenever its transport starts
+  with the message flag (and stops it whenever `isClock` is set); Orpheus
+  never emits clock unasked, consistent with v6's decision not to
+  auto-connect MIDI devices. A second divergence: the reference refuses
+  to arm the clock without an output device; Orpheus tracks the enable
+  flag regardless and the bytes drop silently until a port is connected
+  (the same policy as note events).
+- Everything runs on the existing `orca-io` thread through the `MidiSink`
+  trait, so the whole byte protocol is tested against
+  `RecordingMidiSink` with a synchronous dispatcher — no hardware, no
+  sleeps.
+
+### 13.3 UDP command input
+
+`udp.js` `selectInput` (default port **49160**) pipes every received
+datagram, stringified, straight into `commander.trigger` — UDP input *is*
+the command language. That is exactly what v7 implements
+(`UdpCommandListener` in `transport/net.rs`):
+
+- `:orca listen` (or `:orca listen on`) binds `127.0.0.1:49160`;
+  `:orca listen <host:port | port>` binds elsewhere; `:orca listen off`
+  stops. **Default off** (the reference listens on startup — divergence,
+  same never-unasked policy as above). Bind failures surface on the
+  status line and never panic.
+- The listener owns its own `orca-udp-in` thread (blocking receive with a
+  periodic shutdown check; drop joins it). Received datagrams are decoded
+  lossily as UTF-8, trailing whitespace trimmed, and drained by the TUI
+  tick into the same `apply_orca_command` path as `$` — applied
+  immediately on receipt, like the reference.
+- Two deliberate divergences: the default bind is loopback rather than
+  all interfaces (an unauthenticated remote-control port should be opted
+  into explicitly via `:orca listen <host:port>`), and datagrams are
+  interpreted only as commands — the reference does the same (there is no
+  "write into the grid" UDP path in main-branch orca-js).
+
+### 13.4 Skipped: MIDI input
+
+The reference's MIDI input (`io/midi.js` `receive()`) handles exactly
+four real-time bytes: `0xF8` tap (external-clock puppeteering), `0xFA`
+start, `0xFB` continue, `0xFC` stop. There is no note or key input to the
+grid. Skipped deliberately because:
+
+1. **Clock-in is a frame-timer takeover.** `clock.tap()` replaces the
+   reference's UI frame timer (six taps = one frame, `untap` after 2 s of
+   silence). Orpheus grid frames do not come from a host timer at all —
+   they derive from the audio engine transport via cycle-ahead
+   materialization (ADR 0009) — so "puppeteering" would mean slaving the
+   *audio engine* clock to external MIDI, an engine-core feature (clock
+   sync) far beyond the Orca surface, and one that would break the
+   one-cycle-ahead scheduling contract.
+2. **Device plumbing duplication.** It would duplicate the session's
+   existing `:midi in` port management for four bytes of behavior.
+3. Start/stop handling alone (without tap) would make the grid clock
+   respond to `0xFA`/`0xFC` while frames still tick at the engine tempo —
+   observably *unlike* the reference, which is worse than absent.
+
+If engine-level MIDI clock sync ever lands, the grid inherits it for free
+through the transport snapshot, which is the right layering.
+
+### 13.5 Config surface after v7
+
+```text
+:orca                              # targets + MIDI port + clock + listener
+:orca udp <host:port | port>       # default 127.0.0.1:49161
+:orca osc <host:port | port>       # default 127.0.0.1:49162
+:orca midi list
+:orca midi connect <port>
+:orca midi disconnect
+:orca midi clock on|off            # default off
+:orca listen [on | off | <host:port | port>]   # default off; on = 127.0.0.1:49160
+```
+
+The Orca surface is complete as scoped. Remaining ideas, none of them
+reference gaps: per-event target overrides, `.orca` persistence,
+`Pattern<T>` for the grid, a grid language surface, lock-set proofs
+(sections 6/7.3), and recording grid performances in offline export
+(section 11.3).

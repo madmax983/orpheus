@@ -8,9 +8,11 @@
 //! v2) the full `A`-`Z` pure-operator set with a deterministic, replayable
 //! `R` (randomness hashed from frame and position), (as of v3) the IO
 //! operator family (`:` `%` `!` `?` `;` `=` `$`) emitting typed
-//! [`OrcaIoEvent`] payloads with no transport attached yet, and (as of v4)
+//! [`OrcaIoEvent`] payloads with no transport attached yet, (as of v4)
 //! the `#` comment operator plus an audio bridge that maps note velocity to
-//! gain and note length to event duration.
+//! gain and note length to event duration, and (as of v7) a host-side `$`
+//! command interpreter ([`parse_command`]) transcribing the reference
+//! `commander.js` grammar.
 //!
 //! The key seam to the rest of Orpheus is [`frame_span`], which maps grid
 //! frame `N` of `F` frames-per-cycle onto the exact rational
@@ -27,11 +29,13 @@
 //! The grid engine ([`Grid`], [`OrcaEngine`]) stays TUI-free; the TUI pane
 //! hosting this surface lives in the `tui` module.
 
+mod commands;
 mod engine;
 mod grid;
 mod publish;
 pub mod transport;
 
+pub use commands::{CommandOutcome, MAX_GRID_FRAME, OrcaCommand, adjusted_frame, parse_command};
 pub use engine::{MidiNote, OrcaEngine, OrcaEvent, OrcaIoEvent, frame_span};
 pub use grid::{BANG, COMMENT, EMPTY, Grid, GridError, is_valid_glyph};
 pub use publish::{

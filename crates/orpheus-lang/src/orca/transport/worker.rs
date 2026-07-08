@@ -36,6 +36,14 @@ pub enum TransportCommand {
     SetUdpTarget(SocketAddr),
     /// Re-aim the OSC transport.
     SetOscTarget(SocketAddr),
+    /// Start MIDI clock out (0xFA, then 0xF8 ticks at one sixth of the
+    /// grid frame duration).
+    ClockStart(Duration),
+    /// Stop MIDI clock out (0xFC).
+    ClockStop,
+    /// Retune the running clock's tick period to a new grid frame
+    /// duration.
+    SetClockFrameDuration(Duration),
 }
 
 impl std::fmt::Debug for TransportCommand {
@@ -55,6 +63,12 @@ impl std::fmt::Debug for TransportCommand {
             Self::SetOscTarget(target) => {
                 formatter.debug_tuple("SetOscTarget").field(target).finish()
             }
+            Self::ClockStart(frame) => formatter.debug_tuple("ClockStart").field(frame).finish(),
+            Self::ClockStop => formatter.debug_tuple("ClockStop").finish(),
+            Self::SetClockFrameDuration(frame) => formatter
+                .debug_tuple("SetClockFrameDuration")
+                .field(frame)
+                .finish(),
         }
     }
 }
@@ -66,9 +80,17 @@ impl std::fmt::Debug for TransportCommand {
 pub struct TransportHandle {
     commands: Option<Sender<TransportCommand>>,
     status: Receiver<String>,
+    /// `$` command strings fired at their deadlines on the worker, awaiting
+    /// the host's interpreter.
+    fired_commands: Receiver<String>,
     worker: Option<JoinHandle<()>>,
     config: TransportConfig,
     midi_port: Option<String>,
+    /// Host-side MIDI clock config: when enabled, the host starts/stops
+    /// the dispatcher clock with the grid clock and refreshes its period
+    /// on tempo changes. Off by default (the reference enables clock with
+    /// its transport start message; Orpheus never emits clock unasked).
+    clock_enabled: bool,
 }
 
 impl TransportHandle {
@@ -88,17 +110,27 @@ impl TransportHandle {
     pub fn spawn_with_config(config: TransportConfig) -> Self {
         let (command_sender, command_receiver) = channel();
         let (status_sender, status_receiver) = channel();
+        let (fired_sender, fired_receiver) = channel();
         let worker_config = config;
         let worker = std::thread::Builder::new()
             .name("orca-io".to_owned())
-            .spawn(move || run_worker(&command_receiver, &status_sender, worker_config))
+            .spawn(move || {
+                run_worker(
+                    &command_receiver,
+                    &status_sender,
+                    &fired_sender,
+                    worker_config,
+                );
+            })
             .expect("spawn orca-io thread");
         Self {
             commands: Some(command_sender),
             status: status_receiver,
+            fired_commands: fired_receiver,
             worker: Some(worker),
             config,
             midi_port: None,
+            clock_enabled: false,
         }
     }
 
@@ -176,6 +208,42 @@ impl TransportHandle {
         self.status.try_iter().collect()
     }
 
+    /// Drains the `$` command strings that reached their wall-clock
+    /// deadlines since the last poll, for the host's command interpreter.
+    #[must_use]
+    pub fn poll_commands(&self) -> Vec<String> {
+        self.fired_commands.try_iter().collect()
+    }
+
+    /// Whether MIDI clock out is configured on (`:orca midi clock on`).
+    #[must_use]
+    pub const fn clock_enabled(&self) -> bool {
+        self.clock_enabled
+    }
+
+    /// Sets the host-side MIDI clock config flag; the host pairs this with
+    /// [`Self::start_clock`]/[`Self::stop_clock`] around the grid clock.
+    pub const fn set_clock_enabled(&mut self, enabled: bool) {
+        self.clock_enabled = enabled;
+    }
+
+    /// Starts MIDI clock out on the worker: 0xFA, then 0xF8 ticks at one
+    /// sixth of `frame_duration`.
+    pub fn start_clock(&self, frame_duration: Duration) {
+        self.send(TransportCommand::ClockStart(frame_duration));
+    }
+
+    /// Stops MIDI clock out on the worker (0xFC).
+    pub fn stop_clock(&self) {
+        self.send(TransportCommand::ClockStop);
+    }
+
+    /// Retunes the running clock's tick period to a new grid frame
+    /// duration (tempo follow); a stopped clock is unaffected.
+    pub fn set_clock_frame_duration(&self, frame_duration: Duration) {
+        self.send(TransportCommand::SetClockFrameDuration(frame_duration));
+    }
+
     fn send(&self, command: TransportCommand) {
         if let Some(sender) = &self.commands {
             // A send failure means the worker exited (process shutdown);
@@ -200,6 +268,7 @@ impl Drop for TransportHandle {
 fn run_worker(
     commands: &Receiver<TransportCommand>,
     status: &Sender<String>,
+    fired_commands: &Sender<String>,
     config: TransportConfig,
 ) {
     let mut dispatcher = TransportDispatcher::new(&config);
@@ -208,30 +277,56 @@ fn run_worker(
             due.saturating_duration_since(Instant::now())
         });
         match commands.recv_timeout(timeout) {
-            Ok(command) => apply(&mut dispatcher, command),
+            Ok(command) => {
+                for error in apply(&mut dispatcher, command) {
+                    let _ = status.send(error);
+                }
+            }
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => break,
         }
         for error in dispatcher.run_due(Instant::now()) {
             let _ = status.send(error);
         }
+        for command in dispatcher.take_commands() {
+            let _ = fired_commands.send(command);
+        }
     }
-    // Shutdown hygiene: release sounding notes so devices are not left
-    // hanging. The status channel is usually gone by now; ignore failures.
+    // Shutdown hygiene: release sounding notes (and stop a running clock)
+    // so devices are not left hanging. The status channel is usually gone
+    // by now; ignore failures.
     for error in dispatcher.flush_note_offs() {
         let _ = status.send(error);
     }
 }
 
-fn apply(dispatcher: &mut TransportDispatcher, command: TransportCommand) {
+fn apply(dispatcher: &mut TransportDispatcher, command: TransportCommand) -> Vec<String> {
     match command {
         TransportCommand::Schedule(events) => {
             for event in events {
                 dispatcher.schedule(event);
             }
+            Vec::new()
         }
-        TransportCommand::SetMidi(sink) => dispatcher.set_midi(sink),
-        TransportCommand::SetUdpTarget(target) => dispatcher.set_udp_target(target),
-        TransportCommand::SetOscTarget(target) => dispatcher.set_osc_target(target),
+        TransportCommand::SetMidi(sink) => {
+            dispatcher.set_midi(sink);
+            Vec::new()
+        }
+        TransportCommand::SetUdpTarget(target) => {
+            dispatcher.set_udp_target(target);
+            Vec::new()
+        }
+        TransportCommand::SetOscTarget(target) => {
+            dispatcher.set_osc_target(target);
+            Vec::new()
+        }
+        TransportCommand::ClockStart(frame_duration) => {
+            dispatcher.clock_start(Instant::now(), frame_duration)
+        }
+        TransportCommand::ClockStop => dispatcher.clock_stop(),
+        TransportCommand::SetClockFrameDuration(frame_duration) => {
+            dispatcher.set_clock_frame_duration(frame_duration);
+            Vec::new()
+        }
     }
 }
