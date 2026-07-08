@@ -90,6 +90,7 @@ fn lookup_pattern_transform(name: &str) -> Option<Value> {
         }
         "every" => Some(builtin_function_value(BuiltinKind::Every)),
         "when" => Some(builtin_function_value(BuiltinKind::When)),
+        "whenmod" => Some(builtin_function_value(BuiltinKind::WhenMod)),
         "sometimes" => Some(builtin_function_value(BuiltinKind::Sometimes)),
         "degrade" => Some(builtin_function_value(BuiltinKind::Degrade)),
         "degrade_by" => Some(builtin_function_value(BuiltinKind::DegradeBy)),
@@ -110,6 +111,10 @@ fn lookup_pattern_transform(name: &str) -> Option<Value> {
         "drop" => Some(builtin_function_value(BuiltinKind::Drop)),
         "chord" => Some(builtin_function_value(BuiltinKind::Chord)),
         "euclid" => Some(builtin_function_value(BuiltinKind::Euclid)),
+        "euclid_inv" => Some(builtin_function_value(BuiltinKind::EuclidInv)),
+        "euclid_full" => Some(builtin_function_value(BuiltinKind::EuclidFull)),
+        "run" => Some(builtin_function_value(BuiltinKind::Run)),
+        "scan" => Some(builtin_function_value(BuiltinKind::Scan)),
         "lsystem" => Some(builtin_function_value(BuiltinKind::Lsystem)),
         "wolfram" => Some(builtin_function_value(BuiltinKind::Wolfram)),
         "pitch_class_set" => Some(builtin_function_value(BuiltinKind::PitchClassSet)),
@@ -372,6 +377,7 @@ impl BuiltinKind {
         match self {
             Self::Every => "every",
             Self::When => "when",
+            Self::WhenMod => "whenmod",
             Self::Sometimes => "sometimes",
             Self::Degrade => "degrade",
             Self::DegradeBy => "degrade_by",
@@ -389,6 +395,8 @@ impl BuiltinKind {
             Self::Drop => "drop",
             Self::Chord => "chord",
             Self::Euclid => "euclid",
+            Self::EuclidInv => "euclid_inv",
+            Self::EuclidFull => "euclid_full",
             Self::Lsystem => "lsystem",
             Self::Wolfram => "wolfram",
             Self::PitchClassSet => "pitch_class_set",
@@ -430,6 +438,8 @@ impl BuiltinKind {
             Self::Choose => "choose",
             Self::WChoose => "wchoose",
             Self::IRand => "irand",
+            Self::Run => "run",
+            Self::Scan => "scan",
             Self::RandCat => "randcat",
             Self::WRandCat => "wrandcat",
             Self::Off => "off",
@@ -466,7 +476,14 @@ impl BuiltinKind {
     const fn is_variadic(self) -> bool {
         matches!(
             self,
-            Self::Cat | Self::Choose | Self::WChoose | Self::RandCat | Self::WRandCat
+            Self::Cat
+                | Self::Choose
+                | Self::WChoose
+                | Self::RandCat
+                | Self::WRandCat
+                | Self::Euclid
+                | Self::EuclidInv
+                | Self::EuclidFull
         )
     }
 
@@ -482,7 +499,12 @@ impl BuiltinKind {
             | Self::Chunk
             | Self::ChunkBack
             | Self::SometimesBy => 3,
-            Self::When | Self::Within | Self::WChoose | Self::WRandCat => 4,
+            Self::When
+            | Self::WhenMod
+            | Self::Within
+            | Self::WChoose
+            | Self::WRandCat
+            | Self::EuclidFull => 4,
             Self::PitchClassSet
             | Self::Rev
             | Self::Sample
@@ -497,6 +519,8 @@ impl BuiltinKind {
             | Self::Hex
             | Self::Bin
             | Self::IRand
+            | Self::Run
+            | Self::Scan
             | Self::Degrade => 1,
             Self::Sometimes
             | Self::DegradeBy
@@ -510,6 +534,7 @@ impl BuiltinKind {
             | Self::Drop
             | Self::Chord
             | Self::Euclid
+            | Self::EuclidInv
             | Self::Wolfram
             | Self::Degrees
             | Self::Fast
@@ -575,10 +600,12 @@ impl BuiltinKind {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn execute(self, function: &BuiltinFn, args: Vec<Value>) -> Result<Value, EvalError> {
         match self {
             Self::Every => apply_every(args),
             Self::When => apply_when(args),
+            Self::WhenMod => apply_whenmod(args),
             Self::Sometimes => apply_sometimes(args, function.site_salt.unwrap_or_default()),
             Self::Degrade => apply_degrade(args, function.site_salt.unwrap_or_default()),
             Self::DegradeBy => apply_degrade_by(args, function.site_salt.unwrap_or_default()),
@@ -601,7 +628,11 @@ impl BuiltinKind {
             Self::Invert => apply_invert(args),
             Self::Drop => apply_drop(args),
             Self::Chord => apply_chord(args),
-            Self::Euclid => apply_euclid(args),
+            Self::Euclid => apply_euclid(args, false, "euclid"),
+            Self::EuclidInv => apply_euclid(args, true, "euclid_inv"),
+            Self::EuclidFull => apply_euclid_full(args),
+            Self::Run => apply_run(args),
+            Self::Scan => apply_scan(args),
             Self::Lsystem => apply_lsystem(args),
             Self::Wolfram => apply_wolfram(args),
             Self::PitchClassSet => apply_pitch_class_set(args),
@@ -1076,30 +1107,229 @@ fn apply_mask(args: Vec<Value>) -> Result<Value, EvalError> {
     )
 }
 
-fn apply_euclid(args: Vec<Value>) -> Result<Value, EvalError> {
+/// Implements `euclid(pulses, steps[, rotation])` and its inversion
+/// `euclid_inv(pulses, steps[, rotation])` (Tidal `euclidInv`).
+///
+/// Both return a gate `NumberPattern` for use with `mask`: `euclid` opens the
+/// Bjorklund onsets, `euclid_inv` opens exactly the complementary steps. The
+/// optional rotation shifts the step grid left by that many steps (Tidal's
+/// `bd(3, 8, 2)` offset), so step `i` plays original step `i + rotation`.
+fn apply_euclid(args: Vec<Value>, invert: bool, name: &str) -> Result<Value, EvalError> {
+    if args.len() > 3 {
+        return Err(EvalError::new(format!(
+            "`{name}` accepts at most 3 arguments (pulses, steps, rotation), got {}",
+            args.len()
+        )));
+    }
+
     let mut args = args.into_iter();
     let pulses = extract_whole_number(
         args.next()
-            .ok_or_else(|| EvalError::new("`euclid` requires a pulses argument"))?,
-        "`euclid` pulses",
+            .ok_or_else(|| EvalError::new(format!("`{name}` requires a pulses argument")))?,
+        &format!("`{name}` pulses"),
         false,
     )?;
     let steps = extract_whole_number(
         args.next()
-            .ok_or_else(|| EvalError::new("`euclid` requires a steps argument"))?,
-        "`euclid` steps",
+            .ok_or_else(|| EvalError::new(format!("`{name}` requires a steps argument")))?,
+        &format!("`{name}` steps"),
+        true,
+    )?;
+
+    if pulses > steps {
+        return Err(EvalError::new(format!(
+            "`{name}` requires pulses less than or equal to steps",
+        )));
+    }
+
+    let rotation = args
+        .next()
+        .map(|value| extract_euclid_rotation(value, name))
+        .transpose()?
+        .unwrap_or(0);
+
+    Ok(Value::NumberPattern(NumberPatternValue::from_nodes(
+        build_euclid_nodes(pulses, steps, rotation, invert),
+    )))
+}
+
+/// Implements `euclid_full(pulses, steps[, rotation], hits, rests)` (Tidal
+/// `euclidFull`): plays the `hits` pattern on the euclidean gates and the
+/// `rests` pattern on the complementary steps.
+///
+/// Tidal's `euclidFull` `struct`s two patterns against the boolean rhythm;
+/// Orpheus's euclidean ecosystem is gate-based, so this stacks
+/// `mask(euclid(...), hits)` with `mask(euclid_inv(...), rests)`. Both
+/// patterns must therefore be of the same kind (both samples or both
+/// numbers).
+fn apply_euclid_full(args: Vec<Value>) -> Result<Value, EvalError> {
+    if args.len() > 5 {
+        return Err(EvalError::new(format!(
+            "`euclid_full` accepts at most 5 arguments (pulses, steps, rotation, hits, rests), got {}",
+            args.len()
+        )));
+    }
+
+    let has_rotation = args.len() == 5;
+    let mut args = args.into_iter();
+    let pulses = extract_whole_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`euclid_full` requires a pulses argument"))?,
+        "`euclid_full` pulses",
+        false,
+    )?;
+    let steps = extract_whole_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`euclid_full` requires a steps argument"))?,
+        "`euclid_full` steps",
         true,
     )?;
 
     if pulses > steps {
         return Err(EvalError::new(
-            "`euclid` requires pulses less than or equal to steps",
+            "`euclid_full` requires pulses less than or equal to steps",
         ));
     }
 
-    Ok(Value::NumberPattern(NumberPatternValue::from_nodes(
-        build_euclid_nodes(pulses, steps),
-    )))
+    let rotation = if has_rotation {
+        let value = args
+            .next()
+            .ok_or_else(|| EvalError::new("`euclid_full` requires a rotation argument"))?;
+        extract_euclid_rotation(value, "euclid_full")?
+    } else {
+        0
+    };
+    let hits = args
+        .next()
+        .ok_or_else(|| EvalError::new("`euclid_full` requires a hits pattern argument"))?;
+    let rests = args
+        .next()
+        .ok_or_else(|| EvalError::new("`euclid_full` requires a rests pattern argument"))?;
+
+    let gate = GatePatternValue::Number(NumberPatternValue::from_nodes(build_euclid_nodes(
+        pulses, steps, rotation, false,
+    )));
+    let inverse = GatePatternValue::Number(NumberPatternValue::from_nodes(build_euclid_nodes(
+        pulses, steps, rotation, true,
+    )));
+
+    match (hits, rests) {
+        (Value::SamplePattern(hits), Value::SamplePattern(rests)) => {
+            Ok(Value::SamplePattern(SamplePatternValue::stack(vec![
+                hits.mask(gate),
+                rests.mask(inverse),
+            ])))
+        }
+        (Value::NumberPattern(hits), Value::NumberPattern(rests)) => {
+            Ok(Value::NumberPattern(NumberPatternValue::stack(vec![
+                hits.mask(gate),
+                rests.mask(inverse),
+            ])))
+        }
+        _ => Err(EvalError::new(
+            "`euclid_full` requires hit and rest patterns of the same kind \
+             (both sample patterns or both number patterns)",
+        )),
+    }
+}
+
+fn extract_euclid_rotation(value: Value, name: &str) -> Result<i64, EvalError> {
+    let number = extract_constant_number(value, name)?;
+    if !number.is_finite() || number.fract().abs() > f64::EPSILON {
+        return Err(EvalError::new(format!(
+            "`{name}` requires a whole number rotation"
+        )));
+    }
+    if number.abs() > 1024.0 {
+        return Err(EvalError::new(format!(
+            "`{name}` rotation exceeded the maximum allowed bound of 1024"
+        )));
+    }
+    #[allow(clippy::cast_possible_truncation)]
+    Ok(number.round() as i64)
+}
+
+/// Implements `run(n)` (Tidal `run`): a counting pattern of `n` equal steps
+/// per cycle valued `0..n-1` in order.
+fn apply_run(args: Vec<Value>) -> Result<Value, EvalError> {
+    let steps = extract_whole_number(
+        args.into_iter()
+            .next()
+            .ok_or_else(|| EvalError::new("`run` requires a step-count argument"))?,
+        "`run` step count",
+        true,
+    )?;
+
+    let nodes = (0..steps)
+        .map(|step| orpheus_pattern::PatternNode::atom(f64::from(step)))
+        .collect();
+    Ok(Value::NumberPattern(NumberPatternValue::from_nodes(nodes)))
+}
+
+/// Implements `scan(n)` (Tidal `scan`): cycle `k` plays `run(min(k + 1, n))`,
+/// growing the counting prefix one step per cycle and clamping at the full
+/// ramp.
+fn apply_scan(args: Vec<Value>) -> Result<Value, EvalError> {
+    let steps = extract_whole_number(
+        args.into_iter()
+            .next()
+            .ok_or_else(|| EvalError::new("`scan` requires a step-count argument"))?,
+        "`scan` step count",
+        true,
+    )?;
+
+    Ok(Value::NumberPattern(NumberPatternValue::scan(i64::from(
+        steps,
+    ))))
+}
+
+/// Implements `whenmod(period, threshold, transform, pattern)` (Tidal
+/// `whenmod`): applies the transform on every cycle where
+/// `cycle mod period >= threshold`.
+fn apply_whenmod(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let period = extract_positive_integer_factor(
+        args.next()
+            .ok_or_else(|| EvalError::new("`whenmod` requires a cycle period argument"))?,
+        "whenmod",
+    )?;
+    let threshold = i64::from(extract_whole_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`whenmod` requires a cycle threshold argument"))?,
+        "`whenmod` threshold",
+        false,
+    )?);
+    if threshold >= period {
+        return Err(EvalError::new(
+            "`whenmod` requires threshold less than the period",
+        ));
+    }
+
+    let transform = args
+        .next()
+        .ok_or_else(|| EvalError::new("`whenmod` requires a transform argument"))?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new("`whenmod` requires a pattern argument"))?;
+
+    apply_pattern_transform(
+        pattern,
+        |p| {
+            Ok(Value::SamplePattern(p.whenmod(
+                period,
+                threshold,
+                extract_unary_pattern_transform(transform.clone(), "whenmod", "third")?,
+            )))
+        },
+        |p| {
+            Ok(Value::NumberPattern(p.whenmod(
+                period,
+                threshold,
+                extract_unary_pattern_transform(transform.clone(), "whenmod", "third")?,
+            )))
+        },
+        "whenmod",
+    )
 }
 
 fn apply_chord(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -2538,15 +2768,28 @@ fn extract_pattern_gate(
     }
 }
 
-fn build_euclid_nodes(pulses: u32, steps: u32) -> Vec<orpheus_pattern::PatternNode<f64>> {
-    let pattern = build_euclid_pattern(pulses, steps);
+fn build_euclid_nodes(
+    pulses: u32,
+    steps: u32,
+    rotation: i64,
+    invert: bool,
+) -> Vec<orpheus_pattern::PatternNode<f64>> {
+    let mut pattern = build_euclid_pattern(pulses, steps);
+    if let Ok(len) = i64::try_from(pattern.len())
+        && len > 0
+    {
+        // Rotate left: step `i` plays original step `i + rotation` (mod steps),
+        // matching Tidal's `rotL (rotation % steps)` euclid offset.
+        let shift = usize::try_from(rotation.rem_euclid(len)).unwrap_or_default();
+        pattern.rotate_left(shift);
+    }
     pattern
         .into_iter()
         .map(|open| {
-            if open {
-                orpheus_pattern::PatternNode::atom(1.0)
-            } else {
+            if open == invert {
                 orpheus_pattern::PatternNode::rest()
+            } else {
+                orpheus_pattern::PatternNode::atom(1.0)
             }
         })
         .collect()

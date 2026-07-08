@@ -10,7 +10,9 @@ File paths point the next contributor at the relevant implementation sites.
   - [~] integer factors only; Tidal allows rational and patterned factors
 - [x] `rev` — `PatternRuntime::Rev`
 - [x] `every` — cycle-localized transforms (`query_transform_cycles`, value.rs)
-- [x] `when` — ≈ Tidal `whenmod` (period + offset)
+- [x] `when` — cycle-offset transform (period + offset); real Tidal
+  `whenmod(a, b, f, pattern)` also exists and applies `f` on cycles where
+  `cycle mod a >= b` (`PatternRuntime::WhenMod`, value.rs)
 - [x] `within` — windowed transform
 - [x] `jux` — `crates/orpheus-lang/src/builtins.rs` (`apply_jux`)
 - [~] `sometimes` — cycle-granularity only; Tidal applies per-event
@@ -40,7 +42,11 @@ File paths point the next contributor at the relevant implementation sites.
 - [x] `sometimes_by` / `often` / `rarely` / `almost_always` / `almost_never` —
   per-event probabilistic transforms with exact-complement selection
   (`apply_sometimes_by_probability`, builtins.rs)
-- [ ] `euclid` rotation / `euclidInv` / `euclidFull`
+- [x] `euclid` rotation / `euclidInv` / `euclidFull` — optional third rotation
+  argument on `euclid(pulses, steps, rotation)`; `euclid_inv` opens exactly
+  the complementary steps; `euclid_full(pulses, steps[, rotation], hits,
+  rests)` stacks the hits pattern masked by the gates with the rests pattern
+  masked by the inverse (`apply_euclid`/`apply_euclid_full`, builtins.rs)
 - [x] `chunk` / `rot` — `PatternRuntime::Chunk`/`Rot` (value.rs),
   `apply_chunk`/`apply_rot` (builtins.rs); `chunk_back` sweeps the parts in
   reverse, `rot` rotates event values while onsets stay put
@@ -48,7 +54,9 @@ File paths point the next contributor at the relevant implementation sites.
   `PatternRuntime::Segment`/`Range` (value.rs), `apply_segment`/`apply_range`
   (builtins.rs); bare `rand` is auto-invoked in pattern position so
   `rand |> segment(8) |> range(200, 2000) |> cutoff` works end-to-end
-- [ ] `run` / `scan` — integer ramp patterns
+- [x] `run` / `scan` — integer ramp patterns; `run(n)` counts `0..n-1` once
+  per cycle (`apply_run`, builtins.rs), `scan(n)` grows the prefix one step
+  per cycle and clamps at the full ramp (`PatternRuntime::Scan`, value.rs)
 - [x] `irand` — integer random source; `PatternRuntime::IRand` (value.rs)
 - [x] `choose` / `wchoose` — spec:
   `docs/design/specs/probabilistic_pattern_sequencing_spec.md`; constant

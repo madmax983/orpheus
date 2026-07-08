@@ -39,6 +39,8 @@ use crate::{
 pub enum BuiltinKind {
     Every,
     When,
+    /// Applies a transform on cycles where `cycle mod period >= threshold` (Tidal `whenmod`).
+    WhenMod,
     Sometimes,
     /// Randomly drops each event with probability 0.5, per event, deterministically.
     Degrade,
@@ -63,6 +65,10 @@ pub enum BuiltinKind {
     Drop,
     Chord,
     Euclid,
+    /// Inverted euclidean gates: open exactly where `euclid` rests (Tidal `euclidInv`).
+    EuclidInv,
+    /// Two-pattern euclidean split: hits on the gates, rests on the complement (Tidal `euclidFull`).
+    EuclidFull,
     Lsystem,
     Wolfram,
     PitchClassSet,
@@ -126,6 +132,10 @@ pub enum BuiltinKind {
     WChoose,
     /// Continuous pattern of whole numbers in `[0, n)` (Tidal `irand`).
     IRand,
+    /// Discrete counting ramp `0..n-1`, one pass per cycle (Tidal `run`).
+    Run,
+    /// Growing-prefix counting ramp: cycle `k` plays `run(min(k + 1, n))` (Tidal `scan`).
+    Scan,
     /// Plays one randomly chosen child pattern per cycle (Tidal `randcat`).
     RandCat,
     /// Weighted `randcat` taking interleaved `pattern, weight` pairs (Tidal `wrandcat`).
@@ -186,6 +196,7 @@ impl fmt::Display for BuiltinKind {
         let name = match self {
             Self::Every => "every",
             Self::When => "when",
+            Self::WhenMod => "whenmod",
             Self::Sometimes => "sometimes",
             Self::Degrade => "degrade",
             Self::DegradeBy => "degrade_by",
@@ -203,6 +214,8 @@ impl fmt::Display for BuiltinKind {
             Self::Drop => "drop",
             Self::Chord => "chord",
             Self::Euclid => "euclid",
+            Self::EuclidInv => "euclid_inv",
+            Self::EuclidFull => "euclid_full",
             Self::Lsystem => "lsystem",
             Self::Wolfram => "wolfram",
             Self::PitchClassSet => "pitch_class_set",
@@ -244,6 +257,8 @@ impl fmt::Display for BuiltinKind {
             Self::Choose => "choose",
             Self::WChoose => "wchoose",
             Self::IRand => "irand",
+            Self::Run => "run",
+            Self::Scan => "scan",
             Self::RandCat => "randcat",
             Self::WRandCat => "wrandcat",
             Self::Off => "off",
@@ -1979,6 +1994,17 @@ impl SamplePatternValue {
         }
     }
 
+    pub(crate) fn whenmod(self, period: i64, threshold: i64, transform: FunctionValue) -> Self {
+        Self {
+            pattern: PatternRuntime::WhenMod {
+                period,
+                threshold,
+                transform,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn sometimes_with_site_salt(self, transform: FunctionValue, site_salt: u64) -> Self {
         Self {
             pattern: PatternRuntime::Sometimes {
@@ -2712,6 +2738,17 @@ impl NumberPatternValue {
         }
     }
 
+    pub(crate) fn whenmod(self, period: i64, threshold: i64, transform: FunctionValue) -> Self {
+        Self {
+            pattern: PatternRuntime::WhenMod {
+                period,
+                threshold,
+                transform,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn sometimes_with_site_salt(self, transform: FunctionValue, site_salt: u64) -> Self {
         Self {
             pattern: PatternRuntime::Sometimes {
@@ -3014,6 +3051,12 @@ impl NumberPatternValue {
             pattern: PatternRuntime::IRand { n, site_salt },
         }
     }
+
+    pub(crate) const fn scan(n: i64) -> Self {
+        Self {
+            pattern: PatternRuntime::Scan { n },
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -3083,6 +3126,14 @@ enum PatternRuntime<T> {
     When {
         period: i64,
         offset: i64,
+        transform: FunctionValue,
+        inner: Box<Self>,
+    },
+    /// Applies the transform on cycles where `cycle mod period >= threshold`
+    /// (Tidal `whenmod`).
+    WhenMod {
+        period: i64,
+        threshold: i64,
         transform: FunctionValue,
         inner: Box<Self>,
     },
@@ -3407,6 +3458,13 @@ enum PatternRuntime<T> {
         n: i64,
         site_salt: u64,
     },
+    /// Growing-prefix counting ramp (Tidal `scan`): cycle `k` subdivides into
+    /// `p = min(k + 1, n)` equal steps valued `0..p-1`, clamping at the full
+    /// `run(n)` ramp once the prefix is complete. Cycles before cycle zero
+    /// are silent.
+    Scan {
+        n: i64,
+    },
 }
 
 impl<T> PatternRuntime<T> {
@@ -3422,9 +3480,9 @@ impl<T> PatternRuntime<T> {
             OnsetPattern, Pan, PanPattern, Pedal, Pitch, PitchPattern, PulseWidth,
             PulseWidthPattern, Rand, RandCat, Range, Rate, RatePattern, Res, ResPattern, Rev,
             Reverb, ReverbDamp, ReverbDampPattern, ReverbPattern, ReverbRoom, ReverbRoomPattern,
-            Roll, Rot, Segment, Shift, ShuffleSlots, Slice, SliceIdxPattern, SlicePattern, Slow,
-            SlowCat, Sometimes, Stack, Stream, Strum, Transpose, TransposePattern, TunedPitch,
-            TunedPitchPattern, When, Within,
+            Roll, Rot, Scan, Segment, Shift, ShuffleSlots, Slice, SliceIdxPattern, SlicePattern,
+            Slow, SlowCat, Sometimes, Stack, Stream, Strum, Transpose, TransposePattern,
+            TunedPitch, TunedPitchPattern, When, WhenMod, Within,
         };
 
         macro_rules! recurse {
@@ -3468,6 +3526,7 @@ impl<T> PatternRuntime<T> {
             Rand { site_salt } => Rand { site_salt },
             Choose { options, site_salt } => Choose { options, site_salt },
             IRand { n, site_salt } => IRand { n, site_salt },
+            Scan { n } => Scan { n },
             Segment { n, inner } => Segment {
                 n,
                 inner: recurse!(inner),
@@ -3549,6 +3608,17 @@ impl<T> PatternRuntime<T> {
             } => When {
                 period,
                 offset,
+                transform,
+                inner: recurse!(inner),
+            },
+            WhenMod {
+                period,
+                threshold,
+                transform,
+                inner,
+            } => WhenMod {
+                period,
+                threshold,
                 transform,
                 inner: recurse!(inner),
             },
@@ -3861,7 +3931,8 @@ impl<T> PatternRuntime<T> {
             | Self::Stream(_)
             | Self::Rand { .. }
             | Self::Choose { .. }
-            | Self::IRand { .. } => Ok(cycle),
+            | Self::IRand { .. }
+            | Self::Scan { .. } => Ok(cycle),
             Self::Segment { inner, .. }
             | Self::Range { inner, .. }
             | Self::Rot { inner, .. }
@@ -3870,6 +3941,7 @@ impl<T> PatternRuntime<T> {
             | Self::Iter { inner, .. }
             | Self::Every { inner, .. }
             | Self::When { inner, .. }
+            | Self::WhenMod { inner, .. }
             | Self::Sometimes { inner, .. }
             | Self::Degrade { inner, .. }
             | Self::Within { inner, .. }
@@ -4010,6 +4082,12 @@ where
                 transform,
                 inner,
             } => query_when(inner, transform, *period, *offset, span),
+            Self::WhenMod {
+                period,
+                threshold,
+                transform,
+                inner,
+            } => query_whenmod(inner, transform, *period, *threshold, span),
             Self::Sometimes {
                 site_salt,
                 transform,
@@ -4122,6 +4200,7 @@ where
             }
             Self::Choose { options, site_salt } => query_choose(options, *site_salt, span),
             Self::IRand { n, site_salt } => query_irand(*n, *site_salt, span),
+            Self::Scan { n } => query_scan(*n, span),
             _ => self.try_query_audio_effect(span),
         }
     }
@@ -5487,6 +5566,94 @@ where
     query_transform_cycles(inner, transform, span, |cycle| {
         cycle.rem_euclid(period) == offset
     })
+}
+
+/// Queries a `WhenMod` runtime: the transform applies on every cycle where
+/// `cycle mod period >= threshold` (Tidal `whenmod`), leaving the remaining
+/// cycles untouched.
+fn query_whenmod<T>(
+    inner: &PatternRuntime<T>,
+    transform: &FunctionValue,
+    period: i64,
+    threshold: i64,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let period = i128::from(period);
+    let threshold = i128::from(threshold);
+    query_transform_cycles(inner, transform, span, |cycle| {
+        cycle.rem_euclid(period) >= threshold
+    })
+}
+
+/// Queries a `Scan` runtime (Tidal `scan`, clamped): cycle `k >= 0` plays a
+/// counting ramp of `p = min(k + 1, n)` equal steps valued `0..p-1`; cycles
+/// at or beyond `n - 1` keep playing the full `run(n)` ramp. Cycles before
+/// cycle zero emit nothing. Events carry their full step span as `whole` and
+/// the span clipped to the query window as `part`, so arbitrarily chunked
+/// queries stay consistent with whole-span queries.
+fn query_scan<T>(n: i64, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() || n <= 0 {
+        return Ok(Vec::new());
+    }
+
+    let n = i128::from(n);
+    let mut events = Vec::with_capacity(8);
+    let start_cycle = floor_rational(span.start());
+    let end_cycle = ceil_rational(span.end());
+
+    for cycle in start_cycle..end_cycle {
+        let prefix = cycle
+            .checked_add(1)
+            .ok_or_else(|| {
+                EvalError::new("`scan` cycle index exceeded the supported evaluator range")
+            })?
+            .min(n);
+        if prefix <= 0 {
+            continue;
+        }
+
+        let cycle_base = cycle.checked_mul(prefix).ok_or_else(|| {
+            EvalError::new("`scan` cycle index exceeded the supported evaluator range")
+        })?;
+        for step in 0..prefix {
+            let step_index = cycle_base.checked_add(step).ok_or_else(|| {
+                EvalError::new("`scan` step index exceeded the supported evaluator range")
+            })?;
+            let step_span = build_span(
+                rational_from_parts(step_index, prefix)?,
+                rational_from_parts(step_index + 1, prefix)?,
+            )?;
+            let Some(part) = clip_span(&step_span, span)? else {
+                continue;
+            };
+
+            if events.len() >= 100_000 {
+                return Err(EvalError::new(
+                    "evaluation exceeded the maximum allowed event limit",
+                ));
+            }
+            #[allow(clippy::cast_precision_loss)]
+            let value = step as f64;
+            events.push(Event {
+                whole: Some(step_span),
+                part,
+                value: T::try_from_rand(value)?,
+            });
+        }
+    }
+
+    sort_events(&mut events);
+    Ok(events)
 }
 
 fn query_sometimes<T>(
