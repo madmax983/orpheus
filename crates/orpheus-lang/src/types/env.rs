@@ -80,7 +80,7 @@ impl TypeEnv {
         }
         env.insert("every", every_transform_scheme(alpha));
         env.insert("when", when_transform_scheme(alpha));
-        env.insert("sometimes", sometimes_transform_scheme(alpha));
+        install_probabilistic_builtins(&mut env, alpha);
         env.insert("within", within_transform_scheme(alpha));
         env.insert("mask", mask_scheme());
         env.insert("strum", unary_number_pattern_scheme());
@@ -230,6 +230,18 @@ fn install_plugin_builtins(env: &mut TypeEnv) {
                 Type::Plugin,
             )),
         );
+    }
+}
+
+fn install_probabilistic_builtins(env: &mut TypeEnv, alpha: TypeVarId) {
+    env.insert("sometimes", sometimes_transform_scheme(alpha));
+    env.insert("degrade", unary_pattern_transform_scheme(alpha));
+    env.insert("degrade_by", numeric_pattern_transform_scheme(alpha));
+    // `sometimes_by` shares `every`'s shape:
+    // Pattern<Number> -> (Pattern<a> -> Pattern<a>) -> Pattern<a> -> Pattern<a>.
+    env.insert("sometimes_by", every_transform_scheme(alpha));
+    for name in ["often", "rarely", "almost_always", "almost_never"] {
+        env.insert(name, sometimes_transform_scheme(alpha));
     }
 }
 

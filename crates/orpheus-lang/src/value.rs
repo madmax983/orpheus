@@ -40,6 +40,20 @@ pub enum BuiltinKind {
     Every,
     When,
     Sometimes,
+    /// Randomly drops each event with probability 0.5, per event, deterministically.
+    Degrade,
+    /// Randomly drops each event with the given probability, per event, deterministically.
+    DegradeBy,
+    /// Applies a transform to a random per-event fraction of a pattern, keeping the rest untouched.
+    SometimesBy,
+    /// `sometimes_by(0.75, ...)`: applies the transform to roughly three quarters of the events.
+    Often,
+    /// `sometimes_by(0.25, ...)`: applies the transform to roughly a quarter of the events.
+    Rarely,
+    /// `sometimes_by(0.9, ...)`: applies the transform to nearly every event.
+    AlmostAlways,
+    /// `sometimes_by(0.1, ...)`: applies the transform to very few events.
+    AlmostNever,
     Within,
     Mask,
     Strum,
@@ -147,6 +161,13 @@ impl fmt::Display for BuiltinKind {
             Self::Every => "every",
             Self::When => "when",
             Self::Sometimes => "sometimes",
+            Self::Degrade => "degrade",
+            Self::DegradeBy => "degrade_by",
+            Self::SometimesBy => "sometimes_by",
+            Self::Often => "often",
+            Self::Rarely => "rarely",
+            Self::AlmostAlways => "almost_always",
+            Self::AlmostNever => "almost_never",
             Self::Within => "within",
             Self::Mask => "mask",
             Self::Strum => "strum",
@@ -1827,6 +1848,22 @@ impl SamplePatternValue {
         }
     }
 
+    pub(crate) fn degrade_with_site_salt(
+        self,
+        probability: f64,
+        site_salt: u64,
+        invert: bool,
+    ) -> Self {
+        Self {
+            pattern: PatternRuntime::Degrade {
+                probability,
+                site_salt,
+                invert,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn within(self, start: Rational, end: Rational, transform: FunctionValue) -> Self {
         Self {
             pattern: PatternRuntime::Within {
@@ -2491,6 +2528,22 @@ impl NumberPatternValue {
         }
     }
 
+    pub(crate) fn degrade_with_site_salt(
+        self,
+        probability: f64,
+        site_salt: u64,
+        invert: bool,
+    ) -> Self {
+        Self {
+            pattern: PatternRuntime::Degrade {
+                probability,
+                site_salt,
+                invert,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn within(self, start: Rational, end: Rational, transform: FunctionValue) -> Self {
         Self {
             pattern: PatternRuntime::Within {
@@ -2767,6 +2820,21 @@ enum PatternRuntime<T> {
     Sometimes {
         site_salt: u64,
         transform: FunctionValue,
+        inner: Box<Self>,
+    },
+    /// Deterministic per-event thinning (Tidal `degradeBy`/`unDegradeBy`).
+    ///
+    /// Every event receives a stable coin in `[0, 1)` hashed from its onset
+    /// (the numerator and denominator of `whole.start`) and the lexical site
+    /// salt, so the same event time always flips the same way regardless of
+    /// how the query window is chunked. With `invert == false` the event is
+    /// kept when its coin is at or above `probability` (drop chance
+    /// `probability`); with `invert == true` the exact complement is kept,
+    /// which `sometimes_by` uses to select the transformed fraction.
+    Degrade {
+        probability: f64,
+        site_salt: u64,
+        invert: bool,
         inner: Box<Self>,
     },
     Within {
@@ -3049,7 +3117,7 @@ impl<T> PatternRuntime<T> {
             Arp, Chaos, Chorus, ChorusDepth, ChorusDepthPattern, ChorusPattern, ChorusRate,
             ChorusRatePattern, Compressor, CompressorPattern, CompressorRatio,
             CompressorRatioPattern, CompressorThreshold, CompressorThresholdPattern, Cycle,
-            Degrees, Delay, DelayFeedback, DelayFeedbackPattern, DelayPattern, DelayTime,
+            Degrade, Degrees, Delay, DelayFeedback, DelayFeedbackPattern, DelayPattern, DelayTime,
             DelayTimePattern, Drive, DrivePattern, Drop, Every, ExplicitCycle, Fast, Gain,
             GainPattern, Hpf, HpfPattern, Invert, Iter, Lpf, LpfPattern, Mask, Onset, OnsetPattern,
             Pan, PanPattern, Pedal, Pitch, PitchPattern, PulseWidth, PulseWidthPattern, Rand, Rate,
@@ -3142,6 +3210,17 @@ impl<T> PatternRuntime<T> {
             } => Sometimes {
                 site_salt,
                 transform,
+                inner: recurse!(inner),
+            },
+            Degrade {
+                probability,
+                site_salt,
+                invert,
+                inner,
+            } => Degrade {
+                probability,
+                site_salt,
+                invert,
                 inner: recurse!(inner),
             },
             Within {
@@ -3431,6 +3510,7 @@ impl<T> PatternRuntime<T> {
             | Self::Every { inner, .. }
             | Self::When { inner, .. }
             | Self::Sometimes { inner, .. }
+            | Self::Degrade { inner, .. }
             | Self::Within { inner, .. }
             | Self::Mask { inner, .. }
             | Self::Chaos { inner, .. }
@@ -3556,6 +3636,12 @@ where
                 transform,
                 inner,
             } => query_sometimes(inner, transform, *site_salt, span),
+            Self::Degrade {
+                probability,
+                site_salt,
+                invert,
+                inner,
+            } => query_degrade(inner, *probability, *site_salt, *invert, span),
             Self::Within {
                 start,
                 end,
@@ -4908,6 +4994,86 @@ where
     query_transform_cycles(inner, transform, span, |cycle| {
         sometimes_applies_on_cycle(cycle, site_salt)
     })
+}
+
+/// Filters events by their deterministic per-event coin flip.
+///
+/// See [`PatternRuntime::Degrade`] for the keep/drop semantics of
+/// `probability` and `invert`. The coin is derived from the event onset
+/// (`whole.start`, falling back to `part.start` for continuous events), so
+/// querying the same span in one request or in arbitrary chunks yields the
+/// same kept set, and `degrade_by(p)` / the `invert`ed selection used by
+/// `sometimes_by` are exact complements when they share a site salt.
+fn query_degrade<T>(
+    inner: &PatternRuntime<T>,
+    probability: f64,
+    site_salt: u64,
+    invert: bool,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut events = inner.try_query(span)?;
+    events.retain(|event| {
+        let onset = event.whole.as_ref().unwrap_or(&event.part).start();
+        (event_coin(site_salt, onset) < probability) == invert
+    });
+    Ok(events)
+}
+
+/// Maps an event onset to a stable pseudo-random value in `[0, 1)`.
+///
+/// Hashes the onset's numerator AND denominator together with the lexical
+/// site salt so distinct onsets flip independently while the same onset
+/// always yields the same coin (time-travel-safe randomness).
+fn event_coin(site_salt: u64, onset: &Rational) -> f64 {
+    let (numerator_lower, numerator_upper) = split_i128(onset.numerator());
+    let (denominator_lower, denominator_upper) = split_i128(onset.denominator());
+
+    let mut state = numerator_lower
+        ^ numerator_upper.rotate_left(32)
+        ^ denominator_lower.rotate_left(11)
+        ^ denominator_upper.rotate_left(43)
+        ^ site_salt.rotate_left(17);
+    state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    state = (state ^ (state >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    state = (state ^ (state >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    state ^= state >> 31;
+
+    // Use the top 53 bits so the result is uniform in [0, 1).
+    #[allow(clippy::cast_precision_loss)]
+    let coin = (state >> 11) as f64 / (1_u64 << 53) as f64;
+    coin
+}
+
+const fn split_i128(value: i128) -> (u64, u64) {
+    let [
+        b0,
+        b1,
+        b2,
+        b3,
+        b4,
+        b5,
+        b6,
+        b7,
+        b8,
+        b9,
+        b10,
+        b11,
+        b12,
+        b13,
+        b14,
+        b15,
+    ] = value.to_le_bytes();
+    (
+        u64::from_le_bytes([b0, b1, b2, b3, b4, b5, b6, b7]),
+        u64::from_le_bytes([b8, b9, b10, b11, b12, b13, b14, b15]),
+    )
 }
 
 fn query_chaos<T>(

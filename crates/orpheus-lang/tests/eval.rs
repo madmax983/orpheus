@@ -3265,3 +3265,301 @@ fn alternation_supports_number_patterns() {
         .collect::<Vec<_>>();
     assert_eq!(values, [1.0, 3.0, 2.0, 3.0]);
 }
+
+// --- degrade family: deterministic per-event randomness ---
+
+/// Materializes a number pattern's events as comparable tuples of
+/// `(part start numerator, part start denominator, value bits)`.
+fn number_event_keys(source: &str, name: &str, cycles: u64) -> Vec<(i128, i128, u64)> {
+    let module = eval_module(source, ReplMode::Loose).unwrap();
+    let pattern = module.get(name).unwrap().as_number_pattern().unwrap();
+    let span = orpheus_lang::render_span(cycles).unwrap();
+    pattern
+        .try_query(&span)
+        .unwrap()
+        .into_iter()
+        .map(|event| {
+            (
+                event.part.start().numerator(),
+                event.part.start().denominator(),
+                event.value.to_bits(),
+            )
+        })
+        .collect()
+}
+
+fn cycle_time_span(cycle: i64) -> TimeSpan {
+    TimeSpan::new(
+        Rational::new(cycle, 1).unwrap(),
+        Rational::new(cycle + 1, 1).unwrap(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn degrade_queries_are_deterministic_across_repeats() {
+    let first = number_event_keys("m = 0 1 2 3 4 5 6 7 |> degrade", "m", 8);
+    let second = number_event_keys("m = 0 1 2 3 4 5 6 7 |> degrade", "m", 8);
+    assert_eq!(first, second);
+}
+
+#[test]
+fn degrade_is_stable_regardless_of_query_window_chunking() {
+    let module = eval_module("m = 0 1 2 3 4 5 6 7 |> degrade", ReplMode::Loose).unwrap();
+    let pattern = module.get("m").unwrap().as_number_pattern().unwrap();
+
+    let span = orpheus_lang::render_span(8).unwrap();
+    let whole = pattern.try_query(&span).unwrap();
+
+    let mut chunked = Vec::new();
+    for cycle in 0..8 {
+        chunked.extend(pattern.try_query(&cycle_time_span(cycle)).unwrap());
+    }
+
+    let key = |events: &[orpheus_pattern::Event<f64>]| {
+        events
+            .iter()
+            .map(|event| {
+                (
+                    event.part.start().numerator(),
+                    event.part.start().denominator(),
+                    event.value.to_bits(),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(key(&whole), key(&chunked));
+}
+
+#[test]
+fn degrade_drops_a_strict_subset_of_events() {
+    let base = number_event_keys("m = 0 1 2 3 4 5 6 7", "m", 16);
+    let degraded = number_event_keys("m = 0 1 2 3 4 5 6 7 |> degrade", "m", 16);
+
+    assert!(!degraded.is_empty(), "degrade should keep some events");
+    assert!(
+        degraded.len() < base.len(),
+        "degrade should drop some events"
+    );
+    for event in &degraded {
+        assert!(
+            base.contains(event),
+            "degrade must not invent events: {event:?}"
+        );
+    }
+}
+
+#[test]
+fn degrade_by_zero_keeps_every_event() {
+    let base = number_event_keys("m = 0 1 2 3", "m", 4);
+    let kept = number_event_keys("m = 0 1 2 3 |> degrade_by(0.0)", "m", 4);
+    assert_eq!(base, kept);
+}
+
+#[test]
+fn degrade_by_one_drops_every_event() {
+    let kept = number_event_keys("m = 0 1 2 3 |> degrade_by(1.0)", "m", 4);
+    assert!(kept.is_empty());
+}
+
+#[test]
+fn degrade_by_keeps_roughly_the_complementary_fraction() {
+    let base = number_event_keys("m = 0 1 2 3 4 5 6 7 |> fast(2)", "m", 64);
+    let kept = number_event_keys(
+        "m = 0 1 2 3 4 5 6 7 |> fast(2) |> degrade_by(0.25)",
+        "m",
+        64,
+    );
+
+    #[allow(clippy::cast_precision_loss)]
+    let ratio = kept.len() as f64 / base.len() as f64;
+    assert!(
+        (0.65..=0.85).contains(&ratio),
+        "expected ~75% of events kept, got {ratio}"
+    );
+}
+
+#[test]
+fn degrade_by_rejects_probabilities_outside_the_unit_interval() {
+    assert_eval_error_contains(
+        "m = 0 1 |> degrade_by(1.5)",
+        ReplMode::Loose,
+        &["`degrade_by` requires a probability within [0.0, 1.0]"],
+    );
+    assert_eval_error_contains(
+        "m = 0 1 |> degrade_by(-0.25)",
+        ReplMode::Loose,
+        &["`degrade_by` requires a probability within [0.0, 1.0]"],
+    );
+}
+
+#[test]
+fn degrade_hashes_by_event_time_so_identical_layers_flip_together() {
+    // Two identical stacked layers produce events at identical times, so the
+    // per-event coin flip must keep or drop both copies together.
+    let degraded = number_event_keys("m = stack(0 1 2 3, 0 1 2 3) |> degrade", "m", 16);
+    let mut counts = std::collections::BTreeMap::new();
+    for event in degraded {
+        *counts.entry(event).or_insert(0_u32) += 1;
+    }
+    assert!(!counts.is_empty());
+    for (event, count) in counts {
+        assert_eq!(count, 2, "event {event:?} kept {count} times, expected 2");
+    }
+}
+
+#[test]
+fn degrade_composes_with_cat_and_fast_deterministically() {
+    let module = eval_module(
+        "m = cat(0 1 2 3, 4 5 6 7) |> fast(2) |> degrade",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let pattern = module.get("m").unwrap().as_number_pattern().unwrap();
+
+    let span = orpheus_lang::render_span(8).unwrap();
+    let whole = pattern.try_query(&span).unwrap();
+    let mut chunked = Vec::new();
+    for cycle in 0..8 {
+        chunked.extend(pattern.try_query(&cycle_time_span(cycle)).unwrap());
+    }
+
+    assert!(!whole.is_empty());
+    assert_eq!(whole.len(), chunked.len());
+    for (a, b) in whole.iter().zip(chunked.iter()) {
+        assert_eq!(a.part.start(), b.part.start());
+        assert!((a.value - b.value).abs() < f64::EPSILON);
+    }
+}
+
+#[test]
+fn degrade_thins_sample_patterns() {
+    let module = eval_module("drums = hh |> fast(8) |> degrade", ReplMode::Loose).unwrap();
+    let names = exported_sample_names(module.get("drums").unwrap(), 8);
+    assert!(!names.is_empty());
+    assert!(names.len() < 64, "expected fewer than the 64 base events");
+    assert!(names.iter().all(|name| name == "hh"));
+}
+
+#[test]
+fn sometimes_by_partitions_events_into_exact_complements() {
+    // `transpose(100)` marks transformed events while preserving timing, so
+    // every base event must appear exactly once: either untouched or +100.
+    let base = number_event_keys("m = 0 1 2 3", "m", 32);
+    let mixed = number_event_keys("m = 0 1 2 3 |> sometimes_by(0.5, transpose(100))", "m", 32);
+
+    assert_eq!(mixed.len(), base.len());
+    let transformed_count = mixed
+        .iter()
+        .filter(|(_, _, bits)| f64::from_bits(*bits) >= 100.0)
+        .count();
+    assert!(transformed_count > 0, "some events should be transformed");
+    assert!(
+        transformed_count < mixed.len(),
+        "some events should stay untouched"
+    );
+
+    let mixed_set: std::collections::BTreeSet<_> = mixed.iter().copied().collect();
+    assert_eq!(mixed_set.len(), mixed.len(), "no duplicated events");
+    for (num, den, bits) in base {
+        let value = f64::from_bits(bits);
+        let untouched = mixed_set.contains(&(num, den, bits));
+        let transformed = mixed_set.contains(&(num, den, (value + 100.0).to_bits()));
+        assert!(
+            untouched ^ transformed,
+            "event at {num}/{den} must appear exactly once, transformed or not"
+        );
+    }
+}
+
+#[test]
+fn sometimes_by_transforms_roughly_the_requested_fraction() {
+    let mixed = number_event_keys(
+        "m = 0 1 2 3 |> fast(4) |> sometimes_by(0.25, transpose(100))",
+        "m",
+        32,
+    );
+    let transformed = mixed
+        .iter()
+        .filter(|(_, _, bits)| f64::from_bits(*bits) >= 100.0)
+        .count();
+    #[allow(clippy::cast_precision_loss)]
+    let ratio = transformed as f64 / mixed.len() as f64;
+    assert!(
+        (0.15..=0.35).contains(&ratio),
+        "expected ~25% transformed, got {ratio}"
+    );
+}
+
+#[test]
+fn sometimes_by_rejects_probabilities_outside_the_unit_interval() {
+    assert_eval_error_contains(
+        "m = 0 1 |> sometimes_by(2.0, transpose(100))",
+        ReplMode::Loose,
+        &["`sometimes_by` requires a probability within [0.0, 1.0]"],
+    );
+}
+
+#[test]
+fn sometimes_by_applies_transforms_to_sample_patterns() {
+    let module = eval_module(
+        "drums = hh hh hh hh |> sometimes_by(0.5, gain(2))",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 8);
+    assert_eq!(events.len(), 32, "every event appears exactly once");
+    for event in &events {
+        let gain = event["gain"].as_f64().unwrap();
+        assert!(
+            (gain - 1.0).abs() < f64::EPSILON || (gain - 2.0).abs() < f64::EPSILON,
+            "gain should be 1 (untouched) or 2 (transformed), got {gain}"
+        );
+    }
+}
+
+#[test]
+fn often_transforms_more_events_than_rarely() {
+    let transformed_count = |source: &str| {
+        number_event_keys(source, "m", 64)
+            .iter()
+            .filter(|(_, _, bits)| f64::from_bits(*bits) >= 100.0)
+            .count()
+    };
+    let often = transformed_count("m = 0 1 2 3 |> often(transpose(100))");
+    let rarely = transformed_count("m = 0 1 2 3 |> rarely(transpose(100))");
+    let base_len = number_event_keys("m = 0 1 2 3", "m", 64).len();
+
+    assert!(
+        often > rarely,
+        "often={often} should exceed rarely={rarely}"
+    );
+    assert_eq!(
+        number_event_keys("m = 0 1 2 3 |> often(transpose(100))", "m", 64).len(),
+        base_len
+    );
+    assert_eq!(
+        number_event_keys("m = 0 1 2 3 |> rarely(transpose(100))", "m", 64).len(),
+        base_len
+    );
+}
+
+#[test]
+fn almost_always_and_almost_never_bracket_the_probability_range() {
+    let transformed_count = |source: &str| {
+        number_event_keys(source, "m", 64)
+            .iter()
+            .filter(|(_, _, bits)| f64::from_bits(*bits) >= 100.0)
+            .count()
+    };
+    let almost_always = transformed_count("m = 0 1 2 3 |> almost_always(transpose(100))");
+    let almost_never = transformed_count("m = 0 1 2 3 |> almost_never(transpose(100))");
+    let total = number_event_keys("m = 0 1 2 3", "m", 64).len();
+
+    #[allow(clippy::cast_precision_loss)]
+    let always_ratio = almost_always as f64 / total as f64;
+    #[allow(clippy::cast_precision_loss)]
+    let never_ratio = almost_never as f64 / total as f64;
+    assert!(always_ratio > 0.8, "almost_always ratio {always_ratio}");
+    assert!(never_ratio < 0.2, "almost_never ratio {never_ratio}");
+}
