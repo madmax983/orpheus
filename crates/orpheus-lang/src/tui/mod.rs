@@ -35,7 +35,7 @@ use ratatui_hypertile_extras::{
     MoveBindings, SplitBehavior, WorkspaceRuntime, event_from_crossterm,
 };
 
-use plugins::{BindingsPlugin, ReplPlugin, TransportPlugin};
+use plugins::{BindingsPlugin, OrcaPlugin, ReplPlugin, TransportPlugin};
 use state::SharedState;
 use style::{
     format_cycle_position, format_tempo_bpm, format_transport_status, help_overlay_border_style,
@@ -155,6 +155,7 @@ fn transport_pane_id() -> PaneId {
 const REPL_PLUGIN: &str = "repl";
 const BINDINGS_PLUGIN: &str = "bindings";
 const TRANSPORT_PLUGIN: &str = "transport";
+const ORCA_PLUGIN: &str = "orca";
 
 /// Runs the interactive ratatui session shell with the provided audio engine.
 ///
@@ -220,6 +221,9 @@ fn build_runtime(shared: &Rc<RefCell<SharedState>>) -> HypertileRuntime {
         state: Rc::clone(&s),
     });
 
+    let s = Rc::clone(shared);
+    runtime.register_plugin_type(ORCA_PLUGIN, move || OrcaPlugin::new(Rc::clone(&s)));
+
     // Set up initial 3-pane layout:
     //   left (bindings | repl) | right (transport)
     let initial_tree = Node::Split {
@@ -264,6 +268,9 @@ where
         {
             let mut state = shared.borrow_mut();
             state.clear_status_if_expired(Instant::now());
+            // Re-publish the next Orca grid cycle when the engine crossed a
+            // cycle boundary since the previous tick (ADR 0008).
+            state.poll_orca();
             if state.should_quit {
                 break;
             }
@@ -740,6 +747,21 @@ mod tests {
         assert_eq!(
             shared.borrow().status_message,
             Some(("redid session change".to_owned(), false))
+        );
+    }
+
+    #[test]
+    fn orca_pane_spawns_from_its_registered_plugin_type() {
+        let (shared, mut workspace) = test_setup();
+        workspace
+            .active_runtime_mut()
+            .replace_pane_plugin(REPL_PANE, ORCA_PLUGIN)
+            .expect("the orca plugin type is registered");
+
+        let frame = render_frame_str(&shared, &mut workspace, 120, 30);
+        assert!(
+            frame.contains("Orca 16x8 f 0/16 [stopped]"),
+            "the orca pane renders with its grid dimensions and clock status"
         );
     }
 

@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 
 use orpheus_dsp::EngineHandle;
 
+use crate::orca::{ORCA_PATTERN_NAME, OrcaPublisher};
 use crate::session::{MixerView, ReplSession, TransportView};
 
 pub const STATUS_TOAST_TTL: Duration = Duration::from_secs(3);
@@ -33,6 +34,7 @@ pub const COMMAND_HINTS: [(&str, &str); 17] = [
 /// Shared application state accessible by all pane plugins via `Rc<RefCell<_>>`.
 pub struct SharedState {
     pub session: ReplSession,
+    pub orca: OrcaPublisher,
     pub transcript: Vec<String>,
     pub history: Vec<String>,
     pub history_index: Option<usize>,
@@ -63,6 +65,7 @@ impl SharedState {
         }
         let mut state = Self {
             session: ReplSession::with_engine(engine),
+            orca: OrcaPublisher::with_default_grid(),
             transcript,
             history: Vec::new(),
             history_index: None,
@@ -151,6 +154,50 @@ impl SharedState {
             .is_some_and(|expires_at| now >= expires_at)
         {
             self.clear_status_message();
+        }
+    }
+
+    /// Starts or stops the Orca grid clock. Starting publishes the first grid
+    /// cycle immediately; stopping publishes an empty cycle so the grid falls
+    /// silent at the next engine cycle boundary.
+    pub fn toggle_orca_running(&mut self) {
+        if self.orca.is_running() {
+            self.orca.stop();
+            match self
+                .session
+                .publish_sample_events(ORCA_PATTERN_NAME, Vec::new())
+            {
+                Ok(()) => self.set_status_message("orca grid stopped", false),
+                Err(error) => self.set_status_message(error, true),
+            }
+        } else {
+            self.orca.start();
+            self.set_status_message("orca grid running", false);
+            self.poll_orca();
+        }
+    }
+
+    /// Re-publishes the next grid cycle when the engine has crossed a cycle
+    /// boundary since the last poll. Called on every TUI tick; a no-op while
+    /// the grid clock is stopped or mid-cycle.
+    pub fn poll_orca(&mut self) {
+        let cycle_start = self
+            .session
+            .transport_snapshot()
+            .current_cycle_start_frame();
+        match self.orca.poll(cycle_start) {
+            Ok(Some(events)) => {
+                if let Err(error) = self
+                    .session
+                    .publish_sample_events(ORCA_PATTERN_NAME, events)
+                {
+                    self.set_status_message(error, true);
+                }
+            }
+            Ok(None) => {}
+            Err(error) => {
+                self.set_status_message(format!("orca cycle failed: {error}"), true);
+            }
         }
     }
 
