@@ -15,6 +15,7 @@ mod helpers;
 mod node;
 mod primitives;
 mod processor;
+mod sample_player;
 
 // Trait + error
 pub use node::{GraphError, Node};
@@ -37,6 +38,9 @@ pub use adapters::{
     GainNode, LadderFilterNode, MixNode, NoiseNode, PulseNode, SawNode, SoftSatNode, TriNode,
     gain_node, ladder_filter, mix_node, noise, pulse, saw, soft_sat, tri,
 };
+
+// Sample playback (one-shot player over preloaded bank buffers)
+pub use sample_player::{SamplePlayerNode, sample_player};
 
 // Combinators
 pub use combinators::{Mrg, Par, Rec, Seq, Spl, feedback, merge, par, seq, split};

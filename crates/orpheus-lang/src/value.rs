@@ -343,6 +343,9 @@ pub struct UserFn {
     pub(crate) captured_bindings: BTreeMap<String, Value>,
     pub(crate) expr_site_salts: BTreeMap<usize, u64>,
     pub(crate) depth: usize,
+    /// The sample bank in scope when the function was defined, so `voice`
+    /// bodies inside the function resolve `sample("name")` at call time.
+    pub(crate) captured_samples: Arc<orpheus_dsp::SampleBank>,
 }
 
 /// A callable runtime value, either builtin or user-defined.

@@ -20,8 +20,9 @@
 //! ```
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
+use orpheus_dsp::SampleBank;
 use orpheus_pattern::{Event, PatternNode, Rational, TimeSpan};
 
 use crate::ReplMode;
@@ -74,8 +75,36 @@ pub use crate::error::EvalError;
 /// **Recovery:** Catch the error and print its message to the user. Errors are
 /// designed to be human-readable and pinpoint syntax or runtime issues (like missing variables).
 pub fn eval_module(source: &str, mode: ReplMode) -> Result<BTreeMap<String, Value>, EvalError> {
+    eval_module_with_samples(source, mode, &builtin_sample_bank())
+}
+
+/// Evaluates bootstrap Orpheus source with an explicit sample bank in scope.
+///
+/// The bank resolves `sample("name")` stages inside `voice { ... }` bodies at
+/// definition time (the named buffer's shared handle is embedded in the
+/// compiled voice). [`eval_module`] delegates here with the built-in bank
+/// (`bd`/`sn`/`cp`/`hh`); sessions pass their live bank so directory-loaded
+/// samples resolve too.
+///
+/// # Errors
+///
+/// Returns [`EvalError`] when parsing fails or when evaluation encounters an
+/// unsupported expression or builtin application.
+pub fn eval_module_with_samples(
+    source: &str,
+    mode: ReplMode,
+    samples: &SampleBank,
+) -> Result<BTreeMap<String, Value>, EvalError> {
     let parsed = parse_module(source)?;
-    Evaluator::new(mode, &parsed).eval_module(&parsed)
+    Evaluator::new(mode, &parsed, Arc::new(samples.clone())).eval_module(&parsed)
+}
+
+/// The lazily decoded built-in sample bank shared by every evaluation that
+/// does not carry an explicit bank (plain [`eval_module`] /
+/// [`eval_into_bindings`] calls and loaded session files).
+fn builtin_sample_bank() -> Arc<SampleBank> {
+    static BANK: OnceLock<Arc<SampleBank>> = OnceLock::new();
+    Arc::clone(BANK.get_or_init(|| Arc::new(SampleBank::load_builtin())))
 }
 
 /// Evaluates a source module directly into an existing set of bindings.
@@ -108,10 +137,39 @@ pub fn eval_into_bindings(
     mode: ReplMode,
     bindings: &mut BTreeMap<String, Value>,
 ) -> Result<Option<(String, Value)>, EvalError> {
+    eval_into_bindings_with_samples_arc(source, mode, bindings, builtin_sample_bank())
+}
+
+/// Evaluates a source module into existing bindings with an explicit sample
+/// bank in scope for `voice { ... }` `sample("name")` stages.
+///
+/// The REPL session uses this variant so voice definitions resolve against
+/// its live bank (directory loads, watcher reloads); [`eval_into_bindings`]
+/// delegates here with the built-in bank.
+///
+/// # Errors
+///
+/// Returns [`EvalError`] if parsing fails, or if evaluation encounters a
+/// runtime error.
+pub fn eval_into_bindings_with_samples(
+    source: &str,
+    mode: ReplMode,
+    bindings: &mut BTreeMap<String, Value>,
+    samples: &SampleBank,
+) -> Result<Option<(String, Value)>, EvalError> {
+    eval_into_bindings_with_samples_arc(source, mode, bindings, Arc::new(samples.clone()))
+}
+
+fn eval_into_bindings_with_samples_arc(
+    source: &str,
+    mode: ReplMode,
+    bindings: &mut BTreeMap<String, Value>,
+    samples: Arc<SampleBank>,
+) -> Result<Option<(String, Value)>, EvalError> {
     let parsed = parse_module(source)?;
     // ⚡ Bolt: Use `std::mem::take` instead of `bindings.clone()` to move the BTreeMap into the evaluator.
     // This avoids a full heap allocation and deep copy of the environment on every REPL statement.
-    let mut evaluator = Evaluator::with_bindings(mode, std::mem::take(bindings), &parsed);
+    let mut evaluator = Evaluator::with_bindings(mode, std::mem::take(bindings), &parsed, samples);
     let result = evaluator.eval_statements(&parsed.statements);
     *bindings = evaluator.bindings;
     result
@@ -122,6 +180,9 @@ struct Evaluator {
     bindings: BTreeMap<String, Value>,
     expr_site_salts: BTreeMap<usize, u64>,
     depth: std::cell::Cell<usize>,
+    /// The sample bank `voice { ... }` bodies resolve `sample("name")`
+    /// stages against, shared with functions defined during evaluation.
+    samples: Arc<SampleBank>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -261,16 +322,22 @@ impl ExplicitValue {
 }
 
 impl Evaluator {
-    fn new(mode: ReplMode, module: &Module) -> Self {
-        Self::with_bindings(mode, BTreeMap::new(), module)
+    fn new(mode: ReplMode, module: &Module, samples: Arc<SampleBank>) -> Self {
+        Self::with_bindings(mode, BTreeMap::new(), module, samples)
     }
 
-    fn with_bindings(mode: ReplMode, bindings: BTreeMap<String, Value>, module: &Module) -> Self {
+    fn with_bindings(
+        mode: ReplMode,
+        bindings: BTreeMap<String, Value>,
+        module: &Module,
+        samples: Arc<SampleBank>,
+    ) -> Self {
         Self {
             mode,
             bindings,
             expr_site_salts: collect_expr_site_salts(module),
             depth: std::cell::Cell::new(0),
+            samples,
         }
     }
 
@@ -304,6 +371,7 @@ impl Evaluator {
                             captured_bindings: self.bindings.clone(),
                             expr_site_salts: self.expr_site_salts.clone(),
                             depth: self.depth.get(),
+                            captured_samples: Arc::clone(&self.samples),
                         })))
                     };
                     self.bindings.insert(name.clone(), value.clone());
@@ -364,7 +432,9 @@ impl Evaluator {
             Expr::Number(value) => Ok(Value::NumberPattern(NumberPatternValue::constant(*value))),
             Expr::String(value) => Ok(Value::String(value.clone().into())),
             Expr::Graph { bindings, result } => compile_graph(bindings, result).map(Value::Pedal),
-            Expr::Voice { bindings, result } => compile_voice(bindings, result).map(Value::Voice),
+            Expr::Voice { bindings, result } => {
+                compile_voice(bindings, result, &self.samples).map(Value::Voice)
+            }
             Expr::Binary { .. } => Err(EvalError::new(
                 "binary pedal expressions are parsed but not yet executable in evaluation",
             )),
@@ -1366,6 +1436,7 @@ fn apply_user_function(
         bindings: owned_user_fn.captured_bindings,
         expr_site_salts: owned_user_fn.expr_site_salts,
         depth: std::cell::Cell::new(owned_user_fn.depth + 1),
+        samples: owned_user_fn.captured_samples,
     };
     evaluator.eval_expr(&owned_user_fn.body)
 }
@@ -1710,7 +1781,11 @@ mod tests {
 
     fn find_call_expr_site_salt(source: &str, binding_name: &str) -> u64 {
         let parsed = parse_module(source).unwrap();
-        let evaluator = Evaluator::new(ReplMode::Loose, &parsed);
+        let evaluator = Evaluator::new(
+            ReplMode::Loose,
+            &parsed,
+            std::sync::Arc::new(orpheus_dsp::SampleBank::default()),
+        );
         let expr = parsed
             .statements
             .iter()

@@ -478,6 +478,198 @@ fn voice_release_pragma_rejects_invalid_values() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// `sample("name")` source stage: one-shot playback of a preloaded
+// sample-bank buffer inside a voice body (hybrid sample+synth instruments).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn voice_sample_stage_plays_the_bank_buffer_exactly() {
+    // `eval_module` resolves sample names against the built-in bank
+    // ("bd"/"sn"/"cp"/"hh"); the session variant uses its live bank.
+    let Value::Voice(voice) = eval_voice(r#"kit = voice { sample("bd") }"#) else {
+        panic!("expected a voice value");
+    };
+
+    let bank = orpheus_dsp::SampleBank::load_builtin();
+    let bd = bank.get_by_token("bd").expect("bd is built in");
+    // Built-in assets decode at the render rate, so rate 1.0 is
+    // sample-exact through the voice's centre-panned output.
+    assert_eq!(bd.sample_rate_hz(), 48_000);
+
+    let mut compiled = voice.to_spec("kit").unwrap().build_voice(48_000.0);
+    compiled.prepare();
+    let center = std::f32::consts::FRAC_1_SQRT_2;
+    for (i, &expected) in bd.frames().iter().enumerate() {
+        let (left, right) = compiled.process_frame(1.0, 220.0, 1.0, 0.0);
+        let want = expected * center;
+        assert!(
+            (left - want).abs() < 1e-5 && (right - want).abs() < 1e-5,
+            "frame {i}: ({left}, {right}) vs expected {want}"
+        );
+    }
+    let (left, right) = compiled.process_frame(1.0, 220.0, 1.0, 0.0);
+    assert!(
+        left.abs() < 1e-6 && right.abs() < 1e-6,
+        "the one-shot must end silent at the buffer end"
+    );
+}
+
+#[test]
+fn voice_sample_stage_is_shaped_by_the_envelope_and_extends_the_release() {
+    let Value::Voice(voice) =
+        eval_voice(r#"kit = voice { s = sample("bd") ; s * ar(gate, 0.001, 0.2) }"#)
+    else {
+        panic!("expected a voice value");
+    };
+
+    // The release tail covers both the envelope release and the sample's
+    // duration at native rate, so short gates never cut the one-shot.
+    let bank = orpheus_dsp::SampleBank::load_builtin();
+    let bd = bank.get_by_token("bd").expect("bd is built in");
+    #[allow(clippy::cast_precision_loss)]
+    let bd_seconds = (bd.frames().len() as f32 / bd.sample_rate_hz() as f32).min(30.0);
+    assert!(
+        voice.release_seconds() + 1e-6 >= bd_seconds && voice.release_seconds() >= 0.2,
+        "release tail {} must cover the envelope release (0.2 s) and the \
+         sample length ({bd_seconds} s)",
+        voice.release_seconds()
+    );
+
+    // The envelope multiplies the sample, so every enveloped frame is
+    // bounded by the raw playback of the same frame, and the whole take is
+    // attenuated (the 1 ms attack is still ramping while the buffer plays).
+    let mut enveloped = voice.to_spec("kit").unwrap().build_voice(48_000.0);
+    enveloped.prepare();
+    let Value::Voice(raw_voice) = eval_voice(r#"kit = voice { sample("bd") }"#) else {
+        panic!("expected a voice value");
+    };
+    let mut raw = raw_voice.to_spec("kit").unwrap().build_voice(48_000.0);
+    raw.prepare();
+
+    let mut enveloped_energy = 0.0_f32;
+    let mut raw_energy = 0.0_f32;
+    for i in 0..bd.frames().len() {
+        let (env_left, _) = enveloped.process_frame(1.0, 220.0, 1.0, 0.0);
+        let (raw_left, _) = raw.process_frame(1.0, 220.0, 1.0, 0.0);
+        assert!(
+            env_left.abs() <= raw_left.abs() + 1e-6,
+            "frame {i}: the envelope must only attenuate ({env_left} vs {raw_left})"
+        );
+        enveloped_energy += env_left.abs();
+        raw_energy += raw_left.abs();
+    }
+    assert!(enveloped_energy > 0.0, "the shaped sample must be audible");
+    assert!(
+        enveloped_energy < raw_energy,
+        "the attack ramp must attenuate the take ({enveloped_energy} vs {raw_energy})"
+    );
+}
+
+#[test]
+fn voice_sample_stage_layers_with_synth_stages() {
+    // The original goal: hybrid instruments — a sample through the same
+    // filter/envelope chain as a synth oscillator.
+    let Value::Voice(voice) = eval_voice(
+        r#"hybrid = voice { s = sample("bd") ; body = s + sine(freq) * 0.2 ; body |> lowpass(2000, 0.1) |> gain(ar(gate, 0.001, 0.1)) }"#,
+    ) else {
+        panic!("expected a voice value");
+    };
+    let mut compiled = voice.to_spec("hybrid").unwrap().build_voice(48_000.0);
+    compiled.prepare();
+    let mut energy = 0.0_f32;
+    for _ in 0..2_400 {
+        let (left, right) = compiled.process_frame(1.0, 220.0, 0.8, 0.0);
+        assert!(left.is_finite() && right.is_finite());
+        energy += left.abs() + right.abs();
+    }
+    assert!(energy > 1.0, "the hybrid voice should be audible");
+}
+
+#[test]
+fn voice_sample_stage_accepts_a_rate_signal() {
+    let Value::Voice(voice) =
+        eval_voice(r#"chip = voice { sample("bd", 2) * ar(gate, 0.001, 0.05) }"#)
+    else {
+        panic!("expected a voice value");
+    };
+    assert!(voice.to_spec("chip").is_ok());
+}
+
+#[test]
+fn voice_sample_stage_rejects_unknown_names_at_definition_time() {
+    let message = eval_error(r#"bad = voice { sample("glitch") }"#);
+    assert!(
+        message.contains("glitch"),
+        "the unknown sample name must be reported: {message}"
+    );
+    assert!(
+        message.contains("bd"),
+        "the error should list the loaded samples: {message}"
+    );
+}
+
+#[test]
+fn voice_sample_stage_requires_a_string_literal_name() {
+    let message = eval_error("bad = voice { sample(freq) }");
+    assert!(
+        message.contains("sample") && message.contains("literal"),
+        "unexpected error: {message}"
+    );
+}
+
+#[test]
+fn voice_sample_stage_rejects_pipes_and_wrong_arity() {
+    let message = eval_error(r#"bad = voice { sine(freq) |> sample("bd") }"#);
+    assert!(message.contains("sample"), "unexpected error: {message}");
+
+    let message = eval_error(r#"bad = voice { sample("bd", 1, 2) }"#);
+    assert!(message.contains("sample"), "unexpected error: {message}");
+
+    let message = eval_error("bad = voice { sample() }");
+    assert!(message.contains("sample"), "unexpected error: {message}");
+}
+
+#[test]
+fn session_plays_sample_voice_from_pattern_token() {
+    let mut session = ReplSession::with_engine(EngineHandle::stub());
+    session.eval_line(":tempo 1200").unwrap();
+    // No envelope: the built-in test assets are only a few frames long, so
+    // an attack ramp would drop them below the audibility threshold.
+    session
+        .eval_line(r#"kit = voice { sample("bd") }"#)
+        .unwrap();
+    let _ = session.render_test_block_for_tui(1);
+    session.eval_line("hits = kit ~ ~ ~").unwrap();
+    let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
+
+    let rendered = session.render_test_block_for_tui(9_600);
+    assert!(rendered.iter().all(|sample| sample.is_finite()));
+    assert!(
+        rendered.iter().any(|sample| sample.abs() > 0.01),
+        "a sample-playing voice should be audible from a pattern token"
+    );
+}
+
+#[test]
+fn session_keeps_plain_sample_tokens_unchanged_alongside_sample_voices() {
+    // Regression: defining a sample-playing voice must not disturb the
+    // engine's ordinary sample-token path.
+    let mut session = ReplSession::with_engine(EngineHandle::stub());
+    session.eval_line(":tempo 1200").unwrap();
+    session
+        .eval_line(r#"kit = voice { s = sample("bd") ; s * ar(gate, 0.001, 0.2) }"#)
+        .unwrap();
+    session.eval_line("drums = bd sn").unwrap();
+    let _ = session.render_test_block_for_tui(1);
+    let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
+    let rendered = session.render_test_block_for_tui(9_600);
+    assert!(
+        rendered.iter().any(|sample| sample.abs() > 0.01),
+        "sample-bank tokens must keep rendering alongside sample voices"
+    );
+}
+
 #[test]
 fn session_plays_echo_voice_from_pattern_token() {
     let mut session = ReplSession::with_engine(EngineHandle::stub());

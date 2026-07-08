@@ -29,13 +29,26 @@ const HIHAT_WAV: &[u8] = include_bytes!("../assets/hihat.wav");
 const SAMPLE_MANIFEST_FILE: &str = "samples.ron";
 const DEFAULT_WATCH_INTERVAL: Duration = Duration::from_millis(50);
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct PlaybackSample {
     frames: Arc<[f32]>,
     sample_rate_hz: u32,
 }
 
 impl PlaybackSample {
+    /// Builds a playback buffer directly from mono frames.
+    ///
+    /// This is the construction path for buffers that do not come from a
+    /// decoded file (tests, procedural buffers). Non-positive sample rates
+    /// are clamped to 1 Hz so duration math stays finite.
+    #[must_use]
+    pub fn from_mono_frames(frames: impl Into<Arc<[f32]>>, sample_rate_hz: u32) -> Self {
+        Self {
+            frames: frames.into(),
+            sample_rate_hz: sample_rate_hz.max(1),
+        }
+    }
+
     #[must_use]
     pub const fn frames(&self) -> &Arc<[f32]> {
         &self.frames
@@ -44,6 +57,26 @@ impl PlaybackSample {
     #[must_use]
     pub const fn sample_rate_hz(&self) -> u32 {
         self.sample_rate_hz
+    }
+
+    /// The buffer's duration in seconds at its native rate.
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
+    pub fn duration_seconds(&self) -> f64 {
+        self.frames.len() as f64 / f64::from(self.sample_rate_hz)
+    }
+}
+
+/// Buffers embed in voice specs, which print through `Debug` in REPL
+/// `explain` tables and error messages — summarise the frames instead of
+/// dumping them.
+impl std::fmt::Debug for PlaybackSample {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PlaybackSample")
+            .field("frames", &self.frames.len())
+            .field("sample_rate_hz", &self.sample_rate_hz)
+            .finish()
     }
 }
 

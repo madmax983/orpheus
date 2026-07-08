@@ -13,9 +13,9 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 
 use orpheus_dsp::{
-    GraphVoiceBank, GraphVoiceSpec, Node, Processor, TrackId, VoiceNodeSpec, VoiceSignalRef, adsr,
-    bind, builtin_graph_voice_programs, constant, fdelay, gain_node, pan, par, passthrough, seq,
-    sine, sum, wire,
+    GraphVoiceBank, GraphVoiceSpec, Node, PlaybackSample, Processor, TrackId, VoiceNodeSpec,
+    VoiceSignalRef, adsr, bind, builtin_graph_voice_programs, constant, fdelay, gain_node, pan,
+    par, passthrough, sample_player, seq, sine, sum, wire,
 };
 
 struct CountingAllocator;
@@ -275,6 +275,106 @@ fn voice_with_signal_driven_delay_renders_without_allocating() {
         after - before,
         0,
         "signal-driven delay voices must not allocate after prepare()"
+    );
+}
+
+#[test]
+fn sample_player_node_processes_without_allocating() {
+    // The player holds an `Arc` to the preloaded buffer, resolved at
+    // construction; processing (trigger detection, interpolated reads,
+    // retriggers) must not allocate or lock.
+    const FRAMES: usize = 512;
+
+    #[allow(clippy::cast_precision_loss)]
+    let buffer: Vec<f32> = (0..4_800).map(|i| (i as f32 * 0.01).sin()).collect();
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let sample = PlaybackSample::from_mono_frames(buffer, SR as u32);
+    let mut node = sample_player(&sample, SR);
+
+    let mut gate = vec![1.0_f32; FRAMES];
+    // A retrigger edge inside every block keeps the restart path counted.
+    gate[FRAMES / 2] = 0.0;
+    let rate = vec![1.5_f32; FRAMES];
+    let mut out = vec![0.0_f32; FRAMES];
+
+    let before = allocation_count();
+    let mut energy = 0.0_f32;
+    for _ in 0..16 {
+        node.process(&[&gate, &rate], &mut [&mut out], FRAMES);
+        energy += out.iter().map(|sample| sample.abs()).sum::<f32>();
+    }
+    let after = allocation_count();
+
+    assert!(energy > 0.0, "the sample player should produce audio");
+    assert_eq!(
+        after - before,
+        0,
+        "sample playback must not allocate after construction"
+    );
+}
+
+#[test]
+fn voice_with_sample_playback_renders_without_allocating() {
+    // A hybrid instrument: a one-shot sample layered with a sine, both
+    // shaped by a gate-driven AR envelope. Pool build resolves the buffer
+    // handle off-thread; trigger/render must then be allocation-free.
+    #[allow(clippy::cast_precision_loss)]
+    let buffer: Vec<f32> = (0..2_400)
+        .map(|i| ((i as f32) * 0.02).sin() * 0.5)
+        .collect();
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let sample = PlaybackSample::from_mono_frames(buffer, SR as u32);
+
+    let spec = GraphVoiceSpec::new(
+        "hybrid",
+        0.1,
+        vec![
+            VoiceNodeSpec::Constant { value: 1.0 },
+            VoiceNodeSpec::Sample {
+                gate: VoiceSignalRef::Gate,
+                rate: VoiceSignalRef::Node(0),
+                sample,
+            },
+            VoiceNodeSpec::Sine {
+                freq: VoiceSignalRef::Freq,
+            },
+            VoiceNodeSpec::Add {
+                left: VoiceSignalRef::Node(1),
+                right: VoiceSignalRef::Node(2),
+            },
+            VoiceNodeSpec::Ar {
+                gate: VoiceSignalRef::Gate,
+                attack_s: 0.001,
+                release_s: 0.1,
+            },
+            VoiceNodeSpec::Mul {
+                left: VoiceSignalRef::Node(3),
+                right: VoiceSignalRef::Node(4),
+            },
+        ],
+        VoiceSignalRef::Node(5),
+    )
+    .expect("hybrid sample voice spec should validate");
+
+    let mut bank = GraphVoiceBank::with_user_programs(SR, vec![spec]);
+    let track = TrackId::new(0);
+    let mut mix = vec![(0.0_f32, 0.0_f32); 1];
+
+    let before = allocation_count();
+    assert!(bank.trigger("hybrid", track, 2_048, 220.0, 0.8, 0.0));
+    let mut energy = 0.0_f32;
+    for _ in 0..4_096 {
+        mix[0] = (0.0, 0.0);
+        bank.render_frame(&mut mix);
+        energy += mix[0].0.abs() + mix[0].1.abs();
+    }
+    let after = allocation_count();
+
+    assert!(energy > 0.0, "the hybrid sample voice should be audible");
+    assert_eq!(
+        after - before,
+        0,
+        "sample-playback voices must not allocate after the pool is built"
     );
 }
 

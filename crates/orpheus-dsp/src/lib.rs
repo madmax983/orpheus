@@ -59,8 +59,9 @@ pub use routing::{
 };
 pub use sample::{DecodedSample, SampleError, load_wav_for_test};
 pub use sample_bank::{
-    SampleBank, SampleBankError, SampleLibraryReload, SampleLibraryScanError, SampleLibraryWatcher,
-    SampleLibraryWatcherConfig, load_builtin_sample_for_test, load_sample_bank_from_directory,
+    PlaybackSample, SampleBank, SampleBankError, SampleLibraryReload, SampleLibraryScanError,
+    SampleLibraryWatcher, SampleLibraryWatcherConfig, load_builtin_sample_for_test,
+    load_sample_bank_from_directory,
 };
 pub use scheduler::{ScheduledTrigger, Scheduler};
 pub use synth::{
