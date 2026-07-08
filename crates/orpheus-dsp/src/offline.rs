@@ -547,7 +547,11 @@ fn plugin_processors_for_snapshot(snapshot: &RoutingSnapshot) -> Vec<Option<Plug
         .iter()
         .map(|track| match track.source() {
             TrackSource::Plugin(source) => Some(PluginProcessor::new(source, DEFAULT_SAMPLE_RATE)),
-            TrackSource::Unbound | TrackSource::SamplePattern(_) => None,
+            // Generator sources render silent offline: their cycle buffers
+            // live in the real-time engine, not the snapshot (ADR 0009).
+            TrackSource::Unbound | TrackSource::SamplePattern(_) | TrackSource::Generator(_) => {
+                None
+            }
         })
         .collect()
 }

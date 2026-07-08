@@ -14,11 +14,15 @@
 //!
 //! The key seam to the rest of Orpheus is [`frame_span`], which maps grid
 //! frame `N` of `F` frames-per-cycle onto the exact rational
-//! [`orpheus_pattern::TimeSpan`] `[N/F, (N+1)/F)`. The v1 publish bridge
+//! [`orpheus_pattern::TimeSpan`] `[N/F, (N+1)/F)`. The publish bridge
 //! ([`publish`]) materializes grid cycles into unit-cycle
-//! `Vec<Event<SampleEvent>>` batches for the existing session publication
-//! path, re-publishing at every engine cycle boundary because running grids
-//! are not cycle-periodic. See `docs/design/orca-surface.md` and ADR 0008.
+//! `Vec<Event<SampleEvent>>` batches, one per engine cycle boundary because
+//! running grids are not cycle-periodic. As of v5 (ADR 0009) those batches
+//! feed a first-class engine generator source
+//! (`orpheus_dsp::TrackSource::Generator`, slot [`ORCA_GENERATOR_ID`]), so
+//! consecutive cycles play back-to-back and note lengths sustain across
+//! cycle boundaries; the ADR 0008 per-cycle re-publish path remains as a
+//! fallback. See `docs/design/orca-surface.md`.
 //!
 //! The grid engine ([`Grid`], [`OrcaEngine`]) stays TUI-free; the TUI pane
 //! hosting this surface lives in the `tui` module.
@@ -31,6 +35,6 @@ pub use engine::{MidiNote, OrcaEngine, OrcaEvent, OrcaIoEvent, frame_span};
 pub use grid::{BANG, COMMENT, EMPTY, Grid, GridError, is_valid_glyph};
 pub use publish::{
     DEFAULT_GRID_FRAMES_PER_CYCLE, DEFAULT_GRID_HEIGHT, DEFAULT_GRID_WIDTH, DEFAULT_SAMPLE_TOKEN,
-    ORCA_PATTERN_NAME, OrcaPublisher, materialize_cycle, midi_note_id, playhead_frame,
-    sample_event_from_orca,
+    ORCA_GENERATOR_ID, ORCA_PATTERN_NAME, OrcaPublisher, materialize_cycle, midi_note_id,
+    playhead_frame, sample_event_from_orca,
 };

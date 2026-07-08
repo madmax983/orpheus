@@ -64,6 +64,36 @@ impl fmt::Display for BusId {
     }
 }
 
+/// Stable identifier for an engine-side generator slot (ADR 0009).
+///
+/// A generator is a track source whose events are materialized one cycle at
+/// a time outside the audio thread and shipped over the command ring via
+/// [`crate::EngineCommand::PushGeneratorCycle`]. The id selects one of the
+/// engine's fixed generator slots (`0..MAX_GENERATORS`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct GeneratorId(u32);
+
+impl GeneratorId {
+    /// Creates a new `GeneratorId`.
+    #[must_use]
+    pub const fn new(value: u32) -> Self {
+        Self(value)
+    }
+
+    /// Extracts the raw numeric identifier used to index the engine's
+    /// generator slots.
+    #[must_use]
+    pub const fn get(self) -> u32 {
+        self.0
+    }
+}
+
+impl fmt::Display for GeneratorId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "generator-{}", self.0)
+    }
+}
+
 /// The source attached to a track.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TrackSource {
@@ -73,6 +103,11 @@ pub enum TrackSource {
     SamplePattern(Box<[Event<SampleTrigger>]>),
     /// A fully resolved headless plugin instrument track.
     Plugin(PluginTrackSource),
+    /// A per-cycle generator fed over the command ring (ADR 0009).
+    ///
+    /// The track plays whatever cycle buffer was most recently delivered for
+    /// this generator id; a starved generator loops its last buffer.
+    Generator(GeneratorId),
 }
 
 impl TrackSource {

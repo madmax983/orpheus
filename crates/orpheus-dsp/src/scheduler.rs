@@ -164,12 +164,26 @@ fn rational_to_frame_offset(start: &Rational, frames_per_cycle: u64) -> Result<u
     u64::try_from(offset).map_err(|_| EngineError::FrameOverflow)
 }
 
+/// Frames from the trigger point (`part.start`) to the end of the event's
+/// full extent.
+///
+/// The end comes from `whole` when present: an event clipped by a cycle
+/// window keeps its unclipped extent there, so a note whose span crosses the
+/// cycle boundary sustains into the next cycle instead of clamping at the
+/// window edge (ADR 0009). An event clipped only at the window *start*
+/// (whole begins before `part.start`) is unaffected: the duration always
+/// runs forward from the trigger frame. Durations that exceed `u32` frames
+/// saturate rather than erroring the audio thread.
 fn duration_frames_for_event(
     event: &Event<SampleTrigger>,
     frames_per_cycle: u64,
 ) -> Result<u32, EngineError> {
     let start = rational_to_frame_offset(event.part.start(), frames_per_cycle)?;
-    let end = rational_to_frame_offset(event.part.end(), frames_per_cycle)?;
+    let extent_end = event.whole.as_ref().map_or_else(
+        || event.part.end(),
+        |whole| event.part.end().max(whole.end()),
+    );
+    let end = rational_to_frame_offset(extent_end, frames_per_cycle)?;
     let duration = end.saturating_sub(start).max(1);
-    u32::try_from(duration).map_err(|_| EngineError::FrameOverflow)
+    Ok(u32::try_from(duration).unwrap_or(u32::MAX))
 }

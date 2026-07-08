@@ -120,10 +120,12 @@ fn length_extends_event_span_by_frames() {
 }
 
 #[test]
-fn length_crossing_cycle_end_clamps_part_and_keeps_whole() {
-    // Frame 14 of 16 with length 8 would sustain to 22/16; the per-cycle
-    // re-publish model clamps the playable part at the cycle end while the
-    // whole records the full extent.
+fn length_crossing_cycle_end_clips_part_and_keeps_whole() {
+    // Frame 14 of 16 with length 8 sustains to 22/16: the part is clipped
+    // at the published cycle window's end (Tidal-style) while the whole
+    // records the full extent. As of v5 (ADR 0009) the engine scheduler
+    // derives the trigger duration from the whole, so the note is audible
+    // across the boundary — see tests/orca_v5.rs.
     let event = sample_event_from_orca(&note_event(15, 8), 14, 16, "tri")
         .expect("valid span")
         .expect("note event");

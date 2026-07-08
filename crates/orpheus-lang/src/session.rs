@@ -20,8 +20,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use orpheus_dsp::{
-    DEFAULT_ANALOG_BASE_FREQUENCY_HZ, EngineCommand, EngineHandle, PatternUpdate, SampleBank,
-    SampleLibraryWatcher, SampleLibraryWatcherConfig, TransportSnapshot,
+    DEFAULT_ANALOG_BASE_FREQUENCY_HZ, EngineCommand, EngineHandle, GeneratorCycle, GeneratorId,
+    PatternUpdate, SampleBank, SampleLibraryWatcher, SampleLibraryWatcherConfig, TransportSnapshot,
     load_sample_bank_from_directory, render_routing_snapshot_to_stem_wavs,
 };
 use orpheus_pattern::Rational;
@@ -1720,6 +1720,114 @@ impl ReplSession {
         self.type_bindings
             .insert(name.to_owned(), Type::pattern(Type::Sample));
         self.push_pattern_update(name, &value)
+    }
+
+    /// Binds `name` to the engine generator slot `generator_id` and delivers
+    /// the first materialized cycle (ADR 0009).
+    ///
+    /// This is the v5 publication seam for generator surfaces such as the
+    /// Orca grid pane: the engine schedules one delivered cycle buffer per
+    /// boundary from a dedicated [`orpheus_dsp::TrackSource::Generator`]
+    /// track, so consecutive cycles play back-to-back and events whose
+    /// `whole` extends past the cycle end sustain across the boundary. A
+    /// display binding is registered under `name` so the grid shows up in
+    /// binding summaries and mixer routing like any pattern; the audible
+    /// events flow over [`EngineCommand::PushGeneratorCycle`], not from that
+    /// binding.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the mixer snapshot fails to compile or the
+    /// engine command queue rejects the routing swap or cycle buffer.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::EngineHandle;
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_lang::orca::{ORCA_GENERATOR_ID, OrcaEngine, materialize_cycle};
+    ///
+    /// let mut session = ReplSession::with_engine(EngineHandle::stub());
+    /// let mut grid = OrcaEngine::from_rows(&[".D1...", "..:04c"]).unwrap();
+    /// let events = materialize_cycle(&mut grid, 4, "tri").unwrap();
+    /// session
+    ///     .start_generator_source("orca", ORCA_GENERATOR_ID, events)
+    ///     .unwrap();
+    /// assert!(
+    ///     session
+    ///         .binding_summaries()
+    ///         .iter()
+    ///         .any(|summary| summary == "orca: Pattern<Sample>")
+    /// );
+    /// ```
+    pub fn start_generator_source(
+        &mut self,
+        name: &str,
+        generator_id: GeneratorId,
+        events: Vec<orpheus_pattern::Event<SampleEvent>>,
+    ) -> Result<(), String> {
+        let value = Value::SamplePattern(SamplePatternValue::from_events(events.clone()));
+        self.bindings.insert(name.to_owned(), value);
+        self.type_bindings
+            .insert(name.to_owned(), Type::pattern(Type::Sample));
+        self.mixer.note_generator_binding(name, generator_id);
+        self.mixer.note_sample_binding(name);
+        self.enqueue_mixer_snapshot()?;
+        self.pattern_display.borrow_mut().last_loaded_pattern_name = Some(name.to_owned());
+        self.push_generator_cycle(generator_id, events)
+    }
+
+    /// Delivers the next materialized cycle for a running generator source.
+    ///
+    /// The engine adopts the buffer at its next cycle boundary; delivering
+    /// one cycle ahead therefore plays consecutive grid cycles back-to-back.
+    /// When no fresh buffer arrives in time the engine loops the previous
+    /// one, so a stalled UI degrades to repetition rather than silence.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the engine command queue is full.
+    pub fn push_generator_cycle(
+        &mut self,
+        generator_id: GeneratorId,
+        events: Vec<orpheus_pattern::Event<SampleEvent>>,
+    ) -> Result<(), String> {
+        let triggers = events
+            .into_iter()
+            .map(|event| orpheus_pattern::Event {
+                whole: event.whole,
+                part: event.part,
+                value: sample_trigger_from_event(&event.value),
+            })
+            .collect();
+        self.engine
+            .enqueue(EngineCommand::PushGeneratorCycle(GeneratorCycle::new(
+                generator_id,
+                triggers,
+            )))
+            .map_err(|error| format!("failed to enqueue generator cycle: {error}"))
+    }
+
+    /// Silences a generator source at the next cycle boundary.
+    ///
+    /// Delivers an empty cycle buffer (which then loops, keeping the
+    /// generator silent) and clears the display binding's events. The
+    /// generator registration and routing stay in place so a restart is a
+    /// plain [`Self::push_generator_cycle`] away.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the engine command queue is full.
+    pub fn stop_generator_source(
+        &mut self,
+        name: &str,
+        generator_id: GeneratorId,
+    ) -> Result<(), String> {
+        self.bindings.insert(
+            name.to_owned(),
+            Value::SamplePattern(SamplePatternValue::from_events(Vec::new())),
+        );
+        self.push_generator_cycle(generator_id, Vec::new())
     }
 
     /// Compiles a summary of all active bindings and their inferred types.

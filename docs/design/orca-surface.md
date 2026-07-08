@@ -324,7 +324,7 @@ swap and `a == b` returning `a`) but with the hash in place of
 - **Comments (`#`)** — the grid glyph alphabet still rejects `#`.
   *(Implemented in v4 — section 10.)*
 - **Engine-side generator track source** (the per-cycle re-publish from v1
-  remains the integration path).
+  remains the integration path). *(Implemented in v5 — section 11.)*
 - **`Pattern<T>` implementation for the grid** — now unblocked by
   deterministic `R`, but not implemented.
 - **Persistence, language surface, proofs** as listed in section 6.
@@ -521,16 +521,17 @@ Two edges are decided deliberately:
   dropped by the event-stream clipping model (and the DSP floors trigger
   durations at 1 audio frame anyway), so the bridge floors length at one
   grid frame to keep the note-on audible.
-- **Cycle-boundary clamp.** A note whose span crosses the cycle end (e.g.
-  frame 14 of 16 with length 8) has its `part` clamped at `1` while the
-  event's `whole` keeps the full extent `[14/16, 22/16)`. The reference
-  sustains across the boundary; the per-cycle re-publish model (ADR 0008)
-  cannot, because each boundary replaces the published pattern wholesale
-  and the scheduler derives trigger durations from the clipped `part`.
-  The truncated tail is a **documented limitation** of the re-publish
-  seam, accepted here rather than building the engine-side generator
-  track source that cross-boundary sustain would need (still future work,
-  section 7.3).
+- **Cycle-boundary crossing.** A note whose span crosses the cycle end
+  (e.g. frame 14 of 16 with length 8) has its `part` clipped at `1`
+  (Tidal-style: the portion inside the published cycle window) while the
+  event's `whole` keeps the full extent `[14/16, 22/16)`. *(v4 limitation,
+  resolved in v5.)* Under the v4 per-cycle re-publish model (ADR 0008) the
+  scheduler derived trigger durations from the clipped `part`, so the tail
+  past the boundary never sounded — a documented deviation from the
+  reference. As of v5 (section 11, ADR 0009) the grid feeds an engine-side
+  generator track source and the scheduler derives durations from the
+  `whole` extent, so the note **sustains across the boundary** exactly as
+  the reference does.
 
 **What is actually audible.** The scheduler (`orpheus-dsp/scheduler.rs`)
 converts `part` into `duration_frames`, and what happens then depends on
@@ -572,7 +573,65 @@ typeable in the TUI pane (which gates input on `is_valid_glyph`).
   and `%`'s mono cut, which have no meaning in the current one-shot
   sampler bridge.
 - **Engine-side generator track source**, which would also lift the
-  cycle-boundary clamp of section 10.2.
-- **Cross-boundary sustain**, blocked on the above.
+  cycle-boundary clamp of section 10.2. *(Implemented in v5 — section 11.)*
+- **Cross-boundary sustain**, blocked on the above. *(Implemented in v5 —
+  section 11.)*
 - **`Pattern<T>` implementation for the grid**, persistence, language
   surface, proofs (sections 6/7.3).
+
+---
+
+## 11. v5: the grid as a first-class engine source
+
+v5 (ADR 0009, amending ADR 0008) retires the per-cycle re-publish as the
+TUI's transport and makes the running grid a first-class engine source.
+
+### 11.1 The generator track source
+
+`orpheus-dsp` gains a generic, Orca-agnostic seam:
+
+- `TrackSource::Generator(GeneratorId)` — a track whose events arrive one
+  cycle at a time instead of living in the routing snapshot. The id
+  addresses one of `MAX_GENERATORS` (8) fixed engine slots; the Orca grid
+  claims slot `ORCA_GENERATOR_ID` (0).
+- `EngineCommand::PushGeneratorCycle(GeneratorCycle)` — a boxed, fully
+  materialized `[Event<SampleTrigger>]` buffer shipped over the existing
+  lock-free command ring.
+- At each `begin_cycle` the engine moves the pending buffer into the
+  slot's active position and schedules it through the same path as a
+  sample pattern. **A starved generator loops its last buffer** (a stalled
+  UI repeats rather than silences, ADR 0008's failure mode); stopping is
+  an explicit empty-buffer delivery, so silence still lands exactly on a
+  cycle boundary.
+
+Materialization stays on the UI thread, one cycle ahead, driven by the
+same 50 ms `TransportSnapshot` poll (`OrcaPublisher` is unchanged as the
+driver). The audio thread's per-frame path is untouched; its boundary path
+now does strictly *less* work than v4, which recompiled and re-adopted a
+full routing snapshot every cycle.
+
+### 11.2 Cross-cycle sustain
+
+The scheduler now derives trigger durations from the event's `whole`
+extent (falling back to `part` when unclipped): a note fired at frame 14
+of 16 with length 8 schedules `part.start = 14/16` with a duration of
+`8/16` of a cycle and rings half a cycle into the next one. Voices were
+never cut at boundaries — only their scheduled durations were — so no
+voice-lifecycle changes were needed. This applies to every track source,
+so ordinary patterns whose events are clipped at the cycle end by
+`query_unit` gain the same correct sustain.
+
+### 11.3 Session and fallback story
+
+`ReplSession` gains `start_generator_source` / `push_generator_cycle` /
+`stop_generator_source`. Starting registers the binding name as
+generator-backed in the mixer (snapshot recompiles keep resolving it to
+the generator track), inserts a display binding (`orca: Pattern<Sample>`
+in binding summaries), and delivers the first cycle. The v1-v4 re-publish
+path (`publish_sample_events` per boundary) remains a supported fallback
+for hosts without generator wiring; it plays correctly but re-clips note
+tails at cycle boundaries on the round-trip through a pattern binding.
+
+Offline stem export treats generator tracks as silent (their buffers live
+in the real-time engine, not the snapshot); recording a grid performance
+is future work.

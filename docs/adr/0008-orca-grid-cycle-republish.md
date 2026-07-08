@@ -1,6 +1,9 @@
 # ADR 0008: Orca Grid Clock Sync via Cycle-Boundary Re-Publish
 
-- Status: Accepted
+- Status: Accepted, amended by ADR 0009 (the TUI now ships materialized
+  cycles to an engine-side generator track source; the re-publish path
+  described here is retained as a fallback for hosts without generator
+  wiring)
 - Date: 2026-07-08
 
 ## Context
