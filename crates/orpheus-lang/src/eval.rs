@@ -133,6 +133,22 @@ enum ExplicitValue {
     Number(Vec<Event<f64>>),
 }
 
+/// One evaluated element of an alternation or alternation-bearing sequence,
+/// before its structural kind has been unified with its siblings.
+#[derive(Clone, Debug)]
+enum SlotValue {
+    Sample(SamplePatternValue),
+    Number(NumberPatternValue),
+    Rest,
+}
+
+/// A homogeneous list of whole-slot patterns ready for slowcat/fastcat.
+#[derive(Clone, Debug)]
+enum SlotPatterns {
+    Samples(Vec<SamplePatternValue>),
+    Numbers(Vec<NumberPatternValue>),
+}
+
 impl ExplicitValue {
     fn into_value(self) -> Value {
         match self {
@@ -336,6 +352,7 @@ impl Evaluator {
             )),
             Expr::SeqSections(sections) => self.eval_seq_sections(sections, meter),
             Expr::Group(items) => self.eval_group(items, meter),
+            Expr::Alternation(items) => self.eval_alternation(items, meter),
             Expr::Ident(name) => self.eval_ident(name),
             Expr::Rest => Err(EvalError::new(
                 "rest markers can only appear inside pattern sequences",
@@ -385,6 +402,10 @@ impl Evaluator {
             return Err(error);
         }
 
+        if Self::items_contain_alternation(items) {
+            return self.eval_alternating_items(items, meter, context);
+        }
+
         if let Some(nodes) = self.collect_sample_nodes(items, meter)? {
             return Ok(Value::SamplePattern(from_sample_nodes(nodes)));
         }
@@ -400,6 +421,137 @@ impl Evaluator {
         Err(EvalError::new(format!(
             "{context} items must all resolve to the same structural pattern kind"
         )))
+    }
+
+    /// Returns `true` when any item is an `<a b c>` alternation, looking
+    /// through parenthesized groups so `bd (sn <cp hh>)` is detected too.
+    fn items_contain_alternation(items: &[Expr]) -> bool {
+        items.iter().any(|item| match item {
+            Expr::Alternation(_) => true,
+            Expr::Group(inner) => Self::items_contain_alternation(inner),
+            _ => false,
+        })
+    }
+
+    /// Evaluates `<a b c>`: a slowcat of its elements, playing one element per
+    /// cycle in rotation, each element occupying the whole slot it appears in.
+    fn eval_alternation(
+        &self,
+        items: &[Expr],
+        meter: Option<&MeterContext>,
+    ) -> Result<Value, EvalError> {
+        if let Some(error) = Self::unsupported_pattern_item_error(items, "alternation") {
+            return Err(error);
+        }
+
+        Ok(
+            match self.eval_slot_patterns(items, meter, "alternation")? {
+                SlotPatterns::Samples(patterns) => {
+                    Value::SamplePattern(SamplePatternValue::slowcat(patterns))
+                }
+                SlotPatterns::Numbers(patterns) => {
+                    Value::NumberPattern(NumberPatternValue::slowcat(patterns))
+                }
+            },
+        )
+    }
+
+    /// Evaluates a sequence or group that contains an alternation.
+    ///
+    /// Each item is evaluated as a whole-slot pattern and the items are then
+    /// concatenated Tidal-style (`fastcat = fast n . slowcat`), which packs
+    /// item `i` into slot `i` of every cycle while letting alternation items
+    /// advance to their next element on each new cycle.
+    fn eval_alternating_items(
+        &self,
+        items: &[Expr],
+        meter: Option<&MeterContext>,
+        context: &str,
+    ) -> Result<Value, EvalError> {
+        let factor = i64::try_from(items.len())
+            .map_err(|_| EvalError::new(format!("{context} length exceeded evaluator limits")))?;
+
+        Ok(match self.eval_slot_patterns(items, meter, context)? {
+            SlotPatterns::Samples(patterns) => {
+                Value::SamplePattern(SamplePatternValue::slowcat(patterns).fast(factor))
+            }
+            SlotPatterns::Numbers(patterns) => {
+                Value::NumberPattern(NumberPatternValue::slowcat(patterns).fast(factor))
+            }
+        })
+    }
+
+    fn eval_slot_patterns(
+        &self,
+        items: &[Expr],
+        meter: Option<&MeterContext>,
+        context: &str,
+    ) -> Result<SlotPatterns, EvalError> {
+        let mut slots = Vec::with_capacity(items.len());
+        for item in items {
+            slots.push(self.eval_slot_pattern(item, meter)?);
+        }
+
+        if slots
+            .iter()
+            .any(|slot| matches!(slot, SlotValue::Sample(_)))
+        {
+            let mut patterns = Vec::with_capacity(slots.len());
+            for slot in slots {
+                patterns.push(match slot {
+                    SlotValue::Sample(pattern) => pattern,
+                    SlotValue::Rest => SamplePatternValue::from_nodes(vec![PatternNode::rest()]),
+                    SlotValue::Number(_) => {
+                        return Err(EvalError::new(format!(
+                            "{context} items must all resolve to the same structural pattern kind"
+                        )));
+                    }
+                });
+            }
+            return Ok(SlotPatterns::Samples(patterns));
+        }
+
+        if slots
+            .iter()
+            .any(|slot| matches!(slot, SlotValue::Number(_)))
+        {
+            let mut patterns = Vec::with_capacity(slots.len());
+            for slot in slots {
+                patterns.push(match slot {
+                    SlotValue::Number(pattern) => pattern,
+                    SlotValue::Rest => NumberPatternValue::from_nodes(vec![PatternNode::rest()]),
+                    SlotValue::Sample(_) => {
+                        return Err(EvalError::new(format!(
+                            "{context} items must all resolve to the same structural pattern kind"
+                        )));
+                    }
+                });
+            }
+            return Ok(SlotPatterns::Numbers(patterns));
+        }
+
+        Err(EvalError::new(format!(
+            "{context} requires at least one non-rest item"
+        )))
+    }
+
+    fn eval_slot_pattern(
+        &self,
+        expr: &Expr,
+        meter: Option<&MeterContext>,
+    ) -> Result<SlotValue, EvalError> {
+        if matches!(expr, Expr::Rest) {
+            return Ok(SlotValue::Rest);
+        }
+
+        match self.eval_expr_in_meter(expr, meter)? {
+            Value::SamplePattern(pattern) => Ok(SlotValue::Sample(pattern)),
+            Value::NumberPattern(pattern) => Ok(SlotValue::Number(pattern)),
+            other => Err(EvalError::new(format!(
+                "{}s cannot appear inside pattern sequences",
+                other.kind_name()
+            ))),
+        }
     }
 
     fn eval_stack(
@@ -851,7 +1003,9 @@ impl Evaluator {
             | Expr::SeqSections(_) => Some(EvalError::new(format!(
                 "explicit-time forms cannot appear inside a pattern {context}; use `stream(...)` or lift the form outside the {context}"
             ))),
-            Expr::Group(group_items) => Self::unsupported_pattern_item_error(group_items, context),
+            Expr::Group(group_items) | Expr::Alternation(group_items) => {
+                Self::unsupported_pattern_item_error(group_items, context)
+            }
             _ => None,
         }
     }
@@ -1056,6 +1210,7 @@ const ROLE_SECTION_PATTERN: u64 = 0x0F;
 const ROLE_SECTION_CYCLES: u64 = 0x10;
 const ROLE_SEQ_SECTION_ITEM: u64 = 0x11;
 const ROLE_GROUP_ITEM: u64 = 0x12;
+const ROLE_ALTERNATION_ITEM: u64 = 0x13;
 
 fn collect_expr_site_salts(module: &Module) -> BTreeMap<usize, u64> {
     let mut salts = BTreeMap::new();
@@ -1092,6 +1247,7 @@ fn record_expr_site_salts(expr: &Expr, seed: u64, salts: &mut BTreeMap<usize, u6
             record_expr_list(sections, seed, ROLE_SEQ_SECTION_ITEM, salts);
         }
         Expr::Group(items) => record_expr_list(items, seed, ROLE_GROUP_ITEM, salts),
+        Expr::Alternation(items) => record_expr_list(items, seed, ROLE_ALTERNATION_ITEM, salts),
         Expr::Graph { bindings, result } => {
             for (index, binding) in bindings.iter().enumerate() {
                 record_expr_site_salts(

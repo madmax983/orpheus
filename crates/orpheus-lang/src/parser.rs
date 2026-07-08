@@ -38,12 +38,12 @@ pub fn parse_module(source: &str) -> Result<Module, ParseError> {
     // 👺 Havoc: Prevent pest from panicking via stack overflow on extremely deeply nested inputs.
     let mut current_depth = 0;
     for c in source.chars() {
-        if c == '(' || c == '{' {
+        if c == '(' || c == '{' || c == '<' {
             current_depth += 1;
             if current_depth > MAX_AST_DEPTH {
                 return Err(ParseError::new("maximum AST depth exceeded"));
             }
-        } else if c == ')' || c == '}' {
+        } else if c == ')' || c == '}' || c == '>' {
             current_depth = current_depth.saturating_sub(1);
         }
     }
@@ -323,6 +323,7 @@ fn build_expr(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
         Rule::graph => build_graph(pair, next_depth),
         Rule::primary => build_expr(first_inner(pair, "primary expression")?, next_depth),
         Rule::group => build_group(pair, next_depth),
+        Rule::alternation => build_alternation(pair, next_depth),
         Rule::rest => Ok(Expr::Rest),
         Rule::number => build_number(&pair),
         Rule::string => build_string(&pair),
@@ -553,6 +554,17 @@ fn build_group(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
         .map(|pair| build_sum_expr(pair, depth))
         .collect::<Result<Vec<_>, _>>()?;
     Ok(Expr::Group(items))
+}
+
+fn build_alternation(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
+    if depth > MAX_AST_DEPTH {
+        return Err(ParseError::new("maximum AST depth exceeded"));
+    }
+    let items = pair
+        .into_inner()
+        .map(|pair| build_sum_expr(pair, depth))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Expr::Alternation(items))
 }
 
 fn build_graph(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {

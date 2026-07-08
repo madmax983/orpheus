@@ -12,9 +12,11 @@ sum_expr = { product_expr ~ (padding ~ add_op ~ padding ~ product_expr)* }
 product_expr = { application ~ (padding ~ mul_op ~ padding ~ application)* }
 application = { primary ~ call_suffix* }
 call_suffix = { "(" ~ padding ~ call_args? ~ padding ~ ")" }
-primary = { graph | stack | group | rest | number | string | identifier }
+primary = { graph | stack | group | alternation | rest | number | string | identifier }
 
 group = { "(" ~ padding ~ sum_expr ~ (required_padding ~ sum_expr)* ~ padding ~ ")" }
+
+alternation = { "<" ~ padding ~ sum_expr ~ (required_padding ~ sum_expr)* ~ padding ~ ">" }
 
 stack = { "stack" ~ "(" ~ padding ~ stack_layers ~ padding ~ ")" }
 stack_layers = { pipe_expr ~ (padding ~ "," ~ padding ~ pipe_expr)* }

@@ -18,7 +18,7 @@ use crate::ast::{BinaryOp, Expr, Module, Stmt, binding_expr_self_references};
 use crate::diagnostics::{ParseError, TypeError};
 use crate::parser::parse_module;
 use crate::pitch::parse_named_pitch_literal;
-use crate::types::env::{TypeEnv, TypeScheme};
+use crate::types::env::{TypeEnv, TypeScheme, pattern_concat_scheme};
 use crate::types::{Type, TypeVarId, TypedModule};
 
 /// Infers the types of top-level bindings in an Orpheus module.
@@ -186,6 +186,9 @@ impl Inferencer {
                 self.apply_argument(rhs_ty, lhs_ty)
             }
             Expr::Call { callee, args } => {
+                if let Some(ty) = self.infer_variadic_cat(callee, args)? {
+                    return Ok(ty);
+                }
                 let mut callee_ty = self.infer_expr(callee)?;
                 for arg in args {
                     let arg_ty = self.infer_expr(arg)?;
@@ -221,6 +224,7 @@ impl Inferencer {
             }
             Expr::SeqSections(items) => self.infer_homogeneous(items, "`seq_sections` items"),
             Expr::Group(items) => self.infer_pattern_items(items, "group items"),
+            Expr::Alternation(items) => self.infer_pattern_items(items, "alternation items"),
             Expr::Ident(name) => self.infer_ident(name),
             Expr::Rest => Err(TypeError::new(
                 "rest markers do not have a standalone type outside pattern sequences",
@@ -322,6 +326,33 @@ impl Inferencer {
         } else {
             Ok(Type::pattern(self.fresh_var_type()))
         }
+    }
+
+    /// Types variadic `cat`/`slowcat` calls with more than two arguments.
+    ///
+    /// The environment scheme for `cat` only covers the curried two-argument
+    /// form; larger argument lists are checked here as a homogeneous list of
+    /// patterns. Calls where `cat`/`slowcat` has been shadowed by a user
+    /// binding fall through to the generic application path.
+    fn infer_variadic_cat(
+        &mut self,
+        callee: &Expr,
+        args: &[Expr],
+    ) -> Result<Option<Type>, TypeError> {
+        let Expr::Ident(name) = callee else {
+            return Ok(None);
+        };
+        if !matches!(name.as_str(), "cat" | "slowcat") || args.len() <= 2 {
+            return Ok(None);
+        }
+        if self.env.get(name) != Some(&pattern_concat_scheme(TypeVarId::new(0))) {
+            return Ok(None);
+        }
+
+        let ty = self.infer_homogeneous(args, "`cat` patterns")?;
+        let element = self.fresh_var_type();
+        self.unify(ty.clone(), Type::pattern(element))?;
+        Ok(Some(self.resolve(ty)))
     }
 
     fn infer_ident(&mut self, name: &str) -> Result<Type, TypeError> {

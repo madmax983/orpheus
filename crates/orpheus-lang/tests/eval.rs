@@ -3091,3 +3091,177 @@ fn load_scl_binds_tuning_from_fixture() {
     // 5-limit JI step 7 == 3/2 perfect fifth
     assert!((rate - 1.5).abs() < f64::EPSILON, "expected 1.5 got {rate}");
 }
+
+// --- cycle alternation: cat/slowcat/append, iter/iter_back, <a b c> grammar ---
+
+fn exported_sample_names(value: &Value, cycle_count: u64) -> Vec<String> {
+    exported_sample_events(value, cycle_count)
+        .iter()
+        .map(|event| event["sample"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[test]
+fn cat_plays_one_pattern_per_cycle_in_rotation() {
+    let module = eval_module("drums = cat(bd, sn cp)", ReplMode::Loose).unwrap();
+    assert_eq!(
+        exported_sample_names(module.get("drums").unwrap(), 3),
+        ["bd", "sn", "cp", "bd"]
+    );
+}
+
+#[test]
+fn slowcat_is_an_alias_for_cat() {
+    let module = eval_module("drums = slowcat(bd, sn cp)", ReplMode::Loose).unwrap();
+    assert_eq!(
+        exported_sample_names(module.get("drums").unwrap(), 3),
+        ["bd", "sn", "cp", "bd"]
+    );
+}
+
+#[test]
+fn cat_accepts_more_than_two_patterns() {
+    let module = eval_module("drums = cat(bd, sn, cp)", ReplMode::Loose).unwrap();
+    assert_eq!(
+        exported_sample_names(module.get("drums").unwrap(), 4),
+        ["bd", "sn", "cp", "bd"]
+    );
+}
+
+#[test]
+fn append_concatenates_two_patterns_cyclewise() {
+    let module = eval_module("drums = append(bd, sn)", ReplMode::Loose).unwrap();
+    assert_eq!(
+        exported_sample_names(module.get("drums").unwrap(), 2),
+        ["bd", "sn"]
+    );
+}
+
+#[test]
+fn cat_localizes_child_cycles_like_every() {
+    // The child pattern only advances its own cycle counter on the cycles it
+    // actually plays, so `every(2, rev, ...)` fires on child cycles 0 and 2,
+    // which are global cycles 0 and 4.
+    let module = eval_module("drums = cat(every(2, rev, bd sn), cp)", ReplMode::Loose).unwrap();
+    assert_eq!(
+        exported_sample_names(module.get("drums").unwrap(), 6),
+        ["sn", "bd", "cp", "bd", "sn", "cp", "sn", "bd", "cp"]
+    );
+}
+
+#[test]
+fn cat_requires_matching_pattern_kinds() {
+    assert_eval_error_contains(
+        "drums = cat(bd, 1 2)",
+        ReplMode::Loose,
+        &["`cat`", "same pattern kind"],
+    );
+}
+
+#[test]
+fn iter_rotates_the_pattern_by_one_step_each_cycle() {
+    let module = eval_module("drums = iter(4, bd sn cp hh)", ReplMode::Loose).unwrap();
+    assert_eq!(
+        exported_sample_names(module.get("drums").unwrap(), 5),
+        [
+            "bd", "sn", "cp", "hh", // cycle 0
+            "sn", "cp", "hh", "bd", // cycle 1
+            "cp", "hh", "bd", "sn", // cycle 2
+            "hh", "bd", "sn", "cp", // cycle 3
+            "bd", "sn", "cp", "hh", // cycle 4 wraps around
+        ]
+    );
+}
+
+#[test]
+fn iter_back_rotates_in_the_opposite_direction() {
+    let module = eval_module("drums = iter_back(4, bd sn cp hh)", ReplMode::Loose).unwrap();
+    assert_eq!(
+        exported_sample_names(module.get("drums").unwrap(), 2),
+        ["bd", "sn", "cp", "hh", "hh", "bd", "sn", "cp"]
+    );
+}
+
+#[test]
+fn iter_rejects_non_positive_step_counts() {
+    assert_eval_error_contains(
+        "drums = iter(0, bd sn)",
+        ReplMode::Loose,
+        &["`iter`", "positive integer"],
+    );
+}
+
+#[test]
+fn alternation_in_a_sequence_alternates_across_cycles() {
+    let module = eval_module("drums = bd <sn cp>", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 3);
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event["sample"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["bd", "sn", "bd", "cp", "bd", "sn"]
+    );
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| {
+                (
+                    event["start_num"].as_i64().unwrap(),
+                    event["start_den"].as_i64().unwrap(),
+                )
+            })
+            .collect::<Vec<_>>(),
+        vec![(0, 1), (1, 2), (1, 1), (3, 2), (2, 1), (5, 2)]
+    );
+}
+
+#[test]
+fn standalone_alternation_behaves_like_cat() {
+    let module = eval_module("drums = <bd sn>", ReplMode::Loose).unwrap();
+    assert_eq!(
+        exported_sample_names(module.get("drums").unwrap(), 2),
+        ["bd", "sn"]
+    );
+}
+
+#[test]
+fn alternation_inside_a_group_alternates_across_cycles() {
+    let module = eval_module("drums = bd (sn <cp hh>)", ReplMode::Loose).unwrap();
+    assert_eq!(
+        exported_sample_names(module.get("drums").unwrap(), 2),
+        ["bd", "sn", "cp", "bd", "sn", "hh"]
+    );
+}
+
+#[test]
+fn alternation_supports_rest_elements() {
+    let module = eval_module("drums = bd <sn ~>", ReplMode::Loose).unwrap();
+    assert_eq!(
+        exported_sample_names(module.get("drums").unwrap(), 2),
+        ["bd", "sn", "bd"]
+    );
+}
+
+#[test]
+fn nested_alternations_advance_only_when_selected() {
+    let module = eval_module("drums = <bd <sn cp>>", ReplMode::Loose).unwrap();
+    assert_eq!(
+        exported_sample_names(module.get("drums").unwrap(), 4),
+        ["bd", "sn", "bd", "cp"]
+    );
+}
+
+#[test]
+fn alternation_supports_number_patterns() {
+    let module = eval_module("melody = <1 2> 3", ReplMode::Loose).unwrap();
+    let pattern = module.get("melody").unwrap().as_number_pattern().unwrap();
+    let span = orpheus_lang::render_span(2).unwrap();
+    let values = pattern
+        .try_query(&span)
+        .unwrap()
+        .into_iter()
+        .map(|event| event.value)
+        .collect::<Vec<_>>();
+    assert_eq!(values, [1.0, 3.0, 2.0, 3.0]);
+}

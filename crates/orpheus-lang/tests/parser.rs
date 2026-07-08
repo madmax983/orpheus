@@ -363,3 +363,51 @@ fn pipe_target_does_not_accept_a_sequence() {
     let source = "drivebox = bd |> sn cp";
     assert_parse_error_contains(source, &["expected", "EOI"]);
 }
+
+#[test]
+fn parses_angle_brackets_as_alternation() {
+    let expr = binding_expr("drums = bd <sn cp>");
+    let Expr::Seq(items) = expr else {
+        panic!("expected sequence expression");
+    };
+    assert_eq!(items[0], Expr::Ident("bd".to_owned()));
+    assert_eq!(
+        items[1],
+        Expr::Alternation(vec![
+            Expr::Ident("sn".to_owned()),
+            Expr::Ident("cp".to_owned()),
+        ])
+    );
+}
+
+#[test]
+fn parses_standalone_alternation() {
+    let expr = binding_expr("drums = <bd sn>");
+    assert_eq!(
+        expr,
+        Expr::Alternation(vec![
+            Expr::Ident("bd".to_owned()),
+            Expr::Ident("sn".to_owned()),
+        ])
+    );
+}
+
+#[test]
+fn parses_groups_inside_alternations() {
+    let expr = binding_expr("drums = <(bd sn) cp>");
+    assert_eq!(
+        expr,
+        Expr::Alternation(vec![
+            Expr::Group(vec![
+                Expr::Ident("bd".to_owned()),
+                Expr::Ident("sn".to_owned()),
+            ]),
+            Expr::Ident("cp".to_owned()),
+        ])
+    );
+}
+
+#[test]
+fn rejects_empty_alternations() {
+    assert_parse_error_contains("drums = <>", &[]);
+}

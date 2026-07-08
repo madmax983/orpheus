@@ -96,6 +96,8 @@ pub enum Expr {
     SeqSections(Vec<Self>),
     /// Parenthesized pattern group.
     Group(Vec<Self>),
+    /// Per-cycle alternation created by `<a b c>`; plays one element per cycle.
+    Alternation(Vec<Self>),
     /// A bare identifier.
     Ident(String),
     /// A rest marker.
@@ -157,7 +159,8 @@ impl Expr {
             | Self::Stack(items)
             | Self::Stream(items)
             | Self::SeqSections(items)
-            | Self::Group(items) => Self::references_ident_in_list(items, target, shadowed),
+            | Self::Group(items)
+            | Self::Alternation(items) => Self::references_ident_in_list(items, target, shadowed),
             Self::Graph { bindings, result } => {
                 Self::references_ident_in_graph(bindings, result, target, shadowed)
             }
