@@ -44,6 +44,13 @@ pub enum Expr {
         /// Final yield expression.
         result: Box<Self>,
     },
+    /// A named instrument definition created by `voice { ... }`.
+    Voice {
+        /// Intermediary bindings assigned in the block.
+        bindings: Vec<GraphBinding>,
+        /// The final mono voice signal expression.
+        result: Box<Self>,
+    },
     /// Pipe application created by `lhs |> rhs`.
     Pipe {
         /// The left-hand side expression to be piped.
@@ -205,7 +212,7 @@ impl Expr {
             | Self::SeqSections(items)
             | Self::Group(items)
             | Self::Alternation(items) => Self::references_ident_in_list(items, target, shadowed),
-            Self::Graph { bindings, result } => {
+            Self::Graph { bindings, result } | Self::Voice { bindings, result } => {
                 Self::references_ident_in_graph(bindings, result, target, shadowed)
             }
             Self::Pipe { lhs, rhs } | Self::Binary { lhs, rhs, .. } => {

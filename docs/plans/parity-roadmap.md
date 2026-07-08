@@ -113,7 +113,12 @@ Module: `crates/orpheus-dsp/src/graph/` (ADR 0004).
   `crates/orpheus-dsp/src/synth/mix.rs` (`graph/adapters.rs`)
 - [x] `PanNode` — `pan`, 2-in (audio, position)/2-out equal-power panner
   (`crates/orpheus-dsp/src/graph/primitives.rs`)
-- [~] engine integration of `graph/` — partial (ADR 0009): pooled graph
-  voices trigger from pattern events via tokens (`gsine`,
-  `crates/orpheus-dsp/src/graph_voice.rs`); remaining: user-defined program
-  registry/swap command and language-surface syntax for graph voices
+- [~] engine integration of `graph/` — mostly done (ADR 0009/0010): pooled
+  graph voices trigger from pattern events via tokens (`gsine`,
+  `crates/orpheus-dsp/src/graph_voice.rs`); user-defined programs via the
+  `voice { ... }` language block (`crates/orpheus-lang/src/voice.rs`) compile
+  to `GraphVoiceSpec` DAGs and hot-swap through
+  `EngineCommand::ReplaceGraphVoicePrograms` at cycle boundaries; remaining:
+  expose `split`/`merge`/`feedback` and multi-oscillator `par` routing in the
+  voice vocabulary, per-program polyphony/voice stealing, and voice bodies
+  that reference pattern-side control signals

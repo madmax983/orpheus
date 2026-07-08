@@ -286,6 +286,7 @@ impl GraphCompiler<'_> {
             | Expr::Stack(_)
             | Expr::Stream(_)
             | Expr::Graph { .. }
+            | Expr::Voice { .. }
             | Expr::At { .. }
             | Expr::Meter { .. }
             | Expr::Beat(_)
@@ -761,7 +762,22 @@ fn is_selector_atom(param_name: &str, ident: &str) -> bool {
 }
 
 fn format_graph_source_into(bindings: &[GraphBinding], result: &Expr, buf: &mut String) {
-    buf.push_str("graph { ");
+    format_block_source_into("graph", bindings, result, buf);
+}
+
+/// Formats a `voice { ... }` block back into canonical source text.
+pub fn format_voice_source_into(bindings: &[GraphBinding], result: &Expr, buf: &mut String) {
+    format_block_source_into("voice", bindings, result, buf);
+}
+
+fn format_block_source_into(
+    keyword: &str,
+    bindings: &[GraphBinding],
+    result: &Expr,
+    buf: &mut String,
+) {
+    buf.push_str(keyword);
+    buf.push_str(" { ");
     let mut first = true;
     for binding in bindings {
         if !first {
@@ -806,6 +822,7 @@ fn format_expr_source_into(expr: &Expr, buf: &mut String) {
             buf.push(')');
         }
         Expr::Graph { bindings, result } => format_graph_source_into(bindings, result, buf),
+        Expr::Voice { bindings, result } => format_voice_source_into(bindings, result, buf),
         Expr::Pipe { lhs, rhs } => {
             format_expr_source_into(lhs, buf);
             buf.push_str(" |> ");

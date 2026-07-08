@@ -270,6 +270,7 @@ struct EngineCore {
     /// fresh pending buffer arrives the previous one is re-scheduled, so a
     /// starved generator loops its last cycle instead of falling silent.
     generator_active: Vec<Box<[Event<SampleTrigger>]>>,
+    pending_graph_voices: Option<GraphVoiceBank>,
     prime_initial_routing: bool,
     last_swap_frame: Option<u64>,
     track_mix_buffer: Vec<(f32, f32)>,
@@ -319,6 +320,7 @@ impl EngineCore {
             generator_active: std::iter::repeat_with(|| Vec::new().into_boxed_slice())
                 .take(MAX_GENERATORS)
                 .collect(),
+            pending_graph_voices: None,
             prime_initial_routing: false,
             last_swap_frame: None,
             track_mix_buffer,
@@ -363,6 +365,12 @@ impl EngineCore {
                 self.pending_sample_bank = Some(sample_bank);
                 Ok(())
             }
+            EngineCommand::ReplaceGraphVoicePrograms(graph_voices) => {
+                // The bank arrives fully built and prepared (constructed off
+                // the audio thread); adopting it at the boundary is a move.
+                self.pending_graph_voices = Some(graph_voices);
+                Ok(())
+            }
             EngineCommand::SetTempo(tempo_bpm) => {
                 let frames_per_cycle = frames_per_cycle(self.sample_rate, tempo_bpm)?;
                 self.tempo_bpm = tempo_bpm;
@@ -402,6 +410,12 @@ impl EngineCore {
 
         if let Some(sample_bank) = self.pending_sample_bank.take() {
             self.sample_bank = sample_bank;
+        }
+
+        if let Some(graph_voices) = self.pending_graph_voices.take() {
+            // Notes sounding on the outgoing pool end at the swap boundary,
+            // mirroring how a replaced sample bank retires its samples.
+            self.graph_voices = graph_voices;
         }
 
         if let Some(routing) = self.pending_routing.take() {
@@ -898,6 +912,7 @@ pub struct EngineHandle {
     command_tx: Producer<EngineCommand>,
     test_renderer: Option<RenderEngine>,
     transport: Arc<SharedTransport>,
+    sample_rate: u32,
 }
 
 impl PartialEq for EngineHandle {
@@ -965,6 +980,7 @@ impl EngineHandle {
                 command_tx,
                 test_renderer: None,
                 transport,
+                sample_rate: config.sample_rate.0,
             },
             renderer,
         ))
@@ -980,6 +996,16 @@ impl EngineHandle {
         let config = default_stream_config();
         Self::split_for_stream_config(&config)
             .unwrap_or_else(|error| panic!("default test stream config must be valid: {error}"))
+    }
+
+    /// The output sample rate this handle's engine renders at, in Hertz.
+    ///
+    /// Off-thread program builders (sample-accurate graph voice banks, for
+    /// example) use this so compiled DSP state matches the render rate.
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
+    pub const fn sample_rate_hz(&self) -> f32 {
+        self.sample_rate as f32
     }
 
     /// Enqueues a command for the render thread to observe on the next render call.

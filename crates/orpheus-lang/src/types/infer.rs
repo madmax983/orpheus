@@ -239,6 +239,7 @@ impl Inferencer {
             Expr::Number(_) => Ok(Type::pattern(Type::Number)),
             Expr::String(_) => Ok(Type::String),
             Expr::Graph { .. } => Ok(Type::Pedal),
+            Expr::Voice { .. } => Ok(Type::Voice),
             Expr::Binary { lhs, op, rhs } => self.infer_binary_expr(lhs, *op, rhs),
         }
     }
@@ -339,6 +340,13 @@ impl Inferencer {
             }
 
             let actual = self.infer_expr(item)?;
+            // A voice binding used inside a pattern is a sample-like token:
+            // the engine resolves it through the graph voice bank.
+            let actual = if matches!(self.resolve(actual.clone()), Type::Voice) {
+                Type::pattern(Type::Sample)
+            } else {
+                actual
+            };
             if let Some(expected_ty) = expected.clone() {
                 self.unify(expected_ty.clone(), actual.clone())
                     .map_err(|_| {
@@ -604,6 +612,7 @@ impl Inferencer {
             }
             (Type::Sample, Type::Sample)
             | (Type::Pedal, Type::Pedal)
+            | (Type::Voice, Type::Voice)
             | (Type::Plugin, Type::Plugin)
             | (Type::Note, Type::Note)
             | (Type::Number, Type::Number)
@@ -647,6 +656,7 @@ impl Inferencer {
             }
             Type::Sample
             | Type::Pedal
+            | Type::Voice
             | Type::Plugin
             | Type::Note
             | Type::Number
@@ -673,6 +683,7 @@ impl Inferencer {
             ),
             Type::Sample => Type::Sample,
             Type::Pedal => Type::Pedal,
+            Type::Voice => Type::Voice,
             Type::Plugin => Type::Plugin,
             Type::Note => Type::Note,
             Type::Number => Type::Number,
@@ -727,6 +738,7 @@ fn substitute_scheme_vars(ty: &Type, replacements: &BTreeMap<TypeVarId, Type>) -
         Type::Var(var) => replacements.get(var).cloned().unwrap_or(Type::Var(*var)),
         Type::Sample => Type::Sample,
         Type::Pedal => Type::Pedal,
+        Type::Voice => Type::Voice,
         Type::Plugin => Type::Plugin,
         Type::Note => Type::Note,
         Type::Number => Type::Number,
@@ -753,6 +765,7 @@ fn free_type_vars(ty: &Type) -> BTreeSet<TypeVarId> {
         Type::Var(var) => BTreeSet::from([*var]),
         Type::Sample
         | Type::Pedal
+        | Type::Voice
         | Type::Plugin
         | Type::Note
         | Type::Number

@@ -16,9 +16,12 @@
 //! heap allocation; finished voices are reset in place and reused instead of
 //! being dropped on the audio thread.
 
+use thiserror::Error;
+
 use crate::SampleTrigger;
 use crate::graph::{
-    Node, Processor, adsr, bind, gain_node, pan, par, passthrough, seq, sine, wire,
+    Node, Processor, Seq, adsr, ar, bind, constant, gain_node, ladder_filter, noise, pan, par,
+    passthrough, pulse, saw, seq, sine, soft_sat, sum, tri, wire,
 };
 use crate::routing::TrackId;
 
@@ -66,18 +69,8 @@ impl GraphVoiceProgram {
     }
 
     /// The release tail length in frames at `sample_rate_hz`.
-    #[allow(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        clippy::cast_precision_loss
-    )]
     fn release_frames(&self, sample_rate_hz: f32) -> u32 {
-        let frames = (self.release_seconds * sample_rate_hz).ceil();
-        if frames.is_finite() && frames > 0.0 {
-            frames.min(u32::MAX as f32) as u32
-        } else {
-            1
-        }
+        release_seconds_to_frames(self.release_seconds, sample_rate_hz)
     }
 }
 
@@ -147,6 +140,443 @@ fn build_gsine(sample_rate_hz: f32) -> Processor {
     Processor::new(graph)
 }
 
+/// A reference to a signal available to a [`VoiceNodeSpec`].
+///
+/// Specs form a DAG over a flat node list: a node may read the per-note gate,
+/// the per-note frequency, or the output of any node defined before it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum VoiceSignalRef {
+    /// The per-note gate (1 while the pattern event span holds, then 0).
+    Gate,
+    /// The per-note frequency in Hertz.
+    Freq,
+    /// The output of the node at this index in the spec's node list.
+    Node(u32),
+}
+
+/// One node in a declarative [`GraphVoiceSpec`].
+///
+/// Each variant maps onto one existing graph-module primitive; the spec is a
+/// data-only wiring of that vocabulary, so it stays `Clone`/`PartialEq` and
+/// can travel through [`crate::EngineCommand`]s.
+#[derive(Clone, Debug, PartialEq)]
+pub enum VoiceNodeSpec {
+    /// A constant control value.
+    Constant {
+        /// The constant value produced every frame.
+        value: f32,
+    },
+    /// A sine oscillator driven by `freq`.
+    Sine {
+        /// The frequency signal in Hertz.
+        freq: VoiceSignalRef,
+    },
+    /// A band-limited saw oscillator driven by `freq`.
+    Saw {
+        /// The frequency signal in Hertz.
+        freq: VoiceSignalRef,
+    },
+    /// A triangle oscillator driven by `freq`.
+    Tri {
+        /// The frequency signal in Hertz.
+        freq: VoiceSignalRef,
+    },
+    /// A band-limited pulse oscillator driven by `freq` and `width`.
+    Pulse {
+        /// The frequency signal in Hertz.
+        freq: VoiceSignalRef,
+        /// The pulse width (duty cycle) signal in \[0, 1\].
+        width: VoiceSignalRef,
+    },
+    /// Deterministic white noise.
+    Noise {
+        /// The PRNG seed; equal seeds produce identical noise.
+        seed: u32,
+    },
+    /// A gate-driven ADSR envelope with fixed segment parameters.
+    Adsr {
+        /// The gate signal opening and closing the envelope.
+        gate: VoiceSignalRef,
+        /// Attack time in seconds.
+        attack_s: f32,
+        /// Decay time in seconds.
+        decay_s: f32,
+        /// Sustain level in \[0, 1\].
+        sustain: f32,
+        /// Release time in seconds.
+        release_s: f32,
+    },
+    /// A gate-driven attack/release envelope with fixed segment parameters.
+    Ar {
+        /// The gate signal opening and closing the envelope.
+        gate: VoiceSignalRef,
+        /// Attack time in seconds.
+        attack_s: f32,
+        /// Release time in seconds.
+        release_s: f32,
+    },
+    /// A 4-stage ladder low-pass filter.
+    Lowpass {
+        /// The audio signal to filter.
+        input: VoiceSignalRef,
+        /// The cutoff frequency signal in Hertz.
+        cutoff_hz: VoiceSignalRef,
+        /// The resonance signal.
+        resonance: VoiceSignalRef,
+    },
+    /// Soft saturation.
+    Drive {
+        /// The audio signal to saturate.
+        input: VoiceSignalRef,
+        /// The drive amount signal.
+        amount: VoiceSignalRef,
+    },
+    /// Multiplies two signals (ring mod, envelope application, gain).
+    Mul {
+        /// The left operand.
+        left: VoiceSignalRef,
+        /// The right operand.
+        right: VoiceSignalRef,
+    },
+    /// Sums two signals.
+    Add {
+        /// The left operand.
+        left: VoiceSignalRef,
+        /// The right operand.
+        right: VoiceSignalRef,
+    },
+}
+
+impl VoiceNodeSpec {
+    /// The signal references this node reads, in primitive input order.
+    fn input_refs(&self) -> Vec<VoiceSignalRef> {
+        match self {
+            Self::Constant { .. } | Self::Noise { .. } => Vec::new(),
+            Self::Sine { freq } | Self::Saw { freq } | Self::Tri { freq } => vec![*freq],
+            Self::Pulse { freq, width } => vec![*freq, *width],
+            Self::Adsr { gate, .. } | Self::Ar { gate, .. } => vec![*gate],
+            Self::Lowpass {
+                input,
+                cutoff_hz,
+                resonance,
+            } => vec![*input, *cutoff_hz, *resonance],
+            Self::Drive { input, amount } => vec![*input, *amount],
+            Self::Mul { left, right } | Self::Add { left, right } => vec![*left, *right],
+        }
+    }
+
+    /// Whether every fixed parameter is finite (and non-negative where the
+    /// primitive expects a duration or level).
+    fn parameters_are_valid(&self) -> bool {
+        match self {
+            Self::Constant { value } => value.is_finite(),
+            Self::Adsr {
+                attack_s,
+                decay_s,
+                sustain,
+                release_s,
+                ..
+            } => [*attack_s, *decay_s, *sustain, *release_s]
+                .iter()
+                .all(|value| value.is_finite() && *value >= 0.0),
+            Self::Ar {
+                attack_s,
+                release_s,
+                ..
+            } => [*attack_s, *release_s]
+                .iter()
+                .all(|value| value.is_finite() && *value >= 0.0),
+            Self::Sine { .. }
+            | Self::Saw { .. }
+            | Self::Tri { .. }
+            | Self::Pulse { .. }
+            | Self::Noise { .. }
+            | Self::Lowpass { .. }
+            | Self::Drive { .. }
+            | Self::Mul { .. }
+            | Self::Add { .. } => true,
+        }
+    }
+}
+
+/// Validation errors for [`GraphVoiceSpec::new`].
+#[derive(Clone, Debug, Eq, Error, PartialEq)]
+pub enum GraphVoiceSpecError {
+    /// The pattern token was empty or contained whitespace.
+    #[error("voice program token must be a non-empty single word")]
+    InvalidToken,
+    /// The spec contained no nodes.
+    #[error("voice program body must contain at least one node")]
+    EmptyBody,
+    /// A node referenced itself or a later node.
+    #[error("voice node {node} references node {reference}, which is not defined before it")]
+    ForwardReference {
+        /// The index of the offending node.
+        node: usize,
+        /// The out-of-range reference.
+        reference: usize,
+    },
+    /// The output referenced a node index outside the node list.
+    #[error("voice program output references node {reference}, which does not exist")]
+    OutputOutOfRange {
+        /// The out-of-range reference.
+        reference: usize,
+    },
+    /// A node carried a non-finite (or negative duration/level) parameter.
+    #[error("voice node {node} has a non-finite or negative parameter")]
+    InvalidParameter {
+        /// The index of the offending node.
+        node: usize,
+    },
+    /// The release tail was not finite and non-negative.
+    #[error("voice program release must be finite and non-negative")]
+    InvalidRelease,
+}
+
+/// A declarative, user-definable graph voice program.
+///
+/// Where [`GraphVoiceProgram`] describes a built-in voice through a static
+/// builder function, a `GraphVoiceSpec` is pure data: a flat DAG of
+/// [`VoiceNodeSpec`]s over the existing graph vocabulary, validated at
+/// construction so compilation cannot fail. Compilation lowers each node onto
+/// its graph-module primitive and wires the DAG with `seq`/`par`/`wire`
+/// combinators into the fixed voice interface
+/// `[gate, freq_hz, gain, pan] -> [left, right]` (the per-trigger gain and
+/// equal-power pan stages are appended automatically).
+///
+/// Construction and compilation may allocate and must happen off the audio
+/// thread; the compiled [`GraphVoice`] follows the pooled discipline of
+/// ADR 0009.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphVoiceSpec {
+    token: Box<str>,
+    release_seconds: f32,
+    nodes: Vec<VoiceNodeSpec>,
+    output: VoiceSignalRef,
+}
+
+impl GraphVoiceSpec {
+    /// Validates and builds a voice spec.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`GraphVoiceSpecError`] when the token is not a single word,
+    /// the body is empty, a node references itself or a later node, the
+    /// output reference is out of range, or a parameter is invalid.
+    pub fn new(
+        token: impl Into<Box<str>>,
+        release_seconds: f32,
+        nodes: Vec<VoiceNodeSpec>,
+        output: VoiceSignalRef,
+    ) -> Result<Self, GraphVoiceSpecError> {
+        let token = token.into();
+        if token.is_empty() || token.chars().any(char::is_whitespace) {
+            return Err(GraphVoiceSpecError::InvalidToken);
+        }
+        if nodes.is_empty() {
+            return Err(GraphVoiceSpecError::EmptyBody);
+        }
+        if !(release_seconds.is_finite() && release_seconds >= 0.0) {
+            return Err(GraphVoiceSpecError::InvalidRelease);
+        }
+
+        for (index, node) in nodes.iter().enumerate() {
+            if !node.parameters_are_valid() {
+                return Err(GraphVoiceSpecError::InvalidParameter { node: index });
+            }
+            for reference in node.input_refs() {
+                if let VoiceSignalRef::Node(target) = reference
+                    && target as usize >= index
+                {
+                    return Err(GraphVoiceSpecError::ForwardReference {
+                        node: index,
+                        reference: target as usize,
+                    });
+                }
+            }
+        }
+
+        if let VoiceSignalRef::Node(target) = output
+            && target as usize >= nodes.len()
+        {
+            return Err(GraphVoiceSpecError::OutputOutOfRange {
+                reference: target as usize,
+            });
+        }
+
+        Ok(Self {
+            token,
+            release_seconds,
+            nodes,
+            output,
+        })
+    }
+
+    /// The pattern-token this program is selected by.
+    #[must_use]
+    pub fn token(&self) -> &str {
+        &self.token
+    }
+
+    /// How long the voice keeps sounding after its gate falls, in seconds.
+    #[must_use]
+    pub const fn release_seconds(&self) -> f32 {
+        self.release_seconds
+    }
+
+    /// Compiles the spec into an unprepared [`GraphVoice`].
+    ///
+    /// Construction may allocate; call it off the audio thread and follow up
+    /// with [`GraphVoice::prepare`] before real-time use.
+    #[must_use]
+    pub fn build_voice(&self, sample_rate_hz: f32) -> GraphVoice {
+        GraphVoice {
+            processor: self.build_processor(sample_rate_hz),
+        }
+    }
+
+    /// The release tail length in frames at `sample_rate_hz`.
+    fn release_frames(&self, sample_rate_hz: f32) -> u32 {
+        release_seconds_to_frames(self.release_seconds, sample_rate_hz)
+    }
+
+    /// Lowers the spec DAG onto graph combinators.
+    ///
+    /// The graph threads a growing signal bus through one stage per node.
+    /// Before stage `k` the bus is `[out_{k-1}, .., out_0, gate, freq, gain,
+    /// pan]`; the stage wires the node's inputs to the front (a `wire` node
+    /// may duplicate bus channels), runs the node in parallel with a
+    /// passthrough of the whole bus, and thereby prepends its output. A final
+    /// selector feeds `[audio, gain, pan]` through the shared gain and
+    /// equal-power pan stages.
+    fn build_processor(&self, sample_rate_hz: f32) -> Processor {
+        let node_count = self.nodes.len();
+        let mut stages = self
+            .nodes
+            .iter()
+            .enumerate()
+            .map(|(index, node)| Self::build_stage(index, node, sample_rate_hz));
+        let first = stages
+            .next()
+            .unwrap_or_else(|| unreachable!("validated specs have at least one node"));
+        let dag = stages.fold(first, |acc, stage| {
+            seq(acc, stage)
+                .unwrap_or_else(|error| panic!("voice spec stages must compose: {error}"))
+        });
+
+        let output_channel = bus_channel(node_count, self.output);
+        let gain_channel = channel_index(node_count + 2);
+        let pan_channel = channel_index(node_count + 3);
+        let select = wire(&[output_channel, gain_channel, pan_channel]);
+        // [audio, gain, pan] -> [audio * gain, pan] -> [left, right]
+        let levelled = par(gain_node(), passthrough(1));
+        let tail = seq(
+            select,
+            seq(levelled, pan())
+                .unwrap_or_else(|error| panic!("voice spec pan stage must compose: {error}")),
+        )
+        .unwrap_or_else(|error| panic!("voice spec output selector must compose: {error}"));
+
+        let graph = seq(dag, tail)
+            .unwrap_or_else(|error| panic!("voice spec output stage must compose: {error}"));
+        debug_assert_eq!(graph.inputs(), 4);
+        debug_assert_eq!(graph.outputs(), 2);
+        Processor::new(graph)
+    }
+
+    /// Builds the stage for node `index`: input wiring followed by the node
+    /// running in parallel with a passthrough of the whole bus.
+    fn build_stage(index: usize, node: &VoiceNodeSpec, sample_rate_hz: f32) -> Seq {
+        let bus_width = index + 4;
+        let mut mapping: Vec<u32> = node
+            .input_refs()
+            .iter()
+            .map(|reference| bus_channel(index, *reference))
+            .collect();
+        mapping.extend((0..bus_width).map(channel_index));
+        let inputs = wire(&mapping);
+
+        let bus = channel_index(bus_width);
+        let staged = match node {
+            VoiceNodeSpec::Constant { value } => par(constant(*value), passthrough(bus)),
+            VoiceNodeSpec::Sine { .. } => par(sine(sample_rate_hz), passthrough(bus)),
+            VoiceNodeSpec::Saw { .. } => par(saw(sample_rate_hz), passthrough(bus)),
+            VoiceNodeSpec::Tri { .. } => par(tri(sample_rate_hz), passthrough(bus)),
+            VoiceNodeSpec::Pulse { .. } => par(pulse(sample_rate_hz), passthrough(bus)),
+            VoiceNodeSpec::Noise { seed } => par(noise(*seed), passthrough(bus)),
+            VoiceNodeSpec::Adsr {
+                attack_s,
+                decay_s,
+                sustain,
+                release_s,
+                ..
+            } => {
+                let envelope = bind(
+                    adsr(sample_rate_hz),
+                    &[
+                        (1, *attack_s),
+                        (2, *decay_s),
+                        (3, *sustain),
+                        (4, *release_s),
+                    ],
+                )
+                .unwrap_or_else(|error| panic!("adsr bindings are valid by construction: {error}"));
+                par(envelope, passthrough(bus))
+            }
+            VoiceNodeSpec::Ar {
+                attack_s,
+                release_s,
+                ..
+            } => {
+                let envelope = bind(ar(sample_rate_hz), &[(1, *attack_s), (2, *release_s)])
+                    .unwrap_or_else(|error| {
+                        panic!("ar bindings are valid by construction: {error}")
+                    });
+                par(envelope, passthrough(bus))
+            }
+            VoiceNodeSpec::Lowpass { .. } => par(ladder_filter(sample_rate_hz), passthrough(bus)),
+            VoiceNodeSpec::Drive { .. } => par(soft_sat(), passthrough(bus)),
+            VoiceNodeSpec::Mul { .. } => par(gain_node(), passthrough(bus)),
+            VoiceNodeSpec::Add { .. } => par(sum(2), passthrough(bus)),
+        };
+
+        seq(inputs, staged)
+            .unwrap_or_else(|error| panic!("voice spec stage wiring must compose: {error}"))
+    }
+}
+
+/// The bus channel carrying `reference` when `prepended` node outputs sit in
+/// front of the fixed `[gate, freq, gain, pan]` tail.
+fn bus_channel(prepended: usize, reference: VoiceSignalRef) -> u32 {
+    match reference {
+        VoiceSignalRef::Gate => channel_index(prepended),
+        VoiceSignalRef::Freq => channel_index(prepended + 1),
+        VoiceSignalRef::Node(index) => {
+            // Outputs are prepended, so node j sits at prepended - 1 - j.
+            channel_index(prepended - 1 - index as usize)
+        }
+    }
+}
+
+fn channel_index(index: usize) -> u32 {
+    u32::try_from(index).unwrap_or_else(|_| panic!("voice spec bus width does not fit in u32"))
+}
+
+/// Converts a release tail in seconds to frames, clamped to at least one.
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss
+)]
+fn release_seconds_to_frames(release_seconds: f32, sample_rate_hz: f32) -> u32 {
+    let frames = (release_seconds * sample_rate_hz).ceil();
+    if frames.is_finite() && frames > 0.0 {
+        frames.min(u32::MAX as f32) as u32
+    } else {
+        1
+    }
+}
+
 /// A compiled, per-note instance of a graph voice program.
 ///
 /// The engine owns these in a fixed pool. All allocation happens in
@@ -207,7 +637,7 @@ struct GraphVoiceNote {
 
 #[derive(Debug)]
 struct GraphVoiceSlot {
-    token: &'static str,
+    token: Box<str>,
     release_frames: u32,
     voice: GraphVoice,
     note: Option<GraphVoiceNote>,
@@ -215,36 +645,98 @@ struct GraphVoiceSlot {
 
 /// A fixed pool of prepared graph voices owned by the engine core.
 ///
-/// Built once at engine construction (off the audio thread); triggering and
-/// rendering never allocate.
+/// Built off the audio thread — at engine construction or on the language
+/// thread before an [`crate::EngineCommand::ReplaceGraphVoicePrograms`] swap;
+/// triggering and rendering never allocate.
 #[derive(Debug)]
 pub struct GraphVoiceBank {
+    sample_rate_hz: f32,
+    user_specs: Vec<GraphVoiceSpec>,
     slots: Vec<GraphVoiceSlot>,
+}
+
+/// Two banks are interchangeable when they were built for the same sample
+/// rate from the same user programs (built-ins are constant).
+impl PartialEq for GraphVoiceBank {
+    fn eq(&self, other: &Self) -> bool {
+        self.sample_rate_hz.to_bits() == other.sample_rate_hz.to_bits()
+            && self.user_specs == other.user_specs
+    }
+}
+
+/// Cloning rebuilds and re-prepares the pool from the retained specs. It
+/// allocates: never clone a bank on the audio thread.
+impl Clone for GraphVoiceBank {
+    fn clone(&self) -> Self {
+        Self::with_user_programs(self.sample_rate_hz, self.user_specs.clone())
+    }
 }
 
 impl GraphVoiceBank {
     /// Builds and prepares the pool for every built-in program.
+    #[must_use]
     pub fn with_builtin_programs(sample_rate_hz: f32) -> Self {
+        Self::with_user_programs(sample_rate_hz, Vec::new())
+    }
+
+    /// Builds and prepares pools for the built-in programs plus every user
+    /// spec. A user spec whose token collides with a built-in shadows it.
+    ///
+    /// Construction compiles and warms every pooled voice, so it allocates;
+    /// call it off the audio thread and hand the finished bank to the engine
+    /// (via [`crate::EngineCommand::ReplaceGraphVoicePrograms`]).
+    #[must_use]
+    pub fn with_user_programs(sample_rate_hz: f32, user_specs: Vec<GraphVoiceSpec>) -> Self {
         let mut slots = Vec::new();
         for program in builtin_graph_voice_programs() {
+            if user_specs
+                .iter()
+                .any(|spec| spec.token() == program.token())
+            {
+                continue;
+            }
             let release_frames = program.release_frames(sample_rate_hz);
             for _ in 0..GRAPH_VOICE_POLYPHONY {
                 let mut voice = program.build_voice(sample_rate_hz);
                 voice.prepare();
                 slots.push(GraphVoiceSlot {
-                    token: program.token(),
+                    token: program.token().into(),
                     release_frames,
                     voice,
                     note: None,
                 });
             }
         }
-        Self { slots }
+        for spec in &user_specs {
+            let release_frames = spec.release_frames(sample_rate_hz);
+            for _ in 0..GRAPH_VOICE_POLYPHONY {
+                let mut voice = spec.build_voice(sample_rate_hz);
+                voice.prepare();
+                slots.push(GraphVoiceSlot {
+                    token: spec.token().into(),
+                    release_frames,
+                    voice,
+                    note: None,
+                });
+            }
+        }
+        Self {
+            sample_rate_hz,
+            user_specs,
+            slots,
+        }
+    }
+
+    /// The user-defined program specs this bank was built from.
+    #[must_use]
+    pub fn user_specs(&self) -> &[GraphVoiceSpec] {
+        &self.user_specs
     }
 
     /// Whether `token` names a pooled graph voice program.
+    #[must_use]
     pub fn has_program(&self, token: &str) -> bool {
-        self.slots.iter().any(|slot| slot.token == token)
+        self.slots.iter().any(|slot| &*slot.token == token)
     }
 
     /// Starts a note on an idle pooled voice for `token`.
@@ -263,7 +755,7 @@ impl GraphVoiceBank {
         let Some(slot) = self
             .slots
             .iter_mut()
-            .find(|slot| slot.token == token && slot.note.is_none())
+            .find(|slot| &*slot.token == token && slot.note.is_none())
         else {
             return false;
         };

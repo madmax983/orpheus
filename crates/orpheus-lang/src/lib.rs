@@ -39,6 +39,7 @@ mod tui;
 pub(crate) mod txt;
 mod types;
 mod value;
+mod voice;
 
 pub use abc_export::export_number_pattern_to_abc;
 pub use arduino_export::export_number_pattern_to_arduino;
@@ -91,6 +92,7 @@ pub use value::{
     PitchClassSetValue, PluginPatternValue, SampleEvent, SamplePatternValue, TuningValue, UserFn,
     Value,
 };
+pub use voice::{VoiceValue, compile_voice};
 
 // Hidden re-exports keep rustdoc examples for internal helpers compiling.
 #[doc(hidden)]

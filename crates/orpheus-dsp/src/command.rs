@@ -9,6 +9,7 @@ use std::sync::Arc;
 use orpheus_pattern::Event;
 use rtrb::{Consumer, Producer, RingBuffer};
 
+use crate::graph_voice::GraphVoiceBank;
 use crate::pedal::{NodeRef, PedalGraphProgram};
 use crate::routing::{GeneratorId, RoutingSnapshot};
 use crate::sample_bank::SampleBank;
@@ -557,6 +558,12 @@ pub enum EngineCommand {
     PushGeneratorCycle(GeneratorCycle),
     /// Replaces the sample bank at the next cycle boundary.
     ReplaceSampleBank(SampleBank),
+    /// Replaces the pooled graph voice programs at the next cycle boundary.
+    ///
+    /// The bank must be fully built and prepared off the audio thread (see
+    /// [`GraphVoiceBank::with_user_programs`]); the audio thread only moves
+    /// it into place, mirroring [`Self::ReplaceSampleBank`].
+    ReplaceGraphVoicePrograms(GraphVoiceBank),
     /// Updates the transport tempo in beats per minute.
     SetTempo(f32),
     /// Updates the analog-voice reference frequency in Hertz.

@@ -45,6 +45,8 @@ pub enum Type {
     Sample,
     /// A behavior-first pedal graph value.
     Pedal,
+    /// A user-defined graph voice program (`voice { ... }`).
+    Voice,
     /// A headless hosted plugin instrument.
     Plugin,
     /// A discrete musical pitch or frequency representation.
@@ -135,6 +137,7 @@ impl Display for Type {
             Self::Pattern(inner) => write!(formatter, "Pattern<{inner}>"),
             Self::Sample => formatter.write_str("Sample"),
             Self::Pedal => formatter.write_str("Pedal"),
+            Self::Voice => formatter.write_str("Voice"),
             Self::Plugin => formatter.write_str("Plugin"),
             Self::Note => formatter.write_str("Note"),
             Self::Number => formatter.write_str("Number"),

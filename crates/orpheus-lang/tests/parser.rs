@@ -338,6 +338,91 @@ fn pedal_graph_parses_binary_control_expressions() {
 }
 
 #[test]
+fn voice_block_parses_let_bound_body() {
+    let source =
+        "pluck = voice { osc = saw(freq) ; env = adsr(gate, 0.001, 0.05, 0.6, 0.1) ; osc * env }";
+    let module = parse_module(source).unwrap();
+    match &module.statements[0] {
+        Stmt::Binding { name, expr, .. } => {
+            assert_eq!(name, "pluck");
+            match expr {
+                Expr::Voice { bindings, result } => {
+                    assert_eq!(bindings.len(), 2);
+                    assert_eq!(bindings[0].name, "osc");
+                    assert_eq!(bindings[1].name, "env");
+
+                    let args = assert_is_call(&bindings[0].expr, "saw");
+                    assert_eq!(args.len(), 1);
+                    assert_is_ident(&args[0], "freq");
+
+                    let (mul_lhs, mul_rhs) = assert_is_binary(result, BinaryOp::Mul);
+                    assert_is_ident(mul_lhs, "osc");
+                    assert_is_ident(mul_rhs, "env");
+                }
+                other => panic!("unexpected AST: {other:#?}"),
+            }
+        }
+    }
+}
+
+#[test]
+fn voice_block_keeps_tight_star_as_multiplication() {
+    let source = "lead = voice { sine(freq)*0.5 }";
+    let module = parse_module(source).unwrap();
+    match &module.statements[0] {
+        Stmt::Binding { expr, .. } => match expr {
+            Expr::Voice { bindings, result } => {
+                assert!(bindings.is_empty());
+                let (lhs, rhs) = assert_is_binary(result, BinaryOp::Mul);
+                let args = assert_is_call(lhs, "sine");
+                assert_is_ident(&args[0], "freq");
+                assert_is_number(rhs, 0.5);
+            }
+            other => panic!("unexpected AST: {other:#?}"),
+        },
+    }
+}
+
+#[test]
+fn voice_block_supports_pipe_targets() {
+    let source = "acid = voice { saw(freq) |> lowpass(1200, 0.3) }";
+    let module = parse_module(source).unwrap();
+    match &module.statements[0] {
+        Stmt::Binding { expr, .. } => match expr {
+            Expr::Voice { result, .. } => {
+                let (lhs, rhs) = assert_is_pipe(result);
+                let saw_args = assert_is_call(lhs, "saw");
+                assert_is_ident(&saw_args[0], "freq");
+                let filter_args = assert_is_call(rhs, "lowpass");
+                assert_eq!(filter_args.len(), 2);
+            }
+            other => panic!("unexpected AST: {other:#?}"),
+        },
+    }
+}
+
+#[test]
+fn voice_block_requires_result_expression() {
+    let source = "pluck = voice { osc = saw(freq) }";
+    assert_parse_error_contains(source, &["voice", "result expression"]);
+}
+
+#[test]
+fn voice_block_rejects_binding_after_result_expression() {
+    let source = "pluck = voice { osc = saw(freq) ; osc ; env = adsr(gate, 0.1, 0.1, 0.5, 0.1) }";
+    assert_parse_error_contains(
+        source,
+        &["bindings must appear before the final result expression"],
+    );
+}
+
+#[test]
+fn voice_identifier_without_block_stays_an_identifier() {
+    let expr = binding_expr("x = voice");
+    assert_eq!(expr, Expr::Ident("voice".to_owned()));
+}
+
+#[test]
 fn pedal_graph_rejects_binding_after_result_expression() {
     let source = "drivebox = graph { wet = input ; wet |> output ; dry = input }";
     assert_parse_error_contains(

@@ -33,6 +33,7 @@ use crate::pitch::parse_named_pitch_literal;
 use crate::value::{
     FunctionValue, NumberPatternValue, SampleEvent, SamplePatternValue, UserFn, Value,
 };
+use crate::voice::compile_voice;
 
 /// Runtime evaluation error for bootstrap Orpheus modules.
 ///
@@ -362,6 +363,7 @@ impl Evaluator {
             Expr::Number(value) => Ok(Value::NumberPattern(NumberPatternValue::constant(*value))),
             Expr::String(value) => Ok(Value::String(value.clone().into())),
             Expr::Graph { bindings, result } => compile_graph(bindings, result).map(Value::Pedal),
+            Expr::Voice { bindings, result } => compile_voice(bindings, result).map(Value::Voice),
             Expr::Binary { .. } => Err(EvalError::new(
                 "binary pedal expressions are parsed but not yet executable in evaluation",
             )),
@@ -1159,6 +1161,12 @@ impl Evaluator {
             Expr::Ident(name) if is_sample_identifier(name) => {
                 Ok(Some(PatternNode::atom(SampleEvent::named(name))))
             }
+            // A binding produced by `voice { ... }` resolves as a pattern
+            // token: the engine routes it to the registered graph voice
+            // program (ADR 0009's unresolved-token fallthrough).
+            Expr::Ident(name) if matches!(self.bindings.get(name), Some(Value::Voice(_))) => {
+                Ok(Some(PatternNode::atom(SampleEvent::named(name))))
+            }
             Expr::Call { callee, args } if matches!(callee.as_ref(), Expr::Ident(name) if name == "sample") =>
             {
                 let [arg] = args.as_slice() else {
@@ -1372,7 +1380,7 @@ fn record_expr_site_salts(expr: &Expr, seed: u64, salts: &mut BTreeMap<usize, u6
                 );
             }
         }
-        Expr::Graph { bindings, result } => {
+        Expr::Graph { bindings, result } | Expr::Voice { bindings, result } => {
             for (index, binding) in bindings.iter().enumerate() {
                 record_expr_site_salts(
                     &binding.expr,
