@@ -9,6 +9,7 @@ use pest_derive::Parser;
 
 use crate::ast::{BinaryOp, Expr, GraphBinding, Module, StepOp, Stmt};
 use crate::diagnostics::ParseError;
+use crate::value::positive_rational_tempo_factor;
 
 #[derive(Parser)]
 #[grammar = "grammar/orpheus.pest"]
@@ -357,13 +358,26 @@ fn finalize_step_modifiers(expr: &mut Expr, in_graph: bool) -> Result<(), ParseE
                         rhs: Box::new(Expr::Number(factor)),
                     };
                 } else {
-                    validate_step_factor(factor, "*")?;
+                    validate_step_tempo_factor(factor, "*")?;
                 }
             }
             Ok(())
         }
         Expr::Ident(_) | Expr::Rest | Expr::Number(_) | Expr::String(_) => Ok(()),
     }
+}
+
+/// Validates a mini-notation `*`/`/` tempo factor.
+///
+/// Decimal literals are allowed and share the exact rules of `fast`/`slow`
+/// factors ([`positive_rational_tempo_factor`]): the shortest round-trip
+/// decimal rendering converts to an exact rational (`1.5` becomes `3/2`)
+/// whose numerator and denominator must each be at most 1024 after
+/// reduction, so accepted factors lie in `[1/1024, 1024]`.
+fn validate_step_tempo_factor(factor: f64, symbol: &str) -> Result<(), ParseError> {
+    positive_rational_tempo_factor(factor, symbol)
+        .map(|_| ())
+        .map_err(|error| ParseError::new(error.to_string()))
 }
 
 fn validate_step_factor(factor: f64, symbol: &str) -> Result<i64, ParseError> {
@@ -580,7 +594,7 @@ fn build_step_modified(inner: Expr, pair: Pair<'_, Rule>) -> Result<Expr, ParseE
         Rule::repeat_modifier => StepOp::Fast(parse_modifier_number(modifier)?),
         Rule::slow_modifier => {
             let factor = parse_modifier_number(modifier)?;
-            let factor = validate_step_factor(factor, "/").map_err(|error| {
+            validate_step_tempo_factor(factor, "/").map_err(|error| {
                 ParseError::new(format!("parse error at line {line}, col {col}: {error}"))
             })?;
             StepOp::Slow(factor)

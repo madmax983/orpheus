@@ -3636,9 +3636,13 @@ fn repetition_by_one_is_identity() {
 
 #[test]
 fn repetition_factor_must_stay_within_bounds() {
-    assert_eval_error_contains("drums = bd*0 sn", ReplMode::Loose, &["`*`", "1", "1024"]);
-    assert_eval_error_contains("drums = bd*1025 sn", ReplMode::Loose, &["`*`", "1", "1024"]);
-    assert_eval_error_contains("drums = bd*1.5 sn", ReplMode::Loose, &["`*`", "integer"]);
+    assert_eval_error_contains(
+        "drums = bd*0 sn",
+        ReplMode::Loose,
+        &["`*`", "positive factor"],
+    );
+    assert_eval_error_contains("drums = bd*1025 sn", ReplMode::Loose, &["`*`", "1024"]);
+    assert_eval_error_contains("drums = bd*1024.5 sn", ReplMode::Loose, &["`*`", "1024"]);
 }
 
 #[test]
@@ -3686,8 +3690,8 @@ fn slowed_group_windows_one_half_per_cycle() {
 
 #[test]
 fn slow_factor_must_stay_within_bounds() {
-    assert_eval_error_contains("m = 0/0 1", ReplMode::Loose, &["`/`", "1", "1024"]);
-    assert_eval_error_contains("m = 0/1025 1", ReplMode::Loose, &["`/`", "1", "1024"]);
+    assert_eval_error_contains("m = 0/0 1", ReplMode::Loose, &["`/`", "positive factor"]);
+    assert_eval_error_contains("m = 0/1025 1", ReplMode::Loose, &["`/`", "1024"]);
 }
 
 #[test]
@@ -6392,4 +6396,300 @@ fn cycle_varying_arguments_to_constant_only_builtins_error() {
     for (program, fragment) in cases {
         assert_eval_error_contains(program, ReplMode::Loose, &[fragment]);
     }
+}
+
+// --- patterned inline-euclid arguments (Tidal `bd(<3 5>, 8)`) ---
+
+#[test]
+fn inline_euclid_pulses_alternation_gates_each_cycle_independently() {
+    // bd(<3 8>, 8): cycle 0 gates euclid(3, 8) (onsets 0, 3, 6), cycle 1
+    // gates euclid(8, 8) (every step open).
+    let module = eval_module("drums = bd(<3 8>, 8)", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 2);
+    assert_eq!(
+        exact_sample_spans(&events),
+        vec![
+            (0, 1, 1, 8, "bd".to_owned()),
+            (3, 8, 1, 2, "bd".to_owned()),
+            (3, 4, 7, 8, "bd".to_owned()),
+            (1, 1, 9, 8, "bd".to_owned()),
+            (9, 8, 5, 4, "bd".to_owned()),
+            (5, 4, 11, 8, "bd".to_owned()),
+            (11, 8, 3, 2, "bd".to_owned()),
+            (3, 2, 13, 8, "bd".to_owned()),
+            (13, 8, 7, 4, "bd".to_owned()),
+            (7, 4, 15, 8, "bd".to_owned()),
+            (15, 8, 2, 1, "bd".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn inline_euclid_patterned_pulses_match_the_constant_form_cycle_by_cycle() {
+    let query_cycle = |source: &str, cycle: i64| {
+        let module = eval_module(source, ReplMode::Loose).unwrap();
+        module
+            .get("m")
+            .unwrap()
+            .as_number_pattern()
+            .unwrap()
+            .try_query(&cycle_time_span(cycle))
+            .unwrap()
+    };
+
+    assert_eq!(
+        query_cycle("m = c4(<3 5>, 8)", 0),
+        query_cycle("m = c4(3, 8)", 0)
+    );
+    assert_eq!(
+        query_cycle("m = c4(<3 5>, 8)", 1),
+        query_cycle("m = c4(5, 8)", 1)
+    );
+}
+
+#[test]
+fn inline_euclid_rotation_alternation_rotates_per_cycle() {
+    // bd(3, 8, <0 2>): cycle 0 is the unrotated x..x..x. (onsets 0, 3, 6);
+    // cycle 1 rotates left by two, so step `i` plays original step `i + 2`
+    // (onsets 1, 4, 6).
+    let module = eval_module("drums = bd(3, 8, <0 2>)", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 2);
+    assert_eq!(
+        exact_sample_spans(&events),
+        vec![
+            (0, 1, 1, 8, "bd".to_owned()),
+            (3, 8, 1, 2, "bd".to_owned()),
+            (3, 4, 7, 8, "bd".to_owned()),
+            (9, 8, 5, 4, "bd".to_owned()),
+            (3, 2, 13, 8, "bd".to_owned()),
+            (7, 4, 15, 8, "bd".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn inline_euclid_patterned_args_error_lazily_on_the_invalid_cycle() {
+    // `<8 0>` steps: valid on cycle 0, invalid (zero) on cycle 1 — the
+    // euclid validation error surfaces when the offending cycle is queried.
+    let module = eval_module("m = c4(3, <8 0>)", ReplMode::Loose).unwrap();
+    let pattern = module.get("m").unwrap().as_number_pattern().unwrap();
+    assert_eq!(pattern.try_query(&cycle_time_span(0)).unwrap().len(), 3);
+    let error = pattern
+        .try_query(&cycle_time_span(1))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("inline euclid steps") && error.contains("positive whole number"),
+        "unexpected error: {error}"
+    );
+
+    // Per-cycle pulses may exceed steps only on later cycles too.
+    let module = eval_module("m = c4(<3 9>, 8)", ReplMode::Loose).unwrap();
+    let pattern = module.get("m").unwrap().as_number_pattern().unwrap();
+    assert!(pattern.try_query(&cycle_time_span(0)).is_ok());
+    let error = pattern
+        .try_query(&cycle_time_span(1))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("pulses less than or equal to steps"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn inline_euclid_patterned_args_validate_the_unit_cycle_eagerly() {
+    // Values visible in the unit cycle are validated at eval time, matching
+    // the patterned-tempo precedent.
+    assert_eval_error_contains(
+        "drums = bd(<2.5 3>, 8)",
+        ReplMode::Loose,
+        &["inline euclid", "whole number"],
+    );
+}
+
+/// Counts exported events whose (exact rational) start lies within cycle
+/// `[cycle, cycle + 1)`.
+fn count_events_starting_in_cycle(events: &[JsonValue], cycle: i64) -> usize {
+    events
+        .iter()
+        .filter(|event| {
+            let num = event["start_num"].as_i64().unwrap();
+            let den = event["start_den"].as_i64().unwrap();
+            num >= cycle * den && num < (cycle + 1) * den
+        })
+        .count()
+}
+
+#[test]
+fn inline_euclid_alternation_args_work_in_sequence_steps() {
+    // bd(<3 8>, 8) in a sequence slot: 3 gated hits plus sn on cycle 0,
+    // 8 gated hits plus sn on cycle 1.
+    let module = eval_module("drums = bd(<3 8>, 8) sn", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 2);
+    assert_eq!(count_events_starting_in_cycle(&events, 0), 4);
+    assert_eq!(count_events_starting_in_cycle(&events, 1), 9);
+}
+
+#[test]
+fn inline_euclid_patterned_args_compose_with_alternation_cycling() {
+    // <bd(<3 8>, 8) cp>: the alternation localizes the euclid child's cycle
+    // counter, so its density advances only when it is selected.
+    let module = eval_module("drums = <bd(<3 8>, 8) cp>", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 4);
+    let names: Vec<&str> = events
+        .iter()
+        .map(|event| event["sample"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        names,
+        vec![
+            "bd", "bd", "bd", "cp", "bd", "bd", "bd", "bd", "bd", "bd", "bd", "bd", "cp"
+        ]
+    );
+}
+
+#[test]
+fn inline_euclid_patterned_args_compose_with_polymeter() {
+    // {bd(<3 8>, 8) hh, sn}%2: group 1 alternates the gated bd (3 hits,
+    // then 8) with hh at two steps per cycle; group 2 repeats sn twice.
+    let module = eval_module("drums = {bd(<3 8>, 8) hh, sn}%2", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 2);
+    assert_eq!(count_events_starting_in_cycle(&events, 0), 6);
+    assert_eq!(count_events_starting_in_cycle(&events, 1), 11);
+}
+
+#[test]
+fn patterned_inline_euclid_is_chunking_stable() {
+    let module = eval_module("m = c4(<3 5 8>, 8, <0 1>)", ReplMode::Loose).unwrap();
+    let pattern = module.get("m").unwrap().as_number_pattern().unwrap();
+
+    let whole_span = TimeSpan::new(Rational::zero(), Rational::new(6, 1).unwrap()).unwrap();
+    let whole = pattern.try_query(&whole_span).unwrap();
+
+    let mut chunked = Vec::new();
+    for quarter in 0..24 {
+        let chunk = TimeSpan::new(
+            Rational::new(quarter, 4).unwrap(),
+            Rational::new(quarter + 1, 4).unwrap(),
+        )
+        .unwrap();
+        chunked.extend(pattern.try_query(&chunk).unwrap());
+    }
+
+    assert_eq!(whole, chunked);
+}
+
+// --- mini-notation decimal tempo factors (`a*1.5`, `a/1.5`) ---
+
+#[test]
+fn step_fast_decimal_matches_the_fast_builtin() {
+    let sugar = eval_module("drums = bd*1.5", ReplMode::Loose).unwrap();
+    let explicit = eval_module("drums = fast(1.5, bd)", ReplMode::Loose).unwrap();
+    assert_eq!(
+        exported_sample_events(sugar.get("drums").unwrap(), 4),
+        exported_sample_events(explicit.get("drums").unwrap(), 4),
+    );
+}
+
+#[test]
+fn step_slow_decimal_matches_the_slow_builtin() {
+    let sugar = eval_module("drums = (bd sn)/1.5", ReplMode::Loose).unwrap();
+    let explicit = eval_module("drums = slow(1.5, bd sn)", ReplMode::Loose).unwrap();
+    assert_eq!(
+        exported_sample_events(sugar.get("drums").unwrap(), 3),
+        exported_sample_events(explicit.get("drums").unwrap(), 3),
+    );
+}
+
+#[test]
+fn step_fast_below_one_equals_the_slow_mirror() {
+    // Tidal semantics: `bd*0.5` == `bd/2` == slow(2, bd).
+    let fast_half = eval_module("drums = bd*0.5", ReplMode::Loose).unwrap();
+    let slow_two = eval_module("drums = bd/2", ReplMode::Loose).unwrap();
+    let explicit = eval_module("drums = slow(2, bd)", ReplMode::Loose).unwrap();
+
+    let fast_half_events = exported_sample_events(fast_half.get("drums").unwrap(), 4);
+    assert_eq!(
+        fast_half_events,
+        exported_sample_events(slow_two.get("drums").unwrap(), 4),
+    );
+    assert_eq!(
+        fast_half_events,
+        exported_sample_events(explicit.get("drums").unwrap(), 4),
+    );
+}
+
+#[test]
+fn decimal_step_factor_in_a_sequence_slot_keeps_exact_rational_spans() {
+    // bd*1.5 in the first half-cycle slot squeezes fast(3/2, bd) into the
+    // slot: cycle 0 plays a full hit at [0, 1/3) and a clipped tail at
+    // [1/3, 1/2); cycle 1 the mirror phase.
+    let module = eval_module("drums = bd*1.5 sn", ReplMode::Loose).unwrap();
+    let events = exported_sample_events(module.get("drums").unwrap(), 2);
+    assert_eq!(
+        exact_sample_spans(&events),
+        vec![
+            (0, 1, 1, 3, "bd".to_owned()),
+            (1, 3, 1, 2, "bd".to_owned()),
+            (1, 2, 1, 1, "sn".to_owned()),
+            (1, 1, 7, 6, "bd".to_owned()),
+            (7, 6, 3, 2, "bd".to_owned()),
+            (3, 2, 2, 1, "sn".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn decimal_step_modifiers_apply_to_alternations() {
+    let sugar = eval_module("drums = <bd sn>*1.5", ReplMode::Loose).unwrap();
+    let explicit = eval_module("drums = fast(1.5, <bd sn>)", ReplMode::Loose).unwrap();
+    assert_eq!(
+        exported_sample_events(sugar.get("drums").unwrap(), 4),
+        exported_sample_events(explicit.get("drums").unwrap(), 4),
+    );
+}
+
+#[test]
+fn decimal_step_modifier_is_chunking_stable() {
+    let module = eval_module("m = 0*1.5 1", ReplMode::Loose).unwrap();
+    let pattern = module.get("m").unwrap().as_number_pattern().unwrap();
+
+    let whole_span = TimeSpan::new(Rational::zero(), Rational::new(3, 1).unwrap()).unwrap();
+    let whole = pattern.try_query(&whole_span).unwrap();
+
+    let mut chunked = Vec::new();
+    for half in 0..6 {
+        let chunk = TimeSpan::new(
+            Rational::new(half, 2).unwrap(),
+            Rational::new(half + 1, 2).unwrap(),
+        )
+        .unwrap();
+        chunked.extend(pattern.try_query(&chunk).unwrap());
+    }
+
+    assert_eq!(whole, chunked);
+}
+
+#[test]
+fn pedal_graph_arithmetic_keeps_tight_decimal_factors_above_one() {
+    // `dry*1.5` inside `graph { ... }` must stay pedal-DSL multiplication
+    // now that mini-notation `*` accepts decimals.
+    let module = eval_module(
+        "drivebox = graph { dry = input ; wet = input |> clip(model=silicon_hard) ; mix(dry*1.5 + wet*0.8, dry) |> output }",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    assert!(matches!(module.get("drivebox").unwrap(), Value::Pedal(_)));
+}
+
+#[test]
+fn voice_bodies_keep_tight_decimal_multiplication() {
+    // `osc*1.5` inside `voice { ... }` is arithmetic, not mini-notation.
+    let module = eval_module(
+        "beep = voice { osc = sine(freq) ; osc*1.5 }",
+        ReplMode::Loose,
+    )
+    .unwrap();
+    assert!(matches!(module.get("beep").unwrap(), Value::Voice(_)));
 }

@@ -2038,6 +2038,24 @@ impl SamplePatternValue {
         }
     }
 
+    /// Inline euclid gating with cycle-varying arguments (Tidal's
+    /// `bd(<3 5>, 8)`); see [`PatternRuntime::EuclidPattern`].
+    pub(crate) fn euclid_pattern(
+        self,
+        pulses: NumberPatternValue,
+        steps: NumberPatternValue,
+        rotation: Option<NumberPatternValue>,
+    ) -> Self {
+        Self {
+            pattern: PatternRuntime::EuclidPattern {
+                pulses: Box::new(pulses.pattern),
+                steps: Box::new(steps.pattern),
+                rotation: rotation.map(|control| Box::new(control.pattern)),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn segment(self, n: i64) -> Self {
         Self {
             pattern: PatternRuntime::Segment {
@@ -2132,10 +2150,6 @@ impl SamplePatternValue {
                 inner: Box::new(self.pattern),
             },
         }
-    }
-
-    pub(crate) fn slow(self, factor: i64) -> Self {
-        self.slow_rational(Rational::from_integer(factor))
     }
 
     pub(crate) fn slow_rational(self, factor: Rational) -> Self {
@@ -2860,6 +2874,19 @@ impl NumberPatternValue {
         }
     }
 
+    /// Inline euclid gating with cycle-varying arguments (Tidal's
+    /// `c4(<3 5>, 8)`); see [`PatternRuntime::EuclidPattern`].
+    pub(crate) fn euclid_pattern(self, pulses: Self, steps: Self, rotation: Option<Self>) -> Self {
+        Self {
+            pattern: PatternRuntime::EuclidPattern {
+                pulses: Box::new(pulses.pattern),
+                steps: Box::new(steps.pattern),
+                rotation: rotation.map(|control| Box::new(control.pattern)),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn every(self, period: i64, transform: FunctionValue) -> Self {
         Self {
             pattern: PatternRuntime::Every {
@@ -3019,10 +3046,6 @@ impl NumberPatternValue {
                 inner: Box::new(self.pattern),
             },
         }
-    }
-
-    pub(crate) fn slow(self, factor: i64) -> Self {
-        self.slow_rational(Rational::from_integer(factor))
     }
 
     pub(crate) fn slow_rational(self, factor: Rational) -> Self {
@@ -3424,6 +3447,17 @@ enum PatternRuntime<T> {
         control: Box<PatternRuntime<f64>>,
         inner: Box<Self>,
     },
+    /// Inline euclid gating with cycle-varying arguments (Tidal's
+    /// `bd(<3 5>, 8)`): on cycle `k` the inner pattern repeats `steps_k`
+    /// times and only the onsets of `euclid(pulses_k, steps_k, rotation_k)`
+    /// survive, with each control sampled once per cycle at the cycle start
+    /// (`query_euclid_pattern`).
+    EuclidPattern {
+        pulses: Box<PatternRuntime<f64>>,
+        steps: Box<PatternRuntime<f64>>,
+        rotation: Option<Box<PatternRuntime<f64>>>,
+        inner: Box<Self>,
+    },
     Shift {
         offset: Rational,
         inner: Box<Self>,
@@ -3693,13 +3727,13 @@ impl<T> PatternRuntime<T> {
             CompressorRatio, CompressorRatioPattern, CompressorThreshold,
             CompressorThresholdPattern, Cycle, Degrade, Degrees, Delay, DelayFeedback,
             DelayFeedbackPattern, DelayPattern, DelayTime, DelayTimePattern, Drive, DrivePattern,
-            Drop, Every, ExplicitCycle, Fast, FastPattern, Gain, GainPattern, Hpf, HpfPattern,
-            IRand, Invert, Iter, Lpf, LpfPattern, Markov, Mask, Onset, OnsetPattern, Pan,
-            PanPattern, Pedal, Pitch, PitchPattern, PulseWidth, PulseWidthPattern, Rand, RandCat,
-            Range, Rate, RatePattern, Res, ResPattern, Rev, Reverb, ReverbDamp, ReverbDampPattern,
-            ReverbPattern, ReverbRoom, ReverbRoomPattern, Roll, Rot, Scan, Segment, Shift,
-            ShuffleSlots, Slice, SliceIdxPattern, SlicePattern, Slow, SlowCat, SlowPattern,
-            Sometimes, Stack, Stream, Strum, Transpose, TransposePattern, TunedPitch,
+            Drop, EuclidPattern, Every, ExplicitCycle, Fast, FastPattern, Gain, GainPattern, Hpf,
+            HpfPattern, IRand, Invert, Iter, Lpf, LpfPattern, Markov, Mask, Onset, OnsetPattern,
+            Pan, PanPattern, Pedal, Pitch, PitchPattern, PulseWidth, PulseWidthPattern, Rand,
+            RandCat, Range, Rate, RatePattern, Res, ResPattern, Rev, Reverb, ReverbDamp,
+            ReverbDampPattern, ReverbPattern, ReverbRoom, ReverbRoomPattern, Roll, Rot, Scan,
+            Segment, Shift, ShuffleSlots, Slice, SliceIdxPattern, SlicePattern, Slow, SlowCat,
+            SlowPattern, Sometimes, Stack, Stream, Strum, Transpose, TransposePattern, TunedPitch,
             TunedPitchPattern, When, WhenMod, Within,
         };
 
@@ -3951,6 +3985,17 @@ impl<T> PatternRuntime<T> {
                 control,
                 inner: recurse!(inner),
             },
+            EuclidPattern {
+                pulses,
+                steps,
+                rotation,
+                inner,
+            } => EuclidPattern {
+                pulses,
+                steps,
+                rotation,
+                inner: recurse!(inner),
+            },
             Shift { offset, inner } => Shift {
                 offset,
                 inner: recurse!(inner),
@@ -4163,6 +4208,7 @@ impl<T> PatternRuntime<T> {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn absolute_cycle(&self, cycle: i128) -> Result<i128, EvalError> {
         match self {
             Self::ExplicitCycle { origin_cycle, .. } => origin_cycle
@@ -4211,6 +4257,7 @@ impl<T> PatternRuntime<T> {
             | Self::FastPattern { inner, .. }
             | Self::Slow { inner, .. }
             | Self::SlowPattern { inner, .. }
+            | Self::EuclidPattern { inner, .. }
             | Self::Shift { inner, .. }
             | Self::Rev { inner }
             | Self::Gain { inner, .. }
@@ -4408,6 +4455,12 @@ where
             Self::SlowPattern { control, inner } => {
                 query_tempo_pattern(inner, control, span, TempoFactorKind::Slow)
             }
+            Self::EuclidPattern {
+                pulses,
+                steps,
+                rotation,
+                inner,
+            } => query_euclid_pattern(inner, pulses, steps, rotation.as_deref(), span),
             Self::Shift { offset, inner } => query_shift(inner, offset, span),
             Self::Rev { inner } => query_rev(inner, span),
             Self::Gain { factor, inner } => {
@@ -5935,6 +5988,122 @@ where
             }
             events.extend(segment_events);
         }
+    }
+
+    sort_events(&mut events);
+    Ok(events)
+}
+
+/// Samples a per-cycle inline-euclid control at the start of a cycle.
+///
+/// The control is queried over the **full** cycle span (mirroring
+/// `query_tempo_pattern`'s strategy, so chunked queries equal whole-span
+/// queries and continuous controls draw their one deterministic, site-salted
+/// value per cycle) and the earliest event's value is taken as the cycle's
+/// value. Returns `None` when the control has no event in the cycle (a
+/// rest), in which case the caller leaves the cycle silent.
+fn control_value_at_cycle_start(
+    control: &PatternRuntime<f64>,
+    full_cycle_span: &TimeSpan,
+) -> Result<Option<f64>, EvalError> {
+    let mut events = control.try_query(full_cycle_span)?;
+    sort_events(&mut events);
+    Ok(events.first().map(|event| event.value))
+}
+
+/// Queries the inline euclid sugar with cycle-varying arguments (Tidal's
+/// `bd(<3 5>, 8)`).
+///
+/// For each cycle intersecting the query span, the pulses/steps/rotation
+/// controls are sampled at that cycle ([`control_value_at_cycle_start`]) and
+/// the cycle plays the constant construction
+/// `mask(euclid(pulses_k, steps_k, rotation_k), inner*steps_k)` clipped to
+/// the query window. Both the euclid gate (a cycle literal) and the integer
+/// `fast` are chunking-stable, so chunked queries equal whole-span queries.
+///
+/// Per-cycle values are validated with the constant path's exact rules
+/// (`whole_number_from_f64`/`euclid_rotation_from_f64`, builtins.rs) when
+/// their cycle is queried; unit-cycle values were already validated eagerly
+/// at eval time, matching the patterned tempo-factor precedent. A control
+/// that rests for a cycle leaves that cycle silent.
+fn query_euclid_pattern<T>(
+    inner: &PatternRuntime<T>,
+    pulses: &PatternRuntime<f64>,
+    steps: &PatternRuntime<f64>,
+    rotation: Option<&PatternRuntime<f64>>,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    use crate::builtins::{build_euclid_nodes, euclid_rotation_from_f64, whole_number_from_f64};
+
+    if span.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut events = Vec::with_capacity(8);
+    let start_cycle = floor_rational(span.start());
+    let end_cycle = ceil_rational(span.end());
+
+    for cycle in start_cycle..end_cycle {
+        let full_cycle_span = cycle_span(cycle)?;
+        let Some(query_slice) = clip_span(&full_cycle_span, span)? else {
+            continue;
+        };
+
+        let Some(pulses_value) = control_value_at_cycle_start(pulses, &full_cycle_span)? else {
+            continue;
+        };
+        let Some(steps_value) = control_value_at_cycle_start(steps, &full_cycle_span)? else {
+            continue;
+        };
+        let rotation_value = match rotation {
+            None => None,
+            Some(control) => {
+                let Some(value) = control_value_at_cycle_start(control, &full_cycle_span)? else {
+                    continue;
+                };
+                Some(value)
+            }
+        };
+
+        // Validation order matches the constant path: pulses, steps, their
+        // relation, then rotation.
+        let pulses_value = whole_number_from_f64(pulses_value, "inline euclid pulses", false)?;
+        let steps_value = whole_number_from_f64(steps_value, "inline euclid steps", true)?;
+        if pulses_value > steps_value {
+            return Err(EvalError::new(
+                "inline euclid requires pulses less than or equal to steps",
+            ));
+        }
+        let rotation_value = rotation_value
+            .map(|value| euclid_rotation_from_f64(value, "inline euclid"))
+            .transpose()?
+            .unwrap_or(0);
+
+        let gated = PatternRuntime::Mask {
+            gate: Box::new(GatePatternRuntime::Number(Box::new(PatternRuntime::Cycle(
+                CyclePattern::from_nodes(build_euclid_nodes(
+                    pulses_value,
+                    steps_value,
+                    rotation_value,
+                    false,
+                )),
+            )))),
+            inner: Box::new(PatternRuntime::Fast {
+                factor: Rational::from_integer(i64::from(steps_value)),
+                inner: Box::new(inner.clone()),
+            }),
+        };
+
+        let cycle_events = gated.try_query(&query_slice)?;
+        if events.len() + cycle_events.len() > 100_000 {
+            return Err(EvalError::new(
+                "evaluation exceeded the maximum allowed event limit",
+            ));
+        }
+        events.extend(cycle_events);
     }
 
     sort_events(&mut events);

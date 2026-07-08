@@ -184,14 +184,17 @@ pub enum BinaryOp {
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum StepOp {
-    /// `a*n`: repeats the element `n` times within its own slot.
+    /// `a*n`: speeds the element up by `n` within its own slot (`bd*2`
+    /// repeats it twice, `bd*1.5` plays it at 3/2 speed).
     ///
     /// The raw factor is kept as parsed; inside `graph { ... }` blocks the
     /// parser rewrites it back into pedal-DSL multiplication, elsewhere it
-    /// must be an integer within `1..=1024`.
+    /// must convert to a positive rational whose numerator and denominator
+    /// are each at most 1024 (the shared `fast`/`slow` factor rules).
     Fast(f64),
-    /// `a/n`: slows the element so it takes `n` cycles to complete.
-    Slow(i64),
+    /// `a/n`: slows the element so it takes `n` cycles to complete; decimal
+    /// factors convert to exact rationals under the same bounds as `a*n`.
+    Slow(f64),
     /// `a!n`: replicates the element as `n` separate sequence steps.
     Replicate(i64),
     /// `a?` / `a?p`: randomly removes the element's events with drop

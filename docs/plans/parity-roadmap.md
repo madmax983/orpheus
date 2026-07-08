@@ -15,8 +15,13 @@ File paths point the next contributor at the relevant implementation sites.
     part (innerJoin semantics; `PatternRuntime::FastPattern`/`SlowPattern`,
     `query_tempo_pattern` in value.rs; `extract_tempo_factor_control`,
     builtins.rs); factor values share the constant bounds
-    (`positive_rational_tempo_factor`) and are validated per event;
-    mini-notation `a*n`/`a/n` factors still stay integer literals for now
+    (`positive_rational_tempo_factor`) and are validated per event
+  - [x] mini-notation decimal factors — `a*1.5`/`a/1.5` convert through the
+    same exact decimal-to-rational path and bounds as `fast`/`slow`
+    (`positive_rational_tempo_factor`; `validate_step_tempo_factor`,
+    parser.rs; `eval_modified`, eval.rs); `a*0.5` equals `a/2`, and tight
+    decimal `*` inside `graph { ... }`/`voice { ... }` stays pedal-DSL
+    multiplication
 - [x] `rev` — `PatternRuntime::Rev`
 - [x] `every` — cycle-localized transforms (`query_transform_cycles`, value.rs)
 - [x] `when` — cycle-offset transform (period + offset); real Tidal
@@ -45,7 +50,9 @@ File paths point the next contributor at the relevant implementation sites.
   `compressor_threshold`/`compressor_ratio`, `slice`, `slice_idx`, `onset`.
   Constant-by-contract (cycle-varying arguments now raise an explicit
   eval error instead of silently collapsing): counts/periods/offsets/bounds
-  (`every`, `when`, `whenmod`, `euclid` pulses/steps/rotation, `run`,
+  (`every`, `when`, `whenmod`, `euclid` pulses/steps/rotation — though the
+  inline sugar `bd(<3 5>, 8)` accepts cycle-varying arguments, see the
+  grammar section — `run`,
   `scan`, `iter`, `chunk`, `shuffle_slots`, `segment`, `irand`, `rot`,
   `shift`, `off`, `within`, `range` bounds, `strum`, `roll`, `arp` steps,
   `invert`, `drop`, `wolfram`, `lsystem`, `markov`/`wchoose` weights,
@@ -144,6 +151,13 @@ File paths point the next contributor at the relevant implementation sites.
 - [x] inline euclid syntax (`bd(3,8)`) — calls on pattern values desugar to
   `mask(euclid(pulses, steps, rot), token*steps)` (`apply_inline_euclid`,
   builtins.rs; `eval_call_with_args`/`is_inline_euclid_call`, eval.rs)
+  - [x] patterned arguments (Tidal `bd("<3 5>", 8)`) — pulses/steps/rotation
+    may be cycle-varying number patterns (`bd(<3 5>, 8)`, `bd(3, 8, <0 2>)`):
+    each control is sampled once per cycle and cycle `k` gates as
+    `euclid(pulses_k, steps_k, rotation_k)`, validated with the constant
+    path's rules per cycle (`PatternRuntime::EuclidPattern`/
+    `query_euclid_pattern`, value.rs); the standalone `euclid(...)` builtin
+    still takes constant arguments
 
 ## Faust: graph combinators and primitives
 
