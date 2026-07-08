@@ -1525,7 +1525,9 @@ fn step_factor_as_bounded_integer(factor: f64, symbol: &str) -> Result<i64, Eval
 
 fn extract_constant_number_value(value: Value, context: &str) -> Result<f64, EvalError> {
     if let Value::NumberPattern(pattern) = value {
-        pattern.constant_value()
+        pattern
+            .cycle_invariant_constant()
+            .ok_or_else(|| EvalError::new(format!("{context} must resolve to a constant number")))
     } else {
         Err(EvalError::new(format!(
             "{context} must resolve to a constant number"
@@ -2188,6 +2190,31 @@ right = sometimes(fast(2), cp hh)";
 
     #[test]
     fn extract_constant_number_value_handles_number_pattern() {
+        let val =
+            crate::value::Value::NumberPattern(crate::value::NumberPatternValue::constant(42.0));
+        let res = super::extract_constant_number_value(val, "expected number");
+        assert!((res.unwrap() - 42.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn extract_constant_number_value_rejects_cycle_varying_patterns() {
+        // <1 2> plays 1 on cycle 0 and 2 on cycle 1; treating it as the
+        // constant 1 silently collapses the alternation.
+        let alternation = crate::value::NumberPatternValue::slowcat(vec![
+            crate::value::NumberPatternValue::constant(1.0),
+            crate::value::NumberPatternValue::constant(2.0),
+        ]);
+        let val = crate::value::Value::NumberPattern(alternation);
+        let res = super::extract_constant_number_value(val, "time expression");
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "time expression must resolve to a constant number"
+        );
+    }
+
+    #[test]
+    fn extract_constant_number_value_rejects_one_shot_event_streams() {
+        // A one-shot event stream matches cycle 0 only; it is not a constant.
         use orpheus_pattern::{Event, TimeSpan};
         let event = Event {
             whole: None,
@@ -2198,7 +2225,7 @@ right = sometimes(fast(2), cp hh)";
             crate::value::NumberPatternValue::from_events(vec![event]),
         );
         let res = super::extract_constant_number_value(val, "expected number");
-        assert!((res.unwrap() - 42.0).abs() < f64::EPSILON);
+        assert!(res.is_err());
     }
 
     #[test]
