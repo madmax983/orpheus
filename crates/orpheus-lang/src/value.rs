@@ -27,7 +27,7 @@ use orpheus_pattern::{CyclePattern, Event, EventStream, PatternNode, Rational, T
 use crate::{
     ReplMode,
     ast::Expr,
-    eval::{EvalError, apply_function_value},
+    eval::{EvalError, apply_function_value, f64_to_rational},
     pedal::PedalValue,
     voice::VoiceValue,
 };
@@ -2020,6 +2020,24 @@ impl SamplePatternValue {
         }
     }
 
+    pub(crate) fn fast_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::FastPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn slow_pattern(self, control: NumberPatternValue) -> Self {
+        Self {
+            pattern: PatternRuntime::SlowPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn segment(self, n: i64) -> Self {
         Self {
             pattern: PatternRuntime::Segment {
@@ -2824,6 +2842,24 @@ impl NumberPatternValue {
         }
     }
 
+    pub(crate) fn fast_pattern(self, control: Self) -> Self {
+        Self {
+            pattern: PatternRuntime::FastPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
+    pub(crate) fn slow_pattern(self, control: Self) -> Self {
+        Self {
+            pattern: PatternRuntime::SlowPattern {
+                control: Box::new(control.pattern),
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn every(self, period: i64, transform: FunctionValue) -> Self {
         Self {
             pattern: PatternRuntime::Every {
@@ -3089,6 +3125,23 @@ impl NumberPatternValue {
         }
     }
 
+    /// Returns the value when this pattern is a plain cycle-invariant
+    /// constant (a bare number literal or an equivalent single-atom cycle),
+    /// `None` otherwise.
+    ///
+    /// Unlike [`Self::constant_value`], cycle-varying runtimes (`<1 2>`,
+    /// `choose(...)`, `slowcat`) return `None` even when their first cycle
+    /// happens to look constant, because their value can change on later
+    /// cycles. Only `PatternRuntime::Cycle` repeats identically by
+    /// construction, so only it qualifies.
+    pub(crate) fn cycle_invariant_constant(&self) -> Option<f64> {
+        if matches!(self.pattern, PatternRuntime::Cycle(_)) {
+            self.constant_value().ok()
+        } else {
+            None
+        }
+    }
+
     /// Evaluates the pattern over an arbitrary rational time span.
     ///
     /// This allows querying sequences across multiple cycles or fraction of a cycle.
@@ -3345,8 +3398,21 @@ enum PatternRuntime<T> {
         factor: Rational,
         inner: Box<Self>,
     },
+    /// `fast` with a patterned tempo factor (Tidal `fast "<1 2>" p`): for
+    /// each factor event, the inner pattern plays at that factor within the
+    /// event's part.
+    FastPattern {
+        control: Box<PatternRuntime<f64>>,
+        inner: Box<Self>,
+    },
     Slow {
         factor: Rational,
+        inner: Box<Self>,
+    },
+    /// `slow` with a patterned tempo factor: the per-event reciprocal of
+    /// [`Self::FastPattern`].
+    SlowPattern {
+        control: Box<PatternRuntime<f64>>,
         inner: Box<Self>,
     },
     Shift {
@@ -3618,14 +3684,14 @@ impl<T> PatternRuntime<T> {
             CompressorRatio, CompressorRatioPattern, CompressorThreshold,
             CompressorThresholdPattern, Cycle, Degrade, Degrees, Delay, DelayFeedback,
             DelayFeedbackPattern, DelayPattern, DelayTime, DelayTimePattern, Drive, DrivePattern,
-            Drop, Every, ExplicitCycle, Fast, Gain, GainPattern, Hpf, HpfPattern, IRand, Invert,
-            Iter, Lpf, LpfPattern, Markov, Mask, Onset, OnsetPattern, Pan, PanPattern, Pedal,
-            Pitch, PitchPattern, PulseWidth, PulseWidthPattern, Rand, RandCat, Range, Rate,
-            RatePattern, Res, ResPattern, Rev, Reverb, ReverbDamp, ReverbDampPattern,
+            Drop, Every, ExplicitCycle, Fast, FastPattern, Gain, GainPattern, Hpf, HpfPattern,
+            IRand, Invert, Iter, Lpf, LpfPattern, Markov, Mask, Onset, OnsetPattern, Pan,
+            PanPattern, Pedal, Pitch, PitchPattern, PulseWidth, PulseWidthPattern, Rand, RandCat,
+            Range, Rate, RatePattern, Res, ResPattern, Rev, Reverb, ReverbDamp, ReverbDampPattern,
             ReverbPattern, ReverbRoom, ReverbRoomPattern, Roll, Rot, Scan, Segment, Shift,
-            ShuffleSlots, Slice, SliceIdxPattern, SlicePattern, Slow, SlowCat, Sometimes, Stack,
-            Stream, Strum, Transpose, TransposePattern, TunedPitch, TunedPitchPattern, When,
-            WhenMod, Within,
+            ShuffleSlots, Slice, SliceIdxPattern, SlicePattern, Slow, SlowCat, SlowPattern,
+            Sometimes, Stack, Stream, Strum, Transpose, TransposePattern, TunedPitch,
+            TunedPitchPattern, When, WhenMod, Within,
         };
 
         macro_rules! recurse {
@@ -3864,8 +3930,16 @@ impl<T> PatternRuntime<T> {
                 factor,
                 inner: recurse!(inner),
             },
+            FastPattern { control, inner } => FastPattern {
+                control,
+                inner: recurse!(inner),
+            },
             Slow { factor, inner } => Slow {
                 factor,
+                inner: recurse!(inner),
+            },
+            SlowPattern { control, inner } => SlowPattern {
+                control,
                 inner: recurse!(inner),
             },
             Shift { offset, inner } => Shift {
@@ -4125,7 +4199,9 @@ impl<T> PatternRuntime<T> {
             | Self::Transpose { inner, .. }
             | Self::TransposePattern { inner, .. }
             | Self::Fast { inner, .. }
+            | Self::FastPattern { inner, .. }
             | Self::Slow { inner, .. }
+            | Self::SlowPattern { inner, .. }
             | Self::Shift { inner, .. }
             | Self::Rev { inner }
             | Self::Gain { inner, .. }
@@ -4316,7 +4392,13 @@ where
                 apply_control_pattern(inner, control, span, ControlPatternKind::Transpose)
             }
             Self::Fast { factor, inner } => query_fast(inner, factor, span),
+            Self::FastPattern { control, inner } => {
+                query_tempo_pattern(inner, control, span, TempoFactorKind::Fast)
+            }
             Self::Slow { factor, inner } => query_slow(inner, factor, span),
+            Self::SlowPattern { control, inner } => {
+                query_tempo_pattern(inner, control, span, TempoFactorKind::Slow)
+            }
             Self::Shift { offset, inner } => query_shift(inner, offset, span),
             Self::Rev { inner } => query_rev(inner, span),
             Self::Gain { factor, inner } => {
@@ -5673,6 +5755,133 @@ where
     let mut events = inner.try_query(&source_span)?;
     let inverse_factor = rational_reciprocal(factor)?;
     rescale_events(&mut events, &inverse_factor)?;
+    Ok(events)
+}
+
+/// Which tempo transform a patterned factor drives: `fast` applies each
+/// factor directly, `slow` applies its reciprocal.
+#[derive(Clone, Copy)]
+enum TempoFactorKind {
+    Fast,
+    Slow,
+}
+
+impl TempoFactorKind {
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Fast => "fast",
+            Self::Slow => "slow",
+        }
+    }
+}
+
+/// Validates a `fast`/`slow` tempo factor value and converts it to an exact
+/// rational, sharing one rule set between the constant path and per-event
+/// patterned factors.
+///
+/// Decimal values convert through [`f64_to_rational`], which parses the
+/// shortest round-trip decimal rendering of the `f64` rather than its bit
+/// pattern: `1.5` becomes `3/2` and `0.1` becomes exactly `1/10`. Bounds
+/// extend the historical integer rule (`1..=1024`) to rationals: after
+/// reduction, the numerator and denominator must each be at most 1024, so
+/// accepted factors lie in `[1/1024, 1024]`. Factors that are zero,
+/// negative, or non-finite are rejected, as are decimals whose reduced
+/// denominator exceeds 1024 (e.g. `0.123456789`).
+pub fn positive_rational_tempo_factor(
+    value: f64,
+    builtin_name: &str,
+) -> Result<Rational, EvalError> {
+    if !value.is_finite() || value <= 0.0 {
+        return Err(EvalError::new(format!(
+            "`{builtin_name}` requires a positive factor"
+        )));
+    }
+
+    let factor = f64_to_rational(value, &format!("`{builtin_name}` factor"))?;
+
+    if factor.numerator() <= 0 {
+        return Err(EvalError::new(format!(
+            "`{builtin_name}` requires a positive factor"
+        )));
+    }
+
+    if factor.denominator() > 1024 {
+        return Err(EvalError::new(format!(
+            "`{builtin_name}` factor denominator exceeded the maximum allowed bound of 1024"
+        )));
+    }
+
+    if factor.numerator() > 1024 {
+        return Err(EvalError::new(format!(
+            "`{builtin_name}` factor exceeded the maximum allowed bound of 1024"
+        )));
+    }
+
+    Ok(factor)
+}
+
+/// Queries `fast`/`slow` with a patterned tempo factor (Tidal's
+/// `fast "<1 2>" p`, i.e. `tParam _fast` via `innerJoin`): for each factor
+/// event, the inner pattern plays at that event's tempo within the event's
+/// part. Inner event wholes keep their full (rescaled) extent while parts
+/// are clipped to the factor event's part, so a factor change mid-cycle
+/// truncates events exactly like Tidal's `innerJoin`. Spans not covered by
+/// any factor event (rests in the factor pattern) stay silent.
+///
+/// The factor pattern is sampled cycle by cycle — each cycle intersecting
+/// the query span evaluates the control over that **full** cycle and clips
+/// the factor events to the query window, mirroring `query_segment`'s
+/// full-slot strategy. This keeps arbitrarily chunked queries identical to
+/// whole-span queries even for continuous factor sources (`choose`, `rand`),
+/// which draw one deterministic, site-salted value per cycle.
+///
+/// Each factor value is validated per event with the same rules as constant
+/// factors ([`positive_rational_tempo_factor`]); an invalid value raises a
+/// query-time error, matching the control-pattern validation precedent.
+fn query_tempo_pattern<T>(
+    inner: &PatternRuntime<T>,
+    control: &PatternRuntime<f64>,
+    span: &TimeSpan,
+    kind: TempoFactorKind,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut events = Vec::with_capacity(8);
+    let start_cycle = floor_rational(span.start());
+    let end_cycle = ceil_rational(span.end());
+
+    for cycle in start_cycle..end_cycle {
+        let full_cycle_span = cycle_span(cycle)?;
+        let Some(query_slice) = clip_span(&full_cycle_span, span)? else {
+            continue;
+        };
+
+        let control_events = control.try_query(&full_cycle_span)?;
+        for control_event in &control_events {
+            let factor = positive_rational_tempo_factor(control_event.value, kind.name())?;
+            let Some(part) = clip_span(&control_event.part, &query_slice)? else {
+                continue;
+            };
+
+            let segment_events = match kind {
+                TempoFactorKind::Fast => query_fast(inner, &factor, &part)?,
+                TempoFactorKind::Slow => query_slow(inner, &factor, &part)?,
+            };
+            if events.len() + segment_events.len() > 100_000 {
+                return Err(EvalError::new(
+                    "evaluation exceeded the maximum allowed event limit",
+                ));
+            }
+            events.extend(segment_events);
+        }
+    }
+
+    sort_events(&mut events);
     Ok(events)
 }
 
@@ -7439,6 +7648,169 @@ mod tests {
             assert_eq!(left.whole, right.whole);
             assert_eq!(left.value.sample(), right.value.sample());
         }
+    }
+
+    #[test]
+    fn query_fast_pattern_applies_each_factor_within_its_event_part() {
+        // fast(<1 2>, bd sn): cycle 0 at 1x, cycle 1 at 2x, with each
+        // rendition clipped to the factor event's part.
+        let control = NumberPatternValue::slowcat(vec![
+            NumberPatternValue::constant(1.0),
+            NumberPatternValue::constant(2.0),
+        ]);
+        let pattern = SamplePatternValue::from_nodes(vec![
+            PatternNode::atom(SampleEvent::named("bd")),
+            PatternNode::atom(SampleEvent::named("sn")),
+        ])
+        .fast_pattern(control);
+
+        let span = TimeSpan::new(Rational::zero(), Rational::new(2, 1).unwrap()).unwrap();
+        let events = pattern.try_query(&span).unwrap();
+
+        let spans: Vec<_> = events
+            .iter()
+            .map(|event| (*event.part.start(), *event.part.end(), event.value.sample()))
+            .collect();
+        assert_eq!(
+            spans,
+            vec![
+                (Rational::zero(), Rational::new(1, 2).unwrap(), "bd"),
+                (Rational::new(1, 2).unwrap(), Rational::one(), "sn"),
+                (Rational::one(), Rational::new(5, 4).unwrap(), "bd"),
+                (
+                    Rational::new(5, 4).unwrap(),
+                    Rational::new(3, 2).unwrap(),
+                    "sn"
+                ),
+                (
+                    Rational::new(3, 2).unwrap(),
+                    Rational::new(7, 4).unwrap(),
+                    "bd"
+                ),
+                (
+                    Rational::new(7, 4).unwrap(),
+                    Rational::new(2, 1).unwrap(),
+                    "sn"
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn query_fast_pattern_is_chunking_stable_with_straddling_wholes() {
+        // The 3/4 factor on odd cycles produces wholes with non-integer
+        // endpoints, so both onsets and fragment tiling must agree between
+        // one whole-span query and arbitrary half-cycle chunks.
+        let control = NumberPatternValue::slowcat(vec![
+            NumberPatternValue::constant(1.0),
+            NumberPatternValue::constant(0.75),
+        ]);
+        let pattern = SamplePatternValue::from_nodes(vec![
+            PatternNode::atom(SampleEvent::named("bd")),
+            PatternNode::atom(SampleEvent::named("sn")),
+        ])
+        .fast_pattern(control);
+
+        let whole_span = TimeSpan::new(Rational::zero(), Rational::new(4, 1).unwrap()).unwrap();
+        let whole_events = pattern.try_query(&whole_span).unwrap();
+        assert!(!whole_events.is_empty());
+
+        let mut chunked_events = Vec::new();
+        for half in 0..8 {
+            let span = TimeSpan::new(
+                Rational::new(half, 2).unwrap(),
+                Rational::new(half + 1, 2).unwrap(),
+            )
+            .unwrap();
+            chunked_events.extend(pattern.try_query(&span).unwrap());
+        }
+
+        let extent =
+            |event: &Event<SampleEvent>| event.whole.as_ref().map_or(event.part, |whole| *whole);
+        let onsets = |events: &[Event<SampleEvent>]| {
+            events
+                .iter()
+                .filter(|event| extent(event).start() == event.part.start())
+                .map(|event| {
+                    (
+                        *extent(event).start(),
+                        *extent(event).end(),
+                        event.value.sample().to_owned(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(onsets(&whole_events), onsets(&chunked_events));
+
+        for whole_event in &whole_events {
+            let fragments: Vec<_> = chunked_events
+                .iter()
+                .filter(|fragment| {
+                    extent(fragment) == extent(whole_event)
+                        && fragment.value.sample() == whole_event.value.sample()
+                        && fragment.part.start() >= whole_event.part.start()
+                        && fragment.part.end() <= whole_event.part.end()
+                })
+                .collect();
+            assert!(!fragments.is_empty());
+            assert_eq!(fragments[0].part.start(), whole_event.part.start());
+            assert_eq!(fragments.last().unwrap().part.end(), whole_event.part.end());
+            for pair in fragments.windows(2) {
+                assert_eq!(pair[0].part.end(), pair[1].part.start());
+            }
+        }
+    }
+
+    #[test]
+    fn slow_pattern_matches_fast_pattern_with_reciprocal_factors() {
+        let base = SamplePatternValue::from_nodes(vec![
+            PatternNode::atom(SampleEvent::named("bd")),
+            PatternNode::atom(SampleEvent::named("sn")),
+        ]);
+        let slow_control = NumberPatternValue::slowcat(vec![
+            NumberPatternValue::constant(1.0),
+            NumberPatternValue::constant(2.0),
+        ]);
+        let fast_control = NumberPatternValue::slowcat(vec![
+            NumberPatternValue::constant(1.0),
+            NumberPatternValue::constant(0.5),
+        ]);
+        let slowed = base.clone().slow_pattern(slow_control);
+        let fasted = base.fast_pattern(fast_control);
+
+        let span = TimeSpan::new(Rational::zero(), Rational::new(4, 1).unwrap()).unwrap();
+        let slowed_events = slowed.try_query(&span).unwrap();
+        let fasted_events = fasted.try_query(&span).unwrap();
+
+        assert_eq!(slowed_events.len(), fasted_events.len());
+        for (left, right) in slowed_events.iter().zip(&fasted_events) {
+            assert_eq!(left.part, right.part);
+            assert_eq!(left.whole, right.whole);
+            assert_eq!(left.value.sample(), right.value.sample());
+        }
+    }
+
+    #[test]
+    fn tempo_factor_pattern_values_share_the_constant_factor_bounds() {
+        let control = NumberPatternValue::slowcat(vec![
+            NumberPatternValue::constant(1.0),
+            NumberPatternValue::constant(-2.0),
+        ]);
+        let pattern = SamplePatternValue::atom("bd").fast_pattern(control);
+
+        // Cycle 0's factor is fine; the invalid cycle-1 factor errors only
+        // once a query reaches it.
+        let cycle_zero = TimeSpan::new(Rational::zero(), Rational::one()).unwrap();
+        assert!(pattern.try_query(&cycle_zero).is_ok());
+
+        let span = TimeSpan::new(Rational::zero(), Rational::new(2, 1).unwrap()).unwrap();
+        let error = pattern.try_query(&span).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("`fast` requires a positive factor"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]

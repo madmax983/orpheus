@@ -10,8 +10,13 @@ File paths point the next contributor at the relevant implementation sites.
   - [x] rational factors — `fast(1.5, ...)` / `slow(0.5, ...)`; decimal
     literals convert to exact rationals (numerator and denominator each
     bounded by 1024; `extract_positive_rational_factor`, builtins.rs)
-  - [ ] patterned factors (Tidal `fast "<1 2>"`); mini-notation `a*n`/`a/n`
-    factors also stay integer literals for now
+  - [x] patterned factors (Tidal `fast "<1 2>"`) — `fast(<1 2>, ...)` /
+    `slow(1 2, ...)` apply each factor event's tempo within that event's
+    part (innerJoin semantics; `PatternRuntime::FastPattern`/`SlowPattern`,
+    `query_tempo_pattern` in value.rs; `extract_tempo_factor_control`,
+    builtins.rs); factor values share the constant bounds
+    (`positive_rational_tempo_factor`) and are validated per event;
+    mini-notation `a*n`/`a/n` factors still stay integer literals for now
 - [x] `rev` — `PatternRuntime::Rev`
 - [x] `every` — cycle-localized transforms (`query_transform_cycles`, value.rs)
 - [x] `when` — cycle-offset transform (period + offset); real Tidal
