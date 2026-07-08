@@ -104,5 +104,7 @@ Module: `crates/orpheus-dsp/src/graph/` (ADR 0004).
   `crates/orpheus-dsp/src/synth/mix.rs` (`graph/adapters.rs`)
 - [x] `PanNode` — `pan`, 2-in (audio, position)/2-out equal-power panner
   (`crates/orpheus-dsp/src/graph/primitives.rs`)
-- [ ] engine integration of `graph/` — ADR 0004 follow-up; the graph module is
-  currently unreferenced by `engine.rs`/`voice.rs`/`pedal/`
+- [~] engine integration of `graph/` — partial (ADR 0009): pooled graph
+  voices trigger from pattern events via tokens (`gsine`,
+  `crates/orpheus-dsp/src/graph_voice.rs`); remaining: user-defined program
+  registry/swap command and language-surface syntax for graph voices

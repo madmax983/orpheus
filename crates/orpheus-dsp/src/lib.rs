@@ -14,6 +14,7 @@ mod command;
 mod effects;
 mod engine;
 mod graph;
+mod graph_voice;
 mod offline;
 mod pedal;
 mod plugin_host;
@@ -29,6 +30,7 @@ mod voice;
 pub use command::{EngineCommand, PatternUpdate, PedalProgram, SampleTrigger, new_command_queue};
 pub use engine::{EngineError, EngineHandle, RenderEngine, TransportSnapshot, frames_per_cycle};
 pub use graph::*;
+pub use graph_voice::{GraphVoice, GraphVoiceProgram, builtin_graph_voice_programs};
 pub use offline::{
     OfflineRenderError, render_events_to_file, render_events_to_file_with_bank,
     render_events_to_wav, render_routing_snapshot_to_stem_wavs,

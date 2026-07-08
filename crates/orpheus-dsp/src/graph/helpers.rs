@@ -5,7 +5,7 @@
 
 use std::fmt;
 
-use super::combinators::{Seq, par, seq};
+use super::combinators::{Seq, par, seq, with_shared_refs};
 use super::node::{GraphError, Node};
 use super::primitives::passthrough;
 
@@ -113,9 +113,13 @@ impl Node for Bind {
                 .copy_from_slice(&inputs[ext_idx][..frames]);
         }
 
-        // Process the inner node with the fully-assembled input.
-        let input_refs: Vec<&[f32]> = self.full_input.iter().map(|v| &v[..frames]).collect();
-        self.inner.process(&input_refs, outputs, frames);
+        // Process the inner node with the fully-assembled input. The slice
+        // view table lives on the stack so steady-state processing stays
+        // allocation-free.
+        let inner = &mut self.inner;
+        with_shared_refs(&self.full_input, frames, |input_refs| {
+            inner.process(input_refs, outputs, frames);
+        });
     }
 
     fn reset(&mut self) {
