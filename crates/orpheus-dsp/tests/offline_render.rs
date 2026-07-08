@@ -8,7 +8,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use orpheus_dsp::{
     EngineCommand, EngineHandle, NodeRef, PedalNode, PedalProgram, PedalStage, RoutingSnapshot,
     SampleBank, SampleTrigger, TrackSource, load_sample_bank_from_directory,
-    render_events_to_file_with_bank, render_routing_snapshot_to_stereo_for_test,
+    render_events_to_file_with_bank, render_routing_snapshot_to_stem_wavs,
+    render_routing_snapshot_to_stereo_for_test,
 };
 use orpheus_pattern::{Event, Rational, TimeSpan};
 
@@ -691,6 +692,61 @@ fn offline_render_insert_compressor_reduces_peak_level() {
 
     assert!(compressed_peak < dry_peak);
 
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn stem_export_renders_sample_builtin_synth_and_graph_voice_stems() {
+    let directory = temp_directory("stem-generator-sources");
+    write_wav(directory.join("pulse.wav"), &[1.0, 0.5, 0.25, 0.125]);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+
+    let one_shot = |token: &str| {
+        TrackSource::SamplePattern(
+            vec![Event {
+                whole: None,
+                part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+                value: SampleTrigger::named(token),
+            }]
+            .into_boxed_slice(),
+        )
+    };
+    let snapshot = RoutingSnapshot::builder()
+        .track_with_source("drums", one_shot("pulse"))
+        .track_with_source("lead", one_shot("saw"))
+        .track_with_source("pad", one_shot("gsine"))
+        .route("drums", "master")
+        .route("lead", "master")
+        .route("pad", "master")
+        .build()
+        .unwrap();
+
+    let output_dir = temp_directory("stem-generator-sources-out");
+    let written =
+        render_routing_snapshot_to_stem_wavs(&snapshot, 1, 480.0, &bank, &[], &output_dir, false)
+            .unwrap();
+
+    for stem in ["drums", "lead", "pad"] {
+        let stem_path = output_dir.join(format!("{stem}.wav"));
+        assert!(
+            written.contains(&stem_path),
+            "expected `{stem}.wav` in written stems {written:?}"
+        );
+        let mut reader = hound::WavReader::open(&stem_path).unwrap();
+        let samples = reader
+            .samples::<i16>()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        // Every trigger fires at the cycle start and spans the first quarter
+        // of the cycle, so audio must appear in the first half of the stem.
+        let window = &samples[..samples.len() / 2];
+        assert!(
+            window.iter().any(|sample| *sample != 0),
+            "stem `{stem}` should contain nonzero audio in the event window"
+        );
+    }
+
+    fs::remove_dir_all(output_dir).unwrap();
     fs::remove_dir_all(directory).unwrap();
 }
 
