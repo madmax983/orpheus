@@ -635,3 +635,140 @@ tails at cycle boundaries on the round-trip through a pattern binding.
 Offline stem export treats generator tracks as silent (their buffers live
 in the real-time engine, not the snapshot); recording a grid performance
 is future work.
+
+---
+
+## 12. v6: real IO transports
+
+**Status: implemented** (ADR 0010). The typed `OrcaIoEvent`s of v3 now
+reach real destinations: `;` sends UDP datagrams, `=` sends OSC messages,
+and the MIDI family (`:` `%` `!` `?`) drives a real MIDI output port. Wire
+behavior is pinned against the reference client's io layer (main-branch
+`core/io/udp.js`, `osc.js`, `midi.js`, `cc.js`, `mono.js`). `$` commands
+remain uninterpreted (section 9.5): the dispatcher drops them.
+
+### 12.1 Architecture: trait layer + dedicated IO thread
+
+The transport layer lives at `crates/orpheus-lang/src/orca/transport/` and
+is TUI-free like the rest of the orca core:
+
+```text
+orca/transport/
+  mod.rs       # TransportConfig, ScheduledIoEvent, cycle_schedule, errors
+  midi.rs      # MidiSink trait, MidirSink (real), RecordingMidiSink (mock),
+               # byte assembly (note on/off, velocity, CC, PB)
+  net.rs       # UdpTransport, OscTransport (rosc encoding)
+  dispatch.rs  # TransportDispatcher: time-ordered action queue, note state
+  worker.rs    # TransportHandle + the `orca-io` worker thread
+```
+
+Two seams make everything hardware-free in tests:
+
+- **`MidiSink`** — the only surface the dispatcher sees for MIDI bytes.
+  `MidirSink` wraps a real `midir` output connection; `RecordingMidiSink`
+  records every message for assertions.
+- **`TransportDispatcher`** — a pure state machine driven by explicit
+  `Instant`s: `schedule(event)` queues, `run_due(now)` fires. Note-off
+  timing, mono cut, retrigger, and per-family routing are all tested
+  synchronously; UDP/OSC tests bind loopback sockets and decode what
+  arrives.
+
+**Threading (ADR 0010).** `TransportHandle::spawn` starts one dedicated
+`orca-io` thread owning the dispatcher. The TUI feeds it over an `mpsc`
+channel (never blocking the tick); transport errors flow back over a
+status channel drained by `poll_orca` into the status line. The audio
+thread is untouched — sockets and MIDI sends happen only on the IO
+thread. Dropping the handle closes the channel; the worker releases any
+sounding notes (no hanging MIDI notes on quit) and exits, and the drop
+joins it.
+
+### 12.2 Scheduling: cycle-ahead materialization to wall clock
+
+Grid cycles are materialized one cycle ahead of playback (ADR 0009), so
+transport events cannot simply fire when drained. `materialize_cycle_io`
+returns every `OrcaEvent` stamped with its cycle-relative frame
+(`CycleIoEvent`), and `transport::cycle_schedule` maps the batch onto wall
+time: the next engine cycle boundary is `remaining_fraction ×
+cycle_seconds` away (fraction from the `TransportSnapshot` frame counters,
+`cycle_seconds = 240 / bpm`), and event `N` of `F` grid frames fires
+`N × cycle_seconds / F` after it. MIDI note-offs fire `length` grid frames
+after their note-on, mirroring the reference's per-frame length countdown
+(`io/midi.js` `run()`); a zero-length note presses and releases in the
+same pass. While the transport is stopped, events fire immediately in
+grid order.
+
+### 12.3 Wire formats (verified against the reference sources)
+
+- **UDP (`;`)** — the raw message string as one datagram. Default target
+  `127.0.0.1:49161` — the reference's default *output* port (`udp.js`
+  `selectOutput(port = 49161)`); `49160` is its input listener, which
+  Orpheus does not implement.
+- **OSC (`=`)** — address `/<path>`, one int32 argument per arg glyph:
+  the glyph's base-36 value, exactly `osc.js`
+  `oscMsg.append(orca.valueOf(...))`. Default target `127.0.0.1:49162`.
+- **`:` poly note** — note-on `[0x90 + ch, note, vel]` at the event's
+  deadline, note-off `[0x80 + ch, note, vel]` after `length` frames, with
+  `vel = floor(velocity / 16 * 127)` (`io/midi.js` `trigger()`; the same
+  byte is sent on release). The note number comes from the shared
+  transpose table (`midi_note_id`, section 9.4); untransposable glyphs
+  are dropped at send time like the reference. Retriggering a sounding
+  (channel, note) releases it first and supersedes its pending note-off
+  (`midi.js` `push()` releases duplicates).
+- **`%` mono note** — same bytes, but one voice per channel: a new note
+  first releases whatever the channel was sounding (`mono.js` keys its
+  stack by channel). Cuts apply per channel, not globally.
+- **`!` CC** — `[0xB0 + ch, offset + knob, value]` with the reference's
+  default knob offset **64** (`cc.js` `this.offset = 64`), configurable
+  in `TransportConfig`. The value byte was already scaled to 0-127 by the
+  engine (section 9.3).
+- **`?` pitch bend** — `[0xE0 + ch, lsb, msb]`, raw already-scaled bytes.
+
+Events without a connected MIDI port drop silently (the reference's "No
+midi output!" no-op). Note events go to *both* the internal sampler
+(sections 9.4/10) and, when a port is connected, real MIDI out — matching
+the reference, where `:` always targets the MIDI device.
+
+### 12.4 Config surface
+
+The TUI owns the transports (they hang off `SharedState`), so
+configuration is a TUI command family, `:orca`, following the session's
+`:midi` conventions (exact port names):
+
+```text
+:orca                          # show targets + MIDI port
+:orca udp <host:port | port>   # default 127.0.0.1:49161
+:orca osc <host:port | port>   # default 127.0.0.1:49162
+:orca midi list
+:orca midi connect <port>      # exact name, like :midi connect
+:orca midi disconnect
+```
+
+A bare port aims at `127.0.0.1`, matching the reference client, which
+only ever configures ports (plus one global target IP). One deliberate
+divergence: the reference auto-connects MIDI device 0 at startup; Orpheus
+connects nothing until asked, so a running grid never grabs a device
+unprompted.
+
+### 12.5 New dependencies
+
+- **`rosc`** (workspace, `0.11`) — OSC message encoding. Pure Rust, no
+  system libraries.
+- **`midir`** — already a dependency of `orpheus-lang` (MIDI input, the
+  session's `:midi` family); v6 moves it to a workspace dependency and
+  reuses it for the grid's output port. Its ALSA backend needs
+  `libasound2-dev` on Linux, which the workspace already requires for
+  `cpal`.
+
+### 12.6 Still future work after v6
+
+- **A `$` command interpreter** (section 9.5) — commands still emit
+  uninterpreted and the dispatcher drops them.
+- **UDP/OSC/MIDI input** (the reference's UDP listener on 49160, MIDI
+  clock in) — Orpheus's own `:midi in` family covers MIDI note input, but
+  nothing routes inbound messages onto the grid.
+- **MIDI clock out** (`io/midi.js` `sendClock`), tempo-synced to the
+  engine transport.
+- **Per-event target overrides** (the reference has one global IP; so
+  does Orpheus).
+- **`Pattern<T>` for the grid, persistence, language surface, proofs**
+  (sections 6/7.3).

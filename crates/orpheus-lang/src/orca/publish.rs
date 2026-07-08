@@ -229,17 +229,45 @@ pub fn sample_event_from_orca(
     Ok(Some(Event { whole, part, value }))
 }
 
+/// One IO event stamped with the cycle-relative frame it fired on.
+///
+/// This is the transport-scheduling seam of v6: `frame_in_cycle` of the
+/// materialized cycle's `frames_per_cycle` converts into a wall-clock
+/// offset from the cycle start via `transport::cycle_schedule`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CycleIoEvent {
+    /// Frame within the materialized cycle (`0..frames_per_cycle`) on which
+    /// the event fired.
+    pub frame_in_cycle: u64,
+    /// The engine event, including its typed IO payload.
+    pub event: OrcaEvent,
+}
+
+/// One materialized grid cycle: the audio-path events plus every IO event
+/// for the transport layer.
+#[derive(Clone, Debug)]
+pub struct OrcaCycle {
+    /// MIDI-note events converted for the engine generator slot.
+    pub audio: Vec<Event<SampleEvent>>,
+    /// Every IO event the grid emitted, in (frame, scan-order), stamped
+    /// with its cycle-relative frame. Note events appear here *and* in
+    /// `audio`: they drive the internal sampler and, when a MIDI port is
+    /// connected, real MIDI out — matching the reference, where `:` always
+    /// targets the MIDI device.
+    pub io: Vec<CycleIoEvent>,
+}
+
 /// Advances `engine` by one full grid cycle (`frames_per_cycle` ticks) and
 /// returns the emitted MIDI-note events stamped with their cycle-relative
 /// frame spans.
 ///
 /// Events are ordered by frame, and within a frame by the engine's row-major
 /// scan order; same-frame events share a span. Non-note IO events (CC,
-/// pitch bend, UDP, OSC, commands) are skipped — they remain on the engine's
-/// per-tick event list for future transport consumers. Calling this
-/// repeatedly yields consecutive grid cycles: the grid state carries over,
-/// which is what makes non-periodic grids (a moving `E`) evolve across
-/// cycles.
+/// pitch bend, UDP, OSC, commands) are skipped — use
+/// [`materialize_cycle_io`] to also collect them for the transport layer.
+/// Calling this repeatedly yields consecutive grid cycles: the grid state
+/// carries over, which is what makes non-periodic grids (a moving `E`)
+/// evolve across cycles.
 ///
 /// # Errors
 ///
@@ -250,17 +278,40 @@ pub fn materialize_cycle(
     frames_per_cycle: u64,
     sample_token: &str,
 ) -> Result<Vec<Event<SampleEvent>>, PatternError> {
-    let mut events = Vec::new();
+    Ok(materialize_cycle_io(engine, frames_per_cycle, sample_token)?.audio)
+}
+
+/// [`materialize_cycle`] plus the full IO event list.
+///
+/// The cycle's `io` collects every [`OrcaEvent`] the grid emitted, stamped
+/// with its cycle-relative frame, for the transport dispatcher (see
+/// [`super::transport`]).
+///
+/// # Errors
+///
+/// Propagates rational-construction errors from note-span construction. A
+/// `frames_per_cycle` of zero ticks nothing and returns an empty cycle.
+pub fn materialize_cycle_io(
+    engine: &mut OrcaEngine,
+    frames_per_cycle: u64,
+    sample_token: &str,
+) -> Result<OrcaCycle, PatternError> {
+    let mut audio = Vec::new();
+    let mut io = Vec::new();
     for frame_in_cycle in 0..frames_per_cycle {
         for orca_event in engine.tick() {
             if let Some(event) =
                 sample_event_from_orca(orca_event, frame_in_cycle, frames_per_cycle, sample_token)?
             {
-                events.push(event);
+                audio.push(event);
             }
+            io.push(CycleIoEvent {
+                frame_in_cycle,
+                event: orca_event.clone(),
+            });
         }
     }
-    Ok(events)
+    Ok(OrcaCycle { audio, io })
 }
 
 /// Maps the audio engine's transport position onto the current grid frame.
@@ -392,10 +443,20 @@ impl OrcaPublisher {
         &mut self,
         cycle_start_frame: u64,
     ) -> Result<Option<Vec<Event<SampleEvent>>>, PatternError> {
+        Ok(self.poll_io(cycle_start_frame)?.map(|cycle| cycle.audio))
+    }
+
+    /// [`Self::poll`] returning the full [`OrcaCycle`]: the audio batch for
+    /// the generator slot plus every IO event for the transport dispatcher.
+    ///
+    /// # Errors
+    ///
+    /// Propagates rational-construction errors from materialization.
+    pub fn poll_io(&mut self, cycle_start_frame: u64) -> Result<Option<OrcaCycle>, PatternError> {
         if !self.running || self.last_cycle_start == Some(cycle_start_frame) {
             return Ok(None);
         }
         self.last_cycle_start = Some(cycle_start_frame);
-        materialize_cycle(&mut self.engine, self.frames_per_cycle, &self.sample_token).map(Some)
+        materialize_cycle_io(&mut self.engine, self.frames_per_cycle, &self.sample_token).map(Some)
     }
 }

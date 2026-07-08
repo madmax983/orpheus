@@ -1,0 +1,367 @@
+//! The transport dispatcher: a time-ordered action queue routing
+//! [`OrcaIoEvent`]s to the UDP, OSC, and MIDI transports.
+//!
+//! The dispatcher is a pure state machine driven by explicit [`Instant`]s:
+//! [`TransportDispatcher::schedule`] queues an event at its deadline and
+//! [`TransportDispatcher::run_due`] fires everything due, so all behavior
+//! (note-off timing, mono cut, duplicate retrigger, per-family routing) is
+//! testable synchronously. The worker thread (`worker.rs`) is a thin loop
+//! around these two calls.
+//!
+//! MIDI note lifecycle mirrors the reference io layer:
+//!
+//! - **`:` poly (`io/midi.js`)** — note-on at the event deadline, note-off
+//!   `length` grid frames later (`length` counts down one per frame in the
+//!   reference; zero-length notes press and release in the same pass).
+//!   Retriggering a sounding (channel, note) pair releases it first and
+//!   supersedes its pending note-off (`push()` releases duplicates).
+//! - **`%` mono (`io/mono.js`)** — one active note per channel: a new note
+//!   first releases whatever the channel was playing.
+//!
+//! Send failures are collected as strings for the host's status line and
+//! never abort dispatch. `$` command events are deliberately dropped
+//! uninterpreted (host concern, `docs/design/orca-surface.md` section 9.5).
+
+use std::cmp::{Ordering, Reverse};
+use std::collections::{BinaryHeap, HashMap};
+use std::time::{Duration, Instant};
+
+use super::midi::{MidiSink, cc_bytes, note_off_bytes, note_on_bytes, pb_bytes};
+use super::net::{OscTransport, UdpTransport};
+use super::{ScheduledIoEvent, TransportConfig};
+use crate::orca::engine::{MidiNote, OrcaIoEvent};
+use crate::orca::publish::midi_note_id;
+
+/// An active mono voice: the note-off bytes to send when it is cut or
+/// expires, and the generation guarding its pending note-off action.
+#[derive(Clone, Copy, Debug)]
+struct MonoVoice {
+    generation: u64,
+    off: [u8; 3],
+}
+
+/// A queued action, fired when `due` arrives. `sequence` keeps same-instant
+/// actions in submission order (grid scan order; note-ons before their
+/// zero-length note-offs).
+#[derive(Debug)]
+struct QueuedAction {
+    due: Instant,
+    sequence: u64,
+    action: Action,
+}
+
+impl PartialEq for QueuedAction {
+    fn eq(&self, other: &Self) -> bool {
+        self.due == other.due && self.sequence == other.sequence
+    }
+}
+
+impl Eq for QueuedAction {}
+
+impl PartialOrd for QueuedAction {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for QueuedAction {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.due
+            .cmp(&other.due)
+            .then_with(|| self.sequence.cmp(&other.sequence))
+    }
+}
+
+#[derive(Debug)]
+enum Action {
+    /// A grid IO event firing at its deadline.
+    Io {
+        io: OrcaIoEvent,
+        frame_duration: Duration,
+    },
+    /// A pending `:` note-off; stale (superseded) when the generation no
+    /// longer matches the sounding note's.
+    PolyOff {
+        channel: u8,
+        note_id: u8,
+        generation: u64,
+        bytes: [u8; 3],
+    },
+    /// A pending `%` note-off for whatever the channel is sounding, guarded
+    /// by generation like `PolyOff`.
+    MonoOff { channel: u8, generation: u64 },
+}
+
+/// Routes scheduled [`OrcaIoEvent`]s to the UDP, OSC, and MIDI transports
+/// at their deadlines. See the module docs for semantics.
+pub struct TransportDispatcher {
+    midi: Option<Box<dyn MidiSink>>,
+    cc_offset: u8,
+    udp: UdpTransport,
+    osc: OscTransport,
+    /// Sounding `:` notes, keyed by (channel, note id) -> generation.
+    poly: HashMap<(u8, u8), u64>,
+    /// Sounding `%` notes, one per channel.
+    mono: HashMap<u8, MonoVoice>,
+    queue: BinaryHeap<Reverse<QueuedAction>>,
+    next_sequence: u64,
+    next_generation: u64,
+}
+
+impl std::fmt::Debug for TransportDispatcher {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("TransportDispatcher")
+            .field("has_midi", &self.midi.is_some())
+            .field("pending", &self.queue.len())
+            .finish_non_exhaustive()
+    }
+}
+
+impl TransportDispatcher {
+    /// A dispatcher with no MIDI sink attached and sockets aimed at the
+    /// configured targets (bound lazily on first send).
+    #[must_use]
+    pub fn new(config: &TransportConfig) -> Self {
+        Self {
+            midi: None,
+            cc_offset: config.cc_offset,
+            udp: UdpTransport::new(config.udp_target),
+            osc: OscTransport::new(config.osc_target),
+            poly: HashMap::new(),
+            mono: HashMap::new(),
+            queue: BinaryHeap::new(),
+            next_sequence: 0,
+            next_generation: 0,
+        }
+    }
+
+    /// Attaches (or detaches, with `None`) the MIDI sink. Note events
+    /// dispatched without a sink are dropped silently, matching the
+    /// reference's "No midi output!" no-op.
+    pub fn set_midi(&mut self, sink: Option<Box<dyn MidiSink>>) {
+        self.midi = sink;
+    }
+
+    /// Re-aims the UDP transport.
+    pub fn set_udp_target(&mut self, target: std::net::SocketAddr) {
+        self.udp.set_target(target);
+    }
+
+    /// Re-aims the OSC transport.
+    pub fn set_osc_target(&mut self, target: std::net::SocketAddr) {
+        self.osc.set_target(target);
+    }
+
+    /// Queues one event for its deadline.
+    pub fn schedule(&mut self, event: ScheduledIoEvent) {
+        let ScheduledIoEvent {
+            fire_at,
+            frame_duration,
+            io,
+        } = event;
+        self.push_action(fire_at, Action::Io { io, frame_duration });
+    }
+
+    /// The earliest pending deadline, for the worker's sleep.
+    #[must_use]
+    pub fn next_due(&self) -> Option<Instant> {
+        self.queue.peek().map(|Reverse(action)| action.due)
+    }
+
+    /// Whether any action is still queued.
+    #[must_use]
+    pub fn has_pending(&self) -> bool {
+        !self.queue.is_empty()
+    }
+
+    /// Fires every action due at or before `now`, in (deadline, submission)
+    /// order. Returns the transport errors encountered, one message each.
+    pub fn run_due(&mut self, now: Instant) -> Vec<String> {
+        let mut errors = Vec::new();
+        while self
+            .queue
+            .peek()
+            .is_some_and(|Reverse(action)| action.due <= now)
+        {
+            if let Some(Reverse(queued)) = self.queue.pop() {
+                self.fire(queued, &mut errors);
+            }
+        }
+        errors
+    }
+
+    /// Releases every sounding note immediately (shutdown hygiene: devices
+    /// must not be left with hanging notes). Pending non-note actions are
+    /// discarded.
+    pub fn flush_note_offs(&mut self) -> Vec<String> {
+        let mut errors = Vec::new();
+        let poly: Vec<_> = self.poly.drain().collect();
+        for ((channel, note_id), _) in poly {
+            // The stored generation does not carry the velocity byte; the
+            // reference releases with the item's own velocity, but for a
+            // shutdown flush a zero-velocity note-off is universally safe.
+            self.send_midi(note_off_bytes(channel, note_id, 0), &mut errors);
+        }
+        let mono: Vec<_> = self.mono.drain().collect();
+        for (_, voice) in mono {
+            self.send_midi(voice.off, &mut errors);
+        }
+        self.queue.clear();
+        errors
+    }
+
+    fn push_action(&mut self, due: Instant, action: Action) {
+        let sequence = self.next_sequence;
+        self.next_sequence += 1;
+        self.queue.push(Reverse(QueuedAction {
+            due,
+            sequence,
+            action,
+        }));
+    }
+
+    fn fire(&mut self, queued: QueuedAction, errors: &mut Vec<String>) {
+        match queued.action {
+            Action::Io { io, frame_duration } => {
+                self.fire_io(&io, queued.due, frame_duration, errors);
+            }
+            Action::PolyOff {
+                channel,
+                note_id,
+                generation,
+                bytes,
+            } => {
+                if self.poly.get(&(channel, note_id)) == Some(&generation) {
+                    self.poly.remove(&(channel, note_id));
+                    self.send_midi(bytes, errors);
+                }
+            }
+            Action::MonoOff {
+                channel,
+                generation,
+            } => {
+                let expired = self
+                    .mono
+                    .get(&channel)
+                    .is_some_and(|voice| voice.generation == generation);
+                if expired && let Some(voice) = self.mono.remove(&channel) {
+                    self.send_midi(voice.off, errors);
+                }
+            }
+        }
+    }
+
+    fn fire_io(
+        &mut self,
+        io: &OrcaIoEvent,
+        at: Instant,
+        frame_duration: Duration,
+        errors: &mut Vec<String>,
+    ) {
+        match io {
+            OrcaIoEvent::Midi(note) => self.poly_note(*note, at, frame_duration, errors),
+            OrcaIoEvent::MidiMono(note) => self.mono_note(*note, at, frame_duration, errors),
+            OrcaIoEvent::MidiCc {
+                channel,
+                knob,
+                value,
+            } => {
+                self.send_midi(cc_bytes(*channel, *knob, *value, self.cc_offset), errors);
+            }
+            OrcaIoEvent::MidiPb { channel, lsb, msb } => {
+                self.send_midi(pb_bytes(*channel, *lsb, *msb), errors);
+            }
+            OrcaIoEvent::Udp(message) => {
+                if let Err(error) = self.udp.send(message) {
+                    errors.push(format!("orca UDP send failed: {error}"));
+                }
+            }
+            OrcaIoEvent::Osc { path, args } => {
+                if let Err(error) = self.osc.send(*path, args) {
+                    errors.push(format!("orca OSC send failed: {error}"));
+                }
+            }
+            // `$` commands stay uninterpreted (section 9.5): dropped here.
+            OrcaIoEvent::Command(_) => {}
+        }
+    }
+
+    /// `:` — polyphonic note. The reference drops glyphs outside the
+    /// transpose table at send time; a duplicate (channel, note) is
+    /// released first and its pending note-off superseded.
+    fn poly_note(
+        &mut self,
+        note: MidiNote,
+        at: Instant,
+        frame_duration: Duration,
+        errors: &mut Vec<String>,
+    ) {
+        let Some(note_id) = midi_note_id(note.note, note.octave) else {
+            return;
+        };
+        let key = (note.channel, note_id);
+        let off = note_off_bytes(note.channel, note_id, note.velocity);
+        if self.poly.contains_key(&key) {
+            // Duplicate retrigger (`midi.js` `push()`): release before
+            // re-pressing. The reference releases with the *new* item's
+            // velocity, since only the velocity byte can differ.
+            self.send_midi(off, errors);
+        }
+        self.send_midi(note_on_bytes(note.channel, note_id, note.velocity), errors);
+        let generation = self.next_generation;
+        self.next_generation += 1;
+        self.poly.insert(key, generation);
+        self.push_action(
+            at + frame_duration * u32::from(note.length),
+            Action::PolyOff {
+                channel: note.channel,
+                note_id,
+                generation,
+                bytes: off,
+            },
+        );
+    }
+
+    /// `%` — monophonic note: cuts whatever the channel is sounding
+    /// (`mono.js` `push()` releases `stack[channel]` first).
+    fn mono_note(
+        &mut self,
+        note: MidiNote,
+        at: Instant,
+        frame_duration: Duration,
+        errors: &mut Vec<String>,
+    ) {
+        let Some(note_id) = midi_note_id(note.note, note.octave) else {
+            return;
+        };
+        if let Some(previous) = self.mono.remove(&note.channel) {
+            self.send_midi(previous.off, errors);
+        }
+        self.send_midi(note_on_bytes(note.channel, note_id, note.velocity), errors);
+        let generation = self.next_generation;
+        self.next_generation += 1;
+        self.mono.insert(
+            note.channel,
+            MonoVoice {
+                generation,
+                off: note_off_bytes(note.channel, note_id, note.velocity),
+            },
+        );
+        self.push_action(
+            at + frame_duration * u32::from(note.length),
+            Action::MonoOff {
+                channel: note.channel,
+                generation,
+            },
+        );
+    }
+
+    fn send_midi(&mut self, bytes: [u8; 3], errors: &mut Vec<String>) {
+        if let Some(sink) = self.midi.as_mut()
+            && let Err(error) = sink.send(&bytes)
+        {
+            errors.push(format!("orca MIDI send failed: {error}"));
+        }
+    }
+}
