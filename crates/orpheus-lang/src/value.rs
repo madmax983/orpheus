@@ -118,6 +118,15 @@ pub enum BuiltinKind {
     LoadScl,
     /// Adjusts the base tuning frequency (e.g., A4 = 440 Hz) for pitch calculations.
     Tune,
+    /// Plays one child pattern per cycle in rotation, advancing each child's
+    /// own cycle counter only on the cycles it actually plays (Tidal `cat`/`slowcat`).
+    Cat,
+    /// Two-pattern `cat`: plays the first pattern on even cycles and the second on odd cycles.
+    Append,
+    /// Rotates the pattern earlier by `k/n` of a cycle on cycle `k` (Tidal `iter`).
+    Iter,
+    /// Rotates the pattern later by `k/n` of a cycle on cycle `k` (Tidal `iter'`).
+    IterBack,
     /// Interprets a numeric string or value as hexadecimal.
     Hex,
     /// Interprets a numeric string or value as binary.
@@ -191,6 +200,10 @@ impl fmt::Display for BuiltinKind {
             Self::Tuning => "tuning",
             Self::LoadScl => "load_scl",
             Self::Tune => "tune",
+            Self::Cat => "cat",
+            Self::Append => "append",
+            Self::Iter => "iter",
+            Self::IterBack => "iter_back",
             Self::Hex => "hex",
             Self::Bin => "bin",
             Self::Vst => "vst",
@@ -1744,6 +1757,27 @@ impl SamplePatternValue {
         }
     }
 
+    pub(crate) fn slowcat(patterns: Vec<Self>) -> Self {
+        Self {
+            pattern: PatternRuntime::SlowCat(
+                patterns
+                    .into_iter()
+                    .map(|pattern| pattern.pattern)
+                    .collect(),
+            ),
+        }
+    }
+
+    pub(crate) fn iter_rotate(self, n: i64, back: bool) -> Self {
+        Self {
+            pattern: PatternRuntime::Iter {
+                n,
+                back,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn fast(self, factor: i64) -> Self {
         Self {
             pattern: PatternRuntime::Fast {
@@ -2396,6 +2430,27 @@ impl NumberPatternValue {
         }
     }
 
+    pub(crate) fn slowcat(patterns: Vec<Self>) -> Self {
+        Self {
+            pattern: PatternRuntime::SlowCat(
+                patterns
+                    .into_iter()
+                    .map(|pattern| pattern.pattern)
+                    .collect(),
+            ),
+        }
+    }
+
+    pub(crate) fn iter_rotate(self, n: i64, back: bool) -> Self {
+        Self {
+            pattern: PatternRuntime::Iter {
+                n,
+                back,
+                inner: Box::new(self.pattern),
+            },
+        }
+    }
+
     pub(crate) fn fast(self, factor: i64) -> Self {
         Self {
             pattern: PatternRuntime::Fast {
@@ -2687,6 +2742,17 @@ enum PatternRuntime<T> {
         stream: EventStream<T>,
     },
     Stack(Vec<Self>),
+    /// Plays child `cycle mod n` on each cycle, querying it at its own
+    /// localized cycle `cycle div n` so cycle-dependent children (`every`,
+    /// `sometimes`, ...) advance only when they actually play.
+    SlowCat(Vec<Self>),
+    /// Rotates the inner pattern by `(cycle mod n) / n` of a cycle on each
+    /// cycle; `back` flips the rotation direction.
+    Iter {
+        n: i64,
+        back: bool,
+        inner: Box<Self>,
+    },
     Every {
         period: i64,
         transform: FunctionValue,
@@ -2985,12 +3051,12 @@ impl<T> PatternRuntime<T> {
             CompressorRatioPattern, CompressorThreshold, CompressorThresholdPattern, Cycle,
             Degrees, Delay, DelayFeedback, DelayFeedbackPattern, DelayPattern, DelayTime,
             DelayTimePattern, Drive, DrivePattern, Drop, Every, ExplicitCycle, Fast, Gain,
-            GainPattern, Hpf, HpfPattern, Invert, Lpf, LpfPattern, Mask, Onset, OnsetPattern, Pan,
-            PanPattern, Pedal, Pitch, PitchPattern, PulseWidth, PulseWidthPattern, Rand, Rate,
+            GainPattern, Hpf, HpfPattern, Invert, Iter, Lpf, LpfPattern, Mask, Onset, OnsetPattern,
+            Pan, PanPattern, Pedal, Pitch, PitchPattern, PulseWidth, PulseWidthPattern, Rand, Rate,
             RatePattern, Res, ResPattern, Rev, Reverb, ReverbDamp, ReverbDampPattern,
             ReverbPattern, ReverbRoom, ReverbRoomPattern, Roll, Shift, Slice, SliceIdxPattern,
-            SlicePattern, Slow, Sometimes, Stack, Stream, Strum, Transpose, TransposePattern,
-            TunedPitch, TunedPitchPattern, When, Within,
+            SlicePattern, Slow, SlowCat, Sometimes, Stack, Stream, Strum, Transpose,
+            TransposePattern, TunedPitch, TunedPitchPattern, When, Within,
         };
 
         macro_rules! recurse {
@@ -3038,6 +3104,17 @@ impl<T> PatternRuntime<T> {
                     .map(|layer| layer.with_tuning(table))
                     .collect(),
             ),
+            SlowCat(children) => SlowCat(
+                children
+                    .into_iter()
+                    .map(|child| child.with_tuning(table))
+                    .collect(),
+            ),
+            Iter { n, back, inner } => Iter {
+                n,
+                back,
+                inner: recurse!(inner),
+            },
             Every {
                 period,
                 transform,
@@ -3346,8 +3423,12 @@ impl<T> PatternRuntime<T> {
             Self::Stack(layers) => layers
                 .first()
                 .map_or(Ok(cycle), |layer| layer.absolute_cycle(cycle)),
+            Self::SlowCat(children) => children
+                .first()
+                .map_or(Ok(cycle), |child| child.absolute_cycle(cycle)),
             Self::Cycle(_) | Self::Stream(_) | Self::Rand { .. } => Ok(cycle),
-            Self::Every { inner, .. }
+            Self::Iter { inner, .. }
+            | Self::Every { inner, .. }
             | Self::When { inner, .. }
             | Self::Sometimes { inner, .. }
             | Self::Within { inner, .. }
@@ -3457,6 +3538,8 @@ where
             Self::Stream(stream) => stream.try_query(span).map_err(Into::into),
             Self::ExplicitCycle { stream, .. } => query_explicit_cycle(stream, span),
             Self::Stack(layers) => query_stack(layers, span),
+            Self::SlowCat(children) => query_slowcat(children, span),
+            Self::Iter { n, back, inner } => query_iter(inner, *n, *back, span),
             Self::Every {
                 period,
                 transform,
@@ -5025,6 +5108,112 @@ where
     Ok(events)
 }
 
+/// Queries a `SlowCat` runtime: cycle `k` plays child `k mod n`, queried at
+/// the child's own localized cycle `k div n` and translated back to cycle `k`.
+///
+/// This mirrors Tidal's `slowcat`: every child keeps its own cycle counter
+/// that advances only on the cycles it actually plays, so cycle-dependent
+/// children (e.g. `every`) behave as if they were on their own timeline.
+fn query_slowcat<T>(
+    children: &[PatternRuntime<T>],
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() || children.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let child_count = i128::try_from(children.len())
+        .map_err(|_| EvalError::new("`cat` child count exceeded evaluator limits"))?;
+    let mut events = Vec::with_capacity(8);
+    let start_cycle = floor_rational(span.start());
+    let end_cycle = ceil_rational(span.end());
+
+    for cycle in start_cycle..end_cycle {
+        let repeated_cycle_span = cycle_span(cycle)?;
+        let Some(query_slice) = clip_span(&repeated_cycle_span, span)? else {
+            continue;
+        };
+
+        let index = usize::try_from(cycle.rem_euclid(child_count))
+            .map_err(|_| EvalError::new("`cat` child index exceeded evaluator limits"))?;
+        let child = &children[index];
+        let child_cycle = cycle.div_euclid(child_count);
+        let forward = cycle.checked_sub(child_cycle).ok_or_else(|| {
+            EvalError::new("cycle index overflowed while localizing a `cat` child")
+        })?;
+        let forward_offset = rational_from_parts(forward, 1)?;
+        let local_offset = rational_sub(&Rational::zero(), &forward_offset)?;
+        let local_query = translate_span(&query_slice, &local_offset)?;
+        let mut child_events = child.try_query(&local_query)?;
+        shift_events(&mut child_events, &forward_offset)?;
+        if events.len() + child_events.len() > 100_000 {
+            return Err(EvalError::new(
+                "evaluation exceeded the maximum allowed event limit",
+            ));
+        }
+        events.extend(child_events);
+    }
+
+    sort_events(&mut events);
+    Ok(events)
+}
+
+/// Queries an `Iter` runtime: cycle `k` plays the inner pattern rotated
+/// earlier by `(k mod n) / n` of a cycle (or later, when `back` is set),
+/// wrapping back to the unrotated pattern every `n` cycles.
+fn query_iter<T>(
+    inner: &PatternRuntime<T>,
+    n: i64,
+    back: bool,
+    span: &TimeSpan,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    if span.is_empty() {
+        return Ok(Vec::new());
+    }
+    if n <= 0 {
+        return Err(EvalError::new("`iter` requires a positive step count"));
+    }
+
+    let steps = i128::from(n);
+    let mut events = Vec::with_capacity(8);
+    let start_cycle = floor_rational(span.start());
+    let end_cycle = ceil_rational(span.end());
+
+    for cycle in start_cycle..end_cycle {
+        let repeated_cycle_span = cycle_span(cycle)?;
+        let Some(query_slice) = clip_span(&repeated_cycle_span, span)? else {
+            continue;
+        };
+
+        let step = cycle.rem_euclid(steps);
+        let rotation = rational_from_parts(step, steps)?;
+        let negated_rotation = rational_sub(&Rational::zero(), &rotation)?;
+        let (source_offset, event_offset) = if back {
+            (negated_rotation, rotation)
+        } else {
+            (rotation, negated_rotation)
+        };
+        let source_span = translate_span(&query_slice, &source_offset)?;
+        let mut cycle_events = inner.try_query(&source_span)?;
+        shift_events(&mut cycle_events, &event_offset)?;
+        if events.len() + cycle_events.len() > 100_000 {
+            return Err(EvalError::new(
+                "evaluation exceeded the maximum allowed event limit",
+            ));
+        }
+        events.extend(cycle_events);
+    }
+
+    sort_events(&mut events);
+    Ok(events)
+}
+
 fn query_slow<T>(
     inner: &PatternRuntime<T>,
     factor: i64,
@@ -5537,6 +5726,106 @@ mod tests {
         assert_eq!(span.start().denominator(), 1);
         assert_eq!(span.end().numerator(), start_cycle + 1);
         assert_eq!(span.end().denominator(), 1);
+    }
+
+    #[test]
+    fn slowcat_plays_one_child_per_cycle_in_rotation() {
+        let pattern = SamplePatternValue::slowcat(vec![
+            SamplePatternValue::atom("bd"),
+            SamplePatternValue::from_nodes(vec![
+                PatternNode::atom(SampleEvent::named("sn")),
+                PatternNode::atom(SampleEvent::named("cp")),
+            ]),
+        ]);
+        let span = TimeSpan::new(Rational::zero(), Rational::new(3, 1).unwrap()).unwrap();
+        let events = pattern.try_query(&span).unwrap();
+
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.value.sample())
+                .collect::<Vec<_>>(),
+            vec!["bd", "sn", "cp", "bd"]
+        );
+        assert_eq!(events[0].part.start(), &Rational::zero());
+        assert_eq!(events[0].part.end(), &Rational::one());
+        assert_eq!(events[1].part.start(), &Rational::one());
+        assert_eq!(events[1].part.end(), &Rational::new(3, 2).unwrap());
+        assert_eq!(events[2].part.start(), &Rational::new(3, 2).unwrap());
+        assert_eq!(events[2].part.end(), &Rational::new(2, 1).unwrap());
+        assert_eq!(events[3].part.start(), &Rational::new(2, 1).unwrap());
+        assert_eq!(events[3].part.end(), &Rational::new(3, 1).unwrap());
+    }
+
+    #[test]
+    fn slowcat_localizes_each_childs_cycle_counter() {
+        // The `every 2 rev` child plays on global cycles 0, 2, and 4, which it
+        // sees as its own local cycles 0, 1, and 2 — so the transform fires on
+        // global cycles 0 and 4 only.
+        let child = SamplePatternValue::from_nodes(vec![
+            PatternNode::atom(SampleEvent::named("bd")),
+            PatternNode::atom(SampleEvent::named("sn")),
+        ])
+        .every(2, unary_transform(BuiltinKind::Rev, Vec::new()));
+        let pattern = SamplePatternValue::slowcat(vec![child, SamplePatternValue::atom("cp")]);
+        let span = TimeSpan::new(Rational::zero(), Rational::new(6, 1).unwrap()).unwrap();
+        let events = pattern.try_query(&span).unwrap();
+
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.value.sample())
+                .collect::<Vec<_>>(),
+            vec!["sn", "bd", "cp", "bd", "sn", "cp", "sn", "bd", "cp"]
+        );
+    }
+
+    #[test]
+    fn iter_rotates_the_pattern_left_by_one_subdivision_per_cycle() {
+        let pattern = SamplePatternValue::from_nodes(vec![
+            PatternNode::atom(SampleEvent::named("bd")),
+            PatternNode::atom(SampleEvent::named("sn")),
+            PatternNode::atom(SampleEvent::named("cp")),
+            PatternNode::atom(SampleEvent::named("hh")),
+        ])
+        .iter_rotate(4, false);
+        let span = TimeSpan::new(Rational::zero(), Rational::new(2, 1).unwrap()).unwrap();
+        let events = pattern.try_query(&span).unwrap();
+
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.value.sample())
+                .collect::<Vec<_>>(),
+            vec!["bd", "sn", "cp", "hh", "sn", "cp", "hh", "bd"]
+        );
+        assert_eq!(events[4].part.start(), &Rational::one());
+        assert_eq!(events[4].part.end(), &Rational::new(5, 4).unwrap());
+        assert_eq!(events[7].part.start(), &Rational::new(7, 4).unwrap());
+        assert_eq!(events[7].part.end(), &Rational::new(2, 1).unwrap());
+    }
+
+    #[test]
+    fn iter_back_rotates_the_pattern_right_by_one_subdivision_per_cycle() {
+        let pattern = SamplePatternValue::from_nodes(vec![
+            PatternNode::atom(SampleEvent::named("bd")),
+            PatternNode::atom(SampleEvent::named("sn")),
+            PatternNode::atom(SampleEvent::named("cp")),
+            PatternNode::atom(SampleEvent::named("hh")),
+        ])
+        .iter_rotate(4, true);
+        let span = TimeSpan::new(Rational::one(), Rational::new(2, 1).unwrap()).unwrap();
+        let events = pattern.try_query(&span).unwrap();
+
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.value.sample())
+                .collect::<Vec<_>>(),
+            vec!["hh", "bd", "sn", "cp"]
+        );
+        assert_eq!(events[0].part.start(), &Rational::one());
+        assert_eq!(events[0].part.end(), &Rational::new(5, 4).unwrap());
     }
 
     #[test]

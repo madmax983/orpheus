@@ -292,6 +292,7 @@ impl GraphCompiler<'_> {
             | Expr::Section { .. }
             | Expr::SeqSections(_)
             | Expr::Group(_)
+            | Expr::Alternation(_)
             | Expr::Rest => Err(EvalError::new(
                 "pedal graphs only support local names, literals, binary control/audio expressions, stage calls, and pipes in Task 3",
             )),
@@ -865,6 +866,11 @@ fn format_expr_source_into(expr: &Expr, buf: &mut String) {
             buf.push('(');
             format_separated_exprs_into(items, " ", buf);
             buf.push(')');
+        }
+        Expr::Alternation(items) => {
+            buf.push('<');
+            format_separated_exprs_into(items, " ", buf);
+            buf.push('>');
         }
         Expr::Ident(name) => buf.push_str(name),
         Expr::Rest => buf.push('~'),

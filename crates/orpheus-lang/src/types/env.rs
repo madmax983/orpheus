@@ -74,6 +74,7 @@ impl TypeEnv {
         }
 
         let alpha = TypeVarId::new(0);
+        install_cycle_alternation_builtins(&mut env, alpha);
         for name in ["fast", "slow", "shift"] {
             env.insert(name, numeric_pattern_transform_scheme(alpha));
         }
@@ -229,6 +230,31 @@ fn install_plugin_builtins(env: &mut TypeEnv) {
                 Type::Plugin,
             )),
         );
+    }
+}
+
+fn install_cycle_alternation_builtins(env: &mut TypeEnv, alpha: TypeVarId) {
+    for name in ["cat", "slowcat", "append"] {
+        env.insert(name, pattern_concat_scheme(alpha));
+    }
+    for name in ["iter", "iter_back"] {
+        env.insert(name, numeric_pattern_transform_scheme(alpha));
+    }
+}
+
+/// The two-argument scheme shared by `cat`, `slowcat`, and `append`:
+/// `Pattern<a> -> Pattern<a> -> Pattern<a>`.
+///
+/// `cat`/`slowcat` are variadic at runtime; calls with more than two
+/// arguments are special-cased during inference.
+pub fn pattern_concat_scheme(alpha: TypeVarId) -> TypeScheme {
+    let alpha_pattern = Type::pattern(Type::Var(alpha));
+    TypeScheme {
+        vars: vec![alpha],
+        ty: Type::curried(
+            vec![alpha_pattern.clone(), alpha_pattern.clone()],
+            alpha_pattern,
+        ),
     }
 }
 

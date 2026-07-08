@@ -663,3 +663,52 @@ fn roll_rejects_non_pattern_values_at_typecheck() {
     assert!(message.contains("Pattern"));
     assert!(message.contains("PitchClassSet"));
 }
+
+#[test]
+fn cat_preserves_sample_pattern_types() {
+    let typed = infer_module("drums = cat(bd, sn cp)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn variadic_cat_accepts_more_than_two_patterns() {
+    let typed = infer_module("drums = cat(bd, sn, cp)", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn slowcat_and_append_preserve_pattern_types() {
+    let slowcat_typed = infer_module("drums = slowcat(bd, sn)", ReplMode::Strict).unwrap();
+    let append_typed = infer_module("swing = append(1 2, 3)", ReplMode::Strict).unwrap();
+
+    assert_eq!(
+        slowcat_typed.type_of("drums").to_string(),
+        "Pattern<Sample>"
+    );
+    assert_eq!(append_typed.type_of("swing").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn iter_preserves_pattern_types() {
+    let sample_typed = infer_module("drums = iter(4, bd sn cp hh)", ReplMode::Strict).unwrap();
+    let number_typed = infer_module("swing = iter_back(2, 1 2)", ReplMode::Strict).unwrap();
+
+    assert_eq!(sample_typed.type_of("drums").to_string(), "Pattern<Sample>");
+    assert_eq!(number_typed.type_of("swing").to_string(), "Pattern<Number>");
+}
+
+#[test]
+fn alternations_infer_the_pattern_type_of_their_elements() {
+    let typed = infer_module("drums = bd <sn cp>", ReplMode::Strict).unwrap();
+
+    assert_eq!(typed.type_of("drums").to_string(), "Pattern<Sample>");
+}
+
+#[test]
+fn strict_mode_rejects_mixed_alternation_types() {
+    let error = infer_module("drums = <bd 1>", ReplMode::Strict).unwrap_err();
+
+    assert!(error.to_string().contains("Pattern<Sample>"));
+}

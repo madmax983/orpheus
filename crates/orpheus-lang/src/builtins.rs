@@ -110,6 +110,10 @@ fn lookup_pattern_transform(name: &str) -> Option<Value> {
         "tuning" => Some(builtin_function_value(BuiltinKind::Tuning)),
         "load_scl" => Some(builtin_function_value(BuiltinKind::LoadScl)),
         "tune" => Some(builtin_function_value(BuiltinKind::Tune)),
+        "cat" | "slowcat" => Some(builtin_function_value(BuiltinKind::Cat)),
+        "append" => Some(builtin_function_value(BuiltinKind::Append)),
+        "iter" => Some(builtin_function_value(BuiltinKind::Iter)),
+        "iter_back" => Some(builtin_function_value(BuiltinKind::IterBack)),
         "vst" => Some(builtin_function_value(BuiltinKind::Vst)),
         "au" => Some(builtin_function_value(BuiltinKind::Au)),
         "notes" => Some(builtin_function_value(BuiltinKind::Notes)),
@@ -331,7 +335,7 @@ pub fn apply_builtin_function(function: &BuiltinFn, args: Vec<Value>) -> Result<
         })));
     }
 
-    if combined.len() > kind.arity() {
+    if combined.len() > kind.arity() && !kind.is_variadic() {
         return Err(EvalError::new(format!(
             "`{}` expected {} argument(s), got {}",
             kind.name(),
@@ -402,6 +406,10 @@ impl BuiltinKind {
             Self::Tuning => "tuning",
             Self::LoadScl => "load_scl",
             Self::Tune => "tune",
+            Self::Cat => "cat",
+            Self::Append => "append",
+            Self::Iter => "iter",
+            Self::IterBack => "iter_back",
             Self::Vst => "vst",
             Self::Au => "au",
             Self::Notes => "notes",
@@ -409,6 +417,14 @@ impl BuiltinKind {
             Self::Bin => "bin",
             Self::PluginParam => "p",
         }
+    }
+
+    /// Whether the builtin accepts more arguments than its base [`Self::arity`].
+    ///
+    /// Variadic builtins still curry when given fewer than `arity()` arguments,
+    /// but execute with any argument count at or above it.
+    const fn is_variadic(self) -> bool {
+        matches!(self, Self::Cat)
     }
 
     const fn arity(self) -> usize {
@@ -468,6 +484,10 @@ impl BuiltinKind {
             | Self::Through
             | Self::MidiCc
             | Self::Tune
+            | Self::Cat
+            | Self::Append
+            | Self::Iter
+            | Self::IterBack
             | Self::Notes => 2,
             Self::PluginParam => 3,
             Self::Rand => 0,
@@ -532,6 +552,9 @@ impl BuiltinKind {
             Self::Tuning => apply_tuning(args),
             Self::LoadScl => apply_load_scl(args),
             Self::Tune => apply_tune(args),
+            Self::Cat | Self::Append => apply_cat(args, self.name()),
+            Self::Iter => apply_iter(args, false),
+            Self::IterBack => apply_iter(args, true),
             Self::Vst => apply_vst(args),
             Self::Au => apply_au(args),
             Self::Notes => apply_plugin_notes(args),
@@ -1019,6 +1042,72 @@ fn apply_chaos(args: Vec<Value>, site_salt: u64) -> Result<Value, EvalError> {
         |p| Ok(Value::SamplePattern(p.chaos_with_site_salt(site_salt))),
         |p| Ok(Value::NumberPattern(p.chaos_with_site_salt(site_salt))),
         "chaos",
+    )
+}
+
+/// Implements `cat`/`slowcat` (variadic) and `append` (its two-pattern form):
+/// play pattern `cycle mod n` on each cycle, one pattern per cycle, with each
+/// child's own cycle counter advancing only when it plays.
+fn apply_cat(args: Vec<Value>, builtin_name: &str) -> Result<Value, EvalError> {
+    if args.len() < 2 {
+        return Err(EvalError::new(format!(
+            "`{builtin_name}` requires at least two pattern arguments"
+        )));
+    }
+
+    if args
+        .iter()
+        .all(|value| matches!(value, Value::SamplePattern(_)))
+    {
+        let patterns = args
+            .into_iter()
+            .map(|value| match value {
+                Value::SamplePattern(pattern) => pattern,
+                _ => unreachable!("all arguments were checked to be sample patterns"),
+            })
+            .collect();
+        return Ok(Value::SamplePattern(SamplePatternValue::slowcat(patterns)));
+    }
+
+    if args
+        .iter()
+        .all(|value| matches!(value, Value::NumberPattern(_)))
+    {
+        let patterns = args
+            .into_iter()
+            .map(|value| match value {
+                Value::NumberPattern(pattern) => pattern,
+                _ => unreachable!("all arguments were checked to be number patterns"),
+            })
+            .collect();
+        return Ok(Value::NumberPattern(NumberPatternValue::slowcat(patterns)));
+    }
+
+    Err(EvalError::new(format!(
+        "`{builtin_name}` requires all patterns to be the same pattern kind"
+    )))
+}
+
+/// Implements `iter`/`iter_back`: on cycle `k`, rotate the pattern by
+/// `(k mod n) / n` of a cycle, wrapping back to the original every `n` cycles.
+fn apply_iter(args: Vec<Value>, back: bool) -> Result<Value, EvalError> {
+    let builtin_name = if back { "iter_back" } else { "iter" };
+    let mut args = args.into_iter();
+    let steps = extract_positive_integer_factor(
+        args.next().ok_or_else(|| {
+            EvalError::new(format!("`{builtin_name}` requires a step-count argument"))
+        })?,
+        builtin_name,
+    )?;
+    let pattern = args
+        .next()
+        .ok_or_else(|| EvalError::new(format!("`{builtin_name}` requires a pattern argument")))?;
+
+    apply_pattern_transform(
+        pattern,
+        |p| Ok(Value::SamplePattern(p.iter_rotate(steps, back))),
+        |p| Ok(Value::NumberPattern(p.iter_rotate(steps, back))),
+        builtin_name,
     )
 }
 
