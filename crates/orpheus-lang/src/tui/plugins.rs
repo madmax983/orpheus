@@ -566,11 +566,21 @@ mod tests {
     fn orca_invalid_glyphs_are_ignored() {
         let mut plugin = orca_plugin();
         assert_eq!(
-            plugin.on_event(&key(KeyCode::Char('#'))),
+            plugin.on_event(&key(KeyCode::Char('@'))),
             EventOutcome::Ignored
         );
         assert_eq!(glyph_at(&plugin, 0, 0), Some('.'));
         assert_eq!(plugin.on_event(&key(KeyCode::Enter)), EventOutcome::Ignored);
+    }
+
+    #[test]
+    fn orca_comment_glyph_is_insertable() {
+        let mut plugin = orca_plugin();
+        assert_eq!(
+            plugin.on_event(&key(KeyCode::Char('#'))),
+            EventOutcome::Consumed
+        );
+        assert_eq!(glyph_at(&plugin, 0, 0), Some('#'));
     }
 
     #[test]

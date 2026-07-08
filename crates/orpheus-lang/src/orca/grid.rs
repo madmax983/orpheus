@@ -9,6 +9,8 @@ use thiserror::Error;
 pub const EMPTY: char = '.';
 /// The bang glyph: a one-frame trigger event on the grid.
 pub const BANG: char = '*';
+/// The comment glyph: locks its row eastward up to the matching `#`.
+pub const COMMENT: char = '#';
 
 /// Errors constructing an Orca grid.
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
@@ -26,7 +28,7 @@ pub enum GridError {
         /// Width of the offending row.
         found: usize,
     },
-    /// Only `.`, `*`, the IO glyphs (`:` `%` `!` `?` `;` `=` `$`), and
+    /// Only `.`, `*`, `#`, the IO glyphs (`:` `%` `!` `?` `;` `=` `$`), and
     /// ASCII alphanumerics are valid glyphs.
     #[error("invalid glyph {glyph:?} at ({x}, {y})")]
     InvalidGlyph {
@@ -39,13 +41,13 @@ pub enum GridError {
     },
 }
 
-/// Returns `true` when `glyph` may appear on the grid: `.`, `*`, the IO
+/// Returns `true` when `glyph` may appear on the grid: `.`, `*`, `#`, the IO
 /// operator glyphs, or an ASCII alphanumeric.
 #[must_use]
 pub const fn is_valid_glyph(glyph: char) -> bool {
     matches!(
         glyph,
-        EMPTY | BANG | ':' | '%' | '!' | '?' | ';' | '=' | '$'
+        EMPTY | BANG | COMMENT | ':' | '%' | '!' | '?' | ';' | '=' | '$'
     ) || glyph.is_ascii_alphanumeric()
 }
 
@@ -187,15 +189,15 @@ mod tests {
     #[test]
     fn invalid_glyphs_rejected() {
         assert_eq!(
-            Grid::from_rows(&[".#."]),
+            Grid::from_rows(&[".@."]),
             Err(GridError::InvalidGlyph {
-                glyph: '#',
+                glyph: '@',
                 x: 1,
                 y: 0,
             })
         );
         let mut grid = Grid::new(2, 2).expect("valid dimensions");
-        assert!(!grid.set(0, 0, '#'));
+        assert!(!grid.set(0, 0, '@'));
         assert_eq!(grid.glyph_at(0, 0), Some(EMPTY));
     }
 

@@ -307,7 +307,7 @@ fn grid_edit_between_ticks_takes_effect() {
 #[test]
 fn grid_rejects_malformed_input() {
     assert!(Grid::from_rows(&["ab", "abc"]).is_err());
-    assert!(Grid::from_rows(&[".#."]).is_err());
+    assert!(Grid::from_rows(&[".@."]).is_err());
     assert!(Grid::from_rows(&[]).is_err());
 }
 
