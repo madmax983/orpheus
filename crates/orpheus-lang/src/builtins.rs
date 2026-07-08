@@ -292,6 +292,7 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Creates a new built-in function instance.
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -301,6 +302,7 @@ impl BuiltinFn {
         }
     }
 
+    /// Attaches a deterministic site salt for PRNG seeding.
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

@@ -115,6 +115,7 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Creates a new validated pedal node.
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +131,13 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Identifies the underlying hardware representation to dictate how this node connects into the larger DSP graph.
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Provides a human-readable summary of the node.
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +152,7 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Creates a new validated pedal binding.
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +161,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// Retrieves the name of the bound variable.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Retrieves the internal pedal node associated with the binding.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node

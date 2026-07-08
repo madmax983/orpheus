@@ -13,12 +13,18 @@ use crate::engine::EngineError;
 use crate::routing::TrackId;
 use crate::voice::VoiceKind;
 
+/// A scheduled event containing timing and routing information.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScheduledTrigger {
+    /// The exact start frame in the audio buffer.
     pub frame: u64,
+    /// The exact duration in frames.
     pub duration_frames: u32,
+    /// The track identifier this trigger belongs to.
     pub track_id: TrackId,
+    /// The underlying trigger definition containing the sound data.
     pub trigger: SampleTrigger,
+    /// An optional fallback voice configuration if the primary trigger fails.
     pub fallback_voice: Option<VoiceKind>,
 }
 
