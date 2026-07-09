@@ -17,6 +17,7 @@ pub(crate) mod html;
 #[cfg(feature = "lilypond_export")]
 pub(crate) mod lilypond_export;
 mod loader;
+pub(crate) mod lua_export;
 pub(crate) mod midi_export;
 mod midi_input;
 pub(crate) mod mixer;
@@ -61,6 +62,7 @@ pub use html::{export_number_pattern_to_html, export_sample_pattern_to_html};
 #[cfg(feature = "lilypond_export")]
 pub use lilypond_export::export_number_pattern_to_lilypond;
 pub use loader::{StrictLoadedFile, load_file_strict};
+pub use lua_export::{export_number_pattern_to_lua, export_sample_pattern_to_lua};
 pub use midi_export::{export_number_pattern_to_midi, export_sample_pattern_to_midi};
 pub use number_roll::render_ascii_number_roll;
 pub use osu_export::export_sample_pattern_to_osu;
