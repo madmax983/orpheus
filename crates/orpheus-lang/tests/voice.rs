@@ -346,6 +346,48 @@ fn voice_steal_pragma_rejects_invalid_values() {
 }
 
 #[test]
+fn voice_param_ramp_pragma_sets_the_steal_ramp_window() {
+    let Value::Voice(voice) =
+        eval_voice("lead = voice { param_ramp = 0.05 ; sine(freq) * ar(gate, 0.001, 0.05) }")
+    else {
+        panic!("expected a voice value");
+    };
+    assert_eq!(voice.param_ramp(), Some(0.05));
+    let spec = voice.to_spec("lead").unwrap();
+    assert!((spec.param_ramp_seconds() - 0.05).abs() < 1e-6);
+
+    // Without the pragma the engine default applies: the 2 ms gain/pan
+    // steal-ramp precedent.
+    let Value::Voice(voice) = eval_voice(PLUCK) else {
+        panic!("expected a voice value");
+    };
+    assert_eq!(voice.param_ramp(), None);
+    let spec = voice.to_spec("pluck").unwrap();
+    assert!((spec.param_ramp_seconds() - orpheus_dsp::DEFAULT_PARAM_RAMP_SECONDS).abs() < 1e-9);
+}
+
+#[test]
+fn voice_param_ramp_pragma_enforces_bounds() {
+    for source in [
+        "bad = voice { param_ramp = -0.1 ; sine(freq) }",
+        "bad = voice { param_ramp = 1.5 ; sine(freq) }",
+        "bad = voice { param_ramp = fast ; sine(freq) }",
+    ] {
+        let message = eval_error(source);
+        assert!(
+            message.contains("param_ramp") && message.contains('1'),
+            "unexpected error: {message}"
+        );
+    }
+
+    let message = eval_error("bad = voice { param_ramp = 0.1 ; param_ramp = 0.2 ; sine(freq) }");
+    assert!(
+        message.contains("param_ramp") && message.contains("twice"),
+        "unexpected error: {message}"
+    );
+}
+
+#[test]
 fn voice_release_pragma_floors_but_never_shortens_the_tail() {
     let Value::Voice(voice) =
         eval_voice("pad = voice { release = 0.25 ; sine(freq) * ar(gate, 0.001, 0.05) }")

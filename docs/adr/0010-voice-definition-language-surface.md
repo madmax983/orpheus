@@ -269,9 +269,19 @@ the event is scheduled (`SampleEvent`/`SampleTrigger` carry a
 fields from the stealing addendum. Inside the graph the parameters ride the
 fixed interface as four trailing signal inputs
 (`[gate, freq, gain, pan, p1..p4]`), constant for the note's lifetime. A
-steal stamps the NEW note's parameters immediately (like frequency; only
-gain/pan ramp through the handover). Smooth per-note ramping and audio-rate
-pattern control remain follow-ups.
+steal originally stamped the NEW note's parameters immediately (like
+frequency; only gain/pan ramped through the handover). The per-note ramping
+follow-up then shipped: a steal now glides `p1`..`p4` linearly from the
+stolen note's current values to the new note's over a per-program window —
+default 2 ms, the gain/pan steal-ramp precedent, configurable via the
+`param_ramp = seconds` pragma (bounded to 0..=1 s,
+`GraphVoiceSpec::with_param_ramp_seconds`) — landing exactly on the new
+values before the sample-and-hold semantics resume; the ramp state is three
+plain f32 fields per parameter (current, target, step) stamped at trigger
+time, its counter is separate from the fixed 2 ms gain/pan ramp so the
+pragma cannot perturb that locked behavior, and fresh (idle-voice) triggers
+never ramp — they start exactly at the stamped values. Audio-rate pattern
+control remains a follow-up.
 
 **Documented default: 0.** A body referencing a parameter the pattern never
 sets reads `DEFAULT_VOICE_PARAM_VALUE` (0.0) — chosen over a per-stage
