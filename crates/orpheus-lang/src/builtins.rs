@@ -2492,11 +2492,14 @@ fn apply_pw(args: Vec<Value>) -> Result<Value, EvalError> {
 const VOICE_PARAM_NAMES: [&str; orpheus_dsp::VOICE_PARAM_COUNT] = ["p1", "p2", "p3", "p4"];
 
 /// Applies `p1`..`p4` — the general-purpose per-note voice parameters
-/// (ADR 0010 addendum). The control value is sampled per event and stamped
-/// on it; graph voice bodies read it as the ambient signal of the same name,
-/// held constant for the note. Any finite number is allowed: the meaning of
-/// a parameter (a cutoff in Hertz, a detune amount, a morph position) is the
-/// voice body's to define.
+/// (ADR 0010 addendum). The control value at each event's start is stamped
+/// on it; graph voice bodies read it as the ambient signal of the same name.
+/// When the control pattern moves WITHIN a note's span (sub-note structure,
+/// e.g. `p1(segment(8, rand) |> range(200, 2000))`), the values ship as
+/// breakpoint automation and the parameter animates through the note,
+/// linearly interpolated between breakpoints (ADR 0012). Any finite number
+/// is allowed: the meaning of a parameter (a cutoff in Hertz, a detune
+/// amount, a morph position) is the voice body's to define.
 fn apply_voice_param(args: Vec<Value>, index: usize) -> Result<Value, EvalError> {
     let name = VOICE_PARAM_NAMES[index];
     apply_sample_numeric_control(

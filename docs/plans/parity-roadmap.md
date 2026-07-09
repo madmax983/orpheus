@@ -262,5 +262,16 @@ Module: `crates/orpheus-dsp/src/graph/` (ADR 0004).
   (default 2 ms — the gain/pan steal-ramp precedent — configurable via the
   `param_ramp = seconds` pragma, 0..=1 s,
   `GraphVoiceSpec::with_param_ramp_seconds`), landing exactly before the
-  hold resumes; fresh triggers start exactly at the new values; remaining:
-  audio-rate pattern control of voice parameters
+  hold resumes; fresh triggers start exactly at the new values;
+  intra-note pattern control of voice parameters shipped (ADR 0012): a
+  `p1`..`p4` control with sub-note structure
+  (`p1(segment(8, rand) |> range(200, 2000))`) no longer fragments the
+  note — it ships up to 32 breakpoints per note per parameter with the
+  trigger, and playback interpolates the parameter linearly between them
+  every frame (breakpoint-rate control data, per-frame interpolated
+  rendering; literal audio-rate pattern *evaluation* is beyond Tidal
+  parity and intentionally out of scope); the two compose at steals: the
+  param-ramp window glides from the stolen note's current values onto the
+  new note's automation envelope, landing exactly, after which the
+  envelope alone drives; remaining: audio-rate pattern control of voice
+  parameters

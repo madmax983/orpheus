@@ -9,7 +9,7 @@ use std::sync::Arc;
 use orpheus_pattern::Event;
 use rtrb::{Consumer, Producer, RingBuffer};
 
-use crate::graph_voice::{GraphVoiceBank, VOICE_PARAM_COUNT};
+use crate::graph_voice::{GraphVoiceBank, VOICE_PARAM_COUNT, VoiceParamBreakpoint};
 use crate::pedal::{NodeRef, PedalGraphProgram};
 use crate::routing::{GeneratorId, RoutingSnapshot};
 use crate::sample_bank::SampleBank;
@@ -96,6 +96,10 @@ pub struct SampleTrigger {
     slice_end: f64,
     pan: f64,
     voice_params: [f64; VOICE_PARAM_COUNT],
+    /// Per-note parameter breakpoint automation shipped by the pattern side
+    /// (ADR 0012); `None` per parameter when the control has no sub-note
+    /// structure. `Arc`-shared so audio-thread clones stay allocation-free.
+    voice_param_ramps: [Option<Arc<[VoiceParamBreakpoint]>>; VOICE_PARAM_COUNT],
     pedal_program: Option<Arc<PedalProgram>>,
 }
 
@@ -139,6 +143,7 @@ impl SampleTrigger {
             slice_end: 1.0,
             pan: 0.0,
             voice_params: [0.0; VOICE_PARAM_COUNT],
+            voice_param_ramps: [const { None }; VOICE_PARAM_COUNT],
             pedal_program: None,
         }
     }
@@ -323,6 +328,36 @@ impl SampleTrigger {
             self.voice_params[index] = value;
         }
         self
+    }
+
+    /// Attaches breakpoint automation to one per-note voice pattern
+    /// parameter (ADR 0012); `index` 0 is `p1`.
+    ///
+    /// Breakpoint positions are normalized musical time within the note's
+    /// extent; the engine maps them to frames when the note triggers (see
+    /// [`crate::graph_note_voice_ramps`]). The matching
+    /// [`Self::with_voice_param`] value should hold the note-start value.
+    /// Indices at or above [`VOICE_PARAM_COUNT`] are ignored.
+    #[must_use]
+    pub fn with_voice_param_ramp(
+        mut self,
+        index: usize,
+        breakpoints: Arc<[VoiceParamBreakpoint]>,
+    ) -> Self {
+        if index < VOICE_PARAM_COUNT {
+            self.voice_param_ramps[index] = Some(breakpoints);
+        }
+        self
+    }
+
+    /// The breakpoint automation attached to one per-note voice pattern
+    /// parameter, or `None` when the control had no sub-note structure (or
+    /// `index` is out of range).
+    #[must_use]
+    pub fn voice_param_ramp(&self, index: usize) -> Option<&[VoiceParamBreakpoint]> {
+        self.voice_param_ramps
+            .get(index)
+            .and_then(|ramp| ramp.as_deref())
     }
 
     /// The unique name of the sample in the loaded sample bank.
