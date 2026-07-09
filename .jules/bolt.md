@@ -47,3 +47,7 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+**[Eliminating Intermediate Vec String Joins]**
+**Learning:** Chaining methods like `.collect::<Vec<_>>().join(", ")` is slow and wastes memory by creating an intermediate heap allocation (the `Vec`) just to join the strings together. This can be problematic on paths where large collections need their string representations formatting, like session loading.
+**Action:** Always rewrite instances of `.collect::<Vec<_>>().join(...)` with a pre-allocated `String` and a simple `for` loop that pushes the items and the separator.

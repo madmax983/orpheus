@@ -1058,10 +1058,18 @@ impl ReplSession {
         self.engine
             .enqueue(EngineCommand::ReplaceSampleBank(sample_bank))
             .map_err(|error| error.to_string())?;
+        let mut tokens_str = String::with_capacity(available_tokens.len() * 8);
+        let mut first = true;
+        for t in &available_tokens {
+            if !first {
+                tokens_str.push_str(", ");
+            }
+            tokens_str.push_str(t);
+            first = false;
+        }
         Ok(format!(
-            "loaded sample overrides from `{}` ({})",
-            directory.display(),
-            available_tokens.join(", ")
+            "loaded sample overrides from `{}` ({tokens_str})",
+            directory.display()
         ))
     }
 
@@ -1135,11 +1143,15 @@ impl ReplSession {
                 Some(stem.binding_name.clone());
         }
 
-        let names = stems
-            .iter()
-            .map(|stem| stem.binding_name.as_str())
-            .collect::<Vec<_>>()
-            .join(", ");
+        let mut names = String::with_capacity(stems.len() * 10);
+        let mut first = true;
+        for stem in &stems {
+            if !first {
+                names.push_str(", ");
+            }
+            names.push_str(&stem.binding_name);
+            first = false;
+        }
         Ok(format!(
             "imported {} stem(s) from `{}` ({names})",
             stems.len(),
@@ -1188,12 +1200,15 @@ impl ReplSession {
             return Err(open_usage().to_owned());
         }
         let loaded = load_file_runtime_strict(path).map_err(|error| error.to_string())?;
-        let binding_names = loaded
-            .type_bindings
-            .keys()
-            .cloned()
-            .collect::<Vec<_>>()
-            .join(", ");
+        let mut binding_names = String::with_capacity(loaded.type_bindings.len() * 10);
+        let mut first = true;
+        for key in loaded.type_bindings.keys() {
+            if !first {
+                binding_names.push_str(", ");
+            }
+            binding_names.push_str(key);
+            first = false;
+        }
         let last_binding_name = loaded.last_binding_name.clone();
 
         self.bindings = loaded.value_bindings;
@@ -1229,10 +1244,18 @@ impl ReplSession {
         self.engine
             .enqueue(EngineCommand::ReplaceSampleBank(sample_bank))
             .map_err(|error| error.to_string())?;
+        let mut tokens_str = String::with_capacity(available_tokens.len() * 8);
+        let mut first = true;
+        for t in &available_tokens {
+            if !first {
+                tokens_str.push_str(", ");
+            }
+            tokens_str.push_str(t);
+            first = false;
+        }
         Ok(format!(
-            "reloaded sample overrides from `{}` ({})",
-            directory.display(),
-            available_tokens.join(", ")
+            "reloaded sample overrides from `{}` ({tokens_str})",
+            directory.display()
         ))
     }
 
@@ -1438,10 +1461,16 @@ impl ReplSession {
         if port_names.is_empty() {
             Ok("available MIDI input ports: <none>".to_owned())
         } else {
-            Ok(format!(
-                "available MIDI input ports: {}",
-                port_names.join(", ")
-            ))
+            let mut port_str = String::with_capacity(port_names.len() * 16);
+            let mut first = true;
+            for p in &port_names {
+                if !first {
+                    port_str.push_str(", ");
+                }
+                port_str.push_str(p);
+                first = false;
+            }
+            Ok(format!("available MIDI input ports: {port_str}"))
         }
     }
 
@@ -1525,10 +1554,16 @@ impl ReplSession {
         if port_names.is_empty() {
             Ok("available MIDI output ports: <none>".to_owned())
         } else {
-            Ok(format!(
-                "available MIDI output ports: {}",
-                port_names.join(", ")
-            ))
+            let mut port_str = String::with_capacity(port_names.len() * 16);
+            let mut first = true;
+            for p in &port_names {
+                if !first {
+                    port_str.push_str(", ");
+                }
+                port_str.push_str(p);
+                first = false;
+            }
+            Ok(format!("available MIDI output ports: {port_str}"))
         }
     }
 
