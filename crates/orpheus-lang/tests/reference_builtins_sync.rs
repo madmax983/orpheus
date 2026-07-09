@@ -252,6 +252,7 @@ fn assert_evaluates(source: &str) {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn reference_examples_evaluate() {
     // Representative examples copied verbatim from language-reference.md.
     let examples = [
