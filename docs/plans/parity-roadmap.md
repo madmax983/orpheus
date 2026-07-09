@@ -256,5 +256,11 @@ Module: `crates/orpheus-dsp/src/graph/` (ADR 0004).
   `p1`..`p4` per-note parameters — set from patterns via the `p1`..`p4`
   controls (`melody |> p1(300 6000)`), stamped as plain f32 fields at trigger
   time and held for the note (unset params read 0), riding the voice
-  interface as trailing signal inputs; remaining: smooth per-note parameter
-  ramps and audio-rate pattern control of voice parameters
+  interface as trailing signal inputs; smooth per-note parameter ramps
+  shipped: a steal/retrigger glides `p1`..`p4` linearly from the stolen
+  note's current values to the new note's over a per-program window
+  (default 2 ms — the gain/pan steal-ramp precedent — configurable via the
+  `param_ramp = seconds` pragma, 0..=1 s,
+  `GraphVoiceSpec::with_param_ramp_seconds`), landing exactly before the
+  hold resumes; fresh triggers start exactly at the new values; remaining:
+  audio-rate pattern control of voice parameters

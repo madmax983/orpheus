@@ -464,9 +464,11 @@ fn bank_with_feedback_delay_merge_and_custom_polyphony_renders_without_allocatin
 fn param_driven_pooled_voice_renders_without_allocating() {
     // A pattern-parameter-driven instrument (ADR 0010 addendum): a saw
     // through an SVF lowpass whose cutoff is the per-note `p1` signal.
-    // Params are plain f32 fields stamped at trigger time, so triggering
-    // with params, a param-swapping steal, and rendering must all be
-    // allocation-free once the pool is built.
+    // Params are plain f32 fields stamped at trigger time — the post-steal
+    // param ramp is pure per-frame field arithmetic (current/target/step) —
+    // so triggering with params, a param-RAMPING steal (here over a custom
+    // 10 ms window), and rendering must all be allocation-free once the
+    // pool is built.
     let spec = GraphVoiceSpec::new(
         "paramlead",
         0.05,
@@ -495,7 +497,9 @@ fn param_driven_pooled_voice_renders_without_allocating() {
     )
     .expect("param-driven voice spec should validate")
     .with_polyphony(2)
-    .expect("polyphony 2 is within bounds");
+    .expect("polyphony 2 is within bounds")
+    .with_param_ramp_seconds(0.01)
+    .expect("10 ms is a valid param ramp window");
 
     let mut bank = GraphVoiceBank::with_user_programs(SR, vec![spec]);
     let track = TrackId::new(0);

@@ -13,7 +13,11 @@
 //! by the pattern side (ADR 0010 addendum): each is sampled at trigger time
 //! and held constant for the note, exactly like the gain and pan fields.
 //! Notes triggered without explicit values read
-//! [`DEFAULT_VOICE_PARAM_VALUE`] (0.0).
+//! [`DEFAULT_VOICE_PARAM_VALUE`] (0.0). When a trigger steals a sounding
+//! voice the parameters ramp linearly from the stolen note's current values
+//! to the new note's over the program's param-ramp window
+//! ([`DEFAULT_PARAM_RAMP_SECONDS`] unless overridden), landing exactly and
+//! holding — fresh (idle-voice) triggers start exactly at the new values.
 //!
 //! Allocation discipline: programs are compiled into a fixed pool of
 //! [`GraphVoice`]s at engine construction time (off the audio thread) and
@@ -96,6 +100,26 @@ const GRAPH_OUTPUT_TRIM: f32 = 0.35;
 /// smooths the gain/pan jump between the old and new note over a few
 /// milliseconds so the handover never steps the output discontinuously.
 pub const VOICE_STEAL_RAMP_SECONDS: f32 = 0.002;
+
+/// Default length of the linear `p1`..`p4` ramp applied when a sounding
+/// voice is retriggered or stolen, in seconds (ADR 0010 addendum follow-up).
+///
+/// Matches the gain/pan steal-ramp precedent ([`VOICE_STEAL_RAMP_SECONDS`]):
+/// instead of jumping to the new note's parameter values — an audible zipper
+/// when a parameter drives e.g. a filter cutoff — the params glide linearly
+/// from the stolen note's current values and land exactly on the new note's,
+/// after which the per-note sample-and-hold semantics resume. Fresh
+/// (idle-voice) triggers never ramp: they start exactly at the new values.
+/// Per-program override via [`GraphVoiceSpec::with_param_ramp_seconds`] (the
+/// `param_ramp = seconds` pragma on the language surface).
+pub const DEFAULT_PARAM_RAMP_SECONDS: f32 = VOICE_STEAL_RAMP_SECONDS;
+
+/// The longest `p1`..`p4` steal-ramp window a program may request, in
+/// seconds.
+///
+/// One second is already glissando territory for a per-note control; the
+/// bound keeps a mistyped pragma from smearing parameters across many notes.
+pub const MAX_PARAM_RAMP_SECONDS: f32 = 1.0;
 
 /// What a program does when a trigger arrives and every pooled voice is
 /// already sounding (ADR 0009 addendum).
@@ -725,6 +749,13 @@ pub enum GraphVoiceSpecError {
         /// The rejected pool size.
         requested: usize,
     },
+    /// The requested `p1`..`p4` steal-ramp window was non-finite or outside
+    /// `0..=MAX_PARAM_RAMP_SECONDS`.
+    #[error(
+        "voice param_ramp must be a finite number of seconds between 0 and \
+         {MAX_PARAM_RAMP_SECONDS}"
+    )]
+    InvalidParamRamp,
     /// A reference named a per-note pattern parameter index at or above
     /// [`VOICE_PARAM_COUNT`].
     #[error(
@@ -763,6 +794,7 @@ pub struct GraphVoiceSpec {
     output: VoiceSignalRef,
     polyphony: usize,
     steal: StealPolicy,
+    param_ramp_seconds: f32,
 }
 
 impl GraphVoiceSpec {
@@ -857,6 +889,7 @@ impl GraphVoiceSpec {
             output,
             polyphony: DEFAULT_GRAPH_VOICE_POLYPHONY,
             steal: StealPolicy::default(),
+            param_ramp_seconds: DEFAULT_PARAM_RAMP_SECONDS,
         })
     }
 
@@ -895,6 +928,34 @@ impl GraphVoiceSpec {
     #[must_use]
     pub const fn steal_policy(&self) -> StealPolicy {
         self.steal
+    }
+
+    /// Overrides how long the per-note pattern parameters (`p1`..`p4`) take
+    /// to ramp from a stolen note's current values to the new note's, in
+    /// seconds (default: [`DEFAULT_PARAM_RAMP_SECONDS`], the 2 ms gain/pan
+    /// steal-ramp precedent).
+    ///
+    /// The window only applies to the stolen/retriggered path; fresh
+    /// (idle-voice) triggers always start exactly at the new values. A zero
+    /// window lands on the very next rendered frame (the ramp is floored at
+    /// one frame).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`GraphVoiceSpecError::InvalidParamRamp`] when `seconds` is
+    /// non-finite, negative, or exceeds [`MAX_PARAM_RAMP_SECONDS`].
+    pub fn with_param_ramp_seconds(mut self, seconds: f32) -> Result<Self, GraphVoiceSpecError> {
+        if !(seconds.is_finite() && (0.0..=MAX_PARAM_RAMP_SECONDS).contains(&seconds)) {
+            return Err(GraphVoiceSpecError::InvalidParamRamp);
+        }
+        self.param_ramp_seconds = seconds;
+        Ok(self)
+    }
+
+    /// The program's `p1`..`p4` steal-ramp window, in seconds.
+    #[must_use]
+    pub const fn param_ramp_seconds(&self) -> f32 {
+        self.param_ramp_seconds
     }
 
     /// The pattern-token this program is selected by.
@@ -1311,8 +1372,11 @@ struct GraphVoiceNote {
     gain: f32,
     pan: f32,
     /// The per-note pattern parameters (`p1`..`p4`), sampled at trigger time
-    /// and held for the note (ADR 0010 addendum). Like the frequency — and
-    /// unlike gain/pan — a steal switches them immediately, with no ramp.
+    /// and held for the note (ADR 0010 addendum). Like gain/pan — and unlike
+    /// the frequency, which switches immediately — a steal ramps them
+    /// linearly from the stolen note's current values over the program's
+    /// param-ramp window; after the ramp lands they hold the new note's
+    /// exact values.
     params: [f32; VOICE_PARAM_COUNT],
     /// Monotonic per-bank trigger counter, set when the note starts; the
     /// steal policy uses it as the note's age (smaller = older).
@@ -1328,6 +1392,13 @@ struct GraphVoiceNote {
     pan_step: f32,
     target_gain: f32,
     target_pan: f32,
+    /// Remaining frames of the post-steal linear `p1`..`p4` ramp from the
+    /// stolen note's current parameter values to this note's. Kept separate
+    /// from the gain/pan counter so the `param_ramp` pragma can widen this
+    /// window without touching the fixed 2 ms gain/pan handover.
+    param_ramp_frames_remaining: u32,
+    param_steps: [f32; VOICE_PARAM_COUNT],
+    target_params: [f32; VOICE_PARAM_COUNT],
 }
 
 impl GraphVoiceNote {
@@ -1358,15 +1429,24 @@ impl GraphVoiceNote {
             pan_step: 0.0,
             target_gain: gain,
             target_pan: pan,
+            param_ramp_frames_remaining: 0,
+            param_steps: [0.0; VOICE_PARAM_COUNT],
+            target_params: params,
         }
     }
 
     /// Converts a fresh note into one stealing a sounding voice: the gate
     /// drops for one frame so the envelope retriggers from its current level,
-    /// and gain/pan ramp linearly from the stolen note's current values over
-    /// `ramp_frames`.
+    /// gain/pan ramp linearly from the stolen note's current values over
+    /// `ramp_frames`, and the per-note pattern parameters (`p1`..`p4`) ramp
+    /// the same way over `param_ramp_frames`.
     #[allow(clippy::cast_precision_loss)]
-    fn begin_steal_handover(&mut self, stolen_from: &Self, ramp_frames: u32) {
+    fn begin_steal_handover(
+        &mut self,
+        stolen_from: &Self,
+        ramp_frames: u32,
+        param_ramp_frames: u32,
+    ) {
         let ramp_frames = ramp_frames.max(1);
         self.retrigger_gap_frames = 1;
         self.ramp_frames_remaining = ramp_frames;
@@ -1374,6 +1454,21 @@ impl GraphVoiceNote {
         self.pan_step = (self.target_pan - stolen_from.pan) / ramp_frames as f32;
         self.gain = stolen_from.gain;
         self.pan = stolen_from.pan;
+
+        // Ramp state is plain f32 field arithmetic (current, target, step),
+        // stamped here at trigger time — nothing on this path allocates. The
+        // stolen note's `params` field is its CURRENT value even mid-ramp,
+        // so back-to-back steals chain smoothly.
+        let param_ramp_frames = param_ramp_frames.max(1);
+        self.param_ramp_frames_remaining = param_ramp_frames;
+        for (step, (target, stolen)) in self
+            .param_steps
+            .iter_mut()
+            .zip(self.target_params.iter().zip(&stolen_from.params))
+        {
+            *step = (target - stolen) / param_ramp_frames as f32;
+        }
+        self.params = stolen_from.params;
     }
 
     /// The steal ranking key: minimising it lexicographically prefers voices
@@ -1399,6 +1494,10 @@ struct GraphVoiceSlot {
     /// Hertz-seconds, or 0 when the program has no pitched sample stages.
     pitched_tail_hz_seconds: f32,
     steal: StealPolicy,
+    /// The program's `p1`..`p4` steal-ramp window
+    /// ([`GraphVoiceSpec::param_ramp_seconds`]) in frames at the bank's
+    /// sample rate, floored at one frame.
+    param_ramp_frames: u32,
     voice: GraphVoice,
     note: Option<GraphVoiceNote>,
 }
@@ -1490,6 +1589,10 @@ impl GraphVoiceBank {
                     release_frames,
                     pitched_tail_hz_seconds: 0.0,
                     steal: StealPolicy::default(),
+                    param_ramp_frames: release_seconds_to_frames(
+                        DEFAULT_PARAM_RAMP_SECONDS,
+                        sample_rate_hz,
+                    ),
                     voice,
                     note: None,
                 });
@@ -1498,6 +1601,8 @@ impl GraphVoiceBank {
         for spec in &user_specs {
             let release_frames = spec.release_frames(sample_rate_hz);
             let pitched_tail_hz_seconds = spec.pitched_sample_tail_hz_seconds();
+            let param_ramp_frames =
+                release_seconds_to_frames(spec.param_ramp_seconds(), sample_rate_hz);
             for _ in 0..spec.polyphony() {
                 let mut voice = spec.build_voice(sample_rate_hz);
                 voice.prepare();
@@ -1506,6 +1611,7 @@ impl GraphVoiceBank {
                     release_frames,
                     pitched_tail_hz_seconds,
                     steal: spec.steal_policy(),
+                    param_ramp_frames,
                     voice,
                     note: None,
                 });
@@ -1539,8 +1645,10 @@ impl GraphVoiceBank {
     /// [`StealPolicy`] — preferring the voice furthest into its release tail,
     /// else the oldest by trigger time. The steal is click-free: the voice's
     /// graph state is kept (its envelopes retrigger from the current level
-    /// after a one-frame gate gap) and the note's gain/pan ramp linearly from
-    /// the stolen note's values over [`VOICE_STEAL_RAMP_SECONDS`].
+    /// after a one-frame gate gap), the note's gain/pan ramp linearly from
+    /// the stolen note's values over [`VOICE_STEAL_RAMP_SECONDS`], and its
+    /// `p1`..`p4` parameters ramp from the stolen note's values over the
+    /// program's param-ramp window.
     ///
     /// Returns `false` (dropping the trigger) when the token names no
     /// program, or the pool is exhausted and stealing is
@@ -1572,9 +1680,12 @@ impl GraphVoiceBank {
     /// (`p1`..`p4`, ADR 0010 addendum).
     ///
     /// The values are stamped on the note as plain fields and held for its
-    /// whole lifetime — constant signal inputs per note. A steal stamps the
-    /// NEW note's parameters (like frequency, they switch immediately; only
-    /// gain/pan ramp through the handover). Never allocates.
+    /// whole lifetime — constant signal inputs per note. A steal ramps them
+    /// linearly from the stolen note's current values over the program's
+    /// param-ramp window ([`GraphVoiceSpec::param_ramp_seconds`], default
+    /// [`DEFAULT_PARAM_RAMP_SECONDS`]) — the gain/pan handover treatment —
+    /// landing exactly on the new note's values; frequency still switches
+    /// immediately. Fresh (idle-voice) triggers never ramp. Never allocates.
     #[allow(clippy::too_many_arguments)]
     pub fn trigger_with_params(
         &mut self,
@@ -1647,7 +1758,7 @@ impl GraphVoiceBank {
                 params,
                 trigger_seq,
             );
-            note.begin_steal_handover(&stolen_from, self.steal_ramp_frames);
+            note.begin_steal_handover(&stolen_from, self.steal_ramp_frames, slot.param_ramp_frames);
             slot.note = Some(note);
             return true;
         }
@@ -1686,6 +1797,21 @@ impl GraphVoiceBank {
                 } else {
                     note.gain += note.gain_step;
                     note.pan += note.pan_step;
+                }
+            }
+
+            // The per-note pattern parameters ramp the same way over their
+            // own (pragma-configurable) window, landing exactly; the ramp
+            // keeps running through the release tail, so even a one-frame
+            // gate reaches the new note's values.
+            if note.param_ramp_frames_remaining > 0 {
+                note.param_ramp_frames_remaining -= 1;
+                if note.param_ramp_frames_remaining == 0 {
+                    note.params = note.target_params;
+                } else {
+                    for (param, step) in note.params.iter_mut().zip(&note.param_steps) {
+                        *param += step;
+                    }
                 }
             }
 
@@ -2124,7 +2250,7 @@ mod tests {
 
     #[test]
     #[allow(clippy::float_cmp)] // exact test constants
-    fn steal_stamps_the_new_notes_params_not_the_stolen_ones() {
+    fn steal_ramps_params_from_the_stolen_values_and_lands_exactly() {
         let mut bank = GraphVoiceBank::with_user_programs(SR, vec![param_meter_spec(1)]);
         assert!(bank.trigger_with_params(
             "meter",
@@ -2149,12 +2275,204 @@ mod tests {
         );
         let slot = meter_slot(&bank);
         let note = bank.slots[slot].note.expect("the stolen note is sounding");
+        assert!(
+            (note.params[0] - 0.3).abs() < 1e-6,
+            "a steal must start `p1` at the stolen note's value, got {}",
+            note.params[0]
+        );
+        // Frequency keeps its immediate-switch semantics: only the p1..p4
+        // parameters (like gain/pan) ramp through the handover.
+        assert!((note.freq_hz - 440.0).abs() < 1e-6);
+
+        // The ramp moves linearly and lands exactly on the new note's value.
+        let ramp_frames = bank.steal_ramp_frames;
+        let mut mix = vec![(0.0_f32, 0.0_f32); 1];
+        for _ in 0..ramp_frames / 2 {
+            bank.render_frame(&mut mix);
+        }
+        let note = bank.slots[slot].note.expect("the note is still sounding");
+        #[allow(clippy::cast_precision_loss)]
+        let expected_midpoint = 0.3 + (0.9 - 0.3) * (ramp_frames / 2) as f32 / ramp_frames as f32;
+        assert!(
+            (note.params[0] - expected_midpoint).abs() < 1e-3,
+            "halfway through the window `p1` must sit at the linear midpoint: \
+             got {}, expected {expected_midpoint}",
+            note.params[0]
+        );
+        for _ in 0..ramp_frames.div_ceil(2) {
+            bank.render_frame(&mut mix);
+        }
+        let note = bank.slots[slot].note.expect("the note is still sounding");
         assert_eq!(
             note.params,
             [0.9, 0.0, 0.0, 0.0],
-            "a steal must stamp the NEW note's params immediately"
+            "after the ramp window the params must land exactly on the new \
+             note's values (the #1418 sample-and-hold semantics resume)"
         );
-        assert!((note.freq_hz - 440.0).abs() < 1e-6);
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp, clippy::suboptimal_flops)] // exact test constants
+    fn fresh_triggers_start_params_exactly_at_the_new_value() {
+        // A reused pooled voice must NOT ramp from the previous note's stale
+        // params: only the stolen/retriggered path ramps (like gain/pan).
+        let mut bank = GraphVoiceBank::with_user_programs(SR, vec![param_meter_spec(1)]);
+        assert!(bank.trigger_with_params(
+            "meter",
+            track(0),
+            2,
+            220.0,
+            1.0,
+            0.0,
+            [0.7, 0.0, 0.0, 0.0]
+        ));
+        // Run the first note to completion so its slot returns to the pool
+        // (2 gate frames + the 0.001 s release + the reclaim frame).
+        let mut mix = vec![(0.0_f32, 0.0_f32); 1];
+        let lifetime = 2 + release_seconds_to_frames(0.001, SR) + 1;
+        for _ in 0..lifetime {
+            mix[0] = (0.0, 0.0);
+            bank.render_frame(&mut mix);
+        }
+        let slot = meter_slot(&bank);
+        assert!(bank.slots[slot].note.is_none(), "the pool must be idle");
+
+        assert!(bank.trigger_with_params(
+            "meter",
+            track(0),
+            10,
+            220.0,
+            1.0,
+            0.0,
+            [0.2, 0.0, 0.0, 0.0]
+        ));
+        let note = bank.slots[slot].note.expect("the fresh note is sounding");
+        assert_eq!(
+            note.params,
+            [0.2, 0.0, 0.0, 0.0],
+            "a fresh (idle-voice) trigger must start exactly at the new value"
+        );
+        // And the very first rendered frame already carries the new value.
+        mix[0] = (0.0, 0.0);
+        bank.render_frame(&mut mix);
+        let center = std::f32::consts::FRAC_1_SQRT_2;
+        assert!(
+            (mix[0].0 - 0.2 * center).abs() < 1e-6,
+            "the first frame must read the fresh note's exact p1: {}",
+            mix[0].0
+        );
+    }
+
+    /// A `meter`-shaped voice with a release tail long enough to outlive the
+    /// default 2 ms param ramp, for short-note ramp-completion tests.
+    fn long_release_meter_spec() -> GraphVoiceSpec {
+        GraphVoiceSpec::new(
+            "meter",
+            0.01,
+            vec![VoiceNodeSpec::Mul {
+                left: VoiceSignalRef::Param(0),
+                right: VoiceSignalRef::Gate,
+            }],
+            VoiceSignalRef::Node(0),
+        )
+        .expect("long-release meter spec should validate")
+        .with_polyphony(1)
+        .expect("test polyphony is within bounds")
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)] // exact test constants
+    fn param_ramp_completes_through_the_release_tail_of_a_short_note() {
+        let mut bank = GraphVoiceBank::with_user_programs(SR, vec![long_release_meter_spec()]);
+        assert!(bank.trigger_with_params(
+            "meter",
+            track(0),
+            10_000,
+            220.0,
+            0.5,
+            0.0,
+            [0.1, 0.0, 0.0, 0.0]
+        ));
+        // The stealing note's gate is a single frame: the ramp must keep
+        // running through its release tail and still land exactly.
+        assert!(bank.trigger_with_params(
+            "meter",
+            track(0),
+            1,
+            440.0,
+            0.5,
+            0.0,
+            [0.8, 0.0, 0.0, 0.0]
+        ));
+        let slot = meter_slot(&bank);
+        let mut mix = vec![(0.0_f32, 0.0_f32); 1];
+        for _ in 0..=bank.steal_ramp_frames {
+            bank.render_frame(&mut mix);
+        }
+        let note = bank.slots[slot]
+            .note
+            .expect("the short note is still in its release tail");
+        assert_eq!(
+            note.params,
+            [0.8, 0.0, 0.0, 0.0],
+            "the ramp must complete (and land exactly) during the release tail"
+        );
+    }
+
+    #[test]
+    fn spec_param_ramp_window_is_configurable_and_bounded() {
+        // The default window matches the gain/pan steal-ramp precedent.
+        #[allow(clippy::float_cmp)]
+        {
+            assert_eq!(DEFAULT_PARAM_RAMP_SECONDS, VOICE_STEAL_RAMP_SECONDS);
+            assert_eq!(
+                param_meter_spec(1).param_ramp_seconds(),
+                DEFAULT_PARAM_RAMP_SECONDS
+            );
+        }
+
+        // A custom window reaches the pooled slots and the steal handover.
+        let spec = param_meter_spec(1)
+            .with_param_ramp_seconds(0.01)
+            .expect("10 ms is a valid param ramp window");
+        let mut bank = GraphVoiceBank::with_user_programs(SR, vec![spec]);
+        assert!(bank.trigger_with_params(
+            "meter",
+            track(0),
+            10_000,
+            220.0,
+            0.5,
+            0.0,
+            [0.1, 0.0, 0.0, 0.0]
+        ));
+        assert!(bank.trigger_with_params(
+            "meter",
+            track(0),
+            10_000,
+            440.0,
+            0.5,
+            0.0,
+            [0.9, 0.0, 0.0, 0.0]
+        ));
+        let slot = meter_slot(&bank);
+        let note = bank.slots[slot].note.expect("the stolen note is sounding");
+        assert_eq!(
+            note.param_ramp_frames_remaining,
+            release_seconds_to_frames(0.01, SR),
+            "the pragma window must set the steal's param ramp length"
+        );
+        assert_ne!(
+            note.param_ramp_frames_remaining, bank.steal_ramp_frames,
+            "a 10 ms param window must differ from the fixed 2 ms gain/pan ramp"
+        );
+
+        // Out-of-range and non-finite windows are rejected at build time.
+        for invalid in [-0.1, MAX_PARAM_RAMP_SECONDS + 0.5, f32::NAN, f32::INFINITY] {
+            let error = param_meter_spec(1)
+                .with_param_ramp_seconds(invalid)
+                .expect_err("invalid param ramp windows must be rejected");
+            assert_eq!(error, GraphVoiceSpecError::InvalidParamRamp);
+        }
     }
 
     #[test]

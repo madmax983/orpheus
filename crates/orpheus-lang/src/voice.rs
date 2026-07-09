@@ -25,10 +25,11 @@ use std::collections::BTreeMap;
 use comfy_table::Cell;
 use crossterm::style::Stylize;
 use orpheus_dsp::{
-    DEFAULT_ANALOG_BASE_FREQUENCY_HZ, DEFAULT_GRAPH_VOICE_POLYPHONY, FILTER_MAX_GAIN_DB,
-    FILTER_MAX_Q, FILTER_MIN_FREQUENCY_HZ, FILTER_MIN_Q, GraphVoiceSpec, MAX_GRAPH_VOICE_POLYPHONY,
-    MAX_VOICE_DELAY_SECONDS, MODULATED_VOICE_DELAY_MAX_SECONDS, SampleBank, ShelfMode, StealPolicy,
-    SvfMode, VoiceNodeSpec, VoiceSignalRef,
+    DEFAULT_ANALOG_BASE_FREQUENCY_HZ, DEFAULT_GRAPH_VOICE_POLYPHONY, DEFAULT_PARAM_RAMP_SECONDS,
+    FILTER_MAX_GAIN_DB, FILTER_MAX_Q, FILTER_MIN_FREQUENCY_HZ, FILTER_MIN_Q, GraphVoiceSpec,
+    MAX_GRAPH_VOICE_POLYPHONY, MAX_PARAM_RAMP_SECONDS, MAX_VOICE_DELAY_SECONDS,
+    MODULATED_VOICE_DELAY_MAX_SECONDS, SampleBank, ShelfMode, StealPolicy, SvfMode, VoiceNodeSpec,
+    VoiceSignalRef,
 };
 
 use crate::ast::{BinaryOp, Expr, GraphBinding};
@@ -49,6 +50,10 @@ const VOICE_NOISE_SEED: u32 = 0x9E37_79B9;
 /// seconds, keeping note lifetimes (and pool residency) bounded.
 const MAX_VOICE_RELEASE_FLOOR_SECONDS: f64 = 30.0;
 
+/// The largest `p1`..`p4` steal-ramp window a `param_ramp = ...` pragma may
+/// request, in seconds (the DSP layer's [`MAX_PARAM_RAMP_SECONDS`] bound).
+const MAX_PARAM_RAMP_PRAGMA_SECONDS: f64 = MAX_PARAM_RAMP_SECONDS as f64;
+
 /// The base value for feedback-loop placeholder references. Each nesting
 /// depth uses `BASE - depth`; the placeholders are rewritten to the loop's
 /// root node index once the loop body has compiled, so they can never
@@ -67,6 +72,7 @@ pub struct VoiceValue {
     release_seconds: f32,
     polyphony: Option<usize>,
     steal: Option<StealPolicy>,
+    param_ramp: Option<f32>,
 }
 
 impl VoiceValue {
@@ -110,6 +116,16 @@ impl VoiceValue {
         self.steal
     }
 
+    /// The `p1`..`p4` steal-ramp window requested by a `param_ramp = ...`
+    /// pragma, in seconds, when present.
+    ///
+    /// `None` means the engine default ([`DEFAULT_PARAM_RAMP_SECONDS`], the
+    /// 2 ms gain/pan steal-ramp precedent).
+    #[must_use]
+    pub const fn param_ramp(&self) -> Option<f32> {
+        self.param_ramp
+    }
+
     /// Builds the engine-side program spec, using `token` (the binding name)
     /// as the pattern token.
     ///
@@ -129,8 +145,14 @@ impl VoiceValue {
             })?,
             None => spec,
         };
-        Ok(match self.steal {
+        let spec = match self.steal {
             Some(steal) => spec.with_steal_policy(steal),
+            None => spec,
+        };
+        Ok(match self.param_ramp {
+            Some(seconds) => spec.with_param_ramp_seconds(seconds).map_err(|error| {
+                EvalError::new(format!("voice `{token}` is not playable: {error}"))
+            })?,
             None => spec,
         })
     }
@@ -169,6 +191,10 @@ pub fn compile_voice(
             }
             "steal" => {
                 compiler.set_steal_policy(&binding.expr)?;
+                continue;
+            }
+            "param_ramp" => {
+                compiler.set_param_ramp(&binding.expr)?;
                 continue;
             }
             "gate" | "freq" | "p1" | "p2" | "p3" | "p4" => {
@@ -211,6 +237,7 @@ pub fn compile_voice(
             .max(DEFAULT_VOICE_RELEASE_SECONDS),
         polyphony: compiler.polyphony,
         steal: compiler.steal,
+        param_ramp: compiler.param_ramp,
     })
 }
 
@@ -230,6 +257,9 @@ struct VoiceCompiler<'bank> {
     /// The pool-exhaustion policy requested by a `steal = ...` pragma
     /// binding.
     steal: Option<StealPolicy>,
+    /// The `p1`..`p4` steal-ramp window requested by a `param_ramp = ...`
+    /// pragma binding, in seconds.
+    param_ramp: Option<f32>,
 }
 
 impl<'bank> VoiceCompiler<'bank> {
@@ -243,6 +273,7 @@ impl<'bank> VoiceCompiler<'bank> {
             polyphony: None,
             release_floor: None,
             steal: None,
+            param_ramp: None,
         }
     }
 
@@ -310,6 +341,28 @@ impl<'bank> VoiceCompiler<'bank> {
                  oldest, voice when the pool is full — the default) or `off` \
                  (drop extra notes)",
             )),
+        }
+    }
+
+    /// Handles the `param_ramp = <number literal>` pragma binding, which sets
+    /// how long the per-note `p1`..`p4` parameters take to glide from a
+    /// stolen note's current values to the new note's (default 2 ms — the
+    /// gain/pan steal-ramp precedent). Fresh triggers never ramp.
+    #[allow(clippy::cast_possible_truncation)]
+    fn set_param_ramp(&mut self, expr: &Expr) -> Result<(), EvalError> {
+        if self.param_ramp.is_some() {
+            return Err(EvalError::new("voice `param_ramp` is set twice"));
+        }
+        match expr {
+            Expr::Number(value) if (0.0..=MAX_PARAM_RAMP_PRAGMA_SECONDS).contains(value) => {
+                self.param_ramp = Some(*value as f32);
+                Ok(())
+            }
+            _ => Err(EvalError::new(format!(
+                "voice `param_ramp` must be a number literal between 0 and \
+                 {MAX_PARAM_RAMP_PRAGMA_SECONDS} seconds (how long p1..p4 glide to a \
+                 stolen note's new values)"
+            ))),
         }
     }
 
@@ -1150,12 +1203,17 @@ impl Explain for VoiceValue {
             Some(StealPolicy::Oldest) => "oldest".to_string(),
             Some(StealPolicy::Off) => "off".to_string(),
         };
+        let param_ramp = self.param_ramp.map_or_else(
+            || format!("{DEFAULT_PARAM_RAMP_SECONDS}s (default)"),
+            |seconds| format!("{seconds}s"),
+        );
         let title = format!(
-            "{} {binding_name}\nRelease Tail: {}s\nPolyphony: {}\nSteal: {}\nSource: {}",
+            "{} {binding_name}\nRelease Tail: {}s\nPolyphony: {}\nSteal: {}\nParam Ramp: {}\nSource: {}",
             "Voice Program:".cyan().bold(),
             self.release_seconds.to_string().yellow(),
             polyphony.yellow(),
             steal.yellow(),
+            param_ramp.yellow(),
             self.source.as_str().green()
         );
         let mut table = crate::explain::explain_table(["Node", "Spec"]);

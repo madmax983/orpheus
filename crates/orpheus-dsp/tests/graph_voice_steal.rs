@@ -7,7 +7,7 @@
 //! linearly from the stolen values over `VOICE_STEAL_RAMP_SECONDS`.
 
 use orpheus_dsp::{
-    GraphVoiceBank, GraphVoiceSpec, StealPolicy, TrackId, VoiceNodeSpec, VoiceSignalRef,
+    GraphVoiceBank, GraphVoiceSpec, StealPolicy, SvfMode, TrackId, VoiceNodeSpec, VoiceSignalRef,
 };
 
 const SR: f32 = 48_000.0;
@@ -147,6 +147,204 @@ fn steal_handover_is_click_free_within_the_documented_ramp() {
     assert!(
         steal_delta <= control_delta.mul_add(1.5, 1e-3),
         "stealing must not introduce a discontinuity: steal max delta \
+         {steal_delta}, no-steal max delta {control_delta}"
+    );
+}
+
+/// A voice whose audio output is `p1` shaped by a sustained ADSR — the
+/// per-note parameter is directly audible, so a param jump at a steal would
+/// be a hard output discontinuity.
+fn param_level_spec(polyphony: usize) -> GraphVoiceSpec {
+    GraphVoiceSpec::new(
+        "plevel",
+        0.02,
+        vec![
+            VoiceNodeSpec::Adsr {
+                gate: VoiceSignalRef::Gate,
+                attack_s: 0.001,
+                decay_s: 0.005,
+                sustain: 0.8,
+                release_s: 0.02,
+            },
+            VoiceNodeSpec::Mul {
+                left: VoiceSignalRef::Param(0),
+                right: VoiceSignalRef::Node(0),
+            },
+        ],
+        VoiceSignalRef::Node(1),
+    )
+    .expect("param level spec should validate")
+    .with_polyphony(polyphony)
+    .expect("test polyphony is within bounds")
+    .with_steal_policy(StealPolicy::Oldest)
+}
+
+/// Renders two overlapping notes carrying different `p1` values on the
+/// param-level voice: the second starts at frame 200 while the first still
+/// sounds, stealing on a poly-1 pool (and not stealing on poly-2).
+fn render_param_overlap(polyphony: usize, frames: usize) -> Vec<(f32, f32)> {
+    let mut bank = GraphVoiceBank::with_user_programs(SR, vec![param_level_spec(polyphony)]);
+    let track = TrackId::new(0);
+
+    assert!(bank.trigger_with_params(
+        "plevel",
+        track,
+        10_000,
+        220.0,
+        0.5,
+        0.0,
+        [0.2, 0.0, 0.0, 0.0]
+    ));
+    let mut output = Vec::with_capacity(frames);
+    let mut mix = vec![(0.0_f32, 0.0_f32); 1];
+    for frame in 0..frames {
+        if frame == 200 {
+            assert!(bank.trigger_with_params(
+                "plevel",
+                track,
+                10_000,
+                220.0,
+                0.5,
+                0.0,
+                [0.9, 0.0, 0.0, 0.0]
+            ));
+        }
+        mix[0] = (0.0, 0.0);
+        bank.render_frame(&mut mix);
+        output.push(mix[0]);
+    }
+    output
+}
+
+#[test]
+fn param_steal_handover_is_zipper_free_within_the_documented_ramp() {
+    // Same schedule, poly 2: nothing is stolen, so its largest frame step
+    // (note onsets, 1 ms envelope attacks) bounds what "smooth" means for
+    // this material. The stealing render's `p1` moves 0.2 -> 0.9 on a
+    // sounding voice; without the param ramp that is a 0.56 output step in
+    // one frame, far beyond the attack slope.
+    let stealing = render_param_overlap(1, 3_000);
+    let control = render_param_overlap(2, 3_000);
+
+    assert!(
+        stealing
+            .iter()
+            .all(|&(left, right)| left.is_finite() && right.is_finite())
+    );
+    let steal_delta = max_frame_delta(&stealing);
+    let control_delta = max_frame_delta(&control);
+    assert!(
+        steal_delta <= control_delta.mul_add(1.5, 1e-3),
+        "a param-carrying steal must not introduce a discontinuity: steal \
+         max delta {steal_delta}, no-steal max delta {control_delta}"
+    );
+}
+
+#[test]
+fn param_steal_lands_on_the_new_notes_level_after_the_ramp() {
+    // Sample-and-hold semantics resume once the ramp ends: well after the
+    // 2 ms window the output level is the NEW note's p1 x sustain, exactly
+    // as if the note had been triggered fresh.
+    let stealing = render_param_overlap(1, 3_000);
+    let steady = rms(&stealing[1_500..3_000]);
+    // p1 = 0.9, sustain 0.8, trigger gain 0.5: mono level 0.36. The rms
+    // helper sums both sides' energy, so the equal-power center pan's
+    // 1/sqrt(2) per side recombines to the mono level.
+    let expected = 0.9 * 0.8 * 0.5;
+    assert!(
+        (steady - expected).abs() < 0.02,
+        "the post-ramp steady level must be the new note's ({expected}), got {steady}"
+    );
+}
+
+/// The task-motivating patch: a saw through an SVF lowpass whose cutoff is
+/// the per-note `p1`, shaped by a sustained ADSR.
+fn cutoff_lead_spec(polyphony: usize) -> GraphVoiceSpec {
+    GraphVoiceSpec::new(
+        "acid",
+        0.02,
+        vec![
+            VoiceNodeSpec::Saw {
+                freq: VoiceSignalRef::Freq,
+            },
+            VoiceNodeSpec::Constant { value: 0.7 },
+            VoiceNodeSpec::Svf {
+                input: VoiceSignalRef::Node(0),
+                cutoff_hz: VoiceSignalRef::Param(0),
+                q: VoiceSignalRef::Node(1),
+                mode: SvfMode::Lowpass,
+            },
+            VoiceNodeSpec::Adsr {
+                gate: VoiceSignalRef::Gate,
+                attack_s: 0.001,
+                decay_s: 0.005,
+                sustain: 0.8,
+                release_s: 0.02,
+            },
+            VoiceNodeSpec::Mul {
+                left: VoiceSignalRef::Node(2),
+                right: VoiceSignalRef::Node(3),
+            },
+        ],
+        VoiceSignalRef::Node(4),
+    )
+    .expect("cutoff lead spec should validate")
+    .with_polyphony(polyphony)
+    .expect("test polyphony is within bounds")
+    .with_steal_policy(StealPolicy::Oldest)
+}
+
+#[test]
+fn cutoff_driving_param_steal_stays_smooth() {
+    // Two overlapping notes whose p1 drives svf_lp cutoff (400 -> 4000 Hz)
+    // on a stolen voice: the rendered output must stay bounded by the
+    // no-steal control's frame deltas — the cutoff glides instead of
+    // zipping.
+    let render = |polyphony: usize| {
+        let mut bank = GraphVoiceBank::with_user_programs(SR, vec![cutoff_lead_spec(polyphony)]);
+        let track = TrackId::new(0);
+        assert!(bank.trigger_with_params(
+            "acid",
+            track,
+            10_000,
+            110.0,
+            0.5,
+            0.0,
+            [400.0, 0.0, 0.0, 0.0]
+        ));
+        let mut output = Vec::with_capacity(3_000);
+        let mut mix = vec![(0.0_f32, 0.0_f32); 1];
+        for frame in 0..3_000 {
+            if frame == 200 {
+                assert!(bank.trigger_with_params(
+                    "acid",
+                    track,
+                    10_000,
+                    110.0,
+                    0.5,
+                    0.0,
+                    [4_000.0, 0.0, 0.0, 0.0]
+                ));
+            }
+            mix[0] = (0.0, 0.0);
+            bank.render_frame(&mut mix);
+            output.push(mix[0]);
+        }
+        output
+    };
+
+    let stealing = render(1);
+    let control = render(2);
+    assert!(
+        stealing
+            .iter()
+            .all(|&(left, right)| left.is_finite() && right.is_finite())
+    );
+    let steal_delta = max_frame_delta(&stealing);
+    let control_delta = max_frame_delta(&control);
+    assert!(
+        steal_delta <= control_delta.mul_add(1.5, 1e-3),
+        "a cutoff-swapping steal must stay smooth: steal max delta \
          {steal_delta}, no-steal max delta {control_delta}"
     );
 }
