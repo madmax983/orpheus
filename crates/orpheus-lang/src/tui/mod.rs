@@ -89,7 +89,8 @@ fn help_overlay_body() -> Vec<Line<'static>> {
         ("  s / v", "split horizontal / vertical"),
         ("  d", "close pane"),
         ("  [ / ]", "resize pane"),
-        ("  p", "command palette"),
+        ("  :", "command palette (find/run commands)"),
+        ("  p", "pane palette (spawn pane)"),
         ("  i / Enter", "enter input mode"),
         ("  HJKL / Shift+arrows", "move pane"),
         ("  Tab / Shift+Tab", "cycle focus"),
@@ -311,6 +312,34 @@ fn handle_key(
         return;
     }
 
+    // Command palette is modal — while open it swallows every key. Enter
+    // prefills the input line and drops into input mode so the user can finish
+    // any arguments.
+    if state.palette_open {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let alt = key.modifiers.contains(KeyModifiers::ALT);
+        match key.code {
+            KeyCode::Esc => state.close_palette(),
+            KeyCode::Enter => {
+                if state.palette_select() {
+                    drop(state);
+                    workspace
+                        .active_runtime_mut()
+                        .set_mode(InputMode::PluginInput);
+                }
+                return;
+            }
+            KeyCode::Up => state.palette_move_selection_up(),
+            KeyCode::Down => state.palette_move_selection_down(),
+            KeyCode::Char('p') if ctrl => state.palette_move_selection_up(),
+            KeyCode::Char('n') if ctrl => state.palette_move_selection_down(),
+            KeyCode::Backspace => state.palette_backspace(),
+            KeyCode::Char(character) if !ctrl && !alt => state.palette_insert_char(character),
+            _ => {}
+        }
+        return;
+    }
+
     // Help overlay is modal — swallow all keys except toggle/close/quit.
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         match key.code {
@@ -340,6 +369,14 @@ fn handle_key(
     // '?' toggles help (only in layout mode so it doesn't eat typing).
     if key.code == KeyCode::Char('?') && key.modifiers.is_empty() && mode == InputMode::Layout {
         state.toggle_help();
+        return;
+    }
+
+    // ':' opens the command palette (only in layout mode, so it never eats a
+    // literal colon while typing an expression). Distinct from hypertile's
+    // 'p' pane-spawn palette.
+    if key.code == KeyCode::Char(':') && key.modifiers.is_empty() && mode == InputMode::Layout {
+        state.open_palette();
         return;
     }
 
@@ -411,6 +448,10 @@ fn render_frame(
 
     if state.show_help {
         render_help_overlay(frame);
+    }
+
+    if state.palette_open {
+        render_command_palette(frame, &state);
     }
 
     frame.render_widget(
@@ -550,6 +591,108 @@ fn render_help_overlay(frame: &mut Frame<'_>) {
         Paragraph::new(FULL_HELP_FOOTER)
             .style(help_overlay_footer_style())
             .wrap(Wrap { trim: false }),
+        footer_area,
+    );
+}
+
+/// Renders the `:`-triggered command palette: a centered modal listing the
+/// commands matching the current query, with the highlighted row drawn in the
+/// theme accent. All colors come from [`Theme`] — no raw literals.
+fn render_command_palette(frame: &mut Frame<'_>, state: &SharedState) {
+    use ratatui::style::Modifier;
+
+    let overlay_area = centered_rect(frame.area(), 60, 60);
+    render_modal_backdrop(frame, overlay_area);
+    frame.render_widget(Clear, overlay_area);
+
+    let border_style = Style::default()
+        .fg(Theme::ACCENT)
+        .add_modifier(Modifier::BOLD);
+    let block = Block::default()
+        .title("Commands")
+        .title_style(border_style)
+        .border_style(border_style)
+        .borders(Borders::ALL);
+    let inner = block.inner(overlay_area);
+    frame.render_widget(block.style(Style::default().bg(Color::Black)), overlay_area);
+
+    let [query_area, list_area, footer_area] = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .areas(inner);
+
+    // Query line: a prompt marker, the typed filter, and a cursor bar.
+    let query_line = Line::from(vec![
+        Span::styled("\u{203a} ", Style::default().fg(Theme::ACCENT)),
+        Span::styled(
+            state.palette_query.clone(),
+            Style::default().fg(Theme::FOCUS),
+        ),
+        Span::styled("\u{2588}", Style::default().fg(Theme::MUTED)),
+    ]);
+    frame.render_widget(
+        Paragraph::new(query_line).style(Style::default().bg(Color::Black)),
+        query_area,
+    );
+
+    // Filtered command rows, highlighting the current selection.
+    let matches = state.palette_matches();
+    let rows: Vec<Line<'static>> = if matches.is_empty() {
+        vec![Line::styled(
+            "  no matching commands",
+            Style::default()
+                .fg(Theme::MUTED)
+                .add_modifier(Modifier::DIM),
+        )]
+    } else {
+        let selected = state.palette_selected.min(matches.len() - 1);
+        matches
+            .iter()
+            .enumerate()
+            .map(|(index, (name, hint))| {
+                if index == selected {
+                    Line::from(vec![
+                        Span::styled(
+                            format!(" {name}  "),
+                            Style::default()
+                                .fg(Color::Black)
+                                .bg(Theme::ACCENT)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            format!("{hint} "),
+                            Style::default().fg(Color::Black).bg(Theme::ACCENT),
+                        ),
+                    ])
+                } else {
+                    Line::from(vec![
+                        Span::styled(
+                            format!(" {name}  "),
+                            Style::default()
+                                .fg(Theme::ACCENT)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled((*hint).to_owned(), Style::default().fg(Theme::MUTED)),
+                    ])
+                }
+            })
+            .collect()
+    };
+    frame.render_widget(
+        Paragraph::new(rows).style(Style::default().bg(Color::Black)),
+        list_area,
+    );
+
+    frame.render_widget(
+        Paragraph::new(Line::styled(
+            "\u{2191}\u{2193} select \u{b7} Enter insert \u{b7} Esc close",
+            help_overlay_footer_style(),
+        ))
+        .style(Style::default().bg(Color::Black)),
         footer_area,
     );
 }
@@ -826,6 +969,113 @@ mod tests {
         assert!(
             frame.contains("Orca 16x8 f 0/16 [stopped]"),
             "the orca pane renders with its grid dimensions and clock status"
+        );
+    }
+
+    fn open_palette(shared: &Rc<RefCell<SharedState>>, workspace: &mut WorkspaceRuntime) {
+        // Switch to layout mode, then trigger the palette with ':'.
+        handle_key(shared, workspace, press(KeyCode::Esc));
+        handle_key(shared, workspace, press(KeyCode::Char(':')));
+    }
+
+    #[test]
+    fn colon_opens_command_palette_in_layout_mode() {
+        let (shared, mut workspace) = test_setup();
+        open_palette(&shared, &mut workspace);
+        assert!(shared.borrow().palette_open);
+
+        let frame = render_frame_str(&shared, &mut workspace, 120, 30);
+        assert!(
+            frame.contains("Commands"),
+            "the palette modal should render its title, got:\n{frame}"
+        );
+    }
+
+    #[test]
+    fn colon_is_ignored_in_input_mode() {
+        // In input mode a ':' is a literal character, not the palette trigger.
+        let (shared, mut workspace) = test_setup();
+        handle_key(&shared, &mut workspace, press(KeyCode::Char(':')));
+        assert!(!shared.borrow().palette_open);
+        assert_eq!(shared.borrow().input, ":");
+    }
+
+    #[test]
+    fn typing_filters_the_command_palette() {
+        let (shared, mut workspace) = test_setup();
+        open_palette(&shared, &mut workspace);
+        for character in ['t', 'e', 'm', 'p', 'o'] {
+            handle_key(&shared, &mut workspace, press(KeyCode::Char(character)));
+        }
+        assert_eq!(shared.borrow().palette_query, "tempo");
+        assert!(
+            shared
+                .borrow()
+                .palette_matches()
+                .iter()
+                .any(|(name, _)| *name == ":tempo")
+        );
+
+        assert!(
+            !shared
+                .borrow()
+                .palette_matches()
+                .iter()
+                .any(|(name, _)| *name == ":render"),
+            "non-matching commands should be filtered out"
+        );
+
+        let frame = render_frame_str(&shared, &mut workspace, 120, 30);
+        assert!(
+            frame.contains(":tempo"),
+            "filtered palette should list :tempo"
+        );
+    }
+
+    #[test]
+    fn arrow_keys_move_the_palette_selection() {
+        let (shared, mut workspace) = test_setup();
+        open_palette(&shared, &mut workspace);
+        assert_eq!(shared.borrow().palette_selected, 0);
+
+        handle_key(&shared, &mut workspace, press(KeyCode::Down));
+        assert_eq!(shared.borrow().palette_selected, 1);
+
+        handle_key(&shared, &mut workspace, press(KeyCode::Up));
+        assert_eq!(shared.borrow().palette_selected, 0);
+    }
+
+    #[test]
+    fn enter_inserts_selected_command_and_closes_palette() {
+        let (shared, mut workspace) = test_setup();
+        open_palette(&shared, &mut workspace);
+        for character in ['p', 'l', 'a', 'y'] {
+            handle_key(&shared, &mut workspace, press(KeyCode::Char(character)));
+        }
+        handle_key(&shared, &mut workspace, press(KeyCode::Enter));
+
+        let state = shared.borrow();
+        assert!(!state.palette_open, "Enter closes the palette");
+        assert_eq!(state.input, ":play", "the command is prefilled for editing");
+        drop(state);
+        assert_eq!(
+            workspace.active_runtime().mode(),
+            InputMode::PluginInput,
+            "selecting drops into input mode to finish arguments"
+        );
+    }
+
+    #[test]
+    fn escape_closes_the_command_palette() {
+        let (shared, mut workspace) = test_setup();
+        open_palette(&shared, &mut workspace);
+        assert!(shared.borrow().palette_open);
+
+        handle_key(&shared, &mut workspace, press(KeyCode::Esc));
+        assert!(!shared.borrow().palette_open);
+        assert!(
+            shared.borrow().input.is_empty(),
+            "closing leaves input untouched"
         );
     }
 
