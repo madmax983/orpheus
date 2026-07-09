@@ -447,12 +447,14 @@ impl<'bank> VoiceCompiler<'bank> {
             "feedback" => self.compile_feedback(args, piped),
             "fan" => self.compile_fan(args, piped),
             "sample" | "sample_loop" => self.compile_sample(name, args, piped),
-            "sample_pitched" => self.compile_sample_pitched(args, piped),
+            "sample_pitched" | "sample_loop_pitched" => {
+                self.compile_sample_pitched(name, args, piped)
+            }
             other => Err(EvalError::new(format!(
                 "unknown voice stage `{other}`; available stages are `sine`, `saw`, `tri`, \
-                 `pulse`, `noise`, `sample`, `sample_loop`, `sample_pitched`, `adsr`, `ar`, \
-                 `lowpass`, `svf_lp`, `svf_hp`, `svf_bp`, `svf_notch`, `eq_peak`, `drive`, \
-                 `gain`, `delay`, `feedback`, and `fan`"
+                 `pulse`, `noise`, `sample`, `sample_loop`, `sample_pitched`, \
+                 `sample_loop_pitched`, `adsr`, `ar`, `lowpass`, `svf_lp`, `svf_hp`, `svf_bp`, \
+                 `svf_notch`, `eq_peak`, `drive`, `gain`, `delay`, `feedback`, and `fan`"
             ))),
         }
     }
@@ -803,9 +805,15 @@ impl<'bank> VoiceCompiler<'bank> {
         })
     }
 
-    /// Compiles `sample_pitched("name"[, reference_hz])` — one-shot playback
-    /// whose rate tracks the triggering note: rate = `freq` / reference, so
-    /// a pattern's pitches transpose the sample like an oscillator.
+    /// Compiles `sample_pitched("name"[, reference_hz])` and
+    /// `sample_loop_pitched("name"[, reference_hz])` — playback whose rate
+    /// tracks the triggering note: rate = `freq` / reference, so a pattern's
+    /// pitches transpose the sample like an oscillator. `sample_pitched` is
+    /// one-shot; `sample_loop_pitched` also hard-wraps at the buffer end
+    /// like `sample_loop` (the two flags compose in the node spec). The
+    /// combination is a separate stage name for the same reason `sample_loop`
+    /// is: the grammar has no keyword arguments and the second positional
+    /// slot is already the reference frequency.
     ///
     /// The reference is the note frequency that plays the buffer at native
     /// rate. It defaults to the engine's rate-1.0 reference frequency
@@ -815,50 +823,51 @@ impl<'bank> VoiceCompiler<'bank> {
     /// `sample_pitched("bd", 7040)` plays natively on c4 (220 x 2^(60/12)).
     fn compile_sample_pitched(
         &mut self,
+        stage: &str,
         args: &[Expr],
         piped: Option<VoiceSignalRef>,
     ) -> Result<VoiceSignalRef, EvalError> {
         if piped.is_some() {
-            return Err(EvalError::new(
-                "`sample_pitched` is a source and cannot be a pipe target; call it \
-                 directly with a sample name (e.g. `sample_pitched(\"bd\")`)",
-            ));
+            return Err(EvalError::new(format!(
+                "`{stage}` is a source and cannot be a pipe target; call it \
+                 directly with a sample name (e.g. `{stage}(\"bd\")`)"
+            )));
         }
         let (name_expr, reference_expr) = match args {
             [name] => (name, None),
             [name, reference] => (name, Some(reference)),
             _ => {
-                return Err(EvalError::new(
-                    "`sample_pitched` expects a sample name plus an optional reference \
-                     frequency in Hz (e.g. `sample_pitched(\"bd\")` or \
-                     `sample_pitched(\"bd\", 440)`)",
-                ));
+                return Err(EvalError::new(format!(
+                    "`{stage}` expects a sample name plus an optional reference \
+                     frequency in Hz (e.g. `{stage}(\"bd\")` or \
+                     `{stage}(\"bd\", 440)`)"
+                )));
             }
         };
-        let sample = self.resolve_sample_literal("sample_pitched", name_expr)?;
+        let sample = self.resolve_sample_literal(stage, name_expr)?;
         #[allow(clippy::cast_possible_truncation)]
         let reference_hz = match reference_expr {
             None => DEFAULT_ANALOG_BASE_FREQUENCY_HZ,
             Some(Expr::Number(value)) if value.is_finite() && *value > 0.0 => *value as f32,
             Some(Expr::Number(_)) => {
-                return Err(EvalError::new(
-                    "`sample_pitched` requires a positive finite reference frequency \
-                     (the note frequency that plays the sample at native rate)",
-                ));
+                return Err(EvalError::new(format!(
+                    "`{stage}` requires a positive finite reference frequency \
+                     (the note frequency that plays the sample at native rate)"
+                )));
             }
             Some(_) => {
-                return Err(EvalError::new(
-                    "`sample_pitched` requires its reference to be a number literal — \
+                return Err(EvalError::new(format!(
+                    "`{stage}` requires its reference to be a number literal — \
                      it is fixed before the audio thread runs (e.g. \
-                     `sample_pitched(\"bd\", 440)`)",
-                ));
+                     `{stage}(\"bd\", 440)`)"
+                )));
             }
         };
         self.push(VoiceNodeSpec::Sample {
             gate: VoiceSignalRef::Gate,
             rate: VoiceSignalRef::Freq,
             sample,
-            looped: false,
+            looped: stage == "sample_loop_pitched",
             pitch_reference_hz: Some(reference_hz),
         })
     }

@@ -678,6 +678,9 @@ fn looped_and_pitched_sample_voices_render_without_allocating() {
     let before = allocation_count();
     assert!(bank.trigger("looper", track, 2_048, 220.0, 0.8, 0.0));
     assert!(bank.trigger("keys", track, 2_048, 440.0, 0.8, 0.0));
+    // A note below the pitched reference stamps a stretched per-note release
+    // at trigger time; that arithmetic must stay allocation-free too.
+    assert!(bank.trigger("keys", track, 2_048, 110.0, 0.8, 0.0));
     let mut energy = 0.0_f32;
     for _ in 0..4_096 {
         mix[0] = (0.0, 0.0);
