@@ -1,3 +1,4 @@
+//! Integration tests for the core primitive oscillators, checking bounding, continuity, phase accuracy, and shape mutations for standard virtual analog synthesis.
 use orpheus_dsp::{Noise, PulseOsc, SawOsc, TriOsc};
 
 fn naive_saw_step(sample_rate_hz: f32, freq_hz: f32, sample_count: usize) -> f32 {

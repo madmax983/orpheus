@@ -1,3 +1,4 @@
+//! Integration tests verifying that the AST environment correctly instantiates, tracks, and parameterizes external VST3 plugins when referenced.
 use orpheus_dsp::PluginFormat;
 use orpheus_lang::{ReplMode, ReplSession, eval_module};
 

@@ -1,3 +1,4 @@
+//! Integration tests validating the bounded, non-real-time file rendering paths, ensuring cycle lengths map precisely to sample counts.
 #![allow(clippy::needless_range_loop)]
 use std::fs;
 use std::path::{Path, PathBuf};

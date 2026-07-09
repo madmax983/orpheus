@@ -1,3 +1,4 @@
+//! Chaos/Fuzz testing integration ensuring the DSP engine and underlying math boundaries do not panic or diverge to NaN under malformed input or absurd numeric scales.
 use loom::sync::Arc;
 use loom::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use loom::thread;

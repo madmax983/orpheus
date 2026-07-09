@@ -1,3 +1,4 @@
+//! Integration tests for `TimeSpan` math boundaries, checking continuous and discrete inclusion, rational subdivision, and bounds comparisons.
 use orpheus_pattern::{PatternError, Rational, TimeSpan};
 
 #[test]

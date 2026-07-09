@@ -1,3 +1,4 @@
+//! Integration tests verifying the structural and stability characteristics of the `LadderFilter` analog emulation across different sweep and saturation bounds.
 use orpheus_dsp::LadderFilter;
 
 #[test]

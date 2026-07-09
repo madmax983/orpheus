@@ -1,3 +1,4 @@
+//! Integration tests validating the core analog synthesis math elements, phase accumulation, basic gain application, and clipping stages.
 use orpheus_dsp::{Gain, LadderFilter, Mix, PhaseAccumulator, PulseOsc, SawOsc, SoftSat};
 
 #[test]

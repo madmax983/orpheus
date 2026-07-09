@@ -1,3 +1,4 @@
+//! Integration tests for the static wav sample decoding, playback framing, bounds checking, and basic looping slice logic.
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};

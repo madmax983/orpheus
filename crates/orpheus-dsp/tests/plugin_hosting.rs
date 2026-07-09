@@ -1,3 +1,4 @@
+//! Integration tests for the VST3/LV2 plugin hosting boundary within the DSP engine, verifying parameter mapping, memory blocks, and stability when bridging to external hosts.
 use orpheus_dsp::{
     PluginDescriptor, PluginNote, PluginParameterLane, PluginProcessor, PluginTrackSource,
     RoutingSnapshot, SampleBank, TrackSource, render_routing_snapshot_to_stereo_for_test,

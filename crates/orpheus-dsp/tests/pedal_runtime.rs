@@ -1,3 +1,4 @@
+//! Integration tests for the `PedalInstance` runtime execution, verifying state mutation and signal scaling for virtual analog pedal models.
 #![allow(
     clippy::suboptimal_flops,
     clippy::cast_precision_loss,

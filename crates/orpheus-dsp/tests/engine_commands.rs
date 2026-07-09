@@ -1,3 +1,4 @@
+//! Integration tests validating how `EngineCommand` structures alter real-time audio contexts without locks, verifying tempo changes and pattern delivery.
 use orpheus_dsp::{
     EngineCommand, EngineError, EngineHandle, PatternUpdate, PedalProgram, RoutingSnapshot,
     SampleTrigger, TrackSource, load_builtin_sample_for_test, load_sample_bank_from_directory,

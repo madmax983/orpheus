@@ -1,3 +1,4 @@
+//! Integration tests for the `EventStream` composition and consumption behavior, checking how events are interleaved or blocked over continuous sequences.
 use orpheus_pattern::{Event, EventStream, Pattern, Rational, TimeSpan};
 
 fn rational(numerator: i64, denominator: i64) -> Rational {

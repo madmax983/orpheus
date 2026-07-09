@@ -1,3 +1,4 @@
+//! Integration tests for the complete virtual `AnalogVoice`, asserting its output envelope, frequency stability, filter tracking, and overall dynamic responses.
 use orpheus_dsp::{AnalogVoice, AnalogVoiceParams, OscShape};
 
 const fn params(shape: OscShape) -> AnalogVoiceParams {

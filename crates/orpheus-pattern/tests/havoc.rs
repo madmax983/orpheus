@@ -1,3 +1,4 @@
+//! Chaos/Fuzz testing for the pattern matching logic, aggressively probing extreme bounding, large divisions, and infinite cycle edge cases to ensure numeric safety.
 use orpheus_pattern::{CyclePattern, EventStream, Pattern, PatternNode, Rational, TimeSpan};
 
 #[test]

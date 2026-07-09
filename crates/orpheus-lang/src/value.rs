@@ -38,10 +38,13 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Applies a transform to every Nth cycle, leaving others unchanged.
     Every,
+    /// Applies a transform conditionally based on a pattern of boolean values.
     When,
     /// Applies a transform on cycles where `cycle mod period >= threshold` (Tidal `whenmod`).
     WhenMod,
+    /// Randomly applies a transform to events with 50% probability (Tidal `sometimes`).
     Sometimes,
     /// Randomly drops each event with probability 0.5, per event, deterministically.
     Degrade,
@@ -57,37 +60,65 @@ pub enum BuiltinKind {
     AlmostAlways,
     /// `sometimes_by(0.1, ...)`: applies the transform to very few events.
     AlmostNever,
+    /// Applies a transform only within a specific fraction of a cycle (Tidal `within`).
     Within,
+    /// Drops events from the first pattern when the second pattern is silent.
     Mask,
+    /// Delays the onsets of chord notes sequentially to create a strumming effect.
     Strum,
+    /// Repeats an event multiple times within its original time span (drum roll).
     Roll,
+    /// Breaks a chord down into sequential individual notes.
     Arp,
+    /// Inverts chord voicings by octave-shifting the lowest or highest notes.
     Invert,
+    /// Drops specific notes from a chord voicing (e.g., dropping the root).
     Drop,
+    /// Generates chords by mapping a scale and root note to a set of pitches.
     Chord,
+    /// Distributes `k` events as evenly as possible across `n` steps (Euclidean rhythms).
     Euclid,
     /// Inverted euclidean gates: open exactly where `euclid` rests (Tidal `euclidInv`).
     EuclidInv,
     /// Two-pattern euclidean split: hits on the gates, rests on the complement (Tidal `euclidFull`).
     EuclidFull,
+    /// Generates recursive sequences using Lindenmayer systems (L-systems).
     Lsystem,
+    /// Generates sequences based on Wolfram's elementary cellular automata.
     Wolfram,
+    /// Constrains or generates events using specific set-theory pitch classes.
     PitchClassSet,
+    /// Represents pitches as abstract scale degrees rather than absolute frequencies.
     Degrees,
+    /// Speeds up a pattern, squeezing multiple cycles into the space of one.
     Fast,
+    /// Slows down a pattern, stretching one cycle across multiple cycles.
     Slow,
+    /// Shifts the time of a pattern forward or backward by a rational fraction.
     Shift,
+    /// Reverses the sequence of events within each cycle.
     Rev,
+    /// The primary volume/amplitude control multiplier.
     Gain,
+    /// The wet/dry mix control for the delay effect.
     Delay,
+    /// The duration of the delay effect's echoes, usually as a cycle fraction.
     DelayTime,
+    /// The amount of the delay signal fed back into itself to create repeats.
     DelayFeedback,
+    /// The cutoff frequency (in Hz) for a High-Pass Filter.
     Hpf,
+    /// The cutoff frequency (in Hz) for a Low-Pass Filter.
     Lpf,
+    /// The wet/dry mix control for the reverberation effect.
     Reverb,
+    /// The simulated room size for the reverberation effect.
     ReverbRoom,
+    /// The high-frequency damping factor for the reverberation tail.
     ReverbDamp,
+    /// A general filter cutoff frequency control (often maps to a low-pass).
     Cutoff,
+    /// The wet/dry mix control for the chorus modulation effect.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,
@@ -422,7 +453,7 @@ impl FunctionValue {
     }
 }
 
-/// A gate pattern passed to structural combinators like `mask`.
+/// A gate pattern passed to structural combinators like `mask` to conditionally turn events on or off.
 #[derive(Clone, Debug)]
 pub enum GatePatternValue {
     /// A gate pattern that contains sample events.

@@ -1,3 +1,4 @@
+//! Integration tests for event triggering and rational time scheduling against raw audio frames, verifying tight timing accuracy.
 use orpheus_dsp::{SampleTrigger, Scheduler, TrackId};
 use orpheus_pattern::{Event, Rational, TimeSpan};
 

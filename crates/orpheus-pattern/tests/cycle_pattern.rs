@@ -1,3 +1,4 @@
+//! Integration tests for the core `CyclePattern` struct, validating how discrete, non-overlapping rational timespans are split and mapped.
 use orpheus_pattern::{CyclePattern, Pattern, PatternNode, Rational, TimeSpan};
 use proptest::prelude::*;
 

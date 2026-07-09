@@ -1,3 +1,4 @@
+//! Integration tests for the structural graph routing rules, ensuring cycles, feedback loops, and mix bus states are isolated and resolved correctly.
 use orpheus_dsp::{BusEffectSpec, RoutingError, RoutingSnapshot};
 use orpheus_pattern::Rational;
 
