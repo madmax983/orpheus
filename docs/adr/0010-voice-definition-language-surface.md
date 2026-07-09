@@ -204,8 +204,24 @@ argument re-anchors it (`sample_pitched("bd", 7040)` plays natively on c4 =
 counting-allocator suite covers looped and pitched pooled voices. Finally,
 the rate argument was already a signal, so per-note pattern control needed
 no new surface: `sample("bd", p1)` with `hits |> p1(1 2)` sets each note's
-rate from the pattern side (now locked in by end-to-end tests). Remaining:
-a looped+pitched combination stage and crossfaded loop points.
+rate from the pattern side (now locked in by end-to-end tests). The
+looped+pitched combination then shipped as
+`sample_loop_pitched("name"[, reference_hz])` — the DSP layer already
+composed the `looped`/`pitch_reference_hz` flags, so the stage is pure
+surface, a fourth sibling name (same no-keyword-arguments reasoning as
+`sample_loop`: the second positional slot is the reference) with
+`sample_pitched`'s validation and 220 Hz default. Shipping it also changed
+the release mechanism for pitched samples: the static tail covers the buffer
+at NATIVE rate, so a note far below the reference (rate << 1, playback much
+longer) used to truncate mid-take. The rate depends on the triggering note
+and is unknown at spec-build time, so the bank now floors the release tail
+per note at trigger time — each program keeps its worst-case
+`duration x reference` product (`GraphVoiceSpec::pitched_sample_tail_hz_seconds`)
+and the trigger stamps `max(static release, product / freq)` on the note's
+existing per-note release field (the allocation-free shape of the
+gain/pan/param stamping), capped by the same 30 s bound
+(`MAX_VOICE_RELEASE_TAIL_SECONDS`); notes at or above the reference stamp
+the static release bit-for-bit. Remaining: crossfaded loop points.
 
 ## Addendum: pattern-side control signals (`p1`..`p4`)
 

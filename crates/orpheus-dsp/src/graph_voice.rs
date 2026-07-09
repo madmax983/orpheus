@@ -74,6 +74,16 @@ pub const MAX_VOICE_DELAY_SECONDS: f32 = 10.0;
 /// modest.
 pub const MODULATED_VOICE_DELAY_MAX_SECONDS: f32 = 1.0;
 
+/// The longest release tail a note may stretch to, in seconds.
+///
+/// Pitched sample stages ([`VoiceNodeSpec::Sample`] with a reference
+/// frequency) extend a note's release at trigger time so slowed-down
+/// playback sounds to its true end; the extension clamps here — the same
+/// 30 s bound the language surface applies to the `release` pragma and the
+/// static sample-stage tail — keeping note lifetimes (and pool residency)
+/// bounded.
+pub const MAX_VOICE_RELEASE_TAIL_SECONDS: f32 = 30.0;
+
 /// Output trim applied to graph voices, matching the analog-voice headroom
 /// convention in `voice.rs`.
 const GRAPH_OUTPUT_TRIM: f32 = 0.35;
@@ -439,7 +449,11 @@ pub enum VoiceNodeSpec {
         /// When set, the `rate` signal carries a frequency in Hertz and the
         /// playback rate is `rate / reference` — native at the reference
         /// frequency, an octave above it at exactly 2.0. Must be finite and
-        /// positive.
+        /// positive. Notes below the reference play slower than native rate,
+        /// so the bank floors their release tail at trigger time with the
+        /// actual playback length (`duration x reference / freq`, capped at
+        /// [`MAX_VOICE_RELEASE_TAIL_SECONDS`]) — the slowed one-shot sounds
+        /// to its true end instead of truncating at the native-rate end.
         pitch_reference_hz: Option<f32>,
     },
 }
@@ -848,6 +862,31 @@ impl GraphVoiceSpec {
     /// The release tail length in frames at `sample_rate_hz`.
     fn release_frames(&self, sample_rate_hz: f32) -> u32 {
         release_seconds_to_frames(self.release_seconds, sample_rate_hz)
+    }
+
+    /// The worst-case playback-length product over the spec's pitched sample
+    /// nodes — the largest `duration_seconds x pitch_reference_hz`, in
+    /// Hertz-seconds — or 0 when the spec has none.
+    ///
+    /// Dividing the product by a note's frequency gives the longest pitched
+    /// playback that note starts (`duration x reference / freq` is node
+    /// playback time at rate `freq / reference`). The rate depends on the
+    /// triggering note and is unknown here at build time, so the bank keeps
+    /// this per-program constant and floors each note's release tail with it
+    /// at trigger time.
+    #[allow(clippy::cast_possible_truncation)]
+    fn pitched_sample_tail_hz_seconds(&self) -> f32 {
+        self.nodes
+            .iter()
+            .filter_map(|node| match node {
+                VoiceNodeSpec::Sample {
+                    sample,
+                    pitch_reference_hz: Some(reference),
+                    ..
+                } => Some((sample.duration_seconds() * f64::from(*reference)) as f32),
+                _ => None,
+            })
+            .fold(0.0, f32::max)
     }
 
     /// The distinct node indices read through [`VoiceSignalRef::Feedback`]
@@ -1284,9 +1323,34 @@ impl GraphVoiceNote {
 struct GraphVoiceSlot {
     token: Box<str>,
     release_frames: u32,
+    /// [`GraphVoiceSpec::pitched_sample_tail_hz_seconds`] for the slot's
+    /// program: the worst-case pitched-sample playback product, in
+    /// Hertz-seconds, or 0 when the program has no pitched sample stages.
+    pitched_tail_hz_seconds: f32,
     steal: StealPolicy,
     voice: GraphVoice,
     note: Option<GraphVoiceNote>,
+}
+
+impl GraphVoiceSlot {
+    /// The release tail for a note at `freq_hz`, in frames.
+    ///
+    /// A pitched sample plays at `freq / reference`, so notes below the
+    /// reference outlast the program's static release (which covers the
+    /// buffer at native rate). The tail is floored per note with the actual
+    /// playback length, capped at [`MAX_VOICE_RELEASE_TAIL_SECONDS`]; notes
+    /// at or above the reference (and programs without pitched samples)
+    /// keep the static release unchanged. Pure arithmetic — the trigger
+    /// path stays allocation-free.
+    fn release_frames_for_note(&self, freq_hz: f32, sample_rate_hz: f32) -> u32 {
+        if self.pitched_tail_hz_seconds <= 0.0 || !freq_hz.is_finite() || freq_hz <= 0.0 {
+            return self.release_frames;
+        }
+        let tail_seconds =
+            (self.pitched_tail_hz_seconds / freq_hz).min(MAX_VOICE_RELEASE_TAIL_SECONDS);
+        self.release_frames
+            .max(release_seconds_to_frames(tail_seconds, sample_rate_hz))
+    }
 }
 
 /// A fixed pool of prepared graph voices owned by the engine core.
@@ -1353,6 +1417,7 @@ impl GraphVoiceBank {
                 slots.push(GraphVoiceSlot {
                     token: program.token().into(),
                     release_frames,
+                    pitched_tail_hz_seconds: 0.0,
                     steal: StealPolicy::default(),
                     voice,
                     note: None,
@@ -1361,12 +1426,14 @@ impl GraphVoiceBank {
         }
         for spec in &user_specs {
             let release_frames = spec.release_frames(sample_rate_hz);
+            let pitched_tail_hz_seconds = spec.pitched_sample_tail_hz_seconds();
             for _ in 0..spec.polyphony() {
                 let mut voice = spec.build_voice(sample_rate_hz);
                 voice.prepare();
                 slots.push(GraphVoiceSlot {
                     token: spec.token().into(),
                     release_frames,
+                    pitched_tail_hz_seconds,
                     steal: spec.steal_policy(),
                     voice,
                     note: None,
@@ -1471,6 +1538,8 @@ impl GraphVoiceBank {
             }
         }
 
+        let sample_rate_hz = self.sample_rate_hz;
+
         if let Some(index) = idle {
             let trigger_seq = self.next_trigger_seq;
             self.next_trigger_seq += 1;
@@ -1478,7 +1547,7 @@ impl GraphVoiceBank {
             slot.note = Some(GraphVoiceNote::fresh(
                 track_id,
                 gate_frames,
-                slot.release_frames,
+                slot.release_frames_for_note(freq_hz, sample_rate_hz),
                 freq_hz,
                 gain,
                 pan,
@@ -1500,7 +1569,7 @@ impl GraphVoiceBank {
             let mut note = GraphVoiceNote::fresh(
                 track_id,
                 gate_frames,
-                slot.release_frames,
+                slot.release_frames_for_note(freq_hz, sample_rate_hz),
                 freq_hz,
                 gain,
                 pan,
@@ -2054,6 +2123,140 @@ mod tests {
             [0.0; VOICE_PARAM_COUNT],
             "non-finite parameter values must fall back to the default"
         );
+    }
+
+    /// A pitched-sample voice shaped like the language compiler emits: a
+    /// constant-amplitude buffer whose static release covers the buffer at
+    /// native rate (`frames` source samples at `source_rate_hz`).
+    fn pitched_sample_spec(
+        frames: usize,
+        source_rate_hz: u32,
+        reference_hz: f32,
+    ) -> GraphVoiceSpec {
+        let sample = PlaybackSample::from_mono_frames(vec![0.5_f32; frames], source_rate_hz);
+        #[allow(clippy::cast_possible_truncation)]
+        let native_seconds = sample.duration_seconds() as f32;
+        GraphVoiceSpec::new(
+            "keys",
+            native_seconds,
+            vec![VoiceNodeSpec::Sample {
+                gate: VoiceSignalRef::Gate,
+                rate: VoiceSignalRef::Freq,
+                sample,
+                looped: false,
+                pitch_reference_hz: Some(reference_hz),
+            }],
+            VoiceSignalRef::Node(0),
+        )
+        .expect("pitched sample spec should validate")
+    }
+
+    /// The sounding note on the single-program test bank.
+    fn keys_note(bank: &GraphVoiceBank) -> GraphVoiceNote {
+        bank.slots
+            .iter()
+            .find_map(|slot| slot.note)
+            .expect("a keys note is sounding")
+    }
+
+    #[test]
+    fn pitched_note_below_the_reference_sounds_to_its_true_end() {
+        // An octave below the 220 Hz reference plays at rate 0.5, so an
+        // 800-frame buffer takes 1600 output frames — twice the native-rate
+        // release. The trigger must stretch this note's release tail to the
+        // playback's actual end instead of truncating at the native end.
+        const LOW_SR: f32 = 8_000.0;
+        let mut bank = GraphVoiceBank::with_user_programs(
+            LOW_SR,
+            vec![pitched_sample_spec(800, 8_000, 220.0)],
+        );
+        assert!(bank.trigger("keys", track(0), 4, 110.0, 1.0, 0.0));
+        assert_eq!(
+            keys_note(&bank).release_frames_remaining,
+            release_seconds_to_frames(0.2, LOW_SR),
+            "the stamped release must cover the buffer at the note's actual rate"
+        );
+
+        let mut mix = vec![(0.0_f32, 0.0_f32); 1];
+        let mut rendered = Vec::with_capacity(2_400);
+        for _ in 0..2_400 {
+            mix[0] = (0.0, 0.0);
+            bank.render_frame(&mut mix);
+            rendered.push(mix[0].0);
+        }
+        let energy =
+            |range: std::ops::Range<usize>| rendered[range].iter().map(|s| s.abs()).sum::<f32>();
+        assert!(
+            energy(1_000..1_550) > 1.0,
+            "the note must keep sounding past the native-rate end (frame 800)"
+        );
+        assert!(
+            energy(1_700..2_400) == 0.0,
+            "the note must be silent once the slowed playback truly ends"
+        );
+    }
+
+    #[test]
+    fn pitched_release_extension_caps_at_the_thirty_second_tail_bound() {
+        // 0.1 s of buffer referenced at 220 Hz, triggered at 0.5 Hz, would
+        // play for 44 s; the per-note extension must clamp to the same 30 s
+        // bound as the `release` pragma so note lifetimes stay bounded.
+        const LOW_SR: f32 = 8_000.0;
+        let mut bank = GraphVoiceBank::with_user_programs(
+            LOW_SR,
+            vec![pitched_sample_spec(800, 8_000, 220.0)],
+        );
+        assert!(bank.trigger("keys", track(0), 4, 0.5, 1.0, 0.0));
+        assert_eq!(
+            keys_note(&bank).release_frames_remaining,
+            release_seconds_to_frames(30.0, LOW_SR),
+            "far-below-reference notes must cap at the 30 s release bound"
+        );
+    }
+
+    #[test]
+    fn pitched_notes_at_or_above_the_reference_keep_the_static_release() {
+        // Regression: the static release already covers native-rate playback
+        // (the language extends it to the buffer's duration), so notes at or
+        // above the reference — and unpitched sample voices at any note —
+        // must stamp exactly the program release, bit for bit.
+        const LOW_SR: f32 = 8_000.0;
+        let static_frames = release_seconds_to_frames(0.1, LOW_SR);
+        for freq_hz in [220.0, 440.0, 880.0] {
+            let mut bank = GraphVoiceBank::with_user_programs(
+                LOW_SR,
+                vec![pitched_sample_spec(800, 8_000, 220.0)],
+            );
+            assert!(bank.trigger("keys", track(0), 4, freq_hz, 1.0, 0.0));
+            assert_eq!(
+                keys_note(&bank).release_frames_remaining,
+                static_frames,
+                "a note at {freq_hz} Hz must keep the static release"
+            );
+        }
+
+        // An unpitched sample voice (plain rate semantics) never extends,
+        // whatever the note frequency says.
+        let sample = PlaybackSample::from_mono_frames(vec![0.5_f32; 800], 8_000);
+        let unpitched = GraphVoiceSpec::new(
+            "keys",
+            0.1,
+            vec![
+                VoiceNodeSpec::Constant { value: 1.0 },
+                VoiceNodeSpec::Sample {
+                    gate: VoiceSignalRef::Gate,
+                    rate: VoiceSignalRef::Node(0),
+                    sample,
+                    looped: false,
+                    pitch_reference_hz: None,
+                },
+            ],
+            VoiceSignalRef::Node(1),
+        )
+        .expect("unpitched sample spec should validate");
+        let mut bank = GraphVoiceBank::with_user_programs(LOW_SR, vec![unpitched]);
+        assert!(bank.trigger("keys", track(0), 4, 1.0, 1.0, 0.0));
+        assert_eq!(keys_note(&bank).release_frames_remaining, static_frames);
     }
 
     #[test]

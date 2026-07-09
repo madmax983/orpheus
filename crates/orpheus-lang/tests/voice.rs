@@ -1357,6 +1357,123 @@ fn session_pattern_param_drives_per_note_sample_rate() {
 }
 
 #[test]
+#[allow(clippy::float_cmp)] // hard-wrap tiling is deliberately bit-exact
+fn voice_sample_loop_pitched_tiles_at_the_reference_and_wraps_faster_above_it() {
+    // The combined stage: loop semantics AND pitch tracking. At the default
+    // 220 Hz reference it must tile the one-shot's frames bit-exactly, like
+    // `sample_loop`; an octave above the reference the playback rate doubles
+    // exactly, so each loop wraps in half the frames — bit-identical to the
+    // explicit-rate loop stage AND to the tiled one-shot read at 2x.
+    let bank = orpheus_dsp::SampleBank::load_builtin();
+    let len = bank
+        .get_by_token("bd")
+        .expect("bd is built in")
+        .frames()
+        .len();
+
+    let one_shot = render_voice_frames(r#"kit = voice { sample("bd") }"#, "kit", 220.0, len);
+    let at_reference = render_voice_frames(
+        r#"kit = voice { sample_loop_pitched("bd") }"#,
+        "kit",
+        220.0,
+        3 * len,
+    );
+    for (k, &(left, right)) in at_reference.iter().enumerate() {
+        let (want_left, want_right) = one_shot[k % len];
+        assert!(
+            left == want_left && right == want_right,
+            "frame {k}: looped-pitched ({left}, {right}) vs tiled one-shot \
+             ({want_left}, {want_right})"
+        );
+    }
+
+    let doubled = render_voice_frames(r#"kit = voice { sample_loop("bd", 2) }"#, "kit", 220.0, len);
+    let octave_up = render_voice_frames(
+        r#"kit = voice { sample_loop_pitched("bd") }"#,
+        "kit",
+        440.0,
+        len,
+    );
+    assert_eq!(
+        doubled, octave_up,
+        "an octave above the reference must loop at exactly double rate"
+    );
+    for (k, &(left, _)) in octave_up.iter().enumerate() {
+        let (want_left, _) = one_shot[(2 * k) % len];
+        assert!(
+            left == want_left,
+            "frame {k}: at double rate each loop must wrap in half the frames"
+        );
+    }
+}
+
+#[test]
+fn voice_sample_loop_pitched_accepts_a_custom_reference_literal() {
+    // With the reference re-anchored to 440 Hz, a 440 Hz note loops at the
+    // native rate — bit-identical to the plain loop stage at its default.
+    let bank = orpheus_dsp::SampleBank::load_builtin();
+    let len = bank
+        .get_by_token("bd")
+        .expect("bd is built in")
+        .frames()
+        .len();
+
+    let plain_loop = render_voice_frames(
+        r#"kit = voice { sample_loop("bd") }"#,
+        "kit",
+        220.0,
+        2 * len,
+    );
+    let pitched = render_voice_frames(
+        r#"kit = voice { sample_loop_pitched("bd", 440) }"#,
+        "kit",
+        440.0,
+        2 * len,
+    );
+    assert_eq!(plain_loop, pitched);
+}
+
+#[test]
+fn voice_sample_loop_pitched_extends_release_and_validates_like_its_siblings() {
+    // Same release convention as the other sample stages: the tail covers at
+    // least the buffer's duration at native rate.
+    let Value::Voice(voice) = eval_voice(r#"kit = voice { sample_loop_pitched("bd") }"#) else {
+        panic!("expected a voice value");
+    };
+    let bank = orpheus_dsp::SampleBank::load_builtin();
+    let bd = bank.get_by_token("bd").expect("bd is built in");
+    #[allow(clippy::cast_precision_loss)]
+    let bd_seconds = (bd.frames().len() as f32 / bd.sample_rate_hz() as f32).min(30.0);
+    assert!(voice.release_seconds() + 1e-6 >= bd_seconds);
+    assert!(voice.to_spec("kit").is_ok());
+
+    // Same validation as `sample_pitched`: positive finite number-literal
+    // reference, no pipes, at most one optional argument, known names only.
+    let message = eval_error(r#"bad = voice { sample_loop_pitched("bd", 0) }"#);
+    assert!(
+        message.contains("sample_loop_pitched") && message.contains("reference"),
+        "unexpected error: {message}"
+    );
+    let message = eval_error(r#"bad = voice { sample_loop_pitched("bd", freq) }"#);
+    assert!(
+        message.contains("sample_loop_pitched") && message.contains("literal"),
+        "unexpected error: {message}"
+    );
+    let message = eval_error(r#"bad = voice { sample_loop_pitched("bd", 220, 1) }"#);
+    assert!(
+        message.contains("sample_loop_pitched"),
+        "unexpected error: {message}"
+    );
+    let message = eval_error(r#"bad = voice { sine(freq) |> sample_loop_pitched("bd") }"#);
+    assert!(
+        message.contains("sample_loop_pitched"),
+        "unexpected error: {message}"
+    );
+    let message = eval_error(r#"bad = voice { sample_loop_pitched("glitch") }"#);
+    assert!(message.contains("glitch"), "unexpected error: {message}");
+}
+
+#[test]
 fn session_plays_svf_filtered_voice_from_pattern_token() {
     let mut session = ReplSession::with_engine(EngineHandle::stub());
     session.eval_line(":tempo 1200").unwrap();

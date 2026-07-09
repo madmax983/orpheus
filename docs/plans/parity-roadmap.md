@@ -211,9 +211,14 @@ Module: `crates/orpheus-dsp/src/graph/` (ADR 0004).
   frequency (`sample_player_pitched` / `sample_pitched("bd"[, reference_hz])`,
   rate = `freq` / reference, default reference 220 Hz — the engine's rate-1.0
   note-frequency convention), and pattern-driven per-note rates via the
-  `p1`..`p4` params (`sample("bd", p1)` with `hits |> p1(1 2)`); remaining:
-  loop mode combined with pitch tracking at the language surface, crossfaded
-  loop points
+  `p1`..`p4` params (`sample("bd", p1)` with `hits |> p1(1 2)`); loop mode
+  combined with pitch tracking at the language surface shipped
+  (`sample_loop_pitched("bd"[, reference_hz])`, `sample_pitched` validation
+  and defaults), and pitched notes below the reference now stretch the
+  release tail at trigger time to the playback's true end
+  (`max(static, duration x reference / freq)`, capped at 30 s —
+  `GraphVoiceSlot::release_frames_for_note`, graph_voice.rs); remaining:
+  crossfaded loop points
 - [x] `MixNode` adapter — `mix_node` wraps the crossfade in
   `crates/orpheus-dsp/src/synth/mix.rs` (`graph/adapters.rs`)
 - [x] `PanNode` — `pan`, 2-in (audio, position)/2-out equal-power panner
