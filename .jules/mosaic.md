@@ -5,3 +5,7 @@
 ## YYYY-MM-DD - Formatting Output in orpheus-lang
 **Learning:** `orpheus-lang` is the core CLI/TUI layer of the workspace. Using presentation logic like ANSI escape codes and `comfy-table` inside this crate is correct and necessary to format the text walls outputted by commands like `:explain`.
 **Action:** When acting as Mosaic, continue leveraging `comfy-table` and `crossterm` inside `orpheus-lang` to provide structured data formatting and visual hierarchy, ensuring the REPL/TUI behaves like a proper dashboard instead of outputting raw text dumps.
+
+## YYYY-MM-DD - Colorizing REPL Output Prefixes
+**Learning:** Applying ANSI colors to the entire message string in CLI/REPL output hides the visual hierarchy and makes the actual error or info text harder to read. Also, using string interpolation for colors can be tricky with string ownership.
+**Action:** Always apply ANSI colors and styles (like `.red().bold()`) only to semantic icons (e.g., `✓`, `✗`) or prefixes (e.g., `[Warn]`) using `format_args!`, leaving the actual message text unstyled to maintain readability and hierarchy.
