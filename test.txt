@@ -1,0 +1,7 @@
+We can move `whole_number_from_f64`, `euclid_rotation_from_f64`, `build_euclid_nodes`, `build_euclid_pattern`, and `build_euclid_level` to `crates/orpheus-lang/src/euclid.rs`.
+Wait, all of these functions return or use `EvalError`!
+`EvalError` is imported from `crate::error::EvalError`.
+This means `euclid.rs` will import `EvalError`.
+`value.rs` will import these functions from `crate::euclid::*`.
+`builtins.rs` will also import these functions from `crate::euclid::*`.
+This effectively breaks the `value.rs -> builtins.rs -> value.rs` cycle because `value.rs` won't import anything from `builtins.rs` anymore! (Wait, does it still import `value.rs -> builtins.rs` for anything else?)

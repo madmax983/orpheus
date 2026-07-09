@@ -1,0 +1,9 @@
+Yes! `value.rs` only imports `crate::builtins::{build_euclid_nodes, euclid_rotation_from_f64, whole_number_from_f64};`.
+Moving these to `euclid.rs` will eliminate the circular dependency!
+
+Let's do exactly this!
+1. Create `crates/orpheus-lang/src/euclid.rs`.
+2. Move the 5 functions from `builtins.rs` to `euclid.rs`.
+3. Update `builtins.rs` and `value.rs` imports.
+4. Add `pub(crate) mod euclid;` to `crates/orpheus-lang/src/lib.rs`.
+5. Update `atlas.md`.
