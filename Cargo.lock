@@ -1331,6 +1331,7 @@ dependencies = [
  "hound",
  "loom",
  "orpheus-pattern",
+ "proptest",
  "rtrb",
  "thiserror 2.0.18",
 ]

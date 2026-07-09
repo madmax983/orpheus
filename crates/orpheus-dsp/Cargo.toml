@@ -18,3 +18,4 @@ loom.workspace = true
 
 [dev-dependencies]
 loom.workspace = true
+proptest.workspace = true
