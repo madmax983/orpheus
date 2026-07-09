@@ -335,6 +335,7 @@ fn voice_with_sample_playback_renders_without_allocating() {
                 rate: VoiceSignalRef::Node(0),
                 sample,
                 looped: false,
+                loop_crossfade: false,
                 pitch_reference_hz: None,
             },
             VoiceNodeSpec::Sine {
@@ -651,6 +652,7 @@ fn looped_and_pitched_sample_voices_render_without_allocating() {
                 rate: VoiceSignalRef::Node(0),
                 sample: sample.clone(),
                 looped: true,
+                loop_crossfade: false,
                 pitch_reference_hz: None,
             },
         ],
@@ -665,6 +667,7 @@ fn looped_and_pitched_sample_voices_render_without_allocating() {
             rate: VoiceSignalRef::Freq,
             sample,
             looped: false,
+            loop_crossfade: false,
             pitch_reference_hz: Some(220.0),
         }],
         VoiceSignalRef::Node(0),

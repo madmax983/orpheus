@@ -221,7 +221,22 @@ and the trigger stamps `max(static release, product / freq)` on the note's
 existing per-note release field (the allocation-free shape of the
 gain/pan/param stamping), capped by the same 30 s bound
 (`MAX_VOICE_RELEASE_TAIL_SECONDS`); notes at or above the reference stamp
-the static release bit-for-bit. Remaining: crossfaded loop points.
+the static release bit-for-bit. The final follow-up — crossfaded loop
+points — then shipped as `sample_loop_xf("name"[, rate])` and
+`sample_loop_pitched_xf("name"[, reference_hz])`: an opt-in `loop_crossfade`
+flag on `VoiceNodeSpec::Sample` (`sample_player_looped_crossfaded` at the
+node layer) blends the loop tail into the buffer head over a short LINEAR
+crossfade — 5 ms of source material, capped at 10% of the buffer, computed
+from the two read positions on the fly with no fade buffer — so loops that
+do not end on a zero crossing stop clicking at the wrap. Linear
+(constant-gain) rather than equal-power because the two reads come from the
+same correlated material, where equal-gain blending preserves amplitude; the
+head's first `fade` samples double as crossfade material, so the
+steady-state loop period is `len - fade` (buffers under one whole fade
+sample keep the hard wrap). The crossfade is opt-in via separate stage names
+(the same no-keyword-arguments reasoning as `sample_loop`) because the hard
+wrap's bit-exact tiling is a documented, test-locked property of
+`sample_loop` that sample-accurate material relies on.
 
 ## Addendum: pattern-side control signals (`p1`..`p4`)
 
@@ -272,8 +287,13 @@ follow-up) reached voice bodies as five stages: `svf_lp`/`svf_hp`/`svf_bp`/
 `svf_notch` take `(input, cutoff_hz, q)` — the `lowpass` convention, one
 stage name per response rather than a mode argument, since voice-body
 identifiers resolve as signals and cannot carry an enum — and
-`eq_peak(x, freq_hz, q, gain_db)` exposes the peaking biquad (shelving modes
-remain a filters.rs follow-up). All parameters are signals, and the SVF
+`eq_peak(x, freq_hz, q, gain_db)` exposes the peaking biquad. The shelving
+follow-up then shipped: `BiquadMode::LowShelf`/`HighShelf` (RBJ cookbook,
+the same gain\_db fourth input channel and clamps as peaking) reach voice
+bodies as `eq_low_shelf(x, freq_hz, q, gain_db)` / `eq_high_shelf(...)`,
+lowered onto `biquad(sr, LowShelf|HighShelf)` through
+`VoiceNodeSpec::EqShelf` (a `ShelfMode` field rather than two variants,
+mirroring `Svf`'s mode field). All parameters are signals, and the SVF
 recomputes coefficients per sample, so `saw(freq) |> svf_lp(lfo, 0.7)`
 sweeps the cutoff at audio rate. Lowering keeps the one-output-per-node bus
 shape by pairing the four-output `SvfNode` with a fixed-width channel

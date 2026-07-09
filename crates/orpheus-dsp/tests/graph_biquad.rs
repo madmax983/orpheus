@@ -83,13 +83,18 @@ fn render_mode(mode: BiquadMode, audio: &[f32], freq_hz: f32, q: f32) -> Vec<f32
     render3(&mut node, audio, &freq, &quality, 512)
 }
 
-/// Renders the peaking mode with constant parameters.
-fn render_peaking(audio: &[f32], freq_hz: f32, q: f32, gain: f32) -> Vec<f32> {
-    let mut node = biquad(SR, BiquadMode::Peaking);
+/// Renders a gain-taking mode (peaking or shelving) with constant parameters.
+fn render_gain_mode(mode: BiquadMode, audio: &[f32], freq_hz: f32, q: f32, gain: f32) -> Vec<f32> {
+    let mut node = biquad(SR, mode);
     let freq = vec![freq_hz; audio.len()];
     let quality = vec![q; audio.len()];
     let gain_db = vec![gain; audio.len()];
     render4(&mut node, audio, &freq, &quality, &gain_db, 512)
+}
+
+/// Renders the peaking mode with constant parameters.
+fn render_peaking(audio: &[f32], freq_hz: f32, q: f32, gain: f32) -> Vec<f32> {
+    render_gain_mode(BiquadMode::Peaking, audio, freq_hz, q, gain)
 }
 
 /// Steady-state gain in dB: output RMS over input RMS, measured over the
@@ -119,13 +124,19 @@ fn biquad_channel_counts_per_mode() {
         assert_eq!(node.inputs(), 3, "{mode:?} takes (audio, freq_hz, q)");
         assert_eq!(node.outputs(), 1);
     }
-    let node = biquad(SR, BiquadMode::Peaking);
-    assert_eq!(
-        node.inputs(),
-        4,
-        "Peaking takes (audio, freq_hz, q, gain_db)"
-    );
-    assert_eq!(node.outputs(), 1);
+    for mode in [
+        BiquadMode::Peaking,
+        BiquadMode::LowShelf,
+        BiquadMode::HighShelf,
+    ] {
+        let node = biquad(SR, mode);
+        assert_eq!(
+            node.inputs(),
+            4,
+            "{mode:?} takes (audio, freq_hz, q, gain_db)"
+        );
+        assert_eq!(node.outputs(), 1);
+    }
 }
 
 #[test]
@@ -258,6 +269,98 @@ fn biquad_peaking_gain_matches_gain_db_at_center() {
 }
 
 #[test]
+fn biquad_low_shelf_boosts_below_the_corner_and_leaves_highs_at_unity() {
+    // The cookbook low shelf's full plateau gain is A^2 = 10^(gain_db/20):
+    // a decade below the corner the boost has settled to ~gain_db, and well
+    // above the corner the response returns to unity.
+    let below = sine_wave(100.0, 48_000);
+    let boosted = render_gain_mode(
+        BiquadMode::LowShelf,
+        &below,
+        1_000.0,
+        std::f32::consts::FRAC_1_SQRT_2,
+        6.0,
+    );
+    let low = gain_db(&below, &boosted);
+    assert!(
+        (low - 6.0).abs() < 0.75,
+        "+6 dB low shelf must boost 100 Hz by ~6 dB, got {low:.2} dB"
+    );
+
+    let above = sine_wave(8_000.0, 48_000);
+    let passed = render_gain_mode(
+        BiquadMode::LowShelf,
+        &above,
+        1_000.0,
+        std::f32::consts::FRAC_1_SQRT_2,
+        6.0,
+    );
+    let high = gain_db(&above, &passed);
+    assert!(
+        high.abs() < 0.75,
+        "the low shelf must leave 8 kHz near unity, got {high:.2} dB"
+    );
+
+    // Negative gains cut by the same magnitude.
+    let cut = render_gain_mode(
+        BiquadMode::LowShelf,
+        &below,
+        1_000.0,
+        std::f32::consts::FRAC_1_SQRT_2,
+        -9.0,
+    );
+    let dip = gain_db(&below, &cut);
+    assert!(
+        (dip + 9.0).abs() < 0.75,
+        "-9 dB low shelf must cut 100 Hz by ~9 dB, got {dip:.2} dB"
+    );
+}
+
+#[test]
+fn biquad_high_shelf_mirrors_the_low_shelf() {
+    let above = sine_wave(8_000.0, 48_000);
+    let boosted = render_gain_mode(
+        BiquadMode::HighShelf,
+        &above,
+        1_000.0,
+        std::f32::consts::FRAC_1_SQRT_2,
+        6.0,
+    );
+    let high = gain_db(&above, &boosted);
+    assert!(
+        (high - 6.0).abs() < 0.75,
+        "+6 dB high shelf must boost 8 kHz by ~6 dB, got {high:.2} dB"
+    );
+
+    let below = sine_wave(100.0, 48_000);
+    let passed = render_gain_mode(
+        BiquadMode::HighShelf,
+        &below,
+        1_000.0,
+        std::f32::consts::FRAC_1_SQRT_2,
+        6.0,
+    );
+    let low = gain_db(&below, &passed);
+    assert!(
+        low.abs() < 0.75,
+        "the high shelf must leave 100 Hz near unity, got {low:.2} dB"
+    );
+
+    let cut = render_gain_mode(
+        BiquadMode::HighShelf,
+        &above,
+        1_000.0,
+        std::f32::consts::FRAC_1_SQRT_2,
+        -9.0,
+    );
+    let dip = gain_db(&above, &cut);
+    assert!(
+        (dip + 9.0).abs() < 0.75,
+        "-9 dB high shelf must cut 8 kHz by ~9 dB, got {dip:.2} dB"
+    );
+}
+
+#[test]
 fn biquad_coefficients_snapshot_at_block_start() {
     // Documented trade-off: parameters are sampled once per block. A freq
     // signal that ramps WITHIN a single block must behave exactly like its
@@ -330,14 +433,20 @@ fn biquad_stays_bounded_under_swept_parameters() {
     }
 
     let gain = vec![12.0_f32; frames];
-    let mut node = biquad(SR, BiquadMode::Peaking);
-    let out = render4(&mut node, &audio, &freq, &q, &gain, 64);
-    for (i, &sample) in out.iter().enumerate() {
-        assert!(sample.is_finite(), "Peaking sample {i} must be finite");
-        assert!(
-            sample.abs() < 100.0,
-            "Peaking sample {i} must stay bounded, got {sample}"
-        );
+    for mode in [
+        BiquadMode::Peaking,
+        BiquadMode::LowShelf,
+        BiquadMode::HighShelf,
+    ] {
+        let mut node = biquad(SR, mode);
+        let out = render4(&mut node, &audio, &freq, &q, &gain, 64);
+        for (i, &sample) in out.iter().enumerate() {
+            assert!(sample.is_finite(), "{mode:?} sample {i} must be finite");
+            assert!(
+                sample.abs() < 100.0,
+                "{mode:?} sample {i} must stay bounded, got {sample}"
+            );
+        }
     }
 }
 
@@ -360,12 +469,19 @@ fn biquad_clamps_hostile_parameters() {
         let freq = vec![freq_value; frames];
         let q = vec![q_value; frames];
         let gain = vec![gain_value; frames];
-        let mut node = biquad(SR, BiquadMode::Peaking);
-        let out = render4(&mut node, &audio, &freq, &q, &gain, 256);
-        assert!(
-            out.iter().all(|s| s.is_finite()),
-            "freq {freq_value}, q {q_value}, gain {gain_value} must yield finite output"
-        );
+        for mode in [
+            BiquadMode::Peaking,
+            BiquadMode::LowShelf,
+            BiquadMode::HighShelf,
+        ] {
+            let mut node = biquad(SR, mode);
+            let out = render4(&mut node, &audio, &freq, &q, &gain, 256);
+            assert!(
+                out.iter().all(|s| s.is_finite()),
+                "{mode:?}: freq {freq_value}, q {q_value}, gain {gain_value} must yield \
+                 finite output"
+            );
+        }
     }
 }
 

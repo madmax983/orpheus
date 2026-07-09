@@ -8,7 +8,7 @@
 
 use orpheus_dsp::{
     EngineCommand, EngineHandle, GraphVoiceBank, GraphVoiceSpec, GraphVoiceSpecError,
-    PatternUpdate, SampleTrigger, StealPolicy, SvfMode, VoiceNodeSpec, VoiceSignalRef,
+    PatternUpdate, SampleTrigger, ShelfMode, StealPolicy, SvfMode, VoiceNodeSpec, VoiceSignalRef,
 };
 use orpheus_pattern::{Event, Rational, TimeSpan};
 
@@ -696,6 +696,75 @@ fn eq_peak_spec_boosts_its_centered_band() {
     assert!(
         boosted_energy > flat_energy * 2.0,
         "+12 dB at the carrier frequency must boost the band: {boosted_energy} vs {flat_energy}"
+    );
+}
+
+/// Sine carrier through a shelving EQ, shaped by an AR envelope.
+/// `render_left` drives the voice at 110 Hz.
+fn eq_shelf_spec(token: &str, mode: ShelfMode, corner_hz: f32, gain_db: f32) -> GraphVoiceSpec {
+    GraphVoiceSpec::new(
+        token,
+        0.03,
+        vec![
+            VoiceNodeSpec::Sine {
+                freq: VoiceSignalRef::Freq,
+            },
+            VoiceNodeSpec::Constant { value: corner_hz },
+            VoiceNodeSpec::Constant {
+                value: std::f32::consts::FRAC_1_SQRT_2,
+            },
+            VoiceNodeSpec::Constant { value: gain_db },
+            VoiceNodeSpec::EqShelf {
+                input: VoiceSignalRef::Node(0),
+                freq_hz: VoiceSignalRef::Node(1),
+                q: VoiceSignalRef::Node(2),
+                gain_db: VoiceSignalRef::Node(3),
+                mode,
+            },
+            VoiceNodeSpec::Ar {
+                gate: VoiceSignalRef::Gate,
+                attack_s: 0.001,
+                release_s: 0.03,
+            },
+            VoiceNodeSpec::Mul {
+                left: VoiceSignalRef::Node(4),
+                right: VoiceSignalRef::Node(5),
+            },
+        ],
+        VoiceSignalRef::Node(6),
+    )
+    .expect("eq shelf spec should validate")
+}
+
+#[test]
+fn eq_shelf_specs_boost_their_own_band_and_spare_the_other() {
+    // The 110 Hz carrier sits below a 500 Hz corner and above a 30 Hz one:
+    // a low shelf at 500 Hz boosts it, a high shelf at 30 Hz boosts it, and
+    // each mode's opposite corner placement leaves it near the flat render.
+    let flat = render_left(&eq_shelf_spec("flat", ShelfMode::Low, 500.0, 0.0), 4_096);
+    let flat_energy: f32 = flat.iter().map(|s| s.abs()).sum();
+    assert!(flat_energy > 1.0, "the 0 dB voice is audible");
+
+    let low_boosted = render_left(&eq_shelf_spec("lo", ShelfMode::Low, 500.0, 12.0), 4_096);
+    let low_energy: f32 = low_boosted.iter().map(|s| s.abs()).sum();
+    assert!(
+        low_energy > flat_energy * 2.0,
+        "a +12 dB low shelf above the carrier must boost it: {low_energy} vs {flat_energy}"
+    );
+
+    let high_boosted = render_left(&eq_shelf_spec("hi", ShelfMode::High, 30.0, 12.0), 4_096);
+    let high_energy: f32 = high_boosted.iter().map(|s| s.abs()).sum();
+    assert!(
+        high_energy > flat_energy * 2.0,
+        "a +12 dB high shelf below the carrier must boost it: {high_energy} vs {flat_energy}"
+    );
+
+    // Corners on the far side of the carrier leave it alone.
+    let low_spared = render_left(&eq_shelf_spec("lo2", ShelfMode::Low, 30.0, 12.0), 4_096);
+    let spared_energy: f32 = low_spared.iter().map(|s| s.abs()).sum();
+    assert!(
+        spared_energy < flat_energy * 1.25,
+        "a low shelf below the carrier must not boost it: {spared_energy} vs {flat_energy}"
     );
 }
 

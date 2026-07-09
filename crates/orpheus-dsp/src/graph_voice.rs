@@ -276,6 +276,26 @@ impl SvfMode {
     }
 }
 
+/// Which side of the corner frequency a [`VoiceNodeSpec::EqShelf`] boosts
+/// (or cuts, for negative gains).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ShelfMode {
+    /// Low shelf: gain applies below the corner; highs stay at unity.
+    Low,
+    /// High shelf: gain applies above the corner; lows stay at unity.
+    High,
+}
+
+impl ShelfMode {
+    /// The RBJ biquad mode implementing this shelf.
+    const fn biquad_mode(self) -> BiquadMode {
+        match self {
+            Self::Low => BiquadMode::LowShelf,
+            Self::High => BiquadMode::HighShelf,
+        }
+    }
+}
+
 /// One node in a declarative [`GraphVoiceSpec`].
 ///
 /// Each variant maps onto one existing graph-module primitive; the spec is a
@@ -377,6 +397,24 @@ pub enum VoiceNodeSpec {
         /// (clamped to \[-40, 40\] at render time).
         gain_db: VoiceSignalRef,
     },
+    /// An RBJ-cookbook shelving EQ biquad ([`ShelfMode`] picks the side),
+    /// with coefficients recomputed once per processed block from the
+    /// block-start parameter values.
+    EqShelf {
+        /// The audio signal to filter.
+        input: VoiceSignalRef,
+        /// The corner frequency signal in Hertz (clamped to
+        /// \[1, 0.49 x sample rate\] at render time).
+        freq_hz: VoiceSignalRef,
+        /// The shelf slope/Q signal (clamped to \[0.05, 100\] at render
+        /// time).
+        q: VoiceSignalRef,
+        /// The shelf gain signal in decibels — positive boosts, negative
+        /// cuts (clamped to \[-40, 40\] at render time).
+        gain_db: VoiceSignalRef,
+        /// Which side of the corner the gain applies to.
+        mode: ShelfMode,
+    },
     /// Soft saturation.
     Drive {
         /// The audio signal to saturate.
@@ -433,8 +471,9 @@ pub enum VoiceNodeSpec {
     /// restarts playback from the top; the level is otherwise ignored
     /// (one-shot trigger semantics, like the engine's sample voices).
     /// Playback ends at the buffer end unless `looped` is set, in which case
-    /// the playhead hard-wraps to the buffer head (no crossfade) and the
-    /// loop sounds until the voice ends.
+    /// the playhead wraps to the buffer head — hard by default, or blended
+    /// over a short crossfade when `loop_crossfade` is set — and the loop
+    /// sounds until the voice ends.
     Sample {
         /// The trigger signal (typically [`VoiceSignalRef::Gate`]).
         gate: VoiceSignalRef,
@@ -446,6 +485,13 @@ pub enum VoiceNodeSpec {
         sample: PlaybackSample,
         /// Hard-wrap at the buffer end instead of stopping.
         looped: bool,
+        /// Crossfade the loop wrap instead of hard-wrapping: a short linear
+        /// (constant-gain) fade — 5 ms of source material, capped at 10% of
+        /// the buffer — blends the loop tail into the head so non-zero-
+        /// crossing loops stop clicking
+        /// ([`crate::graph::sample_player_looped_crossfaded`]). Only
+        /// meaningful when `looped` is set.
+        loop_crossfade: bool,
         /// When set, the `rate` signal carries a frequency in Hertz and the
         /// playback rate is `rate / reference` — native at the reference
         /// frequency, an octave above it at exactly 2.0. Must be finite and
@@ -482,6 +528,13 @@ impl VoiceNodeSpec {
                 freq_hz,
                 q,
                 gain_db,
+            }
+            | Self::EqShelf {
+                input,
+                freq_hz,
+                q,
+                gain_db,
+                ..
             } => vec![*input, *freq_hz, *q, *gain_db],
             Self::Drive { input, amount } => vec![*input, *amount],
             Self::Mul { left, right } | Self::Add { left, right } => vec![*left, *right],
@@ -529,6 +582,13 @@ impl VoiceNodeSpec {
                 freq_hz,
                 q,
                 gain_db,
+            }
+            | Self::EqShelf {
+                input,
+                freq_hz,
+                q,
+                gain_db,
+                ..
             } => {
                 f(input);
                 f(freq_hz);
@@ -598,6 +658,7 @@ impl VoiceNodeSpec {
             | Self::Lowpass { .. }
             | Self::Svf { .. }
             | Self::EqPeak { .. }
+            | Self::EqShelf { .. }
             | Self::Drive { .. }
             | Self::Mul { .. }
             | Self::Add { .. }
@@ -1059,6 +1120,9 @@ impl GraphVoiceSpec {
                 biquad(sample_rate_hz, BiquadMode::Peaking),
                 passthrough(bus),
             ),
+            VoiceNodeSpec::EqShelf { mode, .. } => {
+                par(biquad(sample_rate_hz, mode.biquad_mode()), passthrough(bus))
+            }
             VoiceNodeSpec::Drive { .. } => par(soft_sat(), passthrough(bus)),
             VoiceNodeSpec::Mul { .. } => par(gain_node(), passthrough(bus)),
             VoiceNodeSpec::Add { .. } => par(sum(2), passthrough(bus)),
@@ -1078,10 +1142,17 @@ impl GraphVoiceSpec {
             VoiceNodeSpec::Sample {
                 sample,
                 looped,
+                loop_crossfade,
                 pitch_reference_hz,
                 ..
             } => par(
-                sample_player_with_options(sample, sample_rate_hz, *looped, *pitch_reference_hz),
+                sample_player_with_options(
+                    sample,
+                    sample_rate_hz,
+                    *looped,
+                    *loop_crossfade,
+                    *pitch_reference_hz,
+                ),
                 passthrough(bus),
             ),
         };
@@ -2144,6 +2215,7 @@ mod tests {
                 rate: VoiceSignalRef::Freq,
                 sample,
                 looped: false,
+                loop_crossfade: false,
                 pitch_reference_hz: Some(reference_hz),
             }],
             VoiceSignalRef::Node(0),
@@ -2248,6 +2320,7 @@ mod tests {
                     rate: VoiceSignalRef::Node(0),
                     sample,
                     looped: false,
+                    loop_crossfade: false,
                     pitch_reference_hz: None,
                 },
             ],

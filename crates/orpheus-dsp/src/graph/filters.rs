@@ -173,11 +173,26 @@ pub enum BiquadMode {
     Notch,
     /// Peaking (bell) EQ; takes a fourth input channel (gain\_db).
     Peaking,
+    /// Low shelf: boosts (or cuts) everything below the corner frequency by
+    /// gain\_db, leaving the highs at unity; takes a fourth input channel
+    /// (gain\_db).
+    LowShelf,
+    /// High shelf: boosts (or cuts) everything above the corner frequency by
+    /// gain\_db, leaving the lows at unity; takes a fourth input channel
+    /// (gain\_db).
+    HighShelf,
+}
+
+impl BiquadMode {
+    /// Whether this response takes the fourth (gain\_db) input channel.
+    const fn takes_gain(self) -> bool {
+        matches!(self, Self::Peaking | Self::LowShelf | Self::HighShelf)
+    }
 }
 
 /// An RBJ-cookbook second-order filter section.
-/// Inputs (audio, freq\_hz, q) — plus gain\_db in [`BiquadMode::Peaking`] —
-/// 1 output.
+/// Inputs (audio, freq\_hz, q) — plus gain\_db in the [`BiquadMode::Peaking`],
+/// [`BiquadMode::LowShelf`], and [`BiquadMode::HighShelf`] modes — 1 output.
 ///
 /// **Coefficients: RBJ Audio EQ Cookbook** (Robert Bristow-Johnson),
 /// evaluated in transposed direct form II. Coefficients are recomputed *once
@@ -268,6 +283,40 @@ impl BiquadNode {
                     1.0 - (alpha / amp),
                 )
             }
+            BiquadMode::LowShelf => {
+                let amp = 10.0_f32.powf(gain / 40.0);
+                let two_sqrt_amp_alpha = 2.0 * amp.sqrt() * alpha;
+                // Cookbook shorthand: (A+1), (A-1), and their cos(w0)
+                // products.
+                let a_plus = amp + 1.0;
+                let a_minus = amp - 1.0;
+                let plus_cos = a_plus * cos_w0;
+                let minus_cos = a_minus * cos_w0;
+                (
+                    amp * (a_plus - minus_cos + two_sqrt_amp_alpha),
+                    2.0 * amp * (a_minus - plus_cos),
+                    amp * (a_plus - minus_cos - two_sqrt_amp_alpha),
+                    a_plus + minus_cos + two_sqrt_amp_alpha,
+                    -2.0 * (a_minus + plus_cos),
+                    a_plus + minus_cos - two_sqrt_amp_alpha,
+                )
+            }
+            BiquadMode::HighShelf => {
+                let amp = 10.0_f32.powf(gain / 40.0);
+                let two_sqrt_amp_alpha = 2.0 * amp.sqrt() * alpha;
+                let a_plus = amp + 1.0;
+                let a_minus = amp - 1.0;
+                let plus_cos = a_plus * cos_w0;
+                let minus_cos = a_minus * cos_w0;
+                (
+                    amp * (a_plus + minus_cos + two_sqrt_amp_alpha),
+                    -2.0 * amp * (a_minus + plus_cos),
+                    amp * (a_plus + minus_cos - two_sqrt_amp_alpha),
+                    a_plus - minus_cos + two_sqrt_amp_alpha,
+                    2.0 * (a_minus - plus_cos),
+                    a_plus - minus_cos - two_sqrt_amp_alpha,
+                )
+            }
         };
 
         let inv_a0 = 1.0 / a0;
@@ -281,10 +330,7 @@ impl BiquadNode {
 
 impl Node for BiquadNode {
     fn inputs(&self) -> u32 {
-        match self.mode {
-            BiquadMode::Peaking => 4,
-            _ => 3,
-        }
+        if self.mode.takes_gain() { 4 } else { 3 }
     }
     fn outputs(&self) -> u32 {
         1
@@ -294,7 +340,7 @@ impl Node for BiquadNode {
             return;
         }
         let audio = inputs[0];
-        let gain_db = if self.mode == BiquadMode::Peaking {
+        let gain_db = if self.mode.takes_gain() {
             inputs[3][0]
         } else {
             0.0
@@ -317,9 +363,11 @@ impl Node for BiquadNode {
 }
 
 /// Creates an RBJ-cookbook biquad filter node.
-/// 3 inputs (audio, freq\_hz, q) — 4 with [`BiquadMode::Peaking`], which adds
-/// gain\_db — 1 output. Non-finite or non-positive sample rates fall back to
-/// 48 kHz.
+///
+/// 3 inputs (audio, freq\_hz, q) — 4 with the gain-taking modes
+/// ([`BiquadMode::Peaking`], [`BiquadMode::LowShelf`],
+/// [`BiquadMode::HighShelf`]), which add gain\_db — 1 output. Non-finite or
+/// non-positive sample rates fall back to 48 kHz.
 #[must_use]
 pub fn biquad(sample_rate_hz: f32, mode: BiquadMode) -> BiquadNode {
     BiquadNode {

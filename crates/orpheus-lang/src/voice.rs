@@ -2,8 +2,8 @@
 //!
 //! A voice block describes a playable instrument over the graph vocabulary
 //! that `orpheus-dsp` exposes (oscillators, gate-driven envelopes, the ladder
-//! low-pass filter, the multi-mode SVF and peaking-EQ filters, saturation,
-//! and arithmetic mixing). The compiler lowers
+//! low-pass filter, the multi-mode SVF and peaking/shelving EQ filters,
+//! saturation, and arithmetic mixing). The compiler lowers
 //! the block into a flat, declarative [`VoiceNodeSpec`] DAG; the session
 //! attaches the binding name as the pattern token and ships the finished
 //! [`GraphVoiceSpec`] to the engine (ADR 0009/0010).
@@ -27,8 +27,8 @@ use crossterm::style::Stylize;
 use orpheus_dsp::{
     DEFAULT_ANALOG_BASE_FREQUENCY_HZ, DEFAULT_GRAPH_VOICE_POLYPHONY, FILTER_MAX_GAIN_DB,
     FILTER_MAX_Q, FILTER_MIN_FREQUENCY_HZ, FILTER_MIN_Q, GraphVoiceSpec, MAX_GRAPH_VOICE_POLYPHONY,
-    MAX_VOICE_DELAY_SECONDS, MODULATED_VOICE_DELAY_MAX_SECONDS, SampleBank, StealPolicy, SvfMode,
-    VoiceNodeSpec, VoiceSignalRef,
+    MAX_VOICE_DELAY_SECONDS, MODULATED_VOICE_DELAY_MAX_SECONDS, SampleBank, ShelfMode, StealPolicy,
+    SvfMode, VoiceNodeSpec, VoiceSignalRef,
 };
 
 use crate::ast::{BinaryOp, Expr, GraphBinding};
@@ -441,20 +441,22 @@ impl<'bank> VoiceCompiler<'bank> {
             "lowpass" => self.compile_lowpass(args, piped),
             "svf_lp" | "svf_hp" | "svf_bp" | "svf_notch" => self.compile_svf(name, args, piped),
             "eq_peak" => self.compile_eq_peak(args, piped),
+            "eq_low_shelf" | "eq_high_shelf" => self.compile_eq_shelf(name, args, piped),
             "drive" => self.compile_drive(args, piped),
             "gain" => self.compile_gain(args, piped),
             "delay" => self.compile_delay(args, piped),
             "feedback" => self.compile_feedback(args, piped),
             "fan" => self.compile_fan(args, piped),
-            "sample" | "sample_loop" => self.compile_sample(name, args, piped),
-            "sample_pitched" | "sample_loop_pitched" => {
+            "sample" | "sample_loop" | "sample_loop_xf" => self.compile_sample(name, args, piped),
+            "sample_pitched" | "sample_loop_pitched" | "sample_loop_pitched_xf" => {
                 self.compile_sample_pitched(name, args, piped)
             }
             other => Err(EvalError::new(format!(
                 "unknown voice stage `{other}`; available stages are `sine`, `saw`, `tri`, \
-                 `pulse`, `noise`, `sample`, `sample_loop`, `sample_pitched`, \
-                 `sample_loop_pitched`, `adsr`, `ar`, `lowpass`, `svf_lp`, `svf_hp`, `svf_bp`, \
-                 `svf_notch`, `eq_peak`, `drive`, `gain`, `delay`, `feedback`, and `fan`"
+                 `pulse`, `noise`, `sample`, `sample_loop`, `sample_loop_xf`, `sample_pitched`, \
+                 `sample_loop_pitched`, `sample_loop_pitched_xf`, `adsr`, `ar`, `lowpass`, \
+                 `svf_lp`, `svf_hp`, `svf_bp`, `svf_notch`, `eq_peak`, `eq_low_shelf`, \
+                 `eq_high_shelf`, `drive`, `gain`, `delay`, `feedback`, and `fan`"
             ))),
         }
     }
@@ -692,6 +694,49 @@ impl<'bank> VoiceCompiler<'bank> {
         })
     }
 
+    /// Compiles `eq_low_shelf(input, freq_hz, q, gain_db)` and
+    /// `eq_high_shelf(...)` — the RBJ shelving EQ biquads. A low shelf
+    /// applies the gain below the corner frequency and leaves the highs at
+    /// unity; the high shelf mirrors it. Positive gains boost, negative
+    /// gains cut; all three parameters are signals. Literal parameters are
+    /// range-checked here at definition time; signal parameters clamp at
+    /// render time instead.
+    fn compile_eq_shelf(
+        &mut self,
+        name: &str,
+        args: &[Expr],
+        piped: Option<VoiceSignalRef>,
+    ) -> Result<VoiceSignalRef, EvalError> {
+        let (input, freq_expr, q_expr, gain_expr) = match piped {
+            Some(input) if args.len() == 3 => (input, &args[0], &args[1], &args[2]),
+            None if args.len() == 4 => (self.compile_expr(&args[0])?, &args[1], &args[2], &args[3]),
+            _ => {
+                return Err(EvalError::new(format!(
+                    "`{name}` expects an input signal plus corner frequency, Q, and \
+                     gain in dB (e.g. `x |> {name}(800, 0.7, 6)`)"
+                )));
+            }
+        };
+        filter_frequency_literal_in_range(name, "corner frequency", freq_expr)?;
+        filter_q_literal_in_range(name, q_expr)?;
+        filter_gain_literal_in_range(name, gain_expr)?;
+        let freq_hz = self.compile_expr(freq_expr)?;
+        let q = self.compile_expr(q_expr)?;
+        let gain_db = self.compile_expr(gain_expr)?;
+        let mode = match name {
+            "eq_low_shelf" => ShelfMode::Low,
+            "eq_high_shelf" => ShelfMode::High,
+            _ => unreachable!("shelf dispatch is exhaustive"),
+        };
+        self.push(VoiceNodeSpec::EqShelf {
+            input,
+            freq_hz,
+            q,
+            gain_db,
+            mode,
+        })
+    }
+
     fn compile_drive(
         &mut self,
         args: &[Expr],
@@ -754,12 +799,19 @@ impl<'bank> VoiceCompiler<'bank> {
         }
     }
 
-    /// Compiles `sample("name"[, rate])` and `sample_loop("name"[, rate])` —
-    /// playback of a preloaded sample-bank buffer, so hybrid sample+synth
-    /// instruments compose (e.g. `voice { s = sample("bd") ; s * ar(gate,
-    /// 0.001, 0.2) }`). `sample` is one-shot; `sample_loop` hard-wraps at
-    /// the buffer end and keeps sounding until the voice's release tail ends
-    /// (a falling gate never cuts either stage — the one-shot semantics).
+    /// Compiles `sample("name"[, rate])`, `sample_loop("name"[, rate])`, and
+    /// `sample_loop_xf("name"[, rate])` — playback of a preloaded
+    /// sample-bank buffer, so hybrid sample+synth instruments compose (e.g.
+    /// `voice { s = sample("bd") ; s * ar(gate, 0.001, 0.2) }`). `sample` is
+    /// one-shot; `sample_loop` hard-wraps at the buffer end and keeps
+    /// sounding until the voice's release tail ends (a falling gate never
+    /// cuts any of these stages — the one-shot semantics); `sample_loop_xf`
+    /// is `sample_loop` with a short linear crossfade at the loop wrap (5 ms
+    /// of source material, capped at 10% of the buffer), removing the wrap
+    /// click for loops that do not end on a zero crossing. The crossfade is
+    /// a separate stage name for the same reason `sample_loop` is: the
+    /// grammar has no keyword arguments and the second positional slot is
+    /// already the rate signal.
     ///
     /// The note gate triggers playback implicitly: a rising edge restarts
     /// the buffer from the top and the level is otherwise ignored (one-shot,
@@ -800,20 +852,23 @@ impl<'bank> VoiceCompiler<'bank> {
             gate: VoiceSignalRef::Gate,
             rate,
             sample,
-            looped: stage == "sample_loop",
+            looped: matches!(stage, "sample_loop" | "sample_loop_xf"),
+            loop_crossfade: stage == "sample_loop_xf",
             pitch_reference_hz: None,
         })
     }
 
-    /// Compiles `sample_pitched("name"[, reference_hz])` and
-    /// `sample_loop_pitched("name"[, reference_hz])` — playback whose rate
+    /// Compiles `sample_pitched("name"[, reference_hz])`,
+    /// `sample_loop_pitched("name"[, reference_hz])`, and
+    /// `sample_loop_pitched_xf("name"[, reference_hz])` — playback whose rate
     /// tracks the triggering note: rate = `freq` / reference, so a pattern's
     /// pitches transpose the sample like an oscillator. `sample_pitched` is
     /// one-shot; `sample_loop_pitched` also hard-wraps at the buffer end
-    /// like `sample_loop` (the two flags compose in the node spec). The
-    /// combination is a separate stage name for the same reason `sample_loop`
-    /// is: the grammar has no keyword arguments and the second positional
-    /// slot is already the reference frequency.
+    /// like `sample_loop`, and `sample_loop_pitched_xf` further crossfades
+    /// the loop wrap like `sample_loop_xf` (the flags compose in the node
+    /// spec). The combinations are separate stage names for the same reason
+    /// `sample_loop` is: the grammar has no keyword arguments and the second
+    /// positional slot is already the reference frequency.
     ///
     /// The reference is the note frequency that plays the buffer at native
     /// rate. It defaults to the engine's rate-1.0 reference frequency
@@ -867,7 +922,8 @@ impl<'bank> VoiceCompiler<'bank> {
             gate: VoiceSignalRef::Gate,
             rate: VoiceSignalRef::Freq,
             sample,
-            looped: stage == "sample_loop_pitched",
+            looped: matches!(stage, "sample_loop_pitched" | "sample_loop_pitched_xf"),
+            loop_crossfade: stage == "sample_loop_pitched_xf",
             pitch_reference_hz: Some(reference_hz),
         })
     }

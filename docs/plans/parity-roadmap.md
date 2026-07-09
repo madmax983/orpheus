@@ -29,14 +29,17 @@ File paths point the next contributor at the relevant implementation sites.
   `cycle mod a >= b` (`PatternRuntime::WhenMod`, value.rs)
 - [x] `within` — windowed transform
 - [x] `jux` — `crates/orpheus-lang/src/builtins.rs` (`apply_jux`)
-- [~] `sometimes` — cycle-granularity only; Tidal applies per-event
-  (per-event behavior is available via `sometimes_by(0.5, ...)`)
-- [~] `euclid` — no rotation argument
+- [x] `sometimes` — cycle-granularity by design (the whole-cycle transform is
+  the intended Orpheus semantic); Tidal's per-event application is spec'd and
+  shipped as `sometimes_by(0.5, ...)` — see the `sometimes_by` entry below
+- [x] `euclid` — the rotation argument shipped in PR #1393; see the `euclid`
+  rotation / `euclidInv` / `euclidFull` entry below
 - [x] `stack` / `overlay` — `PatternRuntime::Stack`
 - [x] implicit fastcat — whitespace sequences (`eval_sequence`, eval.rs)
 - [x] `palindrome` — `apply_palindrome` (builtins.rs)
 - [x] `rand` — `PatternRuntime::Rand`
-- [~] `chaos` — ≈ Tidal `shuffle`, but no subdivision-count argument
+- [x] `chaos` — ≈ Tidal `shuffle`; explicit subdivision counts shipped in
+  PR #1390 as `shuffle`/`scramble` — see the `shuffle`/`scramble` entry below
 - [x] patternable controls — `gain`/`pan`/`cutoff`/`lpf`/`hpf`/etc. accept
   number patterns (`apply_sample_numeric_control`, builtins.rs)
 - [x] control-pattern audit — cycle-varying control arguments (`<a b>`,
@@ -179,8 +182,11 @@ Module: `crates/orpheus-dsp/src/graph/` (ADR 0004).
   recomputed per block from the block-start parameter values
   (`crates/orpheus-dsp/src/graph/filters.rs`); voice-body exposure shipped:
   `eq_peak(x, freq, q, gain_db)` peaking stage with definition-time literal
-  range checks (ADR 0010 addendum); remaining: shelving modes
-  (lowshelf/highshelf)
+  range checks (ADR 0010 addendum); shelving modes shipped:
+  `BiquadMode::LowShelf`/`HighShelf` (RBJ cookbook, same gain\_db fourth
+  input as peaking, same clamps) with voice-body stages
+  `eq_low_shelf(x, freq, q, gain_db)` / `eq_high_shelf(...)` lowered onto
+  `VoiceNodeSpec::EqShelf`
 - [x] SVF (state-variable filter) node — `svf(sample_rate_hz)`, Cytomic/
   Andrew Simper TPT topology, per-sample coefficients so cutoff/Q may sweep
   at audio rate; 3-in (audio, cutoff\_hz, q)/4-out (lowpass, highpass,
@@ -217,8 +223,16 @@ Module: `crates/orpheus-dsp/src/graph/` (ADR 0004).
   and defaults), and pitched notes below the reference now stretch the
   release tail at trigger time to the playback's true end
   (`max(static, duration x reference / freq)`, capped at 30 s —
-  `GraphVoiceSlot::release_frames_for_note`, graph_voice.rs); remaining:
-  crossfaded loop points
+  `GraphVoiceSlot::release_frames_for_note`, graph_voice.rs); crossfaded
+  loop points shipped (`sample_player_looped_crossfaded`, the
+  `loop_crossfade` flag on `VoiceNodeSpec::Sample`, and the
+  `sample_loop_xf("bd"[, rate])` / `sample_loop_pitched_xf("bd"[,
+  reference_hz])` stages): a short LINEAR (constant-gain — the two reads are
+  correlated) fade of 5 ms source material, capped at 10% of the buffer,
+  blends the loop tail into the head with no fade buffer, shortening the
+  steady-state loop period to `len - fade`; opt-in via a construction flag
+  and separate stage names so `sample_loop`'s bit-exact hard-wrap tiling
+  stays intact
 - [x] `MixNode` adapter — `mix_node` wraps the crossfade in
   `crates/orpheus-dsp/src/synth/mix.rs` (`graph/adapters.rs`)
 - [x] `PanNode` — `pan`, 2-in (audio, position)/2-out equal-power panner
