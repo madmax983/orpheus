@@ -21,8 +21,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use orpheus_dsp::{
     DEFAULT_ANALOG_BASE_FREQUENCY_HZ, EngineCommand, EngineHandle, GeneratorCycle,
-    GeneratorCycleSpec, GeneratorId, GraphVoiceBank, GraphVoiceSpec, PatternUpdate, SampleBank,
-    SampleLibraryWatcher, SampleLibraryWatcherConfig, SampleTrigger, TransportSnapshot,
+    GeneratorCycleSpec, GeneratorId, GraphVoiceBank, GraphVoiceSpec, LevelSnapshot, PatternUpdate,
+    SampleBank, SampleLibraryWatcher, SampleLibraryWatcherConfig, SampleTrigger, TransportSnapshot,
     load_sample_bank_from_directory, render_routing_snapshot_to_stem_wavs,
 };
 use orpheus_pattern::{Event, Rational};
@@ -2050,11 +2050,33 @@ impl ReplSession {
     /// ```
     pub fn mixer_view(&self) -> MixerView {
         let snapshot = self.engine.transport_snapshot();
+        let meters = self.meter_view();
         MixerView {
             has_pending_routing: snapshot.has_pending_routing(),
             summary: self.mixer.render_summary(),
-            tui_summary: self.mixer.render_tui_summary(),
+            tui_summary: self.mixer.render_tui_summary(meters.peaks()),
         }
+    }
+
+    /// Returns a UI-readable per-track level-meter snapshot (ADR 0013).
+    ///
+    /// Mirrors [`ReplSession::transport_view`]: the meters are updated on the
+    /// audio thread and read here lock-free, so the TUI can render live level
+    /// bars without interrupting audio generation.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::ReplSession;
+    /// use orpheus_dsp::EngineHandle;
+    ///
+    /// let session = ReplSession::with_engine(EngineHandle::stub());
+    /// let meters = session.meter_view();
+    /// assert_eq!(meters.track_peak(0), 0.0);
+    /// ```
+    #[must_use]
+    pub fn meter_view(&self) -> LevelSnapshot {
+        self.engine.meter_snapshot()
     }
 
     #[doc(hidden)]

@@ -20,7 +20,7 @@ use crossterm::style::Stylize;
 use ratatui::style::{Modifier as TuiModifier, Style as TuiStyle};
 use ratatui::text::{Line, Span};
 
-use crate::tui::style::Theme;
+use crate::tui::style::{Theme, meter_bar, meter_color};
 
 use orpheus_dsp::{GeneratorId, RoutingSnapshot, SampleTrigger, TrackSource};
 use orpheus_pattern::Event;
@@ -285,7 +285,7 @@ impl MixerState {
         Ok(())
     }
 
-    pub(crate) fn render_tui_summary(&self) -> Vec<Line<'static>> {
+    pub(crate) fn render_tui_summary(&self, levels: &[f32]) -> Vec<Line<'static>> {
         let mut lines = Vec::new();
 
         let header_style = TuiStyle::default().fg(Theme::MUTED);
@@ -299,6 +299,7 @@ impl MixerState {
             track_style,
             binding_style,
             level_style,
+            levels,
         );
 
         if !self.buses.is_empty() {
@@ -315,11 +316,27 @@ impl MixerState {
         track_style: TuiStyle,
         binding_style: TuiStyle,
         level_style: TuiStyle,
+        levels: &[f32],
     ) {
+        /// Fixed glyph width of the live per-track meter bar (ADR 0013). The
+        /// meter is the last column, so it stays readable even in narrow panes.
+        const METER_BAR_WIDTH: usize = 8;
+
         lines.push(Line::from(vec![Span::styled(
             "Mixer Tracks:",
             track_style.add_modifier(TuiModifier::BOLD),
         )]));
+
+        // The meter for each data row corresponds to the routing `TrackId`,
+        // which is assigned by track order — the same order rows are emitted
+        // here (see `MixerState::compile_snapshot`).
+        let meter_cell = |row_index: usize| {
+            let level = levels.get(row_index).copied().unwrap_or(0.0);
+            Span::styled(
+                meter_bar(level, METER_BAR_WIDTH),
+                TuiStyle::default().fg(meter_color(level)),
+            )
+        };
 
         let mut track_rows = Vec::new();
         track_rows.push(vec![
@@ -328,10 +345,11 @@ impl MixerState {
             Span::styled("Level", header_style),
             Span::styled("Muted", header_style),
             Span::styled("Sends", header_style),
+            Span::styled("Meter", header_style),
         ]);
 
         if self.has_explicit_bound_tracks() {
-            for (track_name, track) in &self.tracks {
+            for (row_index, (track_name, track)) in self.tracks.iter().enumerate() {
                 let binding = track.binding_name.as_deref().unwrap_or("<unbound>");
                 // ⚡ Bolt: Eliminate intermediate Vec and String allocations on the hot path.
                 // Replaced `.map(|...| format!(...)).collect::<Vec<_>>().join(", ")`
@@ -356,6 +374,7 @@ impl MixerState {
                     Span::styled(format!("{:.2}", track.level), level_style),
                     Span::styled(track.muted.to_string(), TuiStyle::default().fg(muted_color)),
                     Span::styled(sends, header_style),
+                    meter_cell(row_index),
                 ]);
             }
         } else {
@@ -369,10 +388,11 @@ impl MixerState {
                 Span::styled("1.00".to_owned(), level_style),
                 Span::styled("false".to_owned(), header_style),
                 Span::styled(String::new(), header_style),
+                meter_cell(0),
             ]);
         }
 
-        let mut col_widths = [0; 5];
+        let mut col_widths = [0; 6];
         for row in &track_rows {
             for (i, col) in row.iter().enumerate() {
                 col_widths[i] = col_widths[i].max(col.content.len());
@@ -385,7 +405,7 @@ impl MixerState {
                 let padding = col_widths[i].saturating_sub(col.content.len());
                 let padded_content = format!("{}{}", col.content, " ".repeat(padding));
                 spans.push(Span::styled(padded_content, col.style));
-                if i < 4 {
+                if i < 5 {
                     spans.push(Span::raw(" │ "));
                 }
             }

@@ -592,6 +592,78 @@ pub fn cycle_progress_bar(progress: f32, width: usize) -> String {
     bar
 }
 
+/// Level at or above which a meter is treated as clipping (full-scale).
+const METER_CLIP_LEVEL: f32 = 1.0;
+/// Level at or above which a meter enters the cautionary "hot" zone.
+const METER_WARN_LEVEL: f32 = 0.8;
+
+/// Returns the [`Theme`] color for a per-track meter at the given peak `level`
+/// (ADR 0013).
+///
+/// The meter reads accent while nominal, shifts to the warning color as it
+/// approaches full-scale, and turns to the error color at clip, so a hot track
+/// is legible by hue alone.
+///
+/// # Examples
+/// ```
+/// use ratatui::style::Color;
+/// use orpheus_lang::{meter_color, Theme};
+///
+/// assert_eq!(meter_color(0.2), Theme::ACCENT);
+/// assert_eq!(meter_color(0.85), Theme::WARNING);
+/// assert_eq!(meter_color(1.0), Theme::ERROR);
+/// ```
+#[must_use]
+pub fn meter_color(level: f32) -> Color {
+    if level >= METER_CLIP_LEVEL {
+        Theme::ERROR
+    } else if level >= METER_WARN_LEVEL {
+        Theme::WARNING
+    } else {
+        Theme::ACCENT
+    }
+}
+
+/// Renders a fixed-`width` block-glyph meter bar for a peak `level` in `[0, 1]`
+/// (ADR 0013).
+///
+/// Filled cells use `█` and remaining cells use `░`, so the bar is exactly
+/// `width` glyphs wide (empty when `width == 0`). Out-of-range levels are
+/// clamped, keeping the bar well-behaved at any pane width.
+///
+/// # Examples
+/// ```
+/// use orpheus_lang::meter_bar;
+///
+/// assert_eq!(meter_bar(0.0, 4), "\u{2591}\u{2591}\u{2591}\u{2591}");
+/// assert_eq!(meter_bar(0.5, 4), "\u{2588}\u{2588}\u{2591}\u{2591}");
+/// assert_eq!(meter_bar(1.0, 4), "\u{2588}\u{2588}\u{2588}\u{2588}");
+/// assert_eq!(meter_bar(0.5, 0), "");
+/// ```
+#[must_use]
+// The arithmetic is bounded exactly as in `cycle_progress_bar`: `clamped` is in
+// [0, 1], the product rounds into [0, width], and bar widths are tiny.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
+pub fn meter_bar(level: f32, width: usize) -> String {
+    if width == 0 {
+        return String::new();
+    }
+    let clamped = level.clamp(0.0, 1.0);
+    let filled = ((clamped * width as f32).round() as usize).min(width);
+    let mut bar = String::with_capacity(width * 3);
+    for _ in 0..filled {
+        bar.push('\u{2588}');
+    }
+    for _ in filled..width {
+        bar.push('\u{2591}');
+    }
+    bar
+}
+
 /// Builds the transient status-toast [`Line`] shown just above the footer.
 ///
 /// Success toasts use the theme success color, failures use the error color, so
@@ -684,6 +756,27 @@ mod tests {
         let session = ReplSession::with_engine(EngineHandle::stub());
         let snapshot = session.transport_snapshot();
         assert_eq!(cycle_progress(&snapshot), 0.0);
+    }
+
+    #[test]
+    fn meter_bar_fills_proportionally() {
+        assert_eq!(meter_bar(0.0, 4), "\u{2591}\u{2591}\u{2591}\u{2591}");
+        assert_eq!(meter_bar(0.5, 4), "\u{2588}\u{2588}\u{2591}\u{2591}");
+        assert_eq!(meter_bar(1.0, 4), "\u{2588}\u{2588}\u{2588}\u{2588}");
+        // Out-of-range and zero-width inputs stay well-behaved.
+        assert_eq!(meter_bar(2.0, 3), "\u{2588}\u{2588}\u{2588}");
+        assert_eq!(meter_bar(-1.0, 3), "\u{2591}\u{2591}\u{2591}");
+        assert_eq!(meter_bar(0.5, 0), "");
+    }
+
+    #[test]
+    fn meter_color_shifts_from_accent_to_error_with_level() {
+        assert_eq!(meter_color(0.0), Theme::ACCENT);
+        assert_eq!(meter_color(0.79), Theme::ACCENT);
+        assert_eq!(meter_color(0.8), Theme::WARNING);
+        assert_eq!(meter_color(0.95), Theme::WARNING);
+        assert_eq!(meter_color(1.0), Theme::ERROR);
+        assert_eq!(meter_color(1.5), Theme::ERROR);
     }
 
     #[test]

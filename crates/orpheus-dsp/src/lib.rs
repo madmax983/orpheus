@@ -31,7 +31,8 @@ pub use command::{
     EngineCommand, GeneratorCycle, PatternUpdate, PedalProgram, SampleTrigger, new_command_queue,
 };
 pub use engine::{
-    EngineError, EngineHandle, MAX_GENERATORS, RenderEngine, TransportSnapshot, frames_per_cycle,
+    EngineError, EngineHandle, LevelSnapshot, MAX_GENERATORS, MAX_METERED_TRACKS, RenderEngine,
+    TransportSnapshot, decayed_peak, frames_per_cycle, meter_decay_per_frame,
 };
 pub use graph::*;
 pub use graph_voice::{
