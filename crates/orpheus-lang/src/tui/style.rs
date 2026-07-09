@@ -254,16 +254,47 @@ pub fn binding_list_item(
     summary: String,
     transport: &TransportView,
 ) -> ratatui::widgets::ListItem<'static> {
+    binding_list_item_with_pulse(summary, transport, None)
+}
+
+/// Like [`binding_list_item`], but prefixes the live (active) binding with an
+/// optional activity `pulse` glyph.
+///
+/// The pulse is a small marker (see [`binding_activity_pulse`]) that brightens
+/// and fades with the cycle phase, giving the active binding a heartbeat in the
+/// list. When `pulse` is `None` the item is identical to [`binding_list_item`].
+///
+/// # Examples
+/// ```
+/// use orpheus_lang::ReplSession;
+/// use orpheus_dsp::EngineHandle;
+/// use orpheus_lang::binding_list_item_with_pulse;
+///
+/// let mut session = ReplSession::with_engine(EngineHandle::stub());
+/// session.eval_line("drums = bd sn").unwrap();
+/// session.render_test_block_for_tui(1);
+/// let view = session.transport_view();
+/// let item = binding_list_item_with_pulse("drums: Pattern".to_string(), &view, Some('\u{25cf}'));
+/// ```
+#[must_use]
+pub fn binding_list_item_with_pulse(
+    summary: String,
+    transport: &TransportView,
+    pulse: Option<char>,
+) -> ratatui::widgets::ListItem<'static> {
     use ratatui::widgets::ListItem;
 
     let name = summary
         .split_once(": ")
         .map_or(summary.as_str(), |(name, _)| name);
     if transport.active_pattern_name() == Some(name) {
-        return ListItem::new(Line::from(vec![
-            Span::styled("[live] ", live_binding_style()),
-            Span::raw(summary),
-        ]));
+        let mut spans = Vec::with_capacity(3);
+        if let Some(glyph) = pulse {
+            spans.push(Span::styled(format!("{glyph} "), live_binding_style()));
+        }
+        spans.push(Span::styled("[live] ", live_binding_style()));
+        spans.push(Span::raw(summary));
+        return ListItem::new(Line::from(spans));
     }
     if transport.pending_pattern_name() == Some(name) {
         return ListItem::new(Line::from(vec![
@@ -272,6 +303,35 @@ pub fn binding_list_item(
         ]));
     }
     ListItem::new(summary)
+}
+
+/// Returns the activity pulse glyph for the binding that is currently the live
+/// (active) pattern, driven by the cycle phase, or `None` when the transport is
+/// stopped or no pattern is active.
+///
+/// This reuses the downbeat [`cycle_pulse_glyph`] so the marker pulses in step
+/// with the transport: a filled `●` on the downbeat fading to an empty `○`
+/// through the back half of the cycle. It reads only existing view state — the
+/// active-pattern name and the transport snapshot — so it stays a pure helper.
+///
+/// # Examples
+/// ```
+/// use orpheus_lang::ReplSession;
+/// use orpheus_dsp::EngineHandle;
+/// use orpheus_lang::binding_activity_pulse;
+///
+/// let mut session = ReplSession::with_engine(EngineHandle::stub());
+/// session.eval_line(":stop").unwrap();
+/// session.render_test_block_for_tui(1);
+/// let view = session.transport_view();
+/// assert_eq!(binding_activity_pulse(&view), None);
+/// ```
+#[must_use]
+pub fn binding_activity_pulse(transport: &TransportView) -> Option<char> {
+    if !transport.snapshot().is_playing() || transport.active_pattern_name().is_none() {
+        return None;
+    }
+    Some(cycle_pulse_glyph(cycle_progress(transport.snapshot())).0)
 }
 
 /// Constructs the explanatory legend item for the environment binding list.
@@ -788,6 +848,62 @@ mod tests {
         let err = status_toast_line("boom", true);
         assert_eq!(err.spans[0].style.bg, Some(Theme::ERROR));
         assert!(err.spans.iter().any(|span| span.content.contains("boom")));
+    }
+
+    #[test]
+    fn binding_activity_pulse_tracks_playback_and_active_pattern() {
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+        session.eval_line("drums = bd sn").unwrap();
+        session.render_test_block_for_tui(256);
+
+        // Playing with an active pattern: a pulse glyph is emitted.
+        let view = session.transport_view();
+        assert_eq!(view.active_pattern_name(), Some("drums"));
+        let pulse = binding_activity_pulse(&view);
+        assert!(pulse.is_some());
+        assert!(matches!(pulse, Some('\u{25cf}' | '\u{25cb}')));
+
+        // Stopped: no pulse regardless of the active pattern.
+        session.eval_line(":stop").unwrap();
+        session.render_test_block_for_tui(1);
+        let view = session.transport_view();
+        assert_eq!(binding_activity_pulse(&view), None);
+    }
+
+    fn render_item_text(item: ratatui::widgets::ListItem<'static>) -> String {
+        use ratatui::buffer::Buffer;
+        use ratatui::layout::Rect;
+        use ratatui::prelude::Widget;
+        use ratatui::widgets::List;
+
+        let area = Rect::new(0, 0, 40, 1);
+        let mut buf = Buffer::empty(area);
+        List::new(vec![item]).render(area, &mut buf);
+        (0..area.width)
+            .map(|x| buf[(x, 0)].symbol().to_owned())
+            .collect()
+    }
+
+    #[test]
+    fn binding_list_item_with_pulse_marks_only_the_live_binding() {
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+        session.eval_line("drums = bd sn").unwrap();
+        session.render_test_block_for_tui(256);
+        let view = session.transport_view();
+        assert_eq!(view.active_pattern_name(), Some("drums"));
+
+        // The live binding gets the pulse glyph prepended before `[live]`.
+        let live =
+            binding_list_item_with_pulse("drums: Pattern".to_string(), &view, Some('\u{25cf}'));
+        let live_text = render_item_text(live);
+        assert!(live_text.contains('\u{25cf}'));
+        assert!(live_text.contains("[live]"));
+
+        // A non-live binding is unaffected by the pulse argument.
+        let other =
+            binding_list_item_with_pulse("bass: Pattern".to_string(), &view, Some('\u{25cf}'));
+        let other_text = render_item_text(other);
+        assert!(!other_text.contains('\u{25cf}'));
     }
 
     #[test]

@@ -113,12 +113,12 @@ pub use pitch::{PitchLiteralError, parse_named_pitch_literal};
 pub use session::{MixerView, ReplSession, TransportView};
 #[doc(hidden)]
 pub use tui::style::{
-    Theme, UiTransportState, binding_legend_item, binding_list_item, cycle_progress,
-    cycle_progress_bar, cycle_pulse_glyph, focus_border_style, format_cycle_position,
-    format_tempo_bpm, format_transport_status, help_overlay_border_style,
-    help_overlay_footer_style, key_legend_style, live_binding_style, meter_bar, meter_color,
-    pending_binding_style, routing_status_line, should_show_binding_legend, status_toast_line,
-    transport_state, transport_status_line, transport_status_style,
+    Theme, UiTransportState, binding_activity_pulse, binding_legend_item, binding_list_item,
+    binding_list_item_with_pulse, cycle_progress, cycle_progress_bar, cycle_pulse_glyph,
+    focus_border_style, format_cycle_position, format_tempo_bpm, format_transport_status,
+    help_overlay_border_style, help_overlay_footer_style, key_legend_style, live_binding_style,
+    meter_bar, meter_color, pending_binding_style, routing_status_line, should_show_binding_legend,
+    status_toast_line, transport_state, transport_status_line, transport_status_style,
 };
 #[doc(hidden)]
 pub use value::FunctionValue;
