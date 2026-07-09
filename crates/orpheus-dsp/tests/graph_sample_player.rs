@@ -17,7 +17,7 @@
 
 use orpheus_dsp::{
     GraphVoiceSpec, Node, PlaybackSample, VoiceNodeSpec, VoiceSignalRef, sample_player,
-    sample_player_looped, sample_player_pitched,
+    sample_player_looped, sample_player_looped_crossfaded, sample_player_pitched,
 };
 
 const SR: f32 = 48_000.0;
@@ -347,6 +347,146 @@ fn looped_player_retriggers_from_the_top_on_a_rising_edge() {
 }
 
 // ---------------------------------------------------------------------------
+// Crossfaded loop points: `sample_player_looped_crossfaded` blends the loop
+// tail into the head over a short linear (constant-gain) fade — 5 ms of
+// source material, capped at 10% of the buffer — instead of hard-wrapping,
+// so loops that do not end on a zero crossing stop clicking. The steady-state
+// loop period shortens to `len - fade` (the head's first `fade` samples serve
+// as crossfade material). Opt-in at construction; the default looped player
+// keeps its bit-exact hard-wrap tiling.
+// ---------------------------------------------------------------------------
+
+/// Builds a crossfaded looping player over `frames` recorded at the node's
+/// output rate.
+fn native_crossfaded_player(frames: &[f32]) -> orpheus_dsp::SamplePlayerNode {
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let sample = PlaybackSample::from_mono_frames(frames.to_vec(), SR as u32);
+    sample_player_looped_crossfaded(&sample, SR)
+}
+
+/// The largest adjacent-sample jump in `out`.
+fn max_step(out: &[f32]) -> f32 {
+    out.windows(2)
+        .map(|w| (w[1] - w[0]).abs())
+        .fold(0.0_f32, f32::max)
+}
+
+/// A deterministic pseudo-random buffer of `len` frames (values in [-1, 1]).
+#[allow(clippy::cast_precision_loss)]
+fn wiggle_buffer(len: usize) -> Vec<f32> {
+    (0..len)
+        .map(|t| ((t * 37 % 101) as f32 - 50.0) / 50.0)
+        .collect()
+}
+
+#[test]
+fn crossfaded_loop_removes_the_hard_wrap_click() {
+    // Worst-case loop material: a ramp that ends a full unit away from where
+    // it starts, so a hard wrap produces a ~1.0 discontinuity every period.
+    let len = 4_800;
+    #[allow(clippy::cast_precision_loss)]
+    let buffer: Vec<f32> = (0..len).map(|i| i as f32 / len as f32).collect();
+
+    let frames = len * 3;
+    let gate = vec![1.0_f32; frames];
+    let rate = vec![1.0_f32; frames];
+    let hard = run(&mut native_looped_player(&buffer), &gate, &rate);
+    let smooth = run(&mut native_crossfaded_player(&buffer), &gate, &rate);
+
+    assert!(
+        max_step(&hard) > 0.9,
+        "the hard wrap must click on ramp material, got {}",
+        max_step(&hard)
+    );
+    assert!(
+        max_step(&smooth) < 0.02,
+        "the crossfaded wrap must stay continuous, got {}",
+        max_step(&smooth)
+    );
+}
+
+#[test]
+fn crossfaded_loop_repeats_with_period_len_minus_fade() {
+    // 5 ms at the 48 kHz source rate is 240 samples; under the 10% cap for a
+    // 4800-sample buffer (480), the fade stays 240 and the steady-state loop
+    // period is 4800 - 240 = 4560 samples. Identical playhead positions read
+    // identical crossfade weights, so the periodicity is bit-exact.
+    let len = 4_800;
+    let fade = 240;
+    let period = len - fade;
+    let buffer = wiggle_buffer(len);
+
+    let frames = len * 3;
+    let gate = vec![1.0_f32; frames];
+    let rate = vec![1.0_f32; frames];
+    let out = run(&mut native_crossfaded_player(&buffer), &gate, &rate);
+
+    for k in fade..(frames - period) {
+        assert_eq!(
+            out[k],
+            out[k + period],
+            "frame {k}: the crossfaded loop must repeat every {period} frames"
+        );
+    }
+}
+
+#[test]
+fn crossfade_length_caps_at_a_tenth_of_the_buffer() {
+    // A 400-sample buffer is shorter than ten 240-sample fades, so the fade
+    // clamps to 40 samples and the loop period to 360.
+    let len = 400;
+    let fade = len / 10;
+    let period = len - fade;
+    let buffer = wiggle_buffer(len);
+
+    let frames = len * 4;
+    let gate = vec![1.0_f32; frames];
+    let rate = vec![1.0_f32; frames];
+    let out = run(&mut native_crossfaded_player(&buffer), &gate, &rate);
+
+    for k in fade..(frames - period) {
+        assert_eq!(
+            out[k],
+            out[k + period],
+            "frame {k}: the capped fade must yield a {period}-frame period"
+        );
+    }
+}
+
+#[test]
+fn crossfade_falls_back_to_the_hard_wrap_for_tiny_buffers() {
+    // Under 10 samples the 10% cap floors the fade at zero source samples;
+    // the crossfaded player then behaves exactly like the hard-wrap loop.
+    let buffer = [0.5_f32, -0.25, 0.125, -0.5, 0.75, -0.125];
+    let frames = buffer.len() * 4;
+    let gate = vec![1.0_f32; frames];
+    let rate = vec![1.0_f32; frames];
+
+    let hard = run(&mut native_looped_player(&buffer), &gate, &rate);
+    let smooth = run(&mut native_crossfaded_player(&buffer), &gate, &rate);
+    assert_eq!(
+        hard, smooth,
+        "a zero-length fade must reduce to the hard wrap bit-exactly"
+    );
+}
+
+#[test]
+fn crossfaded_loop_stays_bounded_for_over_length_steps() {
+    // A step larger than the buffer must land the playhead back inside the
+    // loop body (period wrap), never out of range, and keep producing.
+    let buffer = wiggle_buffer(200);
+    let gate = [1.0_f32; 64];
+    let rate = [350.0_f32; 64];
+    let out = run(&mut native_crossfaded_player(&buffer), &gate, &rate);
+
+    assert!(out.iter().all(|s| s.is_finite()));
+    assert!(
+        out.iter().map(|s| s.abs()).sum::<f32>() > 0.5,
+        "an over-length step must keep the crossfaded loop sounding, got {out:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Pitched mode: `sample_player_pitched` reads the rate input as a frequency
 // in Hertz relative to a reference (parity roadmap follow-up).
 // ---------------------------------------------------------------------------
@@ -422,6 +562,7 @@ fn bare_sample_spec(buffer: &[f32]) -> GraphVoiceSpec {
                 rate: VoiceSignalRef::Node(0),
                 sample,
                 looped: false,
+                loop_crossfade: false,
                 pitch_reference_hz: None,
             },
         ],
@@ -493,6 +634,7 @@ fn bare_looped_sample_spec(buffer: &[f32]) -> GraphVoiceSpec {
                 rate: VoiceSignalRef::Node(0),
                 sample,
                 looped: true,
+                loop_crossfade: false,
                 pitch_reference_hz: None,
             },
         ],
@@ -521,6 +663,58 @@ fn voice_spec_looped_sample_tiles_the_buffer_through_the_voice_interface() {
 }
 
 #[test]
+fn voice_spec_crossfaded_loop_smooths_the_wrap_through_the_voice_interface() {
+    // Same ramp worst case as the node test, driven through the full voice
+    // interface: the crossfade flag on the spec must remove the wrap click
+    // the hard-wrap loop produces.
+    let len = 4_800;
+    #[allow(clippy::cast_precision_loss)]
+    let buffer: Vec<f32> = (0..len).map(|i| i as f32 / len as f32).collect();
+
+    let spec_with = |loop_crossfade: bool| {
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let sample = PlaybackSample::from_mono_frames(buffer.clone(), SR as u32);
+        GraphVoiceSpec::new(
+            "pad",
+            0.5,
+            vec![
+                VoiceNodeSpec::Constant { value: 1.0 },
+                VoiceNodeSpec::Sample {
+                    gate: VoiceSignalRef::Gate,
+                    rate: VoiceSignalRef::Node(0),
+                    sample,
+                    looped: true,
+                    loop_crossfade,
+                    pitch_reference_hz: None,
+                },
+            ],
+            VoiceSignalRef::Node(1),
+        )
+        .expect("crossfaded loop voice spec should validate")
+    };
+    let render = |spec: &GraphVoiceSpec| {
+        let mut voice = spec.build_voice(SR);
+        voice.prepare();
+        (0..len * 3)
+            .map(|_| voice.process_frame(1.0, 220.0, 1.0, 0.0).0)
+            .collect::<Vec<f32>>()
+    };
+
+    let hard = render(&spec_with(false));
+    let smooth = render(&spec_with(true));
+    assert!(
+        max_step(&hard) > 0.6,
+        "the hard-wrap loop must click on ramp material, got {}",
+        max_step(&hard)
+    );
+    assert!(
+        max_step(&smooth) < 0.02,
+        "the crossfaded loop must stay continuous, got {}",
+        max_step(&smooth)
+    );
+}
+
+#[test]
 fn voice_spec_pitched_sample_tracks_the_note_frequency() {
     // rate = freq / reference: the reference frequency plays natively, an
     // octave above it at double rate.
@@ -535,6 +729,7 @@ fn voice_spec_pitched_sample_tracks_the_note_frequency() {
             rate: VoiceSignalRef::Freq,
             sample,
             looped: false,
+            loop_crossfade: false,
             pitch_reference_hz: Some(220.0),
         }],
         VoiceSignalRef::Node(0),
@@ -579,6 +774,7 @@ fn voice_spec_rejects_non_positive_pitch_references() {
                 rate: VoiceSignalRef::Freq,
                 sample,
                 looped: false,
+                loop_crossfade: false,
                 pitch_reference_hz: Some(reference),
             }],
             VoiceSignalRef::Node(0),

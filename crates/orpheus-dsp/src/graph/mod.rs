@@ -42,10 +42,11 @@ pub use adapters::{
     gain_node, ladder_filter, mix_node, noise, pulse, saw, soft_sat, tri,
 };
 
-// Sample playback (one-shot, looped, and pitched players over preloaded
-// bank buffers)
+// Sample playback (one-shot, looped, crossfaded-loop, and pitched players
+// over preloaded bank buffers)
 pub use sample_player::{
-    SamplePlayerNode, sample_player, sample_player_looped, sample_player_pitched,
+    LOOP_CROSSFADE_MAX_BUFFER_FRACTION, LOOP_CROSSFADE_SECONDS, SamplePlayerNode, sample_player,
+    sample_player_looped, sample_player_looped_crossfaded, sample_player_pitched,
     sample_player_with_options,
 };
 

@@ -776,6 +776,70 @@ fn voice_eq_peak_boosts_the_centered_band() {
 }
 
 #[test]
+fn voice_eq_shelf_stages_boost_their_side_of_the_corner() {
+    // The 110 Hz carrier sits below a 500 Hz low-shelf corner and above a
+    // 30 Hz high-shelf corner, so +12 dB on either shelf boosts it audibly
+    // over the 0 dB (identity) render.
+    let flat = render_gated_left(
+        "v = voice { s = sine(freq) |> eq_low_shelf(500, 0.7, 0) ; s * ar(gate, 0.001, 0.05) }",
+        "v",
+        4_096,
+    );
+    let flat_energy: f32 = flat.iter().map(|s| s.abs()).sum();
+    assert!(flat_energy > 1.0, "the 0 dB voice must be audible");
+
+    let low = render_gated_left(
+        "v = voice { s = sine(freq) |> eq_low_shelf(500, 0.7, 12) ; s * ar(gate, 0.001, 0.05) }",
+        "v",
+        4_096,
+    );
+    let low_energy: f32 = low.iter().map(|s| s.abs()).sum();
+    assert!(
+        low_energy > flat_energy * 2.0,
+        "+12 dB low shelf above the carrier must boost it: {low_energy} vs {flat_energy}"
+    );
+
+    let high = render_gated_left(
+        "v = voice { s = sine(freq) |> eq_high_shelf(30, 0.7, 12) ; s * ar(gate, 0.001, 0.05) }",
+        "v",
+        4_096,
+    );
+    let high_energy: f32 = high.iter().map(|s| s.abs()).sum();
+    assert!(
+        high_energy > flat_energy * 2.0,
+        "+12 dB high shelf below the carrier must boost it: {high_energy} vs {flat_energy}"
+    );
+}
+
+#[test]
+fn voice_eq_shelf_stages_reject_bad_literal_ranges_and_arity() {
+    // Same definition-time range checks as `eq_peak`.
+    let message = eval_error("bad = voice { sine(freq) |> eq_low_shelf(800, 1) }");
+    assert!(
+        message.contains("eq_low_shelf"),
+        "unexpected error: {message}"
+    );
+
+    let message = eval_error("bad = voice { sine(freq) |> eq_high_shelf(800, 1, 100) }");
+    assert!(
+        message.contains("eq_high_shelf") && message.contains("gain"),
+        "unexpected error: {message}"
+    );
+
+    let message = eval_error("bad = voice { sine(freq) |> eq_low_shelf(0, 1, 6) }");
+    assert!(
+        message.contains("eq_low_shelf"),
+        "unexpected error: {message}"
+    );
+
+    let message = eval_error("bad = voice { sine(freq) |> eq_high_shelf(800, 500, 6) }");
+    assert!(
+        message.contains("eq_high_shelf") && message.contains('Q'),
+        "unexpected error: {message}"
+    );
+}
+
+#[test]
 fn voice_svf_cutoff_accepts_a_bound_lfo_signal() {
     // Params are signals: an LFO sweeping the cutoff must render finite
     // audio that audibly moves relative to the fixed-cutoff patch.
@@ -854,7 +918,9 @@ fn voice_eq_peak_rejects_bad_literal_ranges_and_arity() {
 fn voice_unknown_stage_error_lists_the_filter_stages() {
     let message = eval_error("bad = voice { warble(freq) }");
     assert!(
-        message.contains("svf_lp") && message.contains("eq_peak"),
+        message.contains("svf_lp")
+            && message.contains("eq_peak")
+            && message.contains("eq_low_shelf"),
         "the available-stage list should include the filter stages: {message}"
     );
 }
@@ -1141,6 +1207,117 @@ fn voice_sample_loop_extends_the_release_and_accepts_a_rate_signal() {
     );
     let message = eval_error(r#"bad = voice { sample_loop("glitch") }"#);
     assert!(message.contains("glitch"), "unexpected error: {message}");
+}
+
+#[test]
+fn voice_sample_loop_xf_crossfades_the_wrap_and_validates_like_sample_loop() {
+    // `sample_loop_xf` is `sample_loop` with a short crossfade at the loop
+    // wrap (5 ms of source material, capped at 10% of the buffer): it must
+    // keep sounding past the buffer end like the hard-wrap loop, and it must
+    // stamp both loop flags onto the node spec. (The built-in bank's buffers
+    // are only 8 frames — under one whole fade sample — so the node falls
+    // back to the hard wrap here; the wave-level crossfade behavior is
+    // covered by the orpheus-dsp `graph_sample_player` tests with synthetic
+    // buffers.)
+    let Value::Voice(voice) = eval_voice(r#"kit = voice { sample_loop_xf("bd") }"#) else {
+        panic!("expected a voice value");
+    };
+    assert!(
+        voice.nodes().iter().any(|node| matches!(
+            node,
+            orpheus_dsp::VoiceNodeSpec::Sample {
+                looped: true,
+                loop_crossfade: true,
+                pitch_reference_hz: None,
+                ..
+            }
+        )),
+        "sample_loop_xf must set both loop flags on the sample node"
+    );
+    assert!(voice.to_spec("kit").is_ok());
+
+    let bank = orpheus_dsp::SampleBank::load_builtin();
+    let len = bank
+        .get_by_token("bd")
+        .expect("bd is built in")
+        .frames()
+        .len();
+    let crossfaded = render_voice_frames(
+        r#"kit = voice { sample_loop_xf("bd") }"#,
+        "kit",
+        220.0,
+        4 * len,
+    );
+    let late_energy = crossfaded[2 * len..]
+        .iter()
+        .map(|&(left, _)| left.abs())
+        .sum::<f32>();
+    assert!(
+        late_energy > 0.1,
+        "the crossfaded loop must keep producing past the buffer end"
+    );
+    assert!(
+        crossfaded
+            .iter()
+            .all(|&(l, r)| l.is_finite() && r.is_finite())
+    );
+
+    // Same arity/pipe/name rules as `sample_loop`.
+    let message = eval_error(r#"bad = voice { sine(freq) |> sample_loop_xf("bd") }"#);
+    assert!(
+        message.contains("sample_loop_xf"),
+        "unexpected error: {message}"
+    );
+    let message = eval_error(r#"bad = voice { sample_loop_xf("bd", 1, 2) }"#);
+    assert!(
+        message.contains("sample_loop_xf"),
+        "unexpected error: {message}"
+    );
+    let message = eval_error(r#"bad = voice { sample_loop_xf("glitch") }"#);
+    assert!(message.contains("glitch"), "unexpected error: {message}");
+}
+
+#[test]
+fn voice_sample_loop_pitched_xf_compiles_and_validates_like_its_siblings() {
+    // The pitched loop also composes with the crossfade flag.
+    let Value::Voice(voice) = eval_voice(r#"kit = voice { sample_loop_pitched_xf("bd") }"#) else {
+        panic!("expected a voice value");
+    };
+    assert!(
+        voice.nodes().iter().any(|node| matches!(
+            node,
+            orpheus_dsp::VoiceNodeSpec::Sample {
+                looped: true,
+                loop_crossfade: true,
+                pitch_reference_hz: Some(_),
+                ..
+            }
+        )),
+        "sample_loop_pitched_xf must set the loop, crossfade, and pitch flags"
+    );
+    assert!(voice.to_spec("kit").is_ok());
+
+    let rendered = render_voice_frames(
+        r#"kit = voice { sample_loop_pitched_xf("bd", 440) }"#,
+        "kit",
+        440.0,
+        4_096,
+    );
+    assert!(
+        rendered
+            .iter()
+            .all(|&(l, r)| l.is_finite() && r.is_finite())
+    );
+    assert!(
+        rendered.iter().map(|&(l, _)| l.abs()).sum::<f32>() > 0.1,
+        "the pitched crossfaded loop must be audible at its reference"
+    );
+
+    let message = eval_error(r#"bad = voice { sample_loop_pitched_xf("bd", 0) }"#);
+    assert!(
+        message.contains("sample_loop_pitched_xf") && message.contains("reference"),
+        "unexpected error: {message}"
+    );
 }
 
 #[test]
