@@ -12,8 +12,8 @@ use ratatui_hypertile_extras::HypertilePlugin;
 
 use super::state::SharedState;
 use super::style::{
-    binding_legend_item, binding_list_item, routing_status_line, should_show_binding_legend,
-    transport_status_line,
+    Theme, binding_legend_item, binding_list_item, focus_border_style, routing_status_line,
+    should_show_binding_legend, status_toast_line, transport_status_line,
 };
 use crate::orca::{BANG, EMPTY, is_valid_glyph, playhead_frame};
 
@@ -34,15 +34,17 @@ impl HypertilePlugin for ReplPlugin {
             .iter()
             .flat_map(|entry| {
                 let style = if entry.starts_with("> ") {
-                    Style::default().fg(Color::DarkGray)
+                    Style::default().fg(Theme::MUTED)
                 } else if entry.starts_with("\u{2717} ") {
-                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Theme::ERROR)
+                        .add_modifier(Modifier::BOLD)
                 } else if entry.starts_with("\u{26a0}\u{fe0f} ") {
                     Style::default()
-                        .fg(Color::Yellow)
+                        .fg(Theme::WARNING)
                         .add_modifier(Modifier::BOLD)
                 } else if entry.starts_with("\u{2713} ") {
-                    Style::default().fg(Color::Green)
+                    Style::default().fg(Theme::SUCCESS)
                 } else {
                     Style::default()
                 };
@@ -58,19 +60,19 @@ impl HypertilePlugin for ReplPlugin {
             Span::styled(
                 "> ",
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(Theme::FOCUS)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::raw(state.display_input_with_cursor()),
         ]));
         lines.push(Line::styled(
             state.input_hint(),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(Theme::MUTED),
         ));
 
         let mut block = Block::default().title("REPL").borders(Borders::ALL);
         if is_focused {
-            block = block.border_style(Style::default().fg(Color::Yellow).bold());
+            block = block.border_style(focus_border_style());
         }
 
         Paragraph::new(Text::from(lines))
@@ -207,7 +209,7 @@ impl HypertilePlugin for BindingsPlugin {
 
         let mut block = Block::default().title(title).borders(Borders::ALL);
         if is_focused {
-            block = block.border_style(Style::default().fg(Color::Yellow).bold());
+            block = block.border_style(focus_border_style());
         }
 
         List::new(display_items).block(block).render(area, buf);
@@ -278,9 +280,9 @@ impl HypertilePlugin for TransportPlugin {
             }
         }
         let key_style = Style::default()
-            .fg(Color::Cyan)
+            .fg(Theme::ACCENT)
             .add_modifier(Modifier::BOLD);
-        let desc_style = Style::default().fg(Color::DarkGray);
+        let desc_style = Style::default().fg(Theme::MUTED);
 
         let legend = [
             ("Undo", "Ctrl-Z / Ctrl-Y"),
@@ -304,22 +306,7 @@ impl HypertilePlugin for TransportPlugin {
         }
         if let Some((message, is_error)) = &state.status_message {
             lines.push(Line::raw(""));
-            let (prefix, bg, fg) = if *is_error {
-                ("\u{2717} Failed", Color::Red, Color::White)
-            } else {
-                ("\u{2713} Success", Color::Green, Color::Black)
-            };
-
-            lines.push(Line::from(vec![
-                Span::styled(
-                    format!(" {prefix} "),
-                    Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(
-                    format!(" {message} "),
-                    Style::default().bg(Color::DarkGray).fg(Color::White),
-                ),
-            ]));
+            lines.push(status_toast_line(message, *is_error));
         }
         lines.push(Line::from(vec![
             Span::styled(format!("{:<9} ", "Quit"), key_style),
@@ -328,7 +315,7 @@ impl HypertilePlugin for TransportPlugin {
 
         let mut block = Block::default().title("Transport").borders(Borders::ALL);
         if is_focused {
-            block = block.border_style(Style::default().fg(Color::Yellow).bold());
+            block = block.border_style(focus_border_style());
         }
 
         Paragraph::new(Text::from(lines))
@@ -373,12 +360,12 @@ impl OrcaPlugin {
 /// data stay muted, bangs flash.
 fn orca_glyph_style(glyph: char) -> Style {
     match glyph {
-        EMPTY => Style::default().fg(Color::DarkGray),
+        EMPTY => Style::default().fg(Theme::MUTED),
         BANG => Style::default()
-            .fg(Color::Yellow)
+            .fg(Theme::FOCUS)
             .add_modifier(Modifier::BOLD),
         ':' => Style::default().fg(Color::Magenta),
-        '0'..='9' => Style::default().fg(Color::Cyan),
+        '0'..='9' => Style::default().fg(Theme::ACCENT),
         glyph if glyph.is_ascii_uppercase() => Style::default()
             .fg(Color::White)
             .add_modifier(Modifier::BOLD),
@@ -413,12 +400,12 @@ impl HypertilePlugin for OrcaPlugin {
                 let glyph = grid.glyph_at(x, y).unwrap_or(EMPTY);
                 let mut style = orca_glyph_style(glyph);
                 if playhead_column == Some(x) {
-                    style = style.bg(Color::DarkGray);
+                    style = style.bg(Theme::MUTED);
                 }
                 if is_focused && (x, y) == (self.cursor_x, self.cursor_y) {
                     style = Style::default()
                         .fg(Color::Black)
-                        .bg(Color::Yellow)
+                        .bg(Theme::FOCUS)
                         .add_modifier(Modifier::BOLD);
                 }
                 spans.push(Span::styled(glyph.to_string(), style));
@@ -427,7 +414,7 @@ impl HypertilePlugin for OrcaPlugin {
         }
         lines.push(Line::styled(
             "Space run/stop   arrows move   glyph write   Bksp erase",
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(Theme::MUTED),
         ));
 
         let status = if state.orca.is_running() {
@@ -445,7 +432,7 @@ impl HypertilePlugin for OrcaPlugin {
 
         let mut block = Block::default().title(title).borders(Borders::ALL);
         if is_focused {
-            block = block.border_style(Style::default().fg(Color::Yellow).bold());
+            block = block.border_style(focus_border_style());
         }
 
         Paragraph::new(Text::from(lines))

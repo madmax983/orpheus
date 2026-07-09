@@ -435,11 +435,267 @@ pub fn format_tempo_bpm(snapshot: &orpheus_dsp::TransportSnapshot) -> String {
     }
 }
 
+/// Central color palette for the TUI — the single source of truth for the
+/// interface's visual language.
+///
+/// Every pane, overlay, and footer element sources its semantic colors here so
+/// the look stays consistent and a future re-theme is a one-file change. The
+/// constants are intentionally named by *role* (accent, focus, error, …) rather
+/// than by hue, even where two roles currently share a color.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Theme;
+
+impl Theme {
+    /// Primary accent for interactive/highlighted elements (keys, digits, bars).
+    pub const ACCENT: Color = Color::Cyan;
+    /// Border color of the currently focused pane.
+    pub const FOCUS: Color = Color::Yellow;
+    /// Error / failure feedback.
+    pub const ERROR: Color = Color::Red;
+    /// Success / affirmative feedback.
+    pub const SUCCESS: Color = Color::Green;
+    /// Warning / cautionary feedback.
+    pub const WARNING: Color = Color::Yellow;
+    /// Muted / dim text (hints, legends, inactive cells).
+    pub const MUTED: Color = Color::DarkGray;
+    /// Playhead / downbeat emphasis.
+    pub const PLAYHEAD: Color = Color::Yellow;
+}
+
+/// Returns the [`Style`] used for the border of the focused pane.
+///
+/// This is the single source of truth for the focus highlight, replacing the
+/// `fg(Yellow).bold()` literal that was previously duplicated across every pane
+/// plugin.
+///
+/// # Examples
+/// ```
+/// use ratatui::style::{Color, Modifier};
+/// use orpheus_lang::focus_border_style;
+///
+/// let style = focus_border_style();
+/// assert_eq!(style.fg, Some(Color::Yellow));
+/// assert!(style.add_modifier.contains(Modifier::BOLD));
+/// ```
+#[must_use]
+pub fn focus_border_style() -> Style {
+    Style::default()
+        .fg(Theme::FOCUS)
+        .add_modifier(Modifier::BOLD)
+}
+
+/// Computes fractional progress through the current cycle as a value in `[0.0, 1.0)`.
+///
+/// This is the same ratio underlying [`format_cycle_position`], exposed as a raw
+/// float so downbeat visuals (the pulse glyph and progress bar) can be driven
+/// purely from a [`TransportSnapshot`].
+///
+/// # Examples
+/// ```
+/// use orpheus_lang::ReplSession;
+/// use orpheus_dsp::EngineHandle;
+/// use orpheus_lang::cycle_progress;
+///
+/// let session = ReplSession::with_engine(EngineHandle::stub());
+/// let snapshot = session.transport_snapshot();
+/// assert_eq!(cycle_progress(&snapshot), 0.0);
+/// ```
+#[must_use]
+// Display-only ratio: frame counts far exceed f32's mantissa, but sub-frame
+// precision is irrelevant for a one-character pulse and a handful of bar cells.
+#[allow(clippy::cast_precision_loss)]
+pub fn cycle_progress(snapshot: &orpheus_dsp::TransportSnapshot) -> f32 {
+    let frames_per_cycle = snapshot.frames_per_cycle();
+    if frames_per_cycle == 0 {
+        return 0.0;
+    }
+    let cycle_offset = snapshot
+        .current_frame()
+        .saturating_sub(snapshot.current_cycle_start_frame())
+        .min(frames_per_cycle);
+    cycle_offset as f32 / frames_per_cycle as f32
+}
+
+/// Returns the downbeat pulse glyph and its [`Style`] for a given cycle `progress`.
+///
+/// The glyph is a filled, bright circle (`●`) on the downbeat, brightest at the
+/// very start of the cycle and fading as it advances, then an empty, dim circle
+/// (`○`) through the back half. Callers should only render it while the
+/// transport is playing.
+///
+/// # Examples
+/// ```
+/// use ratatui::style::{Color, Modifier};
+/// use orpheus_lang::cycle_pulse_glyph;
+///
+/// let (glyph, style) = cycle_pulse_glyph(0.0);
+/// assert_eq!(glyph, '\u{25cf}'); // ●
+/// assert!(style.add_modifier.contains(Modifier::BOLD));
+///
+/// let (glyph, _) = cycle_pulse_glyph(0.75);
+/// assert_eq!(glyph, '\u{25cb}'); // ○
+/// ```
+#[must_use]
+pub fn cycle_pulse_glyph(progress: f32) -> (char, Style) {
+    let phase = progress.rem_euclid(1.0);
+    if phase < 0.5 {
+        let mut style = Style::default().fg(Theme::PLAYHEAD);
+        if phase < 0.125 {
+            style = style.add_modifier(Modifier::BOLD);
+        }
+        ('\u{25cf}', style)
+    } else {
+        (
+            '\u{25cb}',
+            Style::default()
+                .fg(Theme::MUTED)
+                .add_modifier(Modifier::DIM),
+        )
+    }
+}
+
+/// Renders a fixed-`width` block-glyph bar showing `progress` through the cycle.
+///
+/// Filled cells use `█` and remaining cells use `░`. The returned string is
+/// exactly `width` glyphs wide (empty when `width == 0`).
+///
+/// # Examples
+/// ```
+/// use orpheus_lang::cycle_progress_bar;
+///
+/// assert_eq!(cycle_progress_bar(0.0, 4), "\u{2591}\u{2591}\u{2591}\u{2591}");
+/// assert_eq!(cycle_progress_bar(0.5, 4), "\u{2588}\u{2588}\u{2591}\u{2591}");
+/// assert_eq!(cycle_progress_bar(1.0, 4), "\u{2588}\u{2588}\u{2588}\u{2588}");
+/// ```
+#[must_use]
+// The arithmetic is bounded: `clamped` is in [0, 1] and the product is rounded
+// into [0, width], so the cast back to `usize` cannot truncate meaningfully or
+// lose a sign. Bar widths are tiny, well within f32's exact-integer range.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
+pub fn cycle_progress_bar(progress: f32, width: usize) -> String {
+    if width == 0 {
+        return String::new();
+    }
+    let clamped = progress.clamp(0.0, 1.0);
+    let filled = ((clamped * width as f32).round() as usize).min(width);
+    let mut bar = String::with_capacity(width * 3);
+    for _ in 0..filled {
+        bar.push('\u{2588}');
+    }
+    for _ in filled..width {
+        bar.push('\u{2591}');
+    }
+    bar
+}
+
+/// Builds the transient status-toast [`Line`] shown just above the footer.
+///
+/// Success toasts use the theme success color, failures use the error color, so
+/// feedback stays legible regardless of which panes are open.
+///
+/// # Examples
+/// ```
+/// use orpheus_lang::status_toast_line;
+///
+/// let line = status_toast_line("saved", false);
+/// assert!(line.spans.iter().any(|span| span.content.contains("saved")));
+/// ```
+#[must_use]
+pub fn status_toast_line(message: &str, is_error: bool) -> Line<'static> {
+    let (prefix, background, foreground) = if is_error {
+        ("\u{2717} Failed", Theme::ERROR, Color::White)
+    } else {
+        ("\u{2713} Success", Theme::SUCCESS, Color::Black)
+    };
+    Line::from(vec![
+        Span::styled(
+            format!(" {prefix} "),
+            Style::default()
+                .bg(background)
+                .fg(foreground)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!(" {message} "),
+            Style::default().bg(Theme::MUTED).fg(Color::White),
+        ),
+    ])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::session::ReplSession;
     use orpheus_dsp::EngineHandle;
+
+    #[test]
+    fn focus_border_style_is_bold_focus_color() {
+        let style = focus_border_style();
+        assert_eq!(style.fg, Some(Theme::FOCUS));
+        assert!(style.add_modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn cycle_pulse_glyph_pulses_on_the_downbeat() {
+        // Start of the cycle: filled and bright (bold).
+        let (glyph, style) = cycle_pulse_glyph(0.0);
+        assert_eq!(glyph, '\u{25cf}');
+        assert_eq!(style.fg, Some(Theme::PLAYHEAD));
+        assert!(style.add_modifier.contains(Modifier::BOLD));
+
+        // Still on the downbeat half but past the peak: filled, no longer bold.
+        let (glyph, style) = cycle_pulse_glyph(0.3);
+        assert_eq!(glyph, '\u{25cf}');
+        assert!(!style.add_modifier.contains(Modifier::BOLD));
+
+        // Back half of the cycle: empty and dim.
+        let (glyph, style) = cycle_pulse_glyph(0.75);
+        assert_eq!(glyph, '\u{25cb}');
+        assert_eq!(style.fg, Some(Theme::MUTED));
+        assert!(style.add_modifier.contains(Modifier::DIM));
+    }
+
+    #[test]
+    fn cycle_progress_bar_fills_proportionally() {
+        assert_eq!(
+            cycle_progress_bar(0.0, 4),
+            "\u{2591}\u{2591}\u{2591}\u{2591}"
+        );
+        assert_eq!(
+            cycle_progress_bar(0.5, 4),
+            "\u{2588}\u{2588}\u{2591}\u{2591}"
+        );
+        assert_eq!(
+            cycle_progress_bar(1.0, 4),
+            "\u{2588}\u{2588}\u{2588}\u{2588}"
+        );
+        // Out-of-range and zero-width inputs stay well-behaved.
+        assert_eq!(cycle_progress_bar(2.0, 3), "\u{2588}\u{2588}\u{2588}");
+        assert_eq!(cycle_progress_bar(0.5, 0), "");
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn cycle_progress_is_zero_at_cycle_start() {
+        let session = ReplSession::with_engine(EngineHandle::stub());
+        let snapshot = session.transport_snapshot();
+        assert_eq!(cycle_progress(&snapshot), 0.0);
+    }
+
+    #[test]
+    fn status_toast_line_uses_theme_feedback_colors() {
+        let ok = status_toast_line("done", false);
+        assert_eq!(ok.spans[0].style.bg, Some(Theme::SUCCESS));
+        assert!(ok.spans.iter().any(|span| span.content.contains("done")));
+
+        let err = status_toast_line("boom", true);
+        assert_eq!(err.spans[0].style.bg, Some(Theme::ERROR));
+        assert!(err.spans.iter().any(|span| span.content.contains("boom")));
+    }
 
     #[test]
     fn should_format_cycle_position_and_tempo() {

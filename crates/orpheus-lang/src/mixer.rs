@@ -17,8 +17,10 @@ use std::collections::BTreeMap;
 use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
 use crossterm::style::Stylize;
 
-use ratatui::style::{Color as TuiColor, Modifier as TuiModifier, Style as TuiStyle};
+use ratatui::style::{Modifier as TuiModifier, Style as TuiStyle};
 use ratatui::text::{Line, Span};
+
+use crate::tui::style::Theme;
 
 use orpheus_dsp::{GeneratorId, RoutingSnapshot, SampleTrigger, TrackSource};
 use orpheus_pattern::Event;
@@ -286,10 +288,10 @@ impl MixerState {
     pub(crate) fn render_tui_summary(&self) -> Vec<Line<'static>> {
         let mut lines = Vec::new();
 
-        let header_style = TuiStyle::default().fg(TuiColor::DarkGray);
-        let track_style = TuiStyle::default().fg(TuiColor::Cyan);
-        let binding_style = TuiStyle::default().fg(TuiColor::Yellow);
-        let level_style = TuiStyle::default().fg(TuiColor::Green);
+        let header_style = TuiStyle::default().fg(Theme::MUTED);
+        let track_style = TuiStyle::default().fg(Theme::ACCENT);
+        let binding_style = TuiStyle::default().fg(Theme::WARNING);
+        let level_style = TuiStyle::default().fg(Theme::SUCCESS);
 
         self.render_tui_tracks_table(
             &mut lines,
@@ -343,9 +345,9 @@ impl MixerState {
                         std::fmt::Write::write_fmt(&mut sends, format_args!("{bus} @ {level:.2}"));
                 }
                 let muted_color = if track.muted {
-                    TuiColor::Red
+                    Theme::ERROR
                 } else {
-                    TuiColor::DarkGray
+                    Theme::MUTED
                 };
 
                 track_rows.push(vec![
