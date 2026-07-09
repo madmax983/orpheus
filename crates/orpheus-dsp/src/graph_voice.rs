@@ -11,13 +11,19 @@
 //!
 //! The trailing `p1..p4` channels are general-purpose per-note parameters set
 //! by the pattern side (ADR 0010 addendum): each is sampled at trigger time
-//! and held constant for the note, exactly like the gain and pan fields.
-//! Notes triggered without explicit values read
+//! and, by default, held constant for the note, exactly like the gain and
+//! pan fields. A control pattern with sub-note structure additionally ships
+//! up to [`MAX_VOICE_PARAM_BREAKPOINTS`] automation breakpoints per
+//! parameter with the trigger (ADR 0012); while the note sounds, the
+//! parameter follows the breakpoints with linear interpolation between them
+//! instead of holding. Notes triggered without explicit values read
 //! [`DEFAULT_VOICE_PARAM_VALUE`] (0.0). When a trigger steals a sounding
-//! voice the parameters ramp linearly from the stolen note's current values
-//! to the new note's over the program's param-ramp window
-//! ([`DEFAULT_PARAM_RAMP_SECONDS`] unless overridden), landing exactly and
-//! holding — fresh (idle-voice) triggers start exactly at the new values.
+//! voice the parameters glide from the stolen note's current values over
+//! the program's param-ramp window ([`DEFAULT_PARAM_RAMP_SECONDS`] unless
+//! overridden): linearly onto the new note's held values, or — when the new
+//! note carries breakpoints — converging onto its automation envelope. The
+//! glide lands exactly, after which the held values (or the envelope) alone
+//! drive; fresh (idle-voice) triggers start exactly at the new values.
 //!
 //! Allocation discipline: programs are compiled into a fixed pool of
 //! [`GraphVoice`]s at engine construction time (off the audio thread) and
@@ -51,6 +57,188 @@ pub const VOICE_PARAM_COUNT: usize = 4;
 /// The value a voice body reads from a per-note parameter (`p1`..`p4`) the
 /// triggering pattern never set.
 pub const DEFAULT_VOICE_PARAM_VALUE: f32 = 0.0;
+
+/// How many automation breakpoints one note may carry per parameter
+/// (ADR 0012).
+///
+/// Breakpoint storage is a fixed-size array inside every sounding note so
+/// stamping and playback stay allocation-free on the audio thread. When a
+/// control pattern produces more sub-note values than fit, only the first
+/// `MAX_VOICE_PARAM_BREAKPOINTS` ship (query side and trigger stamping both
+/// truncate); the last kept value holds for the rest of the note.
+pub const MAX_VOICE_PARAM_BREAKPOINTS: usize = 32;
+
+/// One per-note parameter automation breakpoint (ADR 0012).
+///
+/// `position` is normalized musical time within the note's sounding extent
+/// (0 = the trigger point, 1 = the end of the event's whole span), so the
+/// breakpoint survives tempo changes between query time and trigger time;
+/// it is mapped to a frame offset when the note starts. `value` is the
+/// control-pattern value that takes effect at that position; playback
+/// interpolates linearly from the previous breakpoint's value, reaching
+/// `value` exactly at `position` (no steps — ADR 0012).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct VoiceParamBreakpoint {
+    /// Normalized position within the note's extent, clamped to \[0, 1\] at
+    /// trigger time. Non-finite positions are skipped.
+    pub position: f64,
+    /// The parameter value reached at `position`. Non-finite values are
+    /// skipped at trigger time.
+    pub value: f64,
+}
+
+impl VoiceParamBreakpoint {
+    /// Creates a breakpoint at a normalized position within the note.
+    #[must_use]
+    pub const fn new(position: f64, value: f64) -> Self {
+        Self { position, value }
+    }
+}
+
+/// Fixed-capacity per-note parameter automation, stamped at trigger time
+/// (ADR 0012).
+///
+/// Holds up to [`MAX_VOICE_PARAM_BREAKPOINTS`] `(frame, value)` breakpoints
+/// for each of the `p1`..`p4` parameters, with frames strictly increasing
+/// and the first breakpoint always at frame 0. Everything is inline arrays:
+/// building one from a trigger, copying it into a pooled note, and reading
+/// values during rendering never allocate.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct VoiceParamRamps {
+    frames: [[u32; MAX_VOICE_PARAM_BREAKPOINTS]; VOICE_PARAM_COUNT],
+    values: [[f32; MAX_VOICE_PARAM_BREAKPOINTS]; VOICE_PARAM_COUNT],
+    lens: [u8; VOICE_PARAM_COUNT],
+}
+
+impl Default for VoiceParamRamps {
+    fn default() -> Self {
+        Self::none()
+    }
+}
+
+impl VoiceParamRamps {
+    /// No automation: every parameter holds its trigger-time value.
+    #[must_use]
+    pub const fn none() -> Self {
+        Self {
+            frames: [[0; MAX_VOICE_PARAM_BREAKPOINTS]; VOICE_PARAM_COUNT],
+            values: [[0.0; MAX_VOICE_PARAM_BREAKPOINTS]; VOICE_PARAM_COUNT],
+            lens: [0; VOICE_PARAM_COUNT],
+        }
+    }
+
+    /// Whether parameter `index` carries breakpoints (out-of-range indices
+    /// read `false`).
+    #[must_use]
+    pub const fn is_active(&self, index: usize) -> bool {
+        index < VOICE_PARAM_COUNT && self.lens[index] > 0
+    }
+
+    /// Whether any parameter carries breakpoints.
+    #[must_use]
+    pub const fn any_active(&self) -> bool {
+        let mut index = 0;
+        while index < VOICE_PARAM_COUNT {
+            if self.lens[index] > 0 {
+                return true;
+            }
+            index += 1;
+        }
+        false
+    }
+
+    /// Replaces parameter `index`'s automation with `(frame, value)`
+    /// breakpoints, sanitizing as documented: non-finite values are skipped,
+    /// frames are forced strictly increasing (a repeated frame replaces the
+    /// previous value — last wins), a ramp that starts after frame 0 gets an
+    /// implicit start breakpoint holding `start_value`, and everything past
+    /// [`MAX_VOICE_PARAM_BREAKPOINTS`] is dropped. Out-of-range indices are
+    /// ignored.
+    pub fn set_breakpoints(&mut self, index: usize, start_value: f32, breakpoints: &[(u32, f32)]) {
+        if index >= VOICE_PARAM_COUNT {
+            return;
+        }
+        self.lens[index] = 0;
+        for &(frame, value) in breakpoints {
+            self.push_breakpoint(index, frame, value, start_value);
+        }
+    }
+
+    /// Appends one sanitized breakpoint for parameter `index` per the
+    /// [`Self::set_breakpoints`] rules.
+    fn push_breakpoint(&mut self, index: usize, frame: u32, value: f32, start_value: f32) {
+        if !value.is_finite() {
+            return;
+        }
+        let len = usize::from(self.lens[index]);
+        if len == 0 && frame > 0 {
+            // The note must start somewhere: hold the trigger-time value
+            // until the first real breakpoint (interpolating toward it).
+            self.frames[index][0] = 0;
+            self.values[index][0] = start_value;
+            self.lens[index] = 1;
+            return self.push_breakpoint(index, frame, value, start_value);
+        }
+        if len > 0 && frame <= self.frames[index][len - 1] {
+            // Same (or regressed) frame: the later value wins in place.
+            self.values[index][len - 1] = value;
+            return;
+        }
+        if len >= MAX_VOICE_PARAM_BREAKPOINTS {
+            return;
+        }
+        self.frames[index][len] = frame;
+        self.values[index][len] = value;
+        self.lens[index] = self.lens[index].saturating_add(1);
+    }
+
+    /// The parameter's value at `age_frames` frames after the trigger:
+    /// linear interpolation between the surrounding breakpoints, the last
+    /// value held after the final breakpoint, and `fallback` when the
+    /// parameter carries no automation. Scans from the front — use
+    /// [`Self::value_at_from`] with a persisted cursor on the per-frame
+    /// render path.
+    #[must_use]
+    pub fn value_at(&self, index: usize, fallback: f32, age_frames: u32) -> f32 {
+        let mut cursor = 0;
+        self.value_at_from(index, fallback, age_frames, &mut cursor)
+    }
+
+    /// [`Self::value_at`] resuming the breakpoint scan from `cursor`, which
+    /// is advanced in place; with a per-note cursor the per-frame cost is
+    /// amortized O(1). Allocation-free.
+    #[allow(clippy::cast_precision_loss)]
+    pub fn value_at_from(
+        &self,
+        index: usize,
+        fallback: f32,
+        age_frames: u32,
+        cursor: &mut u8,
+    ) -> f32 {
+        if index >= VOICE_PARAM_COUNT {
+            return fallback;
+        }
+        let len = usize::from(self.lens[index]);
+        if len == 0 {
+            return fallback;
+        }
+        let frames = &self.frames[index];
+        let values = &self.values[index];
+        if usize::from(*cursor) >= len {
+            *cursor = u8::try_from(len - 1).unwrap_or(u8::MAX);
+        }
+        while usize::from(*cursor) + 1 < len && frames[usize::from(*cursor) + 1] <= age_frames {
+            *cursor += 1;
+        }
+        let at = usize::from(*cursor);
+        if at + 1 >= len || age_frames <= frames[at] {
+            return values[at];
+        }
+        let span = frames[at + 1] - frames[at];
+        let progress = (age_frames - frames[at]) as f32 / span as f32;
+        (values[at + 1] - values[at]).mul_add(progress, values[at])
+    }
+}
 
 /// Default pooled voices per program (ADR 0009).
 ///
@@ -1372,12 +1560,24 @@ struct GraphVoiceNote {
     gain: f32,
     pan: f32,
     /// The per-note pattern parameters (`p1`..`p4`), sampled at trigger time
-    /// and held for the note (ADR 0010 addendum). Like gain/pan — and unlike
-    /// the frequency, which switches immediately — a steal ramps them
-    /// linearly from the stolen note's current values over the program's
-    /// param-ramp window; after the ramp lands they hold the new note's
-    /// exact values.
+    /// (ADR 0010 addendum). Without automation they hold for the note, and —
+    /// like gain/pan, unlike the frequency, which switches immediately — a
+    /// steal ramps them in place linearly from the stolen note's current
+    /// values over the program's param-ramp window, landing exactly on the
+    /// new note's values. When `ramps` carries breakpoints, these instead
+    /// stay fixed at the note-start values (the automation's
+    /// pre-first-breakpoint base) and the envelope governs the note
+    /// (ADR 0012); a stolen voice then glides `current_params` onto the
+    /// envelope rather than mutating these.
     params: [f32; VOICE_PARAM_COUNT],
+    /// Per-note parameter breakpoint automation, stamped at trigger time
+    /// (ADR 0012). Fixed-size storage; playback interpolates linearly.
+    ramps: VoiceParamRamps,
+    /// Amortized-O(1) breakpoint scan positions for `ramps`, one per
+    /// parameter.
+    ramp_cursors: [u8; VOICE_PARAM_COUNT],
+    /// Frames rendered since the trigger; drives the automation playback.
+    age_frames: u32,
     /// Monotonic per-bank trigger counter, set when the note starts; the
     /// steal policy uses it as the note's age (smaller = older).
     trigger_seq: u64,
@@ -1399,6 +1599,13 @@ struct GraphVoiceNote {
     param_ramp_frames_remaining: u32,
     param_steps: [f32; VOICE_PARAM_COUNT],
     target_params: [f32; VOICE_PARAM_COUNT],
+    /// The `p1`..`p4` values actually shipped to the graph on the most
+    /// recent rendered frame — mid-steal-ramp and mid-automation included.
+    /// The steal handover reads the victim's field so back-to-back steals
+    /// chain smoothly from whatever is audible, and a stolen voice with
+    /// automation carries its glide state here (steal x automation
+    /// composition, ADR 0012).
+    current_params: [f32; VOICE_PARAM_COUNT],
 }
 
 impl GraphVoiceNote {
@@ -1412,6 +1619,7 @@ impl GraphVoiceNote {
         gain: f32,
         pan: f32,
         params: [f32; VOICE_PARAM_COUNT],
+        ramps: &VoiceParamRamps,
         trigger_seq: u64,
     ) -> Self {
         Self {
@@ -1422,6 +1630,9 @@ impl GraphVoiceNote {
             gain,
             pan,
             params,
+            ramps: *ramps,
+            ramp_cursors: [0; VOICE_PARAM_COUNT],
+            age_frames: 0,
             trigger_seq,
             retrigger_gap_frames: 0,
             ramp_frames_remaining: 0,
@@ -1432,14 +1643,17 @@ impl GraphVoiceNote {
             param_ramp_frames_remaining: 0,
             param_steps: [0.0; VOICE_PARAM_COUNT],
             target_params: params,
+            current_params: params,
         }
     }
 
     /// Converts a fresh note into one stealing a sounding voice: the gate
     /// drops for one frame so the envelope retriggers from its current level,
     /// gain/pan ramp linearly from the stolen note's current values over
-    /// `ramp_frames`, and the per-note pattern parameters (`p1`..`p4`) ramp
-    /// the same way over `param_ramp_frames`.
+    /// `ramp_frames`, and the per-note pattern parameters (`p1`..`p4`) glide
+    /// the same way over `param_ramp_frames` — linearly onto the new note's
+    /// held values, or onto its automation envelope when it carries
+    /// breakpoints (ADR 0012).
     #[allow(clippy::cast_precision_loss)]
     fn begin_steal_handover(
         &mut self,
@@ -1457,18 +1671,34 @@ impl GraphVoiceNote {
 
         // Ramp state is plain f32 field arithmetic (current, target, step),
         // stamped here at trigger time — nothing on this path allocates. The
-        // stolen note's `params` field is its CURRENT value even mid-ramp,
-        // so back-to-back steals chain smoothly.
+        // stolen note's `current_params` field is its audible value even
+        // mid-ramp or mid-automation, so back-to-back steals chain smoothly.
         let param_ramp_frames = param_ramp_frames.max(1);
         self.param_ramp_frames_remaining = param_ramp_frames;
-        for (step, (target, stolen)) in self
-            .param_steps
-            .iter_mut()
-            .zip(self.target_params.iter().zip(&stolen_from.params))
-        {
-            *step = (target - stolen) / param_ramp_frames as f32;
+        if self.ramps.any_active() {
+            // Steal x automation composition (ADR 0012): when the new note
+            // carries breakpoints, the handover glides `current_params` from
+            // the stolen note's current values ONTO the new note's automation
+            // envelope (each rendered frame closes 1/remaining of the gap to
+            // the envelope's current value — see `render_frame`). `params`
+            // keeps the new note's trigger-time values untouched: they are
+            // the envelope's pre-first-breakpoint hold/base. Once the glide
+            // lands — exactly, on the window's last frame — the envelope
+            // alone drives.
+            self.current_params = stolen_from.current_params;
+        } else {
+            // No automation on the new note: the in-place linear ramp,
+            // landing exactly on `target_params`.
+            for (step, (target, stolen)) in self
+                .param_steps
+                .iter_mut()
+                .zip(self.target_params.iter().zip(&stolen_from.current_params))
+            {
+                *step = (target - stolen) / param_ramp_frames as f32;
+            }
+            self.params = stolen_from.current_params;
+            self.current_params = self.params;
         }
-        self.params = stolen_from.params;
     }
 
     /// The steal ranking key: minimising it lexicographically prefers voices
@@ -1697,6 +1927,42 @@ impl GraphVoiceBank {
         pan: f32,
         params: [f32; VOICE_PARAM_COUNT],
     ) -> bool {
+        self.trigger_with_automation(
+            token,
+            track_id,
+            gate_frames,
+            freq_hz,
+            gain,
+            pan,
+            params,
+            &VoiceParamRamps::none(),
+        )
+    }
+
+    /// [`Self::trigger_with_params`] with per-note parameter breakpoint
+    /// automation (ADR 0012).
+    ///
+    /// `ramps` is copied into the note's fixed-size storage; while the note
+    /// sounds, each automated parameter follows its breakpoints (linear
+    /// interpolation between them, the last value held through the release
+    /// tail) instead of holding the trigger-time value. A steal stamps the
+    /// NEW note's automation and restarts it from the note's beginning; over
+    /// the program's param-ramp window the parameters glide from the stolen
+    /// note's current values onto that envelope, landing exactly, after
+    /// which the envelope alone drives (steal x automation composition).
+    /// Never allocates.
+    #[allow(clippy::too_many_arguments)]
+    pub fn trigger_with_automation(
+        &mut self,
+        token: &str,
+        track_id: TrackId,
+        gate_frames: u32,
+        freq_hz: f32,
+        gain: f32,
+        pan: f32,
+        params: [f32; VOICE_PARAM_COUNT],
+        ramps: &VoiceParamRamps,
+    ) -> bool {
         let mut idle: Option<usize> = None;
         let mut victim: Option<(usize, (bool, u32, u64))> = None;
         for (index, slot) in self.slots.iter().enumerate() {
@@ -1734,6 +2000,7 @@ impl GraphVoiceBank {
                 gain,
                 pan,
                 params,
+                ramps,
                 trigger_seq,
             ));
             return true;
@@ -1756,6 +2023,7 @@ impl GraphVoiceBank {
                 gain,
                 pan,
                 params,
+                ramps,
                 trigger_seq,
             );
             note.begin_steal_handover(&stolen_from, self.steal_ramp_frames, slot.param_ramp_frames);
@@ -1800,27 +2068,64 @@ impl GraphVoiceBank {
                 }
             }
 
+            // Per-note parameter automation (ADR 0012): automated parameters
+            // follow their breakpoints (linear interpolation, last value
+            // held); parameters without breakpoints keep the trigger-time
+            // value, bit-identically to the pre-automation path.
+            let mut params = note.params;
+            if note.ramps.any_active() {
+                for (index, value) in params.iter_mut().enumerate() {
+                    *value = note.ramps.value_at_from(
+                        index,
+                        *value,
+                        note.age_frames,
+                        &mut note.ramp_cursors[index],
+                    );
+                }
+            }
+            note.age_frames = note.age_frames.saturating_add(1);
+
             // The per-note pattern parameters ramp the same way over their
             // own (pragma-configurable) window, landing exactly; the ramp
             // keeps running through the release tail, so even a one-frame
             // gate reaches the new note's values.
             if note.param_ramp_frames_remaining > 0 {
-                note.param_ramp_frames_remaining -= 1;
-                if note.param_ramp_frames_remaining == 0 {
-                    note.params = note.target_params;
-                } else {
-                    for (param, step) in note.params.iter_mut().zip(&note.param_steps) {
-                        *param += step;
+                if note.ramps.any_active() {
+                    // Steal x automation composition (ADR 0012): glide from
+                    // the stolen note's values ONTO the (possibly moving)
+                    // envelope. Each frame closes 1/remaining of the gap to
+                    // the envelope's current value: against a flat envelope
+                    // this traces the exact linear path of the plain steal
+                    // ramp, against a moving one it converges smoothly, and
+                    // on the window's last frame (remaining == 1) it lands
+                    // exactly on the envelope — which alone drives from then
+                    // on.
+                    #[allow(clippy::cast_precision_loss)]
+                    let remaining = note.param_ramp_frames_remaining as f32;
+                    for (value, current) in params.iter_mut().zip(&note.current_params) {
+                        *value = current + (*value - current) / remaining;
                     }
+                    note.param_ramp_frames_remaining -= 1;
+                } else {
+                    note.param_ramp_frames_remaining -= 1;
+                    if note.param_ramp_frames_remaining == 0 {
+                        note.params = note.target_params;
+                    } else {
+                        for (param, step) in note.params.iter_mut().zip(&note.param_steps) {
+                            *param += step;
+                        }
+                    }
+                    params = note.params;
                 }
             }
+            note.current_params = params;
 
             let (left, right) = slot.voice.process_frame_with_params(
                 gate,
                 note.freq_hz,
                 note.gain,
                 note.pan,
-                &note.params,
+                &params,
             );
 
             if let Ok(track_index) = usize::try_from(note.track_id.get())
@@ -1897,6 +2202,48 @@ pub fn graph_note_voice_params(trigger: &SampleTrigger) -> [f32; VOICE_PARAM_COU
             DEFAULT_VOICE_PARAM_VALUE
         }
     })
+}
+
+/// Derives the per-note parameter breakpoint automation from a scheduled
+/// trigger (ADR 0012).
+///
+/// Each shipped [`VoiceParamBreakpoint`]'s normalized position is mapped
+/// onto a frame offset within the note's gate (`gate_frames`, the event's
+/// full extent in frames). Sanitizing is allocation-free and documented on
+/// [`VoiceParamRamps::set_breakpoints`]: non-finite positions or values are
+/// skipped, positions clamp into \[0, 1\], repeated frames keep the last
+/// value, a late-starting ramp holds the trigger-time value (`params`) until
+/// its first breakpoint, and everything past
+/// [`MAX_VOICE_PARAM_BREAKPOINTS`] is dropped.
+#[must_use]
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+pub fn graph_note_voice_ramps(
+    trigger: &SampleTrigger,
+    gate_frames: u32,
+    params: &[f32; VOICE_PARAM_COUNT],
+) -> VoiceParamRamps {
+    let mut ramps = VoiceParamRamps::none();
+    for (index, &start_value) in params.iter().enumerate() {
+        let Some(breakpoints) = trigger.voice_param_ramp(index) else {
+            continue;
+        };
+        for breakpoint in breakpoints {
+            if !breakpoint.position.is_finite() {
+                continue;
+            }
+            let position = breakpoint.position.clamp(0.0, 1.0);
+            let frame = (position * f64::from(gate_frames)).round() as u32;
+            let value = if breakpoint.value.is_finite() {
+                breakpoint.value as f32
+            } else {
+                // Mirror `graph_note_voice_params`: reject the value, not
+                // the note — push_breakpoint drops non-finite values.
+                f32::NAN
+            };
+            ramps.push_breakpoint(index, frame, value, start_value);
+        }
+    }
+    ramps
 }
 
 #[cfg(test)]
@@ -2660,5 +3007,340 @@ mod tests {
         assert!((freq_hz - 440.0).abs() < 1e-3);
         assert!((gain - GRAPH_OUTPUT_TRIM).abs() < 1e-6);
         assert!((pan - -0.5).abs() < 1e-6);
+    }
+
+    // -----------------------------------------------------------------------
+    // Per-note parameter breakpoint automation (ADR 0012): a control pattern
+    // with sub-note structure ships (position, value) breakpoints with the
+    // trigger; playback interpolates linearly between them at every frame.
+    // -----------------------------------------------------------------------
+
+    /// The center-channel equal-power pan factor applied by the meter voice.
+    const CENTER: f32 = std::f32::consts::FRAC_1_SQRT_2;
+
+    /// Renders `frames` frames of the poly-1 `meter` program (whose output is
+    /// the gated `p1` signal) and returns the left-channel values.
+    fn render_meter_frames(bank: &mut GraphVoiceBank, frames: usize) -> Vec<f32> {
+        let mut mix = vec![(0.0_f32, 0.0_f32); 1];
+        (0..frames)
+            .map(|_| {
+                mix[0] = (0.0, 0.0);
+                bank.render_frame(&mut mix);
+                mix[0].0
+            })
+            .collect()
+    }
+
+    #[test]
+    fn ramped_param_interpolates_linearly_between_breakpoints() {
+        let mut bank = GraphVoiceBank::with_user_programs(SR, vec![param_meter_spec(1)]);
+        let mut ramps = VoiceParamRamps::none();
+        // p1: 0.2 at the note start, reaching 1.0 at frame 100, holding after.
+        ramps.set_breakpoints(0, 0.2, &[(0, 0.2), (100, 1.0)]);
+        assert!(bank.trigger_with_automation(
+            "meter",
+            track(0),
+            1_000,
+            220.0,
+            1.0,
+            0.0,
+            [0.2, 0.0, 0.0, 0.0],
+            &ramps,
+        ));
+
+        let rendered = render_meter_frames(&mut bank, 200);
+        #[allow(clippy::cast_precision_loss, clippy::suboptimal_flops)]
+        let expected = |frame: usize| {
+            let value = if frame >= 100 {
+                1.0
+            } else {
+                0.2 + 0.8 * (frame as f32 / 100.0)
+            };
+            value * CENTER
+        };
+        for (frame, &sample) in rendered.iter().enumerate() {
+            assert!(
+                (sample - expected(frame)).abs() < 1e-5,
+                "frame {frame}: got {sample}, expected {}",
+                expected(frame)
+            );
+        }
+    }
+
+    #[test]
+    fn ramp_playback_has_no_step_discontinuities() {
+        let mut bank = GraphVoiceBank::with_user_programs(SR, vec![param_meter_spec(1)]);
+        let mut ramps = VoiceParamRamps::none();
+        // Up then down: the reversal at frame 480 is the step-risk point.
+        ramps.set_breakpoints(0, 0.0, &[(0, 0.0), (480, 1.0), (960, 0.0)]);
+        assert!(bank.trigger_with_automation(
+            "meter",
+            track(0),
+            2_000,
+            220.0,
+            1.0,
+            0.0,
+            [0.0; VOICE_PARAM_COUNT],
+            &ramps,
+        ));
+
+        let rendered = render_meter_frames(&mut bank, 1_200);
+        let max_slope = CENTER / 480.0;
+        for (frame, pair) in rendered.windows(2).enumerate() {
+            let step = (pair[1] - pair[0]).abs();
+            assert!(
+                step <= max_slope + 1e-6,
+                "frame {frame}: step {step} exceeds the interpolation slope {max_slope}"
+            );
+        }
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)] // bit-identical regression contract
+    fn constant_param_triggers_render_bit_identical_without_automation() {
+        let render = |use_automation: bool| {
+            let mut bank = GraphVoiceBank::with_user_programs(SR, vec![param_meter_spec(1)]);
+            let params = [0.4, 0.0, 0.0, 0.0];
+            if use_automation {
+                assert!(bank.trigger_with_automation(
+                    "meter",
+                    track(0),
+                    500,
+                    220.0,
+                    1.0,
+                    0.0,
+                    params,
+                    &VoiceParamRamps::none(),
+                ));
+            } else {
+                assert!(bank.trigger_with_params("meter", track(0), 500, 220.0, 1.0, 0.0, params));
+            }
+            render_meter_frames(&mut bank, 600)
+        };
+        assert_eq!(
+            render(false),
+            render(true),
+            "a trigger without breakpoints must render bit-identically \
+             through the automation-aware path"
+        );
+    }
+
+    #[test]
+    fn graph_note_voice_ramps_stamp_frames_from_normalized_positions() {
+        let breakpoints: std::sync::Arc<[VoiceParamBreakpoint]> = vec![
+            VoiceParamBreakpoint::new(0.0, 100.0),
+            VoiceParamBreakpoint::new(0.25, 200.0),
+            VoiceParamBreakpoint::new(0.5, 400.0),
+        ]
+        .into();
+        let trigger = SampleTrigger::named("meter")
+            .with_voice_param(0, 100.0)
+            .with_voice_param_ramp(0, breakpoints);
+        let params = graph_note_voice_params(&trigger);
+        let ramps = graph_note_voice_ramps(&trigger, 1_000, &params);
+
+        assert!(ramps.is_active(0));
+        assert!(!ramps.is_active(1));
+        assert!((ramps.value_at(0, 0.0, 0) - 100.0).abs() < 1e-4);
+        assert!((ramps.value_at(0, 0.0, 125) - 150.0).abs() < 1e-4);
+        assert!((ramps.value_at(0, 0.0, 250) - 200.0).abs() < 1e-4);
+        assert!((ramps.value_at(0, 0.0, 375) - 300.0).abs() < 1e-4);
+        assert!(
+            (ramps.value_at(0, 0.0, 900) - 400.0).abs() < 1e-4,
+            "the last breakpoint's value must hold to the note's end"
+        );
+
+        // A trigger without ramps stamps no automation at all.
+        let plain = SampleTrigger::named("meter").with_voice_param(0, 7.0);
+        let plain_params = graph_note_voice_params(&plain);
+        let plain_ramps = graph_note_voice_ramps(&plain, 1_000, &plain_params);
+        assert!((0..VOICE_PARAM_COUNT).all(|index| !plain_ramps.is_active(index)));
+    }
+
+    #[test]
+    fn graph_note_voice_ramps_skip_degenerate_breakpoints() {
+        // Non-finite positions or values are skipped; positions clamp into
+        // [0, 1]; a ramp that starts after the note's beginning gets an
+        // implicit start breakpoint holding the trigger-time value.
+        let breakpoints: std::sync::Arc<[VoiceParamBreakpoint]> = vec![
+            VoiceParamBreakpoint::new(f64::NAN, 999.0),
+            VoiceParamBreakpoint::new(0.5, f64::INFINITY),
+            VoiceParamBreakpoint::new(0.5, 300.0),
+            VoiceParamBreakpoint::new(7.0, 500.0),
+        ]
+        .into();
+        let trigger = SampleTrigger::named("meter")
+            .with_voice_param(0, 100.0)
+            .with_voice_param_ramp(0, breakpoints);
+        let params = graph_note_voice_params(&trigger);
+        let ramps = graph_note_voice_ramps(&trigger, 1_000, &params);
+
+        assert!(ramps.is_active(0));
+        assert!(
+            (ramps.value_at(0, 0.0, 0) - 100.0).abs() < 1e-4,
+            "the implicit start breakpoint must hold the trigger-time value"
+        );
+        assert!((ramps.value_at(0, 0.0, 250) - 200.0).abs() < 1e-4);
+        assert!((ramps.value_at(0, 0.0, 500) - 300.0).abs() < 1e-4);
+        assert!(
+            (ramps.value_at(0, 0.0, 1_000) - 500.0).abs() < 1e-4,
+            "positions above 1 must clamp to the note's end"
+        );
+    }
+
+    #[test]
+    fn breakpoints_beyond_the_cap_are_dropped() {
+        #[allow(clippy::cast_precision_loss)]
+        let breakpoints: std::sync::Arc<[VoiceParamBreakpoint]> = (0..64)
+            .map(|i| VoiceParamBreakpoint::new(f64::from(i) / 64.0, f64::from(i)))
+            .collect::<Vec<_>>()
+            .into();
+        let trigger = SampleTrigger::named("meter")
+            .with_voice_param(0, 0.0)
+            .with_voice_param_ramp(0, breakpoints);
+        let params = graph_note_voice_params(&trigger);
+        let ramps = graph_note_voice_ramps(&trigger, 6_400, &params);
+
+        assert!(ramps.is_active(0));
+        #[allow(clippy::cast_precision_loss)]
+        let capped = MAX_VOICE_PARAM_BREAKPOINTS as f32 - 1.0;
+        assert!(
+            (ramps.value_at(0, 0.0, 6_399) - capped).abs() < 1e-4,
+            "only the first {MAX_VOICE_PARAM_BREAKPOINTS} breakpoints ship; \
+             the last kept value holds to the note's end: {}",
+            ramps.value_at(0, 0.0, 6_399)
+        );
+    }
+
+    #[test]
+    fn steal_stamps_the_new_notes_ramps() {
+        let mut bank = GraphVoiceBank::with_user_programs(SR, vec![param_meter_spec(1)]);
+        let mut first = VoiceParamRamps::none();
+        first.set_breakpoints(0, 0.1, &[(0, 0.1), (100, 0.2)]);
+        assert!(bank.trigger_with_automation(
+            "meter",
+            track(0),
+            10_000,
+            220.0,
+            1.0,
+            0.0,
+            [0.1, 0.0, 0.0, 0.0],
+            &first,
+        ));
+        let mut second = VoiceParamRamps::none();
+        second.set_breakpoints(0, 0.5, &[(0, 0.5), (100, 1.0)]);
+        assert!(
+            bank.trigger_with_automation(
+                "meter",
+                track(0),
+                10_000,
+                440.0,
+                1.0,
+                0.0,
+                [0.5, 0.0, 0.0, 0.0],
+                &second,
+            ),
+            "the poly-1 pool must steal for the second note"
+        );
+
+        // Skip the one-frame retrigger gap, then the ramp restarts from the
+        // NEW note's automation (age resets with the steal).
+        let rendered = render_meter_frames(&mut bank, 102);
+        assert!(
+            (rendered[101] - CENTER).abs() < 1e-4,
+            "a steal must adopt the new note's breakpoints: {}",
+            rendered[101]
+        );
+    }
+
+    #[test]
+    #[allow(clippy::cast_precision_loss, clippy::suboptimal_flops)] // exact test constants
+    fn steal_ramp_glides_onto_the_new_notes_automation_envelope() {
+        // Steal x automation composition (#1424 param ramps x ADR 0012): a
+        // stolen voice whose new note carries breakpoints must glide from
+        // the stolen note's current value ONTO the new note's envelope —
+        // no jump beyond the handover slope at the steal, an exact landing
+        // on the envelope at the window's end, and the envelope alone
+        // driving afterwards.
+        let mut bank = GraphVoiceBank::with_user_programs(SR, vec![param_meter_spec(1)]);
+        assert!(bank.trigger_with_params(
+            "meter",
+            track(0),
+            10_000,
+            220.0,
+            1.0,
+            0.0,
+            [0.9, 0.0, 0.0, 0.0],
+        ));
+        // Let the first note render a while so its held value is what a
+        // listener hears at the steal.
+        let _ = render_meter_frames(&mut bank, 10);
+
+        // The new note ramps p1 from 0.1 at its start to 0.5 at frame 960.
+        let mut ramps = VoiceParamRamps::none();
+        ramps.set_breakpoints(0, 0.1, &[(0, 0.1), (960, 0.5)]);
+        assert!(
+            bank.trigger_with_automation(
+                "meter",
+                track(0),
+                10_000,
+                440.0,
+                1.0,
+                0.0,
+                [0.1, 0.0, 0.0, 0.0],
+                &ramps,
+            ),
+            "the poly-1 pool must steal for the second note"
+        );
+
+        let slot = meter_slot(&bank);
+        let window = bank.slots[slot].param_ramp_frames as usize;
+        assert!(window > 4, "the default handover window spans many frames");
+        let rendered = render_meter_frames(&mut bank, 1_000);
+        let value = |frame: usize| rendered[frame] / CENTER;
+        let envelope = |frame: usize| 0.1 + (0.5 - 0.1) * (frame.min(960) as f32 / 960.0);
+
+        // The handover starts from the stolen note's value: the first
+        // audible frame (index 1 — index 0 is the one-frame retrigger gap
+        // with the gate low) sits within two glide steps of 0.9, nowhere
+        // near the envelope's 0.1 start.
+        let glide_step = (0.9 - 0.1) / window as f32;
+        assert!(
+            (value(1) - 0.9).abs() <= 2.0 * glide_step + 1e-4,
+            "the glide must start from the stolen note's current value: \
+             got {}, expected about 0.9",
+            value(1)
+        );
+
+        // No discontinuity beyond the handover slope after the steal: every
+        // per-frame step is bounded by the glide step plus the envelope's
+        // own slope.
+        let envelope_step = (0.5 - 0.1) / 960.0;
+        for (frame, pair) in rendered.windows(2).enumerate().skip(1) {
+            let step = (pair[1] - pair[0]).abs() / CENTER;
+            assert!(
+                step <= glide_step + envelope_step + 1e-4,
+                "frame {frame}: step {step} exceeds the handover slope"
+            );
+        }
+
+        // The glide lands exactly ON the envelope at the window's end...
+        assert!(
+            (value(window - 1) - envelope(window - 1)).abs() < 1e-5,
+            "the glide must land exactly on the envelope: got {}, expected {}",
+            value(window - 1),
+            envelope(window - 1)
+        );
+
+        // ...and from then on the envelope alone drives the parameter.
+        for frame in window..rendered.len() {
+            assert!(
+                (value(frame) - envelope(frame)).abs() < 1e-5,
+                "frame {frame}: after the glide lands the envelope alone \
+                 drives: got {}, expected {}",
+                value(frame),
+                envelope(frame)
+            );
+        }
     }
 }

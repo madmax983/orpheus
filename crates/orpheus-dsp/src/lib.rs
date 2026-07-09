@@ -38,9 +38,10 @@ pub use graph_voice::{
     DEFAULT_GRAPH_VOICE_POLYPHONY, DEFAULT_PARAM_RAMP_SECONDS, DEFAULT_VOICE_PARAM_VALUE,
     GraphVoice, GraphVoiceBank, GraphVoiceProgram, GraphVoiceSpec, GraphVoiceSpecError,
     MAX_GRAPH_VOICE_POLYPHONY, MAX_PARAM_RAMP_SECONDS, MAX_VOICE_DELAY_SECONDS,
-    MAX_VOICE_RELEASE_TAIL_SECONDS, MODULATED_VOICE_DELAY_MAX_SECONDS, ShelfMode, StealPolicy,
-    SvfMode, VOICE_PARAM_COUNT, VOICE_STEAL_RAMP_SECONDS, VoiceNodeSpec, VoiceSignalRef,
-    builtin_graph_voice_programs, graph_note_voice_params,
+    MAX_VOICE_PARAM_BREAKPOINTS, MAX_VOICE_RELEASE_TAIL_SECONDS, MODULATED_VOICE_DELAY_MAX_SECONDS,
+    ShelfMode, StealPolicy, SvfMode, VOICE_PARAM_COUNT, VOICE_STEAL_RAMP_SECONDS, VoiceNodeSpec,
+    VoiceParamBreakpoint, VoiceParamRamps, VoiceSignalRef, builtin_graph_voice_programs,
+    graph_note_voice_params, graph_note_voice_ramps,
 };
 pub use offline::{
     GeneratorCycleSpec, OfflineRenderError, render_events_to_file, render_events_to_file_with_bank,

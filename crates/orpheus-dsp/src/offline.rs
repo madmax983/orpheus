@@ -20,6 +20,7 @@ use crate::effects::BusEffectState;
 use crate::engine::{DEFAULT_SAMPLE_RATE, DEFAULT_TEMPO_BPM, EngineError, frames_per_cycle};
 use crate::graph_voice::{
     GraphVoiceBank, GraphVoiceSpec, graph_note_params, graph_note_voice_params,
+    graph_note_voice_ramps,
 };
 use crate::plugin_host::PluginProcessor;
 use crate::routing::{GeneratorId, RoutingSnapshot, TrackId, TrackSource};
@@ -889,14 +890,21 @@ fn activate_voice(
             &scheduled_trigger.trigger,
             crate::DEFAULT_ANALOG_BASE_FREQUENCY_HZ,
         );
-        let _ = graph_voices.trigger_with_params(
+        let params = graph_note_voice_params(&scheduled_trigger.trigger);
+        let ramps = graph_note_voice_ramps(
+            &scheduled_trigger.trigger,
+            scheduled_trigger.duration_frames,
+            &params,
+        );
+        let _ = graph_voices.trigger_with_automation(
             token,
             scheduled_trigger.track_id,
             scheduled_trigger.duration_frames,
             freq_hz,
             gain,
             pan,
-            graph_note_voice_params(&scheduled_trigger.trigger),
+            params,
+            &ramps,
         );
         return Ok(());
     }

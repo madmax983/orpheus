@@ -1069,6 +1069,13 @@ pub struct SampleEvent {
     /// `voice { ... }` bodies as ambient signals (ADR 0010 addendum). Zero
     /// when the pattern never sets them.
     voice_params: [f64; orpheus_dsp::VOICE_PARAM_COUNT],
+    /// Per-note parameter breakpoint automation (ADR 0012): when a `p1`..`p4`
+    /// control pattern has sub-note structure, the values it takes within the
+    /// note's span ship here as normalized-position breakpoints instead of
+    /// fragmenting the note into retriggers. `None` per parameter when the
+    /// control is constant across the note.
+    voice_param_ramps:
+        [Option<Arc<[orpheus_dsp::VoiceParamBreakpoint]>>; orpheus_dsp::VOICE_PARAM_COUNT],
     pedal_program: Option<Arc<orpheus_dsp::PedalProgram>>,
 }
 
@@ -1100,6 +1107,7 @@ impl SampleEvent {
             slice_start: 0.0,
             slice_end: 1.0,
             voice_params: [0.0; orpheus_dsp::VOICE_PARAM_COUNT],
+            voice_param_ramps: [const { None }; orpheus_dsp::VOICE_PARAM_COUNT],
             pedal_program: None,
         }
     }
@@ -1315,10 +1323,23 @@ impl SampleEvent {
     /// The per-note voice pattern parameters (`p1`..`p4`), zero when unset.
     ///
     /// Graph voice bodies read them as the ambient `p1`..`p4` signals,
-    /// sampled at trigger time and held for the note (ADR 0010 addendum).
+    /// sampled at trigger time (ADR 0010 addendum). A parameter with
+    /// breakpoint automation ([`Self::voice_param_ramp`]) holds this value
+    /// only at the note's start.
     #[must_use]
     pub const fn voice_params(&self) -> [f64; orpheus_dsp::VOICE_PARAM_COUNT] {
         self.voice_params
+    }
+
+    /// The breakpoint automation attached to one per-note voice parameter
+    /// (`index` 0 is `p1`), or `None` when the control pattern had no
+    /// sub-note structure over this event (ADR 0012).
+    #[must_use]
+    pub fn voice_param_ramp(
+        &self,
+        index: usize,
+    ) -> Option<&Arc<[orpheus_dsp::VoiceParamBreakpoint]>> {
+        self.voice_param_ramps.get(index).and_then(Option::as_ref)
     }
 
     #[doc(hidden)]
@@ -1377,6 +1398,11 @@ trait PatternValueTransform: Sized {
     fn adjust_pulse_width(&self, pulse_width: f64) -> Self;
     fn adjust_pan(&self, amount: f64) -> Self;
     fn adjust_voice_param(&self, index: usize, value: f64) -> Self;
+    fn adjust_voice_param_ramp(
+        &self,
+        index: usize,
+        breakpoints: &Arc<[orpheus_dsp::VoiceParamBreakpoint]>,
+    ) -> Self;
     fn adjust_rate(&self, factor: f64) -> Self;
     fn adjust_onset(&self, onset_index: u32) -> Self;
     fn adjust_slice(&self, start: f64, end: f64) -> Self;
@@ -1485,6 +1511,21 @@ impl PatternValueTransform for SampleEvent {
         self.clone_with(|event| {
             if let Some(param) = event.voice_params.get_mut(index) {
                 *param = value;
+                // A later constant control wins over an earlier ramp
+                // (ADR 0012): the parameter holds `value` for the note.
+                event.voice_param_ramps[index] = None;
+            }
+        })
+    }
+
+    fn adjust_voice_param_ramp(
+        &self,
+        index: usize,
+        breakpoints: &Arc<[orpheus_dsp::VoiceParamBreakpoint]>,
+    ) -> Self {
+        self.clone_with(|event| {
+            if index < event.voice_param_ramps.len() {
+                event.voice_param_ramps[index] = Some(breakpoints.clone());
             }
         })
     }
@@ -1607,6 +1648,14 @@ impl PatternValueTransform for f64 {
     }
 
     fn adjust_voice_param(&self, _index: usize, _value: f64) -> Self {
+        *self
+    }
+
+    fn adjust_voice_param_ramp(
+        &self,
+        _index: usize,
+        _breakpoints: &Arc<[orpheus_dsp::VoiceParamBreakpoint]>,
+    ) -> Self {
         *self
     }
 
@@ -4747,9 +4796,7 @@ where
                 index,
                 control,
                 inner,
-            } => {
-                apply_control_pattern(inner, control, span, ControlPatternKind::VoiceParam(*index))
-            }
+            } => apply_voice_param_pattern(inner, control, span, *index),
             Self::Compressor { mix, inner } => apply_value_mutation(inner, span, |value| {
                 *value = value.adjust_compressor_mix(*mix);
             }),
@@ -5518,6 +5565,115 @@ where
             Ok(Some(new_value))
         },
     )
+}
+
+/// Applies a `p1`..`p4` control pattern to `inner`'s events (ADR 0012).
+///
+/// Unlike [`apply_control_pattern`], sub-note control structure does NOT
+/// fragment a note into retriggers. Each source event keeps its span and
+/// `whole`; the control value at the event's start is stamped as the
+/// trigger-time parameter, and when the control takes further values within
+/// the event's extent they ship as normalized-position automation
+/// breakpoints ([`orpheus_dsp::VoiceParamBreakpoint`]) — the engine
+/// interpolates the parameter between them while the note sounds. At most
+/// [`orpheus_dsp::MAX_VOICE_PARAM_BREAKPOINTS`] breakpoints ship per note
+/// per parameter; excess control values are dropped and the last kept value
+/// holds for the rest of the note.
+fn apply_voice_param_pattern<T>(
+    inner: &PatternRuntime<T>,
+    control: &PatternRuntime<f64>,
+    span: &TimeSpan,
+    index: usize,
+) -> Result<Vec<Event<T>>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    let source_events = inner.try_query(span)?;
+    // Validate over the query span like every other control, so invalid
+    // control values error even when no note overlaps them.
+    let control_events = sample_control_events_by_cycle(control, span)?;
+    for event in &control_events {
+        ControlPatternKind::VoiceParam(index).validate(event.value)?;
+    }
+    if control_events.is_empty() {
+        return Ok(source_events);
+    }
+
+    source_events
+        .into_iter()
+        .map(|event| attach_voice_param_automation(event, control, index))
+        .collect()
+}
+
+/// Stamps one event with the control's value at its start and, when the
+/// control moves within the event's extent, with automation breakpoints.
+fn attach_voice_param_automation<T>(
+    event: Event<T>,
+    control: &PatternRuntime<f64>,
+    index: usize,
+) -> Result<Event<T>, EvalError>
+where
+    T: PatternRuntimeValue,
+{
+    // The note's sounding extent mirrors the scheduler's duration
+    // semantics: from the trigger point to the end of the unclipped whole
+    // when present (a note sustaining across the cycle boundary keeps its
+    // full extent).
+    let start = *event.part.start();
+    let end = event.whole.as_ref().map_or_else(
+        || *event.part.end(),
+        |whole| max(*whole.end(), *event.part.end()),
+    );
+    if start >= end {
+        return Ok(event);
+    }
+    let extent = build_span(start, end)?;
+    let controls = sample_control_events_by_cycle(control, &extent)?;
+
+    let extent_start = f64::from(&start);
+    let extent_length = f64::from(&end) - extent_start;
+    let mut breakpoints: Vec<orpheus_dsp::VoiceParamBreakpoint> = Vec::new();
+    for control_event in &controls {
+        ControlPatternKind::VoiceParam(index).validate(control_event.value)?;
+        let clip_start = max(*control_event.part.start(), start);
+        if clip_start >= end {
+            continue;
+        }
+        let position = ((f64::from(&clip_start) - extent_start) / extent_length).clamp(0.0, 1.0);
+        match breakpoints.last_mut() {
+            // Stacked controls starting together: the later one wins,
+            // matching the sequential application order of the fragmenting
+            // control path.
+            Some(last) if last.position >= position => last.value = control_event.value,
+            _ => breakpoints.push(orpheus_dsp::VoiceParamBreakpoint::new(
+                position,
+                control_event.value,
+            )),
+        }
+    }
+    if breakpoints.is_empty() {
+        return Ok(event);
+    }
+    breakpoints.truncate(orpheus_dsp::MAX_VOICE_PARAM_BREAKPOINTS);
+
+    let mut value = event.value;
+    let covers_start = breakpoints[0].position <= 0.0;
+    if covers_start {
+        // The control covers the note's start: its value there is the
+        // trigger-time parameter (exactly the pre-automation behavior).
+        value = value.adjust_voice_param(index, breakpoints[0].value);
+    }
+    if breakpoints.len() >= 2 || !covers_start {
+        // Sub-note structure (or a control starting mid-note, which ramps
+        // from the trigger-time value): ship the breakpoints.
+        let shipped: Arc<[orpheus_dsp::VoiceParamBreakpoint]> = breakpoints.into();
+        value = value.adjust_voice_param_ramp(index, &shipped);
+    }
+    Ok(Event {
+        whole: event.whole,
+        part: event.part,
+        value,
+    })
 }
 
 fn semitones_to_rate_multiplier(semitones: f64) -> f64 {

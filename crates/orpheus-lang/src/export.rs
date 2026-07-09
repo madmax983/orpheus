@@ -78,6 +78,11 @@ pub fn sample_trigger_from_event(event: &crate::value::SampleEvent) -> SampleTri
         .with_pulse_width(event.pulse_width())
         .with_slice(event.slice_start(), event.slice_end())
         .with_voice_params(event.voice_params());
+    for index in 0..orpheus_dsp::VOICE_PARAM_COUNT {
+        if let Some(ramp) = event.voice_param_ramp(index) {
+            trigger = trigger.with_voice_param_ramp(index, ramp.clone());
+        }
+    }
     if let Some(onset_index) = event.onset_index() {
         trigger = trigger.with_onset(onset_index);
     }

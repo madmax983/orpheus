@@ -13,9 +13,10 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 
 use orpheus_dsp::{
-    GraphVoiceBank, GraphVoiceSpec, Node, PlaybackSample, Processor, SvfMode, TrackId,
-    VoiceNodeSpec, VoiceSignalRef, adsr, bind, builtin_graph_voice_programs, constant, fdelay,
-    gain_node, pan, par, passthrough, sample_player, seq, sine, sum, wire,
+    GraphVoiceBank, GraphVoiceSpec, Node, PlaybackSample, Processor, SampleTrigger, SvfMode,
+    TrackId, VoiceNodeSpec, VoiceParamBreakpoint, VoiceSignalRef, adsr, bind,
+    builtin_graph_voice_programs, constant, fdelay, gain_node, graph_note_voice_params,
+    graph_note_voice_ramps, pan, par, passthrough, sample_player, seq, sine, sum, wire,
 };
 
 struct CountingAllocator;
@@ -548,6 +549,90 @@ fn param_driven_pooled_voice_renders_without_allocating() {
         after - before,
         0,
         "param-driven trigger/steal/render must not allocate after the pool is built"
+    );
+}
+
+#[test]
+fn breakpoint_automated_param_voice_renders_without_allocating() {
+    // Per-note parameter breakpoint automation (ADR 0012): a saw through an
+    // SVF lowpass whose cutoff is the automated `p1` signal. The trigger's
+    // `Arc`-shipped breakpoints are stamped into the note's fixed-size ramp
+    // storage; stamping (`graph_note_voice_ramps`), triggering, and the
+    // interpolating playback must all be allocation-free once the pool and
+    // the trigger exist.
+    let spec = GraphVoiceSpec::new(
+        "sweeplead",
+        0.05,
+        vec![
+            VoiceNodeSpec::Saw {
+                freq: VoiceSignalRef::Freq,
+            },
+            VoiceNodeSpec::Constant { value: 0.7 },
+            VoiceNodeSpec::Svf {
+                input: VoiceSignalRef::Node(0),
+                cutoff_hz: VoiceSignalRef::Param(0),
+                q: VoiceSignalRef::Node(1),
+                mode: SvfMode::Lowpass,
+            },
+            VoiceNodeSpec::Ar {
+                gate: VoiceSignalRef::Gate,
+                attack_s: 0.001,
+                release_s: 0.05,
+            },
+            VoiceNodeSpec::Mul {
+                left: VoiceSignalRef::Node(2),
+                right: VoiceSignalRef::Node(3),
+            },
+        ],
+        VoiceSignalRef::Node(4),
+    )
+    .expect("automated param voice spec should validate");
+
+    let mut bank = GraphVoiceBank::with_user_programs(SR, vec![spec]);
+    let track = TrackId::new(0);
+    let mut mix = vec![(0.0_f32, 0.0_f32); 1];
+
+    // Built off the audio thread: the trigger owns its breakpoints behind an
+    // `Arc`, exactly as the pattern side ships them.
+    let breakpoints: std::sync::Arc<[VoiceParamBreakpoint]> = vec![
+        VoiceParamBreakpoint::new(0.0, 400.0),
+        VoiceParamBreakpoint::new(0.25, 1_200.0),
+        VoiceParamBreakpoint::new(0.5, 4_000.0),
+        VoiceParamBreakpoint::new(0.75, 800.0),
+    ]
+    .into();
+    let trigger = SampleTrigger::named("sweeplead")
+        .with_voice_param(0, 400.0)
+        .with_voice_param_ramp(0, breakpoints);
+
+    let before = allocation_count();
+    let params = graph_note_voice_params(&trigger);
+    let ramps = graph_note_voice_ramps(&trigger, 2_048, &params);
+    assert!(bank.trigger_with_automation(
+        "sweeplead",
+        track,
+        2_048,
+        110.0,
+        0.8,
+        0.0,
+        params,
+        &ramps
+    ));
+    let mut energy = 0.0_f32;
+    for _ in 0..4_096 {
+        mix[0] = (0.0, 0.0);
+        bank.render_frame(&mut mix);
+        assert!(mix[0].0.is_finite() && mix[0].1.is_finite());
+        energy += mix[0].0.abs() + mix[0].1.abs();
+    }
+    let after = allocation_count();
+
+    assert!(energy > 0.0, "the automated voice should be audible");
+    assert_eq!(
+        after - before,
+        0,
+        "breakpoint stamping, trigger, and interpolating playback must not \
+         allocate after the pool and trigger are built"
     );
 }
 

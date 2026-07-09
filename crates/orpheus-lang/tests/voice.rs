@@ -1129,6 +1129,183 @@ fn session_pattern_without_params_uses_the_zero_default() {
 }
 
 // ---------------------------------------------------------------------------
+// Per-note parameter breakpoint automation (ADR 0012): a `p1`..`p4` control
+// with sub-note structure no longer fragments the note into retriggers — the
+// note keeps its span and ships (position, value) breakpoints instead, and
+// the engine interpolates the parameter between them while the note sounds.
+// ---------------------------------------------------------------------------
+
+#[test]
+#[allow(clippy::float_cmp)] // exact control constants pass through unchanged
+fn sub_note_p1_structure_ships_breakpoints_instead_of_retriggering() {
+    let bindings = eval_module("lead = bd |> p1(100 200 400 800)", ReplMode::Strict).unwrap();
+    let pattern = bindings
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .clone();
+    let events = pattern.query_unit().unwrap();
+
+    assert_eq!(
+        events.len(),
+        1,
+        "sub-note control structure must not split the note into retriggers"
+    );
+    let event = &events[0];
+    assert!(
+        f64::from(event.part.start()) == 0.0 && f64::from(event.part.end()) == 1.0,
+        "the note must keep its full span instead of being clipped at control \
+         boundaries"
+    );
+    assert_eq!(
+        event.value.voice_params()[0],
+        100.0,
+        "the trigger-time value is the control's value at the note start"
+    );
+
+    let ramp = event
+        .value
+        .voice_param_ramp(0)
+        .expect("sub-note structure must attach breakpoint automation");
+    let shipped: Vec<(f64, f64)> = ramp
+        .iter()
+        .map(|breakpoint| (breakpoint.position, breakpoint.value))
+        .collect();
+    assert_eq!(
+        shipped,
+        vec![(0.0, 100.0), (0.25, 200.0), (0.5, 400.0), (0.75, 800.0)],
+        "breakpoints carry the control's values at their normalized positions"
+    );
+}
+
+#[test]
+fn constant_p1_controls_attach_no_breakpoints() {
+    // Regression: per-event constants keep the exact pre-automation shape —
+    // stamped trigger-time values, no ramps, one event per note.
+    let bindings = eval_module("lead = bd sn |> p1(300 4000)", ReplMode::Strict).unwrap();
+    let pattern = bindings
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .clone();
+    let events = pattern.query_unit().unwrap();
+
+    assert_eq!(events.len(), 2);
+    for (event, expected) in events.iter().zip([300.0, 4000.0]) {
+        assert!((event.value.voice_params()[0] - expected).abs() < f64::EPSILON);
+        assert!(
+            event.value.voice_param_ramp(0).is_none(),
+            "a control constant across the note must not ship automation"
+        );
+    }
+}
+
+#[test]
+fn continuous_sub_note_p1_controls_stay_within_their_range() {
+    let bindings = eval_module(
+        "lead = bd |> p1(segment(8, rand) |> range(200, 4000))",
+        ReplMode::Strict,
+    )
+    .unwrap();
+    let pattern = bindings
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .clone();
+    let events = pattern.query_unit().unwrap();
+
+    assert_eq!(events.len(), 1, "segmented controls must not retrigger");
+    let ramp = events[0]
+        .value
+        .voice_param_ramp(0)
+        .expect("an 8-segment control must ship breakpoints");
+    assert_eq!(ramp.len(), 8);
+    for breakpoint in ramp.iter() {
+        assert!(
+            (200.0..=4000.0).contains(&breakpoint.value),
+            "range-mapped breakpoint values must stay within [200, 4000]: {}",
+            breakpoint.value
+        );
+        assert!((0.0..1.0).contains(&breakpoint.position));
+    }
+}
+
+#[test]
+fn p1_breakpoints_cap_at_the_documented_bound() {
+    // Only the FIRST `MAX_VOICE_PARAM_BREAKPOINTS` control values ship; the
+    // last kept value holds for the rest of the note (ADR 0012).
+    let bindings = eval_module(
+        "lead = bd |> p1(segment(64, rand) |> range(0, 1))",
+        ReplMode::Strict,
+    )
+    .unwrap();
+    let pattern = bindings
+        .get("lead")
+        .unwrap()
+        .as_sample_pattern()
+        .unwrap()
+        .clone();
+    let events = pattern.query_unit().unwrap();
+
+    let ramp = events[0]
+        .value
+        .voice_param_ramp(0)
+        .expect("a 64-segment control must ship breakpoints");
+    assert_eq!(
+        ramp.len(),
+        orpheus_dsp::MAX_VOICE_PARAM_BREAKPOINTS,
+        "breakpoints beyond the cap are dropped"
+    );
+}
+
+#[test]
+fn session_p1_sweep_animates_within_a_single_note() {
+    // End-to-end: a held note whose SVF cutoff (p1) rises in three sub-note
+    // steps. The note must brighten across its OWN thirds — the value moves
+    // DURING the note, not just at onsets (ADR 0012) — using the second-
+    // difference brightness metric from the filter-stage tests.
+    let mut session = ReplSession::with_engine(EngineHandle::stub());
+    session.eval_line(":tempo 1200").unwrap();
+    session.eval_line(PARAM_ACID).unwrap();
+    let _ = session.render_test_block_for_tui(1);
+    // Six control slots over two half-cycle notes: each note carries three
+    // breakpoints at note-relative positions 0, 1/3, and 2/3.
+    session
+        .eval_line("line = acid acid |> p1(300 1500 6000 300 1500 6000)")
+        .unwrap();
+    let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
+
+    // One cycle = 9600 frames; the first note owns [0, 4800) with p1
+    // breakpoints at frames 0, 1600, and 3200. Windows sit inside each
+    // third of that single note.
+    let rendered = session.render_test_block_for_tui(4_800);
+    assert!(rendered.iter().all(|sample| sample.is_finite()));
+    let left: Vec<f32> = stereo_frames(&rendered)
+        .iter()
+        .map(|&(left, _)| left)
+        .collect();
+    let first = brightness(&left[200..1_400]);
+    let second = brightness(&left[1_800..3_000]);
+    let third = brightness(&left[3_400..4_600]);
+
+    assert!(
+        left[200..4_600].iter().map(|s| s.abs()).sum::<f32>() > 1.0,
+        "the swept note must be audible throughout"
+    );
+    assert!(
+        second > first * 1.5,
+        "the cutoff must open WITHIN the note: middle {second} vs start {first}"
+    );
+    assert!(
+        third > second * 1.5,
+        "the cutoff must keep opening WITHIN the note: end {third} vs middle {second}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Sample-stage follow-ups (parity roadmap / ADR 0010 addendum):
 // `sample_loop("name"[, rate])` wraps at the buffer end instead of stopping,
 // `sample_pitched("name"[, reference_hz])` derives the playback rate from the
