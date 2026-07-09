@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2025-02-28 - Missing Unit Test for StepOp::Replicate evaluation branch
+**Learning:** The evaluation logic for step modifiers in `eval_modified` includes a catch-all block that returns an error when `StepOp::Replicate` is encountered. This is meant as a sanity check since the parser is supposed to pre-expand all `!` step operators, preventing them from surviving to the AST stage that is evaluated. This specific error branch was missing from the `eval.rs` unit tests, making it a coverage gap for untested edge-case/panic points on structural items.
+**Action:** Always add direct AST tests to bypass parsing and explicitly test fallback/safety error paths within evaluation logic, even when the parser "guarantees" they won't happen.
