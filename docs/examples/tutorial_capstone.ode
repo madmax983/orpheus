@@ -1,0 +1,15 @@
+kick  = bd ~ bd ~ |> mask(euclid(5, 8))
+snare = ~ sn ~ sn |> when(4, 2, rev)
+hats  = hh*8 |> gain(0.6) |> degrade
+drums = stack(kick, snare, hats) |> jux(rev)
+
+bass_synth = voice { osc = saw(freq) ; shaped = osc |> lowpass(800, 0.3) |> drive(1.2) ; shaped * ar(gate, 0.001, 0.2) }
+bassline = bass_synth bass_synth bass_synth bass_synth |> pitch(c2 e2 g2 c3) |> gain(0.5)
+
+lead = gsine ~ gsine ~ |> pitch(c4 e4 g4 c5) |> every(4, fast(2)) |> gain(0.4)
+
+song = stack(
+  drums,
+  bassline |> slow(2),
+  lead
+)
