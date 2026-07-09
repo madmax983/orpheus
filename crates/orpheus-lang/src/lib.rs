@@ -134,3 +134,7 @@ pub enum ReplMode {
 
 pub(crate) mod mermaid;
 pub use mermaid::export_sample_pattern_to_mermaid_gantt;
+#[cfg(test)]
+mod eval_tests;
+#[cfg(test)]
+mod midi_input_tests;

@@ -11,3 +11,6 @@
 ## 2023-10-31 - [Fuzzing Evaluation Resilience & Pattern Match Exhaustiveness]
 **Learning:** `E0004: non-exhaustive patterns` compilation errors occur when adding new variants to central enums (like `BuiltinKind`) without updating matching functions downstream (`name()`, `arity()`, `execute()`). Fuzzing via `cargo-fuzz` confirmed the evaluation system handles malformed strings gracefully without crashing.
 **Action:** When adding enum variants, systematically check and update all downstream match blocks. Ensure all systems compiling after a feature addition don't just compile but also withstand `cargo-fuzz` without panicking.
+## 2024-05-28 - [Added Chaos Tests for Float Parsing, Math, and MIDI]
+**Learning:** Evaluated how `eval_module` and `midi_input` handled unexpected strings, deeply nested tree limits, float logic parsing bounds, and concurrency operations via `loom`. Math conversion using `checked_pow10` and boundary handling for large exponents prevents panics and defaults securely to returning `EvalError` logic as tested by our added fuzzer.
+**Action:** Created `eval_tests.rs` and `midi_input_tests.rs` to persist property testing for float representations, recursion limits via argument parsing, and MIDI message boundaries.
