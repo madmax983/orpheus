@@ -17,6 +17,7 @@
 
 use orpheus_dsp::{
     GraphVoiceSpec, Node, PlaybackSample, VoiceNodeSpec, VoiceSignalRef, sample_player,
+    sample_player_looped, sample_player_pitched,
 };
 
 const SR: f32 = 48_000.0;
@@ -215,6 +216,195 @@ fn non_positive_or_non_finite_rates_hold_the_playhead() {
 }
 
 // ---------------------------------------------------------------------------
+// Loop mode: `sample_player_looped` hard-wraps at the buffer end instead of
+// stopping (parity roadmap follow-up).
+// ---------------------------------------------------------------------------
+
+/// Builds a looped player over `frames` recorded at the node's output rate.
+fn native_looped_player(frames: &[f32]) -> orpheus_dsp::SamplePlayerNode {
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let sample = PlaybackSample::from_mono_frames(frames.to_vec(), SR as u32);
+    sample_player_looped(&sample, SR)
+}
+
+#[test]
+fn looped_player_tiles_the_buffer_bit_exactly_at_unit_rate() {
+    let buffer = [0.125_f32, -0.25, 0.5, -0.75, 0.25, -0.125, 0.0625, -0.0625];
+    let mut node = native_looped_player(&buffer);
+
+    let frames = buffer.len() * 3 + 2;
+    let gate = vec![1.0_f32; frames];
+    let rate = vec![1.0_f32; frames];
+    let out = run(&mut node, &gate, &rate);
+
+    for (k, &got) in out.iter().enumerate() {
+        assert_eq!(
+            got,
+            buffer[k % buffer.len()],
+            "frame {k}: hard-wrap at rate 1.0 must tile the buffer bit-exactly"
+        );
+    }
+}
+
+#[test]
+fn looped_player_keeps_producing_where_the_one_shot_goes_silent() {
+    let buffer = [0.5_f32, -0.5, 0.5, -0.5];
+    let mut one_shot = native_player(&buffer);
+    let mut looped = native_looped_player(&buffer);
+
+    let frames = buffer.len() * 8;
+    let gate = vec![1.0_f32; frames];
+    let rate = vec![1.0_f32; frames];
+    let plain_out = run(&mut one_shot, &gate, &rate);
+    let looped_out = run(&mut looped, &gate, &rate);
+
+    let late = buffer.len() * 2;
+    let plain_late: f32 = plain_out[late..].iter().map(|s| s.abs()).sum();
+    let looped_late: f32 = looped_out[late..].iter().map(|s| s.abs()).sum();
+    assert_eq!(plain_late, 0.0, "the one-shot ends at the buffer end");
+    assert!(
+        looped_late > 1.0,
+        "the loop must keep producing in the late window, got {looped_late}"
+    );
+}
+
+#[test]
+fn looped_player_interpolates_across_the_wrap() {
+    // At rate 0.5 the playhead visits 0, 0.5, 1, 1.5, then wraps to 0: the
+    // position past the final sample interpolates toward the buffer HEAD
+    // (hard-wrap), not toward silence like the one-shot.
+    let buffer = [0.0_f32, 1.0];
+    let mut node = native_looped_player(&buffer);
+
+    let gate = [1.0_f32; 8];
+    let rate = [0.5_f32; 8];
+    let out = run(&mut node, &gate, &rate);
+
+    let expected = [0.0_f32, 0.5, 1.0, 0.5, 0.0, 0.5, 1.0, 0.5];
+    for (i, (&got, &want)) in out.iter().zip(expected.iter()).enumerate() {
+        assert!(
+            (got - want).abs() < 1e-6,
+            "frame {i}: expected {want}, got {got} (all: {out:?})"
+        );
+    }
+}
+
+#[test]
+fn looped_player_wraps_steps_larger_than_the_buffer() {
+    // A rate that steps past the whole buffer in one frame must wrap as many
+    // times as needed and keep the playhead in range (no panic, no stall).
+    let buffer = [0.25_f32, -0.25, 0.5];
+    let mut node = native_looped_player(&buffer);
+
+    let gate = [1.0_f32; 12];
+    let rate = [5.0_f32; 12];
+    let out = run(&mut node, &gate, &rate);
+
+    // Positions 0, 5 % 3 = 2, (2+5) % 3 = 1, ... — always a valid read.
+    assert!(out.iter().all(|s| s.is_finite()));
+    assert!(
+        out.iter().map(|s| s.abs()).sum::<f32>() > 0.5,
+        "an over-length step must keep looping, got {out:?}"
+    );
+}
+
+#[test]
+fn looped_player_survives_a_falling_gate_and_stops_on_reset() {
+    let buffer = [0.5_f32, -0.5];
+    let mut node = native_looped_player(&buffer);
+
+    // The gate falls after one frame; the loop keeps sounding (the voice's
+    // release tail bounds its lifetime at the engine level).
+    let gate = [1.0_f32, 0.0, 0.0, 0.0, 0.0, 0.0];
+    let rate = [1.0_f32; 6];
+    let out = run(&mut node, &gate, &rate);
+    assert_eq!(
+        out,
+        vec![0.5, -0.5, 0.5, -0.5, 0.5, -0.5],
+        "a falling gate must not stop the loop"
+    );
+
+    node.reset();
+    let out = run(&mut node, &[0.0, 0.0], &[1.0, 1.0]);
+    assert_eq!(out, vec![0.0, 0.0], "reset must silence the loop");
+}
+
+#[test]
+fn looped_player_retriggers_from_the_top_on_a_rising_edge() {
+    let buffer = [0.4_f32, 0.3, 0.2];
+    let mut node = native_looped_player(&buffer);
+
+    let gate = [1.0_f32, 1.0, 0.0, 1.0, 1.0, 1.0];
+    let rate = [1.0_f32; 6];
+    let out = run(&mut node, &gate, &rate);
+
+    assert_eq!(&out[..3], &buffer[..3]);
+    assert_eq!(
+        &out[3..],
+        &buffer,
+        "retrigger must restart the loop's phase"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Pitched mode: `sample_player_pitched` reads the rate input as a frequency
+// in Hertz relative to a reference (parity roadmap follow-up).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn pitched_player_at_the_reference_matches_unit_rate_bit_exactly() {
+    let buffer = [0.125_f32, -0.5, 0.75, -0.25, 0.0625];
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let sample = PlaybackSample::from_mono_frames(buffer.to_vec(), SR as u32);
+    let mut plain = sample_player(&sample, SR);
+    let mut pitched = sample_player_pitched(&sample, SR, 220.0);
+
+    let gate = [1.0_f32; 8];
+    let plain_out = run(&mut plain, &gate, &[1.0_f32; 8]);
+    // The per-frame division 220 / 220 is exactly 1.0, so playback is
+    // bit-identical to the plain player at rate 1.0.
+    let pitched_out = run(&mut pitched, &gate, &[220.0_f32; 8]);
+    assert_eq!(plain_out, pitched_out);
+}
+
+#[test]
+fn pitched_player_an_octave_up_matches_double_rate_bit_exactly() {
+    let buffer = [0.1_f32, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8];
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let sample = PlaybackSample::from_mono_frames(buffer.to_vec(), SR as u32);
+    let mut plain = sample_player(&sample, SR);
+    let mut pitched = sample_player_pitched(&sample, SR, 220.0);
+
+    let gate = [1.0_f32; 8];
+    let plain_out = run(&mut plain, &gate, &[2.0_f32; 8]);
+    // 440 / 220 is exactly 2.0: half the duration, an octave up.
+    let pitched_out = run(&mut pitched, &gate, &[440.0_f32; 8]);
+    assert_eq!(plain_out, pitched_out);
+    assert!(
+        plain_out[4..].iter().all(|&s| s == 0.0),
+        "double rate must finish in half the frames"
+    );
+}
+
+#[test]
+fn pitched_player_falls_back_to_the_engine_reference_on_bad_values() {
+    let buffer = [0.5_f32, 0.25];
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let sample = PlaybackSample::from_mono_frames(buffer.to_vec(), SR as u32);
+    // A non-positive reference falls back to 220 Hz
+    // (DEFAULT_ANALOG_BASE_FREQUENCY_HZ), the engine's rate-1.0 reference.
+    let mut fallback = sample_player_pitched(&sample, SR, 0.0);
+    let mut reference = sample_player_pitched(&sample, SR, 220.0);
+
+    let gate = [1.0_f32; 4];
+    let freq = [220.0_f32; 4];
+    assert_eq!(
+        run(&mut fallback, &gate, &freq),
+        run(&mut reference, &gate, &freq)
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Voice-spec integration: `VoiceNodeSpec::Sample` lowers onto the node.
 // ---------------------------------------------------------------------------
 
@@ -231,6 +421,8 @@ fn bare_sample_spec(buffer: &[f32]) -> GraphVoiceSpec {
                 gate: VoiceSignalRef::Gate,
                 rate: VoiceSignalRef::Node(0),
                 sample,
+                looped: false,
+                pitch_reference_hz: None,
             },
         ],
         VoiceSignalRef::Node(1),
@@ -285,4 +477,115 @@ fn voice_spec_sample_survives_gate_fall_and_retriggers_on_the_next_note() {
     // A new gate edge restarts from the top.
     let (retriggered, _) = voice.process_frame(1.0, 220.0, 1.0, 0.0);
     assert!((retriggered - buffer[0] * center).abs() < 1e-6);
+}
+
+/// A voice spec that is nothing but a looped sample, gated by the note gate.
+fn bare_looped_sample_spec(buffer: &[f32]) -> GraphVoiceSpec {
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let sample = PlaybackSample::from_mono_frames(buffer.to_vec(), SR as u32);
+    GraphVoiceSpec::new(
+        "pad",
+        0.5,
+        vec![
+            VoiceNodeSpec::Constant { value: 1.0 },
+            VoiceNodeSpec::Sample {
+                gate: VoiceSignalRef::Gate,
+                rate: VoiceSignalRef::Node(0),
+                sample,
+                looped: true,
+                pitch_reference_hz: None,
+            },
+        ],
+        VoiceSignalRef::Node(1),
+    )
+    .expect("looped sample voice spec should validate")
+}
+
+#[test]
+fn voice_spec_looped_sample_tiles_the_buffer_through_the_voice_interface() {
+    let buffer = [0.1_f32, -0.2, 0.3, -0.4];
+    let spec = bare_looped_sample_spec(&buffer);
+    let mut voice = spec.build_voice(SR);
+    voice.prepare();
+
+    let center = std::f32::consts::FRAC_1_SQRT_2;
+    for k in 0..3 * buffer.len() {
+        let expected = buffer[k % buffer.len()];
+        let (left, right) = voice.process_frame(1.0, 220.0, 1.0, 0.0);
+        assert!(
+            (left - expected * center).abs() < 1e-6 && (right - expected * center).abs() < 1e-6,
+            "frame {k}: ({left}, {right}) vs tiled {}",
+            expected * center
+        );
+    }
+}
+
+#[test]
+fn voice_spec_pitched_sample_tracks_the_note_frequency() {
+    // rate = freq / reference: the reference frequency plays natively, an
+    // octave above it at double rate.
+    let buffer = [0.1_f32, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8];
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let sample = PlaybackSample::from_mono_frames(buffer.to_vec(), SR as u32);
+    let spec = GraphVoiceSpec::new(
+        "keys",
+        0.5,
+        vec![VoiceNodeSpec::Sample {
+            gate: VoiceSignalRef::Gate,
+            rate: VoiceSignalRef::Freq,
+            sample,
+            looped: false,
+            pitch_reference_hz: Some(220.0),
+        }],
+        VoiceSignalRef::Node(0),
+    )
+    .expect("pitched sample voice spec should validate");
+
+    let center = std::f32::consts::FRAC_1_SQRT_2;
+    let mut native = spec.build_voice(SR);
+    native.prepare();
+    for (k, &expected) in buffer.iter().enumerate() {
+        let (left, _) = native.process_frame(1.0, 220.0, 1.0, 0.0);
+        assert!(
+            (left - expected * center).abs() < 1e-6,
+            "frame {k}: the reference note must play natively"
+        );
+    }
+
+    let mut octave_up = spec.build_voice(SR);
+    octave_up.prepare();
+    for k in 0..buffer.len() / 2 {
+        let expected = buffer[2 * k];
+        let (left, _) = octave_up.process_frame(1.0, 440.0, 1.0, 0.0);
+        assert!(
+            (left - expected * center).abs() < 1e-6,
+            "frame {k}: an octave above the reference must play at rate 2"
+        );
+    }
+    let (left, _) = octave_up.process_frame(1.0, 440.0, 1.0, 0.0);
+    assert_eq!(left, 0.0, "double rate must finish in half the frames");
+}
+
+#[test]
+fn voice_spec_rejects_non_positive_pitch_references() {
+    for reference in [0.0_f32, -220.0, f32::NAN, f32::INFINITY] {
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let sample = PlaybackSample::from_mono_frames(vec![0.5_f32], SR as u32);
+        let result = GraphVoiceSpec::new(
+            "bad",
+            0.1,
+            vec![VoiceNodeSpec::Sample {
+                gate: VoiceSignalRef::Gate,
+                rate: VoiceSignalRef::Freq,
+                sample,
+                looped: false,
+                pitch_reference_hz: Some(reference),
+            }],
+            VoiceSignalRef::Node(0),
+        );
+        assert!(
+            result.is_err(),
+            "pitch reference {reference} must fail spec validation"
+        );
+    }
 }

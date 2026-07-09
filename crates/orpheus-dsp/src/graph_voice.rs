@@ -29,8 +29,8 @@ use thiserror::Error;
 use crate::SampleTrigger;
 use crate::graph::{
     BiquadMode, Node, Processor, Seq, adsr, ar, bind, biquad, constant, delay_line, fdelay,
-    feedback, gain_node, ladder_filter, merge, noise, pan, par, passthrough, pulse, sample_player,
-    saw, seq, sine, soft_sat, sum, svf, tri, wire, wire_with_inputs,
+    feedback, gain_node, ladder_filter, merge, noise, pan, par, passthrough, pulse,
+    sample_player_with_options, saw, seq, sine, soft_sat, sum, svf, tri, wire, wire_with_inputs,
 };
 use crate::routing::TrackId;
 use crate::sample_bank::PlaybackSample;
@@ -415,21 +415,32 @@ pub enum VoiceNodeSpec {
         /// The signals to sum; must be non-empty.
         inputs: Vec<VoiceSignalRef>,
     },
-    /// One-shot playback of a preloaded sample-bank buffer.
+    /// Playback of a preloaded sample-bank buffer.
     ///
     /// The buffer is resolved to its shared `Arc` handle when the spec is
     /// built (off-thread, so an unknown sample name errors at definition
     /// time and rendering never touches the bank). A rising `gate` edge
     /// restarts playback from the top; the level is otherwise ignored
-    /// (one-shot, like the engine's sample voices). Playback ends at the
-    /// buffer end — no looping.
+    /// (one-shot trigger semantics, like the engine's sample voices).
+    /// Playback ends at the buffer end unless `looped` is set, in which case
+    /// the playhead hard-wraps to the buffer head (no crossfade) and the
+    /// loop sounds until the voice ends.
     Sample {
         /// The trigger signal (typically [`VoiceSignalRef::Gate`]).
         gate: VoiceSignalRef,
         /// The playback-rate signal (1.0 = native pitch), read every frame.
+        /// When `pitch_reference_hz` is set the signal is a frequency in
+        /// Hertz instead (typically [`VoiceSignalRef::Freq`]).
         rate: VoiceSignalRef,
         /// The preloaded mono buffer, shared with the sample bank.
         sample: PlaybackSample,
+        /// Hard-wrap at the buffer end instead of stopping.
+        looped: bool,
+        /// When set, the `rate` signal carries a frequency in Hertz and the
+        /// playback rate is `rate / reference` — native at the reference
+        /// frequency, an octave above it at exactly 2.0. Must be finite and
+        /// positive.
+        pitch_reference_hz: Option<f32>,
     },
 }
 
@@ -560,6 +571,11 @@ impl VoiceNodeSpec {
             Self::FractionalDelay { max_seconds, .. } => {
                 max_seconds.is_finite() && *max_seconds > 0.0
             }
+            Self::Sample {
+                pitch_reference_hz, ..
+            } => {
+                pitch_reference_hz.is_none_or(|reference| reference.is_finite() && reference > 0.0)
+            }
             Self::Sine { .. }
             | Self::Saw { .. }
             | Self::Tri { .. }
@@ -571,8 +587,7 @@ impl VoiceNodeSpec {
             | Self::Drive { .. }
             | Self::Mul { .. }
             | Self::Add { .. }
-            | Self::Merge { .. }
-            | Self::Sample { .. } => true,
+            | Self::Merge { .. } => true,
         }
     }
 }
@@ -1021,9 +1036,15 @@ impl GraphVoiceSpec {
                     .unwrap_or_else(|error| panic!("voice merge fan-in must compose: {error}"));
                 par(fan_in, passthrough(bus))
             }
-            VoiceNodeSpec::Sample { sample, .. } => {
-                par(sample_player(sample, sample_rate_hz), passthrough(bus))
-            }
+            VoiceNodeSpec::Sample {
+                sample,
+                looped,
+                pitch_reference_hz,
+                ..
+            } => par(
+                sample_player_with_options(sample, sample_rate_hz, *looped, *pitch_reference_hz),
+                passthrough(bus),
+            ),
         };
 
         seq(inputs, staged)

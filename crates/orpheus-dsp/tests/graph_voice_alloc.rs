@@ -334,6 +334,8 @@ fn voice_with_sample_playback_renders_without_allocating() {
                 gate: VoiceSignalRef::Gate,
                 rate: VoiceSignalRef::Node(0),
                 sample,
+                looped: false,
+                pitch_reference_hz: None,
             },
             VoiceNodeSpec::Sine {
                 freq: VoiceSignalRef::Freq,
@@ -626,5 +628,69 @@ fn voice_with_svf_and_eq_peak_filters_renders_without_allocating() {
         after - before,
         0,
         "SVF/EQ-filtered voices must not allocate after the pool is built"
+    );
+}
+
+#[test]
+fn looped_and_pitched_sample_voices_render_without_allocating() {
+    // The sample-stage follow-ups (loop mode and pitch-by-frequency) reuse
+    // the same Arc-shared buffer: the wrap and the per-frame reference
+    // division must keep the pooled trigger/render path allocation-free.
+    #[allow(clippy::cast_precision_loss)]
+    let buffer: Vec<f32> = (0..480).map(|i| ((i as f32) * 0.05).sin() * 0.5).collect();
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let sample = PlaybackSample::from_mono_frames(buffer, SR as u32);
+
+    let looper = GraphVoiceSpec::new(
+        "looper",
+        0.1,
+        vec![
+            VoiceNodeSpec::Constant { value: 1.25 },
+            VoiceNodeSpec::Sample {
+                gate: VoiceSignalRef::Gate,
+                rate: VoiceSignalRef::Node(0),
+                sample: sample.clone(),
+                looped: true,
+                pitch_reference_hz: None,
+            },
+        ],
+        VoiceSignalRef::Node(1),
+    )
+    .expect("looped sample voice spec should validate");
+    let keys = GraphVoiceSpec::new(
+        "keys",
+        0.1,
+        vec![VoiceNodeSpec::Sample {
+            gate: VoiceSignalRef::Gate,
+            rate: VoiceSignalRef::Freq,
+            sample,
+            looped: false,
+            pitch_reference_hz: Some(220.0),
+        }],
+        VoiceSignalRef::Node(0),
+    )
+    .expect("pitched sample voice spec should validate");
+
+    let mut bank = GraphVoiceBank::with_user_programs(SR, vec![looper, keys]);
+    let track = TrackId::new(0);
+    let mut mix = vec![(0.0_f32, 0.0_f32); 1];
+
+    let before = allocation_count();
+    assert!(bank.trigger("looper", track, 2_048, 220.0, 0.8, 0.0));
+    assert!(bank.trigger("keys", track, 2_048, 440.0, 0.8, 0.0));
+    let mut energy = 0.0_f32;
+    for _ in 0..4_096 {
+        mix[0] = (0.0, 0.0);
+        bank.render_frame(&mut mix);
+        assert!(mix[0].0.is_finite() && mix[0].1.is_finite());
+        energy += mix[0].0.abs() + mix[0].1.abs();
+    }
+    let after = allocation_count();
+
+    assert!(energy > 0.0, "looped and pitched voices should be audible");
+    assert_eq!(
+        after - before,
+        0,
+        "looped/pitched sample voices must not allocate after the pool is built"
     );
 }

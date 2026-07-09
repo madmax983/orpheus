@@ -205,8 +205,15 @@ Module: `crates/orpheus-dsp/src/graph/` (ADR 0004).
   (`crates/orpheus-dsp/src/graph/sample_player.rs`); voice-body exposure
   shipped: `sample("bd"[, rate])` source stage resolves the buffer against
   the session's sample bank at definition time and extends the release tail
-  to cover the one-shot (ADR 0010 addendum); remaining: loop mode, pitching
-  the sample by the note frequency
+  to cover the one-shot (ADR 0010 addendum); follow-ups shipped: loop mode
+  (`sample_player_looped` / `sample_loop("bd"[, rate])`, hard-wrap at the
+  buffer end, sounds until the release tail ends), pitching by the note
+  frequency (`sample_player_pitched` / `sample_pitched("bd"[, reference_hz])`,
+  rate = `freq` / reference, default reference 220 Hz — the engine's rate-1.0
+  note-frequency convention), and pattern-driven per-note rates via the
+  `p1`..`p4` params (`sample("bd", p1)` with `hits |> p1(1 2)`); remaining:
+  loop mode combined with pitch tracking at the language surface, crossfaded
+  loop points
 - [x] `MixNode` adapter — `mix_node` wraps the crossfade in
   `crates/orpheus-dsp/src/synth/mix.rs` (`graph/adapters.rs`)
 - [x] `PanNode` — `pan`, 2-in (audio, position)/2-out equal-power panner
