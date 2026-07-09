@@ -33,6 +33,67 @@ const MAX_ACTIVE_VOICES: usize = 32;
 /// engine construction so the audio thread never grows the table.
 pub const MAX_GENERATORS: usize = 8;
 
+/// Number of per-track level-meter slots (ADR 0013).
+///
+/// The meter storage is a fixed-size atomic array indexed by
+/// [`crate::routing::TrackId`], preallocated so the audio thread only ever
+/// stores into it — never grows it. Track ids at or above this ceiling are
+/// simply not metered.
+pub const MAX_METERED_TRACKS: usize = 64;
+
+/// Half-life, in seconds, of the peak-hold meter decay (ADR 0013). The held
+/// peak falls to half its value over this span of silence, giving a natural
+/// VU/peak-hold feel independent of tempo or render-block size.
+const METER_DECAY_HALF_LIFE_SECS: f32 = 0.2;
+
+/// Folds a live sample `magnitude` into a running peak-hold meter value.
+///
+/// The previous peak decays by `decay` (a per-frame factor in `(0, 1)`) and is
+/// then pinned back up by the current sample via `max`, so a fresh louder
+/// sample wins instantly while silence lets the peak fall smoothly toward zero.
+/// This is the pure kernel of the lock-free metering path (ADR 0013).
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::decayed_peak;
+///
+/// // A louder sample wins immediately.
+/// assert!((decayed_peak(0.1, 0.8, 0.99) - 0.8).abs() < f32::EPSILON);
+/// // Silence decays the held peak by exactly the factor.
+/// assert!((decayed_peak(0.8, 0.0, 0.5) - 0.4).abs() < f32::EPSILON);
+/// ```
+#[must_use]
+pub fn decayed_peak(previous: f32, magnitude: f32, decay: f32) -> f32 {
+    (previous * decay).max(magnitude)
+}
+
+/// Computes the per-frame peak-meter decay factor for a given `sample_rate`.
+///
+/// Derived once at engine construction so the meter ballistics stay constant
+/// regardless of tempo or render-block size (ADR 0013): the returned factor
+/// halves a held peak over [`METER_DECAY_HALF_LIFE_SECS`] seconds of silence.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::meter_decay_per_frame;
+///
+/// let decay = meter_decay_per_frame(48_000);
+/// assert!(decay > 0.99 && decay < 1.0);
+/// ```
+#[must_use]
+// The sample rate is a small integer far within f32's exact-integer range, and
+// the decay factor is a display-oriented ballistics constant.
+#[allow(clippy::cast_precision_loss)]
+pub fn meter_decay_per_frame(sample_rate: u32) -> f32 {
+    if sample_rate == 0 {
+        return 0.0;
+    }
+    let frames = METER_DECAY_HALF_LIFE_SECS * sample_rate as f32;
+    0.5_f32.powf(1.0 / frames)
+}
+
 /// A UI-readable snapshot of the transport clock.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TransportSnapshot {
@@ -200,6 +261,68 @@ impl SharedTransport {
     }
 }
 
+/// A UI-readable snapshot of the per-track signal level meters (ADR 0013).
+///
+/// Each entry is the current peak-hold amplitude (linear, typically `0.0..=1.0`)
+/// for the track with the matching [`crate::routing::TrackId`]. The snapshot is
+/// read lock-free from the audio thread via [`EngineHandle::meter_snapshot`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LevelSnapshot {
+    peaks: [f32; MAX_METERED_TRACKS],
+}
+
+impl LevelSnapshot {
+    /// Returns the peak amplitude for the track at `index`, or `0.0` when the
+    /// index is outside the metered range.
+    #[must_use]
+    pub fn track_peak(&self, index: usize) -> f32 {
+        self.peaks.get(index).copied().unwrap_or(0.0)
+    }
+
+    /// Returns the full fixed-size slice of per-track peak amplitudes.
+    #[must_use]
+    pub const fn peaks(&self) -> &[f32] {
+        &self.peaks
+    }
+}
+
+/// Lock-free, fixed-capacity per-track meter storage shared between the audio
+/// thread (which stores) and the UI (which loads). See ADR 0013.
+#[derive(Debug)]
+struct SharedMeters {
+    peaks: [AtomicU32; MAX_METERED_TRACKS],
+}
+
+impl Default for SharedMeters {
+    fn default() -> Self {
+        Self {
+            peaks: std::array::from_fn(|_| AtomicU32::new(0)),
+        }
+    }
+}
+
+impl SharedMeters {
+    /// Publishes the audio thread's running peak accumulator into the shared
+    /// atomics. Mirrors [`SharedTransport::publish`]: `f32` bits stored with
+    /// `Relaxed` ordering, no locks and no allocation.
+    fn publish(&self, meter_peaks: &[f32; MAX_METERED_TRACKS]) {
+        for (slot, peak) in self.peaks.iter().zip(meter_peaks.iter()) {
+            slot.store(peak.to_bits(), Ordering::Relaxed);
+        }
+    }
+
+    /// Reads a consistent-enough snapshot of every track's peak. Each slot is a
+    /// single `u32`, so an individual `f32` never tears; cross-track skew is
+    /// imperceptible for a moving meter (ADR 0013).
+    fn snapshot(&self) -> LevelSnapshot {
+        LevelSnapshot {
+            peaks: std::array::from_fn(|index| {
+                f32::from_bits(self.peaks[index].load(Ordering::Relaxed))
+            }),
+        }
+    }
+}
+
 /// Errors raised by the minimal Orpheus audio engine.
 ///
 /// **Recovery:** Catch the error and display it to the user. Typical failures relate to system audio backend misconfiguration or extreme temporal values causing frame overflows. Resetting the audio backend or restarting the application might be necessary for serious host faults.
@@ -277,6 +400,12 @@ struct EngineCore {
     last_swap_frame: Option<u64>,
     track_mix_buffer: Vec<(f32, f32)>,
     bus_mix_buffer: Vec<(f32, f32)>,
+    /// Audio-thread-local peak-hold accumulator, one slot per track id (ADR
+    /// 0013). Updated per frame with plain `f32` arithmetic and published to
+    /// [`SharedMeters`] at the end of each render call.
+    meter_peaks: [f32; MAX_METERED_TRACKS],
+    /// Per-frame meter decay factor derived from the sample rate at construction.
+    meter_decay_per_frame: f32,
 }
 
 impl EngineCore {
@@ -327,6 +456,8 @@ impl EngineCore {
             last_swap_frame: None,
             track_mix_buffer,
             bus_mix_buffer,
+            meter_peaks: [0.0; MAX_METERED_TRACKS],
+            meter_decay_per_frame: meter_decay_per_frame(config.sample_rate.0),
         })
     }
 
@@ -607,6 +738,8 @@ impl EngineCore {
         self.prime_initial_routing = routing_snapshot_has_audio(&self.active_routing);
         self.last_swap_frame = None;
         self.reset_bus_effect_states();
+        // Meters fall to silence when the transport stops (ADR 0013).
+        self.meter_peaks = [0.0; MAX_METERED_TRACKS];
         self.is_playing = false;
     }
 
@@ -659,6 +792,15 @@ impl EngineCore {
             })
             .collect();
         self.resize_mix_buffers();
+        // Retire meter slots for tracks that no longer exist so they do not
+        // freeze at a stale peak (ADR 0013).
+        for peak in self
+            .meter_peaks
+            .iter_mut()
+            .skip(self.active_routing.tracks().len())
+        {
+            *peak = 0.0;
+        }
         Ok(())
     }
 
@@ -731,6 +873,21 @@ impl EngineCore {
             let track_left = track_left * track.level();
             let track_right = track_right * track.level();
 
+            // Meter the post-fader signal (ADR 0013). A muted track feeds a
+            // magnitude of 0.0 so its peak decays away rather than lingering.
+            if track_index < MAX_METERED_TRACKS {
+                let magnitude = if track.muted() {
+                    0.0
+                } else {
+                    track_left.abs().max(track_right.abs())
+                };
+                self.meter_peaks[track_index] = decayed_peak(
+                    self.meter_peaks[track_index],
+                    magnitude,
+                    self.meter_decay_per_frame,
+                );
+            }
+
             if track.muted() {
                 continue;
             }
@@ -777,6 +934,7 @@ pub struct RenderEngine {
     command_rx: Consumer<EngineCommand>,
     core: EngineCore,
     transport: Arc<SharedTransport>,
+    meters: Arc<SharedMeters>,
 }
 
 impl RenderEngine {
@@ -784,13 +942,16 @@ impl RenderEngine {
         command_rx: Consumer<EngineCommand>,
         config: &StreamConfig,
         transport: Arc<SharedTransport>,
+        meters: Arc<SharedMeters>,
     ) -> Result<Self, EngineError> {
         let engine = Self {
             command_rx,
             core: EngineCore::new(config)?,
             transport,
+            meters,
         };
         engine.publish_transport();
+        engine.publish_meters();
         Ok(engine)
     }
 
@@ -804,6 +965,7 @@ impl RenderEngine {
         self.drain_commands()?;
         let result = self.core.render_into_interleaved(output);
         self.publish_transport();
+        self.publish_meters();
         result
     }
 
@@ -910,6 +1072,10 @@ impl RenderEngine {
     fn publish_transport(&self) {
         self.transport.publish(&self.core);
     }
+
+    fn publish_meters(&self) {
+        self.meters.publish(&self.core.meter_peaks);
+    }
 }
 
 /// UI-side command producer for the current minimal engine slice.
@@ -918,6 +1084,7 @@ pub struct EngineHandle {
     command_tx: Producer<EngineCommand>,
     test_renderer: Option<RenderEngine>,
     transport: Arc<SharedTransport>,
+    meters: Arc<SharedMeters>,
     sample_rate: u32,
 }
 
@@ -980,12 +1147,19 @@ impl EngineHandle {
     ) -> Result<(Self, RenderEngine), EngineError> {
         let (command_tx, command_rx) = new_command_queue();
         let transport = Arc::new(SharedTransport::default());
-        let renderer = RenderEngine::new(command_rx, config, Arc::clone(&transport))?;
+        let meters = Arc::new(SharedMeters::default());
+        let renderer = RenderEngine::new(
+            command_rx,
+            config,
+            Arc::clone(&transport),
+            Arc::clone(&meters),
+        )?;
         Ok((
             Self {
                 command_tx,
                 test_renderer: None,
                 transport,
+                meters,
                 sample_rate: config.sample_rate.0,
             },
             renderer,
@@ -1119,6 +1293,15 @@ impl EngineHandle {
     #[must_use]
     pub fn transport_snapshot(&self) -> TransportSnapshot {
         self.transport.snapshot()
+    }
+
+    /// Returns a UI-readable per-track level-meter snapshot (ADR 0013).
+    ///
+    /// The meters are updated on the audio thread and read here lock-free, the
+    /// same discipline as [`EngineHandle::transport_snapshot`].
+    #[must_use]
+    pub fn meter_snapshot(&self) -> LevelSnapshot {
+        self.meters.snapshot()
     }
 
     fn test_renderer_mut(&mut self) -> &mut RenderEngine {

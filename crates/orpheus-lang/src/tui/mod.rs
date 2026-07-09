@@ -38,8 +38,9 @@ use ratatui_hypertile_extras::{
 use plugins::{BindingsPlugin, OrcaPlugin, ReplPlugin, TransportPlugin};
 use state::SharedState;
 use style::{
-    format_cycle_position, format_tempo_bpm, format_transport_status, help_overlay_border_style,
-    help_overlay_footer_style, key_legend_style, transport_status_style,
+    Theme, cycle_progress, cycle_progress_bar, cycle_pulse_glyph, format_cycle_position,
+    format_tempo_bpm, format_transport_status, help_overlay_border_style,
+    help_overlay_footer_style, key_legend_style, status_toast_line, transport_status_style,
 };
 
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -69,12 +70,12 @@ fn help_overlay_body() -> Vec<Line<'static>> {
     use ratatui::style::Modifier;
 
     let header_style = Style::default()
-        .fg(Color::Yellow)
+        .fg(Theme::WARNING)
         .add_modifier(Modifier::BOLD);
     let key_style = Style::default()
-        .fg(Color::Cyan)
+        .fg(Theme::ACCENT)
         .add_modifier(Modifier::BOLD);
-    let desc_style = Style::default().fg(Color::DarkGray);
+    let desc_style = Style::default().fg(Theme::MUTED);
 
     let mut lines = vec![
         help_key_line("Toggle", "?", key_style, desc_style),
@@ -88,7 +89,8 @@ fn help_overlay_body() -> Vec<Line<'static>> {
         ("  s / v", "split horizontal / vertical"),
         ("  d", "close pane"),
         ("  [ / ]", "resize pane"),
-        ("  p", "command palette"),
+        ("  :", "command palette (find/run commands)"),
+        ("  p", "pane palette (spawn pane)"),
         ("  i / Enter", "enter input mode"),
         ("  HJKL / Shift+arrows", "move pane"),
         ("  Tab / Shift+Tab", "cycle focus"),
@@ -310,6 +312,34 @@ fn handle_key(
         return;
     }
 
+    // Command palette is modal — while open it swallows every key. Enter
+    // prefills the input line and drops into input mode so the user can finish
+    // any arguments.
+    if state.palette_open {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let alt = key.modifiers.contains(KeyModifiers::ALT);
+        match key.code {
+            KeyCode::Esc => state.close_palette(),
+            KeyCode::Enter => {
+                if state.palette_select() {
+                    drop(state);
+                    workspace
+                        .active_runtime_mut()
+                        .set_mode(InputMode::PluginInput);
+                }
+                return;
+            }
+            KeyCode::Up => state.palette_move_selection_up(),
+            KeyCode::Down => state.palette_move_selection_down(),
+            KeyCode::Char('p') if ctrl => state.palette_move_selection_up(),
+            KeyCode::Char('n') if ctrl => state.palette_move_selection_down(),
+            KeyCode::Backspace => state.palette_backspace(),
+            KeyCode::Char(character) if !ctrl && !alt => state.palette_insert_char(character),
+            _ => {}
+        }
+        return;
+    }
+
     // Help overlay is modal — swallow all keys except toggle/close/quit.
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         match key.code {
@@ -342,6 +372,14 @@ fn handle_key(
         return;
     }
 
+    // ':' opens the command palette (only in layout mode, so it never eats a
+    // literal colon while typing an expression). Distinct from hypertile's
+    // 'p' pane-spawn palette.
+    if key.code == KeyCode::Char(':') && key.modifiers.is_empty() && mode == InputMode::Layout {
+        state.open_palette();
+        return;
+    }
+
     // Space toggles transport globally in layout mode.
     if key.code == KeyCode::Char(' ') && key.modifiers.is_empty() && mode == InputMode::Layout {
         state.toggle_transport_hotkey();
@@ -361,13 +399,47 @@ fn render_frame(
     shared: &Rc<RefCell<SharedState>>,
     workspace: &mut WorkspaceRuntime,
 ) {
-    let [body, footer] = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(1)])
-        .areas(frame.area());
+    // Reserve one line just above the footer for a transient status toast so
+    // error/success feedback is always visible, regardless of which panes are
+    // open. The line is only carved out while a toast is active (and not while
+    // the modal help overlay owns the screen), so the body never shifts
+    // otherwise.
+    let toast = {
+        let state = shared.borrow();
+        (!state.show_help)
+            .then(|| state.status_message.clone())
+            .flatten()
+    };
+
+    let (body, toast_area, footer) = if toast.is_some() {
+        let [body, toast_area, footer] = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(1),
+                Constraint::Length(1),
+                Constraint::Length(1),
+            ])
+            .areas(frame.area());
+        (body, Some(toast_area), footer)
+    } else {
+        let [body, footer] = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(1), Constraint::Length(1)])
+            .areas(frame.area());
+        (body, None, footer)
+    };
 
     // Render hypertile panes into the body area.
     workspace.render(body, frame.buffer_mut());
+
+    // Global status toast overlay above the footer.
+    if let (Some(toast_area), Some((message, is_error))) = (toast_area, &toast) {
+        frame.render_widget(Clear, toast_area);
+        frame.render_widget(
+            Paragraph::new(status_toast_line(message, *is_error)),
+            toast_area,
+        );
+    }
 
     // Footer: mode indicator + key legend + transport status.
     let state = shared.borrow();
@@ -376,6 +448,10 @@ fn render_frame(
 
     if state.show_help {
         render_help_overlay(frame);
+    }
+
+    if state.palette_open {
+        render_command_palette(frame, &state);
     }
 
     frame.render_widget(
@@ -400,9 +476,31 @@ fn build_footer_line(width: u16, mode: InputMode, state: &SharedState) -> Line<'
     }
 
     let transport = state.transport_view();
+    let snapshot = transport.snapshot();
     let status = format_transport_status(&transport).to_owned();
-    let tempo = format!("{} BPM", format_tempo_bpm(transport.snapshot()));
-    let cycle = format_cycle_position(transport.snapshot());
+    let tempo = format!("{} BPM", format_tempo_bpm(snapshot));
+    let cycle = format_cycle_position(snapshot);
+
+    // Downbeat pulse + cycle-progress ruler, driven purely by the snapshot's
+    // cycle phase. Only shown while the transport is advancing.
+    let (pulse_span, bar_span) = if snapshot.is_playing() {
+        let progress = cycle_progress(snapshot);
+        let (glyph, pulse_style) = cycle_pulse_glyph(progress);
+        let pulse = Span::styled(format!("{glyph} "), pulse_style);
+        // Reserve room for the fixed footer text before spending width on the bar.
+        let bar = if usize::from(width) > 64 {
+            let bar_width = 12;
+            Some(Span::styled(
+                cycle_progress_bar(progress, bar_width),
+                Style::default().fg(Theme::ACCENT),
+            ))
+        } else {
+            None
+        };
+        (Some(pulse), bar)
+    } else {
+        (None, None)
+    };
 
     // Mode badge takes ~9 chars, add spacer.
     let badge_width = 10;
@@ -436,11 +534,18 @@ fn build_footer_line(width: u16, mode: InputMode, state: &SharedState) -> Line<'
         spans.push(Span::styled(legend.to_owned(), key_legend_style()));
     }
     spans.push(Span::styled(" | ", key_legend_style()));
+    if let Some(pulse) = pulse_span {
+        spans.push(pulse);
+    }
     spans.push(Span::styled(status, transport_status_style(&transport)));
     spans.push(Span::styled(
         format!(" | {tempo} | {cycle}"),
         key_legend_style(),
     ));
+    if let Some(bar) = bar_span {
+        spans.push(Span::styled(" ", key_legend_style()));
+        spans.push(bar);
+    }
 
     Line::from(spans)
 }
@@ -486,6 +591,108 @@ fn render_help_overlay(frame: &mut Frame<'_>) {
         Paragraph::new(FULL_HELP_FOOTER)
             .style(help_overlay_footer_style())
             .wrap(Wrap { trim: false }),
+        footer_area,
+    );
+}
+
+/// Renders the `:`-triggered command palette: a centered modal listing the
+/// commands matching the current query, with the highlighted row drawn in the
+/// theme accent. All colors come from [`Theme`] — no raw literals.
+fn render_command_palette(frame: &mut Frame<'_>, state: &SharedState) {
+    use ratatui::style::Modifier;
+
+    let overlay_area = centered_rect(frame.area(), 60, 60);
+    render_modal_backdrop(frame, overlay_area);
+    frame.render_widget(Clear, overlay_area);
+
+    let border_style = Style::default()
+        .fg(Theme::ACCENT)
+        .add_modifier(Modifier::BOLD);
+    let block = Block::default()
+        .title("Commands")
+        .title_style(border_style)
+        .border_style(border_style)
+        .borders(Borders::ALL);
+    let inner = block.inner(overlay_area);
+    frame.render_widget(block.style(Style::default().bg(Color::Black)), overlay_area);
+
+    let [query_area, list_area, footer_area] = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .areas(inner);
+
+    // Query line: a prompt marker, the typed filter, and a cursor bar.
+    let query_line = Line::from(vec![
+        Span::styled("\u{203a} ", Style::default().fg(Theme::ACCENT)),
+        Span::styled(
+            state.palette_query.clone(),
+            Style::default().fg(Theme::FOCUS),
+        ),
+        Span::styled("\u{2588}", Style::default().fg(Theme::MUTED)),
+    ]);
+    frame.render_widget(
+        Paragraph::new(query_line).style(Style::default().bg(Color::Black)),
+        query_area,
+    );
+
+    // Filtered command rows, highlighting the current selection.
+    let matches = state.palette_matches();
+    let rows: Vec<Line<'static>> = if matches.is_empty() {
+        vec![Line::styled(
+            "  no matching commands",
+            Style::default()
+                .fg(Theme::MUTED)
+                .add_modifier(Modifier::DIM),
+        )]
+    } else {
+        let selected = state.palette_selected.min(matches.len() - 1);
+        matches
+            .iter()
+            .enumerate()
+            .map(|(index, (name, hint))| {
+                if index == selected {
+                    Line::from(vec![
+                        Span::styled(
+                            format!(" {name}  "),
+                            Style::default()
+                                .fg(Color::Black)
+                                .bg(Theme::ACCENT)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            format!("{hint} "),
+                            Style::default().fg(Color::Black).bg(Theme::ACCENT),
+                        ),
+                    ])
+                } else {
+                    Line::from(vec![
+                        Span::styled(
+                            format!(" {name}  "),
+                            Style::default()
+                                .fg(Theme::ACCENT)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled((*hint).to_owned(), Style::default().fg(Theme::MUTED)),
+                    ])
+                }
+            })
+            .collect()
+    };
+    frame.render_widget(
+        Paragraph::new(rows).style(Style::default().bg(Color::Black)),
+        list_area,
+    );
+
+    frame.render_widget(
+        Paragraph::new(Line::styled(
+            "\u{2191}\u{2193} select \u{b7} Enter insert \u{b7} Esc close",
+            help_overlay_footer_style(),
+        ))
+        .style(Style::default().bg(Color::Black)),
         footer_area,
     );
 }
@@ -765,6 +972,113 @@ mod tests {
         );
     }
 
+    fn open_palette(shared: &Rc<RefCell<SharedState>>, workspace: &mut WorkspaceRuntime) {
+        // Switch to layout mode, then trigger the palette with ':'.
+        handle_key(shared, workspace, press(KeyCode::Esc));
+        handle_key(shared, workspace, press(KeyCode::Char(':')));
+    }
+
+    #[test]
+    fn colon_opens_command_palette_in_layout_mode() {
+        let (shared, mut workspace) = test_setup();
+        open_palette(&shared, &mut workspace);
+        assert!(shared.borrow().palette_open);
+
+        let frame = render_frame_str(&shared, &mut workspace, 120, 30);
+        assert!(
+            frame.contains("Commands"),
+            "the palette modal should render its title, got:\n{frame}"
+        );
+    }
+
+    #[test]
+    fn colon_is_ignored_in_input_mode() {
+        // In input mode a ':' is a literal character, not the palette trigger.
+        let (shared, mut workspace) = test_setup();
+        handle_key(&shared, &mut workspace, press(KeyCode::Char(':')));
+        assert!(!shared.borrow().palette_open);
+        assert_eq!(shared.borrow().input, ":");
+    }
+
+    #[test]
+    fn typing_filters_the_command_palette() {
+        let (shared, mut workspace) = test_setup();
+        open_palette(&shared, &mut workspace);
+        for character in ['t', 'e', 'm', 'p', 'o'] {
+            handle_key(&shared, &mut workspace, press(KeyCode::Char(character)));
+        }
+        assert_eq!(shared.borrow().palette_query, "tempo");
+        assert!(
+            shared
+                .borrow()
+                .palette_matches()
+                .iter()
+                .any(|(name, _)| *name == ":tempo")
+        );
+
+        assert!(
+            !shared
+                .borrow()
+                .palette_matches()
+                .iter()
+                .any(|(name, _)| *name == ":render"),
+            "non-matching commands should be filtered out"
+        );
+
+        let frame = render_frame_str(&shared, &mut workspace, 120, 30);
+        assert!(
+            frame.contains(":tempo"),
+            "filtered palette should list :tempo"
+        );
+    }
+
+    #[test]
+    fn arrow_keys_move_the_palette_selection() {
+        let (shared, mut workspace) = test_setup();
+        open_palette(&shared, &mut workspace);
+        assert_eq!(shared.borrow().palette_selected, 0);
+
+        handle_key(&shared, &mut workspace, press(KeyCode::Down));
+        assert_eq!(shared.borrow().palette_selected, 1);
+
+        handle_key(&shared, &mut workspace, press(KeyCode::Up));
+        assert_eq!(shared.borrow().palette_selected, 0);
+    }
+
+    #[test]
+    fn enter_inserts_selected_command_and_closes_palette() {
+        let (shared, mut workspace) = test_setup();
+        open_palette(&shared, &mut workspace);
+        for character in ['p', 'l', 'a', 'y'] {
+            handle_key(&shared, &mut workspace, press(KeyCode::Char(character)));
+        }
+        handle_key(&shared, &mut workspace, press(KeyCode::Enter));
+
+        let state = shared.borrow();
+        assert!(!state.palette_open, "Enter closes the palette");
+        assert_eq!(state.input, ":play", "the command is prefilled for editing");
+        drop(state);
+        assert_eq!(
+            workspace.active_runtime().mode(),
+            InputMode::PluginInput,
+            "selecting drops into input mode to finish arguments"
+        );
+    }
+
+    #[test]
+    fn escape_closes_the_command_palette() {
+        let (shared, mut workspace) = test_setup();
+        open_palette(&shared, &mut workspace);
+        assert!(shared.borrow().palette_open);
+
+        handle_key(&shared, &mut workspace, press(KeyCode::Esc));
+        assert!(!shared.borrow().palette_open);
+        assert!(
+            shared.borrow().input.is_empty(),
+            "closing leaves input untouched"
+        );
+    }
+
     #[test]
     fn footer_shows_mode_indicator() {
         let (shared, mut workspace) = test_setup();
@@ -778,5 +1092,60 @@ mod tests {
         let (shared, mut workspace) = test_setup();
         handle_key(&shared, &mut workspace, press(KeyCode::Esc));
         assert_eq!(workspace.active_runtime().mode(), InputMode::Layout,);
+    }
+
+    #[test]
+    fn footer_shows_downbeat_pulse_when_playing() {
+        let (shared, mut workspace) = test_setup();
+        {
+            let mut state = shared.borrow_mut();
+            state.session.eval_line(":play").unwrap();
+            // Publish a snapshot at the start of the cycle (the downbeat).
+            state.session.render_test_block_for_tui(1);
+        }
+        let frame = render_frame_str(&shared, &mut workspace, 120, 10);
+        assert!(
+            frame.contains('\u{25cf}'),
+            "footer should show the filled downbeat pulse glyph while playing"
+        );
+    }
+
+    #[test]
+    fn footer_shows_cycle_progress_bar_fill_at_mid_cycle() {
+        let (shared, mut workspace) = test_setup();
+        {
+            let mut state = shared.borrow_mut();
+            state.session.eval_line(":play").unwrap();
+            // Advance to the halfway point of the cycle (96000 frames/cycle at
+            // 120 BPM, 48kHz), so the bar is half filled.
+            state.session.render_test_block_for_tui(48000);
+        }
+        let frame = render_frame_str(&shared, &mut workspace, 120, 10);
+        assert!(
+            frame.contains('\u{2588}'),
+            "cycle bar should show filled cells at mid-cycle"
+        );
+        assert!(
+            frame.contains('\u{2591}'),
+            "cycle bar should show empty cells at mid-cycle"
+        );
+    }
+
+    #[test]
+    fn global_toast_renders_above_footer() {
+        let (shared, mut workspace) = test_setup();
+        shared.borrow_mut().set_status_message("boom", true);
+
+        let frame = render_frame_str(&shared, &mut workspace, 80, 12);
+        let lines: Vec<&str> = frame.lines().collect();
+        let toast_row = lines[lines.len() - 2];
+        assert!(
+            toast_row.contains("boom"),
+            "toast should render on the line above the footer, got: {toast_row:?}"
+        );
+        assert!(
+            toast_row.contains("Failed"),
+            "error toast should show the failure badge, got: {toast_row:?}"
+        );
     }
 }

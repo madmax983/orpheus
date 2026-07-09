@@ -64,6 +64,12 @@ pub struct SharedState {
     pub input: String,
     pub cursor_index: usize,
     pub show_help: bool,
+    /// Whether the `:`-triggered command palette (fuzzy finder) is open.
+    pub palette_open: bool,
+    /// The current filter text typed into the command palette.
+    pub palette_query: String,
+    /// Index of the highlighted row among the palette's filtered matches.
+    pub palette_selected: usize,
     pub should_quit: bool,
 }
 
@@ -97,6 +103,9 @@ impl SharedState {
             input: String::new(),
             cursor_index: 0,
             show_help: false,
+            palette_open: false,
+            palette_query: String::new(),
+            palette_selected: 0,
             should_quit: false,
         };
         if let Some(path) = startup_path {
@@ -594,6 +603,78 @@ impl SharedState {
         self.set_status_message("help overlay hidden", false);
     }
 
+    // --- Command palette (`:` fuzzy finder) ---
+
+    /// Opens the command palette, resetting the query and selection.
+    pub fn open_palette(&mut self) {
+        self.palette_open = true;
+        self.palette_query.clear();
+        self.palette_selected = 0;
+    }
+
+    /// Closes the command palette, leaving the input line untouched.
+    pub const fn close_palette(&mut self) {
+        self.palette_open = false;
+    }
+
+    /// The commands currently matching the palette query (all when empty).
+    #[must_use]
+    pub fn palette_matches(&self) -> Vec<(&'static str, &'static str)> {
+        filter_commands(&self.palette_query, &COMMAND_HINTS)
+    }
+
+    /// Appends a character to the palette query and resets the selection to the
+    /// top of the (re-filtered) list.
+    pub fn palette_insert_char(&mut self, character: char) {
+        self.palette_query.push(character);
+        self.palette_selected = 0;
+    }
+
+    /// Removes the last character from the palette query and resets selection.
+    pub fn palette_backspace(&mut self) {
+        self.palette_query.pop();
+        self.palette_selected = 0;
+    }
+
+    /// Moves the palette highlight down one row, wrapping to the top.
+    pub fn palette_move_selection_down(&mut self) {
+        let len = self.palette_matches().len();
+        if len == 0 {
+            self.palette_selected = 0;
+            return;
+        }
+        let current = self.palette_selected.min(len - 1);
+        self.palette_selected = (current + 1) % len;
+    }
+
+    /// Moves the palette highlight up one row, wrapping to the bottom.
+    pub fn palette_move_selection_up(&mut self) {
+        let len = self.palette_matches().len();
+        if len == 0 {
+            self.palette_selected = 0;
+            return;
+        }
+        let current = self.palette_selected.min(len - 1);
+        self.palette_selected = (current + len - 1) % len;
+    }
+
+    /// Inserts the highlighted command into the REPL input line (so the user can
+    /// complete any arguments) and closes the palette. Returns `false` when
+    /// there is no match to select.
+    pub fn palette_select(&mut self) -> bool {
+        let matches = self.palette_matches();
+        let Some(&(command, _)) =
+            matches.get(self.palette_selected.min(matches.len().saturating_sub(1)))
+        else {
+            return false;
+        };
+        self.input = command.to_owned();
+        self.cursor_index = self.input.len();
+        self.history_index = None;
+        self.close_palette();
+        true
+    }
+
     pub fn recall_previous_history(&mut self) {
         let Some(next_index) = self.history_index.map_or_else(
             || self.history.len().checked_sub(1),
@@ -666,6 +747,26 @@ fn parse_socket_target(raw: &str) -> Result<SocketAddr, String> {
     }
     raw.parse::<SocketAddr>()
         .map_err(|_| format!("invalid target `{raw}`: expected <host:port> or <port>"))
+}
+
+/// Filters command entries by a case-insensitive substring match against both
+/// the command name and its hint text. An empty (or whitespace-only) query
+/// returns every entry, preserving the input order.
+///
+/// Pure and allocation-transparent so it can be unit-tested directly, decoupled
+/// from any palette rendering or key handling.
+fn filter_commands<'a>(query: &str, entries: &[(&'a str, &'a str)]) -> Vec<(&'a str, &'a str)> {
+    let needle = query.trim().to_lowercase();
+    if needle.is_empty() {
+        return entries.to_vec();
+    }
+    entries
+        .iter()
+        .filter(|(name, hint)| {
+            name.to_lowercase().contains(&needle) || hint.to_lowercase().contains(&needle)
+        })
+        .copied()
+        .collect()
 }
 
 fn matching_command(prefix: &str) -> Option<(&'static str, &'static str)> {
@@ -1217,6 +1318,116 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         assert!(applied, "grid $bpm:90 reached the session tempo path");
+    }
+
+    #[test]
+    fn filter_commands_empty_query_returns_every_entry_in_order() {
+        let all = filter_commands("", &COMMAND_HINTS);
+        assert_eq!(all.len(), COMMAND_HINTS.len());
+        assert_eq!(all[0], COMMAND_HINTS[0]);
+        // Whitespace-only queries behave like an empty query.
+        assert_eq!(
+            filter_commands("   ", &COMMAND_HINTS).len(),
+            COMMAND_HINTS.len()
+        );
+    }
+
+    #[test]
+    fn filter_commands_matches_name_case_insensitively() {
+        let matches = filter_commands("TEMPO", &COMMAND_HINTS);
+        assert!(matches.iter().any(|(name, _)| *name == ":tempo"));
+        assert!(
+            matches.iter().all(|(name, hint)| {
+                name.to_lowercase().contains("tempo") || hint.to_lowercase().contains("tempo")
+            }),
+            "every match should contain the needle, got: {matches:?}"
+        );
+    }
+
+    #[test]
+    fn filter_commands_matches_hint_text_not_just_the_name() {
+        // "bpm" only appears in the `:tempo <bpm>` hint, not in any command name.
+        let matches = filter_commands("bpm", &COMMAND_HINTS);
+        assert!(
+            matches.iter().any(|(name, _)| *name == ":tempo"),
+            "hint-text match should surface :tempo, got: {matches:?}"
+        );
+    }
+
+    #[test]
+    fn filter_commands_unmatched_query_returns_empty() {
+        assert!(filter_commands("zzznotacommand", &COMMAND_HINTS).is_empty());
+    }
+
+    #[test]
+    fn palette_open_reset_and_select_prefills_the_input_line() {
+        let mut state = SharedState::new(EngineHandle::stub());
+        assert!(!state.palette_open);
+
+        state.open_palette();
+        assert!(state.palette_open);
+        assert!(state.palette_query.is_empty());
+        assert_eq!(state.palette_selected, 0);
+
+        for character in "play".chars() {
+            state.palette_insert_char(character);
+        }
+        assert_eq!(state.palette_query, "play");
+        let matches = state.palette_matches();
+        let index = matches
+            .iter()
+            .position(|(name, _)| *name == ":play")
+            .expect(":play should match the query");
+        state.palette_selected = index;
+
+        assert!(state.palette_select());
+        assert_eq!(state.input, ":play");
+        assert_eq!(state.cursor_index, state.input.len());
+        assert!(!state.palette_open, "selecting closes the palette");
+    }
+
+    #[test]
+    fn palette_backspace_edits_the_query_and_resets_selection() {
+        let mut state = SharedState::new(EngineHandle::stub());
+        state.open_palette();
+        for character in "play".chars() {
+            state.palette_insert_char(character);
+        }
+        state.palette_selected = 3;
+        state.palette_backspace();
+        assert_eq!(state.palette_query, "pla");
+        assert_eq!(state.palette_selected, 0);
+    }
+
+    #[test]
+    fn palette_selection_wraps_around_the_match_list() {
+        let mut state = SharedState::new(EngineHandle::stub());
+        state.open_palette();
+        let len = state.palette_matches().len();
+        assert!(len > 1);
+
+        // Up from the top wraps to the bottom.
+        state.palette_move_selection_up();
+        assert_eq!(state.palette_selected, len - 1);
+
+        // Down from the bottom wraps back to the top.
+        state.palette_move_selection_down();
+        assert_eq!(state.palette_selected, 0);
+
+        state.palette_move_selection_down();
+        assert_eq!(state.palette_selected, 1);
+    }
+
+    #[test]
+    fn palette_select_with_no_matches_is_a_noop() {
+        let mut state = SharedState::new(EngineHandle::stub());
+        state.open_palette();
+        for character in "zzznope".chars() {
+            state.palette_insert_char(character);
+        }
+        assert!(state.palette_matches().is_empty());
+        assert!(!state.palette_select());
+        assert!(state.input.is_empty());
     }
 
     #[test]
