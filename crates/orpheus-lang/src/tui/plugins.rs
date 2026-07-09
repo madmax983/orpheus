@@ -12,8 +12,9 @@ use ratatui_hypertile_extras::HypertilePlugin;
 
 use super::state::SharedState;
 use super::style::{
-    Theme, binding_legend_item, binding_list_item, focus_border_style, routing_status_line,
-    should_show_binding_legend, status_toast_line, transport_status_line,
+    Theme, binding_activity_pulse, binding_legend_item, binding_list_item_with_pulse,
+    focus_border_style, routing_status_line, should_show_binding_legend, status_toast_line,
+    transport_status_line,
 };
 use crate::orca::{BANG, EMPTY, is_valid_glyph, playhead_frame};
 
@@ -23,68 +24,175 @@ use crate::orca::{BANG, EMPTY, is_valid_glyph, playhead_frame};
 
 pub struct ReplPlugin {
     pub state: Rc<RefCell<SharedState>>,
+    /// Lines scrolled up from the bottom of the transcript. `0` sticks the view
+    /// to the latest output; any positive value pins the transcript that many
+    /// lines above the bottom until the user scrolls back down (mirrors the
+    /// `BindingsPlugin` scroll pattern, inverted so the default anchors to the
+    /// newest line).
+    scroll: Cell<usize>,
+    last_height: Cell<u16>,
 }
 
-impl HypertilePlugin for ReplPlugin {
-    fn render(&self, area: Rect, buf: &mut Buffer, is_focused: bool) {
-        let state = self.state.borrow();
+/// Rows reserved at the bottom of the REPL pane for the always-visible footer:
+/// the transport status line, the input line, and the hint line.
+const REPL_FOOTER_ROWS: u16 = 3;
 
-        let mut lines = state
+/// Maps a transcript entry to its role style (echoed input, error, warning,
+/// success, or plain output).
+fn transcript_line_style(entry: &str) -> Style {
+    if entry.starts_with("> ") {
+        Style::default().fg(Theme::MUTED)
+    } else if entry.starts_with("\u{2717} ") {
+        Style::default()
+            .fg(Theme::ERROR)
+            .add_modifier(Modifier::BOLD)
+    } else if entry.starts_with("\u{26a0}\u{fe0f} ") {
+        Style::default()
+            .fg(Theme::WARNING)
+            .add_modifier(Modifier::BOLD)
+    } else if entry.starts_with("\u{2713} ") {
+        Style::default().fg(Theme::SUCCESS)
+    } else {
+        Style::default()
+    }
+}
+
+impl ReplPlugin {
+    pub const fn new(state: Rc<RefCell<SharedState>>) -> Self {
+        Self {
+            state,
+            scroll: Cell::new(0),
+            last_height: Cell::new(0),
+        }
+    }
+
+    /// The transcript expanded to one [`Line`] per logical line, styled by role.
+    fn transcript_lines(&self) -> Vec<Line<'static>> {
+        let state = self.state.borrow();
+        state
             .transcript
             .iter()
             .flat_map(|entry| {
-                let style = if entry.starts_with("> ") {
-                    Style::default().fg(Theme::MUTED)
-                } else if entry.starts_with("\u{2717} ") {
-                    Style::default()
-                        .fg(Theme::ERROR)
-                        .add_modifier(Modifier::BOLD)
-                } else if entry.starts_with("\u{26a0}\u{fe0f} ") {
-                    Style::default()
-                        .fg(Theme::WARNING)
-                        .add_modifier(Modifier::BOLD)
-                } else if entry.starts_with("\u{2713} ") {
-                    Style::default().fg(Theme::SUCCESS)
-                } else {
-                    Style::default()
-                };
+                let style = transcript_line_style(entry);
                 entry
                     .split('\n')
                     .map(move |line| Line::styled(line.to_owned(), style))
             })
-            .collect::<Vec<_>>();
+            .collect()
+    }
 
-        let transport = state.transport_view();
-        lines.push(transport_status_line("Transport: ", &transport, true));
-        lines.push(Line::from(vec![
-            Span::styled(
-                "> ",
-                Style::default()
-                    .fg(Theme::FOCUS)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(state.display_input_with_cursor()),
-        ]));
-        lines.push(Line::styled(
-            state.input_hint(),
-            Style::default().fg(Theme::MUTED),
-        ));
+    /// Number of transcript rows visible above the pinned footer.
+    fn transcript_rows(height: u16) -> usize {
+        usize::from(height.saturating_sub(2 + REPL_FOOTER_ROWS)).max(1)
+    }
 
-        let mut block = Block::default().title("REPL").borders(Borders::ALL);
+    /// Furthest the transcript can scroll up (line count minus one viewport).
+    fn max_scroll(&self) -> usize {
+        self.transcript_lines()
+            .len()
+            .saturating_sub(Self::transcript_rows(self.last_height.get()))
+    }
+
+    fn scroll_step(&self) -> usize {
+        Self::transcript_rows(self.last_height.get())
+            .saturating_sub(1)
+            .max(1)
+    }
+
+    fn scroll_up(&self) {
+        let target = self.scroll.get().saturating_add(self.scroll_step());
+        self.scroll.set(target.min(self.max_scroll()));
+    }
+
+    fn scroll_down(&self) {
+        self.scroll
+            .set(self.scroll.get().saturating_sub(self.scroll_step()));
+    }
+}
+
+impl HypertilePlugin for ReplPlugin {
+    fn render(&self, area: Rect, buf: &mut Buffer, is_focused: bool) {
+        self.last_height.set(area.height);
+
+        let lines = self.transcript_lines();
+        let total = lines.len();
+        let rows = Self::transcript_rows(area.height);
+        let max_scroll = total.saturating_sub(rows);
+        let scroll = self.scroll.get().min(max_scroll);
+        let start = max_scroll - scroll;
+        let end = (start + rows).min(total);
+
+        let title = if total > rows {
+            format!("REPL {}-{}/{total} PgUp/PgDn", start + 1, end)
+        } else {
+            "REPL".to_owned()
+        };
+
+        let visible = lines.into_iter().skip(start).take(rows).collect::<Vec<_>>();
+
+        let footer = {
+            let state = self.state.borrow();
+            let transport = state.transport_view();
+            Text::from(vec![
+                transport_status_line("Transport: ", &transport, true),
+                Line::from(vec![
+                    Span::styled(
+                        "> ",
+                        Style::default()
+                            .fg(Theme::FOCUS)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw(state.display_input_with_cursor()),
+                ]),
+                Line::styled(state.input_hint(), Style::default().fg(Theme::MUTED)),
+            ])
+        };
+
+        let mut block = Block::default().title(title).borders(Borders::ALL);
         if is_focused {
             block = block.border_style(focus_border_style());
         }
+        let inner = block.inner(area);
+        block.render(area, buf);
 
-        Paragraph::new(Text::from(lines))
-            .block(block)
+        let footer_height = REPL_FOOTER_ROWS.min(inner.height);
+        let transcript_height = inner.height.saturating_sub(footer_height);
+        let transcript_area = Rect::new(inner.x, inner.y, inner.width, transcript_height);
+        let footer_area = Rect::new(
+            inner.x,
+            inner.y + transcript_height,
+            inner.width,
+            footer_height,
+        );
+
+        Paragraph::new(Text::from(visible))
             .wrap(Wrap { trim: false })
-            .render(area, buf);
+            .render(transcript_area, buf);
+        Paragraph::new(footer)
+            .wrap(Wrap { trim: false })
+            .render(footer_area, buf);
     }
 
     fn on_event(&mut self, event: &HypertileEvent) -> EventOutcome {
         let HypertileEvent::Key(chord) = event else {
             return EventOutcome::Ignored;
         };
+
+        // Transcript scrollback. PgUp/PgDn do not collide with the emacs-style
+        // input editing (which uses Ctrl/Alt chords and the arrow keys).
+        if chord.modifiers.is_empty() {
+            match chord.code {
+                KeyCode::PageUp => {
+                    self.scroll_up();
+                    return EventOutcome::Consumed;
+                }
+                KeyCode::PageDown => {
+                    self.scroll_down();
+                    return EventOutcome::Consumed;
+                }
+                _ => {}
+            }
+        }
 
         let mut state = self.state.borrow_mut();
 
@@ -163,9 +271,10 @@ impl BindingsPlugin {
         if bindings.is_empty() {
             vec![ListItem::new("No bindings yet")]
         } else {
+            let pulse = binding_activity_pulse(&transport);
             let mut items = bindings
                 .into_iter()
-                .map(|summary| binding_list_item(summary, &transport))
+                .map(|summary| binding_list_item_with_pulse(summary, &transport, pulse))
                 .collect::<Vec<_>>();
             if should_show_binding_legend(height, items.len(), &transport) {
                 items.push(ListItem::new(""));
@@ -498,6 +607,129 @@ mod tests {
 
     fn glyph_at(plugin: &OrcaPlugin, x: usize, y: usize) -> Option<char> {
         plugin.state.borrow().orca.engine().grid().glyph_at(x, y)
+    }
+
+    fn repl_plugin_with_lines(count: usize) -> ReplPlugin {
+        let plugin = ReplPlugin::new(Rc::new(RefCell::new(
+            SharedState::new(EngineHandle::stub()),
+        )));
+        {
+            let mut state = plugin.state.borrow_mut();
+            state.transcript.clear();
+            for index in 0..count {
+                state.transcript.push(format!("line {index}"));
+            }
+        }
+        plugin
+    }
+
+    fn render_repl(plugin: &ReplPlugin, area: Rect) -> String {
+        let mut buf = Buffer::empty(area);
+        plugin.render(area, &mut buf, true);
+        crate::tui::buffer_to_string(&buf)
+    }
+
+    #[test]
+    fn repl_transcript_sticks_to_the_bottom_by_default() {
+        let plugin = repl_plugin_with_lines(40);
+        // Height 10: 2 border rows + 3 footer rows leaves 5 transcript rows.
+        let area = Rect::new(0, 0, 30, 10);
+        let rendered = render_repl(&plugin, area);
+
+        assert!(rendered.contains("line 39"), "latest line is visible");
+        assert!(rendered.contains("line 35"), "the bottom window is shown");
+        assert!(!rendered.contains("line 0"), "old lines are scrolled off");
+        // The footer (input line + hint) stays pinned at the bottom.
+        assert!(rendered.contains("Hint:"), "hint line is always visible");
+        // The title mirrors the Bindings scroll indicator.
+        assert!(
+            rendered.contains("36-40/40"),
+            "title shows the scroll position, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn repl_page_up_reveals_earlier_lines_and_updates_the_title() {
+        let mut plugin = repl_plugin_with_lines(40);
+        let area = Rect::new(0, 0, 30, 10);
+        // Prime `last_height` so scroll math has a viewport.
+        let _ = render_repl(&plugin, area);
+
+        for _ in 0..40 {
+            assert_eq!(
+                plugin.on_event(&key(KeyCode::PageUp)),
+                EventOutcome::Consumed
+            );
+        }
+
+        let rendered = render_repl(&plugin, area);
+        assert!(rendered.contains("line 0"), "scrolled to the top");
+        assert!(rendered.contains("line 4"), "top window is shown");
+        assert!(!rendered.contains("line 39"), "bottom is scrolled away");
+        assert!(
+            rendered.contains("1-5/40"),
+            "title reflects the scrolled position, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn repl_page_down_returns_to_the_bottom() {
+        let mut plugin = repl_plugin_with_lines(40);
+        let area = Rect::new(0, 0, 30, 10);
+        let _ = render_repl(&plugin, area);
+
+        for _ in 0..40 {
+            plugin.on_event(&key(KeyCode::PageUp));
+        }
+        assert!(render_repl(&plugin, area).contains("line 0"));
+
+        for _ in 0..40 {
+            assert_eq!(
+                plugin.on_event(&key(KeyCode::PageDown)),
+                EventOutcome::Consumed
+            );
+        }
+
+        let rendered = render_repl(&plugin, area);
+        assert!(rendered.contains("line 39"), "back at the latest output");
+        assert!(rendered.contains("36-40/40"), "title back at the bottom");
+    }
+
+    #[test]
+    fn repl_short_transcript_has_no_scroll_indicator() {
+        let plugin = repl_plugin_with_lines(2);
+        let area = Rect::new(0, 0, 30, 12);
+        let rendered = render_repl(&plugin, area);
+        assert!(rendered.contains("line 0") && rendered.contains("line 1"));
+        // Plain title (no "x-y/n") when everything fits.
+        assert!(
+            !rendered.contains('/'),
+            "no scroll indicator, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn bindings_pane_pulses_the_live_binding_when_playing() {
+        let plugin = BindingsPlugin::new(Rc::new(RefCell::new(SharedState::new(
+            EngineHandle::stub(),
+        ))));
+        {
+            let mut state = plugin.state.borrow_mut();
+            state.session.eval_line("drums = bd sn").unwrap();
+            // Advance the transport so `drums` becomes the active pattern.
+            state.session.render_test_block_for_tui(256);
+        }
+
+        let area = Rect::new(0, 0, 40, 12);
+        let mut buf = Buffer::empty(area);
+        plugin.render(area, &mut buf, false);
+        let rendered = crate::tui::buffer_to_string(&buf);
+
+        assert!(rendered.contains("[live]"), "live tag is present");
+        assert!(
+            rendered.contains('\u{25cf}') || rendered.contains('\u{25cb}'),
+            "the live binding carries an activity pulse glyph, got: {rendered}"
+        );
     }
 
     #[test]

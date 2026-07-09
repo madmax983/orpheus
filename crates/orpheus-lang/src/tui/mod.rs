@@ -211,9 +211,7 @@ fn build_runtime(shared: &Rc<RefCell<SharedState>>) -> HypertileRuntime {
 
     // Register plugin types with factories that capture shared state.
     let s = Rc::clone(shared);
-    runtime.register_plugin_type(REPL_PLUGIN, move || ReplPlugin {
-        state: Rc::clone(&s),
-    });
+    runtime.register_plugin_type(REPL_PLUGIN, move || ReplPlugin::new(Rc::clone(&s)));
 
     let s = Rc::clone(shared);
     runtime.register_plugin_type(BINDINGS_PLUGIN, move || BindingsPlugin::new(Rc::clone(&s)));
