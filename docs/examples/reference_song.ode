@@ -1,0 +1,45 @@
+acid = voice { poly = 8 ; steal = oldest ; param_ramp = 0.02 ; osc = saw(freq) ; osc |> svf_lp(p1, 0.82) |> drive(1.35) |> gain(adsr(gate, 0.005, 0.09, 0.5, 0.13)) }
+
+pad = voice { poly = 6 ; release = 0.7 ; tone = saw(freq) + tri(freq) * 0.5 ; body = tone |> svf_lp(1500, 0.22) ; wet = feedback(body + fb |> delay(0.22) |> gain(0.4)) ; (body + wet) * adsr(gate, 0.5, 0.3, 0.75, 0.6) }
+
+pluck = voice { poly = 8 ; steal = oldest ; tone = tri(freq) + pulse(freq, 0.35) ; tone |> svf_lp(p1, 0.5) |> drive(p2 + 1) |> gain(ar(gate, 0.002, 0.12)) }
+
+kick = bd ~ bd ~
+kick_fill = bd ~ bd <bd cp>
+hats = hh*8 |> mask(euclid(5, 8)) |> gain(0.35) |> pan(0.15)
+hats_busy = hh*16 |> mask(euclid(11, 16)) |> degrade |> every(4, fast(2)) |> gain(0.3) |> pan(-0.15)
+open_hat = ~ hh ~ hh |> gain(0.25)
+clap = ~ cp ~ cp
+snare = ~ ~ sn ~
+perc = {hh hh hh, cp ~}%8 |> jux(rev) |> gain(0.24)
+
+bass_deg = degrees(aeolian, 0 0 12 0 3 0 -2 0)
+filter_env = segment(16, rand) |> range(320, 3600)
+acidline = acid acid acid acid acid acid acid acid
+bass_deep = acidline |> pitch(bass_deg) |> p1(360) |> gain(0.32) |> slow(2)
+bass_open = acidline |> pitch(bass_deg) |> p1(700) |> gain(0.4)
+bass_evolve = acidline |> pitch(bass_deg) |> p1(filter_env) |> whenmod(8, 4, rev) |> gain(0.42)
+bass_drive = acidline |> pitch(bass_deg) |> p1(300 700 1500 3200 6000 3200 1500 700) |> gain(0.44)
+bass_solo = acid acid |> pitch(degrees(aeolian, 0 3)) |> p1(300 900 3000 6000 3000 900) |> gain(0.4)
+
+pad_chord = stack(pad pad |> pitch(0) |> gain(0.16), pad pad |> pitch(3) |> gain(0.14), pad pad |> pitch(7) |> gain(0.14))
+pad_lift = within(0, 0.5, rev, pad_chord)
+
+arp_deg = degrees(aeolian, 0 2 4 7 4 2 4 5)
+plucks = pluck pluck pluck pluck pluck pluck pluck pluck
+lead = plucks |> pitch(arp_deg) |> p1(2600) |> p2(0.4) |> off(0.125, pitch(12)) |> gain(0.22)
+lead_a = plucks |> pitch(degrees(aeolian, 0 4 7 4)) |> p1(2400) |> p2(0.3)
+lead_b = pluck ~ pluck pluck ~ pluck pluck ~ |> pitch(degrees(aeolian, 7 5 4 2)) |> p1(3000) |> p2(0.5)
+lead_wander = plucks |> pitch(markov(0, 0.5, 0.3, 0.2, 4, 0.3, 0.4, 0.3, 7, 0.2, 0.3, 0.5)) |> p1(2800) |> p2(0.4) |> gain(0.2)
+lead_choose = plucks |> pitch(pchoose(degrees(aeolian, 0 2 4), degrees(aeolian, 7 5 4))) |> chunk(4, fast(2)) |> p1(2600) |> gain(0.2)
+lead_evolve = randcat(lead_a, lead_b) |> shuffle(4) |> gain(0.2)
+
+intro = stack(kick, pad_chord, bass_deep)
+build = stack(kick, hats, open_hat, clap, bass_open, pad_chord |> gain(0.1))
+drop = stack(kick_fill, hats_busy, clap, snare, perc, bass_drive |> fast(2), lead)
+peak = stack(kick, hats_busy, clap, perc, bass_evolve, lead_wander, lead_choose, pad_lift |> gain(0.1))
+melodic = stack(kick, hats, clap, bass_open, lead_evolve, pad_chord |> gain(0.12))
+breakdown = stack(bd ~ ~ ~, pad_chord, bass_solo |> slow(2))
+outro = stack(kick |> gain(0.5), open_hat |> gain(0.15), pad_chord |> gain(0.12))
+
+song = seq_sections(section(intro, 4), section(build, 4), section(drop, 8), section(peak, 8), section(melodic, 4), section(breakdown, 4), section(outro, 4))
