@@ -5,3 +5,6 @@
 ## YYYY-MM-DD - Formatting Output in orpheus-lang
 **Learning:** `orpheus-lang` is the core CLI/TUI layer of the workspace. Using presentation logic like ANSI escape codes and `comfy-table` inside this crate is correct and necessary to format the text walls outputted by commands like `:explain`.
 **Action:** When acting as Mosaic, continue leveraging `comfy-table` and `crossterm` inside `orpheus-lang` to provide structured data formatting and visual hierarchy, ensuring the REPL/TUI behaves like a proper dashboard instead of outputting raw text dumps.
+## 2024-10-24 - CLI Error Visual Hierarchy
+**Audit:** Discovered that entire error lines in REPL outputs were wrapped in red/bold styling, creating a "wall of red" and violating the visual hierarchy rule.
+**Polish:** Extracted the styling to apply exclusively to the semantic icons (`✗`, `✓`) and prefixes, leaving the actual error text unstyled.
