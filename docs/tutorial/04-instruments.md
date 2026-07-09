@@ -145,17 +145,20 @@ signal:
 lead = voice { poly = 4 ; release = 0.2 ; sine(freq) * ar(gate, 0.001, 0.05) }
 ```
 
-## The built-in `gsine`
+## A minimal voice to start from
 
-You do not have to define a voice to try the synth path: `gsine` is a built-in
-graph voice — a gated sine through an envelope, gain, and pan. Use it as a token
-anywhere:
+You do not need a complicated patch to get going. The smallest useful synth is a
+single oscillator shaped by a short envelope — copy this and change one thing at
+a time:
 
 ```text
-melody = gsine gsine gsine gsine |> pitch(c4 e4 g4 c5)
+beep = voice { sine(freq) * ar(gate, 0.001, 0.08) }
+melody = beep beep beep beep |> pitch(c4 e4 g4 c5)
 ```
 
-It is the fastest way to hear pitched synthesis before you write your own patch.
+Swap `sine` for `saw`, add a `|> lowpass(...)` stage, or drop in a `drive` — each
+edit hot-swaps at the next cycle boundary, so you hear exactly what each stage
+does.
 
 With instruments in hand, the last step is balancing several of them together
 and getting the result out of Orpheus — that is

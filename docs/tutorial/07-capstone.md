@@ -37,11 +37,12 @@ bassline = bass_synth bass_synth bass_synth bass_synth |> pitch(c2 e2 g2 c3) |> 
 
 ## Layer 3: a lead
 
-The built-in `gsine` gives us a pitched synth with no extra setup. We arpeggiate
-it and speed it up every fourth cycle for movement:
+A second, brighter voice — a plain sine with a quick envelope. We arpeggiate it
+and speed it up every fourth cycle for movement:
 
 ```text
-lead = gsine ~ gsine ~ |> pitch(c4 e4 g4 c5) |> every(4, fast(2)) |> gain(0.4)
+lead_synth = voice { sine(freq) * ar(gate, 0.001, 0.08) }
+lead = lead_synth ~ lead_synth ~ |> pitch(c4 e4 g4 c5) |> every(4, fast(2)) |> gain(0.4)
 ```
 
 ## The whole piece
