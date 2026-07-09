@@ -1020,6 +1020,342 @@ fn session_pattern_without_params_uses_the_zero_default() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Sample-stage follow-ups (parity roadmap / ADR 0010 addendum):
+// `sample_loop("name"[, rate])` wraps at the buffer end instead of stopping,
+// `sample_pitched("name"[, reference_hz])` derives the playback rate from the
+// note's `freq` ambient (native at the reference, default 220 Hz — the
+// engine's rate-1.0 reference frequency), and `sample("name", p1)` lets the
+// pattern side set a per-note rate through the #1418 parameters.
+// ---------------------------------------------------------------------------
+
+/// Renders `frames` stereo frames of a compiled voice with the gate held
+/// high at the given note frequency.
+fn render_voice_frames(source: &str, token: &str, freq_hz: f32, frames: usize) -> Vec<(f32, f32)> {
+    let mut compiled = compiled_voice(source, token);
+    (0..frames)
+        .map(|_| compiled.process_frame(1.0, freq_hz, 1.0, 0.0))
+        .collect()
+}
+
+/// The audible span (first..=last index with |left| above threshold) inside
+/// `window`, or `None` when the window is silent.
+fn audible_span(window: &[f32], threshold: f32) -> Option<(usize, usize)> {
+    let first = window.iter().position(|s| s.abs() > threshold)?;
+    let last = window.iter().rposition(|s| s.abs() > threshold)?;
+    Some((first, last))
+}
+
+#[test]
+#[allow(clippy::float_cmp)] // hard-wrap tiling is deliberately bit-exact
+fn voice_sample_loop_stage_tiles_the_buffer_bit_exactly() {
+    // Hard-wrap looping at rate 1.0 must reproduce the one-shot's frames
+    // tiled end to end: frame k of the loop equals frame k % len of the
+    // plain `sample()` take, bit for bit.
+    let bank = orpheus_dsp::SampleBank::load_builtin();
+    let len = bank
+        .get_by_token("bd")
+        .expect("bd is built in")
+        .frames()
+        .len();
+
+    let one_shot = render_voice_frames(r#"kit = voice { sample("bd") }"#, "kit", 220.0, len);
+    let looped = render_voice_frames(
+        r#"kit = voice { sample_loop("bd") }"#,
+        "kit",
+        220.0,
+        3 * len,
+    );
+
+    for (k, &(left, right)) in looped.iter().enumerate() {
+        let (want_left, want_right) = one_shot[k % len];
+        assert!(
+            left == want_left && right == want_right,
+            "frame {k}: looped ({left}, {right}) vs tiled one-shot ({want_left}, {want_right})"
+        );
+    }
+}
+
+#[test]
+fn voice_sample_loop_keeps_sounding_where_the_one_shot_is_silent() {
+    let bank = orpheus_dsp::SampleBank::load_builtin();
+    let len = bank
+        .get_by_token("bd")
+        .expect("bd is built in")
+        .frames()
+        .len();
+
+    let one_shot = render_voice_frames(r#"kit = voice { sample("bd") }"#, "kit", 220.0, 8 * len);
+    let looped = render_voice_frames(
+        r#"kit = voice { sample_loop("bd") }"#,
+        "kit",
+        220.0,
+        8 * len,
+    );
+
+    let late_energy = |frames: &[(f32, f32)]| {
+        frames[2 * len..]
+            .iter()
+            .map(|&(left, _)| left.abs())
+            .sum::<f32>()
+    };
+    assert!(
+        late_energy(&one_shot) == 0.0,
+        "the one-shot must be silent past the buffer end"
+    );
+    assert!(
+        late_energy(&looped) > 0.1,
+        "the loop must keep producing past the buffer end"
+    );
+}
+
+#[test]
+fn voice_sample_loop_extends_the_release_and_accepts_a_rate_signal() {
+    // Same release convention as the one-shot stage: the tail covers at
+    // least the buffer's duration at native rate.
+    let Value::Voice(voice) = eval_voice(r#"kit = voice { sample_loop("bd") }"#) else {
+        panic!("expected a voice value");
+    };
+    let bank = orpheus_dsp::SampleBank::load_builtin();
+    let bd = bank.get_by_token("bd").expect("bd is built in");
+    #[allow(clippy::cast_precision_loss)]
+    let bd_seconds = (bd.frames().len() as f32 / bd.sample_rate_hz() as f32).min(30.0);
+    assert!(voice.release_seconds() + 1e-6 >= bd_seconds);
+
+    // The optional second argument is a rate signal, like `sample`.
+    let Value::Voice(voice) = eval_voice(r#"kit = voice { sample_loop("bd", 2) }"#) else {
+        panic!("expected a voice value");
+    };
+    assert!(voice.to_spec("kit").is_ok());
+
+    // Same arity/pipe rules as `sample`.
+    let message = eval_error(r#"bad = voice { sine(freq) |> sample_loop("bd") }"#);
+    assert!(
+        message.contains("sample_loop"),
+        "unexpected error: {message}"
+    );
+    let message = eval_error(r#"bad = voice { sample_loop("bd", 1, 2) }"#);
+    assert!(
+        message.contains("sample_loop"),
+        "unexpected error: {message}"
+    );
+    let message = eval_error(r#"bad = voice { sample_loop("glitch") }"#);
+    assert!(message.contains("glitch"), "unexpected error: {message}");
+}
+
+#[test]
+fn session_sample_loop_voice_sounds_through_the_gate_then_stops_after_release() {
+    // End-to-end gate-low semantics: the loop keeps playing while the gate
+    // holds AND through the voice's release tail, then the note ends —
+    // consistent with the one-shot's play-past-the-gate behavior.
+    let mut session = ReplSession::with_engine(EngineHandle::stub());
+    session.eval_line(":tempo 1200").unwrap();
+    session
+        .eval_line(r#"kit = voice { sample_loop("bd") }"#)
+        .unwrap();
+    let _ = session.render_test_block_for_tui(1);
+    // One event per cycle quarter: gate spans [0, 2400) frames; the default
+    // 0.02 s release tail ends by frame 2400 + 960 = 3360.
+    session.eval_line("hits = kit ~ ~ ~").unwrap();
+    let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
+
+    let rendered = session.render_test_block_for_tui(9_600);
+    assert!(rendered.iter().all(|sample| sample.is_finite()));
+    let left: Vec<f32> = stereo_frames(&rendered)
+        .iter()
+        .map(|&(left, _)| left)
+        .collect();
+    let energy = |range: std::ops::Range<usize>| left[range].iter().map(|s| s.abs()).sum::<f32>();
+
+    // An 8-frame one-shot would be silent long before frame 1000; the loop
+    // must still be audible deep into the gate and through the release.
+    assert!(
+        energy(1_000..2_400) > 0.5,
+        "the loop must sound for the whole gate span"
+    );
+    assert!(
+        energy(2_500..3_300) > 0.1,
+        "the loop must keep playing until the release ends"
+    );
+    assert!(
+        energy(4_000..9_500) < 1e-3,
+        "the note must go silent once the release tail ends"
+    );
+}
+
+#[test]
+fn voice_sample_pitched_at_the_reference_matches_plain_sample_bit_exactly() {
+    // freq == reference (default 220 Hz, the engine's rate-1.0 reference)
+    // must give playback rate exactly 1.0.
+    let bank = orpheus_dsp::SampleBank::load_builtin();
+    let len = bank
+        .get_by_token("bd")
+        .expect("bd is built in")
+        .frames()
+        .len();
+
+    let plain = render_voice_frames(r#"kit = voice { sample("bd") }"#, "kit", 220.0, 2 * len);
+    let pitched = render_voice_frames(
+        r#"kit = voice { sample_pitched("bd") }"#,
+        "kit",
+        220.0,
+        2 * len,
+    );
+    assert_eq!(
+        plain, pitched,
+        "at the reference frequency the pitched stage must be bit-identical"
+    );
+}
+
+#[test]
+fn voice_sample_pitched_an_octave_up_matches_double_rate() {
+    let bank = orpheus_dsp::SampleBank::load_builtin();
+    let len = bank
+        .get_by_token("bd")
+        .expect("bd is built in")
+        .frames()
+        .len();
+
+    // An octave above the reference doubles the playback rate exactly
+    // (440 / 220 == 2.0), so it must match the explicit-rate one-shot.
+    let doubled = render_voice_frames(r#"kit = voice { sample("bd", 2) }"#, "kit", 220.0, 2 * len);
+    let pitched = render_voice_frames(
+        r#"kit = voice { sample_pitched("bd") }"#,
+        "kit",
+        440.0,
+        2 * len,
+    );
+    assert_eq!(
+        doubled, pitched,
+        "an octave above the reference must double the playback rate"
+    );
+}
+
+#[test]
+fn voice_sample_pitched_accepts_a_custom_reference_literal() {
+    let bank = orpheus_dsp::SampleBank::load_builtin();
+    let len = bank
+        .get_by_token("bd")
+        .expect("bd is built in")
+        .frames()
+        .len();
+
+    // With the reference moved to 440 Hz, a 440 Hz note plays natively.
+    let plain = render_voice_frames(r#"kit = voice { sample("bd") }"#, "kit", 220.0, 2 * len);
+    let pitched = render_voice_frames(
+        r#"kit = voice { sample_pitched("bd", 440) }"#,
+        "kit",
+        440.0,
+        2 * len,
+    );
+    assert_eq!(plain, pitched);
+}
+
+#[test]
+fn voice_sample_pitched_rejects_bad_references_and_arity() {
+    // The reference must be a positive finite number literal, resolved at
+    // definition time.
+    let message = eval_error(r#"bad = voice { sample_pitched("bd", 0) }"#);
+    assert!(
+        message.contains("sample_pitched") && message.contains("reference"),
+        "unexpected error: {message}"
+    );
+    let message = eval_error(r#"bad = voice { sample_pitched("bd", freq) }"#);
+    assert!(
+        message.contains("sample_pitched") && message.contains("literal"),
+        "unexpected error: {message}"
+    );
+    let message = eval_error(r#"bad = voice { sample_pitched("bd", 220, 1) }"#);
+    assert!(
+        message.contains("sample_pitched"),
+        "unexpected error: {message}"
+    );
+    let message = eval_error(r#"bad = voice { sine(freq) |> sample_pitched("bd") }"#);
+    assert!(
+        message.contains("sample_pitched"),
+        "unexpected error: {message}"
+    );
+    let message = eval_error(r#"bad = voice { sample_pitched("glitch") }"#);
+    assert!(message.contains("glitch"), "unexpected error: {message}");
+}
+
+#[test]
+fn session_pitched_sample_voice_tracks_pattern_notes() {
+    // End-to-end: a pattern of named pitches drives the sample's playback
+    // rate. c4 maps to 220 x 2^(60/12) = 7040 Hz under the engine's
+    // convention, so a 7040 Hz reference plays c4 natively and c5 (an
+    // octave up) at exactly double rate — the take lasts half as long.
+    let mut session = ReplSession::with_engine(EngineHandle::stub());
+    session.eval_line(":tempo 1200").unwrap();
+    session
+        .eval_line(r#"kit = voice { sample_pitched("bd", 7040) }"#)
+        .unwrap();
+    let _ = session.render_test_block_for_tui(1);
+    session.eval_line("line = kit kit |> pitch(c4 c5)").unwrap();
+    let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
+
+    let rendered = session.render_test_block_for_tui(9_600);
+    assert!(rendered.iter().all(|sample| sample.is_finite()));
+    let left: Vec<f32> = stereo_frames(&rendered)
+        .iter()
+        .map(|&(left, _)| left)
+        .collect();
+
+    // Two events per cycle: c4 owns [0, 4800), c5 owns [4800, 9600).
+    let (native_first, native_last) =
+        audible_span(&left[..4_800], 1e-3).expect("the c4 note must be audible");
+    let (fast_first, fast_last) =
+        audible_span(&left[4_800..], 1e-3).expect("the c5 note must be audible");
+    let native_len = native_last - native_first + 1;
+    let fast_len = fast_last - fast_first + 1;
+    assert!(
+        native_len >= 2 * fast_len - 1 && native_len <= 2 * fast_len + 1,
+        "an octave up must halve the take: native {native_len} frames vs octave-up {fast_len}"
+    );
+}
+
+#[test]
+fn voice_sample_rate_can_be_a_pattern_param() {
+    // The #1418 params are ordinary signals, so `sample("bd", p1)` binds the
+    // per-note parameter straight into the player's rate input.
+    let Value::Voice(voice) = eval_voice(r#"kit = voice { sample("bd", p1) }"#) else {
+        panic!("expected a voice value");
+    };
+    assert!(voice.to_spec("kit").is_ok());
+}
+
+#[test]
+fn session_pattern_param_drives_per_note_sample_rate() {
+    // End-to-end: `p1` sets each note's playback rate from the pattern side,
+    // so the rate-1 note lasts twice as long as the rate-2 note.
+    let mut session = ReplSession::with_engine(EngineHandle::stub());
+    session.eval_line(":tempo 1200").unwrap();
+    session
+        .eval_line(r#"kit = voice { sample("bd", p1) }"#)
+        .unwrap();
+    let _ = session.render_test_block_for_tui(1);
+    session.eval_line("hits = kit kit |> p1(1 2)").unwrap();
+    let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
+
+    let rendered = session.render_test_block_for_tui(9_600);
+    assert!(rendered.iter().all(|sample| sample.is_finite()));
+    let left: Vec<f32> = stereo_frames(&rendered)
+        .iter()
+        .map(|&(left, _)| left)
+        .collect();
+
+    let (slow_first, slow_last) =
+        audible_span(&left[..4_800], 1e-3).expect("the rate-1 note must be audible");
+    let (fast_first, fast_last) =
+        audible_span(&left[4_800..], 1e-3).expect("the rate-2 note must be audible");
+    let slow_len = slow_last - slow_first + 1;
+    let fast_len = fast_last - fast_first + 1;
+    assert!(
+        slow_len >= 2 * fast_len - 1 && slow_len <= 2 * fast_len + 1,
+        "p1 must set the per-note rate: rate-1 {slow_len} frames vs rate-2 {fast_len}"
+    );
+}
+
 #[test]
 fn session_plays_svf_filtered_voice_from_pattern_token() {
     let mut session = ReplSession::with_engine(EngineHandle::stub());

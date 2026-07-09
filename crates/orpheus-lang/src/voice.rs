@@ -25,10 +25,10 @@ use std::collections::BTreeMap;
 use comfy_table::Cell;
 use crossterm::style::Stylize;
 use orpheus_dsp::{
-    DEFAULT_GRAPH_VOICE_POLYPHONY, FILTER_MAX_GAIN_DB, FILTER_MAX_Q, FILTER_MIN_FREQUENCY_HZ,
-    FILTER_MIN_Q, GraphVoiceSpec, MAX_GRAPH_VOICE_POLYPHONY, MAX_VOICE_DELAY_SECONDS,
-    MODULATED_VOICE_DELAY_MAX_SECONDS, SampleBank, StealPolicy, SvfMode, VoiceNodeSpec,
-    VoiceSignalRef,
+    DEFAULT_ANALOG_BASE_FREQUENCY_HZ, DEFAULT_GRAPH_VOICE_POLYPHONY, FILTER_MAX_GAIN_DB,
+    FILTER_MAX_Q, FILTER_MIN_FREQUENCY_HZ, FILTER_MIN_Q, GraphVoiceSpec, MAX_GRAPH_VOICE_POLYPHONY,
+    MAX_VOICE_DELAY_SECONDS, MODULATED_VOICE_DELAY_MAX_SECONDS, SampleBank, StealPolicy, SvfMode,
+    VoiceNodeSpec, VoiceSignalRef,
 };
 
 use crate::ast::{BinaryOp, Expr, GraphBinding};
@@ -446,12 +446,13 @@ impl<'bank> VoiceCompiler<'bank> {
             "delay" => self.compile_delay(args, piped),
             "feedback" => self.compile_feedback(args, piped),
             "fan" => self.compile_fan(args, piped),
-            "sample" => self.compile_sample(args, piped),
+            "sample" | "sample_loop" => self.compile_sample(name, args, piped),
+            "sample_pitched" => self.compile_sample_pitched(args, piped),
             other => Err(EvalError::new(format!(
                 "unknown voice stage `{other}`; available stages are `sine`, `saw`, `tri`, \
-                 `pulse`, `noise`, `sample`, `adsr`, `ar`, `lowpass`, `svf_lp`, `svf_hp`, \
-                 `svf_bp`, `svf_notch`, `eq_peak`, `drive`, `gain`, `delay`, `feedback`, \
-                 and `fan`"
+                 `pulse`, `noise`, `sample`, `sample_loop`, `sample_pitched`, `adsr`, `ar`, \
+                 `lowpass`, `svf_lp`, `svf_hp`, `svf_bp`, `svf_notch`, `eq_peak`, `drive`, \
+                 `gain`, `delay`, `feedback`, and `fan`"
             ))),
         }
     }
@@ -751,43 +752,131 @@ impl<'bank> VoiceCompiler<'bank> {
         }
     }
 
-    /// Compiles `sample("name"[, rate])` — one-shot playback of a preloaded
-    /// sample-bank buffer, so hybrid sample+synth instruments compose (e.g.
-    /// `voice { s = sample("bd") ; s * ar(gate, 0.001, 0.2) }`).
+    /// Compiles `sample("name"[, rate])` and `sample_loop("name"[, rate])` —
+    /// playback of a preloaded sample-bank buffer, so hybrid sample+synth
+    /// instruments compose (e.g. `voice { s = sample("bd") ; s * ar(gate,
+    /// 0.001, 0.2) }`). `sample` is one-shot; `sample_loop` hard-wraps at
+    /// the buffer end and keeps sounding until the voice's release tail ends
+    /// (a falling gate never cuts either stage — the one-shot semantics).
     ///
     /// The note gate triggers playback implicitly: a rising edge restarts
     /// the buffer from the top and the level is otherwise ignored (one-shot,
     /// like the engine's sample voices). The optional `rate` argument is a
-    /// SIGNAL (1.0 = native pitch, the default). The name must be a string
-    /// literal: the buffer's shared handle is resolved and embedded here,
-    /// before the audio thread runs, so an unknown name errors at definition
-    /// time.
+    /// SIGNAL (1.0 = native pitch, the default) — a per-note pattern
+    /// parameter binds directly (`sample("bd", p1)` with `hits |> p1(1 2)`).
+    /// The name must be a string literal: the buffer's shared handle is
+    /// resolved and embedded here, before the audio thread runs, so an
+    /// unknown name errors at definition time.
     fn compile_sample(
+        &mut self,
+        stage: &str,
+        args: &[Expr],
+        piped: Option<VoiceSignalRef>,
+    ) -> Result<VoiceSignalRef, EvalError> {
+        if piped.is_some() {
+            return Err(EvalError::new(format!(
+                "`{stage}` is a source and cannot be a pipe target; call it directly \
+                 with a sample name (e.g. `{stage}(\"bd\")` or `{stage}(\"bd\", 2)`)"
+            )));
+        }
+        let (name_expr, rate_expr) = match args {
+            [name] => (name, None),
+            [name, rate] => (name, Some(rate)),
+            _ => {
+                return Err(EvalError::new(format!(
+                    "`{stage}` expects a sample name plus an optional rate signal \
+                     (e.g. `{stage}(\"bd\")` or `{stage}(\"bd\", 2)`)"
+                )));
+            }
+        };
+        let sample = self.resolve_sample_literal(stage, name_expr)?;
+        let rate = match rate_expr {
+            Some(expr) => self.compile_expr(expr)?,
+            None => self.push(VoiceNodeSpec::Constant { value: 1.0 })?,
+        };
+        self.push(VoiceNodeSpec::Sample {
+            gate: VoiceSignalRef::Gate,
+            rate,
+            sample,
+            looped: stage == "sample_loop",
+            pitch_reference_hz: None,
+        })
+    }
+
+    /// Compiles `sample_pitched("name"[, reference_hz])` — one-shot playback
+    /// whose rate tracks the triggering note: rate = `freq` / reference, so
+    /// a pattern's pitches transpose the sample like an oscillator.
+    ///
+    /// The reference is the note frequency that plays the buffer at native
+    /// rate. It defaults to the engine's rate-1.0 reference frequency
+    /// (220 Hz — `freq` is computed as 220 Hz x the event's playback-rate
+    /// multiplier, so an unshifted note plays natively and `|> pitch(12)`
+    /// doubles the rate). A number-literal argument overrides it, e.g.
+    /// `sample_pitched("bd", 7040)` plays natively on c4 (220 x 2^(60/12)).
+    fn compile_sample_pitched(
         &mut self,
         args: &[Expr],
         piped: Option<VoiceSignalRef>,
     ) -> Result<VoiceSignalRef, EvalError> {
         if piped.is_some() {
             return Err(EvalError::new(
-                "`sample` is a source and cannot be a pipe target; call it directly \
-                 with a sample name (e.g. `sample(\"bd\")` or `sample(\"bd\", 2)`)",
+                "`sample_pitched` is a source and cannot be a pipe target; call it \
+                 directly with a sample name (e.g. `sample_pitched(\"bd\")`)",
             ));
         }
-        let (name_expr, rate_expr) = match args {
+        let (name_expr, reference_expr) = match args {
             [name] => (name, None),
-            [name, rate] => (name, Some(rate)),
+            [name, reference] => (name, Some(reference)),
             _ => {
                 return Err(EvalError::new(
-                    "`sample` expects a sample name plus an optional rate signal \
-                     (e.g. `sample(\"bd\")` or `sample(\"bd\", 2)`)",
+                    "`sample_pitched` expects a sample name plus an optional reference \
+                     frequency in Hz (e.g. `sample_pitched(\"bd\")` or \
+                     `sample_pitched(\"bd\", 440)`)",
                 ));
             }
         };
+        let sample = self.resolve_sample_literal("sample_pitched", name_expr)?;
+        #[allow(clippy::cast_possible_truncation)]
+        let reference_hz = match reference_expr {
+            None => DEFAULT_ANALOG_BASE_FREQUENCY_HZ,
+            Some(Expr::Number(value)) if value.is_finite() && *value > 0.0 => *value as f32,
+            Some(Expr::Number(_)) => {
+                return Err(EvalError::new(
+                    "`sample_pitched` requires a positive finite reference frequency \
+                     (the note frequency that plays the sample at native rate)",
+                ));
+            }
+            Some(_) => {
+                return Err(EvalError::new(
+                    "`sample_pitched` requires its reference to be a number literal — \
+                     it is fixed before the audio thread runs (e.g. \
+                     `sample_pitched(\"bd\", 440)`)",
+                ));
+            }
+        };
+        self.push(VoiceNodeSpec::Sample {
+            gate: VoiceSignalRef::Gate,
+            rate: VoiceSignalRef::Freq,
+            sample,
+            looped: false,
+            pitch_reference_hz: Some(reference_hz),
+        })
+    }
+
+    /// Resolves a sample-stage name argument against the bank and extends
+    /// the voice's release tail to cover the buffer at native rate (capped
+    /// like the `release` pragma so note lifetimes stay bounded) — playback
+    /// survives the gate falling, for one-shots and loops alike.
+    fn resolve_sample_literal(
+        &mut self,
+        stage: &str,
+        name_expr: &Expr,
+    ) -> Result<orpheus_dsp::PlaybackSample, EvalError> {
         let Expr::String(name) = name_expr else {
-            return Err(EvalError::new(
-                "`sample` requires its name to be a string literal — the buffer is \
-                 resolved before the audio thread runs (e.g. `sample(\"bd\")`)",
-            ));
+            return Err(EvalError::new(format!(
+                "`{stage}` requires its name to be a string literal — the buffer is \
+                 resolved before the audio thread runs (e.g. `{stage}(\"bd\")`)"
+            )));
         };
         let Some(sample) = self.samples.get_by_token(name) else {
             let available = self.samples.available_tokens();
@@ -802,24 +891,12 @@ impl<'bank> VoiceCompiler<'bank> {
         };
         let sample = sample.clone();
 
-        // One-shot playback survives the gate falling, so the release tail
-        // must cover the buffer's duration at native rate (capped like the
-        // `release` pragma so note lifetimes stay bounded).
         #[allow(clippy::cast_possible_truncation)]
         let duration_seconds = sample
             .duration_seconds()
             .min(MAX_VOICE_RELEASE_FLOOR_SECONDS) as f32;
         self.max_release = self.max_release.max(duration_seconds);
-
-        let rate = match rate_expr {
-            Some(expr) => self.compile_expr(expr)?,
-            None => self.push(VoiceNodeSpec::Constant { value: 1.0 })?,
-        };
-        self.push(VoiceNodeSpec::Sample {
-            gate: VoiceSignalRef::Gate,
-            rate,
-            sample,
-        })
+        Ok(sample)
     }
 
     /// Compiles `feedback(body)` — a one-sample feedback loop around `body`.

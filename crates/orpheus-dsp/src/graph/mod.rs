@@ -42,8 +42,12 @@ pub use adapters::{
     gain_node, ladder_filter, mix_node, noise, pulse, saw, soft_sat, tri,
 };
 
-// Sample playback (one-shot player over preloaded bank buffers)
-pub use sample_player::{SamplePlayerNode, sample_player};
+// Sample playback (one-shot, looped, and pitched players over preloaded
+// bank buffers)
+pub use sample_player::{
+    SamplePlayerNode, sample_player, sample_player_looped, sample_player_pitched,
+    sample_player_with_options,
+};
 
 // Combinators
 pub use combinators::{Mrg, Par, Rec, Seq, Spl, feedback, merge, par, seq, split};

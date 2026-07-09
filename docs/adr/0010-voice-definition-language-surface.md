@@ -181,6 +181,32 @@ end). The counting-allocator suite covers a hybrid sample+sine voice: pool
 build resolves the handle off-thread, and trigger/render stay
 allocation-free.
 
+**Follow-ups shipped: loop mode, pitch tracking, pattern-driven rate.** The
+one-shot's deferred items landed as two sibling stages plus a test-proven
+wiring of the existing rate input. `sample_loop("name"[, rate])` hard-wraps
+the playhead at the buffer end (no crossfade; at rate 1.0 the output is the
+buffer tiled bit-exactly, and the interpolator reads toward the buffer head
+across the wrap) — the gate keeps one-shot trigger semantics, so a falling
+gate never cuts the loop: it sounds until the voice's release tail ends,
+exactly like a one-shot outliving its gate, and the stage extends the
+release the same way. A separate stage name was chosen over a flag argument
+because the grammar has no keyword arguments and the second positional slot
+is already the rate signal. `sample_pitched("name"[, reference_hz])` derives
+the playback rate from the note: rate = `freq` / reference, computed per
+frame inside the player so a note exactly at the reference plays at exactly
+1.0 (bit-identical to `sample()`). The default reference is 220 Hz —
+`DEFAULT_ANALOG_BASE_FREQUENCY_HZ`, the engine's note-frequency convention
+(`freq` = 220 Hz x the event's playback-rate multiplier), so an unshifted
+note plays natively and `|> pitch(12)` doubles the rate; a number-literal
+argument re-anchors it (`sample_pitched("bd", 7040)` plays natively on c4 =
+220 x 2^(60/12)). Both lower onto the existing `SamplePlayerNode` via
+`looped`/`pitch_reference_hz` fields on `VoiceNodeSpec::Sample`; the
+counting-allocator suite covers looped and pitched pooled voices. Finally,
+the rate argument was already a signal, so per-note pattern control needed
+no new surface: `sample("bd", p1)` with `hits |> p1(1 2)` sets each note's
+rate from the pattern side (now locked in by end-to-end tests). Remaining:
+a looped+pitched combination stage and crossfaded loop points.
+
 ## Addendum: pattern-side control signals (`p1`..`p4`)
 
 The last deferred engine-integration item — pattern-side controls reaching
