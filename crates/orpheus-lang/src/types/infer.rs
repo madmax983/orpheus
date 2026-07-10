@@ -194,7 +194,7 @@ impl Inferencer {
                     return Ok(ty);
                 }
                 let mut callee_ty = self.infer_expr(callee)?;
-                if matches!(self.resolve(callee_ty.clone()), Type::Pattern(_))
+                if matches!(self.resolve_ref(&callee_ty), Type::Pattern(_))
                     && (2..=3).contains(&args.len())
                 {
                     // Inline euclid sugar `bd(3, 8[, rot])`: "calling" a
@@ -288,7 +288,7 @@ impl Inferencer {
 
     fn require_numeric_binary_operand(&mut self, expr: &Expr) -> Result<(), TypeError> {
         let ty = self.infer_expr(expr)?;
-        let resolved = self.resolve(ty.clone());
+        let resolved = self.resolve_ref(&ty);
 
         match resolved {
             Type::Pattern(inner) if inner.as_ref() == &Type::Number => Ok(()),
@@ -313,7 +313,7 @@ impl Inferencer {
             self.unify(expected.clone(), actual.clone()).map_err(|_| {
                 TypeError::new(format!(
                     "{context} must all have the same type; expected {}, found {}",
-                    self.resolve(expected.clone()),
+                    self.resolve_ref(&expected),
                     self.resolve(actual)
                 ))
             })?;
@@ -361,7 +361,7 @@ impl Inferencer {
             let actual = self.infer_expr(item)?;
             // A voice binding used inside a pattern is a sample-like token:
             // the engine resolves it through the graph voice bank.
-            let actual = if matches!(self.resolve(actual.clone()), Type::Voice) {
+            let actual = if matches!(self.resolve_ref(&actual), Type::Voice) {
                 Type::pattern(Type::Sample)
             } else {
                 actual
@@ -638,9 +638,9 @@ impl Inferencer {
     /// evaluator, which invokes saturated zero-arity builtins in pattern
     /// position.
     fn coerce_nullary_function_argument(&self, param_ty: &Type, arg_ty: Type) -> Type {
-        match self.resolve(param_ty.clone()) {
+        match self.resolve_ref(param_ty) {
             Type::Function(..) | Type::Var(_) => arg_ty,
-            _ => match self.resolve(arg_ty.clone()) {
+            _ => match self.resolve_ref(&arg_ty) {
                 Type::Function(args, ret) if args.is_empty() => *ret,
                 _ => arg_ty,
             },
@@ -726,7 +726,7 @@ impl Inferencer {
     }
 
     fn occurs(&self, needle: TypeVarId, ty: &Type) -> bool {
-        match self.resolve(ty.clone()) {
+        match self.resolve_ref(ty) {
             Type::Var(var) => var == needle,
             Type::Pattern(inner) => self.occurs(needle, &inner),
             Type::Function(args, ret) => {
@@ -759,18 +759,24 @@ impl Inferencer {
                 args.into_iter().map(|arg| self.resolve(arg)).collect(),
                 self.resolve(*ret),
             ),
-            Type::Sample => Type::Sample,
-            Type::Pedal => Type::Pedal,
-            Type::Voice => Type::Voice,
-            Type::Plugin => Type::Plugin,
-            Type::Note => Type::Note,
-            Type::Number => Type::Number,
-            Type::Duration => Type::Duration,
-            Type::ArpDirection => Type::ArpDirection,
-            Type::PitchClassSet => Type::PitchClassSet,
-            Type::Tuning => Type::Tuning,
-            Type::String => Type::String,
-            Type::Unit => Type::Unit,
+            other => other,
+        }
+    }
+
+    /// ⚡ Bolt: Recursively resolves type variables by reference to avoid deep-cloning
+    /// AST nodes and unnecessary heap allocations when traversing `Box` structures.
+    fn resolve_ref(&self, ty: &Type) -> Type {
+        match ty {
+            Type::Var(var) => self
+                .substitutions
+                .get(var)
+                .map_or_else(|| ty.clone(), |bound| self.resolve_ref(bound)),
+            Type::Pattern(inner) => Type::pattern(self.resolve_ref(inner)),
+            Type::Function(args, ret) => Type::function(
+                args.iter().map(|arg| self.resolve_ref(arg)).collect(),
+                self.resolve_ref(ret),
+            ),
+            other => other.clone(),
         }
     }
 

@@ -32,7 +32,8 @@ use crate::error::EvalError;
 use crate::explain::Explain;
 
 /// The coarse signal domain understood by the pedal DSL.
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// ⚡ Bolt: Derived `Copy` to avoid `.clone()` overhead on hot paths during DSL graph compilation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 /// Resolution constraint for graph paths.
 pub enum SignalKind {
     /// Runs per-sample.
@@ -181,7 +182,7 @@ impl ValidatedPedalPlan {
     #[must_use]
     pub fn new(bindings: Vec<ValidatedPedalBinding>, result: ValidatedPedalNode) -> Self {
         Self {
-            signal_kind: result.signal_kind().clone(),
+            signal_kind: *result.signal_kind(),
             bindings,
             result,
         }
@@ -309,7 +310,7 @@ impl GraphCompiler<'_> {
     ) -> Result<ValidatedPedalNode, EvalError> {
         if let Some(kind) = self.resolved_signals.get(name) {
             return Ok(ValidatedPedalNode::new(
-                kind.clone(),
+                *kind,
                 PedalNodeKind::Reference,
                 name,
             ));
@@ -487,7 +488,7 @@ impl GraphCompiler<'_> {
         if let Expr::Ident(name) = expr {
             if let Some(kind) = self.resolved_signals.get(name) {
                 return Ok(ValidatedPedalNode::new(
-                    kind.clone(),
+                    *kind,
                     PedalNodeKind::Reference,
                     name,
                 ));
@@ -966,7 +967,7 @@ pub fn compile_graph(
             current_binding: Some(binding.name.as_str()),
         };
         let node = compiler.compile_expr(&binding.expr, false)?;
-        resolved_signals.insert(binding.name.clone(), node.signal_kind().clone());
+        resolved_signals.insert(binding.name.clone(), *node.signal_kind());
         compiled_bindings.push(ValidatedPedalBinding::new(binding.name.clone(), node));
     }
 

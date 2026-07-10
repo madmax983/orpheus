@@ -47,3 +47,6 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+**[Replacing .clone() with reference resolutions in Type Inference]**
+**Learning:** During type inference (`resolve` or matching types), calling `.clone()` heavily on `Type` (which contains `Box` for patterns/functions) causes unnecessary heap allocations. Using a reference-based version (`resolve_ref`) avoids moving types needlessly while checking properties like `Type::Voice` or resolving type variables. Also, small enums like `SignalKind` can derive `Copy` to avoid cloning in DSL graph evaluations.
+**Action:** Replace `self.resolve(x.clone())` with `self.resolve_ref(&x)` in inference passes, and `derive(Copy)` for small token enums to reduce heap overhead.
