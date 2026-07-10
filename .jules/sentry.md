@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2024-05-24 - [Arithmetic Overflow Coverage for Rational Numbers]
+**Learning:** `checked_sub` delegates to `checked_add` and normalizes the right-hand side first. Negating `i128::MIN` will cause a normalization error during this process before addition even happens. Furthermore, multiplying `i128::MAX` with anything larger than 1 causes overflow that needs test coverage.
+**Action:** When testing arithmetic boundaries for checked operations on types that normalize inputs, explicitly cover both the boundary values that trigger overflow during normalization (like negating min bounds) and those that trigger overflow during the arithmetic operation itself.
