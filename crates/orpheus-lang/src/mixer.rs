@@ -22,9 +22,10 @@ use ratatui::text::{Line, Span};
 
 use crate::tui::style::{Theme, meter_bar, meter_color};
 
-use orpheus_dsp::{GeneratorId, RoutingSnapshot, SampleTrigger, TrackSource};
+use orpheus_dsp::{GeneratorCycleSpec, GeneratorId, RoutingSnapshot, SampleTrigger, TrackSource};
 use orpheus_pattern::Event;
 use orpheus_pattern::Rational;
+use orpheus_pattern::TimeSpan;
 
 use crate::Value;
 use crate::export::sample_trigger_from_event;
@@ -655,6 +656,219 @@ impl MixerState {
 
         builder.build().map_err(|error| error.to_string())
     }
+
+    /// Compiles a routing snapshot for an **offline master/stem render** that
+    /// advances multi-cycle arrangements cycle by cycle.
+    ///
+    /// [`Self::compile_snapshot`] captures every plain sample-pattern track as a
+    /// single-cycle [`TrackSource::SamplePattern`] (its unit-cycle query). The
+    /// live engine re-loops that one cycle every bar, which is correct for a
+    /// looping pattern but wrong for a finite arrangement such as
+    /// `seq_sections(...)`: an offline render of N cycles would replay cycle 0 N
+    /// times (issue #1446). This variant instead materializes each such track
+    /// across the full `cycles`-cycle timeline, splits it into one cycle-local
+    /// event buffer per cycle, and binds the track to a synthetic
+    /// [`TrackSource::Generator`] fed by those buffers — the same per-cycle seam
+    /// the offline renderer already uses for real generator sources (ADR 0009).
+    /// The returned [`GeneratorCycleSpec`] vector carries the synthetic buffers;
+    /// pass it (merged with any real generator specs) to
+    /// [`orpheus_dsp::render_routing_snapshot_to_master_wav`].
+    ///
+    /// Tracks already backed by a real engine generator slot keep their existing
+    /// [`GeneratorId`] (their recorded buffers are supplied separately by the
+    /// session), and plugin tracks are unchanged. Synthetic ids are allocated
+    /// above every real generator id so the two never collide.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when a track binding is missing or is not a
+    /// sample/plugin pattern, when querying an arrangement fails, or when the
+    /// routing fails to build.
+    pub(crate) fn compile_offline_snapshot(
+        &self,
+        bindings: &BTreeMap<String, Value>,
+        cycles: u64,
+    ) -> Result<(RoutingSnapshot, Vec<GeneratorCycleSpec>), String> {
+        let mut builder = RoutingSnapshot::builder();
+        let mut specs: Vec<GeneratorCycleSpec> = Vec::new();
+        // Synthetic generator ids for materialized sample-pattern tracks start
+        // above any real generator slot so they never collide with generators
+        // whose recorded buffers the session supplies separately.
+        let mut next_generator_id = self
+            .generator_bindings
+            .values()
+            .map(|id| id.get())
+            .max()
+            .map_or(0, |max| max.saturating_add(1));
+
+        if !self.has_explicit_bound_tracks() {
+            builder = match self.compatibility_main_binding.as_deref() {
+                Some(binding_name) => builder
+                    .track_with_source(
+                        "main",
+                        self.compile_offline_track_source(
+                            binding_name,
+                            bindings,
+                            cycles,
+                            &mut next_generator_id,
+                            &mut specs,
+                        )?,
+                    )
+                    .route("main", "master"),
+                None => builder.main_track(),
+            };
+        }
+
+        for bus_name in self.buses.keys() {
+            builder = builder.bus(bus_name.as_str());
+        }
+
+        for (track_name, track) in &self.tracks {
+            let source = match track.binding_name.as_deref() {
+                Some(binding_name) => self.compile_offline_track_source(
+                    binding_name,
+                    bindings,
+                    cycles,
+                    &mut next_generator_id,
+                    &mut specs,
+                )?,
+                None => TrackSource::Unbound,
+            };
+            builder = builder
+                .track_with_source_and_mix(
+                    track_name.as_str(),
+                    source,
+                    track.level,
+                    0.0,
+                    track.muted,
+                )
+                .route(track_name.as_str(), "master");
+        }
+
+        for (track_name, track) in &self.tracks {
+            for (bus_name, level) in &track.sends {
+                builder = builder.send(track_name.as_str(), bus_name.as_str(), *level);
+            }
+        }
+
+        for (bus_name, bus) in &self.buses {
+            if let Some(effect) = &bus.effect {
+                match effect {
+                    MixerBusEffect::Delay {
+                        time,
+                        feedback,
+                        wet,
+                    } => {
+                        builder =
+                            builder.bus_effect_delay(bus_name.as_str(), *time, *feedback, *wet);
+                    }
+                    MixerBusEffect::Reverb { size, damp, wet } => {
+                        builder = builder.bus_effect_reverb(bus_name.as_str(), *size, *damp, *wet);
+                    }
+                }
+            }
+        }
+
+        let snapshot = builder.build().map_err(|error| error.to_string())?;
+        Ok((snapshot, specs))
+    }
+
+    /// Resolves a single track binding to a [`TrackSource`] for an offline
+    /// render, materializing plain sample-pattern arrangements as synthetic
+    /// per-cycle generators. See [`Self::compile_offline_snapshot`].
+    fn compile_offline_track_source(
+        &self,
+        binding_name: &str,
+        bindings: &BTreeMap<String, Value>,
+        cycles: u64,
+        next_generator_id: &mut u32,
+        specs: &mut Vec<GeneratorCycleSpec>,
+    ) -> Result<TrackSource, String> {
+        // Real generator-backed bindings already advance per cycle: keep their
+        // slot id; the session supplies the recorded buffers out-of-band.
+        if let Some(generator_id) = self.generator_bindings.get(binding_name) {
+            return Ok(TrackSource::Generator(*generator_id));
+        }
+        ensure_sample_binding(binding_name, bindings)?;
+        let value = bindings
+            .get(binding_name)
+            .ok_or_else(|| format!("no binding named `{binding_name}`"))?;
+        if let Some(pattern) = value.as_sample_pattern() {
+            let generator_id = GeneratorId::new(*next_generator_id);
+            *next_generator_id = next_generator_id.saturating_add(1);
+            let materialized = materialize_pattern_cycles(pattern, cycles, binding_name)?;
+            specs.push(GeneratorCycleSpec {
+                generator_id,
+                cycles: materialized,
+            });
+            return Ok(TrackSource::Generator(generator_id));
+        }
+        let plugin = value.as_plugin_pattern().ok_or_else(|| {
+            format!(
+                "binding `{binding_name}` is a {} and cannot be assigned to a track",
+                value.kind_name()
+            )
+        })?;
+        Ok(TrackSource::Plugin(plugin.track_source().clone()))
+    }
+}
+
+/// Materializes `pattern` across `[0, cycles)` and splits the queried events
+/// into one cycle-local trigger buffer per cycle index. This is the offline
+/// analogue of a per-cycle generator delivery: it lets a finite multi-cycle
+/// arrangement (e.g. `seq_sections`) advance section by section during a master
+/// render instead of looping cycle 0. Each event's timing is shifted back into
+/// its own cycle's `[0, 1)` window so the offline renderer schedules it at the
+/// correct within-cycle offset.
+fn materialize_pattern_cycles(
+    pattern: &crate::value::SamplePatternValue,
+    cycles: u64,
+    binding_name: &str,
+) -> Result<Vec<Box<[Event<SampleTrigger>]>>, String> {
+    let end = i64::try_from(cycles).map_err(|_| format!("cycle count {cycles} is too large"))?;
+    let span = TimeSpan::new(Rational::from_integer(0), Rational::from_integer(end))
+        .map_err(|error| format!("invalid render span for `{binding_name}`: {error}"))?;
+    let events = pattern.try_query(&span).map_err(|error| {
+        format!("failed to query `{binding_name}` across {cycles} cycle(s): {error}")
+    })?;
+
+    let mut per_cycle: Vec<Vec<Event<SampleTrigger>>> = (0..cycles).map(|_| Vec::new()).collect();
+    for event in &events {
+        let start = event.part.start();
+        // The cycle an event belongs to is the floor of its part start; times
+        // here are non-negative, so truncating division is the floor.
+        let cycle = start.numerator() / start.denominator();
+        let Ok(index) = usize::try_from(cycle) else {
+            continue;
+        };
+        if index >= per_cycle.len() {
+            continue;
+        }
+        let shift = |bound: &Rational| -> Result<Rational, String> {
+            let numerator = i64::try_from(bound.numerator() - cycle * bound.denominator())
+                .map_err(|_| format!("cycle shift overflow for `{binding_name}`"))?;
+            let denominator = i64::try_from(bound.denominator())
+                .map_err(|_| format!("cycle shift overflow for `{binding_name}`"))?;
+            Rational::new(numerator, denominator)
+                .map_err(|error| format!("invalid shifted time for `{binding_name}`: {error}"))
+        };
+        let part = TimeSpan::new(shift(event.part.start())?, shift(event.part.end())?)
+            .map_err(|error| format!("invalid shifted part for `{binding_name}`: {error}"))?;
+        let whole =
+            match event.whole.as_ref() {
+                Some(w) => Some(TimeSpan::new(shift(w.start())?, shift(w.end())?).map_err(
+                    |error| format!("invalid shifted whole for `{binding_name}`: {error}"),
+                )?),
+                None => None,
+            };
+        per_cycle[index].push(Event {
+            whole,
+            part,
+            value: sample_trigger_from_event(&event.value),
+        });
+    }
+
+    Ok(per_cycle.into_iter().map(Vec::into_boxed_slice).collect())
 }
 
 impl MixerBusEffect {
@@ -738,4 +952,63 @@ fn sample_event_to_trigger_event(event: &Event<crate::SampleEvent>) -> Event<Sam
 
 fn format_rational(value: &Rational) -> String {
     format!("{}/{}", value.numerator(), value.denominator())
+}
+
+#[cfg(test)]
+mod offline_snapshot_tests {
+    use super::*;
+    use crate::ReplMode;
+    use orpheus_dsp::TrackSource;
+
+    /// A finite multi-cycle arrangement must advance cycle by cycle in an
+    /// offline render: `compile_offline_snapshot` materializes it as a synthetic
+    /// generator whose per-cycle buffers differ across sections, rather than the
+    /// single looping cycle-0 buffer `compile_snapshot` produces (issue #1446).
+    #[test]
+    fn compile_offline_snapshot_materializes_distinct_cycles() {
+        // `<bd sn cp>` alternates a different token every cycle: bd, sn, cp.
+        let bindings = crate::eval_module("song = <bd sn cp>", ReplMode::Strict).unwrap();
+        let mut mixer = MixerState::default();
+        mixer.note_sample_binding("song");
+
+        let (snapshot, specs) = mixer.compile_offline_snapshot(&bindings, 3).unwrap();
+
+        // The plain sample-pattern track is now a synthetic generator source.
+        let track = snapshot.track("main").expect("main track present");
+        assert!(
+            matches!(track.source(), TrackSource::Generator(_)),
+            "arrangement track should compile to a per-cycle generator"
+        );
+
+        assert_eq!(specs.len(), 1, "exactly one synthetic generator spec");
+        let cycles = &specs[0].cycles;
+        assert_eq!(cycles.len(), 3, "one buffer per rendered cycle");
+
+        // The three cycles must not be identical — that is the whole point: the
+        // arrangement advances (bd -> sn -> cp) instead of looping cycle 0.
+        assert_ne!(cycles[0], cycles[1], "cycle 0 and cycle 1 must differ");
+        assert_ne!(cycles[1], cycles[2], "cycle 1 and cycle 2 must differ");
+        assert_ne!(cycles[0], cycles[2], "cycle 0 and cycle 2 must differ");
+        assert!(
+            cycles.iter().all(|buffer| !buffer.is_empty()),
+            "each cycle should carry an event"
+        );
+    }
+
+    /// Contrast guard: the *live* single-cycle `compile_snapshot` captures only
+    /// cycle 0 as a static `SamplePattern`, which is exactly what looped. This
+    /// pins the difference between the two compile paths.
+    #[test]
+    fn compile_snapshot_captures_only_the_first_cycle() {
+        let bindings = crate::eval_module("song = <bd sn cp>", ReplMode::Strict).unwrap();
+        let mut mixer = MixerState::default();
+        mixer.note_sample_binding("song");
+
+        let snapshot = mixer.compile_snapshot(&bindings).unwrap();
+        let track = snapshot.track("main").expect("main track present");
+        assert!(
+            matches!(track.source(), TrackSource::SamplePattern(_)),
+            "live snapshot keeps a static single-cycle sample pattern"
+        );
+    }
 }
