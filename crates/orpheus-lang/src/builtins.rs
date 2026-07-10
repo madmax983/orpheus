@@ -2557,32 +2557,58 @@ fn apply_compressor_ratio(args: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 fn apply_pitch(args: Vec<Value>) -> Result<Value, EvalError> {
-    apply_sample_numeric_control(
-        args,
-        "pitch",
-        "semitone",
-        extract_pitch_control,
-        SamplePatternValue::pitch,
-        SamplePatternValue::pitch_pattern,
-    )
+    apply_semitone_shift(args, "pitch")
 }
 
 fn apply_transpose(args: Vec<Value>) -> Result<Value, EvalError> {
-    let mut args = args.into_iter();
-    let control = extract_transpose_control(
-        args.next()
-            .ok_or_else(|| EvalError::new("`transpose` requires a semitone argument"))?,
-    )?;
-    let pattern = extract_number_pattern(
-        args.next()
-            .ok_or_else(|| EvalError::new("`transpose` requires a pattern argument"))?,
-        "transpose",
-    )?;
+    apply_semitone_shift(args, "transpose")
+}
 
-    Ok(Value::NumberPattern(match control {
-        NumericControl::Constant(semitones) => pattern.transpose(semitones),
-        NumericControl::Pattern(control) => pattern.transpose_pattern(control),
-    }))
+/// Applies `pitch` / `transpose` — the semitone-shift pair.
+///
+/// The two names are interchangeable and accept either pattern kind
+/// (gap-fix 3 of 3 surfaced by the reference song, PR #1439; previously
+/// `transpose` required a number pattern while `pitch` required a
+/// sample/voice pattern, so register moves on voices had to use `pitch`):
+///
+/// - on a number pattern the semitones are added to each value;
+/// - on a sample/voice pattern the playback pitch shifts by the same
+///   semitone amount via the event's rate multiplier.
+///
+/// Constant and pattern-valued semitone controls are both supported.
+fn apply_semitone_shift(args: Vec<Value>, builtin_name: &str) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let control = extract_finite_numeric_control(
+        args.next().ok_or_else(|| {
+            EvalError::new(format!("`{builtin_name}` requires a semitone argument"))
+        })?,
+        builtin_name,
+    )?;
+    let pattern =
+        force_nullary_builtin(args.next().ok_or_else(|| {
+            EvalError::new(format!("`{builtin_name}` requires a pattern argument"))
+        })?)?;
+
+    match pattern {
+        Value::NumberPattern(pattern) => Ok(Value::NumberPattern(match control {
+            NumericControl::Constant(semitones) => pattern.transpose(semitones),
+            NumericControl::Pattern(control) => pattern.transpose_pattern(control),
+        })),
+        Value::SamplePattern(pattern) => Ok(Value::SamplePattern(match control {
+            NumericControl::Constant(semitones) => pattern.pitch(semitones),
+            NumericControl::Pattern(control) => pattern.pitch_pattern(control),
+        })),
+        Value::ArpDirection(_)
+        | Value::PitchClassSet(_)
+        | Value::Function(_)
+        | Value::Tuning(_)
+        | Value::PluginPattern(_)
+        | Value::Pedal(_)
+        | Value::Voice(_)
+        | Value::String(_) => Err(EvalError::new(format!(
+            "`{builtin_name}` expected a number or sample pattern as its final argument"
+        ))),
+    }
 }
 
 fn apply_tuning(args: Vec<Value>) -> Result<Value, EvalError> {
@@ -3773,14 +3799,6 @@ fn extract_slice_endpoint_control(
     })?;
 
     Ok(NumericControl::Pattern(pattern))
-}
-
-fn extract_pitch_control(value: Value) -> Result<NumericControl, EvalError> {
-    extract_finite_numeric_control(value, "pitch")
-}
-
-fn extract_transpose_control(value: Value) -> Result<NumericControl, EvalError> {
-    extract_finite_numeric_control(value, "transpose")
 }
 
 fn extract_finite_numeric_control(

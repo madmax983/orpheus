@@ -90,8 +90,14 @@ impl TypeEnv {
         env.insert("up", TypeScheme::monomorphic(Type::ArpDirection));
         env.insert("down", TypeScheme::monomorphic(Type::ArpDirection));
 
-        for name in ["invert", "drop", "chord", "transpose"] {
+        for name in ["invert", "drop", "chord"] {
             env.insert(name, number_pattern_control_scheme());
+        }
+        // `transpose` and `pitch` are the interchangeable semitone-shift
+        // pair: `Pattern<Number> -> Pattern<a> -> Pattern<a>` over number
+        // and sample/voice patterns alike (reference-song gap-fix 3 of 3).
+        for name in ["transpose", "pitch"] {
+            env.insert(name, numeric_pattern_transform_scheme(alpha));
         }
 
         install_euclidean_and_counting_builtins(&mut env, alpha);
@@ -127,8 +133,8 @@ impl TypeEnv {
         env.insert("rev", unary_pattern_transform_scheme(alpha));
         env.insert("chaos", unary_pattern_transform_scheme(alpha));
         for name in [
-            "gain", "hpf", "lpf", "cutoff", "res", "drive", "pw", "pan", "pitch", "rate", "onset",
-            "p1", "p2", "p3", "p4",
+            "gain", "hpf", "lpf", "cutoff", "res", "drive", "pw", "pan", "rate", "onset", "p1",
+            "p2", "p3", "p4",
         ] {
             env.insert(name, sample_control_scheme());
         }
