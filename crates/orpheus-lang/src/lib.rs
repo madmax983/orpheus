@@ -68,7 +68,7 @@ pub use number_roll::render_ascii_number_roll;
 pub use osu_export::export_sample_pattern_to_osu;
 pub use parser::parse_module;
 pub use pedal::{
-    PedalGraph, PedalValue, SignalKind, ValidatedPedalBinding, ValidatedPedalNode,
+    PedalGraph, PedalNodeKind, PedalValue, SignalKind, ValidatedPedalBinding, ValidatedPedalNode,
     ValidatedPedalPlan,
 };
 pub use repl::{run_stdio, run_stdio_with_engine, run_stdio_with_engine_and_path};

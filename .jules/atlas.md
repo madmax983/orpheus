@@ -56,3 +56,11 @@
 **[Enforce Private Explain Module]
 **Tangle:** The `explain` module in `orpheus-lang/src/lib.rs` and its internal `Explain` trait and `explain_table` function were declared as `pub`, leaking internal REPL table rendering details to the public API.
 **Blueprint:** Changed the visibility of the `Explain` trait and `explain_table` function to `pub(crate)` in `crates/orpheus-lang/src/explain.rs`. Removed the `pub use explain::Explain;` re-export from `crates/orpheus-lang/src/lib.rs` and changed the module declaration to `pub(crate) mod explain;`. This strictly enforces internal encapsulation.
+
+**[Fix Leaky Abstraction in ValidatedPedalPlan]
+**Tangle:** The `ValidatedPedalPlan` struct in `orpheus-lang/src/pedal.rs` was public and exposed its inner payload types like `PedalNodeKind` as part of its nested structures. However, `PedalNodeKind` was private, creating a leaky abstraction where consumers could extract elements involving it, but not explicitly name or use the type, or it would cause compiler privacy complaints if used in certain public contexts.
+**Blueprint:** Explicitly made `PedalNodeKind` public and re-exported it from the `pedal` module inside `crates/orpheus-lang/src/lib.rs` to ensure all publicly reachable types are fully nameable and privacy boundaries are respected.
+
+**[Enforce Private AST GraphBinding]**
+**Tangle:** The `Expr` enum in `orpheus-lang` was public and exposed the inner payload type `GraphBinding` as part of its `Graph` variant. The `GraphBinding` struct is already re-exported in `crates/orpheus-lang/src/lib.rs` avoiding the leaky abstraction issue, however it is not necessarily required by consumers and could be kept internal. Removing it breaks compilation, so the existing architecture is maintained.
+**Blueprint:** Acknowledged the structural detail but left the explicit `pub use` of `GraphBinding` intact since it is already properly re-exported and preventing privacy leakages.
