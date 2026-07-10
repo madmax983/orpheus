@@ -497,6 +497,16 @@ impl SharedState {
         }
     }
 
+    /// Advances every live multi-cycle arrangement to the engine's current
+    /// cycle when a boundary was crossed since the last tick (issue #1446), the
+    /// live twin of the offline master-render fix. Runs alongside
+    /// [`Self::poll_orca`] on the control thread.
+    pub fn poll_arrangements(&mut self) {
+        if let Err(error) = self.session.poll_arrangements() {
+            self.set_status_message(error, true);
+        }
+    }
+
     pub fn transport_view(&self) -> TransportView {
         self.session.transport_view()
     }
