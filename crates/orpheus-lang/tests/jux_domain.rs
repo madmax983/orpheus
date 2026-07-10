@@ -41,7 +41,11 @@ fn jux_applies_to_voice_token_pattern() {
     let left: Vec<_> = events.iter().filter(|e| e.value.pan() < 0.0).collect();
     let right: Vec<_> = events.iter().filter(|e| e.value.pan() > 0.0).collect();
     assert_eq!(left.len(), 2, "left (original) copy should keep both notes");
-    assert_eq!(right.len(), 2, "right (reversed) copy should keep both notes");
+    assert_eq!(
+        right.len(),
+        2,
+        "right (reversed) copy should keep both notes"
+    );
     assert!(
         left.iter()
             .chain(right.iter())
