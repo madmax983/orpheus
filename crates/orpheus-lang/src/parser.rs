@@ -87,8 +87,8 @@ fn split_top_level_bindings(source: &str) -> Vec<(usize, String)> {
         let trimmed = line.trim();
         if paren_depth == 0
             && brace_depth == 0
-            && !current.trim().is_empty()
-            && looks_like_binding(trimmed)
+            && contains_binding_content(&current)
+            && looks_like_binding(strip_line_comment(trimmed).trim())
         {
             bindings.push((current_start_line, std::mem::take(&mut current)));
             current_start_line = line_number;
@@ -106,11 +106,21 @@ fn split_top_level_bindings(source: &str) -> Vec<(usize, String)> {
         brace_depth = next_brace_depth;
     }
 
-    if !current.trim().is_empty() {
+    if contains_binding_content(&current) {
         bindings.push((current_start_line, current));
     }
 
     bindings
+}
+
+/// Reports whether a chunk carries any binding source once line comments are
+/// stripped. Comment-only or blank chunks (e.g. a leading banner comment) must
+/// stay attached to the following binding rather than being split off as their
+/// own chunk, which would then fail to parse as a standalone binding.
+fn contains_binding_content(chunk: &str) -> bool {
+    chunk
+        .lines()
+        .any(|line| !strip_line_comment(line).trim().is_empty())
 }
 
 fn enrich_parse_error(source: &str, error: &PestError<Rule>) -> ParseError {
@@ -173,7 +183,9 @@ fn update_nesting_depth(current_paren: i32, current_brace: i32, line: &str) -> (
     let mut in_string = false;
     let mut escaping = false;
 
-    for character in line.chars() {
+    // Line comments (`//` to end-of-line) never span lines and must not
+    // contribute their bracket characters to the nesting counts.
+    for character in strip_line_comment(line).chars() {
         if in_string {
             if escaping {
                 escaping = false;
@@ -200,30 +212,66 @@ fn update_nesting_depth(current_paren: i32, current_brace: i32, line: &str) -> (
     (paren_depth, brace_depth)
 }
 
-fn unmatched_open_parens(source: &str) -> usize {
-    let mut count = 0_usize;
+/// Returns the portion of a single line before any `//` line comment. A `//`
+/// sequence inside a string literal (e.g. `sample("a//b")`) is preserved, since
+/// it is data rather than a comment. Strings never span lines in this grammar,
+/// so evaluating comment boundaries per line is safe.
+fn strip_line_comment(line: &str) -> &str {
+    let bytes = line.as_bytes();
     let mut in_string = false;
     let mut escaping = false;
+    let mut index = 0;
 
-    for character in source.chars() {
+    while index < bytes.len() {
+        let character = bytes[index];
         if in_string {
             if escaping {
                 escaping = false;
+            } else if character == b'\\' {
+                escaping = true;
+            } else if character == b'"' {
+                in_string = false;
+            }
+        } else if character == b'"' {
+            in_string = true;
+        } else if character == b'/' && bytes.get(index + 1) == Some(&b'/') {
+            return &line[..index];
+        }
+        index += 1;
+    }
+
+    line
+}
+
+fn unmatched_open_parens(source: &str) -> usize {
+    let mut count = 0_usize;
+
+    // Line comments never span lines, so strip each line's comment before
+    // counting parentheses.
+    for line in source.lines() {
+        let mut in_string = false;
+        let mut escaping = false;
+
+        for character in strip_line_comment(line).chars() {
+            if in_string {
+                if escaping {
+                    escaping = false;
+                    continue;
+                }
+                match character {
+                    '\\' => escaping = true,
+                    '"' => in_string = false,
+                    _ => {}
+                }
                 continue;
             }
+
             match character {
-                '\\' => escaping = true,
-                '"' => in_string = false,
+                '"' => in_string = true,
+                '(' => count += 1,
+                ')' => count = count.saturating_sub(1),
                 _ => {}
             }
-            continue;
-        }
-
-        match character {
-            '"' => in_string = true,
-            '(' => count += 1,
-            ')' => count = count.saturating_sub(1),
-            _ => {}
         }
     }
 

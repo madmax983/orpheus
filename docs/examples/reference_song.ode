@@ -1,45 +1,91 @@
+// ============================================================================
+// Orpheus reference song — a musical A-minor (Aeolian) acid-techno tour that
+// deliberately touches the full language surface in one coherent piece.
+//
+// It is arranged as seven sections over a 36-cycle timeline. At the default
+// 120 BPM each cycle is 2 seconds, so the rendered master is 72 seconds long,
+// 48 kHz stereo. `song` (bottom of file) is the entry point.
+//
+// Play it:   cargo run --release -- docs/examples/reference_song.ode
+// Render it: :open docs/examples/reference_song.ode  then
+//            :export master reference_song_master.wav 36
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// Custom voice { … } instruments, synthesized from graph combinators.
+// ----------------------------------------------------------------------------
+
+// acid — the acid bass. A saw oscillator through a resonant low-pass (svf_lp),
+// drive saturation, and an ADSR-gated amp. 8-voice polyphony, oldest-note
+// stealing, and a 20 ms param_ramp for smooth per-note filter automation.
 acid = voice { poly = 8 ; steal = oldest ; param_ramp = 0.02 ; osc = saw(freq) ; osc |> svf_lp(p1, 0.82) |> drive(1.35) |> gain(adsr(gate, 0.005, 0.09, 0.5, 0.13)) }
 
+// pad — a saw+tri pad with a feedback delay tail and a slow ADSR swell.
 pad = voice { poly = 6 ; release = 0.7 ; tone = saw(freq) + tri(freq) * 0.5 ; body = tone |> svf_lp(1500, 0.22) ; wet = feedback(body + fb |> delay(0.22) |> gain(0.4)) ; (body + wet) * adsr(gate, 0.5, 0.3, 0.75, 0.6) }
 
+// pluck — a tri+pulse pluck through a low-pass with a fast AR envelope.
 pluck = voice { poly = 8 ; steal = oldest ; tone = tri(freq) + pulse(freq, 0.35) ; tone |> svf_lp(p1, 0.5) |> drive(p2 + 1) |> gain(ar(gate, 0.002, 0.12)) }
 
-kick = bd ~ bd ~
-kick_fill = bd ~ bd <bd cp>
-hats = hh*8 |> mask(euclid(5, 8)) |> gain(0.35) |> pan(0.15)
-hats_busy = hh*16 |> mask(euclid(11, 16)) |> degrade |> every(4, fast(2)) |> gain(0.3) |> pan(-0.15)
-open_hat = ~ hh ~ hh |> gain(0.25)
-clap = ~ cp ~ cp
-snare = ~ ~ sn ~
-perc = {hh hh hh, cp ~}%8 |> jux(rev) |> gain(0.24)
+// ----------------------------------------------------------------------------
+// Drum / percussion bed, built from the stock sample tokens (bd hh cp sn).
+// ----------------------------------------------------------------------------
 
-bass_deg = degrees(aeolian, 0 0 12 0 3 0 -2 0)
-filter_env = segment(16, rand) |> range(320, 3600)
-acidline = acid acid acid acid acid acid acid acid
-bass_deep = acidline |> pitch(bass_deg) |> p1(360) |> gain(0.32) |> slow(2)
-bass_open = acidline |> pitch(bass_deg) |> p1(700) |> gain(0.4)
-bass_evolve = acidline |> pitch(bass_deg) |> p1(filter_env) |> whenmod(8, 4, rev) |> gain(0.42)
-bass_drive = acidline |> pitch(bass_deg) |> p1(300 700 1500 3200 6000 3200 1500 700) |> gain(0.44)
-bass_solo = acid acid |> pitch(degrees(aeolian, 0 3)) |> p1(300 900 3000 6000 3000 900) |> gain(0.4)
+kick = bd ~ bd ~              // four-on-the-floor kick with rests (~)
+kick_fill = bd ~ bd <bd cp>   // alternation <…> picks a different last step each cycle
+hats = hh*8 |> mask(euclid(5, 8)) |> gain(0.35) |> pan(0.15)   // *8 subdivides; euclid mask thins to 5-of-8
+hats_busy = hh*16 |> mask(euclid(11, 16)) |> degrade |> every(4, fast(2)) |> gain(0.3) |> pan(-0.15)  // degrade drops events; every(4, …) doubles speed every 4th cycle
+open_hat = ~ hh ~ hh |> gain(0.25)   // off-beat open hats
+clap = ~ cp ~ cp                     // backbeat clap
+snare = ~ ~ sn ~                     // sparse snare accent
+perc = {hh hh hh, cp ~}%8 |> jux(rev) |> gain(0.24)   // polymeter %8 layers; jux(rev) splits a reversed copy to the right channel
 
-pad_chord = stack(pad pad |> pitch(0) |> gain(0.16), pad pad |> pitch(3) |> gain(0.14), pad pad |> pitch(7) |> gain(0.14))
-pad_lift = within(0, 0.5, rev, pad_chord)
+// ----------------------------------------------------------------------------
+// Bass material and filter automation (all driven by the `acid` voice).
+// ----------------------------------------------------------------------------
 
-arp_deg = degrees(aeolian, 0 2 4 7 4 2 4 5)
-plucks = pluck pluck pluck pluck pluck pluck pluck pluck
-lead = plucks |> pitch(arp_deg) |> p1(2600) |> p2(0.4) |> off(0.125, pitch(12)) |> gain(0.22)
-lead_a = plucks |> pitch(degrees(aeolian, 0 4 7 4)) |> p1(2400) |> p2(0.3)
-lead_b = pluck ~ pluck pluck ~ pluck pluck ~ |> pitch(degrees(aeolian, 7 5 4 2)) |> p1(3000) |> p2(0.5)
-lead_wander = plucks |> pitch(markov(0, 0.5, 0.3, 0.2, 4, 0.3, 0.4, 0.3, 7, 0.2, 0.3, 0.5)) |> p1(2800) |> p2(0.4) |> gain(0.2)
-lead_choose = plucks |> pitch(pchoose(degrees(aeolian, 0 2 4), degrees(aeolian, 7 5 4))) |> chunk(4, fast(2)) |> p1(2600) |> gain(0.2)
-lead_evolve = randcat(lead_a, lead_b) |> shuffle(4) |> gain(0.2)
+bass_deg = degrees(aeolian, 0 0 12 0 3 0 -2 0)        // Aeolian scale-degree sequence
+filter_env = segment(16, rand) |> range(320, 3600)    // sample rand into 16 steps/cycle, map to a cutoff range
+acidline = acid acid acid acid acid acid acid acid    // eight acid notes per cycle
+bass_deep = acidline |> pitch(bass_deg) |> p1(360) |> gain(0.32) |> slow(2)          // slow(2) halves the tempo for the deep intro bass
+bass_open = acidline |> pitch(bass_deg) |> p1(700) |> gain(0.4)                       // brighter cutoff via p1
+bass_evolve = acidline |> pitch(bass_deg) |> p1(filter_env) |> whenmod(8, 4, rev) |> gain(0.42)  // p1 automated by filter_env; whenmod reverses on cycles 4–7 of every 8
+bass_drive = acidline |> pitch(bass_deg) |> p1(300 700 1500 3200 6000 3200 1500 700) |> gain(0.44)  // per-note cutoff sweep
+bass_solo = acid acid |> pitch(degrees(aeolian, 0 3)) |> p1(300 900 3000 6000 3000 900) |> gain(0.4)  // breakdown two-note solo
 
-intro = stack(kick, pad_chord, bass_deep)
-build = stack(kick, hats, open_hat, clap, bass_open, pad_chord |> gain(0.1))
-drop = stack(kick_fill, hats_busy, clap, snare, perc, bass_drive |> fast(2), lead)
-peak = stack(kick, hats_busy, clap, perc, bass_evolve, lead_wander, lead_choose, pad_lift |> gain(0.1))
-melodic = stack(kick, hats, clap, bass_open, lead_evolve, pad_chord |> gain(0.12))
-breakdown = stack(bd ~ ~ ~, pad_chord, bass_solo |> slow(2))
-outro = stack(kick |> gain(0.5), open_hat |> gain(0.15), pad_chord |> gain(0.12))
+// ----------------------------------------------------------------------------
+// Pad harmony — stacked thirds/fifths for an A-minor chord.
+// ----------------------------------------------------------------------------
 
+pad_chord = stack(pad pad |> pitch(0) |> gain(0.16), pad pad |> pitch(3) |> gain(0.14), pad pad |> pitch(7) |> gain(0.14))  // root + minor 3rd + 5th
+pad_lift = within(0, 0.5, rev, pad_chord)   // within(…) reverses only the first half of each cycle
+
+// ----------------------------------------------------------------------------
+// Lead / arp material (driven by the `pluck` voice).
+// ----------------------------------------------------------------------------
+
+arp_deg = degrees(aeolian, 0 2 4 7 4 2 4 5)     // arpeggio degree pattern
+plucks = pluck pluck pluck pluck pluck pluck pluck pluck   // eight plucks per cycle
+lead = plucks |> pitch(arp_deg) |> p1(2600) |> p2(0.4) |> off(0.125, pitch(12)) |> gain(0.22)   // off(…) layers a +octave copy shifted an eighth
+lead_a = plucks |> pitch(degrees(aeolian, 0 4 7 4)) |> p1(2400) |> p2(0.3)         // lead variant A
+lead_b = pluck ~ pluck pluck ~ pluck pluck ~ |> pitch(degrees(aeolian, 7 5 4 2)) |> p1(3000) |> p2(0.5)   // syncopated lead variant B
+lead_wander = plucks |> pitch(markov(0, 0.5, 0.3, 0.2, 4, 0.3, 0.4, 0.3, 7, 0.2, 0.3, 0.5)) |> p1(2800) |> p2(0.4) |> gain(0.2)  // Markov-chain pitch walk
+lead_choose = plucks |> pitch(pchoose(degrees(aeolian, 0 2 4), degrees(aeolian, 7 5 4))) |> chunk(4, fast(2)) |> p1(2600) |> gain(0.2)  // pchoose per-event; chunk(4, …) rotates a fast section
+lead_evolve = randcat(lead_a, lead_b) |> shuffle(4) |> gain(0.2)   // randcat picks A or B per cycle; shuffle(4) reorders 4 slices
+
+// ----------------------------------------------------------------------------
+// Sections — each is a `stack` of the voices active in that part of the song.
+// ----------------------------------------------------------------------------
+
+intro = stack(kick, pad_chord, bass_deep)                                            // sparse: kick, pad, deep bass
+build = stack(kick, hats, open_hat, clap, bass_open, pad_chord |> gain(0.1))         // add hats, clap, brighter bass
+drop = stack(kick_fill, hats_busy, clap, snare, perc, bass_drive |> fast(2), lead)   // full energy: busy hats, driving bass, lead
+peak = stack(kick, hats_busy, clap, perc, bass_evolve, lead_wander, lead_choose, pad_lift |> gain(0.1))  // evolving bass + two wandering leads
+melodic = stack(kick, hats, clap, bass_open, lead_evolve, pad_chord |> gain(0.12))   // melodic breakdown-into-groove
+breakdown = stack(bd ~ ~ ~, pad_chord, bass_solo |> slow(2))                          // stripped back: lone kick, pad, slow bass solo
+outro = stack(kick |> gain(0.5), open_hat |> gain(0.15), pad_chord |> gain(0.12))    // fade-out tail
+
+// ----------------------------------------------------------------------------
+// Master arrangement — sequence the sections over a 36-cycle timeline.
+// intro(4) → build(4) → drop(8) → peak(8) → melodic(4) → breakdown(4) → outro(4)
+// ----------------------------------------------------------------------------
 song = seq_sections(section(intro, 4), section(build, 4), section(drop, 8), section(peak, 8), section(melodic, 4), section(breakdown, 4), section(outro, 4))

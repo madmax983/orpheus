@@ -1,16 +1,28 @@
-kick  = bd ~ bd ~ |> mask(euclid(5, 8))
-snare = ~ sn ~ sn |> when(4, 2, rev)
-hats  = hh*8 |> gain(0.6) |> degrade
-drums = stack(kick, snare, hats) |> jux(rev)
+// ============================================================================
+// Tutorial capstone — the final example from docs/tutorial/07-capstone.md.
+// A compact groove that ties together drums, a bass voice, and a lead voice.
+// `song` (bottom) is the entry point.
+// ============================================================================
 
+// --- Drums -------------------------------------------------------------------
+kick  = bd ~ bd ~ |> mask(euclid(5, 8))   // kick thinned to a 5-of-8 Euclid rhythm
+snare = ~ sn ~ sn |> when(4, 2, rev)      // backbeat snare; reversed on cycle 2 of every 4
+hats  = hh*8 |> gain(0.6) |> degrade      // eight hats/cycle, ~half randomly dropped
+drums = stack(kick, snare, hats) |> jux(rev)   // layer them; jux(rev) sends a reversed copy right
+
+// --- Bass --------------------------------------------------------------------
+// A saw voice through a low-pass and drive, gated by a fast AR envelope.
 bass_synth = voice { osc = saw(freq) ; shaped = osc |> lowpass(800, 0.3) |> drive(1.2) ; shaped * ar(gate, 0.001, 0.2) }
-bassline = bass_synth bass_synth bass_synth bass_synth |> pitch(c2 e2 g2 c3) |> gain(0.5)
+bassline = bass_synth bass_synth bass_synth bass_synth |> pitch(c2 e2 g2 c3) |> gain(0.5)   // walk C-E-G-C
 
+// --- Lead --------------------------------------------------------------------
+// A simple sine voice with a short AR envelope.
 lead_synth = voice { sine(freq) * ar(gate, 0.001, 0.08) }
-lead = lead_synth ~ lead_synth ~ |> pitch(c4 e4 g4 c5) |> every(4, fast(2)) |> gain(0.4)
+lead = lead_synth ~ lead_synth ~ |> pitch(c4 e4 g4 c5) |> every(4, fast(2)) |> gain(0.4)   // every 4th cycle plays twice as fast
 
+// --- Master mix --------------------------------------------------------------
 song = stack(
   drums,
-  bassline |> slow(2),
+  bassline |> slow(2),   // bass runs at half speed under the groove
   lead
 )
