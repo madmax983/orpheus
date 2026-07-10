@@ -7,13 +7,14 @@
 use std::env;
 use std::ffi::OsString;
 use std::io::IsTerminal;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, anyhow};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream};
 use crossterm::style::Stylize;
 use orpheus_dsp::EngineHandle;
+use orpheus_lang::ReplSession;
 
 fn main() {
     if let Err(error) = run() {
@@ -25,11 +26,22 @@ fn main() {
     }
 }
 
+/// The default number of cycles rendered by `orpheus render` when `--cycles` is
+/// omitted (the reference song's full 36-cycle timeline).
+const DEFAULT_RENDER_CYCLES: u64 = 36;
+
 #[derive(Debug)]
 enum CliAction {
     Help,
     Version,
     Run(Option<PathBuf>),
+    /// Headless `render <file> --master <out.wav> [--cycles N]` subcommand:
+    /// render a `.ode` file to a master WAV without starting the REPL/audio.
+    RenderMaster {
+        path: PathBuf,
+        out: PathBuf,
+        cycles: u64,
+    },
 }
 
 fn run() -> anyhow::Result<()> {
@@ -42,6 +54,9 @@ fn run() -> anyhow::Result<()> {
         CliAction::Version => {
             println!("orpheus {}", env!("CARGO_PKG_VERSION"));
             return Ok(());
+        }
+        CliAction::RenderMaster { path, out, cycles } => {
+            return render_master(&path, &out, cycles);
         }
         CliAction::Run(path) => path,
     };
@@ -77,6 +92,12 @@ fn run() -> anyhow::Result<()> {
 
 fn startup_path_from_args(args: impl IntoIterator<Item = OsString>) -> anyhow::Result<CliAction> {
     let args = args.into_iter().collect::<Vec<_>>();
+    if args
+        .first()
+        .is_some_and(|first| first.to_string_lossy() == "render")
+    {
+        return parse_render_args(&args[1..]);
+    }
     match args.as_slice() {
         [] => Ok(CliAction::Run(None)),
         [path] => {
@@ -106,6 +127,116 @@ fn startup_path_from_args(args: impl IntoIterator<Item = OsString>) -> anyhow::R
     }
 }
 
+/// Parse the arguments that follow the `render` subcommand:
+/// `render <file> --master <out.wav> [--cycles N]`.
+fn parse_render_args(args: &[OsString]) -> anyhow::Result<CliAction> {
+    const USAGE: &str = "orpheus render <file> --master <out.wav> [--cycles N]";
+
+    let mut path: Option<PathBuf> = None;
+    let mut out: Option<PathBuf> = None;
+    let mut cycles: u64 = DEFAULT_RENDER_CYCLES;
+
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        let text = arg.to_string_lossy();
+        match text.as_ref() {
+            "--master" => {
+                let value = iter.next().ok_or_else(|| {
+                    anyhow!(
+                        "{} `--master` requires an output WAV path\n\n{} {}",
+                        "error:".red().bold(),
+                        "Usage:".green().bold(),
+                        USAGE.cyan()
+                    )
+                })?;
+                out = Some(PathBuf::from(value));
+            }
+            "--cycles" => {
+                let value = iter.next().ok_or_else(|| {
+                    anyhow!(
+                        "{} `--cycles` requires a positive integer\n\n{} {}",
+                        "error:".red().bold(),
+                        "Usage:".green().bold(),
+                        USAGE.cyan()
+                    )
+                })?;
+                let parsed = value
+                    .to_string_lossy()
+                    .parse::<u64>()
+                    .ok()
+                    .filter(|n| *n > 0)
+                    .ok_or_else(|| {
+                        anyhow!(
+                            "{} `--cycles` must be a positive integer, found {}",
+                            "error:".red().bold(),
+                            format!("'{}'", value.to_string_lossy()).yellow().bold()
+                        )
+                    })?;
+                cycles = parsed;
+            }
+            other if other.starts_with('-') => {
+                return Err(anyhow!(
+                    "{} unexpected argument {} for `render`\n\n{} {}",
+                    "error:".red().bold(),
+                    format!("'{other}'").yellow().bold(),
+                    "Usage:".green().bold(),
+                    USAGE.cyan()
+                ));
+            }
+            _ => {
+                if path.is_none() {
+                    path = Some(PathBuf::from(arg));
+                } else {
+                    return Err(anyhow!(
+                        "{} unexpected argument {} for `render`\n\n{} {}",
+                        "error:".red().bold(),
+                        format!("'{text}'").yellow().bold(),
+                        "Usage:".green().bold(),
+                        USAGE.cyan()
+                    ));
+                }
+            }
+        }
+    }
+
+    let path = path.ok_or_else(|| {
+        anyhow!(
+            "{} `render` requires an input {} file\n\n{} {}",
+            "error:".red().bold(),
+            ".ode".cyan(),
+            "Usage:".green().bold(),
+            USAGE.cyan()
+        )
+    })?;
+    let out = out.ok_or_else(|| {
+        anyhow!(
+            "{} `render` requires {}\n\n{} {}",
+            "error:".red().bold(),
+            "--master <out.wav>".cyan(),
+            "Usage:".green().bold(),
+            USAGE.cyan()
+        )
+    })?;
+
+    Ok(CliAction::RenderMaster { path, out, cycles })
+}
+
+/// Render a `.ode` file down to a master WAV without starting cpal/audio.
+///
+/// Drives a headless [`ReplSession`] backed by a stub engine: load the file,
+/// then reuse the existing `:export master` offline render path.
+fn render_master(path: &Path, out: &Path, cycles: u64) -> anyhow::Result<()> {
+    let mut session = ReplSession::with_engine(EngineHandle::stub());
+    session
+        .open_file(path)
+        .map_err(|error| anyhow!("failed to open `{}`: {error}", path.display()))?;
+    let message = session
+        .eval_line(&format!(":export master {} {}", out.display(), cycles))
+        .map_err(|error| anyhow!("failed to render master: {error}"))?;
+    println!("{message}");
+    Ok(())
+}
+
 fn print_help() {
     println!(
         "{} - A cycle-based live-coding audio environment",
@@ -126,6 +257,15 @@ fn print_help() {
     println!();
     println!("{}", "Dashboard Mode:".yellow().bold());
     println!("  Run without a file to open the interactive live-coding TUI/REPL.");
+    println!();
+    println!("{}", "Render Mode (no REPL):".yellow().bold());
+    println!(
+        "  orpheus render {} --master {} [--cycles {}]",
+        "<file>".green().bold(),
+        "<out.wav>".green().bold(),
+        "N".green().bold(),
+    );
+    println!("  Render a .ode file to a master WAV headlessly (default cycles = 36).");
 }
 
 fn start_live_audio() -> anyhow::Result<(EngineHandle, Stream)> {
@@ -175,6 +315,18 @@ impl PartialEq for CliAction {
         match (self, other) {
             (Self::Help, Self::Help) | (Self::Version, Self::Version) => true,
             (Self::Run(l0), Self::Run(r0)) => l0 == r0,
+            (
+                Self::RenderMaster {
+                    path: lp,
+                    out: lo,
+                    cycles: lc,
+                },
+                Self::RenderMaster {
+                    path: rp,
+                    out: ro,
+                    cycles: rc,
+                },
+            ) => lp == rp && lo == ro && lc == rc,
             _ => false,
         }
     }
@@ -253,5 +405,124 @@ mod tests {
         let error = startup_path_from_args(args).unwrap_err();
         assert!(error.to_string().contains("orpheus"));
         assert!(error.to_string().contains("[path/to/song.ode]"));
+    }
+
+    fn os(args: &[&str]) -> Vec<OsString> {
+        args.iter().map(OsString::from).collect()
+    }
+
+    #[test]
+    fn render_parses_file_master_and_cycles() {
+        let args = os(&[
+            "render", "song.ode", "--master", "out.wav", "--cycles", "12",
+        ]);
+        let action = startup_path_from_args(args).unwrap();
+        assert_eq!(
+            action,
+            CliAction::RenderMaster {
+                path: PathBuf::from("song.ode"),
+                out: PathBuf::from("out.wav"),
+                cycles: 12,
+            }
+        );
+    }
+
+    #[test]
+    fn render_defaults_cycles_to_36() {
+        let args = os(&["render", "song.ode", "--master", "out.wav"]);
+        let action = startup_path_from_args(args).unwrap();
+        assert_eq!(
+            action,
+            CliAction::RenderMaster {
+                path: PathBuf::from("song.ode"),
+                out: PathBuf::from("out.wav"),
+                cycles: 36,
+            }
+        );
+    }
+
+    #[test]
+    fn render_accepts_flags_before_positional_file() {
+        // Flag order should not matter; `--master` may precede the input file.
+        let args = os(&["render", "--master", "out.wav", "song.ode"]);
+        let action = startup_path_from_args(args).unwrap();
+        assert_eq!(
+            action,
+            CliAction::RenderMaster {
+                path: PathBuf::from("song.ode"),
+                out: PathBuf::from("out.wav"),
+                cycles: 36,
+            }
+        );
+    }
+
+    #[test]
+    fn render_requires_input_file() {
+        let args = os(&["render", "--master", "out.wav"]);
+        let error = startup_path_from_args(args).unwrap_err();
+        assert!(
+            error.to_string().contains(".ode"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn render_requires_master_output() {
+        let args = os(&["render", "song.ode"]);
+        let error = startup_path_from_args(args).unwrap_err();
+        assert!(
+            error.to_string().contains("--master"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn render_rejects_master_without_value() {
+        let args = os(&["render", "song.ode", "--master"]);
+        let error = startup_path_from_args(args).unwrap_err();
+        assert!(
+            error.to_string().contains("--master"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn render_rejects_non_numeric_cycles() {
+        let args = os(&["render", "song.ode", "--master", "out.wav", "--cycles", "x"]);
+        let error = startup_path_from_args(args).unwrap_err();
+        assert!(
+            error.to_string().contains("--cycles"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn render_rejects_zero_cycles() {
+        let args = os(&["render", "song.ode", "--master", "out.wav", "--cycles", "0"]);
+        let error = startup_path_from_args(args).unwrap_err();
+        assert!(
+            error.to_string().contains("--cycles"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn render_rejects_extra_positional_args() {
+        let args = os(&["render", "a.ode", "b.ode", "--master", "out.wav"]);
+        let error = startup_path_from_args(args).unwrap_err();
+        assert!(
+            error.to_string().contains("unexpected argument"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn render_rejects_unknown_flag() {
+        let args = os(&["render", "song.ode", "--master", "out.wav", "--bogus"]);
+        let error = startup_path_from_args(args).unwrap_err();
+        assert!(
+            error.to_string().contains("unexpected argument"),
+            "unexpected error: {error}"
+        );
     }
 }
