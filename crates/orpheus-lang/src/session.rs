@@ -23,7 +23,8 @@ use orpheus_dsp::{
     DEFAULT_ANALOG_BASE_FREQUENCY_HZ, EngineCommand, EngineHandle, GeneratorCycle,
     GeneratorCycleSpec, GeneratorId, GraphVoiceBank, GraphVoiceSpec, LevelSnapshot, PatternUpdate,
     SampleBank, SampleLibraryWatcher, SampleLibraryWatcherConfig, SampleTrigger, TransportSnapshot,
-    load_sample_bank_from_directory, render_routing_snapshot_to_stem_wavs,
+    load_sample_bank_from_directory, render_routing_snapshot_to_master_wav,
+    render_routing_snapshot_to_stem_wavs,
 };
 use orpheus_pattern::{Event, Rational};
 
@@ -478,6 +479,8 @@ impl ReplSession {
             "export" => {
                 if args.starts_with("stems") {
                     self.export_stems(args)
+                } else if args.starts_with("master") {
+                    self.export_master(args)
                 } else {
                     self.export_binding(args)
                 }
@@ -902,6 +905,80 @@ impl ReplSession {
             "exported {} stem(s) to `{}` ({cycles} cycle(s))",
             written.len(),
             export_dir.display()
+        ))
+    }
+
+    fn export_master(&self, args: &str) -> Result<String, String> {
+        let tokens: Vec<_> = args.split_whitespace().collect();
+        if tokens.first().copied() != Some("master") {
+            return Err(master_export_usage().to_owned());
+        }
+
+        let mut cycles = 1_u64;
+        // A master mixdown is the full front-of-house sum, so bus returns
+        // (reverb/delay tails) are folded in by default; `--no-buses` renders a
+        // dry, track-only master.
+        let mut include_buses = true;
+        let mut path: Option<String> = None;
+        for token in tokens.iter().skip(1) {
+            match *token {
+                "--no-buses" => include_buses = false,
+                "--buses" => include_buses = true,
+                other => {
+                    if let Ok(parsed) = other.parse::<u64>() {
+                        cycles = parsed;
+                    } else if path.is_none() {
+                        path = Some(other.to_owned());
+                    } else {
+                        return Err(master_export_usage().to_owned());
+                    }
+                }
+            }
+        }
+
+        let path = path.ok_or_else(|| master_export_usage().to_owned())?;
+        if cycles == 0 {
+            return Err("cycles must be a positive integer".to_owned());
+        }
+
+        let snapshot = self.mixer.compile_snapshot(&self.bindings)?;
+        let has_active_tracks = snapshot
+            .tracks()
+            .iter()
+            .any(|track| !track.source().is_unbound() && !track.muted());
+        if !has_active_tracks {
+            return Err(
+                "no active tracks to export; bind a sample pattern or create/bind tracks first"
+                    .to_owned(),
+            );
+        }
+
+        let tempo_bpm = self.transport_snapshot().tempo_bpm();
+        let graph_voice_specs = self.graph_voice_specs()?;
+        let generator_cycles = self.generator_cycle_specs(cycles);
+        let (written, stats) = render_routing_snapshot_to_master_wav(
+            &snapshot,
+            cycles,
+            tempo_bpm,
+            &self.sample_bank,
+            &graph_voice_specs,
+            &generator_cycles,
+            &path,
+            include_buses,
+        )
+        .map_err(|error| error.to_string())?;
+
+        let clip_note = if stats.peak > 1.0 {
+            format!(
+                " (warning: master peak {:.2} exceeds full scale)",
+                stats.peak
+            )
+        } else {
+            String::new()
+        };
+        Ok(format!(
+            "exported master to `{}` ({cycles} cycle(s)){clip_note}",
+            written.display()
         ))
     }
 
@@ -2101,7 +2178,11 @@ const fn render_usage() -> &'static str {
 }
 
 const fn export_usage() -> &'static str {
-    "usage: :export <binding> <path> [cycles] | :export stems [cycles] [--buses]"
+    "usage: :export <binding> <path> [cycles] | :export stems [cycles] [--buses] | :export master <path> [cycles] [--no-buses]"
+}
+
+const fn master_export_usage() -> &'static str {
+    "usage: :export master <path> [cycles] [--no-buses]"
 }
 
 const fn roll_usage() -> &'static str {
@@ -3231,6 +3312,247 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::cast_precision_loss, clippy::too_many_lines)]
+    fn master_render_of_reference_song_is_full_length_and_non_silent() {
+        use orpheus_dsp::{
+            GeneratorCycleSpec, GeneratorId, RoutingSnapshot, SampleTrigger, TrackSource,
+            render_routing_snapshot_to_master_wav,
+        };
+        use orpheus_pattern::{Event, Rational, TimeSpan};
+
+        use crate::export::sample_trigger_from_event;
+
+        // The official reference song is a 36-cycle `seq_sections` arrangement
+        // (intro 4, build 4, drop 8, peak 8, melodic 4, breakdown 4, outro 4).
+        // At 120 BPM (2s/cycle) that is a 72-second master.
+        const CYCLES: u64 = 36;
+        const TEMPO_BPM: f32 = 120.0;
+
+        let reference = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("docs")
+            .join("examples")
+            .join("reference_song.ode");
+
+        let mut session = ReplSession::new();
+        session
+            .open_file(&reference)
+            .expect("reference song should load and evaluate");
+
+        let song = session
+            .bindings
+            .get("song")
+            .and_then(super::Value::as_sample_pattern)
+            .expect("`song` must be a sample pattern")
+            .clone();
+
+        // Materialize the whole timeline cycle-by-cycle into cycle-local event
+        // buffers (the generator seam the offline renderer uses for grid/orca
+        // tracks), so the `seq_sections` arrangement advances section by section
+        // instead of looping cycle 0 the way a single-cycle snapshot capture
+        // would.
+        let full = song
+            .try_query(
+                &TimeSpan::new(
+                    Rational::from_integer(0),
+                    Rational::from_integer(i64::try_from(CYCLES).unwrap()),
+                )
+                .unwrap(),
+            )
+            .expect("querying the full song timeline should succeed");
+
+        let mut per_cycle: Vec<Vec<Event<SampleTrigger>>> =
+            (0..CYCLES).map(|_| Vec::new()).collect();
+        for event in &full {
+            let cycle = event.part.start().numerator() / event.part.start().denominator();
+            let Ok(index) = usize::try_from(cycle) else {
+                continue;
+            };
+            if index >= per_cycle.len() {
+                continue;
+            }
+            let shift = |bound: &Rational| {
+                Rational::new(
+                    i64::try_from(bound.numerator() - cycle * bound.denominator()).unwrap(),
+                    i64::try_from(bound.denominator()).unwrap(),
+                )
+                .unwrap()
+            };
+            let part = TimeSpan::new(shift(event.part.start()), shift(event.part.end())).unwrap();
+            let whole = event
+                .whole
+                .as_ref()
+                .map(|w| TimeSpan::new(shift(w.start()), shift(w.end())).unwrap());
+            per_cycle[index].push(Event {
+                whole,
+                part,
+                value: sample_trigger_from_event(&event.value),
+            });
+        }
+        let total_events: usize = per_cycle.iter().map(Vec::len).sum();
+        assert!(
+            total_events > 0,
+            "the reference song timeline produced no events"
+        );
+
+        let generator_id = GeneratorId::new(0);
+        let generator_cycles = vec![GeneratorCycleSpec {
+            generator_id,
+            cycles: per_cycle.into_iter().map(Vec::into_boxed_slice).collect(),
+        }];
+        let graph_voice_specs = session.graph_voice_specs().unwrap();
+
+        let out_path = std::env::var_os("ORPHEUS_REFERENCE_MASTER_OUT").map_or_else(
+            || {
+                std::env::temp_dir().join(format!(
+                    "orpheus-reference-master-{}.wav",
+                    unique_temp_suffix()
+                ))
+            },
+            PathBuf::from,
+        );
+        let keep_output = std::env::var_os("ORPHEUS_REFERENCE_MASTER_OUT").is_some();
+
+        let make_snapshot = |level: f32| {
+            RoutingSnapshot::builder()
+                .track_with_source_and_mix(
+                    "song",
+                    TrackSource::Generator(generator_id),
+                    level,
+                    0.0,
+                    false,
+                )
+                .route("song", "master")
+                .build()
+                .unwrap()
+        };
+
+        // Render once at unity to measure the raw summed peak, then re-render
+        // with just enough headroom that the master never clips full scale.
+        let (_, probe) = render_routing_snapshot_to_master_wav(
+            &make_snapshot(1.0),
+            CYCLES,
+            TEMPO_BPM,
+            &session.sample_bank,
+            &graph_voice_specs,
+            &generator_cycles,
+            &out_path,
+            true,
+        )
+        .unwrap();
+        let headroom = if probe.peak > 0.891 {
+            0.891 / probe.peak
+        } else {
+            1.0
+        };
+
+        let (written, stats) = render_routing_snapshot_to_master_wav(
+            &make_snapshot(headroom),
+            CYCLES,
+            TEMPO_BPM,
+            &session.sample_bank,
+            &graph_voice_specs,
+            &generator_cycles,
+            &out_path,
+            true,
+        )
+        .unwrap();
+
+        let mut reader = hound::WavReader::open(&written).unwrap();
+        let spec = reader.spec();
+        assert_eq!(spec.channels, 2, "master must be stereo");
+        assert_eq!(spec.sample_rate, 48_000);
+        let samples: Vec<i16> = reader.samples::<i16>().map(Result::unwrap).collect();
+        assert!(!samples.is_empty());
+        let duration = (samples.len() / 2) as f64 / f64::from(spec.sample_rate);
+
+        let full_scale = f64::from(i16::MAX);
+        let peak = samples.iter().map(|s| s.unsigned_abs()).max().unwrap();
+        let peak_norm = f64::from(peak) / full_scale;
+        let square_sum: f64 = samples
+            .iter()
+            .map(|s| {
+                let v = f64::from(*s);
+                v * v
+            })
+            .sum();
+        let rms = (square_sum / samples.len() as f64).sqrt() / full_scale;
+        let clipped = samples
+            .iter()
+            .filter(|s| s.unsigned_abs() >= 32_767)
+            .count();
+        let clipped_pct = clipped as f64 / samples.len() as f64 * 100.0;
+
+        println!(
+            "reference master: path={} bytes={} duration={duration:.2}s sr={} ch={} \
+             peak={peak_norm:.4} rms={rms:.4} clipped={clipped_pct:.4}% \
+             reported_peak={:.4} headroom={headroom:.3} events={total_events}",
+            written.display(),
+            std::fs::metadata(&written).unwrap().len(),
+            spec.sample_rate,
+            spec.channels,
+            stats.peak,
+        );
+
+        // No NaN/Inf is representable in i16 PCM; the reported float peak must be
+        // finite and within full scale.
+        assert!(stats.peak.is_finite(), "reported peak must be finite");
+        assert!(
+            stats.peak <= 1.0,
+            "master must not clip (peak {})",
+            stats.peak
+        );
+        assert!(clipped_pct < 0.1, "master should be essentially clip-free");
+        assert!(
+            (60.0..=120.0).contains(&duration),
+            "duration {duration}s should sit in the 60-120s window"
+        );
+        assert!(rms > 0.02, "master should carry strong energy (rms {rms})");
+
+        // Non-silent across the WHOLE file: every window carries real energy
+        // (well above the numerical noise floor), so the piece plays end to end
+        // rather than trailing off into silence after a few cycles. The loud
+        // sections (drop/peak) and the sparse ones (intro/outro) differ widely,
+        // which additionally proves the `seq_sections` timeline actually
+        // advances instead of looping a single cycle.
+        let windows = 18;
+        let window = samples.len() / windows;
+        let mut window_rms = Vec::with_capacity(windows);
+        for w in 0..windows {
+            let slice = &samples[w * window..(w + 1) * window];
+            let wsum: f64 = slice
+                .iter()
+                .map(|s| {
+                    let v = f64::from(*s);
+                    v * v
+                })
+                .sum();
+            let wrms = (wsum / slice.len() as f64).sqrt() / full_scale;
+            assert!(
+                wrms > 0.0008,
+                "window {w}/{windows} is effectively silent (rms {wrms})"
+            );
+            window_rms.push(wrms);
+        }
+        let loudest = window_rms.iter().copied().fold(0.0_f64, f64::max);
+        let quietest = window_rms.iter().copied().fold(f64::MAX, f64::min);
+        assert!(
+            loudest > 0.05,
+            "at least one section must be clearly loud (loudest window rms {loudest})"
+        );
+        assert!(
+            loudest > quietest * 4.0,
+            "the arrangement should have real section dynamics, not a single looped cycle \
+             (loudest {loudest}, quietest {quietest})"
+        );
+
+        if !keep_output {
+            let _ = std::fs::remove_file(&written);
+        }
+    }
+
+    #[test]
     fn export_stems_command_renders_generator_track_audibly() {
         use crate::orca::{ORCA_GENERATOR_ID, ORCA_PATTERN_NAME, OrcaEngine, materialize_cycle};
 
@@ -3808,6 +4130,10 @@ fn build_help_table() -> comfy_table::Table {
         (
             ":export stems <binding> <dir> <cycles>",
             "Export individual track stems to a directory",
+        ),
+        (
+            ":export master <path> [cycles] [--no-buses]",
+            "Render the full routed mix (voices + buses) to one master WAV",
         ),
         (
             ":roll <binding>",

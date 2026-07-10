@@ -120,6 +120,56 @@ fn repl_render_command_exports_wav() {
 }
 
 #[test]
+#[allow(clippy::cast_precision_loss)]
+fn repl_export_master_command_exports_non_silent_wav() {
+    let mut cmd = cargo_bin_cmd!("orpheus");
+    let path = temp_wav_path();
+
+    // A user `voice { }` instrument plus a sample drum pattern, both routed to
+    // the master, prove the single-file master render includes graph voices and
+    // sample voices summed together.
+    cmd.write_stdin(format!(
+        "pluck = voice {{ sine(freq) * ar(gate, 0.001, 0.2) }}\n\
+         lead = pluck ~ pluck ~\n\
+         drums = bd sn cp sn\n\
+         :track new leadtrk\n\
+         :track bind leadtrk lead\n\
+         :track new drumtrk\n\
+         :track bind drumtrk drums\n\
+         :export master {} 2\n\
+         :quit\n",
+        path.display()
+    ))
+    .assert()
+    .success()
+    .stdout(contains("exported master"));
+
+    assert!(path.exists());
+    assert!(fs::metadata(&path).unwrap().len() > 44);
+
+    // Read the master back and prove it is a valid, non-silent stereo WAV.
+    let mut reader = hound::WavReader::open(&path).unwrap();
+    let spec = reader.spec();
+    assert_eq!(spec.channels, 2, "master must be stereo");
+    let samples = reader
+        .samples::<i16>()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert!(!samples.is_empty(), "master must contain audio");
+    let peak = samples.iter().map(|s| s.unsigned_abs()).max().unwrap();
+    let rms = (samples
+        .iter()
+        .map(|s| f64::from(*s) * f64::from(*s))
+        .sum::<f64>()
+        / samples.len() as f64)
+        .sqrt();
+    assert!(peak > 200, "master should be non-silent (peak = {peak})");
+    assert!(rms > 10.0, "master should carry real energy (rms = {rms})");
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn repl_tempo_command_reports_success() {
     let mut cmd = cargo_bin_cmd!("orpheus");
 

@@ -45,9 +45,9 @@ pub use graph_voice::{
     graph_note_voice_params, graph_note_voice_ramps,
 };
 pub use offline::{
-    GeneratorCycleSpec, OfflineRenderError, render_events_to_file, render_events_to_file_with_bank,
-    render_events_to_wav, render_routing_snapshot_to_stem_wavs,
-    render_routing_snapshot_to_stereo_for_test,
+    GeneratorCycleSpec, MasterRenderStats, OfflineRenderError, render_events_to_file,
+    render_events_to_file_with_bank, render_events_to_wav, render_routing_snapshot_to_master_wav,
+    render_routing_snapshot_to_stem_wavs, render_routing_snapshot_to_stereo_for_test,
 };
 pub use pedal::{
     ClipModel, FilterMode, NodeRef, PEDAL_CONTROL_INTERVAL_SAMPLES, PedalGraphProgram,

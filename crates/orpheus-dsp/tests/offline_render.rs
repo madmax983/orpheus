@@ -9,7 +9,8 @@ use orpheus_dsp::{
     EngineCommand, EngineHandle, GeneratorCycleSpec, GeneratorId, NodeRef, PedalNode, PedalProgram,
     PedalStage, RoutingSnapshot, SampleBank, SampleTrigger, TrackSource,
     load_sample_bank_from_directory, render_events_to_file_with_bank,
-    render_routing_snapshot_to_stem_wavs, render_routing_snapshot_to_stereo_for_test,
+    render_routing_snapshot_to_master_wav, render_routing_snapshot_to_stem_wavs,
+    render_routing_snapshot_to_stereo_for_test,
 };
 use orpheus_pattern::{Event, Rational, TimeSpan};
 
@@ -753,6 +754,89 @@ fn stem_export_renders_sample_builtin_synth_and_graph_voice_stems() {
             "stem `{stem}` should contain nonzero audio in the event window"
         );
     }
+
+    fs::remove_dir_all(output_dir).unwrap();
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+#[allow(clippy::cast_precision_loss)]
+fn master_export_sums_sample_and_graph_voice_tracks_into_one_wav() {
+    let directory = temp_directory("master-mix-sources");
+    write_wav(directory.join("pulse.wav"), &[1.0, 0.5, 0.25, 0.125]);
+    let bank = load_sample_bank_from_directory(&directory).unwrap();
+
+    let one_shot = |token: &str| {
+        TrackSource::SamplePattern(
+            vec![Event {
+                whole: None,
+                part: TimeSpan::new(Rational::zero(), Rational::new(1, 4).unwrap()).unwrap(),
+                value: SampleTrigger::named(token),
+            }]
+            .into_boxed_slice(),
+        )
+    };
+    // One sample track (`pulse`) plus one built-in graph voice track (`gsine`),
+    // so the master must include audio contributed by the pooled graph voice
+    // bank, not just the sample voices.
+    let snapshot = RoutingSnapshot::builder()
+        .track_with_source("drums", one_shot("pulse"))
+        .track_with_source("lead", one_shot("gsine"))
+        .route("drums", "master")
+        .route("lead", "master")
+        .build()
+        .unwrap();
+
+    let output_dir = temp_directory("master-mix-out");
+    let output_path = output_dir.join("master.wav");
+    let (written_path, stats) = render_routing_snapshot_to_master_wav(
+        &snapshot,
+        2,
+        480.0,
+        &bank,
+        &[],
+        &[],
+        &output_path,
+        true,
+    )
+    .unwrap();
+
+    assert_eq!(written_path, output_path);
+    assert!(output_path.exists(), "master file should exist");
+    assert!(
+        fs::metadata(&output_path).unwrap().len() > 44,
+        "master file should be a non-empty WAV (larger than a bare header)"
+    );
+
+    let mut reader = hound::WavReader::open(&output_path).unwrap();
+    let spec = reader.spec();
+    assert_eq!(spec.channels, 2, "master must be stereo");
+    assert_eq!(spec.sample_rate, 48_000);
+    let samples = reader
+        .samples::<i16>()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert!(!samples.is_empty(), "master must contain audio frames");
+
+    // (a) Non-silent: peak and RMS must both be clearly above the noise floor.
+    let peak = samples.iter().map(|s| s.unsigned_abs()).max().unwrap();
+    let rms = (samples
+        .iter()
+        .map(|s| f64::from(*s) * f64::from(*s))
+        .sum::<f64>()
+        / samples.len() as f64)
+        .sqrt();
+    assert!(peak > 200, "master should be non-silent (peak = {peak})");
+    assert!(rms > 20.0, "master should have real energy (rms = {rms})");
+
+    // (b) The reported pre-clamp peak must be finite and must not clip the
+    // 16-bit output format.
+    assert!(stats.peak.is_finite(), "reported peak must be finite");
+    assert!(
+        stats.peak <= 1.0,
+        "master should not clip the output format (peak = {})",
+        stats.peak
+    );
 
     fs::remove_dir_all(output_dir).unwrap();
     fs::remove_dir_all(directory).unwrap();

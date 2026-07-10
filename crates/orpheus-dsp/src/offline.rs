@@ -225,6 +225,7 @@ pub fn render_routing_snapshot_to_stereo_for_test(
             &mut mix_state,
             frame % frames_per_cycle,
             frames_per_cycle,
+            true,
         );
 
         rendered.push(master_left.clamp(-1.0, 1.0));
@@ -372,6 +373,145 @@ pub fn render_routing_snapshot_to_stem_wavs(
     )
 }
 
+/// Peak analysis returned alongside a rendered master mix.
+///
+/// The peak is measured on the raw summed `f32` master **before** the 16-bit
+/// PCM conversion, so callers can detect whether the mix would clip the output
+/// format (a peak strictly greater than `1.0`) without re-reading the file.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MasterRenderStats {
+    /// Largest absolute sample value seen across both channels of the summed
+    /// master, measured before clamping into the PCM range.
+    pub peak: f32,
+}
+
+/// Offline-renders a routing snapshot to a single stereo master WAV file.
+///
+/// This is the full-mix counterpart to [`render_routing_snapshot_to_stem_wavs`]:
+/// rather than writing one file per track, every bound, unmuted track is summed
+/// into a single stereo master (with per-track level and pan applied) and, when
+/// `include_buses` is true, the post-effect bus returns are folded in as well —
+/// exactly the sum the real-time engine sends to the audio device. User
+/// `voice { ... }` programs (`graph_voice_specs`), generator tracks
+/// (`generator_cycles`), and the real session `tempo_bpm` are all honored,
+/// mirroring the stem exporter's rendering internals.
+///
+/// The summed master is written with the same deterministic 16-bit PCM
+/// convention as the stem writer. The mix is **not** run through an artificial
+/// brick-wall limiter before summing; instead the raw pre-clamp peak is reported
+/// via the returned [`MasterRenderStats`] so callers can gain-stage (a
+/// `stats.peak` above `1.0` means the summed mix would clip the output format).
+///
+/// Returns the written file path together with the peak statistics.
+///
+/// # Errors
+///
+/// Returns [`OfflineRenderError`] if scheduling, rendering, sample resolution, or
+/// file I/O fails.
+///
+/// # Panics
+///
+/// Panics if a track ID, a bus ID, or the sample rate cannot fit into a `usize`.
+#[allow(clippy::too_many_arguments)]
+pub fn render_routing_snapshot_to_master_wav(
+    snapshot: &RoutingSnapshot,
+    cycle_count: u64,
+    tempo_bpm: f32,
+    sample_bank: &SampleBank,
+    graph_voice_specs: &[GraphVoiceSpec],
+    generator_cycles: &[GeneratorCycleSpec],
+    output_path: impl AsRef<Path>,
+    include_buses: bool,
+) -> Result<(PathBuf, MasterRenderStats), OfflineRenderError> {
+    if cycle_count == 0 {
+        return Err(OfflineRenderError::InvalidCycleCount);
+    }
+
+    let output_path = output_path.as_ref();
+    if let Some(parent) = output_path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent).map_err(|source| OfflineRenderError::Io {
+            path: parent.display().to_string().into_boxed_str(),
+            message: source.to_string().into_boxed_str(),
+        })?;
+    }
+
+    let frames_per_cycle = frames_per_cycle(DEFAULT_SAMPLE_RATE, tempo_bpm)?;
+    let total_frames = frames_per_cycle
+        .checked_mul(cycle_count)
+        .ok_or(EngineError::FrameOverflow)?;
+    let total_frames_usize =
+        usize::try_from(total_frames).map_err(|_| EngineError::FrameOverflow)?;
+    let mut scheduler = Scheduler::default();
+    schedule_snapshot_cycles(
+        snapshot,
+        cycle_count,
+        frames_per_cycle,
+        generator_cycles,
+        &mut scheduler,
+    )?;
+
+    let mut active_voices: Vec<Option<ActiveVoice>> =
+        (0..MAX_ACTIVE_VOICES).map(|_| None).collect();
+    let mut graph_voices = offline_graph_voice_bank(graph_voice_specs);
+    let mut track_mix_buffer = vec![(0.0_f32, 0.0_f32); snapshot.tracks().len()];
+    let mut bus_mix_buffer = vec![(0.0_f32, 0.0_f32); snapshot.buses().len()];
+    let mut bus_effect_states = snapshot
+        .buses()
+        .iter()
+        .map(|bus| {
+            bus.effect()
+                .map(|effect| BusEffectState::from_spec(effect, frames_per_cycle))
+                .transpose()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut plugin_processors = plugin_processors_for_snapshot(snapshot);
+
+    let mut master_pcm = Vec::with_capacity(total_frames_usize * usize::from(OFFLINE_CHANNELS));
+    let mut peak = 0.0_f32;
+
+    for frame in 0..total_frames {
+        begin_plugin_cycle_if_needed(frame, frames_per_cycle, &mut plugin_processors);
+        activate_due_snapshot_voices(
+            frame,
+            frames_per_cycle,
+            &mut scheduler,
+            &mut active_voices,
+            &mut graph_voices,
+            sample_bank,
+        )?;
+        let mut mix_state = SnapshotMixState {
+            active_voices: &mut active_voices,
+            graph_voices: &mut graph_voices,
+            track_mix_buffer: &mut track_mix_buffer,
+            bus_mix_buffer: &mut bus_mix_buffer,
+            bus_effect_states: &mut bus_effect_states,
+            plugin_processors: &mut plugin_processors,
+        };
+        let (master_left, master_right) = mix_snapshot_frame(
+            snapshot,
+            &mut mix_state,
+            frame % frames_per_cycle,
+            frames_per_cycle,
+            include_buses,
+        );
+
+        if master_left.is_finite() {
+            peak = peak.max(master_left.abs());
+        }
+        if master_right.is_finite() {
+            peak = peak.max(master_right.abs());
+        }
+        master_pcm.push(i32::from(float_to_pcm16(master_left)));
+        master_pcm.push(i32::from(float_to_pcm16(master_right)));
+    }
+
+    write_wav(output_path, &master_pcm)?;
+
+    Ok((output_path.to_path_buf(), MasterRenderStats { peak }))
+}
+
 fn write_rendered_stem_wavs(
     snapshot: &RoutingSnapshot,
     output_dir: &Path,
@@ -511,6 +651,7 @@ fn mix_snapshot_frame(
     state: &mut SnapshotMixState<'_>,
     local_frame: u64,
     frames_per_cycle: u64,
+    include_buses: bool,
 ) -> (f32, f32) {
     state.track_mix_buffer.fill((0.0, 0.0));
     state.bus_mix_buffer.fill((0.0, 0.0));
@@ -560,11 +701,17 @@ fn mix_snapshot_frame(
         let bus_index = usize::try_from(bus.id().get())
             .unwrap_or_else(|_| panic!("bus id did not fit in usize"));
         let (bus_left, bus_right) = state.bus_mix_buffer[bus_index];
+        // The bus-return processing still runs even when the buses are excluded
+        // from the master so any stateful effect (delay lines, reverb tails)
+        // keeps advancing deterministically; only the summed contribution is
+        // gated on `include_buses`.
         if let Some(effect) = state.bus_effect_states[bus_index].as_mut() {
             let (wet_left, wet_right) = effect.process_frame(bus_left, bus_right);
-            master_left += wet_left;
-            master_right += wet_right;
-        } else {
+            if include_buses {
+                master_left += wet_left;
+                master_right += wet_right;
+            }
+        } else if include_buses {
             master_left += bus_left;
             master_right += bus_right;
         }
