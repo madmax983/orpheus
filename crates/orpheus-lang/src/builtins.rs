@@ -890,7 +890,13 @@ fn apply_jux(args: Vec<Value>) -> Result<Value, EvalError> {
                 left, right,
             ])))
         },
-        |_| Err(EvalError::new("`jux` only applies to sample patterns")),
+        |_| {
+            Err(EvalError::new(
+                "`jux` needs an audio pattern that carries a pan channel (a sample pattern or a \
+                 voice pattern); a number, pitch, or degree pattern is a control signal with no \
+                 pan channel, so apply `jux` to the sample or voice pattern it drives instead",
+            ))
+        },
         "jux",
     )
 }
