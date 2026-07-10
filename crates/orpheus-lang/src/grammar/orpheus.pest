@@ -70,5 +70,11 @@ add_op = { "+" }
 mul_op = { "*" }
 assign_op = _{ "=" }
 
-padding = _{ (" " | "\t" | NEWLINE)* }
-required_padding = _{ (" " | "\t" | NEWLINE)+ }
+// Line comments run from `//` to the end of the line. `//` never appears in
+// expression syntax (there is no division operator, and the tight `/n` slow
+// modifier requires a digit after the slash), so treating `//` as a comment is
+// unambiguous. Comments count as padding, so they may sit on their own line or
+// trail an expression on the same line.
+comment = _{ "//" ~ (!NEWLINE ~ ANY)* }
+padding = _{ (" " | "\t" | NEWLINE | comment)* }
+required_padding = _{ (" " | "\t" | NEWLINE | comment)+ }
