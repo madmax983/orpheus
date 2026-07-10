@@ -300,8 +300,21 @@ where
 fn handle_key(
     shared: &Rc<RefCell<SharedState>>,
     workspace: &mut WorkspaceRuntime,
-    key: crossterm::event::KeyEvent,
+    mut key: crossterm::event::KeyEvent,
 ) {
+    // Normalize away SHIFT for character keys. crossterm on Windows attaches
+    // `KeyModifiers::SHIFT` to shifted printable chars (e.g. `:` = Shift+`;`,
+    // `A`, `!`, `?`, `_`), whereas Linux/macOS deliver the resolved `Char` with
+    // no modifier. Without this, every `modifiers.is_empty()` gate below (and in
+    // the plugin dispatch via `event_from_crossterm`) would drop shifted chars
+    // on Windows, making it impossible to type `:export …` or any command. This
+    // runs before the layout-mode hotkeys and the plugin dispatch, so both see
+    // an empty modifier set for shifted chars. Ctrl-C / palette prev-next key
+    // off CONTROL and are unaffected; nothing keys off SHIFT+Char.
+    if matches!(key.code, KeyCode::Char(_)) {
+        key.modifiers.remove(KeyModifiers::SHIFT);
+    }
+
     let mut state = shared.borrow_mut();
 
     // Ctrl-C always quits.
@@ -842,6 +855,17 @@ mod tests {
         }
     }
 
+    /// A shifted key press, mirroring how crossterm delivers shifted printable
+    /// characters on Windows (the resolved `Char` plus `KeyModifiers::SHIFT`).
+    fn shift(code: KeyCode) -> crossterm::event::KeyEvent {
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::SHIFT,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        }
+    }
+
     fn render_frame_str(
         shared: &Rc<RefCell<SharedState>>,
         workspace: &mut WorkspaceRuntime,
@@ -996,6 +1020,46 @@ mod tests {
         handle_key(&shared, &mut workspace, press(KeyCode::Char(':')));
         assert!(!shared.borrow().palette_open);
         assert_eq!(shared.borrow().input, ":");
+    }
+
+    #[test]
+    fn shifted_colon_inserts_in_input_mode_on_windows() {
+        // Regression: crossterm on Windows delivers `:` as Char(':') + SHIFT.
+        // The shifted char must still be inserted, not dropped, so users can
+        // type colon-commands like `:export …` in the REPL.
+        let (shared, mut workspace) = test_setup();
+        handle_key(&shared, &mut workspace, shift(KeyCode::Char(':')));
+        assert_eq!(
+            shared.borrow().input,
+            ":",
+            "a SHIFT+':' press must insert a literal colon"
+        );
+    }
+
+    #[test]
+    fn shifted_colon_opens_command_palette_in_layout_mode() {
+        // Regression: on Windows the palette trigger arrives as Char(':') +
+        // SHIFT; it must still open the palette in layout mode.
+        let (shared, mut workspace) = test_setup();
+        handle_key(&shared, &mut workspace, press(KeyCode::Esc));
+        assert_eq!(workspace.active_runtime().mode(), InputMode::Layout);
+        handle_key(&shared, &mut workspace, shift(KeyCode::Char(':')));
+        assert!(
+            shared.borrow().palette_open,
+            "a SHIFT+':' press must open the command palette"
+        );
+    }
+
+    #[test]
+    fn shifted_uppercase_letter_inserts_in_input_mode_on_windows() {
+        // Regression: uppercase letters arrive as Char('A') + SHIFT on Windows.
+        let (shared, mut workspace) = test_setup();
+        handle_key(&shared, &mut workspace, shift(KeyCode::Char('A')));
+        assert_eq!(
+            shared.borrow().input,
+            "A",
+            "a SHIFT+'A' press must insert an uppercase A"
+        );
     }
 
     #[test]
