@@ -221,11 +221,42 @@ fn parse_render_args(args: &[OsString]) -> anyhow::Result<CliAction> {
     Ok(CliAction::RenderMaster { path, out, cycles })
 }
 
+/// The stack size, in bytes, of the dedicated worker thread that runs an
+/// offline master render.
+///
+/// Offline rendering drives deeply-recursive work: the pattern evaluator walks
+/// nested combinator trees, and the DSP graph processor (Faust-style
+/// `Seq`/`Par`/`Spl`/`Mrg`/`Rec` combinators) recurses through the whole node
+/// tree once per frame. On Linux and macOS the ~8 MiB default *main-thread*
+/// stack absorbs this, but Windows gives the main thread only ~1 MiB by
+/// default — a deep-enough user graph there can blow past the guard page and
+/// crash with `STATUS_ACCESS_VIOLATION` (0xc0000005). Running the render on a
+/// worker thread with a large, explicit stack makes the render's headroom
+/// independent of the platform's main-thread stack size.
+const RENDER_THREAD_STACK_SIZE: usize = 64 * 1024 * 1024;
+
 /// Render a `.ode` file down to a master WAV without starting cpal/audio.
+///
+/// The actual work runs on a dedicated worker thread with an explicit
+/// [`RENDER_THREAD_STACK_SIZE`] stack so the render never depends on the
+/// platform's (Windows-small) main-thread stack; see that constant for why.
+fn render_master(path: &Path, out: &Path, cycles: u64) -> anyhow::Result<()> {
+    let path = path.to_path_buf();
+    let out = out.to_path_buf();
+    std::thread::Builder::new()
+        .name("orpheus-render".to_owned())
+        .stack_size(RENDER_THREAD_STACK_SIZE)
+        .spawn(move || render_master_inner(&path, &out, cycles))
+        .context("failed to spawn offline render worker thread")?
+        .join()
+        .map_err(|_| anyhow!("offline render worker thread panicked"))?
+}
+
+/// The body of an offline master render, executed on the render worker thread.
 ///
 /// Drives a headless [`ReplSession`] backed by a stub engine: load the file,
 /// then reuse the existing `:export master` offline render path.
-fn render_master(path: &Path, out: &Path, cycles: u64) -> anyhow::Result<()> {
+fn render_master_inner(path: &Path, out: &Path, cycles: u64) -> anyhow::Result<()> {
     let mut session = ReplSession::with_engine(EngineHandle::stub());
     session
         .open_file(path)
@@ -337,6 +368,60 @@ mod tests {
     use super::*;
     use std::ffi::OsString;
     use std::path::PathBuf;
+
+    /// Regression guard for the Windows `STATUS_ACCESS_VIOLATION` (0xc0000005)
+    /// crash: an offline render must not depend on the caller's stack size.
+    ///
+    /// `render_master` re-spawns the deeply-recursive render onto a worker
+    /// thread with a large explicit stack ([`RENDER_THREAD_STACK_SIZE`]). We
+    /// drive it here from a deliberately tiny (96 KiB) caller-thread stack
+    /// using a deep DSP graph: with the re-spawn the render succeeds regardless
+    /// of the caller stack; if the re-spawn is removed the deep per-frame graph
+    /// recursion runs on the 96 KiB caller stack and overflows — exactly the
+    /// class of failure Windows' ~1 MiB main-thread stack exhibits.
+    #[test]
+    fn render_master_is_independent_of_caller_stack_size() {
+        // A pure graph-voice program (no sample files needed) with a deep
+        // effect chain, kept within the parser's AST-depth cap.
+        let mut chain = String::from("saw(freq)");
+        for _ in 0..24 {
+            chain.push_str(" |> gain(0.5)");
+        }
+        let source = format!("v = voice {{ osc = saw(freq) ; {chain} }}\nm = v v v v\n");
+
+        let unique = format!(
+            "{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let dir = std::env::temp_dir();
+        let ode_path = dir.join(format!("orpheus_render_stack_{unique}.ode"));
+        let wav_path = dir.join(format!("orpheus_render_stack_{unique}.wav"));
+        std::fs::write(&ode_path, source).expect("write temp .ode");
+
+        // 96 KiB: small enough that running this deep render *inline* on this
+        // thread overflows (verified empirically), yet ample for
+        // `render_master`'s own spawn/join wrapper. The fix moves the heavy
+        // work onto its own large-stack worker, so the render must still
+        // succeed here; without the fix this thread would overflow — the same
+        // failure mode as Windows' ~1 MiB main-thread stack.
+        let ode_for_thread = ode_path.clone();
+        let wav_for_thread = wav_path.clone();
+        let result = std::thread::Builder::new()
+            .stack_size(96 * 1024)
+            .spawn(move || render_master(&ode_for_thread, &wav_for_thread, 1))
+            .expect("spawn small-stack caller")
+            .join()
+            .expect("small-stack caller thread must not overflow");
+
+        let _ = std::fs::remove_file(&ode_path);
+        let _ = std::fs::remove_file(&wav_path);
+
+        assert!(result.is_ok(), "render_master failed: {result:?}");
+    }
 
     #[test]
     fn startup_path_from_args_handles_empty_args() {
