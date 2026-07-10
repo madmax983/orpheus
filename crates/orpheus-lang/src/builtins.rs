@@ -4100,7 +4100,7 @@ fn validate_slice_control_patterns(
     push_span_boundaries(&start_events, &unit, &mut boundaries);
     push_span_boundaries(&end_events, &unit, &mut boundaries);
 
-    boundaries.sort();
+    boundaries.sort_unstable();
     boundaries.dedup();
 
     for window in boundaries.windows(2) {

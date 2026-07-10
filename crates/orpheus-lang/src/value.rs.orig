@@ -5559,8 +5559,8 @@ where
             let mut result: Option<T> = None;
             for control_event in &control_events {
                 if spans_overlap(&control_event.part, part) {
-                    let current = result.as_ref().unwrap_or(value);
-                    result = Some(kind.apply(current, control_event.value)?);
+                    let current = result.take().unwrap_or_else(|| value.clone());
+                    result = Some(kind.apply(&current, control_event.value)?);
                 }
             }
             Ok(Some(result.unwrap_or_else(|| value.clone())))
@@ -5827,7 +5827,9 @@ where
             }
 
             if changed {
-                Ok(Some(value.adjust_slice(relative_start, relative_end)))
+                Ok(Some(
+                    value.clone().adjust_slice(relative_start, relative_end),
+                ))
             } else {
                 Ok(Some(value.clone()))
             }

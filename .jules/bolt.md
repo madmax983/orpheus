@@ -47,3 +47,11 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+**[Eliminate Redundant Value Clones in Event Processing]**
+**Learning:** `apply_event_fragments` previously cloned the event value on every iteration, leading to potentially many unnecessary allocations.
+**Action:** Use an `Option` to track the mutated value and return it if mutated, falling back to a single `.clone()` only when appending to the final `Vec`.
+
+**[sort_unstable for Collections Without Duplicates/Original Ordering Requirements]**
+**Learning:** `Vec::sort()` allocates memory. In cases where the vector contains simple values like `Rational` or where relative ordering of equal elements doesn't matter (especially when immediately followed by `.dedup()`), `Vec::sort_unstable()` avoids the stable-sort allocation.
+**Action:** Replace `boundaries.sort()` with `boundaries.sort_unstable()` where appropriate, e.g., before `.dedup()`.
