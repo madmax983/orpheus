@@ -271,6 +271,10 @@ where
             // Re-publish the next Orca grid cycle when the engine crossed a
             // cycle boundary since the previous tick (ADR 0008).
             state.poll_orca();
+            // Advance any finite multi-cycle arrangement (e.g. `seq_sections`)
+            // to the engine's current cycle so live playback moves section by
+            // section instead of looping the intro (issue #1446).
+            state.poll_arrangements();
             if state.should_quit {
                 break;
             }

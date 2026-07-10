@@ -773,6 +773,163 @@ impl MixerState {
         Ok((snapshot, specs))
     }
 
+    /// Compiles a routing snapshot for **live playback** that advances
+    /// multi-cycle arrangements cycle by cycle.
+    ///
+    /// [`Self::compile_snapshot`] captures every plain sample-pattern track as a
+    /// single-cycle [`TrackSource::SamplePattern`] (its unit-cycle query), which
+    /// the engine re-loops every bar — correct for a looping pattern but wrong
+    /// for a finite arrangement such as `seq_sections(...)`, which then loops the
+    /// intro forever (issue #1446). This variant instead binds each plain
+    /// sample-pattern track to a synthetic [`TrackSource::Generator`], mirroring
+    /// the offline path [`Self::compile_offline_snapshot`]. Unlike offline (which
+    /// can pre-materialize all cycles), live playback is unbounded: this returns
+    /// the `{generator id → binding name}` mapping so the session driver can
+    /// query cycle N at each live cycle boundary and push it over the generator
+    /// ring (ADR 0009), exactly as the Orca grid generator is driven.
+    ///
+    /// Tracks already backed by a real engine generator slot keep their existing
+    /// [`GeneratorId`] (the session drives them directly), and plugin tracks are
+    /// unchanged. Synthetic ids are allocated above every real generator id so
+    /// the two never collide.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when a track binding is missing or is not a
+    /// sample/plugin pattern, or when the routing fails to build.
+    pub(crate) fn compile_live_snapshot(
+        &self,
+        bindings: &BTreeMap<String, Value>,
+    ) -> Result<(RoutingSnapshot, Vec<(GeneratorId, String)>), String> {
+        let mut builder = RoutingSnapshot::builder();
+        let mut arrangements: Vec<(GeneratorId, String)> = Vec::new();
+        let mut next_generator_id = self
+            .generator_bindings
+            .values()
+            .map(|id| id.get())
+            .max()
+            .map_or(0, |max| max.saturating_add(1));
+
+        if !self.has_explicit_bound_tracks() {
+            builder = match self.compatibility_main_binding.as_deref() {
+                Some(binding_name) => builder
+                    .track_with_source(
+                        "main",
+                        self.compile_live_track_source(
+                            binding_name,
+                            bindings,
+                            &mut next_generator_id,
+                            &mut arrangements,
+                        )?,
+                    )
+                    .route("main", "master"),
+                None => builder.main_track(),
+            };
+        }
+
+        for bus_name in self.buses.keys() {
+            builder = builder.bus(bus_name.as_str());
+        }
+
+        for (track_name, track) in &self.tracks {
+            let source = match track.binding_name.as_deref() {
+                Some(binding_name) => self.compile_live_track_source(
+                    binding_name,
+                    bindings,
+                    &mut next_generator_id,
+                    &mut arrangements,
+                )?,
+                None => TrackSource::Unbound,
+            };
+            builder = builder
+                .track_with_source_and_mix(
+                    track_name.as_str(),
+                    source,
+                    track.level,
+                    0.0,
+                    track.muted,
+                )
+                .route(track_name.as_str(), "master");
+        }
+
+        for (track_name, track) in &self.tracks {
+            for (bus_name, level) in &track.sends {
+                builder = builder.send(track_name.as_str(), bus_name.as_str(), *level);
+            }
+        }
+
+        for (bus_name, bus) in &self.buses {
+            if let Some(effect) = &bus.effect {
+                match effect {
+                    MixerBusEffect::Delay {
+                        time,
+                        feedback,
+                        wet,
+                    } => {
+                        builder =
+                            builder.bus_effect_delay(bus_name.as_str(), *time, *feedback, *wet);
+                    }
+                    MixerBusEffect::Reverb { size, damp, wet } => {
+                        builder = builder.bus_effect_reverb(bus_name.as_str(), *size, *damp, *wet);
+                    }
+                }
+            }
+        }
+
+        let snapshot = builder.build().map_err(|error| error.to_string())?;
+        Ok((snapshot, arrangements))
+    }
+
+    /// Resolves a single track binding to a [`TrackSource`] for live playback,
+    /// binding plain sample-pattern arrangements to synthetic per-cycle
+    /// generators. See [`Self::compile_live_snapshot`].
+    fn compile_live_track_source(
+        &self,
+        binding_name: &str,
+        bindings: &BTreeMap<String, Value>,
+        next_generator_id: &mut u32,
+        arrangements: &mut Vec<(GeneratorId, String)>,
+    ) -> Result<TrackSource, String> {
+        // Real generator-backed bindings (e.g. the Orca grid) already advance
+        // per cycle: keep their slot id; the session drives them directly.
+        if let Some(generator_id) = self.generator_bindings.get(binding_name) {
+            return Ok(TrackSource::Generator(*generator_id));
+        }
+        ensure_sample_binding(binding_name, bindings)?;
+        let value = bindings
+            .get(binding_name)
+            .ok_or_else(|| format!("no binding named `{binding_name}`"))?;
+        if let Some(pattern) = value.as_sample_pattern() {
+            // Only finite multi-cycle arrangements need per-cycle delivery. A
+            // plain one-cycle loop stays a static `SamplePattern` — identical to
+            // `compile_snapshot` — so routing adoption timing and the many
+            // routing tests that depend on it are unchanged (issue #1446).
+            if is_multi_cycle_arrangement(pattern) {
+                let generator_id = GeneratorId::new(*next_generator_id);
+                *next_generator_id = next_generator_id.saturating_add(1);
+                arrangements.push((generator_id, binding_name.to_owned()));
+                return Ok(TrackSource::Generator(generator_id));
+            }
+            let events = pattern.query_unit().map_err(|error| {
+                format!("failed to query unit span for track binding `{binding_name}`: {error}")
+            })?;
+            return Ok(TrackSource::SamplePattern(
+                events
+                    .iter()
+                    .map(sample_event_to_trigger_event)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            ));
+        }
+        let plugin = value.as_plugin_pattern().ok_or_else(|| {
+            format!(
+                "binding `{binding_name}` is a {} and cannot be assigned to a track",
+                value.kind_name()
+            )
+        })?;
+        Ok(TrackSource::Plugin(plugin.track_source().clone()))
+    }
+
     /// Resolves a single track binding to a [`TrackSource`] for an offline
     /// render, materializing plain sample-pattern arrangements as synthetic
     /// per-cycle generators. See [`Self::compile_offline_snapshot`].
@@ -820,7 +977,7 @@ impl MixerState {
 /// render instead of looping cycle 0. Each event's timing is shifted back into
 /// its own cycle's `[0, 1)` window so the offline renderer schedules it at the
 /// correct within-cycle offset.
-fn materialize_pattern_cycles(
+pub fn materialize_pattern_cycles(
     pattern: &crate::value::SamplePatternValue,
     cycles: u64,
     binding_name: &str,
@@ -869,6 +1026,81 @@ fn materialize_pattern_cycles(
     }
 
     Ok(per_cycle.into_iter().map(Vec::into_boxed_slice).collect())
+}
+
+/// Queries `pattern` at the single absolute cycle `cycle_index` and shifts the
+/// resulting events back into their own cycle's `[0, 1)` window. This is the
+/// live analogue of one slice of [`materialize_pattern_cycles`]: the session
+/// calls it at each engine cycle boundary to deliver cycle N of a finite
+/// multi-cycle arrangement over the generator ring, so live playback advances
+/// section by section instead of looping cycle 0 (issue #1446). A one-cycle
+/// looping pattern yields the same events for every `cycle_index`, so it keeps
+/// looping — the intended behavior.
+pub fn materialize_pattern_cycle(
+    pattern: &crate::value::SamplePatternValue,
+    cycle_index: u64,
+    binding_name: &str,
+) -> Result<Vec<Event<SampleTrigger>>, String> {
+    let cycle_start = i64::try_from(cycle_index)
+        .map_err(|_| format!("cycle index {cycle_index} is too large"))?;
+    let span = TimeSpan::new(
+        Rational::from_integer(cycle_start),
+        Rational::from_integer(cycle_start + 1),
+    )
+    .map_err(|error| format!("invalid query span for `{binding_name}`: {error}"))?;
+    let events = pattern.try_query(&span).map_err(|error| {
+        format!("failed to query `{binding_name}` at cycle {cycle_index}: {error}")
+    })?;
+
+    let cycle = i128::from(cycle_start);
+    let mut out = Vec::with_capacity(events.len());
+    for event in &events {
+        let shift = |bound: &Rational| -> Result<Rational, String> {
+            let numerator = i64::try_from(bound.numerator() - cycle * bound.denominator())
+                .map_err(|_| format!("cycle shift overflow for `{binding_name}`"))?;
+            let denominator = i64::try_from(bound.denominator())
+                .map_err(|_| format!("cycle shift overflow for `{binding_name}`"))?;
+            Rational::new(numerator, denominator)
+                .map_err(|error| format!("invalid shifted time for `{binding_name}`: {error}"))
+        };
+        let part = TimeSpan::new(shift(event.part.start())?, shift(event.part.end())?)
+            .map_err(|error| format!("invalid shifted part for `{binding_name}`: {error}"))?;
+        let whole =
+            match event.whole.as_ref() {
+                Some(w) => Some(TimeSpan::new(shift(w.start())?, shift(w.end())?).map_err(
+                    |error| format!("invalid shifted whole for `{binding_name}`: {error}"),
+                )?),
+                None => None,
+            };
+        out.push(Event {
+            whole,
+            part,
+            value: sample_trigger_from_event(&event.value),
+        });
+    }
+
+    Ok(out)
+}
+
+/// Number of leading cycles inspected when deciding whether a plain sample
+/// pattern is a finite multi-cycle arrangement (issue #1446). Generous enough
+/// to span the reference song's 36-cycle timeline, whose intro repeats for the
+/// first four cycles before the first section change.
+const ARRANGEMENT_DETECT_CYCLES: u64 = 64;
+
+/// Reports whether `pattern` is a multi-cycle arrangement — its content varies
+/// across the first [`ARRANGEMENT_DETECT_CYCLES`] cycles — rather than a single
+/// looping cycle. Multi-cycle arrangements are routed through the generator seam
+/// so they advance section by section live; plain one-cycle loops keep the
+/// static single-cycle `SamplePattern` source (issue #1446).
+pub fn is_multi_cycle_arrangement(pattern: &crate::value::SamplePatternValue) -> bool {
+    materialize_pattern_cycles(pattern, ARRANGEMENT_DETECT_CYCLES, "arrangement").is_ok_and(
+        |cycles| {
+            cycles
+                .first()
+                .is_some_and(|first| cycles.iter().any(|cycle| cycle != first))
+        },
+    )
 }
 
 impl MixerBusEffect {

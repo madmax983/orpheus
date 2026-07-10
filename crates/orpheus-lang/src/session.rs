@@ -83,6 +83,22 @@ pub struct ReplSession {
     /// they were delivered from grid start. Purely off-thread bookkeeping — the
     /// audio path never reads it.
     generator_cycles: BTreeMap<GeneratorId, Vec<Box<[Event<SampleTrigger>]>>>,
+    /// Live multi-cycle arrangement drivers, keyed by the synthetic
+    /// [`GeneratorId`] the live routing snapshot assigned to each plain
+    /// sample-pattern track (issue #1446). The value is the binding name to
+    /// query at each engine cycle boundary; the queried cycle is pushed over
+    /// the generator ring so the arrangement advances section by section
+    /// instead of looping cycle 0. Populated by [`Self::enqueue_mixer_snapshot`]
+    /// and drained by [`Self::poll_arrangements`], both on the control thread.
+    arrangement_generators: BTreeMap<GeneratorId, String>,
+    /// The engine cycle-start frame the arrangement drivers last delivered a
+    /// cycle for, so [`Self::poll_arrangements`] only queries and pushes once
+    /// per boundary — the same latch the Orca publisher uses.
+    arrangement_last_cycle_start: Option<u64>,
+    /// The most recently delivered cycle buffer per arrangement generator, kept
+    /// only so tests can observe that consecutive cycles differ. Off-thread
+    /// bookkeeping; the audio path never reads it.
+    last_arrangement_cycles: BTreeMap<GeneratorId, Vec<Event<SampleTrigger>>>,
     pattern_display: RefCell<PatternDisplayState>,
     midi_output: MidiOutputState,
     midi_input: MidiInputState,
@@ -389,6 +405,9 @@ impl ReplSession {
             type_bindings: BTreeMap::new(),
             mixer: MixerState::default(),
             generator_cycles: BTreeMap::new(),
+            arrangement_generators: BTreeMap::new(),
+            arrangement_last_cycle_start: None,
+            last_arrangement_cycles: BTreeMap::new(),
             pattern_display: RefCell::new(PatternDisplayState::default()),
             midi_output: MidiOutputState::default(),
             midi_input: MidiInputState::default(),
@@ -587,6 +606,13 @@ impl ReplSession {
         self.engine
             .enqueue(EngineCommand::SwapRoutingSnapshot(routing_snapshot))
             .map_err(|error| format!("failed to enqueue restored routing snapshot: {error}"))?;
+
+        // History restore compiles a static snapshot; drop any live arrangement
+        // drivers so they do not keep pushing into a routing that no longer
+        // contains their generator slots (issue #1446).
+        self.arrangement_generators.clear();
+        self.arrangement_last_cycle_start = None;
+        self.last_arrangement_cycles.clear();
 
         self.sample_bank = snapshot.sample_bank;
         self.sample_directory = snapshot.sample_directory;
@@ -1771,7 +1797,12 @@ impl ReplSession {
     }
 
     fn enqueue_mixer_snapshot(&mut self) -> Result<(), String> {
-        let snapshot = self.mixer.compile_snapshot(&self.bindings)?;
+        // Live playback routes plain sample-pattern tracks through synthetic
+        // generators so finite multi-cycle arrangements (e.g. `seq_sections`)
+        // advance section by section instead of looping cycle 0 (issue #1446).
+        // The returned mapping tells the arrangement driver which pattern to
+        // query at each engine cycle boundary.
+        let (snapshot, arrangements) = self.mixer.compile_live_snapshot(&self.bindings)?;
         self.engine
             .enqueue(EngineCommand::SwapRoutingSnapshot(snapshot))
             .map_err(|error| format!("failed to enqueue routing snapshot swap: {error}"))?;
@@ -1783,7 +1814,106 @@ impl ReplSession {
             display.pending_enqueued_after_publish = None;
         }
 
+        self.register_arrangement_generators(arrangements)
+    }
+
+    /// Adopts the live arrangement-generator mapping from `compile_live_snapshot`
+    /// and primes the currently playing cycle so playback is correct
+    /// immediately — including headless REPL playback that never ticks the TUI
+    /// (issue #1446). Subsequent cycles are delivered by [`Self::poll_arrangements`].
+    fn register_arrangement_generators(
+        &mut self,
+        arrangements: Vec<(GeneratorId, String)>,
+    ) -> Result<(), String> {
+        self.arrangement_generators = arrangements.into_iter().collect();
+        self.arrangement_last_cycle_start = None;
+        self.last_arrangement_cycles.clear();
+        if self.arrangement_generators.is_empty() {
+            return Ok(());
+        }
+        let transport = self.engine.transport_snapshot();
+        let cycle = current_cycle_index(&transport);
+        self.push_all_arrangements(cycle)
+    }
+
+    /// Delivers the next cycle of every live multi-cycle arrangement when the
+    /// engine has crossed a cycle boundary since the last poll (issue #1446).
+    /// Called on every TUI tick alongside [`Self::poll_orca`]; a no-op when no
+    /// arrangement is active or the boundary is unchanged. The query and push
+    /// run here on the control thread, never the audio thread — the audio path
+    /// only adopts the delivered buffer at the boundary.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when querying an arrangement or enqueuing its cycle
+    /// fails.
+    pub fn poll_arrangements(&mut self) -> Result<(), String> {
+        if self.arrangement_generators.is_empty() {
+            return Ok(());
+        }
+        let transport = self.engine.transport_snapshot();
+        let cycle_start = transport.current_cycle_start_frame();
+        if self.arrangement_last_cycle_start == Some(cycle_start) {
+            return Ok(());
+        }
+        self.arrangement_last_cycle_start = Some(cycle_start);
+        // Deliver one cycle ahead so the engine adopts it at the next boundary,
+        // exactly as the Orca grid generator is driven (ADR 0009).
+        let next_cycle = current_cycle_index(&transport).saturating_add(1);
+        self.push_all_arrangements(next_cycle)
+    }
+
+    /// Queries `cycle_index` of every registered arrangement and pushes it over
+    /// the generator ring.
+    fn push_all_arrangements(&mut self, cycle_index: u64) -> Result<(), String> {
+        let drivers: Vec<(GeneratorId, String)> = self
+            .arrangement_generators
+            .iter()
+            .map(|(id, name)| (*id, name.clone()))
+            .collect();
+        for (generator_id, binding_name) in drivers {
+            let triggers = self.arrangement_cycle_triggers(&binding_name, cycle_index)?;
+            self.push_arrangement_cycle(generator_id, triggers)?;
+        }
         Ok(())
+    }
+
+    /// Materializes cycle `cycle_index` of the arrangement bound to
+    /// `binding_name`, shifted into its own `[0, 1)` window.
+    fn arrangement_cycle_triggers(
+        &self,
+        binding_name: &str,
+        cycle_index: u64,
+    ) -> Result<Vec<Event<SampleTrigger>>, String> {
+        let value = self
+            .bindings
+            .get(binding_name)
+            .ok_or_else(|| format!("no binding named `{binding_name}`"))?;
+        let pattern = value
+            .as_sample_pattern()
+            .ok_or_else(|| format!("binding `{binding_name}` is no longer a sample pattern"))?;
+        crate::mixer::materialize_pattern_cycle(pattern, cycle_index, binding_name)
+    }
+
+    /// Enqueues one live arrangement cycle over the generator ring. Unlike
+    /// [`Self::push_generator_cycle`], it does **not** append to
+    /// `generator_cycles`: arrangements are re-materialized fresh for offline
+    /// export ([`MixerState::compile_offline_snapshot`]), so recording them here
+    /// would double-count and could collide with offline synthetic generator
+    /// ids.
+    fn push_arrangement_cycle(
+        &mut self,
+        generator_id: GeneratorId,
+        triggers: Vec<Event<SampleTrigger>>,
+    ) -> Result<(), String> {
+        self.last_arrangement_cycles
+            .insert(generator_id, triggers.clone());
+        self.engine
+            .enqueue(EngineCommand::PushGeneratorCycle(GeneratorCycle::new(
+                generator_id,
+                triggers,
+            )))
+            .map_err(|error| format!("failed to enqueue arrangement cycle: {error}"))
     }
 
     fn push_pattern_update(&mut self, name: &str, value: &Value) -> Result<(), String> {
@@ -1796,6 +1926,17 @@ impl ReplSession {
         if let Value::SamplePattern(pattern) = value {
             self.mixer.note_sample_binding(name);
             if self.mixer.has_routing_state() {
+                self.pattern_display.borrow_mut().last_loaded_pattern_name = Some(name.to_owned());
+                return self.enqueue_mixer_snapshot();
+            }
+
+            // A finite multi-cycle arrangement (e.g. `seq_sections`) must advance
+            // section by section live, not loop cycle 0 (issue #1446). Route it
+            // through the generator seam so the arrangement driver can query and
+            // push cycle N at each engine cycle boundary. Plain one-cycle loops
+            // keep the lighter `LoadPattern` path below, preserving its
+            // active/pending transport bookkeeping.
+            if crate::mixer::is_multi_cycle_arrangement(pattern) {
                 self.pattern_display.borrow_mut().last_loaded_pattern_name = Some(name.to_owned());
                 return self.enqueue_mixer_snapshot();
             }
@@ -2173,6 +2314,17 @@ impl ReplSession {
     #[doc(hidden)]
     pub fn frames_until_boundary_for_tui(&self) -> u64 {
         self.engine.frames_until_boundary_for_test()
+    }
+}
+
+/// The absolute cycle index the engine is currently in, from its transport
+/// snapshot. Returns 0 before the frames-per-cycle clock is initialized.
+const fn current_cycle_index(transport: &orpheus_dsp::TransportSnapshot) -> u64 {
+    let frames_per_cycle = transport.frames_per_cycle();
+    if frames_per_cycle == 0 {
+        0
+    } else {
+        transport.current_cycle_start_frame() / frames_per_cycle
     }
 }
 
@@ -2665,6 +2817,96 @@ mod tests {
         assert!(!session.engine.swap_applied_before_boundary());
         let _ = session.render_test_block_for_tui(session.frames_until_boundary_for_tui());
         assert!(!session.engine.swap_applied_before_boundary());
+    }
+
+    /// The live twin of the offline master-render fix (#1458): a finite
+    /// multi-cycle arrangement must advance section by section during live
+    /// playback, not loop cycle 0 forever (issue #1446). Publishing binds the
+    /// arrangement to a synthetic generator and primes cycle 0; driving the
+    /// cycle-advance seam (the same one that drives Orca generators) must
+    /// deliver each later section's distinct events.
+    #[test]
+    fn live_arrangement_advances_section_by_section() {
+        let mut session = ReplSession::new();
+
+        // Three one-cycle sections with distinguishable tokens: bd, sn, cp.
+        session
+            .eval_line("song = seq_sections(section(bd, 1), section(sn, 1), section(cp, 1))")
+            .unwrap();
+
+        // Publishing routes the arrangement through the generator seam and
+        // primes cycle 0 (the intro) immediately.
+        let arrangement_id = *session
+            .arrangement_generators
+            .keys()
+            .next()
+            .expect("the arrangement should register as a live generator");
+        let cycle0 = session
+            .last_arrangement_cycles
+            .get(&arrangement_id)
+            .cloned()
+            .expect("cycle 0 delivered at publish");
+
+        session.eval_line(":play").unwrap();
+
+        // While in cycle 0, the driver delivers cycle 1 one boundary ahead.
+        session.poll_arrangements().unwrap();
+        let cycle1 = session
+            .last_arrangement_cycles
+            .get(&arrangement_id)
+            .cloned()
+            .expect("cycle 1 delivered");
+
+        // Cross one engine cycle boundary, then poll again for cycle 2.
+        let before = session
+            .engine
+            .transport_snapshot()
+            .current_cycle_start_frame();
+        loop {
+            let _ =
+                session.render_test_block_for_tui(session.frames_until_boundary_for_tui().max(1));
+            if session
+                .engine
+                .transport_snapshot()
+                .current_cycle_start_frame()
+                != before
+            {
+                break;
+            }
+        }
+        session.poll_arrangements().unwrap();
+        let cycle2 = session
+            .last_arrangement_cycles
+            .get(&arrangement_id)
+            .cloned()
+            .expect("cycle 2 delivered");
+
+        // The three delivered cycles must differ — the arrangement advances
+        // (bd -> sn -> cp) rather than looping cycle 0.
+        assert_ne!(cycle0, cycle1, "cycle 0 (bd) and cycle 1 (sn) must differ");
+        assert_ne!(cycle1, cycle2, "cycle 1 (sn) and cycle 2 (cp) must differ");
+        assert_ne!(cycle0, cycle2, "cycle 0 (bd) and cycle 2 (cp) must differ");
+        assert!(
+            !cycle0.is_empty() && !cycle1.is_empty() && !cycle2.is_empty(),
+            "each delivered section should carry an event"
+        );
+    }
+
+    /// A plain one-cycle loop must keep looping that single cycle live: the
+    /// driver queries cycle N of a one-cycle pattern and gets the same events
+    /// every cycle. This pins that the arrangement fix does not corrupt the
+    /// common loop case.
+    #[test]
+    fn live_single_cycle_loop_keeps_looping() {
+        let mut session = ReplSession::new();
+        session.eval_line("drums = bd sn").unwrap();
+
+        // A plain loop is not a multi-cycle arrangement, so it stays on the
+        // static LoadPattern path and registers no arrangement generator.
+        assert!(
+            session.arrangement_generators.is_empty(),
+            "a one-cycle loop should not be routed through the arrangement seam"
+        );
     }
 
     #[test]
