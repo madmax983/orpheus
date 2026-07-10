@@ -941,7 +941,14 @@ impl ReplSession {
             return Err("cycles must be a positive integer".to_owned());
         }
 
-        let snapshot = self.mixer.compile_snapshot(&self.bindings)?;
+        // Materialize any finite multi-cycle arrangement (e.g. `seq_sections`)
+        // per cycle so an offline master render advances section by section
+        // instead of looping cycle 0 (issue #1446). Plain sample-pattern tracks
+        // are compiled to synthetic per-cycle generators here; real generator
+        // tracks keep their recorded buffers, appended below.
+        let (snapshot, mut generator_cycles) = self
+            .mixer
+            .compile_offline_snapshot(&self.bindings, cycles)?;
         let has_active_tracks = snapshot
             .tracks()
             .iter()
@@ -955,7 +962,7 @@ impl ReplSession {
 
         let tempo_bpm = self.transport_snapshot().tempo_bpm();
         let graph_voice_specs = self.graph_voice_specs()?;
-        let generator_cycles = self.generator_cycle_specs(cycles);
+        generator_cycles.extend(self.generator_cycle_specs(cycles));
         let (written, stats) = render_routing_snapshot_to_master_wav(
             &snapshot,
             cycles,
