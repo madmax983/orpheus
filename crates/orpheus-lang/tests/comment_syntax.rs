@@ -125,7 +125,58 @@ fn comments_between_bindings_evaluate_all_bindings() {
     assert!(module.contains_key("song"));
 }
 
+#[test]
+fn mid_line_comment_marker_keeps_the_rest_of_the_line_a_comment() {
+    // A banner line that starts with `//` and then contains `//` again mid-line
+    // is a comment in its entirety — even the `x = bd` after the second `//`,
+    // which would otherwise parse as a binding, must be swallowed.
+    let names = binding_names("// ╭──// x = bd ── nested ──╮\nreal = bd sn");
+    assert_eq!(names, vec!["real".to_owned()]);
+    assert!(!names.iter().any(|name| name == "x"));
+}
+
 // --- Loader-level behavior ---------------------------------------------------
+
+#[test]
+fn loader_accepts_a_full_ascii_art_banner() {
+    // A real multi-line ASCII-art banner: every line is a `//` comment carrying
+    // box-drawing glyphs (─ │ ╭ ╮ ╰ ╯ █ ▀ ▄), pipes, forward AND back slashes,
+    // angle brackets, and both quote kinds. None of those may confuse the lexer.
+    // One banner line also contains a second `//` mid-line to prove it stays a
+    // comment. Real bindings follow, including one that pipes another binding.
+    let source = "\
+// ╭───────────────────────────────────────────────╮
+// │  ▄▀█ ORPHEUS ▀▄   < a // b >   grooves \\ beats │
+// │  pipes |like| this,  'single' and \"double\" too │
+// │  slashes / and \\ and █▀▄ blocks are all fine    │
+// ╰──// nested x = sn ──────────────── still safe ──╯
+a = bd sn
+b = a |> fast(2)
+";
+
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = PathBuf::from(dir.path()).join("bannered.ode");
+    std::fs::write(&file_path, source).unwrap();
+
+    // The same strict loader path the other loader tests use: this both parses
+    // and evaluates, so a banner glyph that tripped the lexer would fail here.
+    let module = load_file_strict(&file_path).unwrap();
+    assert!(module.contains_key("a"));
+    assert!(module.contains_key("b"));
+    // The `x = sn` buried after a mid-line `//` in the banner is a comment, not
+    // a binding.
+    assert!(!module.contains_key("x"));
+
+    // Evaluate the identical source to prove the bindings carry real values and
+    // the banner changed nothing about them.
+    let evaluated = eval_module(source, ReplMode::Loose).unwrap();
+    assert_eq!(sample_names(evaluated.get("a").unwrap()), vec!["bd", "sn"]);
+    // `b = a |> fast(2)` doubles the referenced pattern within the cycle.
+    assert_eq!(
+        sample_names(evaluated.get("b").unwrap()),
+        vec!["bd", "sn", "bd", "sn"]
+    );
+}
 
 #[test]
 fn loader_accepts_ode_files_with_comments() {
