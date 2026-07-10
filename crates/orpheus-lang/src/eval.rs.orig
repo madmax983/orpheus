@@ -1118,8 +1118,11 @@ impl Evaluator {
         }
 
         let soft_max_bound = 1.0e15_f64;
-        let soft_min_bound = -1.0e15_f64;
-        if value > soft_max_bound || value < soft_min_bound {
+        #[allow(clippy::cast_precision_loss)]
+        let max_val = i128::MAX as f64;
+        #[allow(clippy::cast_precision_loss)]
+        let min_val = i128::MIN as f64;
+        if value > soft_max_bound || value < min_val {
             return Err(EvalError::new(format!(
                 "{context} exceeded the supported range"
             )));
