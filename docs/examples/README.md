@@ -86,6 +86,21 @@ To render each track to its own file instead of one master sum, use
 :export stems 36
 ```
 
+### Render from the command line (no REPL needed)
+
+You can render a master WAV in one shot from the shell, without ever entering
+the REPL:
+
+```text
+cargo run --release -- render docs/examples/reference_song.ode --master reference_song_master.wav --cycles 36
+```
+
+`orpheus render <file> --master <out.wav> [--cycles N]` loads the file, renders
+the full mix offline (default `--cycles 36`), writes the WAV, and exits. It runs
+headlessly with no audio device required, so it works even in terminals where
+the REPL `:` key is unavailable (for example some Windows terminals where
+`:export master` cannot be typed).
+
 ### What each section demonstrates
 
 `reference_song.ode` is now self-documenting: every binding carries an inline
