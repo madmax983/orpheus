@@ -139,7 +139,12 @@ pub fn parse_scala_source(source: &str, name: &str) -> Result<TuningValue, SclEr
     for entry in &entries[..entries.len().saturating_sub(1)] {
         ratios.push(parse_scala_entry(entry)?);
     }
-    let period = parse_scala_entry(entries.last().copied().unwrap_or(""))?;
+    let period_str = entries.last().copied().unwrap_or("");
+    let period = if period_str.is_empty() {
+        TUNING_OCTAVE_PERIOD
+    } else {
+        parse_scala_entry(period_str)?
+    };
 
     if (period - TUNING_OCTAVE_PERIOD).abs() > f64::EPSILON {
         return Err(SclError::Invariant(format!(
@@ -177,5 +182,16 @@ fn parse_scala_entry(raw: &str) -> Result<f64, SclError> {
             SclError::Entry(raw.into(), "entry must be ratio, cents, or integer".into())
         })?;
         Ok(integer)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_scala_entry_returns_error_on_empty_string() {
+        let err = parse_scala_entry("").unwrap_err();
+        assert!(matches!(err, SclError::Entry(_, _)));
     }
 }

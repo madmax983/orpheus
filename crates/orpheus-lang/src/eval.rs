@@ -1429,7 +1429,8 @@ fn apply_user_function(
         return Ok(Value::Function(FunctionValue::User(function)));
     }
 
-    let owned_user_fn = std::sync::Arc::unwrap_or_clone(function);
+    // Safe unwrap_or_clone fallback without the nightly feature
+    let owned_user_fn = std::sync::Arc::try_unwrap(function).unwrap_or_else(|arc| (*arc).clone());
 
     let evaluator = Evaluator {
         mode: owned_user_fn.mode,

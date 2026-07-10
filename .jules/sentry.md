@@ -49,3 +49,7 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+
+## 2024-05-18 - Replacing `unwrap_or_clone` and empty `parse_scala_entry` panic
+**Learning:** `Arc::unwrap_or_clone` is a nightly-only feature that breaks builds on stable Rust. Also, `parse_scala_entry` panics on empty lines when the file trailing line doesn't have a period.
+**Action:** Replace `unwrap_or_clone(arc)` with `Arc::try_unwrap(arc).unwrap_or_else(|a| (*a).clone())`. When parsing the period line in `.scl` files, gracefully fallback to `TUNING_OCTAVE_PERIOD` for empty strings instead of calling `parse_scala_entry` on `""` directly.
