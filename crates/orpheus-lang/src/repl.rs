@@ -55,13 +55,32 @@ pub fn run_stdio_with_engine_and_path(
     let mut stderr = stderr.lock();
 
     if let Some(msg) = warning {
-        writeln!(stderr, "{}", format!("[Warn] {msg}").yellow().bold())?;
+        let mut lines = msg.lines();
+        if let Some(first) = lines.next() {
+            writeln!(
+                stderr,
+                "{} {}",
+                "[Warn]".yellow().bold(),
+                first.yellow().bold()
+            )?;
+            for line in lines {
+                writeln!(stderr, "{}", line.dark_grey())?;
+            }
+        }
     }
 
     if let Some(path) = startup_path {
         match session.open_file(path) {
-            Ok(msg) => writeln!(stdout, "{}", format!("\u{2713} {msg}").green())?,
-            Err(msg) => writeln!(stderr, "{}", format!("\u{2717} {msg}").red().bold())?,
+            Ok(msg) => writeln!(stdout, "{} {}", "\u{2713}".green(), msg.green())?,
+            Err(msg) => {
+                let mut lines = msg.lines();
+                if let Some(first) = lines.next() {
+                    writeln!(stderr, "{} {}", "\u{2717}".red().bold(), first.red().bold())?;
+                    for line in lines {
+                        writeln!(stderr, "{}", line.dark_grey())?;
+                    }
+                }
+            }
         }
     }
 
@@ -97,8 +116,16 @@ where
         }
 
         match session.eval_line(trimmed) {
-            Ok(message) => writeln!(stdout, "{}", format!("\u{2713} {message}").green())?,
-            Err(message) => writeln!(stderr, "{}", format!("\u{2717} {message}").red().bold())?,
+            Ok(message) => writeln!(stdout, "{} {}", "\u{2713}".green(), message.green())?,
+            Err(message) => {
+                let mut lines = message.lines();
+                if let Some(first) = lines.next() {
+                    writeln!(stderr, "{} {}", "\u{2717}".red().bold(), first.red().bold())?;
+                    for line in lines {
+                        writeln!(stderr, "{}", line.dark_grey())?;
+                    }
+                }
+            }
         }
     }
 

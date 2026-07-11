@@ -74,9 +74,15 @@ impl ReplPlugin {
             .iter()
             .flat_map(|entry| {
                 let style = transcript_line_style(entry);
-                entry
-                    .split('\n')
-                    .map(move |line| Line::styled(line.to_owned(), style))
+                let is_alert =
+                    entry.starts_with("\u{2717} ") || entry.starts_with("\u{26a0}\u{fe0f} ");
+                entry.split('\n').enumerate().map(move |(i, line)| {
+                    let mut line_style = style;
+                    if is_alert && i > 0 {
+                        line_style = line_style.remove_modifier(Modifier::BOLD).fg(Theme::MUTED);
+                    }
+                    Line::styled(line.to_owned(), line_style)
+                })
             })
             .collect()
     }
