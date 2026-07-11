@@ -9,6 +9,7 @@
 //! validated at graph construction time.
 
 mod adapters;
+mod chiptune;
 mod combinators;
 mod filters;
 mod helpers;
@@ -34,6 +35,11 @@ pub use primitives::{
 pub use filters::{
     BiquadMode, BiquadNode, FILTER_MAX_GAIN_DB, FILTER_MAX_Q, FILTER_MIN_FREQUENCY_HZ,
     FILTER_MIN_Q, SvfNode, biquad, svf,
+};
+
+// Chiptune (NES-authentic tone generators, ported from madmax983/nes apu.rs)
+pub use chiptune::{
+    NoiseNesNode, PulseNesNode, TriNesNode, advance_lfsr, noise_nes, pulse_nes, tri_nes,
 };
 
 // Adapters (existing synth/ primitive wrappers)
