@@ -74,10 +74,27 @@ pub struct SharedState {
 }
 
 impl SharedState {
+    /// Creates a new, default interactive session state wrapping the given audio engine.
+    ///
+    /// This method configures the standard Ratatui UI with default themes, empty
+    /// history, and no loaded file path. It starts the internal `OrcaPublisher`
+    /// and initializes the `ReplSession`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::{AudioEngine, AudioEngineOptions};
+    /// use orpheus_lang::tui::state::SharedState;
+    ///
+    /// let (engine, handle) = AudioEngine::new(AudioEngineOptions::default());
+    /// let state = SharedState::new(handle);
+    /// assert_eq!(state.input_hint(), "type :help for commands");
+    /// ```
     pub fn new(engine: EngineHandle) -> Self {
         Self::with_startup(engine, None, None)
     }
 
+    /// Creates an interactive session state that immediately evaluates a startup file.
     pub fn with_startup(
         engine: EngineHandle,
         startup_path: Option<&Path>,
