@@ -12,6 +12,7 @@ mod adapters;
 mod chiptune;
 mod combinators;
 mod filters;
+mod genesis_fm;
 mod helpers;
 mod node;
 mod primitives;
@@ -40,6 +41,12 @@ pub use filters::{
 // Chiptune (NES-authentic tone generators, ported from madmax983/nes apu.rs)
 pub use chiptune::{
     NoiseNesNode, PulseNesNode, TriNesNode, advance_lfsr, noise_nes, pulse_nes, tri_nes,
+};
+
+// Genesis FM (YM2612 4-operator FM voice, ported from madmax983/genesoxide ym2612.rs)
+pub use genesis_fm::{
+    FmGenesisNode, FmOp, FmPatch, FmTables, bell, brass, drum, ebass, epiano, fm_genesis, lead,
+    preset_by_name,
 };
 
 // Adapters (existing synth/ primitive wrappers)
