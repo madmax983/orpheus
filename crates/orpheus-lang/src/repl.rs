@@ -60,8 +60,8 @@ pub fn run_stdio_with_engine_and_path(
 
     if let Some(path) = startup_path {
         match session.open_file(path) {
-            Ok(msg) => writeln!(stdout, "{}", format!("\u{2713} {msg}").green())?,
-            Err(msg) => writeln!(stderr, "{}", format!("\u{2717} {msg}").red().bold())?,
+            Ok(msg) => writeln!(stdout, "{} {}", "\u{2713}".green(), msg)?,
+            Err(msg) => writeln!(stderr, "{} {}", "\u{2717}".red().bold(), msg)?,
         }
     }
 
@@ -97,8 +97,8 @@ where
         }
 
         match session.eval_line(trimmed) {
-            Ok(message) => writeln!(stdout, "{}", format!("\u{2713} {message}").green())?,
-            Err(message) => writeln!(stderr, "{}", format!("\u{2717} {message}").red().bold())?,
+            Ok(message) => writeln!(stdout, "{} {}", "\u{2713}".green(), message)?,
+            Err(message) => writeln!(stderr, "{} {}", "\u{2717}".red().bold(), message)?,
         }
     }
 
