@@ -1,0 +1,49 @@
+// ╭─────────────────────────────────────────────────────────────╮
+// │                                                             │
+// │                        O R P H E U S                        │
+// │              N E S   C H I P T U N E   D E M O              │
+// │                                                             │
+// ╰─────────────────────────────────────────────────────────────╯
+// A-minor chiptune · 120 BPM · 4 cycles · 48 kHz stereo
+//
+// ============================================================================
+// A short authentic-NES chiptune sketch built entirely from the PR2 chiptune
+// voice sources: `pulse_nes` (hard duty square), `tri_nes` (16-level staircase
+// triangle), and `noise_nes` (15-bit LFSR). These are the raw, non-band-limited
+// counterparts to the analog `pulse` / `tri` / `noise` — the lo-fi aliasing is
+// the timbre. `song` (bottom of file) is the entry point.
+//
+// Play it:   cargo run --release -- docs/examples/chiptune_nes.ode
+// Render it: orpheus render docs/examples/chiptune_nes.ode --master out.wav --cycles 4
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// Chiptune voices — each wraps one NES tone core in a fast AR amp envelope.
+// ----------------------------------------------------------------------------
+
+// lead — a 50% NES square (duty index 2) with a plucky AR envelope.
+lead = voice { poly = 6 ; steal = oldest ; sq = pulse_nes(freq, 2) ; sq * ar(gate, 0.001, 0.12) * 0.3 }
+
+// bass — the fixed-amplitude staircase triangle, one octave down.
+bass = voice { poly = 4 ; t = tri_nes(freq) ; t * ar(gate, 0.004, 0.18) * 0.6 }
+
+// hat — short-mode (metallic) LFSR noise, tuned high with a tiny AR blip.
+hat = voice { poly = 6 ; steal = oldest ; noise_nes(1, 7000) * ar(gate, 0.001, 0.03) * 0.35 }
+
+// ----------------------------------------------------------------------------
+// Musical material — a minor-pentatonic square lead over an Aeolian triangle
+// bass, with a straight eighth-note noise hat.
+// ----------------------------------------------------------------------------
+
+lead_deg = degrees(minor_pentatonic, 0 3 5 7 5 3 2 0)
+melody = lead lead lead lead lead lead lead lead |> pitch(lead_deg)
+
+bass_deg = degrees(aeolian, 0 0 -3 -5)
+bassline = bass bass bass bass |> pitch(bass_deg) |> pitch(-12)
+
+hats = hat hat hat hat hat hat hat hat |> gain(0.7)
+
+// ----------------------------------------------------------------------------
+// Master — stack the three chiptune voices; loops for the rendered cycles.
+// ----------------------------------------------------------------------------
+song = stack(melody, bassline, hats)

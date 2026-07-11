@@ -39,8 +39,9 @@ use thiserror::Error;
 use crate::SampleTrigger;
 use crate::graph::{
     BiquadMode, Node, Processor, Seq, adsr, ar, bind, biquad, constant, delay_line, fdelay,
-    feedback, gain_node, ladder_filter, merge, noise, pan, par, passthrough, pulse,
-    sample_player_with_options, saw, seq, sine, soft_sat, sum, svf, tri, wire, wire_with_inputs,
+    feedback, gain_node, ladder_filter, merge, noise, noise_nes, pan, par, passthrough, pulse,
+    pulse_nes, sample_player_with_options, saw, seq, sine, soft_sat, sum, svf, tri, tri_nes, wire,
+    wire_with_inputs,
 };
 use crate::routing::TrackId;
 use crate::sample_bank::PlaybackSample;
@@ -547,6 +548,37 @@ pub enum VoiceNodeSpec {
         /// The PRNG seed; equal seeds produce identical noise.
         seed: u32,
     },
+    /// A NES-authentic pulse (square) channel — a hard, non-band-limited
+    /// duty square (`crate::graph::pulse_nes`), the raw counterpart to
+    /// [`Self::Pulse`].
+    PulseNes {
+        /// The frequency signal in Hertz.
+        freq: VoiceSignalRef,
+        /// The duty pattern index signal, rounded and clamped to `0..=3`
+        /// (12.5% / 25% / 50% / 25%-negated) — an index, not a normalized
+        /// width.
+        duty: VoiceSignalRef,
+        /// The volume signal in \[0, 1\], quantized to the NES 4-bit grid.
+        volume: VoiceSignalRef,
+    },
+    /// A NES-authentic triangle channel — the 32-step, 16-level staircase
+    /// (`crate::graph::tri_nes`) at fixed amplitude (the hardware has no
+    /// volume control).
+    TriNes {
+        /// The frequency signal in Hertz.
+        freq: VoiceSignalRef,
+    },
+    /// A NES-authentic noise channel — the 15-bit LFSR
+    /// (`crate::graph::noise_nes`), the raw counterpart to [`Self::Noise`].
+    NoiseNes {
+        /// The LFSR mode signal: 0 selects the long/tonal tap (period
+        /// 32767), non-zero the short/metallic tap (period 93).
+        mode: VoiceSignalRef,
+        /// The LFSR advance-rate signal in Hertz.
+        freq: VoiceSignalRef,
+        /// The volume signal in \[0, 1\], quantized to the NES 4-bit grid.
+        volume: VoiceSignalRef,
+    },
     /// A gate-driven ADSR envelope with fixed segment parameters.
     Adsr {
         /// The gate signal opening and closing the envelope.
@@ -721,8 +753,15 @@ impl VoiceNodeSpec {
     fn input_refs(&self) -> Vec<VoiceSignalRef> {
         match self {
             Self::Constant { .. } | Self::Noise { .. } => Vec::new(),
-            Self::Sine { freq } | Self::Saw { freq } | Self::Tri { freq } => vec![*freq],
+            Self::Sine { freq }
+            | Self::Saw { freq }
+            | Self::Tri { freq }
+            | Self::TriNes { freq } => {
+                vec![*freq]
+            }
             Self::Pulse { freq, width } => vec![*freq, *width],
+            Self::PulseNes { freq, duty, volume } => vec![*freq, *duty, *volume],
+            Self::NoiseNes { mode, freq, volume } => vec![*mode, *freq, *volume],
             Self::Adsr { gate, .. } | Self::Ar { gate, .. } => vec![*gate],
             Self::Lowpass {
                 input,
@@ -764,10 +803,23 @@ impl VoiceNodeSpec {
     pub fn map_refs(&mut self, mut f: impl FnMut(&mut VoiceSignalRef)) {
         match self {
             Self::Constant { .. } | Self::Noise { .. } => {}
-            Self::Sine { freq } | Self::Saw { freq } | Self::Tri { freq } => f(freq),
+            Self::Sine { freq }
+            | Self::Saw { freq }
+            | Self::Tri { freq }
+            | Self::TriNes { freq } => f(freq),
             Self::Pulse { freq, width } => {
                 f(freq);
                 f(width);
+            }
+            Self::PulseNes { freq, duty, volume } => {
+                f(freq);
+                f(duty);
+                f(volume);
+            }
+            Self::NoiseNes { mode, freq, volume } => {
+                f(mode);
+                f(freq);
+                f(volume);
             }
             Self::Adsr { gate, .. } | Self::Ar { gate, .. } => f(gate),
             Self::Lowpass {
@@ -867,6 +919,9 @@ impl VoiceNodeSpec {
             | Self::Tri { .. }
             | Self::Pulse { .. }
             | Self::Noise { .. }
+            | Self::PulseNes { .. }
+            | Self::TriNes { .. }
+            | Self::NoiseNes { .. }
             | Self::Lowpass { .. }
             | Self::Svf { .. }
             | Self::EqPeak { .. }
@@ -1324,6 +1379,9 @@ impl GraphVoiceSpec {
             VoiceNodeSpec::Tri { .. } => par(tri(sample_rate_hz), passthrough(bus)),
             VoiceNodeSpec::Pulse { .. } => par(pulse(sample_rate_hz), passthrough(bus)),
             VoiceNodeSpec::Noise { seed } => par(noise(*seed), passthrough(bus)),
+            VoiceNodeSpec::PulseNes { .. } => par(pulse_nes(sample_rate_hz), passthrough(bus)),
+            VoiceNodeSpec::TriNes { .. } => par(tri_nes(sample_rate_hz), passthrough(bus)),
+            VoiceNodeSpec::NoiseNes { .. } => par(noise_nes(sample_rate_hz), passthrough(bus)),
             VoiceNodeSpec::Adsr {
                 attack_s,
                 decay_s,
@@ -2254,6 +2312,113 @@ mod tests {
 
     fn track(id: u32) -> TrackId {
         TrackId::new(id)
+    }
+
+    /// Sums the absolute stereo energy of a gated voice over `frames`.
+    fn gated_energy(spec: &GraphVoiceSpec, freq_hz: f32, frames: usize) -> f32 {
+        let mut voice = spec.build_voice(SR);
+        voice.prepare();
+        let mut energy = 0.0_f32;
+        for _ in 0..frames {
+            let (left, right) = voice.process_frame(1.0, freq_hz, 0.8, 0.0);
+            energy += left.abs() + right.abs();
+        }
+        energy
+    }
+
+    #[test]
+    fn nes_chiptune_specs_lower_and_sound() {
+        // pulse_nes(freq, duty=2, volume=1): the NES square lead.
+        let pulse = GraphVoiceSpec::new(
+            "lead",
+            0.02,
+            vec![
+                VoiceNodeSpec::Constant { value: 2.0 },
+                VoiceNodeSpec::Constant { value: 1.0 },
+                VoiceNodeSpec::PulseNes {
+                    freq: VoiceSignalRef::Freq,
+                    duty: VoiceSignalRef::Node(0),
+                    volume: VoiceSignalRef::Node(1),
+                },
+            ],
+            VoiceSignalRef::Node(2),
+        )
+        .expect("pulse_nes spec validates");
+        assert!(
+            gated_energy(&pulse, 220.0, 2_400) > 1.0,
+            "pulse_nes voice should be audible"
+        );
+
+        // tri_nes(freq): the fixed-amplitude staircase bass.
+        let tri = GraphVoiceSpec::new(
+            "bass",
+            0.02,
+            vec![VoiceNodeSpec::TriNes {
+                freq: VoiceSignalRef::Freq,
+            }],
+            VoiceSignalRef::Node(0),
+        )
+        .expect("tri_nes spec validates");
+        assert!(
+            gated_energy(&tri, 110.0, 2_400) > 1.0,
+            "tri_nes voice should be audible"
+        );
+
+        // noise_nes(mode=1, freq=8000, volume=1): the metallic hat.
+        let noise = GraphVoiceSpec::new(
+            "hat",
+            0.02,
+            vec![
+                VoiceNodeSpec::Constant { value: 1.0 },
+                VoiceNodeSpec::Constant { value: 8_000.0 },
+                VoiceNodeSpec::Constant { value: 1.0 },
+                VoiceNodeSpec::NoiseNes {
+                    mode: VoiceSignalRef::Node(0),
+                    freq: VoiceSignalRef::Node(1),
+                    volume: VoiceSignalRef::Node(2),
+                },
+            ],
+            VoiceSignalRef::Node(3),
+        )
+        .expect("noise_nes spec validates");
+        assert!(
+            gated_energy(&noise, 220.0, 2_400) > 1.0,
+            "noise_nes voice should be audible"
+        );
+    }
+
+    #[test]
+    fn nes_specs_report_their_signal_refs_in_primitive_order() {
+        let pulse = VoiceNodeSpec::PulseNes {
+            freq: VoiceSignalRef::Freq,
+            duty: VoiceSignalRef::Node(0),
+            volume: VoiceSignalRef::Node(1),
+        };
+        assert_eq!(
+            pulse.input_refs(),
+            vec![
+                VoiceSignalRef::Freq,
+                VoiceSignalRef::Node(0),
+                VoiceSignalRef::Node(1)
+            ]
+        );
+        let noise = VoiceNodeSpec::NoiseNes {
+            mode: VoiceSignalRef::Node(0),
+            freq: VoiceSignalRef::Freq,
+            volume: VoiceSignalRef::Node(1),
+        };
+        assert_eq!(
+            noise.input_refs(),
+            vec![
+                VoiceSignalRef::Node(0),
+                VoiceSignalRef::Freq,
+                VoiceSignalRef::Node(1)
+            ]
+        );
+        let tri = VoiceNodeSpec::TriNes {
+            freq: VoiceSignalRef::Freq,
+        };
+        assert_eq!(tri.input_refs(), vec![VoiceSignalRef::Freq]);
     }
 
     #[test]
