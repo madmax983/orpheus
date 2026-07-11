@@ -82,3 +82,6 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+**[Extracting God Loop Bodies]**
+**Learning:** Massive loop bodies that mutate a struct inside a collection lead to God Functions.
+**Action:** Extract the inner loop body into a method on the struct being iterated over (e.g., `GraphVoiceSlot::render_frame`). This adheres to the Tell, Don't Ask principle, flattens the orchestrator function, and makes the inner logic easier to test in isolation.
