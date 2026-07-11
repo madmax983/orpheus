@@ -32,8 +32,9 @@ use crate::error::EvalError;
 use crate::explain::Explain;
 
 /// The coarse signal domain understood by the pedal DSL.
-#[derive(Clone, Debug, Eq, PartialEq)]
 /// Resolution constraint for graph paths.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// ⚡ Bolt: Derived `Copy` to avoid heap allocation and `.clone()` overhead on hot paths.
 pub enum SignalKind {
     /// Runs per-sample.
     Audio,
@@ -126,8 +127,8 @@ impl ValidatedPedalNode {
 
     #[doc(hidden)]
     #[must_use]
-    pub const fn signal_kind(&self) -> &SignalKind {
-        &self.signal_kind
+    pub const fn signal_kind(&self) -> SignalKind {
+        self.signal_kind
     }
 
     #[must_use]
@@ -181,7 +182,7 @@ impl ValidatedPedalPlan {
     #[must_use]
     pub fn new(bindings: Vec<ValidatedPedalBinding>, result: ValidatedPedalNode) -> Self {
         Self {
-            signal_kind: result.signal_kind().clone(),
+            signal_kind: result.signal_kind(),
             bindings,
             result,
         }
@@ -189,8 +190,8 @@ impl ValidatedPedalPlan {
 
     #[doc(hidden)]
     #[must_use]
-    pub const fn signal_kind(&self) -> &SignalKind {
-        &self.signal_kind
+    pub const fn signal_kind(&self) -> SignalKind {
+        self.signal_kind
     }
 
     #[doc(hidden)]
@@ -309,7 +310,7 @@ impl GraphCompiler<'_> {
     ) -> Result<ValidatedPedalNode, EvalError> {
         if let Some(kind) = self.resolved_signals.get(name) {
             return Ok(ValidatedPedalNode::new(
-                kind.clone(),
+                *kind,
                 PedalNodeKind::Reference,
                 name,
             ));
@@ -372,7 +373,7 @@ impl GraphCompiler<'_> {
             )),
             (BinaryOp::Mul, SignalKind::Audio, SignalKind::Control)
             | (BinaryOp::Mul, SignalKind::Control, SignalKind::Audio) => {
-                let (audio, control) = if lhs.signal_kind() == &SignalKind::Audio {
+                let (audio, control) = if lhs.signal_kind() == SignalKind::Audio {
                     (lhs.summary(), rhs.summary())
                 } else {
                     (rhs.summary(), lhs.summary())
@@ -459,7 +460,7 @@ impl GraphCompiler<'_> {
                     ));
                 };
                 let compiled = self.compile_named_argument_value(param_name, rhs)?;
-                if compiled.signal_kind() == &SignalKind::Audio {
+                if compiled.signal_kind() == SignalKind::Audio {
                     return Err(EvalError::new(format!(
                         "parameter `{param_name}` on `{name}` cannot be driven by an audio signal in Task 3"
                     )));
@@ -487,7 +488,7 @@ impl GraphCompiler<'_> {
         if let Expr::Ident(name) = expr {
             if let Some(kind) = self.resolved_signals.get(name) {
                 return Ok(ValidatedPedalNode::new(
-                    kind.clone(),
+                    *kind,
                     PedalNodeKind::Reference,
                     name,
                 ));
@@ -542,7 +543,7 @@ impl GraphCompiler<'_> {
                     ));
                 };
                 let compiled = scoped.compile_named_argument_value(param_name, rhs)?;
-                if compiled.signal_kind() == &SignalKind::Audio {
+                if compiled.signal_kind() == SignalKind::Audio {
                     return Err(EvalError::new(format!(
                         "parameter `{param_name}` on `feedback` cannot be driven by an audio signal in Task 3"
                     )));
@@ -571,7 +572,7 @@ impl GraphCompiler<'_> {
                 "`output` requires exactly one audio signal as the pedal graph final pipe target",
             ));
         }
-        if positional[0].signal_kind() != &SignalKind::Audio {
+        if positional[0].signal_kind() != SignalKind::Audio {
             return Err(EvalError::new(
                 "`output` requires an audio signal as the pedal graph final pipe target",
             ));
@@ -598,7 +599,7 @@ impl GraphCompiler<'_> {
         }
         if positional
             .iter()
-            .any(|node| node.signal_kind() != &SignalKind::Audio)
+            .any(|node| node.signal_kind() != SignalKind::Audio)
         {
             return Err(EvalError::new(
                 "`mix` requires every positional argument to resolve to an audio signal",
@@ -628,7 +629,7 @@ impl GraphCompiler<'_> {
         positional: &[ValidatedPedalNode],
         named: &[(String, ValidatedPedalNode)],
     ) -> Result<ValidatedPedalNode, EvalError> {
-        if positional.len() != 1 || positional[0].signal_kind() != &SignalKind::Audio {
+        if positional.len() != 1 || positional[0].signal_kind() != SignalKind::Audio {
             return Err(EvalError::new(
                 "`feedback(...)` requires exactly one audio signal input",
             ));
@@ -659,7 +660,7 @@ impl GraphCompiler<'_> {
     ) -> Result<ValidatedPedalNode, EvalError> {
         if positional
             .iter()
-            .any(|node| node.signal_kind() == &SignalKind::Audio)
+            .any(|node| node.signal_kind() == SignalKind::Audio)
         {
             return Err(EvalError::new(format!(
                 "`{name}` cannot take an audio input; it is a control source"
@@ -677,7 +678,7 @@ impl GraphCompiler<'_> {
         positional: &[ValidatedPedalNode],
         named: &[(String, ValidatedPedalNode)],
     ) -> Result<ValidatedPedalNode, EvalError> {
-        if positional.len() != 1 || positional[0].signal_kind() != &SignalKind::Audio {
+        if positional.len() != 1 || positional[0].signal_kind() != SignalKind::Audio {
             return Err(EvalError::new(
                 "`env_follow` requires exactly one audio signal input",
             ));
@@ -697,7 +698,7 @@ impl GraphCompiler<'_> {
     ) -> Result<ValidatedPedalNode, EvalError> {
         let audio_inputs = positional
             .iter()
-            .filter(|node| node.signal_kind() == &SignalKind::Audio)
+            .filter(|node| node.signal_kind() == SignalKind::Audio)
             .count();
 
         match audio_inputs {
@@ -966,7 +967,7 @@ pub fn compile_graph(
             current_binding: Some(binding.name.as_str()),
         };
         let node = compiler.compile_expr(&binding.expr, false)?;
-        resolved_signals.insert(binding.name.clone(), node.signal_kind().clone());
+        resolved_signals.insert(binding.name.clone(), node.signal_kind());
         compiled_bindings.push(ValidatedPedalBinding::new(binding.name.clone(), node));
     }
 

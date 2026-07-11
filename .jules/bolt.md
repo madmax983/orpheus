@@ -47,3 +47,6 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+**[Derive Copy on Small Enums]**
+**Learning:** `clippy` pointed out a place where `clone()` was being called on `SignalKind`, a small unit enum. Deriving `Copy` is a safe, easy zero-cost abstraction for simple unit enums to replace explicit `clone()` operations with lightweight dereferencing (`*`), reducing call overhead.
+**Action:** When defining new small or unit enums that are passed around frequently, always derive `Copy`. For existing enums, check if deriving `Copy` breaks any struct fields, fix those, and replace `.clone()` with `*` dereferencing.
