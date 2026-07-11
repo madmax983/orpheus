@@ -1021,3 +1021,72 @@ impl Explain for PedalValue {
         self.plan.explain(binding_name)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::{Expr, StepOp};
+
+    #[test]
+    fn format_modified_source_fast() {
+        let mut buf = String::new();
+        format_modified_source_into(&Expr::Number(1.0), StepOp::Fast(2.0), &mut buf);
+        assert_eq!(buf, "1*2");
+    }
+
+    #[test]
+    fn format_modified_source_slow() {
+        let mut buf = String::new();
+        format_modified_source_into(&Expr::Number(1.0), StepOp::Slow(2.0), &mut buf);
+        assert_eq!(buf, "1/2");
+    }
+
+    #[test]
+    fn format_modified_source_replicate() {
+        let mut buf = String::new();
+        format_modified_source_into(&Expr::Number(1.0), StepOp::Replicate(2), &mut buf);
+        assert_eq!(buf, "1!2");
+    }
+
+    #[test]
+    fn format_modified_source_degrade_half() {
+        let mut buf = String::new();
+        format_modified_source_into(&Expr::Number(1.0), StepOp::Degrade(0.5), &mut buf);
+        assert_eq!(buf, "1?");
+    }
+
+    #[test]
+    fn format_modified_source_degrade_custom() {
+        let mut buf = String::new();
+        format_modified_source_into(&Expr::Number(1.0), StepOp::Degrade(0.25), &mut buf);
+        assert_eq!(buf, "1?0.25");
+    }
+
+    #[test]
+    fn format_polymeter_source_without_steps() {
+        let mut buf = String::new();
+        format_polymeter_source_into(
+            &[
+                vec![Expr::Number(1.0), Expr::Number(2.0)],
+                vec![Expr::Number(3.0), Expr::Number(4.0)],
+            ],
+            None,
+            &mut buf,
+        );
+        assert_eq!(buf, "{1 2, 3 4}");
+    }
+
+    #[test]
+    fn format_polymeter_source_with_steps() {
+        let mut buf = String::new();
+        format_polymeter_source_into(
+            &[
+                vec![Expr::Number(1.0), Expr::Number(2.0)],
+                vec![Expr::Number(3.0), Expr::Number(4.0)],
+            ],
+            Some(4),
+            &mut buf,
+        );
+        assert_eq!(buf, "{1 2, 3 4}%4");
+    }
+}
