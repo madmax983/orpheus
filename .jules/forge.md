@@ -82,3 +82,7 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+## 2024-05-14 - Extracting Massive Loop Bodies
+**Learning:** In `GraphVoiceBank::render_frame`, the entire inner loop over each `slot` contained 100+ lines of complex note handover, interpolation, and rendering logic. This makes the parent function extremely hard to read and test.
+**Action:** Extract inner loop bodies into standalone methods on the struct being iterated over (e.g., `GraphVoiceSlot::render_frame`), allowing the orchestrator function to be a single flat `for` loop that just delegates to the child instances.
