@@ -380,10 +380,15 @@ fn reference_examples_evaluate() {
 
 #[test]
 fn reference_voice_example_evaluates() {
-    // Strict mode, mirroring tests/voice.rs.
-    let source =
-        "pluck = voice { osc = saw(freq) ; env = adsr(gate, 0.001, 0.02, 0.5, 0.05) ; osc * env }";
-    if let Err(error) = eval_module(source, ReplMode::Strict) {
-        panic!("reference voice example failed to evaluate:\n  {source}\n  error: {error}");
+    // Strict mode, mirroring tests/voice.rs. Both examples are copied verbatim
+    // from the `voice{}` section (§5.2) of the reference.
+    let sources = [
+        "pluck = voice { osc = saw(freq) ; env = adsr(gate, 0.001, 0.02, 0.5, 0.05) ; osc * env }",
+        r#"gen = voice { fm_genesis("ebass") }"#,
+    ];
+    for source in sources {
+        if let Err(error) = eval_module(source, ReplMode::Strict) {
+            panic!("reference voice example failed to evaluate:\n  {source}\n  error: {error}");
+        }
     }
 }

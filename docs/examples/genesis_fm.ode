@@ -1,0 +1,70 @@
+// ╭─────────────────────────────────────────────────────────────╮
+// │                                                             │
+// │                        O R P H E U S                        │
+// │        G E N E S I S   F M   ( Y M 2 6 1 2 )   D E M O      │
+// │                                                             │
+// ╰─────────────────────────────────────────────────────────────╯
+// D-minor Sega FM groove · 120 BPM · 4 cycles · 48 kHz stereo
+//
+// ============================================================================
+// A short, recognizably-Genesis sketch built entirely from the Phase-2 FM voice
+// source `fm_genesis("preset")` — the ported YM2612 four-operator core (log-sine
+// + exp ROMs, the 8 algorithms, op-1 feedback, rate-scaled envelopes, and the
+// Model-1 "ladder" grit). Each voice names one of the six built-in presets:
+//
+//   ebass  — rubbery FM slap bass (ALG 4, two 2-op stacks, high feedback)
+//   brass  — buzzy brass stab      (bright modulators, LFO vibrato)
+//   epiano — glassy DX tine keys   (ALG 5 fan-out, mild feedback)
+//   lead   — cutting square-ish lead
+//
+// The rate-scaled FM envelope lives inside each node, so these voices need no
+// external adsr/ar — a bare `fm_genesis(...)` is already a playable instrument.
+// `song` (bottom of file) is the entry point.
+//
+// Play it:   cargo run --release -- docs/examples/genesis_fm.ode
+// Render it: orpheus render docs/examples/genesis_fm.ode --master out.wav --cycles 4
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// FM voices — one preset each, pooled so chords and fast lines never cut off.
+// A trailing gain sets the mix; the presets' own EGs shape the notes.
+// ----------------------------------------------------------------------------
+
+// bass — rubbery FM slap, dropped an octave for the Genesis low-end grit.
+bass = voice { poly = 4 ; steal = oldest ; fm_genesis("ebass") * 0.85 }
+
+// keys — glassy DX electric-piano tines carrying the harmony.
+keys = voice { poly = 6 ; steal = oldest ; fm_genesis("epiano") * 0.5 }
+
+// brass — buzzy stabs with the preset's LFO vibrato.
+brass = voice { poly = 6 ; steal = oldest ; fm_genesis("brass") * 0.42 }
+
+// lead — the cutting square-ish FM lead on top.
+lead = voice { poly = 6 ; steal = oldest ; fm_genesis("lead") * 0.38 }
+
+// ----------------------------------------------------------------------------
+// Musical material — a i–VI–III–VII loop in D minor (aeolian). The bass walks
+// the roots, the e-piano lays triads, brass punches offbeat stabs, and the lead
+// sings a minor-pentatonic hook.
+// ----------------------------------------------------------------------------
+
+// Root motion for the four bars: Dm · Bb · F · C.
+roots = degrees(aeolian, <0 -2 -4 -5>)
+bassline = bass bass bass bass |> pitch(roots) |> pitch(-12)
+
+// Triads over the same roots, arpeggiated up on the e-piano.
+keys_deg = degrees(aeolian, 0 2 4 2)
+keyline = keys keys keys keys |> pitch(keys_deg) |> pitch(roots)
+
+// Offbeat brass stabs — rest, hit, rest, hit — one chord tone each bar.
+brass_deg = degrees(aeolian, 4)
+stabs = ~ brass ~ brass |> pitch(brass_deg) |> pitch(roots) |> gain(0.9)
+
+// Minor-pentatonic lead hook, an octave up.
+lead_deg = degrees(minor_pentatonic, 0 3 5 7 5 3 5 7)
+melody = lead lead lead lead lead lead lead lead |> pitch(lead_deg) |> pitch(12)
+
+// ----------------------------------------------------------------------------
+// Master — stack the four FM voices; loops for the rendered cycles.
+// ----------------------------------------------------------------------------
+song = stack(bassline, keyline, stabs, melody)

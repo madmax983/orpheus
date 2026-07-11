@@ -26,10 +26,10 @@ use comfy_table::Cell;
 use crossterm::style::Stylize;
 use orpheus_dsp::{
     DEFAULT_ANALOG_BASE_FREQUENCY_HZ, DEFAULT_GRAPH_VOICE_POLYPHONY, DEFAULT_PARAM_RAMP_SECONDS,
-    FILTER_MAX_GAIN_DB, FILTER_MAX_Q, FILTER_MIN_FREQUENCY_HZ, FILTER_MIN_Q, GraphVoiceSpec,
-    MAX_GRAPH_VOICE_POLYPHONY, MAX_PARAM_RAMP_SECONDS, MAX_VOICE_DELAY_SECONDS,
+    FILTER_MAX_GAIN_DB, FILTER_MAX_Q, FILTER_MIN_FREQUENCY_HZ, FILTER_MIN_Q, FmPatch,
+    GraphVoiceSpec, MAX_GRAPH_VOICE_POLYPHONY, MAX_PARAM_RAMP_SECONDS, MAX_VOICE_DELAY_SECONDS,
     MODULATED_VOICE_DELAY_MAX_SECONDS, SampleBank, ShelfMode, StealPolicy, SvfMode, VoiceNodeSpec,
-    VoiceSignalRef,
+    VoiceSignalRef, preset_by_name,
 };
 
 use crate::ast::{BinaryOp, Expr, GraphBinding};
@@ -53,6 +53,14 @@ const DEFAULT_NES_VOLUME: f32 = 1.0;
 
 /// The PRNG seed for `noise()` nodes; fixed so voices stay deterministic.
 const VOICE_NOISE_SEED: u32 = 0x9E37_79B9;
+
+/// The neutral `bright` (FM-index / modulator-`TL`) macro value used when
+/// `fm_genesis(...)` omits the brightness argument: `1.0` leaves each preset's
+/// authored modulator levels untouched (`0` = darkest, `2` = brightest).
+const DEFAULT_FM_BRIGHT: f32 = 1.0;
+
+/// The six named `fm_genesis` presets, listed in the "unknown preset" help.
+const FM_GENESIS_PRESETS: &str = "`epiano`, `ebass`, `brass`, `lead`, `bell`, `drum`";
 
 /// The largest release floor a `release = ...` pragma may request, in
 /// seconds, keeping note lifetimes (and pool residency) bounded.
@@ -500,6 +508,7 @@ impl<'bank> VoiceCompiler<'bank> {
             "pulse_nes" => self.compile_pulse_nes(args, piped),
             "tri_nes" => self.compile_tri_nes(args, piped),
             "noise_nes" => self.compile_noise_nes(args, piped),
+            "fm_genesis" => self.compile_fm_genesis(args, piped),
             "adsr" => self.compile_adsr(args, piped),
             "ar" => self.compile_ar(args, piped),
             "lowpass" => self.compile_lowpass(args, piped),
@@ -517,7 +526,8 @@ impl<'bank> VoiceCompiler<'bank> {
             }
             other => Err(EvalError::new(format!(
                 "unknown voice stage `{other}`; available stages are `sine`, `saw`, `tri`, \
-                 `pulse`, `noise`, `pulse_nes`, `tri_nes`, `noise_nes`, `sample`, `sample_loop`, \
+                 `pulse`, `noise`, `pulse_nes`, `tri_nes`, `noise_nes`, `fm_genesis`, `sample`, \
+                 `sample_loop`, \
                  `sample_loop_xf`, `sample_pitched`, `sample_loop_pitched`, \
                  `sample_loop_pitched_xf`, `adsr`, `ar`, `lowpass`, `svf_lp`, `svf_hp`, `svf_bp`, \
                  `svf_notch`, `eq_peak`, `eq_low_shelf`, `eq_high_shelf`, `drive`, `gain`, \
@@ -682,6 +692,98 @@ impl<'bank> VoiceCompiler<'bank> {
             mode: signals[0],
             freq: signals[1],
             volume: signals[2],
+        })
+    }
+
+    /// Compiles `fm_genesis("preset"[, freq[, bright[, fb]]])` — the Sega
+    /// Genesis / Mega Drive YM2612 four-operator FM voice. The first argument is
+    /// a preset name string literal (`"epiano"`, `"ebass"`, `"brass"`, `"lead"`,
+    /// `"bell"`, `"drum"`) that bakes a full [`FmPatch`] timbre into the node
+    /// (a documented deviation from ADR 0004: the ~35 operator/EG/LFO fields are
+    /// timbre constants, not per-sample signals — see ADR 0015). The remaining
+    /// positional arguments bind the small ergonomic signal surface, in order:
+    ///
+    /// - `freq` — the note fundamental in Hertz (defaults to the ambient
+    ///   `freq`); each operator runs at `freq * MUL (± DT)`.
+    /// - `bright` — the FM-index / brightness macro scaling the modulator
+    ///   levels, centered on `1.0` (defaults to `1.0`), so `fm_genesis("lead",
+    ///   freq, lfo)` sweeps timbre from an LFO.
+    /// - `fb` — the op-1 feedback amount in `0..1` (defaults to the preset's
+    ///   authored feedback).
+    ///
+    /// The `gate` operator envelopes are keyed from the voice's note gate
+    /// implicitly, like `compile_adsr`. Unlike the NES stages, the voice's
+    /// amplitude envelope lives *inside* the node (the rate-scaled FM EG is the
+    /// timbre), so an external `adsr`/`ar` is optional.
+    fn compile_fm_genesis(
+        &mut self,
+        args: &[Expr],
+        piped: Option<VoiceSignalRef>,
+    ) -> Result<VoiceSignalRef, EvalError> {
+        if piped.is_some() {
+            return Err(EvalError::new(
+                "`fm_genesis` is a source and cannot be a pipe target; call it directly with a \
+                 preset name (e.g. `fm_genesis(\"ebass\")` or `fm_genesis(\"lead\", freq)`)",
+            ));
+        }
+        let Some((name_expr, signal_args)) = args.split_first() else {
+            return Err(EvalError::new(format!(
+                "`fm_genesis` expects a preset name plus optional freq/bright/fb signals \
+                 (e.g. `fm_genesis(\"ebass\")` or `fm_genesis(\"lead\", freq, bright)`); \
+                 presets are {FM_GENESIS_PRESETS}"
+            )));
+        };
+        let patch = Self::resolve_fm_preset(name_expr)?;
+        if signal_args.len() > 3 {
+            return Err(EvalError::new(
+                "`fm_genesis` takes at most three signal arguments after the preset name: \
+                 freq, bright, and fb (e.g. `fm_genesis(\"lead\", freq, bright, fb)`)",
+            ));
+        }
+
+        // freq defaults to the ambient note frequency; bright to the neutral
+        // 1.0 macro; fb to the preset's authored op-1 feedback (mapped back onto
+        // the node's 0..1 fb-input range).
+        let freq = match signal_args.first() {
+            Some(expr) => self.compile_expr(expr)?,
+            None => VoiceSignalRef::Freq,
+        };
+        let bright = match signal_args.get(1) {
+            Some(expr) => self.compile_expr(expr)?,
+            None => self.push(VoiceNodeSpec::Constant {
+                value: DEFAULT_FM_BRIGHT,
+            })?,
+        };
+        let fb = match signal_args.get(2) {
+            Some(expr) => self.compile_expr(expr)?,
+            None => self.push(VoiceNodeSpec::Constant {
+                value: f32::from(patch.feedback) / 7.0,
+            })?,
+        };
+
+        self.push(VoiceNodeSpec::FmGenesis {
+            gate: VoiceSignalRef::Gate,
+            freq,
+            bright,
+            fb,
+            patch,
+        })
+    }
+
+    /// Resolves the `fm_genesis` preset-name string literal to an [`FmPatch`],
+    /// erroring at definition time (with the available names) if the argument is
+    /// not a string literal or names no known preset.
+    fn resolve_fm_preset(name_expr: &Expr) -> Result<FmPatch, EvalError> {
+        let Expr::String(name) = name_expr else {
+            return Err(EvalError::new(format!(
+                "`fm_genesis` requires its first argument to be a preset name string literal \
+                 (e.g. `fm_genesis(\"ebass\")`); presets are {FM_GENESIS_PRESETS}"
+            )));
+        };
+        preset_by_name(name).ok_or_else(|| {
+            EvalError::new(format!(
+                "unknown fm_genesis preset `{name}`; available presets are {FM_GENESIS_PRESETS}"
+            ))
         })
     }
 

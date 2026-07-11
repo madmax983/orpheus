@@ -1976,4 +1976,102 @@ fn voice_unknown_stage_error_lists_the_nes_chiptune_stages() {
         error.contains("noise_nes"),
         "help should list noise_nes: {error}"
     );
+    assert!(
+        error.contains("fm_genesis"),
+        "help should list fm_genesis: {error}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Sega Genesis / Mega Drive FM voice (`fm_genesis`, Phase 2 PR2).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn voice_vocabulary_covers_fm_genesis_presets() {
+    // The named FM presets must each parse, lower to an FmGenesis node, and
+    // sound. The node carries its own rate-scaled envelope, so no external
+    // ar/adsr is required for the voice to be audible while gated.
+    for (preset, freq) in [
+        ("ebass", 110.0_f32),
+        ("lead", 330.0),
+        ("brass", 220.0),
+        ("epiano", 262.0),
+    ] {
+        let source = format!("v = voice {{ fm_genesis(\"{preset}\") }}");
+        let mut voice = compiled_voice(&source, "v");
+        assert!(
+            gated_left_energy(&mut voice, freq, 4_800) > 1.0,
+            "fm_genesis(\"{preset}\") should be audible while gated"
+        );
+    }
+}
+
+#[test]
+fn voice_fm_genesis_preset_resolves_to_a_baked_patch() {
+    // `fm_genesis("ebass")` bakes the ebass FmPatch into the node spec and
+    // wires the ambient gate/freq with a neutral bright and default fb — the
+    // stage compiles as a source (gate + freq come from the note).
+    let Value::Voice(voice) = eval_voice(r#"b = voice { fm_genesis("ebass") }"#) else {
+        panic!("expected a voice value");
+    };
+    let expected = orpheus_dsp::ebass();
+    assert!(
+        voice.nodes().iter().any(|node| matches!(
+            node,
+            orpheus_dsp::VoiceNodeSpec::FmGenesis {
+                gate: orpheus_dsp::VoiceSignalRef::Gate,
+                freq: orpheus_dsp::VoiceSignalRef::Freq,
+                patch,
+                ..
+            } if *patch == expected
+        )),
+        "fm_genesis(\"ebass\") must bake the ebass patch and wire the ambient gate/freq"
+    );
+    assert!(voice.to_spec("b").is_ok());
+}
+
+#[test]
+fn voice_fm_genesis_explicit_freq_signal_overrides_the_default() {
+    // A second positional argument binds the freq signal (here a constant),
+    // so the note's ambient freq is no longer the source.
+    let Value::Voice(voice) = eval_voice(r#"b = voice { fm_genesis("lead", 440) }"#) else {
+        panic!("expected a voice value");
+    };
+    assert!(
+        voice.nodes().iter().any(|node| matches!(
+            node,
+            orpheus_dsp::VoiceNodeSpec::FmGenesis {
+                freq: orpheus_dsp::VoiceSignalRef::Node(_),
+                ..
+            }
+        )),
+        "an explicit freq argument must bind the freq signal to a node, not the ambient freq"
+    );
+}
+
+#[test]
+fn voice_fm_genesis_unknown_preset_errors_cleanly() {
+    let error = eval_error(r#"bad = voice { fm_genesis("moog") }"#);
+    assert!(
+        error.contains("moog") && error.contains("ebass"),
+        "unknown preset error should name the offender and list presets: {error}"
+    );
+}
+
+#[test]
+fn voice_fm_genesis_requires_a_string_preset_name() {
+    let error = eval_error("bad = voice { fm_genesis(freq) }");
+    assert!(
+        error.contains("string literal") || error.contains("preset name"),
+        "a non-string preset argument should error: {error}"
+    );
+}
+
+#[test]
+fn voice_fm_genesis_is_a_source_not_a_pipe_target() {
+    let error = eval_error(r#"bad = voice { sine(freq) |> fm_genesis("lead") }"#);
+    assert!(
+        error.contains("fm_genesis") && error.contains("source"),
+        "fm_genesis must reject a piped input: {error}"
+    );
 }
