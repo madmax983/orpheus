@@ -38,10 +38,10 @@ use thiserror::Error;
 
 use crate::SampleTrigger;
 use crate::graph::{
-    BiquadMode, Node, Processor, Seq, adsr, ar, bind, biquad, constant, delay_line, fdelay,
-    feedback, gain_node, ladder_filter, merge, noise, noise_nes, pan, par, passthrough, pulse,
-    pulse_nes, sample_player_with_options, saw, seq, sine, soft_sat, sum, svf, tri, tri_nes, wire,
-    wire_with_inputs,
+    BiquadMode, FmPatch, Node, Processor, Seq, adsr, ar, bind, biquad, constant, delay_line,
+    fdelay, feedback, fm_genesis, gain_node, ladder_filter, merge, noise, noise_nes, pan, par,
+    passthrough, pulse, pulse_nes, sample_player_with_options, saw, seq, sine, soft_sat, sum, svf,
+    tri, tri_nes, wire, wire_with_inputs,
 };
 use crate::routing::TrackId;
 use crate::sample_bank::PlaybackSample;
@@ -579,6 +579,27 @@ pub enum VoiceNodeSpec {
         /// The volume signal in \[0, 1\], quantized to the NES 4-bit grid.
         volume: VoiceSignalRef,
     },
+    /// A Sega Genesis / Mega Drive YM2612 four-operator FM voice
+    /// (`crate::graph::fm_genesis`). Unlike the leaf oscillators, the timbre is
+    /// carried by a construction-time [`FmPatch`] config struct (algorithm,
+    /// per-operator `MUL`/`DT`/`TL`/envelope-rate grid, LFO, ladder) rather than
+    /// a bank of signal inputs — a documented deviation from ADR 0004 (see
+    /// ADR 0015). Only the small ergonomic surface stays as signals.
+    FmGenesis {
+        /// The gate signal keying all four operator envelopes on and off.
+        gate: VoiceSignalRef,
+        /// The note fundamental in Hertz; each operator runs at `freq * MUL`.
+        freq: VoiceSignalRef,
+        /// The brightness macro, a modulator-`TL` (FM index) scale centered on
+        /// `1.0` (`0` = darkest, `2` = brightest).
+        bright: VoiceSignalRef,
+        /// The op-1 self-feedback amount signal (`0..=7` after scaling).
+        fb: VoiceSignalRef,
+        /// The construction-time timbre patch (topology, operators, LFO,
+        /// ladder). Travels through [`crate::EngineCommand`] as plain `Copy`
+        /// config data.
+        patch: FmPatch,
+    },
     /// A gate-driven ADSR envelope with fixed segment parameters.
     Adsr {
         /// The gate signal opening and closing the envelope.
@@ -762,6 +783,13 @@ impl VoiceNodeSpec {
             Self::Pulse { freq, width } => vec![*freq, *width],
             Self::PulseNes { freq, duty, volume } => vec![*freq, *duty, *volume],
             Self::NoiseNes { mode, freq, volume } => vec![*mode, *freq, *volume],
+            Self::FmGenesis {
+                gate,
+                freq,
+                bright,
+                fb,
+                ..
+            } => vec![*gate, *freq, *bright, *fb],
             Self::Adsr { gate, .. } | Self::Ar { gate, .. } => vec![*gate],
             Self::Lowpass {
                 input,
@@ -820,6 +848,18 @@ impl VoiceNodeSpec {
                 f(mode);
                 f(freq);
                 f(volume);
+            }
+            Self::FmGenesis {
+                gate,
+                freq,
+                bright,
+                fb,
+                ..
+            } => {
+                f(gate);
+                f(freq);
+                f(bright);
+                f(fb);
             }
             Self::Adsr { gate, .. } | Self::Ar { gate, .. } => f(gate),
             Self::Lowpass {
@@ -922,6 +962,7 @@ impl VoiceNodeSpec {
             | Self::PulseNes { .. }
             | Self::TriNes { .. }
             | Self::NoiseNes { .. }
+            | Self::FmGenesis { .. }
             | Self::Lowpass { .. }
             | Self::Svf { .. }
             | Self::EqPeak { .. }
@@ -1361,6 +1402,7 @@ impl GraphVoiceSpec {
 
     /// Builds the stage for node `index`: input wiring followed by the node
     /// running in parallel with a passthrough of the whole bus.
+    #[allow(clippy::too_many_lines)] // one match arm per node variant
     fn build_stage(index: usize, node: &VoiceNodeSpec, taps: &[u32], sample_rate_hz: f32) -> Seq {
         let bus_width = index + taps.len() + 4 + VOICE_PARAM_COUNT;
         let mut mapping: Vec<u32> = node
@@ -1382,6 +1424,9 @@ impl GraphVoiceSpec {
             VoiceNodeSpec::PulseNes { .. } => par(pulse_nes(sample_rate_hz), passthrough(bus)),
             VoiceNodeSpec::TriNes { .. } => par(tri_nes(sample_rate_hz), passthrough(bus)),
             VoiceNodeSpec::NoiseNes { .. } => par(noise_nes(sample_rate_hz), passthrough(bus)),
+            VoiceNodeSpec::FmGenesis { patch, .. } => {
+                par(fm_genesis(sample_rate_hz, *patch), passthrough(bus))
+            }
             VoiceNodeSpec::Adsr {
                 attack_s,
                 decay_s,
@@ -2419,6 +2464,55 @@ mod tests {
             freq: VoiceSignalRef::Freq,
         };
         assert_eq!(tri.input_refs(), vec![VoiceSignalRef::Freq]);
+    }
+
+    #[test]
+    fn fm_genesis_spec_lowers_and_sounds() {
+        // fm_genesis(ebass): gate from the note, freq from the note, a neutral
+        // bright macro, and the preset's own feedback. Four signal inputs in
+        // [gate, freq, bright, fb] order, one audio output.
+        let bass = GraphVoiceSpec::new(
+            "bass",
+            0.05,
+            vec![
+                VoiceNodeSpec::Constant { value: 1.0 },
+                VoiceNodeSpec::Constant { value: 0.5 },
+                VoiceNodeSpec::FmGenesis {
+                    gate: VoiceSignalRef::Gate,
+                    freq: VoiceSignalRef::Freq,
+                    bright: VoiceSignalRef::Node(0),
+                    fb: VoiceSignalRef::Node(1),
+                    patch: crate::graph::ebass(),
+                },
+            ],
+            VoiceSignalRef::Node(2),
+        )
+        .expect("fm_genesis spec validates");
+        assert!(
+            gated_energy(&bass, 110.0, 4_800) > 1.0,
+            "fm_genesis voice should be audible while gated"
+        );
+    }
+
+    #[test]
+    fn fm_genesis_reports_its_signal_refs_in_primitive_order() {
+        let node = VoiceNodeSpec::FmGenesis {
+            gate: VoiceSignalRef::Gate,
+            freq: VoiceSignalRef::Freq,
+            bright: VoiceSignalRef::Node(0),
+            fb: VoiceSignalRef::Node(1),
+            patch: crate::graph::lead(),
+        };
+        // The node's process() reads inputs[0..4] as gate, freq, bright, fb.
+        assert_eq!(
+            node.input_refs(),
+            vec![
+                VoiceSignalRef::Gate,
+                VoiceSignalRef::Freq,
+                VoiceSignalRef::Node(0),
+                VoiceSignalRef::Node(1),
+            ]
+        );
     }
 
     #[test]

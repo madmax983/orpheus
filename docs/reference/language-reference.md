@@ -293,6 +293,17 @@ melody = c4 e4 g4 |> pluck
 
 - **Oscillators:** `sine(freq)`, `saw(freq)`, `tri(freq)`, `pulse(freq[, width])`,
   `noise()`.
+- **NES chiptune sources:** `pulse_nes(freq[, duty[, volume]])` (duty is a
+  `0..=3` index, default 2 = 50%), `tri_nes(freq)`, `noise_nes(mode, freq[,
+  volume])` — the raw, non-band-limited counterparts to the clean oscillators.
+- **Genesis FM source:** `fm_genesis("preset"[, freq[, bright[, fb]]])` — the
+  Sega Genesis / Mega Drive YM2612 four-operator FM voice. The first argument is
+  a preset name (`epiano`, `ebass`, `brass`, `lead`, `bell`, `drum`) that bakes a
+  full timbre patch (algorithm, per-operator envelope grid, LFO, Model-1 ladder
+  grit) into the node; the optional signals bind pitch, the `bright` FM-index
+  macro (centered on `1.0`), and the op-1 `fb` feedback amount. The gate keys the
+  operator envelopes from the note, and the rate-scaled FM envelope lives inside
+  the node, so an external `adsr`/`ar` is optional (ADR 0015).
 - **Envelopes:** `adsr(gate, a, d, s, r)`, `ar(gate, a, r)` — envelope params must
   be literals.
 - **Filters:** `lowpass(x, cutoff, q)`; state-variable `svf_lp` / `svf_hp` /
@@ -314,6 +325,7 @@ acid = voice { body = saw(freq) + tri(freq) * 0.5 ; shaped = body |> lowpass(120
 echo = voice { release = 0.5 ; dry = sine(freq) * ar(gate, 0.001, 0.01) ; wet = feedback(dry + fb |> delay(0.05) |> gain(0.5)) ; dry + wet }
 bank = voice { osc = saw(freq) ; fan(osc, lowpass(500, 0.2), lowpass(3000, 0.2)) * ar(gate, 0.001, 0.05) }
 kit = voice { sample("bd") }
+gen = voice { fm_genesis("ebass") }
 ```
 
 ### 5.3 Pragmas (voice-scoped configuration bindings)
