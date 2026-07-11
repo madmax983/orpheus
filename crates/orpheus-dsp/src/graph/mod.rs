@@ -13,6 +13,7 @@ mod chiptune;
 mod combinators;
 mod filters;
 mod genesis_fm;
+mod genesis_psg;
 mod helpers;
 mod node;
 mod primitives;
@@ -48,6 +49,9 @@ pub use genesis_fm::{
     FmGenesisNode, FmOp, FmPatch, FmTables, bell, brass, drum, ebass, epiano, fm_genesis, lead,
     preset_by_name,
 };
+
+// Genesis PSG (SN76489 tone + noise, ported from madmax983/genesoxide psg.rs)
+pub use genesis_psg::{PsgNoiseNode, PsgToneNode, advance_psg_lfsr, psg_noise, psg_tone};
 
 // Adapters (existing synth/ primitive wrappers)
 pub use adapters::{
