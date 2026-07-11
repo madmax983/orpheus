@@ -1890,3 +1890,90 @@ fn session_plays_svf_filtered_voice_from_pattern_token() {
         "the SVF-filtered voice should be audible from a pattern token"
     );
 }
+
+/// Sums the absolute left-channel energy of a gated voice over `frames`.
+fn gated_left_energy(voice: &mut orpheus_dsp::GraphVoice, freq_hz: f32, frames: usize) -> f32 {
+    let mut energy = 0.0_f32;
+    for _ in 0..frames {
+        let (left, _right) = voice.process_frame(1.0, freq_hz, 0.8, 0.0);
+        energy += left.abs();
+    }
+    energy
+}
+
+#[test]
+fn voice_vocabulary_covers_nes_chiptune_sources() {
+    // The three PR2 must-work bodies: an NES pulse lead, a triangle bass, and
+    // an LFSR noise hat. Each must parse, lower, and sound.
+    let mut lead = compiled_voice(
+        "lead = voice { p = pulse_nes(freq, 0.25) ; p * ar(gate, 0.001, 0.1) }",
+        "lead",
+    );
+    assert!(
+        gated_left_energy(&mut lead, 220.0, 2_400) > 1.0,
+        "pulse_nes lead should be audible"
+    );
+
+    let mut bass = compiled_voice("bass = voice { tri_nes(freq) }", "bass");
+    assert!(
+        gated_left_energy(&mut bass, 110.0, 2_400) > 1.0,
+        "tri_nes bass should be audible"
+    );
+
+    let mut hat = compiled_voice(
+        "hat = voice { noise_nes(1, 8000) * ar(gate, 0.001, 0.05) }",
+        "hat",
+    );
+    assert!(
+        gated_left_energy(&mut hat, 220.0, 2_400) > 1.0,
+        "noise_nes hat should be audible"
+    );
+}
+
+#[test]
+fn voice_pulse_nes_duty_is_a_zero_to_three_index() {
+    // The NES pulse duty argument is a pattern INDEX 0..=3 (12.5% / 25% / 50% /
+    // 25%-negated), matching the DSP node — not a normalized 0..1 width. Duty
+    // index 0 (12.5%) has a shorter high-time than index 2 (50%), so at a fixed
+    // full volume the 50% square carries more energy than the 12.5% one.
+    let mut thin = compiled_voice("thin = voice { pulse_nes(freq, 0) }", "thin");
+    let mut wide = compiled_voice("wide = voice { pulse_nes(freq, 2) }", "wide");
+    let thin_energy = gated_left_energy(&mut thin, 220.0, 4_800);
+    let wide_energy = gated_left_energy(&mut wide, 220.0, 4_800);
+    assert!(
+        wide_energy > thin_energy * 1.5,
+        "50% duty (index 2) should carry clearly more energy than 12.5% (index 0): \
+         wide={wide_energy}, thin={thin_energy}"
+    );
+}
+
+#[test]
+fn voice_nes_default_duty_is_the_fifty_percent_square() {
+    // Omitting the duty argument selects the 50% square (index 2), matching the
+    // design surface default.
+    let mut defaulted = compiled_voice("d = voice { pulse_nes(freq) }", "d");
+    let mut explicit = compiled_voice("e = voice { pulse_nes(freq, 2) }", "e");
+    let defaulted_energy = gated_left_energy(&mut defaulted, 220.0, 4_800);
+    let explicit_energy = gated_left_energy(&mut explicit, 220.0, 4_800);
+    assert!(
+        (defaulted_energy - explicit_energy).abs() < 1e-3,
+        "default duty should equal explicit index 2: {defaulted_energy} vs {explicit_energy}"
+    );
+}
+
+#[test]
+fn voice_unknown_stage_error_lists_the_nes_chiptune_stages() {
+    let error = eval_error("bad = voice { wobble(freq) }");
+    assert!(
+        error.contains("pulse_nes"),
+        "help should list pulse_nes: {error}"
+    );
+    assert!(
+        error.contains("tri_nes"),
+        "help should list tri_nes: {error}"
+    );
+    assert!(
+        error.contains("noise_nes"),
+        "help should list noise_nes: {error}"
+    );
+}

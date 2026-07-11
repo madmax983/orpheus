@@ -43,6 +43,14 @@ const DEFAULT_VOICE_RELEASE_SECONDS: f32 = 0.02;
 /// The default pulse width used when `pulse(freq)` omits the width argument.
 const DEFAULT_PULSE_WIDTH: f32 = 0.5;
 
+/// The default NES pulse duty INDEX used when `pulse_nes(freq)` omits the duty
+/// argument: index 2, the 50% square (matching the design surface default).
+const DEFAULT_NES_PULSE_DUTY: f32 = 2.0;
+
+/// The default volume for NES voices whose surface omits a volume argument:
+/// full scale, quantized to the NES 4-bit grid at render time.
+const DEFAULT_NES_VOLUME: f32 = 1.0;
+
 /// The PRNG seed for `noise()` nodes; fixed so voices stay deterministic.
 const VOICE_NOISE_SEED: u32 = 0x9E37_79B9;
 
@@ -489,6 +497,9 @@ impl<'bank> VoiceCompiler<'bank> {
             "sine" | "saw" | "tri" => self.compile_oscillator(name, args, piped),
             "pulse" => self.compile_pulse(args, piped),
             "noise" => self.compile_noise(args, piped),
+            "pulse_nes" => self.compile_pulse_nes(args, piped),
+            "tri_nes" => self.compile_tri_nes(args, piped),
+            "noise_nes" => self.compile_noise_nes(args, piped),
             "adsr" => self.compile_adsr(args, piped),
             "ar" => self.compile_ar(args, piped),
             "lowpass" => self.compile_lowpass(args, piped),
@@ -506,10 +517,11 @@ impl<'bank> VoiceCompiler<'bank> {
             }
             other => Err(EvalError::new(format!(
                 "unknown voice stage `{other}`; available stages are `sine`, `saw`, `tri`, \
-                 `pulse`, `noise`, `sample`, `sample_loop`, `sample_loop_xf`, `sample_pitched`, \
-                 `sample_loop_pitched`, `sample_loop_pitched_xf`, `adsr`, `ar`, `lowpass`, \
-                 `svf_lp`, `svf_hp`, `svf_bp`, `svf_notch`, `eq_peak`, `eq_low_shelf`, \
-                 `eq_high_shelf`, `drive`, `gain`, `delay`, `feedback`, and `fan`"
+                 `pulse`, `noise`, `pulse_nes`, `tri_nes`, `noise_nes`, `sample`, `sample_loop`, \
+                 `sample_loop_xf`, `sample_pitched`, `sample_loop_pitched`, \
+                 `sample_loop_pitched_xf`, `adsr`, `ar`, `lowpass`, `svf_lp`, `svf_hp`, `svf_bp`, \
+                 `svf_notch`, `eq_peak`, `eq_low_shelf`, `eq_high_shelf`, `drive`, `gain`, \
+                 `delay`, `feedback`, and `fan`"
             ))),
         }
     }
@@ -589,6 +601,87 @@ impl<'bank> VoiceCompiler<'bank> {
         }
         self.push(VoiceNodeSpec::Noise {
             seed: VOICE_NOISE_SEED,
+        })
+    }
+
+    /// Compiles `pulse_nes(freq[, duty[, volume]])` — the NES-authentic,
+    /// non-band-limited pulse (square) channel, the raw counterpart to
+    /// `pulse`. `duty` is a pattern INDEX rounded and clamped to `0..=3`
+    /// (12.5% / 25% / 50% / 25%-negated) — not a normalized `0..1` width —
+    /// defaulting to the 50% square (index 2). `volume` is a `0..1` request
+    /// quantized to the NES 4-bit grid, defaulting to full. All three accept
+    /// bound signals (ADR 0004), so `pulse_nes(lfo, 2)` sweeps pitch and a
+    /// modulated duty works.
+    fn compile_pulse_nes(
+        &mut self,
+        args: &[Expr],
+        piped: Option<VoiceSignalRef>,
+    ) -> Result<VoiceSignalRef, EvalError> {
+        let provided = args.len() + usize::from(piped.is_some());
+        let signals = match provided {
+            1 => {
+                let mut signals = self.compile_signal_args("pulse_nes", args, piped, 1)?;
+                signals.push(self.push(VoiceNodeSpec::Constant {
+                    value: DEFAULT_NES_PULSE_DUTY,
+                })?);
+                signals.push(self.push(VoiceNodeSpec::Constant {
+                    value: DEFAULT_NES_VOLUME,
+                })?);
+                signals
+            }
+            2 => {
+                let mut signals = self.compile_signal_args("pulse_nes", args, piped, 2)?;
+                signals.push(self.push(VoiceNodeSpec::Constant {
+                    value: DEFAULT_NES_VOLUME,
+                })?);
+                signals
+            }
+            _ => self.compile_signal_args("pulse_nes", args, piped, 3)?,
+        };
+        self.push(VoiceNodeSpec::PulseNes {
+            freq: signals[0],
+            duty: signals[1],
+            volume: signals[2],
+        })
+    }
+
+    /// Compiles `tri_nes(freq)` — the NES-authentic 32-step, 16-level
+    /// staircase triangle at fixed amplitude (the hardware has no volume
+    /// control), the raw counterpart to `tri`.
+    fn compile_tri_nes(
+        &mut self,
+        args: &[Expr],
+        piped: Option<VoiceSignalRef>,
+    ) -> Result<VoiceSignalRef, EvalError> {
+        let signals = self.compile_signal_args("tri_nes", args, piped, 1)?;
+        self.push(VoiceNodeSpec::TriNes { freq: signals[0] })
+    }
+
+    /// Compiles `noise_nes(mode, freq[, volume])` — the NES-authentic 15-bit
+    /// LFSR noise channel, the raw counterpart to `noise`. `mode` selects the
+    /// LFSR tap (0 = long/tonal, non-zero = short/metallic); `freq` is the
+    /// LFSR advance rate in Hertz; `volume` is a `0..1` request quantized to
+    /// the NES 4-bit grid, defaulting to full. All accept bound signals.
+    fn compile_noise_nes(
+        &mut self,
+        args: &[Expr],
+        piped: Option<VoiceSignalRef>,
+    ) -> Result<VoiceSignalRef, EvalError> {
+        let provided = args.len() + usize::from(piped.is_some());
+        let signals = match provided {
+            2 => {
+                let mut signals = self.compile_signal_args("noise_nes", args, piped, 2)?;
+                signals.push(self.push(VoiceNodeSpec::Constant {
+                    value: DEFAULT_NES_VOLUME,
+                })?);
+                signals
+            }
+            _ => self.compile_signal_args("noise_nes", args, piped, 3)?,
+        };
+        self.push(VoiceNodeSpec::NoiseNes {
+            mode: signals[0],
+            freq: signals[1],
+            volume: signals[2],
         })
     }
 
