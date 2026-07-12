@@ -2075,3 +2075,152 @@ fn voice_fm_genesis_is_a_source_not_a_pipe_target() {
         "fm_genesis must reject a piped input: {error}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Sega Genesis / Mega Drive SN76489 PSG voices (`psg_tone`/`psg_noise`,
+// Phase 3 PR2). The PSG is the second Genesis sound chip, layered with the
+// YM2612 FM voices above.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn voice_vocabulary_covers_psg_sources() {
+    // The two PR2 must-work bodies: a PSG square lead and a PSG white-noise
+    // hat. Each must parse, lower to a PSG node, and sound.
+    let mut lead = compiled_voice(
+        "lead = voice { psg_tone(freq) * ar(gate, 0.001, 0.1) }",
+        "lead",
+    );
+    assert!(
+        gated_left_energy(&mut lead, 440.0, 2_400) > 1.0,
+        "psg_tone lead should be audible"
+    );
+
+    let mut hat = compiled_voice(
+        r#"hat = voice { psg_noise("white") * ar(gate, 0.001, 0.05) }"#,
+        "hat",
+    );
+    assert!(
+        gated_left_energy(&mut hat, 220.0, 2_400) > 1.0,
+        "psg_noise hat should be audible"
+    );
+}
+
+#[test]
+fn voice_psg_tone_defaults_gate_and_freq_from_the_note() {
+    // A bare `psg_tone()` wires the ambient gate and freq (it is a source, like
+    // fm_genesis) and defaults the level to full scale.
+    let Value::Voice(voice) = eval_voice("t = voice { psg_tone() }") else {
+        panic!("expected a voice value");
+    };
+    assert!(
+        voice.nodes().iter().any(|node| matches!(
+            node,
+            orpheus_dsp::VoiceNodeSpec::PsgTone {
+                gate: orpheus_dsp::VoiceSignalRef::Gate,
+                freq: orpheus_dsp::VoiceSignalRef::Freq,
+                ..
+            }
+        )),
+        "psg_tone() must wire the ambient gate and freq"
+    );
+    assert!(voice.to_spec("t").is_ok());
+}
+
+#[test]
+fn voice_psg_tone_explicit_freq_signal_overrides_the_default() {
+    // A first positional argument binds the freq signal (here a constant), so
+    // the note's ambient freq is no longer the source.
+    let Value::Voice(voice) = eval_voice("t = voice { psg_tone(440) }") else {
+        panic!("expected a voice value");
+    };
+    assert!(
+        voice.nodes().iter().any(|node| matches!(
+            node,
+            orpheus_dsp::VoiceNodeSpec::PsgTone {
+                freq: orpheus_dsp::VoiceSignalRef::Node(_),
+                ..
+            }
+        )),
+        "an explicit freq argument must bind the freq signal to a node, not the ambient freq"
+    );
+}
+
+#[test]
+fn voice_psg_noise_mode_selects_white_or_periodic() {
+    // The two named modes each resolve, sound, and select different LFSR
+    // feedback taps, so at the same shift rate their sample streams differ
+    // (the amplitude is the same ±level either way — only the bit sequence, and
+    // thus the sign pattern, changes; periodic repeats every 16 shifts, white
+    // does not).
+    let white = render_voice_frames(
+        r#"w = voice { psg_noise("white", 8000) }"#,
+        "w",
+        220.0,
+        4_800,
+    );
+    let periodic = render_voice_frames(
+        r#"p = voice { psg_noise("periodic", 8000) }"#,
+        "p",
+        220.0,
+        4_800,
+    );
+    let white_energy: f32 = white.iter().map(|(l, _)| l.abs()).sum();
+    let periodic_energy: f32 = periodic.iter().map(|(l, _)| l.abs()).sum();
+    assert!(white_energy > 1.0, "white noise should be audible");
+    assert!(periodic_energy > 1.0, "periodic noise should be audible");
+    let white_left: Vec<f32> = white.iter().map(|(l, _)| *l).collect();
+    let periodic_left: Vec<f32> = periodic.iter().map(|(l, _)| *l).collect();
+    assert!(
+        white_left != periodic_left,
+        "white and periodic feedback modes should produce different sample streams"
+    );
+}
+
+#[test]
+fn voice_psg_noise_unknown_mode_errors_cleanly() {
+    let error = eval_error(r#"bad = voice { psg_noise("pink") }"#);
+    assert!(
+        error.contains("pink") && error.contains("white") && error.contains("periodic"),
+        "unknown mode error should name the offender and list modes: {error}"
+    );
+}
+
+#[test]
+fn voice_psg_noise_requires_a_string_mode_name() {
+    let error = eval_error("bad = voice { psg_noise(freq) }");
+    assert!(
+        error.contains("string literal") || error.contains("mode name"),
+        "a non-string mode argument should error: {error}"
+    );
+}
+
+#[test]
+fn voice_psg_tone_is_a_source_not_a_pipe_target() {
+    let error = eval_error("bad = voice { sine(freq) |> psg_tone() }");
+    assert!(
+        error.contains("psg_tone") && error.contains("source"),
+        "psg_tone must reject a piped input: {error}"
+    );
+}
+
+#[test]
+fn voice_psg_noise_is_a_source_not_a_pipe_target() {
+    let error = eval_error(r#"bad = voice { sine(freq) |> psg_noise("white") }"#);
+    assert!(
+        error.contains("psg_noise") && error.contains("source"),
+        "psg_noise must reject a piped input: {error}"
+    );
+}
+
+#[test]
+fn voice_unknown_stage_error_lists_the_psg_stages() {
+    let error = eval_error("bad = voice { wobble(freq) }");
+    assert!(
+        error.contains("psg_tone"),
+        "help should list psg_tone: {error}"
+    );
+    assert!(
+        error.contains("psg_noise"),
+        "help should list psg_noise: {error}"
+    );
+}

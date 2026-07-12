@@ -1,0 +1,101 @@
+// ╭─────────────────────────────────────────────────────────────╮
+// │                                                             │
+// │                        O R P H E U S                        │
+// │        G E N E S I S   J A M   ·   F M   +   P S G          │
+// │            Y M 2 6 1 2   ×   S N 7 6 4 8 9                   │
+// │                                                             │
+// ╰─────────────────────────────────────────────────────────────╯
+// D-minor Sega jam · 120 BPM · 4 cycles · 48 kHz stereo
+//
+// ============================================================================
+// The Sega Genesis / Mega Drive made sound with TWO chips at once. This jam
+// plays them together, both ported natively into Orpheus voices:
+//
+//   • YM2612 FM  — six-channel four-operator FM. Here: `fm_genesis("preset")`
+//                  drives the bass, e-piano, brass, and lead (Phase 2).
+//   • SN76489 PSG — three square tone channels + one LFSR noise channel. Here:
+//                  `psg_tone(freq)` sparkles an arpeggio and `psg_noise("mode")`
+//                  cuts the hats and snare (Phase 3).
+//
+// The FM chip carries the harmony and the leads; the PSG lays the classic
+// gritty square sparkle and the noise-channel percussion over the top — the
+// unmistakable two-chip Genesis texture.
+//
+// Both voice families are sources: their gates/pitches come from the pattern,
+// and the FM presets carry their own envelopes, so a bare `fm_genesis(...)` or
+// `psg_tone(freq)` is already a playable instrument.
+// `song` (bottom of file) is the entry point.
+//
+// Play it:   cargo run --release -- docs/examples/genesis_jam.ode
+// Render it: orpheus render docs/examples/genesis_jam.ode --master out.wav --cycles 4
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// YM2612 FM voices — one preset each, pooled so chords never cut off.
+// ----------------------------------------------------------------------------
+
+// bass — rubbery FM slap, dropped an octave for the Genesis low-end grit.
+bass  = voice { poly = 4 ; steal = oldest ; fm_genesis("ebass") * 0.85 }
+
+// keys — glassy DX electric-piano tines carrying the harmony.
+keys  = voice { poly = 6 ; steal = oldest ; fm_genesis("epiano") * 0.46 }
+
+// brass — buzzy offbeat stabs with the preset's LFO vibrato.
+brass = voice { poly = 6 ; steal = oldest ; fm_genesis("brass") * 0.40 }
+
+// lead — the cutting square-ish FM lead singing the hook.
+lead  = voice { poly = 6 ; steal = oldest ; fm_genesis("lead") * 0.34 }
+
+// ----------------------------------------------------------------------------
+// SN76489 PSG voices — the second chip: square sparkle + noise percussion.
+// A short ar() shapes each note; the level trims sit under the FM mix.
+// ----------------------------------------------------------------------------
+
+// sparkle — the PSG square tone as a bright arpeggio, an octave up. The hard
+// 10-bit square is the classic Genesis "chip" shimmer over the FM pad.
+sparkle = voice { poly = 4 ; steal = oldest ; psg_tone(freq) * ar(gate, 0.001, 0.06) * 0.22 }
+
+// hats — the PSG white-noise channel as a tight hi-hat (fast LFSR shift rate).
+hats  = voice { poly = 3 ; psg_noise("white", 12000) * ar(gate, 0.001, 0.03) * 0.30 }
+
+// snare — the PSG white-noise channel again, a slower shift rate and a longer
+// tail for a noisier backbeat crack.
+snare = voice { poly = 3 ; psg_noise("white", 5000) * ar(gate, 0.002, 0.12) * 0.34 }
+
+// ----------------------------------------------------------------------------
+// Musical material — a i–VI–III–VII loop in D minor (aeolian). The FM bass
+// walks the roots, the e-piano lays triads, brass punches offbeat stabs, and
+// the FM lead sings a minor-pentatonic hook. The PSG sparkles an arpeggio on
+// top and its noise channel keeps time.
+// ----------------------------------------------------------------------------
+
+// Root motion for the four bars: Dm · Bb · F · C.
+roots     = degrees(aeolian, <0 -2 -4 -5>)
+bassline  = bass bass bass bass |> pitch(roots) |> pitch(-12)
+
+// Triads over the same roots, arpeggiated up on the e-piano.
+keys_deg  = degrees(aeolian, 0 2 4 2)
+keyline   = keys keys keys keys |> pitch(keys_deg) |> pitch(roots)
+
+// Offbeat brass stabs — rest, hit, rest, hit — one chord tone each bar.
+brass_deg = degrees(aeolian, 4)
+stabs     = ~ brass ~ brass |> pitch(brass_deg) |> pitch(roots) |> gain(0.9)
+
+// Minor-pentatonic lead hook, an octave up (FM).
+lead_deg  = degrees(minor_pentatonic, 0 3 5 7 5 3 5 7)
+melody    = lead lead lead lead lead lead lead lead |> pitch(lead_deg) |> pitch(12)
+
+// PSG square arpeggio — a fast pentatonic sparkle two octaves up, over the
+// same chord roots. This is the SN76489 tone channel doing its shimmer.
+spark_deg = degrees(minor_pentatonic, 0 2 4 7 4 2 4 7)
+shimmer   = sparkle sparkle sparkle sparkle sparkle sparkle sparkle sparkle |> pitch(spark_deg) |> pitch(roots) |> pitch(24)
+
+// PSG noise percussion — a steady 8th-note hat and a backbeat snare on 2 & 4.
+hatline   = hats hats hats hats hats hats hats hats
+snareline = ~ snare ~ snare
+
+// ----------------------------------------------------------------------------
+// Master — stack the four FM voices with the three PSG voices: the full
+// two-chip Genesis jam. Loops for the rendered cycles.
+// ----------------------------------------------------------------------------
+song = stack(bassline, keyline, stabs, melody, shimmer, hatline, snareline)
