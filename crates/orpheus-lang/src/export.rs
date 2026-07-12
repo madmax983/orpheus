@@ -1068,3 +1068,41 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 }
+
+#[cfg(test)]
+mod test_zero_cycle {
+    use super::*;
+    use crate::{ReplMode, eval_module};
+
+    #[test]
+    fn export_sample_pattern_zero_cycles() {
+        let source = "pattern = fast(2, bd sn)";
+        let module = eval_module(source, ReplMode::Loose).unwrap();
+        let pattern = module.get("pattern").unwrap().as_sample_pattern().unwrap();
+
+        let err = export_sample_pattern_to_csv(pattern, "test_zero_sample.csv", 0).unwrap_err();
+        assert_eq!(err.to_string(), "exporting requires at least one cycle");
+
+        let err2 = export_sample_pattern_to_json(pattern, "test_zero_sample.json", 0).unwrap_err();
+        assert_eq!(err2.to_string(), "exporting requires at least one cycle");
+
+        let err3 = export_sample_pattern_to_md(pattern, "test_zero_sample.md", 0).unwrap_err();
+        assert_eq!(err3.to_string(), "exporting requires at least one cycle");
+    }
+
+    #[test]
+    fn export_number_pattern_zero_cycles() {
+        let source = "pattern = fast(2, 1 2)";
+        let module = eval_module(source, ReplMode::Loose).unwrap();
+        let pattern = module.get("pattern").unwrap().as_number_pattern().unwrap();
+
+        let err = export_number_pattern_to_csv(pattern, "test_zero_number.csv", 0).unwrap_err();
+        assert_eq!(err.to_string(), "exporting requires at least one cycle");
+
+        let err2 = export_number_pattern_to_json(pattern, "test_zero_number.json", 0).unwrap_err();
+        assert_eq!(err2.to_string(), "exporting requires at least one cycle");
+
+        let err3 = export_number_pattern_to_md(pattern, "test_zero_number.md", 0).unwrap_err();
+        assert_eq!(err3.to_string(), "exporting requires at least one cycle");
+    }
+}
