@@ -56,3 +56,6 @@
 **[Enforce Private Explain Module]
 **Tangle:** The `explain` module in `orpheus-lang/src/lib.rs` and its internal `Explain` trait and `explain_table` function were declared as `pub`, leaking internal REPL table rendering details to the public API.
 **Blueprint:** Changed the visibility of the `Explain` trait and `explain_table` function to `pub(crate)` in `crates/orpheus-lang/src/explain.rs`. Removed the `pub use explain::Explain;` re-export from `crates/orpheus-lang/src/lib.rs` and changed the module declaration to `pub(crate) mod explain;`. This strictly enforces internal encapsulation.
+**[Fix Broken Intra-doc Links]
+**Tangle:** Several intra-doc links were broken because they referenced private items that were not visible when generating public documentation, or they had incorrect paths (e.g. `TransportSnapshot` instead of `orpheus_dsp::TransportSnapshot`).
+**Blueprint:** Updated the broken links to either use the correct path or changed them to be inline code instead of links if they referenced private items that shouldn't be publicly visible.

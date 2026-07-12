@@ -1838,7 +1838,7 @@ impl ReplSession {
 
     /// Delivers the next cycle of every live multi-cycle arrangement when the
     /// engine has crossed a cycle boundary since the last poll (issue #1446).
-    /// Called on every TUI tick alongside [`Self::poll_orca`]; a no-op when no
+    /// Called on every TUI tick alongside `UiState::poll_orca`; a no-op when no
     /// arrangement is active or the boundary is unchanged. The query and push
     /// run here on the control thread, never the audio thread — the audio path
     /// only adopts the delivered buffer at the boundary.
