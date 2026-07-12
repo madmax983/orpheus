@@ -220,7 +220,7 @@ fn install_plugin_builtins(env: &mut TypeEnv) {
     for name in ["vst", "au"] {
         env.insert(
             name,
-            TypeScheme::monomorphic(Type::curried(vec![Type::String], Type::Plugin)),
+            TypeScheme::monomorphic(Type::curried([Type::String], Type::Plugin)),
         );
     }
     env.insert(
@@ -556,7 +556,7 @@ fn unary_pattern_transform_scheme(alpha: TypeVarId) -> TypeScheme {
     let alpha_pattern = Type::pattern(Type::Var(alpha));
     TypeScheme {
         vars: vec![alpha],
-        ty: Type::curried(vec![alpha_pattern.clone()], alpha_pattern),
+        ty: Type::curried([alpha_pattern.clone()], alpha_pattern),
     }
 }
 

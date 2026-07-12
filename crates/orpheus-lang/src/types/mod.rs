@@ -123,8 +123,16 @@ impl Type {
     /// let curried_ty = Type::curried(vec![Type::Number, Type::Sample], Type::pattern(Type::Sample));
     /// assert!(matches!(curried_ty, Type::Function(_, _)));
     /// ```
+    ///
+    /// ⚡ Bolt: By accepting `IntoIterator`, we allow callers to pass stack-allocated
+    /// arrays (e.g., `[Type::Number]`) instead of forcing heap-allocated `Vec`s
+    /// (e.g., `vec![Type::Number]`), eliminating zero-value allocations on hot paths.
     #[must_use]
-    pub fn curried(args: Vec<Self>, ret: Self) -> Self {
+    pub fn curried<I>(args: I, ret: Self) -> Self
+    where
+        I: IntoIterator<Item = Self>,
+        I::IntoIter: DoubleEndedIterator,
+    {
         args.into_iter()
             .rev()
             .fold(ret, |ret, arg| Self::function(vec![arg], ret))
@@ -300,6 +308,6 @@ mod tests {
             )
         );
 
-        assert_eq!(Type::curried(vec![], Type::Sample), Type::Sample);
+        assert_eq!(Type::curried([], Type::Sample), Type::Sample);
     }
 }

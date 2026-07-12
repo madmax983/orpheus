@@ -167,12 +167,10 @@ impl Inferencer {
             }
 
             let body_ty = self.infer_expr(expr)?;
+            let resolved_body = self.resolve(body_ty);
             Ok(Type::curried(
-                param_types
-                    .into_iter()
-                    .map(|ty| self.resolve(ty))
-                    .collect::<Vec<_>>(),
-                self.resolve(body_ty),
+                param_types.into_iter().map(|ty| self.resolve(ty)),
+                resolved_body,
             ))
         })();
         self.env = saved_env;

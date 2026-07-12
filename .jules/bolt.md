@@ -47,3 +47,7 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+**[Generic IntoIterator for curried Type Construction]**
+**Learning:** Hardcoding `Vec<T>` parameters (e.g., `Type::curried(args: Vec<Self>)`) forces heap allocations for static parameter lists (e.g., `vec![A, B]`). By genericizing the parameter to `I: IntoIterator<Item = Self>` where `I::IntoIter: DoubleEndedIterator`, we can accept statically sized arrays (e.g., `[A, B]`) and eliminate zero-value allocations during environment bootstrapping.
+**Action:** Change `Vec<T>` to `IntoIterator` bounds where callers frequently pass literal lists, allowing them to switch from `vec![]` to `[]` and avoid intermediate allocations.
