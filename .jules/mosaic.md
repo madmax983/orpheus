@@ -5,3 +5,7 @@
 ## YYYY-MM-DD - Formatting Output in orpheus-lang
 **Learning:** `orpheus-lang` is the core CLI/TUI layer of the workspace. Using presentation logic like ANSI escape codes and `comfy-table` inside this crate is correct and necessary to format the text walls outputted by commands like `:explain`.
 **Action:** When acting as Mosaic, continue leveraging `comfy-table` and `crossterm` inside `orpheus-lang` to provide structured data formatting and visual hierarchy, ensuring the REPL/TUI behaves like a proper dashboard instead of outputting raw text dumps.
+## 2024-07-12 - Added title to :env command output
+**Before:** The `:env` REPL command outputted a table without a clear title, lacking visual hierarchy compared to other commands like `:stats` or `:mixer` which had bold, cyan titles.
+**After:** The `:env` REPL command now outputs a `Environment:` title styled in bold cyan above the table, improving visual hierarchy and consistency with other commands.
+**Visuals:** A bold cyan `Environment:` title appears before the table output of the `:env` command, matching the style of `Pattern Stats:` and `Mixer Tracks:`.

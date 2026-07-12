@@ -10,6 +10,7 @@
 //! `EngineHandle`.
 
 use crate::explain::Explain;
+use crossterm::style::Stylize;
 use ratatui::text::Line;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
@@ -795,7 +796,7 @@ impl ReplSession {
             }
         }
 
-        Ok(format!("\n{table}"))
+        Ok(format!("\n{}\n{table}", "Environment:".cyan().bold()))
     }
 
     fn explain_binding(&self, args: &str) -> Result<String, String> {
