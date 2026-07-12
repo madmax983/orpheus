@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-07-12 - Fixing Private Intra-Doc Links
+**Confusion:** Linking to private items (e.g., `pub(crate)` modules, private constants, or test functions) from public documentation using intra-doc links triggers warnings or breaks `cargo doc` rendering.
+**Clarification:** Format references to private internal items as standard inline code (e.g., `` `item` ``) rather than intra-doc links to avoid broken link warnings during `cargo doc`.
