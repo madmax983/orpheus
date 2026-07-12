@@ -40,8 +40,8 @@ use crate::SampleTrigger;
 use crate::graph::{
     BiquadMode, FmPatch, Node, Processor, Seq, adsr, ar, bind, biquad, constant, delay_line,
     fdelay, feedback, fm_genesis, gain_node, ladder_filter, merge, noise, noise_nes, pan, par,
-    passthrough, pulse, pulse_nes, sample_player_with_options, saw, seq, sine, soft_sat, sum, svf,
-    tri, tri_nes, wire, wire_with_inputs,
+    passthrough, psg_noise, psg_tone, pulse, pulse_nes, sample_player_with_options, saw, seq, sine,
+    soft_sat, sum, svf, tri, tri_nes, wire, wire_with_inputs,
 };
 use crate::routing::TrackId;
 use crate::sample_bank::PlaybackSample;
@@ -579,6 +579,35 @@ pub enum VoiceNodeSpec {
         /// The volume signal in \[0, 1\], quantized to the NES 4-bit grid.
         volume: VoiceSignalRef,
     },
+    /// A Sega Genesis / Mega Drive SN76489 PSG tone (square) channel
+    /// (`crate::graph::psg_tone`) — the chip's 10-bit period-quantized square,
+    /// the second half of the Genesis two-chip voice set (the PSG alongside the
+    /// YM2612 FM in [`Self::FmGenesis`]).
+    PsgTone {
+        /// The gate signal unmuting the channel (`> 0.5` sounds, else silent).
+        gate: VoiceSignalRef,
+        /// The note fundamental in Hertz, quantized to the chip's 10-bit tone
+        /// period (`native / (2·(period+1))`).
+        freq: VoiceSignalRef,
+        /// The level signal in \[0, 1\], quantized to the SN76489 16-step
+        /// 2 dB attenuation grid (`1.0` = loudest, `0.0` = silent).
+        level: VoiceSignalRef,
+    },
+    /// A Sega Genesis / Mega Drive SN76489 PSG noise channel
+    /// (`crate::graph::psg_noise`) — the 16-bit LFSR with white and periodic
+    /// feedback modes, the PSG's percussion / metallic voice.
+    PsgNoise {
+        /// The gate signal unmuting the channel (`> 0.5` sounds, else silent).
+        gate: VoiceSignalRef,
+        /// The feedback-mode signal: `>= 0.5` selects white noise
+        /// (`bit0 XOR bit3`), else periodic noise (`bit0`, a pitched buzz).
+        mode: VoiceSignalRef,
+        /// The LFSR shift-rate signal in Hertz (`native / (period+1)`).
+        freq: VoiceSignalRef,
+        /// The level signal in \[0, 1\], quantized to the SN76489 16-step
+        /// 2 dB attenuation grid.
+        level: VoiceSignalRef,
+    },
     /// A Sega Genesis / Mega Drive YM2612 four-operator FM voice
     /// (`crate::graph::fm_genesis`). Unlike the leaf oscillators, the timbre is
     /// carried by a construction-time [`FmPatch`] config struct (algorithm,
@@ -783,6 +812,13 @@ impl VoiceNodeSpec {
             Self::Pulse { freq, width } => vec![*freq, *width],
             Self::PulseNes { freq, duty, volume } => vec![*freq, *duty, *volume],
             Self::NoiseNes { mode, freq, volume } => vec![*mode, *freq, *volume],
+            Self::PsgTone { gate, freq, level } => vec![*gate, *freq, *level],
+            Self::PsgNoise {
+                gate,
+                mode,
+                freq,
+                level,
+            } => vec![*gate, *mode, *freq, *level],
             Self::FmGenesis {
                 gate,
                 freq,
@@ -828,6 +864,7 @@ impl VoiceNodeSpec {
     ///
     /// Compilers use this to patch placeholder references (e.g. rewriting a
     /// feedback loop's back-edge once the loop's root node index is known).
+    #[allow(clippy::too_many_lines)] // one match arm per node variant
     pub fn map_refs(&mut self, mut f: impl FnMut(&mut VoiceSignalRef)) {
         match self {
             Self::Constant { .. } | Self::Noise { .. } => {}
@@ -848,6 +885,22 @@ impl VoiceNodeSpec {
                 f(mode);
                 f(freq);
                 f(volume);
+            }
+            Self::PsgTone { gate, freq, level } => {
+                f(gate);
+                f(freq);
+                f(level);
+            }
+            Self::PsgNoise {
+                gate,
+                mode,
+                freq,
+                level,
+            } => {
+                f(gate);
+                f(mode);
+                f(freq);
+                f(level);
             }
             Self::FmGenesis {
                 gate,
@@ -962,6 +1015,8 @@ impl VoiceNodeSpec {
             | Self::PulseNes { .. }
             | Self::TriNes { .. }
             | Self::NoiseNes { .. }
+            | Self::PsgTone { .. }
+            | Self::PsgNoise { .. }
             | Self::FmGenesis { .. }
             | Self::Lowpass { .. }
             | Self::Svf { .. }
@@ -1424,6 +1479,8 @@ impl GraphVoiceSpec {
             VoiceNodeSpec::PulseNes { .. } => par(pulse_nes(sample_rate_hz), passthrough(bus)),
             VoiceNodeSpec::TriNes { .. } => par(tri_nes(sample_rate_hz), passthrough(bus)),
             VoiceNodeSpec::NoiseNes { .. } => par(noise_nes(sample_rate_hz), passthrough(bus)),
+            VoiceNodeSpec::PsgTone { .. } => par(psg_tone(sample_rate_hz), passthrough(bus)),
+            VoiceNodeSpec::PsgNoise { .. } => par(psg_noise(sample_rate_hz), passthrough(bus)),
             VoiceNodeSpec::FmGenesis { patch, .. } => {
                 par(fm_genesis(sample_rate_hz, *patch), passthrough(bus))
             }
@@ -2464,6 +2521,88 @@ mod tests {
             freq: VoiceSignalRef::Freq,
         };
         assert_eq!(tri.input_refs(), vec![VoiceSignalRef::Freq]);
+    }
+
+    #[test]
+    fn psg_specs_lower_and_sound() {
+        // psg_tone(gate, freq, level): the SN76489 square lead. Gate and freq
+        // come from the note; a full level rings the loudest attenuation step.
+        let tone = GraphVoiceSpec::new(
+            "psg_lead",
+            0.02,
+            vec![
+                VoiceNodeSpec::Constant { value: 1.0 },
+                VoiceNodeSpec::PsgTone {
+                    gate: VoiceSignalRef::Gate,
+                    freq: VoiceSignalRef::Freq,
+                    level: VoiceSignalRef::Node(0),
+                },
+            ],
+            VoiceSignalRef::Node(1),
+        )
+        .expect("psg_tone spec validates");
+        assert!(
+            gated_energy(&tone, 440.0, 2_400) > 1.0,
+            "psg_tone voice should be audible"
+        );
+
+        // psg_noise(gate, mode=white, freq=8000, level=1): the metallic hat.
+        let noise = GraphVoiceSpec::new(
+            "psg_hat",
+            0.02,
+            vec![
+                VoiceNodeSpec::Constant { value: 1.0 },
+                VoiceNodeSpec::Constant { value: 8_000.0 },
+                VoiceNodeSpec::Constant { value: 1.0 },
+                VoiceNodeSpec::PsgNoise {
+                    gate: VoiceSignalRef::Gate,
+                    mode: VoiceSignalRef::Node(0),
+                    freq: VoiceSignalRef::Node(1),
+                    level: VoiceSignalRef::Node(2),
+                },
+            ],
+            VoiceSignalRef::Node(3),
+        )
+        .expect("psg_noise spec validates");
+        assert!(
+            gated_energy(&noise, 220.0, 2_400) > 1.0,
+            "psg_noise voice should be audible"
+        );
+    }
+
+    #[test]
+    fn psg_specs_report_their_signal_refs_in_primitive_order() {
+        // The tone node's process() reads inputs[0..3] as gate, freq, level.
+        let tone = VoiceNodeSpec::PsgTone {
+            gate: VoiceSignalRef::Gate,
+            freq: VoiceSignalRef::Freq,
+            level: VoiceSignalRef::Node(0),
+        };
+        assert_eq!(
+            tone.input_refs(),
+            vec![
+                VoiceSignalRef::Gate,
+                VoiceSignalRef::Freq,
+                VoiceSignalRef::Node(0),
+            ]
+        );
+        // The noise node's process() reads inputs[0..4] as gate, mode, freq,
+        // level.
+        let noise = VoiceNodeSpec::PsgNoise {
+            gate: VoiceSignalRef::Gate,
+            mode: VoiceSignalRef::Node(0),
+            freq: VoiceSignalRef::Node(1),
+            level: VoiceSignalRef::Node(2),
+        };
+        assert_eq!(
+            noise.input_refs(),
+            vec![
+                VoiceSignalRef::Gate,
+                VoiceSignalRef::Node(0),
+                VoiceSignalRef::Node(1),
+                VoiceSignalRef::Node(2),
+            ]
+        );
     }
 
     #[test]

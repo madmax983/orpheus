@@ -304,6 +304,17 @@ melody = c4 e4 g4 |> pluck
   macro (centered on `1.0`), and the op-1 `fb` feedback amount. The gate keys the
   operator envelopes from the note, and the rate-scaled FM envelope lives inside
   the node, so an external `adsr`/`ar` is optional (ADR 0015).
+- **Genesis PSG sources:** `psg_tone([freq[, level]])` and
+  `psg_noise("mode"[, freq[, level]])` — the Sega Genesis / Mega Drive SN76489
+  PSG, the console's second sound chip (layered with the YM2612 FM above).
+  `psg_tone` is the 10-bit period-quantized hard square; `freq` defaults to the
+  ambient note. `psg_noise` is the 16-bit LFSR: `mode` is a name string literal
+  (`white` — the `bit0 XOR bit3` hiss — or `periodic` — the `bit0` pitched
+  buzz), `freq` is the LFSR shift rate (defaulting to a bright, hi-hat-friendly
+  rate, since percussion does not track note pitch). Both are sources (they
+  read the note gate and reject a piped input); `level` is a `0..1` request
+  quantized to the SN76489 16-step 2 dB attenuation grid (default full scale).
+  An unknown noise mode name errors at definition time.
 - **Envelopes:** `adsr(gate, a, d, s, r)`, `ar(gate, a, r)` — envelope params must
   be literals.
 - **Filters:** `lowpass(x, cutoff, q)`; state-variable `svf_lp` / `svf_hp` /
@@ -326,6 +337,8 @@ echo = voice { release = 0.5 ; dry = sine(freq) * ar(gate, 0.001, 0.01) ; wet = 
 bank = voice { osc = saw(freq) ; fan(osc, lowpass(500, 0.2), lowpass(3000, 0.2)) * ar(gate, 0.001, 0.05) }
 kit = voice { sample("bd") }
 gen = voice { fm_genesis("ebass") }
+psg = voice { psg_tone(freq) * ar(gate, 0.001, 0.1) }
+psn = voice { psg_noise("white") * ar(gate, 0.001, 0.05) }
 ```
 
 ### 5.3 Pragmas (voice-scoped configuration bindings)

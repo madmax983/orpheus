@@ -62,6 +62,26 @@ const DEFAULT_FM_BRIGHT: f32 = 1.0;
 /// The six named `fm_genesis` presets, listed in the "unknown preset" help.
 const FM_GENESIS_PRESETS: &str = "`epiano`, `ebass`, `brass`, `lead`, `bell`, `drum`";
 
+/// The default level for PSG voices whose surface omits a level argument: full
+/// scale (attenuation index 0), quantized to the SN76489 4-bit grid at render
+/// time.
+const DEFAULT_PSG_LEVEL: f32 = 1.0;
+
+/// The default noise shift rate in Hertz used when `psg_noise("mode")` omits
+/// the freq argument: a bright, hi-hat-friendly LFSR advance rate. Noise is
+/// percussion, so — unlike `psg_tone`, whose freq defaults to the ambient note
+/// frequency — it does not track the note pitch by default.
+const DEFAULT_PSG_NOISE_RATE_HZ: f32 = 8_000.0;
+
+/// The white-noise `mode` value (`>= 0.5` selects white in the DSP node).
+const PSG_NOISE_MODE_WHITE: f32 = 1.0;
+
+/// The periodic-noise `mode` value (`< 0.5` selects periodic in the DSP node).
+const PSG_NOISE_MODE_PERIODIC: f32 = 0.0;
+
+/// The two named `psg_noise` feedback modes, listed in the "unknown mode" help.
+const PSG_NOISE_MODES: &str = "`white`, `periodic`";
+
 /// The largest release floor a `release = ...` pragma may request, in
 /// seconds, keeping note lifetimes (and pool residency) bounded.
 const MAX_VOICE_RELEASE_FLOOR_SECONDS: f64 = 30.0;
@@ -508,6 +528,8 @@ impl<'bank> VoiceCompiler<'bank> {
             "pulse_nes" => self.compile_pulse_nes(args, piped),
             "tri_nes" => self.compile_tri_nes(args, piped),
             "noise_nes" => self.compile_noise_nes(args, piped),
+            "psg_tone" => self.compile_psg_tone(args, piped),
+            "psg_noise" => self.compile_psg_noise(args, piped),
             "fm_genesis" => self.compile_fm_genesis(args, piped),
             "adsr" => self.compile_adsr(args, piped),
             "ar" => self.compile_ar(args, piped),
@@ -526,7 +548,8 @@ impl<'bank> VoiceCompiler<'bank> {
             }
             other => Err(EvalError::new(format!(
                 "unknown voice stage `{other}`; available stages are `sine`, `saw`, `tri`, \
-                 `pulse`, `noise`, `pulse_nes`, `tri_nes`, `noise_nes`, `fm_genesis`, `sample`, \
+                 `pulse`, `noise`, `pulse_nes`, `tri_nes`, `noise_nes`, `psg_tone`, `psg_noise`, \
+                 `fm_genesis`, `sample`, \
                  `sample_loop`, \
                  `sample_loop_xf`, `sample_pitched`, `sample_loop_pitched`, \
                  `sample_loop_pitched_xf`, `adsr`, `ar`, `lowpass`, `svf_lp`, `svf_hp`, `svf_bp`, \
@@ -785,6 +808,134 @@ impl<'bank> VoiceCompiler<'bank> {
                 "unknown fm_genesis preset `{name}`; available presets are {FM_GENESIS_PRESETS}"
             ))
         })
+    }
+
+    /// Compiles `psg_tone([freq[, level]])` — the Sega Genesis / Mega Drive
+    /// SN76489 PSG tone (square) channel, the second half of the Genesis
+    /// two-chip voice set (the PSG alongside the YM2612 `fm_genesis` FM). The
+    /// note gate keys the channel implicitly; the positional signal arguments
+    /// bind, in order:
+    ///
+    /// - `freq` — the note fundamental in Hertz, quantized to the chip's 10-bit
+    ///   tone period (defaults to the ambient `freq`).
+    /// - `level` — a `0..1` request quantized to the SN76489 16-step 2 dB
+    ///   attenuation grid (defaults to full scale).
+    ///
+    /// Like `fm_genesis`, it is a source: it reads the note gate/freq and
+    /// rejects a piped input. The square is hard (non-band-limited) and the
+    /// level quantizes to the log grid, so the timbre is authentically PSG.
+    fn compile_psg_tone(
+        &mut self,
+        args: &[Expr],
+        piped: Option<VoiceSignalRef>,
+    ) -> Result<VoiceSignalRef, EvalError> {
+        if piped.is_some() {
+            return Err(EvalError::new(
+                "`psg_tone` is a source and cannot be a pipe target; call it directly \
+                 (e.g. `psg_tone()`, `psg_tone(freq)`, or `psg_tone(freq, level)`)",
+            ));
+        }
+        if args.len() > 2 {
+            return Err(EvalError::new(
+                "`psg_tone` takes at most two signal arguments: freq and level \
+                 (e.g. `psg_tone(freq, 0.8)`)",
+            ));
+        }
+        let freq = match args.first() {
+            Some(expr) => self.compile_expr(expr)?,
+            None => VoiceSignalRef::Freq,
+        };
+        let level = match args.get(1) {
+            Some(expr) => self.compile_expr(expr)?,
+            None => self.push(VoiceNodeSpec::Constant {
+                value: DEFAULT_PSG_LEVEL,
+            })?,
+        };
+        self.push(VoiceNodeSpec::PsgTone {
+            gate: VoiceSignalRef::Gate,
+            freq,
+            level,
+        })
+    }
+
+    /// Compiles `psg_noise("mode"[, freq[, level]])` — the SN76489 PSG noise
+    /// channel, the PSG's percussion / metallic voice. The first argument is a
+    /// mode name string literal (`"white"` — the `bit0 XOR bit3` hiss — or
+    /// `"periodic"` — the `bit0` pitched buzz), erroring at definition time
+    /// with the valid names if it is not a known mode. The positional signal
+    /// arguments bind, in order:
+    ///
+    /// - `freq` — the LFSR shift rate in Hertz (defaults to a bright,
+    ///   hi-hat-friendly rate; percussion does not track note pitch).
+    /// - `level` — a `0..1` request quantized to the SN76489 16-step 2 dB
+    ///   attenuation grid (defaults to full scale).
+    ///
+    /// Like `fm_genesis`, it is a source: it reads the note gate and rejects a
+    /// piped input.
+    fn compile_psg_noise(
+        &mut self,
+        args: &[Expr],
+        piped: Option<VoiceSignalRef>,
+    ) -> Result<VoiceSignalRef, EvalError> {
+        if piped.is_some() {
+            return Err(EvalError::new(
+                "`psg_noise` is a source and cannot be a pipe target; call it directly with a \
+                 mode name (e.g. `psg_noise(\"white\")` or `psg_noise(\"periodic\", 6000)`)",
+            ));
+        }
+        let Some((mode_expr, signal_args)) = args.split_first() else {
+            return Err(EvalError::new(format!(
+                "`psg_noise` expects a mode name plus optional freq/level signals \
+                 (e.g. `psg_noise(\"white\")` or `psg_noise(\"periodic\", 6000, 0.7)`); \
+                 modes are {PSG_NOISE_MODES}"
+            )));
+        };
+        let mode_value = Self::resolve_psg_noise_mode(mode_expr)?;
+        if signal_args.len() > 2 {
+            return Err(EvalError::new(
+                "`psg_noise` takes at most two signal arguments after the mode name: \
+                 freq and level (e.g. `psg_noise(\"white\", 8000, 0.8)`)",
+            ));
+        }
+        let mode = self.push(VoiceNodeSpec::Constant { value: mode_value })?;
+        let freq = match signal_args.first() {
+            Some(expr) => self.compile_expr(expr)?,
+            None => self.push(VoiceNodeSpec::Constant {
+                value: DEFAULT_PSG_NOISE_RATE_HZ,
+            })?,
+        };
+        let level = match signal_args.get(1) {
+            Some(expr) => self.compile_expr(expr)?,
+            None => self.push(VoiceNodeSpec::Constant {
+                value: DEFAULT_PSG_LEVEL,
+            })?,
+        };
+        self.push(VoiceNodeSpec::PsgNoise {
+            gate: VoiceSignalRef::Gate,
+            mode,
+            freq,
+            level,
+        })
+    }
+
+    /// Resolves the `psg_noise` mode-name string literal to the DSP node's
+    /// `mode` input value (`white` -> `1.0`, `periodic` -> `0.0`), erroring at
+    /// definition time (with the available names) if the argument is not a
+    /// string literal or names no known mode.
+    fn resolve_psg_noise_mode(mode_expr: &Expr) -> Result<f32, EvalError> {
+        let Expr::String(name) = mode_expr else {
+            return Err(EvalError::new(format!(
+                "`psg_noise` requires its first argument to be a mode name string literal \
+                 (e.g. `psg_noise(\"white\")`); modes are {PSG_NOISE_MODES}"
+            )));
+        };
+        match name.as_str() {
+            "white" => Ok(PSG_NOISE_MODE_WHITE),
+            "periodic" => Ok(PSG_NOISE_MODE_PERIODIC),
+            _ => Err(EvalError::new(format!(
+                "unknown psg_noise mode `{name}`; available modes are {PSG_NOISE_MODES}"
+            ))),
+        }
     }
 
     fn compile_adsr(
