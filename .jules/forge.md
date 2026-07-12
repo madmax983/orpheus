@@ -82,3 +82,6 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+**[Refactoring: Display Trait & Boilerplate]**
+**Learning:** Implementing `fmt::Display` for massive enums often leads to boilerplate `match` statements that trigger `clippy::too_many_lines`. If the enum already has a `const fn name(self) -> &'static str` or similar method, duplicating the `match` is unnecessary.
+**Action:** Reuse the existing name method (e.g., `f.write_str(self.name())`) inside the `fmt::Display` implementation to reduce redundancy and flatten the codebase.
