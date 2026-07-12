@@ -1,0 +1,521 @@
+//! Sega Genesis / Mega Drive SN76489 PSG (Programmable Sound Generator) leaf nodes.
+//!
+//! Ported from `madmax983/genesoxide`
+//! `crates/genesoxide-core/src/psg.rs` (branch `trunk`): the 10-bit tone-counter
+//! toggle core (including the period-0 constant-high quirk and the
+//! `period + 1`-tick reload timing) and the 16-bit noise LFSR with its white
+//! (`bit0 XOR bit3`) and periodic (`bit0`) feedback modes. All host/bus plumbing
+//! — the latch/data register protocol (`Psg::write`), the 68000/Z80 bus
+//! addresses, the internal 4-channel mix (`Psg::sample`), and the desktop /
+//! post-mix layers — is intentionally dropped: the graph instantiates one PSG
+//! channel's worth of math per node and drives it from `gate` / `freq_hz` /
+//! `level` signal inputs (ADR 0004, mirroring `chiptune.rs` and `genesis_fm.rs`).
+//!
+//! ## Volume table provenance (zero-copyleft)
+//!
+//! The SN76489 attenuator is a 4-bit, 16-step **logarithmic** grid at 2 dB per
+//! step (`0` = loudest, `15` = silent). genesoxide's `VOLUME_TABLE` holds the
+//! rounded literals; rather than copy them (genesoxide ships no LICENSE file),
+//! this module **regenerates the table from the public 2 dB/step formula**
+//! `level(i) = 10^(-i/10)` (with `level(15) = 0` for true silence) at
+//! construction, and pins it with a test — exactly as the FM ROMs were
+//! regenerated from their public formulas. See [`psg_volume_table`].
+//!
+//! ## LFSR width / taps
+//!
+//! genesoxide implements the **Sega-integrated** PSG variant: a 16-bit LFSR with
+//! taps at bits 0 and 3 (not the discrete TI SN76489's 15-bit tap-0/1 register).
+//! genesoxide is the authority for the Genesis's actual chip, so its behavior is
+//! pinned bit-for-bit here (see the design doc §2.2).
+
+// The ported PSG kernel has small pure helpers whose `const`-ness is meaningless
+// for these runtime hot-path methods; silence the nursery `missing_const_for_fn`
+// suggestions module-wide, as `genesis_fm.rs` does.
+#![allow(clippy::missing_const_for_fn)]
+
+use super::node::Node;
+
+// ---------------------------------------------------------------------------
+// Native timing (from genesoxide `timing.rs` / `api.rs`)
+// ---------------------------------------------------------------------------
+
+/// NTSC Genesis master oscillator (Hz), from genesoxide `timing.rs`.
+const MASTER_CLOCK_NTSC_HZ: f32 = 53_693_175.0;
+
+/// Master-clock ticks per PSG audio tick, from genesoxide `api.rs`
+/// (`PSG_AUDIO_TICKS = 240`). Equivalently `master / 15 / 16`.
+const PSG_AUDIO_TICKS: f32 = 240.0;
+
+/// PSG counter/LFSR native tick rate (Hz): `master / 240 ≈ 223.72 kHz`. The tone
+/// counters and noise LFSR clock at this rate; the graph resamples to its own
+/// `sample_rate_hz` with a fractional accumulator (as the FM node does for its
+/// EG/LFO), so pitch/noise character stay authentic regardless of the host rate.
+const PSG_NATIVE_RATE_HZ: f32 = MASTER_CLOCK_NTSC_HZ / PSG_AUDIO_TICKS;
+
+/// Largest value a 10-bit tone/noise period register can hold.
+const MAX_PERIOD: f32 = 1023.0;
+
+/// The maximum 4-bit attenuation index; PSG levels are `0..=15`.
+const MAX_ATTEN_INDEX: f32 = 15.0;
+
+/// Single-voice headroom scale. A full-volume square swings `±1.0` (the loudest
+/// [`psg_volume_table`] entry); scaling by `0.9` keeps one voice's peak clear of
+/// the `±1.0` rails with no hard-clipped samples. This replaces genesoxide's
+/// four-channel `Psg::sample` `/ 4` mix normalization (design §3.1); the engine
+/// mixer sums voices.
+const PSG_HEADROOM_SCALE: f32 = 0.9;
+
+/// Falls back to 48 kHz for non-finite or non-positive sample rates, mirroring
+/// the other leaf nodes.
+fn sanitize_sample_rate(sample_rate_hz: f32) -> f32 {
+    if sample_rate_hz.is_finite() && sample_rate_hz > 0.0 {
+        sample_rate_hz
+    } else {
+        48_000.0
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Regenerated 2 dB/step logarithmic volume table (zero-copyleft)
+// ---------------------------------------------------------------------------
+
+/// Regenerate the SN76489 4-bit attenuator table from the public 2 dB/step
+/// formula `level(i) = 10^(-i/10)`, with index 15 forced to `0.0` (true silence,
+/// matching genesoxide). Index 0 is full volume (`1.0`); each step down is
+/// `-2 dB`. Regenerating from the formula (rather than copying genesoxide's
+/// rounded literals) keeps Orpheus's tree zero-copyleft; the values are pinned in
+/// [`tests::volume_table_matches_2db_formula`].
+#[must_use]
+fn psg_volume_table() -> [f32; 16] {
+    let mut table = [0.0_f32; 16];
+    for (i, slot) in table.iter_mut().enumerate() {
+        *slot = if i == 15 {
+            0.0
+        } else {
+            #[allow(clippy::cast_precision_loss)]
+            let db_index = i as f32;
+            10.0_f32.powf(-db_index / 10.0)
+        };
+    }
+    table
+}
+
+/// Quantize a `0.0..=1.0` `level` request to the SN76489 4-bit attenuation grid
+/// and return the corresponding linear amplitude from `table`. `level = 1.0`
+/// maps to attenuation index 0 (loudest); `level = 0.0` maps to index 15
+/// (silent). Non-finite requests read as silence.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn quantize_level(level: f32, table: &[f32; 16]) -> f32 {
+    if !level.is_finite() {
+        return 0.0;
+    }
+    let atten = ((1.0 - level.clamp(0.0, 1.0)) * MAX_ATTEN_INDEX).round();
+    table[atten as usize]
+}
+
+// ---------------------------------------------------------------------------
+// Frequency → 10-bit period helpers
+// ---------------------------------------------------------------------------
+
+/// Convert a tone frequency to the chip's 10-bit period. genesoxide toggles the
+/// square every `period + 1` native ticks, so the emitted fundamental is
+/// `native / (2 · (period + 1))`; inverting gives `period = native/(2f) - 1`.
+/// The result is clamped to `[0, 1023]`, so very high requests land on period 0
+/// (the constant-high quirk). Non-finite/non-positive requests return `None`
+/// (hold the previous period).
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn freq_to_tone_period(freq_hz: f32) -> Option<u16> {
+    if !(freq_hz.is_finite() && freq_hz > 0.0) {
+        return None;
+    }
+    let period = (PSG_NATIVE_RATE_HZ / (2.0 * freq_hz)) - 1.0;
+    Some(period.round().clamp(0.0, MAX_PERIOD) as u16)
+}
+
+/// Convert a noise shift rate to the chip's 10-bit period. The LFSR advances once
+/// per `period + 1` native ticks, so `period = native/f - 1`. Clamped to
+/// `[0, 1023]`; non-finite/non-positive requests return `None`.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn freq_to_noise_period(freq_hz: f32) -> Option<u16> {
+    if !(freq_hz.is_finite() && freq_hz > 0.0) {
+        return None;
+    }
+    let period = (PSG_NATIVE_RATE_HZ / freq_hz) - 1.0;
+    Some(period.round().clamp(0.0, MAX_PERIOD) as u16)
+}
+
+/// Advance the 16-bit noise LFSR one step, ported bit-for-bit from genesoxide
+/// `psg.rs::clock_tick`.
+///
+/// `white` selects the feedback tap: white noise feeds back `bit0 XOR bit3`
+/// (tap mask `0x0009`), periodic noise feeds back `bit0` alone. The register
+/// shifts right one place and the feedback bit is inserted at bit 15. Starting
+/// from the hardware seed `0x8000`, this reproduces the Genesis PSG noise stream
+/// exactly (pinned in [`tests::lfsr_sequences_match_genesoxide`]).
+#[must_use]
+pub const fn advance_psg_lfsr(shift_register: u16, white: bool) -> u16 {
+    let feedback = if white {
+        (shift_register & 1) ^ ((shift_register >> 3) & 1)
+    } else {
+        shift_register & 1
+    };
+    (shift_register >> 1) | (feedback << 15)
+}
+
+// ---------------------------------------------------------------------------
+// PsgToneNode
+// ---------------------------------------------------------------------------
+
+/// Sega Genesis SN76489 PSG tone (square) channel core.
+/// 3 inputs (`gate`, `freq_hz`, `level`), 1 output (mono audio).
+///
+/// * `gate` — `> 0.5` unmutes the channel; otherwise the output is `0.0`.
+/// * `freq_hz` — selects the 10-bit period (`native / (2·(period+1))`), so the
+///   chip's pitch quantization is preserved. Non-finite/non-positive holds the
+///   previous period.
+/// * `level` — `[0, 1]`, quantized to the 16-step 2 dB attenuation grid
+///   (`1.0` = loudest, `0.0` = silent).
+///
+/// The output is a hard **bipolar** 50% square (`±level`), toggled by a
+/// native-rate counter (period-0 → constant high, per genesoxide). A single
+/// voice peaks at `±0.9` ([`PSG_HEADROOM_SCALE`]).
+#[derive(Debug, Clone)]
+pub struct PsgToneNode {
+    /// 10-bit tone period.
+    period: u16,
+    /// Down-counter toward the next polarity toggle.
+    counter: u16,
+    /// Output polarity (`true` = `+level`, `false` = `-level`).
+    polarity: bool,
+    /// Fractional native-tick accumulator (counter runs at the PSG rate).
+    accumulator: f32,
+    volume_table: [f32; 16],
+    sample_rate_hz: f32,
+}
+
+impl PsgToneNode {
+    /// One native-rate tone tick, ported from genesoxide `psg.rs::clock_tick`.
+    /// Period 0 forces a constant-high output with the counter frozen.
+    fn tone_tick(&mut self) {
+        if self.period == 0 {
+            self.polarity = true;
+            return;
+        }
+        if self.counter == 0 {
+            self.counter = self.period;
+            self.polarity = !self.polarity;
+        } else {
+            self.counter -= 1;
+        }
+    }
+}
+
+impl Node for PsgToneNode {
+    fn inputs(&self) -> u32 {
+        3
+    }
+    fn outputs(&self) -> u32 {
+        1
+    }
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    fn process(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], frames: usize) {
+        let gate = inputs[0];
+        let freq = inputs[1];
+        let level = inputs[2];
+        let out = &mut outputs[0];
+
+        let ticks_per_sample = PSG_NATIVE_RATE_HZ / self.sample_rate_hz;
+
+        for i in 0..frames {
+            if let Some(period) = freq_to_tone_period(freq[i]) {
+                self.period = period;
+            }
+
+            // Advance the counter at the native rate, carrying the fraction.
+            self.accumulator += ticks_per_sample;
+            let whole = self.accumulator.floor();
+            self.accumulator -= whole;
+            for _ in 0..(whole as u32) {
+                self.tone_tick();
+            }
+
+            let gate_on = gate[i].is_finite() && gate[i] > 0.5;
+            out[i] = if gate_on {
+                let amp = quantize_level(level[i], &self.volume_table);
+                let signed = if self.polarity { amp } else { -amp };
+                signed * PSG_HEADROOM_SCALE
+            } else {
+                0.0
+            };
+        }
+    }
+
+    fn reset(&mut self) {
+        self.period = 0;
+        self.counter = 0;
+        self.polarity = false;
+        self.accumulator = 0.0;
+    }
+}
+
+/// Creates a Sega Genesis SN76489 PSG tone (square) channel node.
+/// 3 inputs (`gate`, `freq_hz`, `level`), 1 output (mono audio).
+///
+/// Non-finite or non-positive sample rates fall back to 48 kHz.
+#[must_use]
+pub fn psg_tone(sample_rate_hz: f32) -> PsgToneNode {
+    PsgToneNode {
+        period: 0,
+        counter: 0,
+        polarity: false,
+        accumulator: 0.0,
+        volume_table: psg_volume_table(),
+        sample_rate_hz: sanitize_sample_rate(sample_rate_hz),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PsgNoiseNode
+// ---------------------------------------------------------------------------
+
+/// Sega Genesis SN76489 PSG noise channel core.
+/// 4 inputs (`gate`, `mode`, `freq_hz`, `level`), 1 output (mono audio).
+///
+/// * `gate` — `> 0.5` unmutes the channel; otherwise the output is `0.0`.
+/// * `mode` — `≥ 0.5` selects **white** noise (`bit0 XOR bit3` feedback), else
+///   **periodic** noise (`bit0` feedback → a period-16 pitched buzz).
+/// * `freq_hz` — the LFSR shift rate (`native / (period+1)`). Non-finite/
+///   non-positive holds the previous period.
+/// * `level` — `[0, 1]`, quantized to the 16-step 2 dB attenuation grid.
+///
+/// The output is `±level` from bit 0 of the 16-bit LFSR (seed `0x8000`). A single
+/// voice peaks at `±0.9` ([`PSG_HEADROOM_SCALE`]).
+#[derive(Debug, Clone)]
+pub struct PsgNoiseNode {
+    /// 16-bit LFSR (seed `0x8000`).
+    shift_register: u16,
+    /// 10-bit shift-rate period.
+    period: u16,
+    /// Down-counter toward the next LFSR shift.
+    counter: u16,
+    /// Fractional native-tick accumulator (LFSR runs at the PSG rate).
+    accumulator: f32,
+    volume_table: [f32; 16],
+    sample_rate_hz: f32,
+}
+
+impl Node for PsgNoiseNode {
+    fn inputs(&self) -> u32 {
+        4
+    }
+    fn outputs(&self) -> u32 {
+        1
+    }
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    fn process(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], frames: usize) {
+        let gate = inputs[0];
+        let mode = inputs[1];
+        let freq = inputs[2];
+        let level = inputs[3];
+        let out = &mut outputs[0];
+
+        let ticks_per_sample = PSG_NATIVE_RATE_HZ / self.sample_rate_hz;
+
+        for i in 0..frames {
+            let white = mode[i].is_finite() && mode[i] >= 0.5;
+            if let Some(period) = freq_to_noise_period(freq[i]) {
+                self.period = period;
+            }
+
+            // Advance the LFSR counter at the native rate, carrying the fraction.
+            self.accumulator += ticks_per_sample;
+            let whole = self.accumulator.floor();
+            self.accumulator -= whole;
+            for _ in 0..(whole as u32) {
+                if self.counter == 0 {
+                    // Reload (period 0 → 1, matching genesoxide) and shift.
+                    self.counter = if self.period == 0 { 1 } else { self.period };
+                    self.shift_register = advance_psg_lfsr(self.shift_register, white);
+                } else {
+                    self.counter -= 1;
+                }
+            }
+
+            let gate_on = gate[i].is_finite() && gate[i] > 0.5;
+            out[i] = if gate_on {
+                let amp = quantize_level(level[i], &self.volume_table);
+                let signed = if self.shift_register & 1 != 0 {
+                    amp
+                } else {
+                    -amp
+                };
+                signed * PSG_HEADROOM_SCALE
+            } else {
+                0.0
+            };
+        }
+    }
+
+    fn reset(&mut self) {
+        self.shift_register = 0x8000;
+        self.period = 0;
+        self.counter = 0;
+        self.accumulator = 0.0;
+    }
+}
+
+/// Creates a Sega Genesis SN76489 PSG noise channel node.
+/// 4 inputs (`gate`, `mode`, `freq_hz`, `level`), 1 output (mono audio).
+///
+/// Non-finite or non-positive sample rates fall back to 48 kHz.
+#[must_use]
+pub fn psg_noise(sample_rate_hz: f32) -> PsgNoiseNode {
+    PsgNoiseNode {
+        shift_register: 0x8000,
+        period: 0,
+        counter: 0,
+        accumulator: 0.0,
+        volume_table: psg_volume_table(),
+        sample_rate_hz: sanitize_sample_rate(sample_rate_hz),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The regenerated volume table must reproduce the SN76489's 2 dB/step
+    /// logarithmic law (`10^(-i/10)`, index 15 = silence). Regenerating from the
+    /// public formula is what keeps Orpheus's tree copyright-clean.
+    #[test]
+    fn volume_table_matches_2db_formula() {
+        let table = psg_volume_table();
+        // Endpoints: index 0 is full volume, index 15 is true silence.
+        assert!((table[0] - 1.0).abs() < 1e-6);
+        assert!(table[15].abs() < f32::EPSILON);
+        // Head of the grid at 2 dB/step.
+        let expected = [
+            1.0_f32, 0.794_328, 0.630_957, 0.501_187, 0.398_107, 0.316_228,
+        ];
+        for (i, e) in expected.iter().enumerate() {
+            assert!(
+                (table[i] - e).abs() < 1e-5,
+                "volume[{i}] = {} expected {e}",
+                table[i]
+            );
+        }
+        // Strictly decreasing (monotonic attenuation).
+        for i in 1..16 {
+            assert!(table[i] < table[i - 1], "volume table must decrease at {i}");
+        }
+        // Each 2 dB step is a ~0.7943 ratio (except the forced-silent last step).
+        for i in 1..15 {
+            let ratio = table[i] / table[i - 1];
+            assert!(
+                (ratio - 0.794_328).abs() < 1e-4,
+                "step {i} ratio {ratio} should be ~-2 dB"
+            );
+        }
+    }
+
+    /// The 16-bit LFSR must match genesoxide's `psg.rs` for both feedback modes,
+    /// seeded at `0x8000`. Periodic mode walks a single bit (period 16); white
+    /// mode taps `bit0 XOR bit3`.
+    #[test]
+    fn lfsr_sequences_match_genesoxide() {
+        // Periodic: feedback = bit0. The set bit walks down and wraps at step 16.
+        let periodic = [
+            0x8000_u16, 0x4000, 0x2000, 0x1000, 0x0800, 0x0400, 0x0200, 0x0100, 0x0080, 0x0040,
+            0x0020, 0x0010, 0x0008, 0x0004, 0x0002, 0x0001, 0x8000, 0x4000, 0x2000, 0x1000,
+        ];
+        let mut s = 0x8000_u16;
+        for (step, expected) in periodic.iter().enumerate() {
+            assert_eq!(s, *expected, "periodic LFSR step {step}");
+            s = advance_psg_lfsr(s, false);
+        }
+
+        // White: feedback = bit0 XOR bit3 (tap mask 0x0009).
+        let white = [
+            0x8000_u16, 0x4000, 0x2000, 0x1000, 0x0800, 0x0400, 0x0200, 0x0100, 0x0080, 0x0040,
+            0x0020, 0x0010, 0x0008, 0x8004, 0x4002, 0x2001, 0x9000, 0x4800, 0x2400, 0x1200,
+        ];
+        let mut s = 0x8000_u16;
+        for (step, expected) in white.iter().enumerate() {
+            assert_eq!(s, *expected, "white LFSR step {step}");
+            s = advance_psg_lfsr(s, true);
+        }
+    }
+
+    /// Periodic noise returns to its seed after exactly 16 shifts.
+    #[test]
+    fn periodic_noise_has_period_16() {
+        let mut s = 0x8000_u16;
+        for _ in 0..16 {
+            s = advance_psg_lfsr(s, false);
+        }
+        assert_eq!(s, 0x8000, "periodic noise should repeat every 16 shifts");
+    }
+
+    /// The period-0 quirk: a tone period of 0 forces a constant-high output and
+    /// freezes the counter (genesoxide `psg.rs::clock_tick`), rather than
+    /// mapping 0 → 1 or 0 → 0x400.
+    #[test]
+    fn tone_period_zero_holds_high() {
+        let mut node = psg_tone(48_000.0);
+        node.period = 0;
+        node.polarity = false;
+        for _ in 0..100 {
+            node.tone_tick();
+            assert!(node.polarity, "period-0 output must stay high");
+        }
+    }
+
+    /// A non-zero period toggles every `period + 1` native ticks.
+    #[test]
+    fn tone_toggles_every_period_plus_one_ticks() {
+        let mut node = psg_tone(48_000.0);
+        node.period = 3;
+        node.counter = 0;
+        node.polarity = false;
+        // First tick: counter==0 → reload to 3, toggle to true.
+        node.tone_tick();
+        assert!(node.polarity);
+        // Next 3 ticks decrement 3→2→1→0 without toggling.
+        for _ in 0..3 {
+            node.tone_tick();
+            assert!(node.polarity, "no toggle mid-period");
+        }
+        // The following tick (counter==0 again) toggles back.
+        node.tone_tick();
+        assert!(!node.polarity, "toggle after period+1 ticks");
+    }
+
+    #[test]
+    fn freq_to_period_round_trips() {
+        // 440 Hz → period → emitted freq within a fraction of the quantization.
+        let period = freq_to_tone_period(440.0).unwrap();
+        let emitted = PSG_NATIVE_RATE_HZ / (2.0 * f32::from(period + 1));
+        assert!(
+            (emitted - 440.0).abs() < 2.0,
+            "got {emitted} for period {period}"
+        );
+        // Ultrasonic request clamps to period 0 (constant-high quirk domain).
+        assert_eq!(freq_to_tone_period(200_000.0), Some(0));
+        // Non-finite / non-positive requests hold the previous period.
+        assert_eq!(freq_to_tone_period(0.0), None);
+        assert_eq!(freq_to_tone_period(f32::NAN), None);
+    }
+
+    #[test]
+    fn level_quantizes_to_log_grid() {
+        let table = psg_volume_table();
+        assert!((quantize_level(1.0, &table) - 1.0).abs() < 1e-6);
+        assert!(quantize_level(0.0, &table).abs() < f32::EPSILON);
+        assert!(quantize_level(f32::NAN, &table).abs() < f32::EPSILON);
+        // A one-step-down request lands on the -2 dB entry.
+        let one_step = quantize_level(1.0 - 1.0 / 15.0, &table);
+        assert!((one_step - table[1]).abs() < 1e-6);
+    }
+}
