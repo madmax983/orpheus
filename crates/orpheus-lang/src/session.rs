@@ -70,7 +70,7 @@ const MAX_RECORDED_GENERATOR_CYCLES: usize = 4096;
 pub struct ReplSession {
     mode: ReplMode,
     engine: EngineHandle,
-    sample_bank: SampleBank,
+    sample_bank: Arc<SampleBank>,
     sample_directory: Option<PathBuf>,
     sample_watcher: Option<SampleLibraryWatcher>,
     bindings: BTreeMap<String, Value>,
@@ -130,7 +130,7 @@ struct MidiInputState {
 
 #[derive(Clone)]
 struct SessionSnapshot {
-    sample_bank: SampleBank,
+    sample_bank: Arc<SampleBank>,
     sample_directory: Option<PathBuf>,
     bindings: BTreeMap<String, Value>,
     type_bindings: BTreeMap<String, Type>,
@@ -398,7 +398,7 @@ impl ReplSession {
         Self {
             mode: ReplMode::Loose,
             engine,
-            sample_bank: SampleBank::load_builtin(),
+            sample_bank: Arc::new(SampleBank::load_builtin()),
             sample_directory: None,
             sample_watcher: None,
             bindings: BTreeMap::new(),
@@ -461,7 +461,7 @@ impl ReplSession {
             source,
             self.mode,
             &mut self.bindings,
-            &self.sample_bank,
+            Arc::clone(&self.sample_bank),
         )
         .map_err(|error| error.to_string())?
         else {
@@ -567,7 +567,7 @@ impl ReplSession {
 
     fn capture_history_snapshot(&self) -> SessionSnapshot {
         SessionSnapshot {
-            sample_bank: self.sample_bank.clone(),
+            sample_bank: Arc::clone(&self.sample_bank),
             sample_directory: self.sample_directory.clone(),
             bindings: self.bindings.clone(),
             type_bindings: self.type_bindings.clone(),
@@ -582,11 +582,11 @@ impl ReplSession {
         let routing_snapshot = snapshot.mixer.compile_snapshot(&snapshot.bindings)?;
         let had_voice_bindings = self.has_voice_bindings();
 
-        if self.sample_bank != snapshot.sample_bank {
+        if !Arc::ptr_eq(&self.sample_bank, &snapshot.sample_bank) {
             self.engine
-                .enqueue(EngineCommand::ReplaceSampleBank(
-                    snapshot.sample_bank.clone(),
-                ))
+                .enqueue(EngineCommand::ReplaceSampleBank(Arc::clone(
+                    &snapshot.sample_bank,
+                )))
                 .map_err(|error| format!("failed to enqueue restored sample bank: {error}"))?;
         }
         if self.tempo_bpm.to_bits() != snapshot.tempo_bpm.to_bits() {
@@ -614,7 +614,7 @@ impl ReplSession {
         self.arrangement_last_cycle_start = None;
         self.last_arrangement_cycles.clear();
 
-        self.sample_bank = snapshot.sample_bank;
+        self.sample_bank = Arc::clone(&snapshot.sample_bank);
         self.sample_directory = snapshot.sample_directory;
         self.bindings = snapshot.bindings;
         self.type_bindings = snapshot.type_bindings;
@@ -1159,10 +1159,11 @@ impl ReplSession {
             return Err(samples_usage().to_owned());
         }
         let directory = PathBuf::from(args);
-        let sample_bank =
-            load_sample_bank_from_directory(&directory).map_err(|error| error.to_string())?;
+        let sample_bank = Arc::new(
+            load_sample_bank_from_directory(&directory).map_err(|error| error.to_string())?,
+        );
         let available_tokens = sample_bank.available_tokens();
-        self.sample_bank = sample_bank.clone();
+        self.sample_bank = Arc::clone(&sample_bank);
         self.sample_directory = Some(directory.clone());
         self.start_sample_watcher(&directory)?;
         self.engine
@@ -1214,8 +1215,9 @@ impl ReplSession {
             });
         }
 
-        let sample_bank =
-            load_sample_bank_from_directory(&directory).map_err(|error| error.to_string())?;
+        let sample_bank = Arc::new(
+            load_sample_bank_from_directory(&directory).map_err(|error| error.to_string())?,
+        );
 
         let mut bindings = self.bindings.clone();
         let mut type_bindings = self.type_bindings.clone();
@@ -1233,7 +1235,7 @@ impl ReplSession {
         self.bindings = bindings;
         self.type_bindings = type_bindings;
         self.mixer = mixer;
-        self.sample_bank = sample_bank.clone();
+        self.sample_bank = Arc::clone(&sample_bank);
         self.sample_directory = Some(directory.clone());
         self.start_sample_watcher(&directory)?;
         self.engine
@@ -1332,10 +1334,11 @@ impl ReplSession {
         let Some(directory) = self.sample_directory.clone() else {
             return Err("no sample directory has been configured".to_owned());
         };
-        let sample_bank =
-            load_sample_bank_from_directory(&directory).map_err(|error| error.to_string())?;
+        let sample_bank = Arc::new(
+            load_sample_bank_from_directory(&directory).map_err(|error| error.to_string())?,
+        );
         let available_tokens = sample_bank.available_tokens();
-        self.sample_bank = sample_bank.clone();
+        self.sample_bank = Arc::clone(&sample_bank);
         self.engine
             .enqueue(EngineCommand::ReplaceSampleBank(sample_bank))
             .map_err(|error| error.to_string())?;
@@ -1395,8 +1398,8 @@ impl ReplSession {
             );
         }
 
-        let sample_bank = reload.bank().clone();
-        self.sample_bank = sample_bank.clone();
+        let sample_bank = Arc::new(reload.bank().clone());
+        self.sample_bank = Arc::clone(&sample_bank);
         self.engine
             .enqueue(EngineCommand::ReplaceSampleBank(sample_bank))
             .map_err(|error| error.to_string())

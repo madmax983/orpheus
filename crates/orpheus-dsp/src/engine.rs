@@ -371,7 +371,7 @@ struct EngineCore {
     scheduler: Scheduler,
     active_voices: Vec<Option<ActiveVoice>>,
     graph_voices: GraphVoiceBank,
-    sample_bank: SampleBank,
+    sample_bank: Arc<SampleBank>,
     active_routing: RoutingSnapshot,
     pending_routing: Option<RoutingSnapshot>,
     bus_effect_states: Vec<Option<BusEffectState>>,
@@ -387,7 +387,7 @@ struct EngineCore {
     next_cycle_boundary_frame: u64,
     active_pattern_name: Option<Box<str>>,
     pending_pattern_name: Option<Box<str>>,
-    pending_sample_bank: Option<SampleBank>,
+    pending_sample_bank: Option<Arc<SampleBank>>,
     /// Cycle buffers delivered over the ring but not yet adopted; one fixed
     /// slot per generator id, filled by `PushGeneratorCycle` (latest wins).
     generator_pending: Vec<Option<Box<[Event<SampleTrigger>]>>>,
@@ -428,7 +428,7 @@ impl EngineCore {
             // thread exists; the render path only reuses the pooled voices.
             #[allow(clippy::cast_precision_loss)]
             graph_voices: GraphVoiceBank::with_builtin_programs(config.sample_rate.0 as f32),
-            sample_bank: SampleBank::load_builtin(),
+            sample_bank: Arc::new(SampleBank::load_builtin()),
             active_routing,
             pending_routing: None,
             bus_effect_states: Vec::new(),

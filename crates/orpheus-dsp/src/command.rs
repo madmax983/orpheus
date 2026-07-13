@@ -623,7 +623,7 @@ pub enum EngineCommand {
     /// at the next cycle boundary (ADR 0009).
     PushGeneratorCycle(GeneratorCycle),
     /// Replaces the sample bank at the next cycle boundary.
-    ReplaceSampleBank(SampleBank),
+    ReplaceSampleBank(Arc<SampleBank>),
     /// Replaces the pooled graph voice programs at the next cycle boundary.
     ///
     /// The bank must be fully built and prepared off the audio thread (see
