@@ -12,6 +12,47 @@ use crossterm::style::Stylize;
 use crate::eval::{EvalError, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue, TuningValue};
 
+fn build_stats_table(
+    binding_name: &str,
+    cycle_count: u64,
+    total_events: usize,
+    density: f64,
+    extra_rows: Vec<Vec<Cell>>,
+) -> String {
+    let title = format!(
+        "{} {binding_name} ({} cycles)",
+        "Pattern Stats:".cyan().bold(),
+        cycle_count.to_string().yellow()
+    );
+
+    let mut table = Table::new();
+    table.load_preset(UTF8_BORDERS_ONLY);
+
+    table.add_row(vec![
+        Cell::new("Total Events")
+            .fg(comfy_table::Color::White)
+            .add_attribute(comfy_table::Attribute::Bold),
+        Cell::new(total_events.to_string())
+            .fg(comfy_table::Color::Green)
+            .set_alignment(CellAlignment::Right),
+    ]);
+
+    for row in extra_rows {
+        table.add_row(row);
+    }
+
+    table.add_row(vec![
+        Cell::new("Event Density")
+            .fg(comfy_table::Color::White)
+            .add_attribute(comfy_table::Attribute::Bold),
+        Cell::new(format!("{density:.2} events/cycle"))
+            .fg(comfy_table::Color::Cyan)
+            .set_alignment(CellAlignment::Right),
+    ]);
+
+    format!("{title}\n{table}")
+}
+
 /// Analyzes a sample pattern's evaluated events and returns a formatted report.
 ///
 /// The report contains the total number of events, unique samples triggered,
@@ -64,40 +105,22 @@ pub fn sample_pattern_stats(
     #[allow(clippy::cast_precision_loss)]
     let density = (total_events as f64) / (cycle_count as f64);
 
-    let title = format!(
-        "{} {binding_name} ({} cycles)",
-        "Pattern Stats:".cyan().bold(),
-        cycle_count.to_string().yellow()
-    );
-    let mut table = Table::new();
-    table.load_preset(UTF8_BORDERS_ONLY);
-
-    table.add_row(vec![
-        Cell::new("Total Events")
-            .fg(comfy_table::Color::White)
-            .add_attribute(comfy_table::Attribute::Bold),
-        Cell::new(total_events.to_string())
-            .fg(comfy_table::Color::Green)
-            .set_alignment(CellAlignment::Right),
-    ]);
-    table.add_row(vec![
+    let extra_rows = vec![vec![
         Cell::new("Unique Samples")
             .fg(comfy_table::Color::White)
             .add_attribute(comfy_table::Attribute::Bold),
         Cell::new(format!("{unique_count} ({sample_list})"))
             .fg(comfy_table::Color::Yellow)
             .set_alignment(CellAlignment::Right),
-    ]);
-    table.add_row(vec![
-        Cell::new("Event Density")
-            .fg(comfy_table::Color::White)
-            .add_attribute(comfy_table::Attribute::Bold),
-        Cell::new(format!("{density:.2} events/cycle"))
-            .fg(comfy_table::Color::Cyan)
-            .set_alignment(CellAlignment::Right),
-    ]);
+    ]];
 
-    Ok(format!("{title}\n{table}"))
+    Ok(build_stats_table(
+        binding_name,
+        cycle_count,
+        total_events,
+        density,
+        extra_rows,
+    ))
 }
 
 /// Analyzes a number pattern's evaluated events and returns a formatted report.
@@ -166,56 +189,40 @@ pub fn number_pattern_stats(
     #[allow(clippy::cast_precision_loss)]
     let density = (total_events as f64) / (cycle_count as f64);
 
-    let title = format!(
-        "{} {binding_name} ({} cycles)",
-        "Pattern Stats:".cyan().bold(),
-        cycle_count.to_string().yellow()
-    );
-    let mut table = Table::new();
-    table.load_preset(UTF8_BORDERS_ONLY);
+    let extra_rows = vec![
+        vec![
+            Cell::new("Min Value")
+                .fg(comfy_table::Color::White)
+                .add_attribute(comfy_table::Attribute::Bold),
+            Cell::new(format!("{min_val:.3}"))
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ],
+        vec![
+            Cell::new("Max Value")
+                .fg(comfy_table::Color::White)
+                .add_attribute(comfy_table::Attribute::Bold),
+            Cell::new(format!("{max_val:.3}"))
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ],
+        vec![
+            Cell::new("Average Value")
+                .fg(comfy_table::Color::White)
+                .add_attribute(comfy_table::Attribute::Bold),
+            Cell::new(format!("{avg:.3}"))
+                .fg(comfy_table::Color::Yellow)
+                .set_alignment(CellAlignment::Right),
+        ],
+    ];
 
-    table.add_row(vec![
-        Cell::new("Total Events")
-            .fg(comfy_table::Color::White)
-            .add_attribute(comfy_table::Attribute::Bold),
-        Cell::new(total_events.to_string())
-            .fg(comfy_table::Color::Green)
-            .set_alignment(CellAlignment::Right),
-    ]);
-    table.add_row(vec![
-        Cell::new("Min Value")
-            .fg(comfy_table::Color::White)
-            .add_attribute(comfy_table::Attribute::Bold),
-        Cell::new(format!("{min_val:.3}"))
-            .fg(comfy_table::Color::Yellow)
-            .set_alignment(CellAlignment::Right),
-    ]);
-    table.add_row(vec![
-        Cell::new("Max Value")
-            .fg(comfy_table::Color::White)
-            .add_attribute(comfy_table::Attribute::Bold),
-        Cell::new(format!("{max_val:.3}"))
-            .fg(comfy_table::Color::Yellow)
-            .set_alignment(CellAlignment::Right),
-    ]);
-    table.add_row(vec![
-        Cell::new("Average Value")
-            .fg(comfy_table::Color::White)
-            .add_attribute(comfy_table::Attribute::Bold),
-        Cell::new(format!("{avg:.3}"))
-            .fg(comfy_table::Color::Yellow)
-            .set_alignment(CellAlignment::Right),
-    ]);
-    table.add_row(vec![
-        Cell::new("Event Density")
-            .fg(comfy_table::Color::White)
-            .add_attribute(comfy_table::Attribute::Bold),
-        Cell::new(format!("{density:.2} events/cycle"))
-            .fg(comfy_table::Color::Cyan)
-            .set_alignment(CellAlignment::Right),
-    ]);
-
-    Ok(format!("{title}\n{table}"))
+    Ok(build_stats_table(
+        binding_name,
+        cycle_count,
+        total_events,
+        density,
+        extra_rows,
+    ))
 }
 
 /// Analyzes a tuning value and returns a formatted report.
