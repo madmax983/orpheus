@@ -769,13 +769,16 @@ impl ReplSession {
         }
 
         let mut table = comfy_table::Table::new();
-        table.load_preset(comfy_table::presets::UTF8_BORDERS_ONLY);
+        table
+            .load_preset(comfy_table::presets::UTF8_FULL)
+            .apply_modifier(comfy_table::modifiers::UTF8_ROUND_CORNERS)
+            .apply_modifier(comfy_table::modifiers::UTF8_SOLID_INNER_BORDERS);
         table.set_header(vec![
             comfy_table::Cell::new("Binding")
-                .fg(comfy_table::Color::White)
+                .fg(comfy_table::Color::Cyan)
                 .add_attribute(comfy_table::Attribute::Bold),
             comfy_table::Cell::new("Type")
-                .fg(comfy_table::Color::White)
+                .fg(comfy_table::Color::Cyan)
                 .add_attribute(comfy_table::Attribute::Bold),
         ]);
 
@@ -2710,7 +2713,7 @@ mod tests {
         assert!(output.contains("REPL Commands:"));
         assert!(output.contains(":env"));
         assert!(output.contains(":explain <binding>"));
-        assert!(output.contains("─")); // comfy-table border char
+        assert!(output.contains("╭")); // comfy-table border char
     }
 
     #[test]
@@ -2920,7 +2923,7 @@ mod tests {
         assert!(output.contains("Pattern<Sample>"));
         assert!(output.contains("tempo"));
         assert!(output.contains("Pattern<Number>"));
-        assert!(output.contains("─")); // comfy-table border char
+        assert!(output.contains("╭")); // comfy-table border char
     }
 
     #[test]
@@ -4346,13 +4349,16 @@ fn export_command_exports_number_pattern_to_supercollider() {
 
 fn build_help_table() -> comfy_table::Table {
     let mut table = comfy_table::Table::new();
-    table.load_preset(comfy_table::presets::UTF8_BORDERS_ONLY);
+    table
+        .load_preset(comfy_table::presets::UTF8_FULL)
+        .apply_modifier(comfy_table::modifiers::UTF8_ROUND_CORNERS)
+        .apply_modifier(comfy_table::modifiers::UTF8_SOLID_INNER_BORDERS);
     table.set_header(vec![
         comfy_table::Cell::new("Command")
-            .fg(comfy_table::Color::White)
+            .fg(comfy_table::Color::Cyan)
             .add_attribute(comfy_table::Attribute::Bold),
         comfy_table::Cell::new("Description")
-            .fg(comfy_table::Color::White)
+            .fg(comfy_table::Color::Cyan)
             .add_attribute(comfy_table::Attribute::Bold),
     ]);
 

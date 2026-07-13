@@ -14,7 +14,7 @@
 
 use std::collections::BTreeMap;
 
-use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
+use comfy_table::{Cell, CellAlignment, Table, modifiers, presets::UTF8_FULL};
 use crossterm::style::Stylize;
 
 use ratatui::style::{Modifier as TuiModifier, Style as TuiStyle};
@@ -487,22 +487,25 @@ impl MixerState {
 
     fn render_summary_tracks_table(&self) -> String {
         let mut track_table = Table::new();
-        track_table.load_preset(UTF8_BORDERS_ONLY);
+        track_table
+            .load_preset(UTF8_FULL)
+            .apply_modifier(modifiers::UTF8_ROUND_CORNERS)
+            .apply_modifier(modifiers::UTF8_SOLID_INNER_BORDERS);
         track_table.set_header(vec![
             Cell::new("Track")
-                .fg(comfy_table::Color::White)
+                .fg(comfy_table::Color::Cyan)
                 .add_attribute(comfy_table::Attribute::Bold),
             Cell::new("Binding")
-                .fg(comfy_table::Color::White)
+                .fg(comfy_table::Color::Cyan)
                 .add_attribute(comfy_table::Attribute::Bold),
             Cell::new("Level")
-                .fg(comfy_table::Color::White)
+                .fg(comfy_table::Color::Cyan)
                 .add_attribute(comfy_table::Attribute::Bold),
             Cell::new("Muted")
-                .fg(comfy_table::Color::White)
+                .fg(comfy_table::Color::Cyan)
                 .add_attribute(comfy_table::Attribute::Bold),
             Cell::new("Sends")
-                .fg(comfy_table::Color::White)
+                .fg(comfy_table::Color::Cyan)
                 .add_attribute(comfy_table::Attribute::Bold),
         ]);
 
@@ -564,13 +567,16 @@ impl MixerState {
 
     fn render_summary_buses_table(&self) -> String {
         let mut bus_table = Table::new();
-        bus_table.load_preset(UTF8_BORDERS_ONLY);
+        bus_table
+            .load_preset(UTF8_FULL)
+            .apply_modifier(modifiers::UTF8_ROUND_CORNERS)
+            .apply_modifier(modifiers::UTF8_SOLID_INNER_BORDERS);
         bus_table.set_header(vec![
             Cell::new("Bus")
-                .fg(comfy_table::Color::White)
+                .fg(comfy_table::Color::Cyan)
                 .add_attribute(comfy_table::Attribute::Bold),
             Cell::new("Effect")
-                .fg(comfy_table::Color::White)
+                .fg(comfy_table::Color::Cyan)
                 .add_attribute(comfy_table::Attribute::Bold),
         ]);
 

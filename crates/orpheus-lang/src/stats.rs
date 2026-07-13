@@ -6,7 +6,7 @@
 
 use std::collections::BTreeSet;
 
-use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
+use comfy_table::{Cell, CellAlignment, Table, modifiers, presets::UTF8_FULL};
 use crossterm::style::Stylize;
 
 use crate::eval::{EvalError, render_span};
@@ -70,11 +70,14 @@ pub fn sample_pattern_stats(
         cycle_count.to_string().yellow()
     );
     let mut table = Table::new();
-    table.load_preset(UTF8_BORDERS_ONLY);
+    table
+        .load_preset(UTF8_FULL)
+        .apply_modifier(modifiers::UTF8_ROUND_CORNERS)
+        .apply_modifier(modifiers::UTF8_SOLID_INNER_BORDERS);
 
     table.add_row(vec![
         Cell::new("Total Events")
-            .fg(comfy_table::Color::White)
+            .fg(comfy_table::Color::Cyan)
             .add_attribute(comfy_table::Attribute::Bold),
         Cell::new(total_events.to_string())
             .fg(comfy_table::Color::Green)
@@ -82,7 +85,7 @@ pub fn sample_pattern_stats(
     ]);
     table.add_row(vec![
         Cell::new("Unique Samples")
-            .fg(comfy_table::Color::White)
+            .fg(comfy_table::Color::Cyan)
             .add_attribute(comfy_table::Attribute::Bold),
         Cell::new(format!("{unique_count} ({sample_list})"))
             .fg(comfy_table::Color::Yellow)
@@ -90,7 +93,7 @@ pub fn sample_pattern_stats(
     ]);
     table.add_row(vec![
         Cell::new("Event Density")
-            .fg(comfy_table::Color::White)
+            .fg(comfy_table::Color::Cyan)
             .add_attribute(comfy_table::Attribute::Bold),
         Cell::new(format!("{density:.2} events/cycle"))
             .fg(comfy_table::Color::Cyan)
@@ -172,11 +175,14 @@ pub fn number_pattern_stats(
         cycle_count.to_string().yellow()
     );
     let mut table = Table::new();
-    table.load_preset(UTF8_BORDERS_ONLY);
+    table
+        .load_preset(UTF8_FULL)
+        .apply_modifier(modifiers::UTF8_ROUND_CORNERS)
+        .apply_modifier(modifiers::UTF8_SOLID_INNER_BORDERS);
 
     table.add_row(vec![
         Cell::new("Total Events")
-            .fg(comfy_table::Color::White)
+            .fg(comfy_table::Color::Cyan)
             .add_attribute(comfy_table::Attribute::Bold),
         Cell::new(total_events.to_string())
             .fg(comfy_table::Color::Green)
@@ -184,7 +190,7 @@ pub fn number_pattern_stats(
     ]);
     table.add_row(vec![
         Cell::new("Min Value")
-            .fg(comfy_table::Color::White)
+            .fg(comfy_table::Color::Cyan)
             .add_attribute(comfy_table::Attribute::Bold),
         Cell::new(format!("{min_val:.3}"))
             .fg(comfy_table::Color::Yellow)
@@ -192,7 +198,7 @@ pub fn number_pattern_stats(
     ]);
     table.add_row(vec![
         Cell::new("Max Value")
-            .fg(comfy_table::Color::White)
+            .fg(comfy_table::Color::Cyan)
             .add_attribute(comfy_table::Attribute::Bold),
         Cell::new(format!("{max_val:.3}"))
             .fg(comfy_table::Color::Yellow)
@@ -200,7 +206,7 @@ pub fn number_pattern_stats(
     ]);
     table.add_row(vec![
         Cell::new("Average Value")
-            .fg(comfy_table::Color::White)
+            .fg(comfy_table::Color::Cyan)
             .add_attribute(comfy_table::Attribute::Bold),
         Cell::new(format!("{avg:.3}"))
             .fg(comfy_table::Color::Yellow)
@@ -208,7 +214,7 @@ pub fn number_pattern_stats(
     ]);
     table.add_row(vec![
         Cell::new("Event Density")
-            .fg(comfy_table::Color::White)
+            .fg(comfy_table::Color::Cyan)
             .add_attribute(comfy_table::Attribute::Bold),
         Cell::new(format!("{density:.2} events/cycle"))
             .fg(comfy_table::Color::Cyan)
@@ -244,11 +250,14 @@ pub fn tuning_stats(binding_name: &str, tuning: &TuningValue) -> String {
     );
 
     let mut table = Table::new();
-    table.load_preset(UTF8_BORDERS_ONLY);
+    table
+        .load_preset(UTF8_FULL)
+        .apply_modifier(modifiers::UTF8_ROUND_CORNERS)
+        .apply_modifier(modifiers::UTF8_SOLID_INNER_BORDERS);
 
     table.add_row(vec![
         Cell::new("Name")
-            .fg(comfy_table::Color::White)
+            .fg(comfy_table::Color::Cyan)
             .add_attribute(comfy_table::Attribute::Bold),
         Cell::new(tuning.name())
             .fg(comfy_table::Color::Green)
@@ -257,7 +266,7 @@ pub fn tuning_stats(binding_name: &str, tuning: &TuningValue) -> String {
 
     table.add_row(vec![
         Cell::new("Period")
-            .fg(comfy_table::Color::White)
+            .fg(comfy_table::Color::Cyan)
             .add_attribute(comfy_table::Attribute::Bold),
         Cell::new(format!("{:.3}", tuning.period()))
             .fg(comfy_table::Color::Yellow)
@@ -266,7 +275,7 @@ pub fn tuning_stats(binding_name: &str, tuning: &TuningValue) -> String {
 
     table.add_row(vec![
         Cell::new("Ref Semitone")
-            .fg(comfy_table::Color::White)
+            .fg(comfy_table::Color::Cyan)
             .add_attribute(comfy_table::Attribute::Bold),
         Cell::new(tuning.ref_semitone().to_string())
             .fg(comfy_table::Color::Yellow)
@@ -283,7 +292,7 @@ pub fn tuning_stats(binding_name: &str, tuning: &TuningValue) -> String {
 
     table.add_row(vec![
         Cell::new("Ratios")
-            .fg(comfy_table::Color::White)
+            .fg(comfy_table::Color::Cyan)
             .add_attribute(comfy_table::Attribute::Bold),
         Cell::new(format!("{} [{ratio_list}]", tuning.ratios().len()))
             .fg(comfy_table::Color::Cyan)

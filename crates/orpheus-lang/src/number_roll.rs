@@ -5,7 +5,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
+use comfy_table::{Cell, CellAlignment, Table, modifiers, presets::UTF8_FULL};
 
 use crossterm::style::Stylize;
 
@@ -120,7 +120,10 @@ pub fn render_ascii_number_roll(
         cycle_count.to_string().yellow()
     );
     let mut table = Table::new();
-    table.load_preset(UTF8_BORDERS_ONLY);
+    table
+        .load_preset(UTF8_FULL)
+        .apply_modifier(modifiers::UTF8_ROUND_CORNERS)
+        .apply_modifier(modifiers::UTF8_SOLID_INNER_BORDERS);
 
     for &val in &sorted_values {
         let grid = lanes.get(&val).unwrap();
