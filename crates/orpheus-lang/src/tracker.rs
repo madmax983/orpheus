@@ -66,7 +66,7 @@ pub fn export_sample_pattern_to_tracker(
     let mut grid: Vec<Vec<Option<String>>> = vec![vec![None; sample_list.len()]; total_steps];
 
     for event in &events {
-        let sample = event.value.sample().to_string();
+        let sample = event.value.sample();
         let lane_idx = sample_list
             .iter()
             .position(|s| *s == sample)
@@ -85,26 +85,22 @@ pub fn export_sample_pattern_to_tracker(
         let start_step = start_step.min(total_steps);
         let end_step = end_step.min(total_steps);
 
+        // ⚡ Bolt: DRY formatted_name logic
+        let formatted_name = || if sample.len() > 4 {
+            sample.chars().take(4).collect::<String>()
+        } else {
+            String::from(sample)
+        };
+
         if start_step < end_step {
-            // Format sample name up to 4 chars
-            let formatted_name = if sample.len() > 4 {
-                sample.chars().take(4).collect::<String>()
-            } else {
-                sample.clone()
-            };
-            grid[start_step][lane_idx] = Some(formatted_name);
+            grid[start_step][lane_idx] = Some(formatted_name());
             for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
                 if item[lane_idx].is_none() {
-                    item[lane_idx] = Some("====".to_string());
+                    item[lane_idx] = Some(String::from("===="));
                 }
             }
         } else if start_step < total_steps && grid[start_step][lane_idx].is_none() {
-            let formatted_name = if sample.len() > 4 {
-                sample.chars().take(4).collect::<String>()
-            } else {
-                sample.clone()
-            };
-            grid[start_step][lane_idx] = Some(formatted_name);
+            grid[start_step][lane_idx] = Some(formatted_name());
         }
     }
 
@@ -213,7 +209,7 @@ pub fn export_number_pattern_to_tracker(
             grid[start_step] = Some(val_str);
             for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
                 if item.is_none() {
-                    *item = Some("=======".to_string());
+                    *item = Some(String::from("======="));
                 }
             }
         } else if start_step < total_steps && grid[start_step].is_none() {

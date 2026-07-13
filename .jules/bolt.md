@@ -47,3 +47,6 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+**[Deferring String Allocation]**
+**Learning:** Eagerly calling `.to_string()` on string slices inside loops (e.g., `let sample = event.value.sample().to_string();`) causes unnecessary heap allocations before ownership is actually needed. Keeping variables as `&str` references for as long as possible and only allocating an owned `String` at the exact moment it is required for storage (e.g., `String::from(sample)`) significantly reduces the total number of allocations per loop iteration.
+**Action:** Defer `to_string()` or `String::from()` calls on `&str` references until the exact point where an owned `String` is required by the target collection or struct.
