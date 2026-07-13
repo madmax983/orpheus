@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2025-05-24 - [Avoid `try_from().unwrap()` on tracker bounds checks]
+**Learning:** In the `tracker.rs` export logic, if `start_step` evaluates to the maximum `total_steps`, and logic does `grid[start_step] = ...`, it will panic with an out-of-bounds index because `grid` only has length `total_steps` (indices `0..total_steps - 1`). The original code guarded loops up to `end_step`, but missed protecting the single `start_step` indexing.
+**Action:** Use an explicit conditional check `if start_step < total_steps { grid[start_step] = ... }` instead of implicit out-of-bounds arrays, and always include edge-case bounds limit unit tests on new tracking exporters.

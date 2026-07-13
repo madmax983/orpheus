@@ -92,10 +92,12 @@ pub fn export_sample_pattern_to_tracker(
             } else {
                 sample.clone()
             };
-            grid[start_step][lane_idx] = Some(formatted_name);
-            for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
-                if item[lane_idx].is_none() {
-                    item[lane_idx] = Some("====".to_string());
+            if start_step < total_steps {
+                grid[start_step][lane_idx] = Some(formatted_name);
+                for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
+                    if item[lane_idx].is_none() {
+                        item[lane_idx] = Some("====".to_string());
+                    }
                 }
             }
         } else if start_step < total_steps && grid[start_step][lane_idx].is_none() {
@@ -210,10 +212,12 @@ pub fn export_number_pattern_to_tracker(
         let val_str = format!("{:7.2}", event.value);
 
         if start_step < end_step {
-            grid[start_step] = Some(val_str);
-            for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
-                if item.is_none() {
-                    *item = Some("=======".to_string());
+            if start_step < total_steps {
+                grid[start_step] = Some(val_str);
+                for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
+                    if item.is_none() {
+                        *item = Some("=======".to_string());
+                    }
                 }
             }
         } else if start_step < total_steps && grid[start_step].is_none() {
@@ -328,5 +332,34 @@ mod tests {
                 .to_string(),
             "exporting requires at least one cycle"
         );
+    }
+}
+#[cfg(test)]
+mod bounds_tests {
+    use crate::{
+        ReplMode, eval_module, export_number_pattern_to_tracker, export_sample_pattern_to_tracker,
+    };
+
+    #[test]
+    fn test_tracker_grid_out_of_bounds() {
+        let source = "pattern = at(1, bd)";
+        let module = eval_module(source, ReplMode::Loose).unwrap();
+        let pattern = module.get("pattern").unwrap().as_sample_pattern().unwrap();
+
+        let path = std::env::temp_dir().join("test_tracker_oob.txt");
+
+        // This should not panic
+        export_sample_pattern_to_tracker(pattern, &path, 1).unwrap();
+
+        let source_num = "pattern = at(1, 42)";
+        let module_num = eval_module(source_num, ReplMode::Loose).unwrap();
+        let pattern_num = module_num
+            .get("pattern")
+            .unwrap()
+            .as_number_pattern()
+            .unwrap();
+
+        export_number_pattern_to_tracker(pattern_num, &path, 1).unwrap();
+        let _ = std::fs::remove_file(&path);
     }
 }

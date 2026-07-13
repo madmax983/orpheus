@@ -1015,8 +1015,13 @@ impl Evaluator {
         repeat_count: i128,
         cycle_offset: i128,
     ) -> Result<ExplicitValue, EvalError> {
-        let repeat_count_usize = usize::try_from(repeat_count)
-            .map_err(|_| EvalError::new("section cycle count exceeded evaluator limits"))?;
+        let repeat_count_usize = if repeat_count > 0 {
+            usize::try_from(repeat_count)
+                .map_err(|_| EvalError::new("section cycle count exceeded evaluator limits"))?
+        } else {
+            // The eval_positive_integer function ensures this is never 0 or negative.
+            return Err(EvalError::new("section cycle count must be positive"));
+        };
 
         let mut combined = base.empty_with_capacity_matching(repeat_count_usize)?;
 
@@ -1429,7 +1434,7 @@ fn apply_user_function(
         return Ok(Value::Function(FunctionValue::User(function)));
     }
 
-    let owned_user_fn = std::sync::Arc::unwrap_or_clone(function);
+    let owned_user_fn = std::sync::Arc::try_unwrap(function).unwrap_or_else(|arc| (*arc).clone());
 
     let evaluator = Evaluator {
         mode: owned_user_fn.mode,
@@ -2324,5 +2329,21 @@ right = sometimes(fast(2), cp hh)";
         let module = eval_module("f x = x\nres = f(42.0)", ReplMode::Loose).unwrap();
         let val = module.get("res").unwrap().as_number_pattern().unwrap();
         assert!((val.try_query_unit().unwrap()[0].value - 42.0).abs() < f64::EPSILON);
+    }
+}
+
+#[cfg(test)]
+mod repeat_explicit_tests {
+    use super::*;
+
+    #[test]
+    fn test_repeat_explicit_value_negative_count() {
+        let base = ExplicitValue::Sample(Vec::new());
+        let result = Evaluator::repeat_explicit_value(base, -1, 0);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "section cycle count must be positive"
+        );
     }
 }
