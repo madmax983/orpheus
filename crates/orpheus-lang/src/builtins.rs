@@ -143,6 +143,7 @@ fn lookup_pattern_transform(name: &str) -> Option<Value> {
         "notes" => Some(builtin_function_value(BuiltinKind::Notes)),
         "hex" => Some(builtin_function_value(BuiltinKind::Hex)),
         "bin" => Some(builtin_function_value(BuiltinKind::Bin)),
+        "morse" => Some(builtin_function_value(BuiltinKind::Morse)),
         _ => None,
     }
 }
@@ -383,6 +384,7 @@ pub fn apply_builtin_function(function: &BuiltinFn, args: Vec<Value>) -> Result<
 }
 
 impl BuiltinKind {
+    #[allow(clippy::too_many_lines)]
     const fn name(self) -> &'static str {
         match self {
             Self::Every => "every",
@@ -478,6 +480,7 @@ impl BuiltinKind {
             Self::Notes => "notes",
             Self::Hex => "hex",
             Self::Bin => "bin",
+            Self::Morse => "morse",
             Self::PluginParam => "p",
             Self::VoiceParam1 => "p1",
             Self::VoiceParam2 => "p2",
@@ -540,6 +543,7 @@ impl BuiltinKind {
             | Self::MidiCc
             | Self::Hex
             | Self::Bin
+            | Self::Morse
             | Self::IRand
             | Self::Run
             | Self::Scan
@@ -733,6 +737,7 @@ impl BuiltinKind {
             Self::Notes => apply_plugin_notes(args),
             Self::Hex => apply_hex(args),
             Self::Bin => apply_bin(args),
+            Self::Morse => apply_morse(args),
             Self::PluginParam => apply_plugin_param(args),
             Self::VoiceParam1 => apply_voice_param(args, 0),
             Self::VoiceParam2 => apply_voice_param(args, 1),
@@ -4798,6 +4803,111 @@ fn apply_lsystem(args: Vec<Value>) -> Result<Value, EvalError> {
     }
 
     Ok(Value::NumberPattern(NumberPatternValue::from_nodes(nodes)))
+}
+
+const fn char_to_morse(c: char) -> Option<&'static str> {
+    match c {
+        'A' => Some(".-"),
+        'B' => Some("-..."),
+        'C' => Some("-.-."),
+        'D' => Some("-.."),
+        'E' => Some("."),
+        'F' => Some("..-."),
+        'G' => Some("--."),
+        'H' => Some("...."),
+        'I' => Some(".."),
+        'J' => Some(".---"),
+        'K' => Some("-.-"),
+        'L' => Some(".-.."),
+        'M' => Some("--"),
+        'N' => Some("-."),
+        'O' => Some("---"),
+        'P' => Some(".--."),
+        'Q' => Some("--.-"),
+        'R' => Some(".-."),
+        'S' => Some("..."),
+        'T' => Some("-"),
+        'U' => Some("..-"),
+        'V' => Some("...-"),
+        'W' => Some(".--"),
+        'X' => Some("-..-"),
+        'Y' => Some("-.--"),
+        'Z' => Some("--.."),
+        '0' => Some("-----"),
+        '1' => Some(".----"),
+        '2' => Some("..---"),
+        '3' => Some("...--"),
+        '4' => Some("....-"),
+        '5' => Some("....."),
+        '6' => Some("-...."),
+        '7' => Some("--..."),
+        '8' => Some("---.."),
+        '9' => Some("----."),
+        _ => None,
+    }
+}
+
+fn apply_morse(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let text = extract_string(
+        args.next()
+            .ok_or_else(|| EvalError::new("`morse` requires a string argument"))?,
+        "`morse` string",
+    )?;
+
+    let mut nodes = Vec::new();
+    let chars: Vec<char> = text.to_uppercase().chars().collect();
+
+    for (i, &ch) in chars.iter().enumerate() {
+        if ch == ' ' {
+            for _ in 0..7 {
+                nodes.push(orpheus_pattern::PatternNode::rest());
+            }
+        } else if let Some(code) = char_to_morse(ch) {
+            let marks: Vec<char> = code.chars().collect();
+            for &m in &marks {
+                if m == '.' {
+                    nodes.push(orpheus_pattern::PatternNode::atom(1.0));
+                    nodes.push(orpheus_pattern::PatternNode::rest());
+                } else if m == '-' {
+                    nodes.push(orpheus_pattern::PatternNode::atom(1.0));
+                    nodes.push(orpheus_pattern::PatternNode::atom(1.0));
+                    nodes.push(orpheus_pattern::PatternNode::atom(1.0));
+                    nodes.push(orpheus_pattern::PatternNode::rest());
+                }
+            }
+            // Between letters: 3 units of rest total. Each mark already leaves 1 rest,
+            // so we add 2 more rests, except if the next char is a space.
+            if i + 1 < chars.len() && chars[i + 1] != ' ' {
+                nodes.push(orpheus_pattern::PatternNode::rest());
+                nodes.push(orpheus_pattern::PatternNode::rest());
+            }
+        }
+    }
+
+    if nodes.is_empty() {
+        nodes.push(orpheus_pattern::PatternNode::rest());
+    }
+
+    Ok(Value::NumberPattern(NumberPatternValue::from_nodes(nodes)))
+}
+
+#[cfg(test)]
+mod morse_tests {
+    #[test]
+    fn test_morse_builtin() {
+        // SOS -> S(...) O(---) S(...)
+        // S: . . . -> 101010
+        // + 2 spaces for letter gap -> 10101000
+        // O: - - - -> 111011101110
+        // + 2 spaces for letter gap -> 11101110111000
+        // S: . . . -> 101010
+        // total: 1010100011101110111000101010
+        let source = "m = morse(\"SOS\")";
+        let module = crate::eval_module(source, crate::ReplMode::Loose).unwrap();
+        let val = module.get("m").unwrap();
+        assert!(val.as_number_pattern().is_some());
+    }
 }
 
 #[cfg(test)]
