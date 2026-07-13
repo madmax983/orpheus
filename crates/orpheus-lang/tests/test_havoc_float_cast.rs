@@ -11,3 +11,17 @@ fn test_havoc_float_cast() {
         "meter beat count exceeded the supported range"
     );
 }
+
+#[test]
+fn test_havoc_float_cast_precision_loss() {
+    // 👺 Havoc: Tests that large float bounds bypass due to precision loss
+    // safely saturates and generates an EvalError rather than silently wrapping
+    // or panicking when casting `i128::MAX` equivalents.
+    let source = "notes = meter(170141183460469231731687303715884105727.0, 4, at(beat(0), bd))";
+    let res = eval_module(source, ReplMode::Loose);
+    let err = res.unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "meter beat count exceeded the supported range"
+    );
+}

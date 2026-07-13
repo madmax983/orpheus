@@ -1117,11 +1117,14 @@ impl Evaluator {
             return Err(EvalError::new(format!("{context} requires a valid number")));
         }
 
-        #[allow(clippy::cast_precision_loss)]
-        let max_val = i128::MAX as f64;
-        #[allow(clippy::cast_precision_loss)]
-        let min_val = i128::MIN as f64;
-        if value > max_val || value < min_val {
+        // 👺 Havoc: Fix silent float truncation bounds bypass.
+        // `i128::MAX as f64` rounds up to `2^127` due to 64-bit precision loss.
+        // If a value strictly equals that bound, the `value > max_val` check passes,
+        // but casting to `i128` saturates to `i128::MAX`, causing silent bypasses.
+        // We apply a soft bound to ensure precise limits are kept safely out of
+        // the hardware casting overflow realm.
+        let safe_bound = 1.0e15_f64;
+        if value > safe_bound || value < -safe_bound {
             return Err(EvalError::new(format!(
                 "{context} exceeded the supported range"
             )));
