@@ -1911,6 +1911,110 @@ impl GraphVoiceSlot {
         self.release_frames
             .max(release_seconds_to_frames(tail_seconds, sample_rate_hz))
     }
+
+    pub fn render_frame(&mut self, track_mix: &mut [(f32, f32)]) {
+        let Some(note) = self.note.as_mut() else {
+            return;
+        };
+
+        // A freshly stolen voice holds its gate low for one frame so the
+        // graph's envelopes see a rising edge on the next frame and
+        // restart click-free from their current level.
+        let in_retrigger_gap = note.retrigger_gap_frames > 0;
+        let gate = if !in_retrigger_gap && note.gate_frames_remaining > 0 {
+            1.0
+        } else {
+            0.0
+        };
+
+        // Post-steal handover: gain/pan ramp linearly from the stolen
+        // note's control values to this note's, landing exactly on the
+        // targets at the ramp's end.
+        if note.ramp_frames_remaining > 0 {
+            note.ramp_frames_remaining -= 1;
+            if note.ramp_frames_remaining == 0 {
+                note.gain = note.target_gain;
+                note.pan = note.target_pan;
+            } else {
+                note.gain += note.gain_step;
+                note.pan += note.pan_step;
+            }
+        }
+
+        // Per-note parameter automation (ADR 0012): automated parameters
+        // follow their breakpoints (linear interpolation, last value
+        // held); parameters without breakpoints keep the trigger-time
+        // value, bit-identically to the pre-automation path.
+        let mut params = note.params;
+        if note.ramps.any_active() {
+            for (index, value) in params.iter_mut().enumerate() {
+                *value = note.ramps.value_at_from(
+                    index,
+                    *value,
+                    note.age_frames,
+                    &mut note.ramp_cursors[index],
+                );
+            }
+        }
+        note.age_frames = note.age_frames.saturating_add(1);
+
+        // The per-note pattern parameters ramp the same way over their
+        // own (pragma-configurable) window, landing exactly; the ramp
+        // keeps running through the release tail, so even a one-frame
+        // gate reaches the new note's values.
+        if note.param_ramp_frames_remaining > 0 {
+            if note.ramps.any_active() {
+                // Steal x automation composition (ADR 0012): glide from
+                // the stolen note's values ONTO the (possibly moving)
+                // envelope. Each frame closes 1/remaining of the gap to
+                // the envelope's current value: against a flat envelope
+                // this traces the exact linear path of the plain steal
+                // ramp, against a moving one it converges smoothly, and
+                // on the window's last frame (remaining == 1) it lands
+                // exactly on the envelope — which alone drives from then
+                // on.
+                #[allow(clippy::cast_precision_loss)]
+                let remaining = note.param_ramp_frames_remaining as f32;
+                for (value, current) in params.iter_mut().zip(&note.current_params) {
+                    *value = current + (*value - current) / remaining;
+                }
+                note.param_ramp_frames_remaining -= 1;
+            } else {
+                note.param_ramp_frames_remaining -= 1;
+                if note.param_ramp_frames_remaining == 0 {
+                    note.params = note.target_params;
+                } else {
+                    for (param, step) in note.params.iter_mut().zip(&note.param_steps) {
+                        *param += step;
+                    }
+                }
+                params = note.params;
+            }
+        }
+        note.current_params = params;
+
+        let (left, right) =
+            self.voice
+                .process_frame_with_params(gate, note.freq_hz, note.gain, note.pan, &params);
+
+        if let Ok(track_index) = usize::try_from(note.track_id.get())
+            && let Some((mix_left, mix_right)) = track_mix.get_mut(track_index)
+        {
+            *mix_left += left;
+            *mix_right += right;
+        }
+
+        if in_retrigger_gap {
+            note.retrigger_gap_frames -= 1;
+        } else if note.gate_frames_remaining > 0 {
+            note.gate_frames_remaining -= 1;
+        } else if note.release_frames_remaining > 0 {
+            note.release_frames_remaining -= 1;
+        } else {
+            self.voice.reset();
+            self.note = None;
+        }
+    }
 }
 
 /// A fixed pool of prepared graph voices owned by the engine core.
@@ -2200,111 +2304,7 @@ impl GraphVoiceBank {
     /// is allocated or dropped on this path.
     pub fn render_frame(&mut self, track_mix: &mut [(f32, f32)]) {
         for slot in &mut self.slots {
-            let Some(note) = slot.note.as_mut() else {
-                continue;
-            };
-
-            // A freshly stolen voice holds its gate low for one frame so the
-            // graph's envelopes see a rising edge on the next frame and
-            // restart click-free from their current level.
-            let in_retrigger_gap = note.retrigger_gap_frames > 0;
-            let gate = if !in_retrigger_gap && note.gate_frames_remaining > 0 {
-                1.0
-            } else {
-                0.0
-            };
-
-            // Post-steal handover: gain/pan ramp linearly from the stolen
-            // note's control values to this note's, landing exactly on the
-            // targets at the ramp's end.
-            if note.ramp_frames_remaining > 0 {
-                note.ramp_frames_remaining -= 1;
-                if note.ramp_frames_remaining == 0 {
-                    note.gain = note.target_gain;
-                    note.pan = note.target_pan;
-                } else {
-                    note.gain += note.gain_step;
-                    note.pan += note.pan_step;
-                }
-            }
-
-            // Per-note parameter automation (ADR 0012): automated parameters
-            // follow their breakpoints (linear interpolation, last value
-            // held); parameters without breakpoints keep the trigger-time
-            // value, bit-identically to the pre-automation path.
-            let mut params = note.params;
-            if note.ramps.any_active() {
-                for (index, value) in params.iter_mut().enumerate() {
-                    *value = note.ramps.value_at_from(
-                        index,
-                        *value,
-                        note.age_frames,
-                        &mut note.ramp_cursors[index],
-                    );
-                }
-            }
-            note.age_frames = note.age_frames.saturating_add(1);
-
-            // The per-note pattern parameters ramp the same way over their
-            // own (pragma-configurable) window, landing exactly; the ramp
-            // keeps running through the release tail, so even a one-frame
-            // gate reaches the new note's values.
-            if note.param_ramp_frames_remaining > 0 {
-                if note.ramps.any_active() {
-                    // Steal x automation composition (ADR 0012): glide from
-                    // the stolen note's values ONTO the (possibly moving)
-                    // envelope. Each frame closes 1/remaining of the gap to
-                    // the envelope's current value: against a flat envelope
-                    // this traces the exact linear path of the plain steal
-                    // ramp, against a moving one it converges smoothly, and
-                    // on the window's last frame (remaining == 1) it lands
-                    // exactly on the envelope — which alone drives from then
-                    // on.
-                    #[allow(clippy::cast_precision_loss)]
-                    let remaining = note.param_ramp_frames_remaining as f32;
-                    for (value, current) in params.iter_mut().zip(&note.current_params) {
-                        *value = current + (*value - current) / remaining;
-                    }
-                    note.param_ramp_frames_remaining -= 1;
-                } else {
-                    note.param_ramp_frames_remaining -= 1;
-                    if note.param_ramp_frames_remaining == 0 {
-                        note.params = note.target_params;
-                    } else {
-                        for (param, step) in note.params.iter_mut().zip(&note.param_steps) {
-                            *param += step;
-                        }
-                    }
-                    params = note.params;
-                }
-            }
-            note.current_params = params;
-
-            let (left, right) = slot.voice.process_frame_with_params(
-                gate,
-                note.freq_hz,
-                note.gain,
-                note.pan,
-                &params,
-            );
-
-            if let Ok(track_index) = usize::try_from(note.track_id.get())
-                && let Some((mix_left, mix_right)) = track_mix.get_mut(track_index)
-            {
-                *mix_left += left;
-                *mix_right += right;
-            }
-
-            if in_retrigger_gap {
-                note.retrigger_gap_frames -= 1;
-            } else if note.gate_frames_remaining > 0 {
-                note.gate_frames_remaining -= 1;
-            } else if note.release_frames_remaining > 0 {
-                note.release_frames_remaining -= 1;
-            } else {
-                slot.voice.reset();
-                slot.note = None;
-            }
+            slot.render_frame(track_mix);
         }
     }
 
