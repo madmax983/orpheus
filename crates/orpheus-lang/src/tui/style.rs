@@ -968,4 +968,126 @@ mod tests {
                 .add_modifier(Modifier::BOLD)
         );
     }
+
+    #[test]
+    fn should_format_transport_status_line_correctly() {
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+        session.eval_line(":stop").unwrap();
+        session.render_test_block_for_tui(1);
+
+        let view = session.transport_view();
+        let line = transport_status_line("Transport: ", &view, true);
+        assert_eq!(line.spans[0].content, "Transport: ");
+        assert_eq!(line.spans[1].content, "stopped");
+
+        session.eval_line(":play").unwrap();
+        session.render_test_block_for_tui(1);
+        session.eval_line("p = bd").unwrap();
+        let view = session.transport_view();
+        let line = transport_status_line("Transport: ", &view, true);
+        assert_eq!(line.spans[1].content, "queued");
+        assert_eq!(line.spans[2].content, " -> ");
+        assert_eq!(line.spans[3].content, "p");
+    }
+
+    #[test]
+    fn should_format_routing_status_line_correctly() {
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+        let view = session.mixer_view();
+        let line = routing_status_line(&view);
+        assert_eq!(line.spans[0].content, "Routing: ");
+        assert_eq!(line.spans[1].content, "live");
+        assert_eq!(line.spans[1].style.fg, Some(Color::Green));
+
+        session.eval_line(":bus new mybus").unwrap();
+        session
+            .eval_line(":bus fx mybus delay time=1/4 feedback=0.5 wet=0.5")
+            .unwrap();
+        session.render_test_block_for_tui(1);
+        let view = session.mixer_view();
+        let line = routing_status_line(&view);
+        assert_eq!(line.spans[0].content, "Routing: ");
+        assert_eq!(line.spans[1].content, "pending");
+        assert_eq!(line.spans[1].style.fg, Some(Color::Cyan));
+    }
+
+    #[test]
+    fn should_return_correct_binding_styles() {
+        let live_style = live_binding_style();
+        assert_eq!(live_style.fg, Some(Color::Green));
+        assert!(live_style.add_modifier.contains(Modifier::BOLD));
+
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+        let mut view = session.transport_view();
+
+        let pending_style = pending_binding_style(&view);
+        assert_eq!(pending_style.fg, Some(Color::Cyan));
+
+        session.eval_line("p = bd").unwrap();
+
+        view = session.transport_view();
+        let pending_style = pending_binding_style(&view);
+        assert_eq!(pending_style.fg, Some(Color::Blue));
+    }
+
+    #[test]
+    fn should_format_binding_list_item_correctly() {
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+        session.eval_line("drums = bd sn").unwrap();
+        session.render_test_block_for_tui(256);
+        let view = session.transport_view();
+
+        let item = binding_list_item("drums: Pattern".to_string(), &view);
+        let text = render_item_text(item);
+        assert!(text.contains("[live]"));
+
+        session.eval_line("p = bd").unwrap();
+        let view = session.transport_view();
+        let item = binding_list_item("p: Pattern".to_string(), &view);
+        let text = render_item_text(item);
+        assert!(text.contains("[next]"));
+    }
+
+    #[test]
+    fn should_format_binding_legend_item_correctly() {
+        let session = ReplSession::with_engine(EngineHandle::stub());
+        let view = session.transport_view();
+        let item = binding_legend_item(&view);
+        let text = render_item_text(item);
+        assert!(text.contains("active"));
+        assert!(text.contains("pending"));
+    }
+
+    #[test]
+    fn should_show_binding_legend_conditionally() {
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+        let view = session.transport_view();
+
+        assert!(!should_show_binding_legend(10, 2, &view));
+
+        session.eval_line("drums = bd sn").unwrap();
+        session.render_test_block_for_tui(256);
+        let view = session.transport_view();
+
+        assert!(should_show_binding_legend(10, 2, &view));
+        assert!(!should_show_binding_legend(10, 10, &view));
+        assert!(!should_show_binding_legend(5, 2, &view));
+    }
+
+    #[test]
+    fn should_return_correct_key_legend_style() {
+        let style = key_legend_style();
+        assert_eq!(style.fg, Some(Color::DarkGray));
+        assert!(style.add_modifier.contains(Modifier::DIM));
+    }
+
+    #[test]
+    fn should_return_correct_help_overlay_styles() {
+        let border_style = help_overlay_border_style();
+        assert_eq!(border_style.fg, Some(Color::Cyan));
+
+        let footer_style = help_overlay_footer_style();
+        assert_eq!(footer_style.fg, Some(Color::Gray));
+        assert!(footer_style.add_modifier.contains(Modifier::DIM));
+    }
 }
