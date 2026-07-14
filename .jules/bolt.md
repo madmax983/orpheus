@@ -47,3 +47,7 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+## 2026-07-14 - [Remove Early String Allocation in Tracker Export]
+**Learning:** Eagerly calling `.to_string()` on string slices (`.sample()`) inside the hot `for event in &events` loop caused unnecessary heap allocations before ownership was strictly required for the output structure.
+**Action:** Extract the variable as a `&str` reference, use it for lookups and conditionals, and only allocate via `.to_string()` at the exact assignment point where an owned `String` is needed.
