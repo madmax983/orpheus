@@ -3307,6 +3307,24 @@ fn extract_pattern_gate(
     }
 }
 
+/// Generates a vector of nodes representing a Euclidean rhythm pattern.
+///
+/// This helper is used by the `euclid` and `euclidInv` language functions to evaluate
+/// a repeating rhythmic structure that distributes `pulses` evenly across `steps`.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::build_euclid_nodes;
+/// use orpheus_pattern::PatternNode;
+///
+/// // Create 3 pulses distributed over 8 steps (e.g., a standard tresillo).
+/// let nodes = build_euclid_nodes(3, 8, 0, false);
+/// assert_eq!(nodes.len(), 8);
+///
+/// // The first node is an active pulse (event)
+/// assert!(matches!(nodes[0], PatternNode::Event(_)));
+/// ```
 pub fn build_euclid_nodes(
     pulses: u32,
     steps: u32,

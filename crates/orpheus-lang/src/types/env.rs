@@ -204,6 +204,24 @@ impl TypeEnv {
         self.entries.get(name)
     }
 
+    /// Returns an iterator over all [`TypeScheme`]s bound in this environment.
+    ///
+    /// This is used internally during type generalization to identify free type variables
+    /// across all bindings, ensuring that variables currently bound in the environment
+    /// are not incorrectly generalized into polymorphic parameters.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{TypeEnv, Type, TypeScheme};
+    ///
+    /// let mut env = TypeEnv::new();
+    /// env.insert("test", TypeScheme::monomorphic(Type::Number));
+    ///
+    /// let mut values = env.values();
+    /// assert_eq!(values.next(), Some(&TypeScheme::monomorphic(Type::Number)));
+    /// assert_eq!(values.next(), None);
+    /// ```
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }

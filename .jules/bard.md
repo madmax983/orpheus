@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-05-26 - [Missing Internal/UI Name and Iterator Documentation]
+**Confusion:** The `TypeEnv::values` iterator in the language module and the `name()` methods on `TrackState`, `BusState`, and `PluginParameterLane` in the DSP module lacked narrative documentation explaining *why* they existed. This led to a "getter noise" gap where the purpose (e.g., UI labels, polymorphism generalization) was obfuscated.
+**Clarification:** Added high-level `///` comments explaining the specific internal or UI-facing context for these methods, resolving the documentation gap and preventing `missing_docs` warnings.

@@ -193,6 +193,9 @@ impl PluginParameterLane {
     }
 
     /// The automatable parameter name as presented by the plugin.
+    ///
+    /// This string acts as the identifier that links the sequence of automation
+    /// events within this lane to the actual target control on the loaded DSP plugin.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name

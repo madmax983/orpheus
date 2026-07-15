@@ -282,6 +282,9 @@ impl TrackState {
         self.id
     }
 
+    /// The user-defined string name of the track.
+    ///
+    /// This is used primarily to label the track in the mixer UI or for debugging.
     #[must_use]
     pub fn name(&self) -> &str {
         self.name.as_ref()
@@ -349,6 +352,10 @@ impl BusState {
         self.id
     }
 
+    /// The user-defined string name of the bus.
+    ///
+    /// This identifier labels the bus in the mixer UI, making it easier to
+    /// understand complex signal routing and effect chains.
     #[must_use]
     pub fn name(&self) -> &str {
         self.name.as_ref()
