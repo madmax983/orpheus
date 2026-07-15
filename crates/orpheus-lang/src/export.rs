@@ -6,6 +6,7 @@
 
 use std::io::Write;
 use std::path::Path;
+use std::sync::Arc;
 use thiserror::Error;
 
 use orpheus_dsp::{OfflineRenderError, SampleBank, SampleTrigger, render_events_to_file_with_bank};
@@ -123,8 +124,8 @@ pub fn render_sample_pattern_to_file(
     path: impl AsRef<Path>,
     cycle_count: u64,
 ) -> Result<(), RenderError> {
-    let sample_bank = SampleBank::load_builtin();
-    render_sample_pattern_to_file_with_bank(pattern, path, cycle_count, &sample_bank)
+    let sample_bank = Arc::new(SampleBank::load_builtin());
+    render_sample_pattern_to_file_with_bank(pattern, path, cycle_count, sample_bank)
 }
 
 fn query_sample_pattern_events(
@@ -520,9 +521,9 @@ pub fn export_number_pattern_to_json(
 /// let env = eval_module("x = bd sn", ReplMode::Loose).unwrap();
 /// let pattern = env.get("x").unwrap().as_sample_pattern().unwrap();
 ///
-/// let sample_bank = SampleBank::load_builtin();
+/// let sample_bank = std::sync::Arc::new(SampleBank::load_builtin());
 /// let path = std::env::temp_dir().join("render_with_bank.wav");
-/// render_sample_pattern_to_file_with_bank(pattern, &path, 2, &sample_bank).unwrap();
+/// render_sample_pattern_to_file_with_bank(pattern, &path, 2, sample_bank).unwrap();
 /// ```
 ///
 /// # Errors
@@ -533,7 +534,7 @@ pub fn render_sample_pattern_to_file_with_bank(
     pattern: &SamplePatternValue,
     path: impl AsRef<Path>,
     cycle_count: u64,
-    sample_bank: &SampleBank,
+    sample_bank: std::sync::Arc<SampleBank>,
 ) -> Result<(), RenderError> {
     let events = query_sample_pattern_events(pattern, cycle_count).map_err(|e| {
         if e.to_string().contains("exporting requires") {
@@ -551,7 +552,7 @@ pub fn render_sample_pattern_to_file_with_bank(
         })
         .collect::<Vec<_>>();
 
-    render_events_to_file_with_bank(path, &rendered_events, cycle_count, sample_bank)?;
+    render_events_to_file_with_bank(path, &rendered_events, cycle_count, &sample_bank)?;
 
     Ok(())
 }

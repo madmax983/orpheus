@@ -75,7 +75,7 @@ pub use crate::error::EvalError;
 /// **Recovery:** Catch the error and print its message to the user. Errors are
 /// designed to be human-readable and pinpoint syntax or runtime issues (like missing variables).
 pub fn eval_module(source: &str, mode: ReplMode) -> Result<BTreeMap<String, Value>, EvalError> {
-    eval_module_with_samples(source, mode, &builtin_sample_bank())
+    eval_module_with_samples(source, mode, builtin_sample_bank())
 }
 
 /// Evaluates bootstrap Orpheus source with an explicit sample bank in scope.
@@ -93,10 +93,10 @@ pub fn eval_module(source: &str, mode: ReplMode) -> Result<BTreeMap<String, Valu
 pub fn eval_module_with_samples(
     source: &str,
     mode: ReplMode,
-    samples: &SampleBank,
+    samples: Arc<SampleBank>,
 ) -> Result<BTreeMap<String, Value>, EvalError> {
     let parsed = parse_module(source)?;
-    Evaluator::new(mode, &parsed, Arc::new(samples.clone())).eval_module(&parsed)
+    Evaluator::new(mode, &parsed, samples).eval_module(&parsed)
 }
 
 /// The lazily decoded built-in sample bank shared by every evaluation that
@@ -137,7 +137,7 @@ pub fn eval_into_bindings(
     mode: ReplMode,
     bindings: &mut BTreeMap<String, Value>,
 ) -> Result<Option<(String, Value)>, EvalError> {
-    eval_into_bindings_with_samples_arc(source, mode, bindings, builtin_sample_bank())
+    eval_into_bindings_with_samples(source, mode, bindings, builtin_sample_bank())
 }
 
 /// Evaluates a source module into existing bindings with an explicit sample
@@ -152,15 +152,6 @@ pub fn eval_into_bindings(
 /// Returns [`EvalError`] if parsing fails, or if evaluation encounters a
 /// runtime error.
 pub fn eval_into_bindings_with_samples(
-    source: &str,
-    mode: ReplMode,
-    bindings: &mut BTreeMap<String, Value>,
-    samples: &SampleBank,
-) -> Result<Option<(String, Value)>, EvalError> {
-    eval_into_bindings_with_samples_arc(source, mode, bindings, Arc::new(samples.clone()))
-}
-
-fn eval_into_bindings_with_samples_arc(
     source: &str,
     mode: ReplMode,
     bindings: &mut BTreeMap<String, Value>,

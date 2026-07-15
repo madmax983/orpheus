@@ -21,6 +21,7 @@
 //! per-trigger gain and equal-power pan stages automatically.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use comfy_table::Cell;
 use crossterm::style::Stylize;
@@ -211,7 +212,7 @@ impl VoiceValue {
 pub fn compile_voice(
     bindings: &[GraphBinding],
     result: &Expr,
-    samples: &SampleBank,
+    samples: &Arc<SampleBank>,
 ) -> Result<VoiceValue, EvalError> {
     let mut compiler = VoiceCompiler::new(samples);
 

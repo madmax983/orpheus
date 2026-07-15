@@ -6,6 +6,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use flacenc::bitsink::ByteSink;
 use flacenc::component::BitRepr;
@@ -109,7 +110,7 @@ pub fn render_events_to_file(
     events: &[Event<SampleTrigger>],
     cycle_count: u64,
 ) -> Result<(), OfflineRenderError> {
-    let builtin_bank = SampleBank::load_builtin();
+    let builtin_bank = Arc::new(SampleBank::load_builtin());
     render_events_to_file_with_bank(path, events, cycle_count, &builtin_bank)
 }
 
@@ -124,7 +125,7 @@ pub fn render_events_to_file_with_bank(
     path: impl AsRef<Path>,
     events: &[Event<SampleTrigger>],
     cycle_count: u64,
-    sample_bank: &SampleBank,
+    sample_bank: &Arc<SampleBank>,
 ) -> Result<(), OfflineRenderError> {
     let path = path.as_ref();
     let rendered = render_events_to_pcm(events, cycle_count, sample_bank)?;
@@ -147,7 +148,7 @@ pub fn render_events_to_wav(
     events: &[Event<SampleTrigger>],
     cycle_count: u64,
 ) -> Result<(), OfflineRenderError> {
-    let builtin_bank = SampleBank::load_builtin();
+    let builtin_bank = Arc::new(SampleBank::load_builtin());
     let rendered = render_events_to_pcm(events, cycle_count, &builtin_bank)?;
     write_wav(path.as_ref(), &rendered)
 }
@@ -167,7 +168,7 @@ pub fn render_routing_snapshot_to_stereo_for_test(
     snapshot: &RoutingSnapshot,
     cycle_count: u64,
     tempo_bpm: f32,
-    sample_bank: &SampleBank,
+    sample_bank: &Arc<SampleBank>,
 ) -> Result<Vec<f32>, OfflineRenderError> {
     if cycle_count == 0 {
         return Err(OfflineRenderError::InvalidCycleCount);
@@ -263,7 +264,7 @@ pub fn render_routing_snapshot_to_stem_wavs(
     snapshot: &RoutingSnapshot,
     cycle_count: u64,
     tempo_bpm: f32,
-    sample_bank: &SampleBank,
+    sample_bank: &Arc<SampleBank>,
     graph_voice_specs: &[GraphVoiceSpec],
     generator_cycles: &[GeneratorCycleSpec],
     output_dir: impl AsRef<Path>,
@@ -417,7 +418,7 @@ pub fn render_routing_snapshot_to_master_wav(
     snapshot: &RoutingSnapshot,
     cycle_count: u64,
     tempo_bpm: f32,
-    sample_bank: &SampleBank,
+    sample_bank: &Arc<SampleBank>,
     graph_voice_specs: &[GraphVoiceSpec],
     generator_cycles: &[GeneratorCycleSpec],
     output_path: impl AsRef<Path>,
@@ -616,7 +617,7 @@ fn activate_due_snapshot_voices(
     scheduler: &mut Scheduler,
     active_voices: &mut [Option<ActiveVoice>],
     graph_voices: &mut GraphVoiceBank,
-    sample_bank: &SampleBank,
+    sample_bank: &Arc<SampleBank>,
 ) -> Result<(), OfflineRenderError> {
     while let Some(trigger) = scheduler.pop_due(frame) {
         activate_voice(
@@ -853,7 +854,7 @@ fn mix_offline_voices_into_tracks(
 fn render_events_to_pcm(
     events: &[Event<SampleTrigger>],
     cycle_count: u64,
-    sample_bank: &SampleBank,
+    sample_bank: &Arc<SampleBank>,
 ) -> Result<Vec<i32>, OfflineRenderError> {
     if cycle_count == 0 {
         return Err(OfflineRenderError::InvalidCycleCount);
@@ -989,7 +990,7 @@ fn write_flac(path: &Path, samples: &[i32]) -> Result<(), OfflineRenderError> {
 fn activate_voice(
     active_voices: &mut [Option<ActiveVoice>],
     graph_voices: &mut GraphVoiceBank,
-    sample_bank: &SampleBank,
+    sample_bank: &Arc<SampleBank>,
     scheduled_trigger: &ScheduledTrigger,
     sample_rate: u32,
     frames_per_cycle: u64,

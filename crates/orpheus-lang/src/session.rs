@@ -70,7 +70,7 @@ const MAX_RECORDED_GENERATOR_CYCLES: usize = 4096;
 pub struct ReplSession {
     mode: ReplMode,
     engine: EngineHandle,
-    sample_bank: SampleBank,
+    sample_bank: Arc<SampleBank>,
     sample_directory: Option<PathBuf>,
     sample_watcher: Option<SampleLibraryWatcher>,
     bindings: BTreeMap<String, Value>,
@@ -130,7 +130,7 @@ struct MidiInputState {
 
 #[derive(Clone)]
 struct SessionSnapshot {
-    sample_bank: SampleBank,
+    sample_bank: Arc<SampleBank>,
     sample_directory: Option<PathBuf>,
     bindings: BTreeMap<String, Value>,
     type_bindings: BTreeMap<String, Type>,
@@ -398,7 +398,7 @@ impl ReplSession {
         Self {
             mode: ReplMode::Loose,
             engine,
-            sample_bank: SampleBank::load_builtin(),
+            sample_bank: Arc::new(SampleBank::load_builtin()),
             sample_directory: None,
             sample_watcher: None,
             bindings: BTreeMap::new(),
@@ -461,7 +461,7 @@ impl ReplSession {
             source,
             self.mode,
             &mut self.bindings,
-            &self.sample_bank,
+            Arc::clone(&self.sample_bank),
         )
         .map_err(|error| error.to_string())?
         else {
@@ -672,7 +672,7 @@ impl ReplSession {
             ));
         };
 
-        render_sample_pattern_to_file_with_bank(pattern, &path, cycles, &self.sample_bank)
+        render_sample_pattern_to_file_with_bank(pattern, &path, cycles, Arc::clone(&self.sample_bank))
             .map_err(|error: crate::export::RenderError| error.to_string())?;
         Ok(format!(
             "rendered `{binding_name}` to `{path}` ({cycles} cycle(s))"
@@ -1160,9 +1160,9 @@ impl ReplSession {
         }
         let directory = PathBuf::from(args);
         let sample_bank =
-            load_sample_bank_from_directory(&directory).map_err(|error| error.to_string())?;
+            Arc::new(load_sample_bank_from_directory(&directory).map_err(|error| error.to_string())?);
         let available_tokens = sample_bank.available_tokens();
-        self.sample_bank = sample_bank.clone();
+        self.sample_bank = Arc::clone(&sample_bank);
         self.sample_directory = Some(directory.clone());
         self.start_sample_watcher(&directory)?;
         self.engine
@@ -1215,7 +1215,7 @@ impl ReplSession {
         }
 
         let sample_bank =
-            load_sample_bank_from_directory(&directory).map_err(|error| error.to_string())?;
+            Arc::new(load_sample_bank_from_directory(&directory).map_err(|error| error.to_string())?);
 
         let mut bindings = self.bindings.clone();
         let mut type_bindings = self.type_bindings.clone();
@@ -1233,7 +1233,7 @@ impl ReplSession {
         self.bindings = bindings;
         self.type_bindings = type_bindings;
         self.mixer = mixer;
-        self.sample_bank = sample_bank.clone();
+        self.sample_bank = Arc::clone(&sample_bank);
         self.sample_directory = Some(directory.clone());
         self.start_sample_watcher(&directory)?;
         self.engine
@@ -1333,9 +1333,9 @@ impl ReplSession {
             return Err("no sample directory has been configured".to_owned());
         };
         let sample_bank =
-            load_sample_bank_from_directory(&directory).map_err(|error| error.to_string())?;
+            Arc::new(load_sample_bank_from_directory(&directory).map_err(|error| error.to_string())?);
         let available_tokens = sample_bank.available_tokens();
-        self.sample_bank = sample_bank.clone();
+        self.sample_bank = Arc::clone(&sample_bank);
         self.engine
             .enqueue(EngineCommand::ReplaceSampleBank(sample_bank))
             .map_err(|error| error.to_string())?;
@@ -1395,8 +1395,8 @@ impl ReplSession {
             );
         }
 
-        let sample_bank = reload.bank().clone();
-        self.sample_bank = sample_bank.clone();
+        let sample_bank = Arc::new(reload.bank().clone());
+        self.sample_bank = Arc::clone(&sample_bank);
         self.engine
             .enqueue(EngineCommand::ReplaceSampleBank(sample_bank))
             .map_err(|error| error.to_string())
