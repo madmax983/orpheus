@@ -264,7 +264,7 @@ fn render_master_inner(path: &Path, out: &Path, cycles: u64) -> anyhow::Result<(
     let message = session
         .eval_line(&format!(":export master {} {}", out.display(), cycles))
         .map_err(|error| anyhow!("failed to render master: {error}"))?;
-    println!("{message}");
+    println!("{} {}", "\u{2713}".green(), message.green());
     Ok(())
 }
 
