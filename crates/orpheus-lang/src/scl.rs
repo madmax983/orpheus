@@ -179,3 +179,18 @@ fn parse_scala_entry(raw: &str) -> Result<f64, SclError> {
         Ok(integer)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn eval_error_from_scl_error() {
+        let err = SclError::Header("mock header error".into());
+        let eval_err: EvalError = err.into();
+        assert_eq!(
+            eval_err.to_string(),
+            "malformed Scala header: mock header error"
+        );
+    }
+}
