@@ -47,3 +47,7 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+## 2025-07-15 - Zero-cost type resolution in inference
+**Learning:** Returning `Cow<'a, Type>` from recursive traversal methods like `resolve_ref` on ASTs or type definitions allows us to completely skip heap allocations (deep cloning `Box` and `Vec`) when the structure hasn't changed. We only allocate an `Owned` version when a mutation (like a substitution) actually occurs.
+**Action:** Use `Cow` for recursive transformations on tree structures to avoid O(N) heap allocations on the hot path.

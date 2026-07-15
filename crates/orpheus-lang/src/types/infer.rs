@@ -11,6 +11,7 @@
 //!   (e.g., automatically lifting a single `Number` into a `Pattern<Number>`) to allow
 //!   for rapid live-coding iteration without excessive ceremony.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ReplMode;
@@ -747,30 +748,59 @@ impl Inferencer {
         }
     }
 
+    #[allow(clippy::needless_pass_by_value)]
     fn resolve(&self, ty: Type) -> Type {
+        match self.resolve_ref(&ty) {
+            Cow::Owned(owned) => owned,
+            Cow::Borrowed(_) => ty,
+        }
+    }
+
+    fn resolve_ref<'a>(&'a self, ty: &'a Type) -> Cow<'a, Type> {
         match ty {
             Type::Var(var) => self
                 .substitutions
-                .get(&var)
-                .cloned()
-                .map_or(Type::Var(var), |bound| self.resolve(bound)),
-            Type::Pattern(inner) => Type::pattern(self.resolve(*inner)),
-            Type::Function(args, ret) => Type::function(
-                args.into_iter().map(|arg| self.resolve(arg)).collect(),
-                self.resolve(*ret),
-            ),
-            Type::Sample => Type::Sample,
-            Type::Pedal => Type::Pedal,
-            Type::Voice => Type::Voice,
-            Type::Plugin => Type::Plugin,
-            Type::Note => Type::Note,
-            Type::Number => Type::Number,
-            Type::Duration => Type::Duration,
-            Type::ArpDirection => Type::ArpDirection,
-            Type::PitchClassSet => Type::PitchClassSet,
-            Type::Tuning => Type::Tuning,
-            Type::String => Type::String,
-            Type::Unit => Type::Unit,
+                .get(var)
+                .map_or(Cow::Borrowed(ty), |bound| {
+                    let resolved = self.resolve_ref(bound);
+                    Cow::Owned(resolved.into_owned())
+                }),
+            Type::Pattern(inner) => match self.resolve_ref(inner) {
+                Cow::Borrowed(_) => Cow::Borrowed(ty),
+                Cow::Owned(resolved) => Cow::Owned(Type::pattern(resolved)),
+            },
+            Type::Function(args, ret) => {
+                let mut any_changed = false;
+                for arg in args {
+                    if matches!(self.resolve_ref(arg), Cow::Owned(_)) {
+                        any_changed = true;
+                        break;
+                    }
+                }
+
+                let resolved_ret = self.resolve_ref(ret);
+                if any_changed || matches!(resolved_ret, Cow::Owned(_)) {
+                    let mut resolved_args = Vec::with_capacity(args.len());
+                    for arg in args {
+                        resolved_args.push(self.resolve_ref(arg).into_owned());
+                    }
+                    Cow::Owned(Type::function(resolved_args, resolved_ret.into_owned()))
+                } else {
+                    Cow::Borrowed(ty)
+                }
+            }
+            Type::Sample
+            | Type::Pedal
+            | Type::Voice
+            | Type::Plugin
+            | Type::Note
+            | Type::Number
+            | Type::Duration
+            | Type::ArpDirection
+            | Type::PitchClassSet
+            | Type::Tuning
+            | Type::String
+            | Type::Unit => Cow::Borrowed(ty),
         }
     }
 
