@@ -11,3 +11,7 @@
 ## 2023-10-31 - [Fuzzing Evaluation Resilience & Pattern Match Exhaustiveness]
 **Learning:** `E0004: non-exhaustive patterns` compilation errors occur when adding new variants to central enums (like `BuiltinKind`) without updating matching functions downstream (`name()`, `arity()`, `execute()`). Fuzzing via `cargo-fuzz` confirmed the evaluation system handles malformed strings gracefully without crashing.
 **Action:** When adding enum variants, systematically check and update all downstream match blocks. Ensure all systems compiling after a feature addition don't just compile but also withstand `cargo-fuzz` without panicking.
+## 2025-02-28 - Float Bounds Precision Loss Bypass
+**The Target:** `eval_positive_integer` in `crates/orpheus-lang/src/eval.rs` which verifies large floating point boundaries using `i128::MAX as f64`.
+**The Finding:** Checking a parsed float against `i128::MAX as f64` bypasses the bounds check for extremely large numbers (e.g. 1.0e16) due to 64-bit float precision truncation. This allows massive integers to be silently returned via `value.round() as i128` truncations, bypassing all internal API validation for sizes and panicking downstream on out-of-memory array constructions or shift bounds.
+**The Action:** Injected a 'soft bound' of `1.0e15_f64` before doing direct large bounds assertions or cast boundaries, throwing an explicit out of bounds error before the cast can truncate the values.

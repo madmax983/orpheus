@@ -1117,6 +1117,17 @@ impl Evaluator {
             return Err(EvalError::new(format!("{context} requires a valid number")));
         }
 
+        // 👺 Havoc bounds check fix:
+        // A direct cast of `i128::MAX as f64` can round down or create a boundary where
+        // extremely large floats bypass the check, losing precision and truncating
+        // downstream silently instead of throwing an out of bounds error.
+        // We impose a conservative soft bound instead.
+        if value > 1.0e15_f64 || value < -1.0e15_f64 {
+            return Err(EvalError::new(format!(
+                "{context} exceeded the supported range"
+            )));
+        }
+
         #[allow(clippy::cast_precision_loss)]
         let max_val = i128::MAX as f64;
         #[allow(clippy::cast_precision_loss)]
