@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-07-16 - [Fixing Private Intra-Doc Links and Missing Struct Documentation]
+**Confusion:** The documentation generator emitted warnings due to intra-doc links targeting private items (e.g. `tests::lfsr_sequences_match_genesoxide`, `PSG_HEADROOM_SCALE`, `EnvCore`) and missing documentation on structures `PlaybackSample` and `ScheduledTrigger`.
+**Clarification:** Modified the private intra-doc links to use inline code formatting instead, and added descriptive `///` documentation for the missing structures explaining their temporal/audio purposes.

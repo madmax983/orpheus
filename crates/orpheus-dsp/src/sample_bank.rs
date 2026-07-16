@@ -29,6 +29,7 @@ const HIHAT_WAV: &[u8] = include_bytes!("../assets/hihat.wav");
 const SAMPLE_MANIFEST_FILE: &str = "samples.ron";
 const DEFAULT_WATCH_INTERVAL: Duration = Duration::from_millis(50);
 
+/// Represents an audio sample loaded into memory, ready for playback.
 #[derive(Clone, PartialEq)]
 pub struct PlaybackSample {
     frames: Arc<[f32]>,
@@ -49,11 +50,37 @@ impl PlaybackSample {
         }
     }
 
+    /// Exposes the inner memory-mapped buffer containing the actual amplitude data.
+    ///
+    /// The data is wrapped in an `Arc` so multiple synthesizer voices can safely
+    /// share the exact same loaded memory footprint concurrently.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::PlaybackSample;
+    ///
+    /// let sample = PlaybackSample::from_mono_frames(vec![0.0, 0.5, -0.5, 0.0], 44100);
+    /// assert_eq!(sample.frames().len(), 4);
+    /// ```
     #[must_use]
     pub const fn frames(&self) -> &Arc<[f32]> {
         &self.frames
     }
 
+    /// Exposes the sample rate the audio was physically recorded or rendered at.
+    ///
+    /// This allows the engine to accurately pitch-shift the waveform at runtime if
+    /// the session's native DSP rate differs from the sample's internal rate.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::PlaybackSample;
+    ///
+    /// let sample = PlaybackSample::from_mono_frames(vec![0.0], 48000);
+    /// assert_eq!(sample.sample_rate_hz(), 48000);
+    /// ```
     #[must_use]
     pub const fn sample_rate_hz(&self) -> u32 {
         self.sample_rate_hz

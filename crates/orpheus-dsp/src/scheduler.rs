@@ -13,12 +13,22 @@ use crate::engine::EngineError;
 use crate::routing::TrackId;
 use crate::voice::VoiceKind;
 
+/// Represents an exact, scheduled point in DSP time where a logical sequence event manifests as audio.
+///
+/// This bridging structure converts abstract pattern definitions (e.g. `bd*4`) into absolute
+/// hardware time constraints (specific frames, tracks, and durations) the real-time synthesis
+/// engine can blindly execute without needing to understand tempo, time signatures, or cycles.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScheduledTrigger {
+    /// The exact absolute clock frame the renderer must initiate this playback.
     pub frame: u64,
+    /// How many discrete frames the engine must keep the voice active before forcefully terminating it.
     pub duration_frames: u32,
+    /// The unique routing destination for this event's generated audio stream.
     pub track_id: TrackId,
+    /// The inner playback instructions defining what sample or synthesizer patch to load.
     pub trigger: SampleTrigger,
+    /// The resolved default voice type, providing a guaranteed sound if the trigger lacks a specific graph program.
     pub fallback_voice: Option<VoiceKind>,
 }
 
