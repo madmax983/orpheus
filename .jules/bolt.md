@@ -47,3 +47,7 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+**[Redundant String Allocation Avoidance]**
+**Learning:** Eagerly calling `.to_string()` on slices or strings when a function signature can simply take a string slice (`&str`) or when the original value can be passed along until needed leads to unnecessary heap allocations. This occurs when passing string slices to closure captures without consuming them.
+**Action:** Maintain references (`&str` or direct borrows) for as long as possible and delay heap allocation (like `to_string()`) to the moment ownership is explicitly needed.

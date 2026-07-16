@@ -66,7 +66,7 @@ pub fn export_sample_pattern_to_tracker(
     let mut grid: Vec<Vec<Option<String>>> = vec![vec![None; sample_list.len()]; total_steps];
 
     for event in &events {
-        let sample = event.value.sample().to_string();
+        let sample = event.value.sample();
         let lane_idx = sample_list
             .iter()
             .position(|s| *s == sample)
@@ -90,7 +90,7 @@ pub fn export_sample_pattern_to_tracker(
             let formatted_name = if sample.len() > 4 {
                 sample.chars().take(4).collect::<String>()
             } else {
-                sample.clone()
+                sample.to_string()
             };
             grid[start_step][lane_idx] = Some(formatted_name);
             for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
@@ -102,7 +102,7 @@ pub fn export_sample_pattern_to_tracker(
             let formatted_name = if sample.len() > 4 {
                 sample.chars().take(4).collect::<String>()
             } else {
-                sample.clone()
+                sample.to_string()
             };
             grid[start_step][lane_idx] = Some(formatted_name);
         }
