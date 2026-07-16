@@ -1117,11 +1117,8 @@ impl Evaluator {
             return Err(EvalError::new(format!("{context} requires a valid number")));
         }
 
-        #[allow(clippy::cast_precision_loss)]
-        let max_val = i128::MAX as f64;
-        #[allow(clippy::cast_precision_loss)]
-        let min_val = i128::MIN as f64;
-        if value > max_val || value < min_val {
+        let soft_bound = 1.0e15_f64;
+        if value.abs() > soft_bound {
             return Err(EvalError::new(format!(
                 "{context} exceeded the supported range"
             )));
@@ -1645,6 +1642,12 @@ fn extract_constant_number_rational(value: Value, context: &str) -> Result<Ratio
 pub fn f64_to_rational(value: f64, context: &str) -> Result<Rational, EvalError> {
     if !value.is_finite() {
         return Err(EvalError::new(format!("{context} must be finite")));
+    }
+
+    if value.abs() > 1.0e15_f64 {
+        return Err(EvalError::new(format!(
+            "{context} exceeded the supported range"
+        )));
     }
 
     let rendered = value.to_string();
