@@ -968,4 +968,46 @@ mod tests {
                 .add_modifier(Modifier::BOLD)
         );
     }
+
+    #[test]
+    fn should_render_correct_spans_for_transport_status() {
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+
+        session.eval_line(":stop").unwrap();
+        session.render_test_block_for_tui(1);
+
+        let view = session.transport_view();
+        let line = transport_status_line("Transport: ", &view, true);
+        assert!(line.spans.iter().any(|span| span.content == "stopped"));
+        assert!(line.spans.iter().any(|span| span.content == "Transport: "));
+        assert!(!line.spans.iter().any(|span| span.content == " -> "));
+
+        session.eval_line(":play").unwrap();
+        session.eval_line("p = bd").unwrap();
+        let view = session.transport_view();
+        let line = transport_status_line("Transport: ", &view, true);
+        assert!(line.spans.iter().any(|span| span.content == "queued"));
+        assert!(line.spans.iter().any(|span| span.content == " -> "));
+        assert!(line.spans.iter().any(|span| span.content == "p"));
+
+        let line_no_target = transport_status_line("Transport: ", &view, false);
+        assert!(!line_no_target.spans.iter().any(|span| span.content == " -> "));
+        assert!(!line_no_target.spans.iter().any(|span| span.content == "p"));
+    }
+
+    #[test]
+    fn should_render_correct_spans_for_routing_status() {
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+
+        let line = routing_status_line(&session.mixer_view());
+        assert!(line.spans.iter().any(|span| span.content == "live"));
+        assert!(line.spans.iter().any(|span| span.content == "Routing: "));
+
+        session.eval_line(":track new drums").unwrap();
+        session.render_test_block_for_tui(1);
+
+        let line = routing_status_line(&session.mixer_view());
+        assert!(line.spans.iter().any(|span| span.content == "pending"));
+        assert!(line.spans.iter().any(|span| span.content == "Routing: "));
+    }
 }
