@@ -82,3 +82,7 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**[Title] Eliminate duplicated matches via pad and Display**
+**Learning:** `write!(f, "{name}")` correctly processes spacing offsets (e.g. `{:>15}`), whereas `f.write_str` inherently does not. Thus replacing a huge duplicate `match` block containing strings with `f.write_str(self.name())` will change the padding behavior.
+**Action:** When delegating formatting behavior inside `Display` implementations to a `self.name()` helper, always use `f.pad(self.name())` or `write!(f, "{}", self.name())` to perfectly preserve formatting alignment semantics, instead of `f.write_str`.
