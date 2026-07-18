@@ -65,7 +65,6 @@ impl TypeEnv {
     ///
     #[must_use]
     #[doc(hidden)]
-    #[allow(clippy::too_many_lines)]
     pub fn with_builtins() -> Self {
         let mut env = Self {
             entries: BTreeMap::new(),
@@ -119,25 +118,11 @@ impl TypeEnv {
         );
         install_plugin_builtins(&mut env);
 
-        for name in [
-            "ionian",
-            "dorian",
-            "phrygian",
-            "mixolydian",
-            "aeolian",
-            "minor_pentatonic",
-        ] {
-            env.insert(name, TypeScheme::monomorphic(Type::PitchClassSet));
-        }
+        install_scale_builtins(&mut env);
         env.insert("jux", jux_transform_scheme());
         env.insert("rev", unary_pattern_transform_scheme(alpha));
         env.insert("chaos", unary_pattern_transform_scheme(alpha));
-        for name in [
-            "gain", "hpf", "lpf", "cutoff", "res", "drive", "pw", "pan", "rate", "onset", "p1",
-            "p2", "p3", "p4",
-        ] {
-            env.insert(name, sample_control_scheme());
-        }
+        install_sample_control_builtins(&mut env);
         env.insert(
             "sample",
             TypeScheme::monomorphic(Type::curried(
@@ -206,6 +191,28 @@ impl TypeEnv {
 
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
+    }
+}
+
+fn install_scale_builtins(env: &mut TypeEnv) {
+    for name in [
+        "ionian",
+        "dorian",
+        "phrygian",
+        "mixolydian",
+        "aeolian",
+        "minor_pentatonic",
+    ] {
+        env.insert(name, TypeScheme::monomorphic(Type::PitchClassSet));
+    }
+}
+
+fn install_sample_control_builtins(env: &mut TypeEnv) {
+    for name in [
+        "gain", "hpf", "lpf", "cutoff", "res", "drive", "pw", "pan", "rate", "onset", "p1", "p2",
+        "p3", "p4",
+    ] {
+        env.insert(name, sample_control_scheme());
     }
 }
 
