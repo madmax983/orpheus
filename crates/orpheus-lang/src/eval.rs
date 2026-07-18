@@ -1117,11 +1117,7 @@ impl Evaluator {
             return Err(EvalError::new(format!("{context} requires a valid number")));
         }
 
-        #[allow(clippy::cast_precision_loss)]
-        let max_val = i128::MAX as f64;
-        #[allow(clippy::cast_precision_loss)]
-        let min_val = i128::MIN as f64;
-        if value > max_val || value < min_val {
+        if value.abs() > 1.0e15_f64 {
             return Err(EvalError::new(format!(
                 "{context} exceeded the supported range"
             )));
