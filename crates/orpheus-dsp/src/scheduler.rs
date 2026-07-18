@@ -13,12 +13,23 @@ use crate::engine::EngineError;
 use crate::routing::TrackId;
 use crate::voice::VoiceKind;
 
+/// A sample-accurate representation of an audio event.
+///
+/// While the language runtime evaluates musical patterns in abstract mathematical
+/// fractions (e.g., "1/4 beat"), the DSP thread requires absolute timeline points
+/// to trigger oscillators and samples. A `ScheduledTrigger` explicitly anchors
+/// an abstract `SampleTrigger` to an exact audio frame.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScheduledTrigger {
+    /// The absolute timeline sample frame at which playback should begin.
     pub frame: u64,
+    /// The exact duration of the event measured in audio frames.
     pub duration_frames: u32,
+    /// The unique routing identifier that maps this event to a mixer channel.
     pub track_id: TrackId,
+    /// The abstract trigger parameters (gain, pan, token) calculated by the language runtime.
     pub trigger: SampleTrigger,
+    /// A pre-calculated fallback resolution for built-in tokens if the custom sample bank misses.
     pub fallback_voice: Option<VoiceKind>,
 }
 

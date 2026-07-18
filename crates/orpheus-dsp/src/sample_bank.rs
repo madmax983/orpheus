@@ -29,6 +29,25 @@ const HIHAT_WAV: &[u8] = include_bytes!("../assets/hihat.wav");
 const SAMPLE_MANIFEST_FILE: &str = "samples.ron";
 const DEFAULT_WATCH_INTERVAL: Duration = Duration::from_millis(50);
 
+/// A read-only audio buffer fully loaded into heap memory.
+///
+/// The engine decodes all interactive audio files at boot and converts them into
+/// `PlaybackSample` structs. By keeping everything natively in memory as raw `f32` floats,
+/// the DSP thread can hot-swap drum hits instantly without blocking on file system I/O
+/// or decoding overhead during live performance.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::PlaybackSample;
+/// use std::sync::Arc;
+///
+/// // Create a dummy synthetic one-second buffer.
+/// let synthetic_frames = Arc::<[f32]>::from(vec![0.5; 48000].into_boxed_slice());
+/// let buffer = PlaybackSample::from_mono_frames(synthetic_frames, 48000);
+///
+/// assert_eq!(buffer.sample_rate_hz(), 48000);
+/// ```
 #[derive(Clone, PartialEq)]
 pub struct PlaybackSample {
     frames: Arc<[f32]>,
@@ -49,11 +68,18 @@ impl PlaybackSample {
         }
     }
 
+    /// Exposes the underlying shared audio frame array.
+    ///
+    /// Returning `&Arc<[f32]>` avoids deep clones when multiple playback voices
+    /// simultaneously read from the same underlying decoded file.
     #[must_use]
     pub const fn frames(&self) -> &Arc<[f32]> {
         &self.frames
     }
 
+    /// The original sample rate (e.g., `44100` or `48000`) of the decoded audio file.
+    ///
+    /// This is used by the synthesis engine to calculate proper playback speeds and pitch shifting.
     #[must_use]
     pub const fn sample_rate_hz(&self) -> u32 {
         self.sample_rate_hz
