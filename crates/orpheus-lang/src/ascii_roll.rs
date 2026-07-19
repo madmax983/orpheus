@@ -4,7 +4,7 @@
 //! events of a pattern in the terminal, showing time on the x-axis.
 use std::collections::BTreeMap;
 
-use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_BORDERS_ONLY};
+use comfy_table::{Cell, CellAlignment, Table, presets::UTF8_FULL_CONDENSED};
 
 use crossterm::style::Stylize;
 
@@ -106,7 +106,8 @@ pub fn render_ascii_roll(
         cycle_count.to_string().yellow()
     );
     let mut table = Table::new();
-    table.load_preset(UTF8_BORDERS_ONLY);
+    table.load_preset(UTF8_FULL_CONDENSED);
+    table.set_content_arrangement(comfy_table::ContentArrangement::Dynamic);
 
     for (sample, grid) in lanes {
         let mut row_string = String::new();

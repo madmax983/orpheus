@@ -8,9 +8,10 @@ pub trait Explain {
 #[must_use]
 #[doc(hidden)]
 pub fn explain_table<const N: usize>(headers: [&str; N]) -> comfy_table::Table {
-    use comfy_table::{Cell, Table, presets::UTF8_BORDERS_ONLY};
+    use comfy_table::{Cell, Table, presets::UTF8_FULL_CONDENSED};
     let mut table = Table::new();
-    table.load_preset(UTF8_BORDERS_ONLY);
+    table.load_preset(UTF8_FULL_CONDENSED);
+    table.set_content_arrangement(comfy_table::ContentArrangement::Dynamic);
 
     let header_cells: Vec<Cell> = headers
         .into_iter()
