@@ -27,6 +27,7 @@ pub(crate) mod osu_export;
 mod parser;
 mod pedal;
 mod pitch;
+pub(crate) mod python_export;
 mod repl;
 pub(crate) mod scad_export;
 pub(crate) mod scl;
@@ -71,6 +72,7 @@ pub use pedal::{
     PedalGraph, PedalValue, SignalKind, ValidatedPedalBinding, ValidatedPedalNode,
     ValidatedPedalPlan,
 };
+pub use python_export::{export_number_pattern_to_python, export_sample_pattern_to_python};
 pub use repl::{run_stdio, run_stdio_with_engine, run_stdio_with_engine_and_path};
 pub use scad_export::export_number_pattern_to_scad;
 pub use srt::{export_number_pattern_to_srt, export_sample_pattern_to_srt};

@@ -1027,6 +1027,10 @@ impl ReplSession {
             .map(str::to_ascii_lowercase);
 
         match ext.as_deref() {
+            Some("py" | "python") => {
+                crate::python_export::export_sample_pattern_to_python(pattern, path, cycles)
+            }
+            Some("lua") => crate::lua_export::export_sample_pattern_to_lua(pattern, path, cycles),
             Some("svg") => crate::svg::export_sample_pattern_to_svg(pattern, path, cycles),
             Some("html") => crate::html::export_sample_pattern_to_html(pattern, path, cycles),
             Some("json") => crate::export::export_sample_pattern_to_json(pattern, path, cycles),
@@ -1061,6 +1065,10 @@ impl ReplSession {
             .map(str::to_ascii_lowercase);
 
         match ext.as_deref() {
+            Some("py" | "python") => {
+                crate::python_export::export_number_pattern_to_python(pattern, path, cycles)
+            }
+            Some("lua") => crate::lua_export::export_number_pattern_to_lua(pattern, path, cycles),
             Some("svg") => crate::svg::export_number_pattern_to_svg(pattern, path, cycles),
             Some("html") => crate::html::export_number_pattern_to_html(pattern, path, cycles),
             Some("json") => crate::export::export_number_pattern_to_json(pattern, path, cycles),
