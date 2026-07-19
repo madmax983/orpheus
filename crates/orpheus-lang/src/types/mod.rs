@@ -7,7 +7,8 @@
 //! The entry points for type inference are `infer_module` and `infer_into_bindings`,
 //! which evaluate AST sequences against a `TypeEnv` to produce a `TypedModule`.
 
-pub mod env;
+#[allow(clippy::redundant_pub_crate)]
+pub(crate) mod env;
 mod infer;
 
 use std::collections::BTreeMap;

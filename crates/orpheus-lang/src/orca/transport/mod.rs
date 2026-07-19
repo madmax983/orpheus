@@ -61,12 +61,19 @@ use thiserror::Error;
 use super::engine::OrcaIoEvent;
 
 pub use dispatch::TransportDispatcher;
+pub use midi::{RecordingMidiSink, midi_output_names};
+pub use net::UdpCommandListener;
+pub use worker::TransportHandle;
+
+#[allow(unused_imports)]
 pub use midi::{
-    MidiSink, MidirSink, RecordingMidiSink, cc_bytes, connect_midi_output, midi_output_names,
-    note_off_bytes, note_on_bytes, pb_bytes, velocity_byte,
+    MidiSink, MidirSink, cc_bytes, connect_midi_output, note_off_bytes, note_on_bytes, pb_bytes,
+    velocity_byte,
 };
-pub use net::{OscTransport, UdpCommandListener, UdpTransport};
-pub use worker::{TransportCommand, TransportHandle};
+#[allow(unused_imports)]
+pub use net::{OscTransport, UdpTransport};
+#[allow(unused_imports)]
+pub use worker::TransportCommand;
 
 /// Default UDP target: the reference client's default *output* port
 /// (`udp.js` `selectOutput(port = 49161)`; `49160` is its input listener,
