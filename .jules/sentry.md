@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2024-05-31 - Add format_cycle_position test
+**Learning:** Found format_cycle_position in tui/style.rs was completely untested for zero frames per cycle. By using `TransportSnapshot::default()` from `orpheus_dsp` which was updated to derive Default, we can test the zero-frames case easily.
+**Action:** Add unit test for formatting the cycle position with `frames_per_cycle == 0`.

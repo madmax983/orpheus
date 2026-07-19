@@ -921,6 +921,14 @@ mod tests {
     }
 
     #[test]
+    fn format_cycle_position_zero_frames_per_cycle() {
+        use orpheus_dsp::TransportSnapshot;
+        let snapshot = TransportSnapshot::default();
+        assert_eq!(snapshot.frames_per_cycle(), 0);
+        assert_eq!(format_cycle_position(&snapshot), "0.000");
+    }
+
+    #[test]
     fn should_return_correct_transport_state() {
         let mut session = ReplSession::with_engine(EngineHandle::stub());
 
