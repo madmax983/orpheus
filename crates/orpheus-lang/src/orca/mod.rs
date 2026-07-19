@@ -33,7 +33,7 @@ mod commands;
 mod engine;
 mod grid;
 mod publish;
-pub mod transport;
+pub(crate) mod transport;
 
 pub use commands::{CommandOutcome, MAX_GRID_FRAME, OrcaCommand, adjusted_frame, parse_command};
 pub use engine::{MidiNote, OrcaEngine, OrcaEvent, OrcaIoEvent, frame_span};
@@ -43,4 +43,10 @@ pub use publish::{
     DEFAULT_SAMPLE_TOKEN, ORCA_GENERATOR_ID, ORCA_PATTERN_NAME, OrcaCycle, OrcaPublisher,
     materialize_cycle, materialize_cycle_io, materialize_generator_cycles, midi_note_id,
     playhead_frame, sample_event_from_orca,
+};
+
+#[doc(hidden)]
+pub use transport::{
+    RecordingMidiSink, ScheduledIoEvent, TransportConfig, TransportDispatcher, TransportHandle,
+    UdpCommandListener, cycle_schedule,
 };
