@@ -769,7 +769,8 @@ impl ReplSession {
         }
 
         let mut table = comfy_table::Table::new();
-        table.load_preset(comfy_table::presets::UTF8_BORDERS_ONLY);
+        table.load_preset(comfy_table::presets::UTF8_FULL_CONDENSED);
+        table.set_content_arrangement(comfy_table::ContentArrangement::Dynamic);
         table.set_header(vec![
             comfy_table::Cell::new("Binding")
                 .fg(comfy_table::Color::White)
@@ -4346,7 +4347,8 @@ fn export_command_exports_number_pattern_to_supercollider() {
 
 fn build_help_table() -> comfy_table::Table {
     let mut table = comfy_table::Table::new();
-    table.load_preset(comfy_table::presets::UTF8_BORDERS_ONLY);
+    table.load_preset(comfy_table::presets::UTF8_FULL_CONDENSED);
+    table.set_content_arrangement(comfy_table::ContentArrangement::Dynamic);
     table.set_header(vec![
         comfy_table::Cell::new("Command")
             .fg(comfy_table::Color::White)
