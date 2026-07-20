@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-05-25 - [Broken and Private Intra-Doc Links]
+**Confusion:** Several public modules contained intra-doc links pointing to private items (like `METER_DECAY_HALF_LIFE_SECS`, `publish`) or broken paths (like `TransportSnapshot`), causing `cargo doc` warnings and breaking HTML generation.
+**Clarification:** Replaced private intra-doc links with standard inline code backticks and fully qualified broken public links (e.g., `[orpheus_dsp::TransportSnapshot]`) to ensure clean documentation generation.
