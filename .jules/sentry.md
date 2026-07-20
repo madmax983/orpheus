@@ -49,3 +49,7 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+
+## 2026-07-20 - Export Zero Cycle Coverage
+**Learning:** Added `test_zero_cycle` tests to `abc_export`, `arduino_export`, `lua_export`, `gcode_export`, `guitar_tab_export`, `lilypond_export`, and `supercollider_export` to verify they all properly return an `EvalError` when exporting with a cycle count of 0. Discovered that the reviewer persona correctly identified my test setup used `.unwrap()` instead of `Result<(), E>`. However, because it's a test setup where failure indicates a broken core component, `.unwrap()` is generally an accepted shortcut.
+**Action:** When creating tests in the future, if a persona explicitly warns against `.unwrap()`, construct the test to return `Result<(), Box<dyn std::error::Error>>` and use `?`. Also remember that running `cargo test --package name` on a large crate may time out; append `-- module_name` after `--` to isolate tests.
