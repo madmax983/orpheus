@@ -82,3 +82,7 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**[Extract TypeEnv::with_builtins to Helper Functions]**
+**Learning:** When large environment setup functions (like `TypeEnv::with_builtins`) grow over 100 lines and require `#[allow(clippy::too_many_lines)]` to suppress warnings, grouping the insertion logic by domain (e.g. core patterns, scales, sample controls) into mutable helper functions allows removing the suppression attribute and improves overall structure.
+**Action:** Break down large initialization logic into cohesively named helper methods that accept a mutable reference instead of relying on `#[allow(clippy::too_many_lines)]`.
