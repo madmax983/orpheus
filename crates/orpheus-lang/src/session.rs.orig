@@ -1036,9 +1036,6 @@ impl ReplSession {
             Some("trk" | "tracker") => {
                 crate::tracker::export_sample_pattern_to_tracker(pattern, path, cycles)
             }
-            Some("mmd" | "mermaid") => {
-                crate::mermaid::export_sample_pattern_to_mermaid_gantt(pattern, path, cycles)
-            }
             Some("mid" | "midi") => {
                 crate::midi_export::export_sample_pattern_to_midi(pattern, path, cycles)
             }
@@ -1076,9 +1073,6 @@ impl ReplSession {
             }
             Some("trk" | "tracker") => {
                 crate::tracker::export_number_pattern_to_tracker(pattern, path, cycles)
-            }
-            Some("mmd" | "mermaid") => {
-                crate::mermaid::export_number_pattern_to_mermaid_gantt(pattern, path, cycles)
             }
             Some("mid" | "midi") => {
                 crate::midi_export::export_number_pattern_to_midi(pattern, path, cycles)
