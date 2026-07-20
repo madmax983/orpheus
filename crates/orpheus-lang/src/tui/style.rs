@@ -968,4 +968,35 @@ mod tests {
                 .add_modifier(Modifier::BOLD)
         );
     }
+
+    #[test]
+    fn test_should_show_binding_legend_returns_false_when_no_active_or_pending_pattern() {
+        let session = ReplSession::with_engine(EngineHandle::stub());
+        let view = session.transport_view();
+        assert!(!should_show_binding_legend(10, 2, &view));
+    }
+
+    #[test]
+    fn test_should_show_binding_legend_returns_true_when_active_pattern_and_enough_space() {
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+        session.eval_line("p = bd sn").unwrap();
+        let view = session.transport_view();
+        assert!(should_show_binding_legend(10, 2, &view));
+    }
+
+    #[test]
+    fn test_should_show_binding_legend_returns_false_when_not_enough_height() {
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+        session.eval_line("p = bd sn").unwrap();
+        let view = session.transport_view();
+        assert!(!should_show_binding_legend(5, 2, &view));
+    }
+
+    #[test]
+    fn test_should_show_binding_legend_returns_false_when_not_enough_room_for_bindings() {
+        let mut session = ReplSession::with_engine(EngineHandle::stub());
+        session.eval_line("p = bd sn").unwrap();
+        let view = session.transport_view();
+        assert!(!should_show_binding_legend(10, 8, &view));
+    }
 }
