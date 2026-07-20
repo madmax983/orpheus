@@ -1,0 +1,7 @@
+--- crates/orpheus-lang/src/lib.rs
++++ crates/orpheus-lang/src/lib.rs
+@@ -165,3 +165,4 @@
+
+ pub(crate) mod mermaid;
+ pub use mermaid::export_sample_pattern_to_mermaid_gantt;
++pub use mermaid::export_number_pattern_to_mermaid_gantt;

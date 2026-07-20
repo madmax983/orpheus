@@ -1,0 +1,71 @@
+--- crates/orpheus-lang/src/mermaid.rs
++++ crates/orpheus-lang/src/mermaid.rs
+@@ -10,7 +10,7 @@
+ use crate::eval::{EvalError, render_span};
+-use crate::value::SamplePatternValue;
++use crate::value::{SamplePatternValue, NumberPatternValue};
+
+ /// Exports a sample pattern's evaluated events to a Mermaid Gantt chart.
+ ///
+ /// # Examples
+@@ -75,6 +75,50 @@
+     Ok(())
+ }
+
++/// Exports a number pattern's evaluated events to a Mermaid Gantt chart.
++///
++/// # Examples
++///
++/// ```
++/// use orpheus_lang::{ReplMode, eval_module};
++/// use orpheus_lang::export_number_pattern_to_mermaid_gantt;
++///
++/// let env = eval_module("x = 1 2 3", ReplMode::Loose).unwrap();
++/// let pattern = env.get("x").unwrap().as_number_pattern().unwrap();
++///
++/// let path = std::env::temp_dir().join("automation.mermaid");
++/// export_number_pattern_to_mermaid_gantt(pattern, &path, 2).unwrap();
++/// ```
++///
++/// # Errors
++///
++/// Returns [`EvalError`] if pattern querying fails or if the file cannot be written.
++#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
++pub fn export_number_pattern_to_mermaid_gantt(
++    pattern: &NumberPatternValue,
++    path: impl AsRef<Path>,
++    cycle_count: u64,
++) -> Result<(), EvalError> {
++    if cycle_count == 0 {
++        return Err(EvalError::new("exporting requires at least one cycle"));
++    }
++
++    let span = render_span(cycle_count)?;
++    let mut events = pattern.try_query(&span)?;
++    events.sort_unstable_by(|a, b| a.part.start().cmp(b.part.start()));
++
++    let path = path.as_ref();
++    let mut file = std::fs::File::create(path)?;
++
++    writeln!(file, "gantt")?;
++    writeln!(file, "    title Orpheus Pattern")?;
++    writeln!(file, "    dateFormat  x")?;
++    writeln!(file, "    axisFormat %S.%L")?;
++
++    let seconds_per_cycle = 2.0;
++
++    writeln!(file, "    section Values")?;
++    for event in &events {
++        let start_ms =
++            (f64::from(event.part.start()) * seconds_per_cycle * 1000.0).round() as u64;
++        let end_ms = (f64::from(event.part.end()) * seconds_per_cycle * 1000.0).round() as u64;
++
++        // Using the value as the task name
++        writeln!(file, "    {:.3} :{start_ms}, {end_ms}", event.value)?;
++    }
++
++    Ok(())
++}
++
+ #[cfg(test)]
+ mod tests {

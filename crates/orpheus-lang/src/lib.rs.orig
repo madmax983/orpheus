@@ -136,5 +136,4 @@ pub enum ReplMode {
 }
 
 pub(crate) mod mermaid;
-pub use mermaid::export_number_pattern_to_mermaid_gantt;
 pub use mermaid::export_sample_pattern_to_mermaid_gantt;
