@@ -183,3 +183,19 @@ mod tests {
         );
     }
 }
+#[cfg(test)]
+mod test_zero_cycle {
+    use super::*;
+    use crate::{ReplMode, eval_module};
+
+    #[test]
+    fn export_number_pattern_zero_cycles() {
+        let source = "pattern = fast(2, 1 2)";
+        let module = eval_module(source, ReplMode::Loose).unwrap();
+        let pattern = module.get("pattern").unwrap().as_number_pattern().unwrap();
+        let path = std::env::temp_dir().join("test_zero_number.ly");
+
+        let err = export_number_pattern_to_lilypond(pattern, &path, 0).unwrap_err();
+        assert_eq!(err.to_string(), "exporting requires at least one cycle");
+    }
+}
