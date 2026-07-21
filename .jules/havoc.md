@@ -11,3 +11,7 @@
 ## 2023-10-31 - [Fuzzing Evaluation Resilience & Pattern Match Exhaustiveness]
 **Learning:** `E0004: non-exhaustive patterns` compilation errors occur when adding new variants to central enums (like `BuiltinKind`) without updating matching functions downstream (`name()`, `arity()`, `execute()`). Fuzzing via `cargo-fuzz` confirmed the evaluation system handles malformed strings gracefully without crashing.
 **Action:** When adding enum variants, systematically check and update all downstream match blocks. Ensure all systems compiling after a feature addition don't just compile but also withstand `cargo-fuzz` without panicking.
+## 2025-02-28 - Float-to-integer conversion precision loss bypasses boundary check causing panics
+**The Target:** `eval_positive_integer` float boundary check validation.
+**The Finding:** The naive `value > i128::MAX as f64` check suffered from floating-point precision loss when validating extreme values (like `1.7014118346046923e38`), which resulted in the bound check silently passing and a subsequent panic (or saturation) during the `as i128` downcast.
+**The Action:** Added a soft bound check `if value.abs() > 1.0e15_f64 { return Err(...); }` before performing precision-sensitive conversions.

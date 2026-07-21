@@ -1117,6 +1117,12 @@ impl Evaluator {
             return Err(EvalError::new(format!("{context} requires a valid number")));
         }
 
+        if value.abs() > 1.0e15_f64 {
+            return Err(EvalError::new(format!(
+                "{context} exceeded the supported range"
+            )));
+        }
+
         #[allow(clippy::cast_precision_loss)]
         let max_val = i128::MAX as f64;
         #[allow(clippy::cast_precision_loss)]
@@ -1758,6 +1764,19 @@ mod tests {
     use super::{Evaluator, ReplMode, eval_module, parse_module, render_span};
     use crate::value::{SampleEvent, Value, sometimes_applies_on_cycle};
     use orpheus_pattern::{Event, Rational};
+
+    /// 👺 Havoc: Tests that a massively large floating-point value passed to a function expecting
+    /// a positive integer does not silently bypass naive `i128::MAX as f64` bounds checks due to
+    /// float precision loss, which previously caused a silent panic during the downcast to `i128`.
+    #[test]
+    fn test_havoc_float_cast_truncation() {
+        let source = "x = seq(1.7014118346046923e38, bd, sn)";
+        let result = eval_module(source, ReplMode::Loose);
+        assert!(
+            result.is_err(),
+            "Expected large float to trigger a bounds validation error, but it succeeded or panicked silently."
+        );
+    }
 
     fn sample_events_for_span(
         value: &Value,
