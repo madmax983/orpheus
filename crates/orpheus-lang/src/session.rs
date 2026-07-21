@@ -1049,6 +1049,11 @@ impl ReplSession {
         Ok(())
     }
 
+    fn export_pedal_value(pedal: &crate::pedal::PedalValue, path: &str) -> Result<(), String> {
+        crate::export_pedal_value_to_dot(pedal, path)
+            .map_err(|error: crate::EvalError| error.to_string())
+    }
+
     fn export_number_pattern(
         pattern: &crate::value::NumberPatternValue,
         path: &str,
@@ -1097,10 +1102,10 @@ impl ReplSession {
         match value {
             Value::SamplePattern(pattern) => Self::export_sample_pattern(pattern, path, cycles)?,
             Value::NumberPattern(pattern) => Self::export_number_pattern(pattern, path, cycles)?,
+            Value::Pedal(pedal) => Self::export_pedal_value(pedal, path)?,
             Value::ArpDirection(_)
             | Value::PitchClassSet(_)
             | Value::Function(_)
-            | Value::Pedal(_)
             | Value::Voice(_)
             | Value::PluginPattern(_)
             | Value::Tuning(_)
@@ -4301,6 +4306,29 @@ mod tests {
 #[cfg(test)]
 mod supercollider_integration_tests {
     use super::*;
+
+    #[test]
+    fn export_command_exports_pedal_to_dot() {
+        let mut session = ReplSession::new();
+        let path = std::env::temp_dir().join(format!("orpheus-export-pedal-{}.dot", 1_234_578));
+
+        session
+            .eval_line(
+                "my_graph = graph { wet = input |> clip(model=silicon_hard) ; wet |> output }",
+            )
+            .unwrap();
+        let message = session
+            .eval_line(&format!(":export my_graph {} 1", path.display()))
+            .unwrap();
+
+        assert!(message.contains("exported `my_graph`"));
+        assert!(path.exists());
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert!(contents.contains("digraph PedalGraph {"));
+        assert!(contents.contains("\"input\" -> \"wet\""));
+
+        let _ = std::fs::remove_file(path);
+    }
 
     #[test]
     fn export_command_exports_a_bound_pattern_to_supercollider() {
