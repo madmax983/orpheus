@@ -129,4 +129,56 @@ mod tests {
         let err: EvalError = parse_err.into();
         assert_eq!(err.to_string(), "mock parse error");
     }
+
+    #[test]
+    fn test_eval_error_from_fmt_error() {
+        let err: EvalError = std::fmt::Error.into();
+        assert_eq!(
+            err.to_string(),
+            "an error occurred when formatting an argument"
+        );
+    }
+
+    #[test]
+    fn test_eval_error_from_parse_int_error() {
+        let parse_int_err = "abc".parse::<i32>().unwrap_err();
+        let err: EvalError = parse_int_err.into();
+        assert_eq!(err.to_string(), "invalid digit found in string");
+    }
+
+    #[test]
+    fn test_eval_error_from_try_from_int_error() {
+        let try_from_err = u8::try_from(256u16).unwrap_err();
+        let err: EvalError = try_from_err.into();
+        assert_eq!(
+            err.to_string(),
+            "out of range integral type conversion attempted"
+        );
+    }
+
+    #[test]
+    fn test_eval_error_from_pitch_error() {
+        let pitch_err = crate::pitch::PitchLiteralError::new("foo");
+        let err: EvalError = pitch_err.into();
+        assert_eq!(err.to_string(), "foo");
+    }
+
+    #[test]
+    fn test_eval_error_from_pattern_error() {
+        let pattern_err = orpheus_pattern::PatternError::InvalidDenominator { denominator: 0 };
+        let err: EvalError = pattern_err.into();
+        assert_eq!(err.to_string(), "rational denominator cannot be zero");
+    }
+
+    #[test]
+    fn test_eval_error_from_io_error() {
+        let err: EvalError = std::io::Error::from(std::io::ErrorKind::NotFound).into();
+        assert_eq!(err.to_string(), "file not found");
+
+        let err: EvalError = std::io::Error::from(std::io::ErrorKind::PermissionDenied).into();
+        assert_eq!(err.to_string(), "permission denied");
+
+        let err: EvalError = std::io::Error::other("foo").into();
+        assert_eq!(err.to_string(), "foo");
+    }
 }
