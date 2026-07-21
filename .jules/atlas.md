@@ -56,3 +56,11 @@
 **[Enforce Private Explain Module]
 **Tangle:** The `explain` module in `orpheus-lang/src/lib.rs` and its internal `Explain` trait and `explain_table` function were declared as `pub`, leaking internal REPL table rendering details to the public API.
 **Blueprint:** Changed the visibility of the `Explain` trait and `explain_table` function to `pub(crate)` in `crates/orpheus-lang/src/explain.rs`. Removed the `pub use explain::Explain;` re-export from `crates/orpheus-lang/src/lib.rs` and changed the module declaration to `pub(crate) mod explain;`. This strictly enforces internal encapsulation.
+
+**[Enforce Private Boundary for transport module]
+**Tangle:** The `transport` module in `orpheus-lang/src/orca/mod.rs` was declared as `pub mod transport;`, needlessly leaking internal transport abstractions into the public API.
+**Blueprint:** Altered the visibility of `transport` module to `pub(crate) mod transport;` in `crates/orpheus-lang/src/orca/mod.rs` to keep its implementation details encapsulated.
+
+**[Enforce Private Boundary for env module]
+**Tangle:** The `env` module in `orpheus-lang/src/types/mod.rs` was declared as `pub mod env;`, needlessly leaking internal type-system environment details into the public API.
+**Blueprint:** Altered the visibility of `env` module to `mod env;` in `crates/orpheus-lang/src/types/mod.rs` to enforce a tight internal module boundary without triggering the `redundant_pub_crate` clippy warning.
