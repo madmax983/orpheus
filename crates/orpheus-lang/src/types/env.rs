@@ -65,7 +65,6 @@ impl TypeEnv {
     ///
     #[must_use]
     #[doc(hidden)]
-    #[allow(clippy::too_many_lines)]
     pub fn with_builtins() -> Self {
         let mut env = Self {
             entries: BTreeMap::new(),
@@ -129,57 +128,9 @@ impl TypeEnv {
         ] {
             env.insert(name, TypeScheme::monomorphic(Type::PitchClassSet));
         }
-        env.insert("jux", jux_transform_scheme());
-        env.insert("rev", unary_pattern_transform_scheme(alpha));
-        env.insert("chaos", unary_pattern_transform_scheme(alpha));
-        for name in [
-            "gain", "hpf", "lpf", "cutoff", "res", "drive", "pw", "pan", "rate", "onset", "p1",
-            "p2", "p3", "p4",
-        ] {
-            env.insert(name, sample_control_scheme());
-        }
-        env.insert(
-            "sample",
-            TypeScheme::monomorphic(Type::curried(
-                vec![Type::String],
-                Type::pattern(Type::Sample),
-            )),
-        );
-        env.insert(
-            "through",
-            TypeScheme::monomorphic(Type::curried(
-                vec![Type::Pedal, Type::pattern(Type::Sample)],
-                Type::pattern(Type::Sample),
-            )),
-        );
-
-        for name in ["slice", "slice_idx"] {
-            env.insert(
-                name,
-                TypeScheme::monomorphic(Type::curried(
-                    vec![
-                        Type::pattern(Type::Number),
-                        Type::pattern(Type::Number),
-                        Type::pattern(Type::Sample),
-                    ],
-                    Type::pattern(Type::Sample),
-                )),
-            );
-        }
-
-        env.insert(
-            "rand",
-            TypeScheme::monomorphic(Type::function(vec![], Type::pattern(Type::Number))),
-        );
-        for name in ["cc", "midi_cc"] {
-            env.insert(
-                name,
-                TypeScheme::monomorphic(Type::curried(
-                    vec![Type::pattern(Type::Number)],
-                    Type::pattern(Type::Number),
-                )),
-            );
-        }
+        install_effects_and_controls_builtins(&mut env, alpha);
+        install_sample_manipulation_builtins(&mut env);
+        install_midi_and_random_builtins(&mut env);
 
         env
     }
@@ -470,6 +421,65 @@ fn mask_scheme() -> TypeScheme {
             ],
             Type::pattern(Type::Var(pattern)),
         ),
+    }
+}
+
+fn install_effects_and_controls_builtins(env: &mut TypeEnv, alpha: TypeVarId) {
+    env.insert("jux", jux_transform_scheme());
+    env.insert("rev", unary_pattern_transform_scheme(alpha));
+    env.insert("chaos", unary_pattern_transform_scheme(alpha));
+    for name in [
+        "gain", "hpf", "lpf", "cutoff", "res", "drive", "pw", "pan", "rate", "onset", "p1", "p2",
+        "p3", "p4",
+    ] {
+        env.insert(name, sample_control_scheme());
+    }
+}
+
+fn install_sample_manipulation_builtins(env: &mut TypeEnv) {
+    env.insert(
+        "sample",
+        TypeScheme::monomorphic(Type::curried(
+            vec![Type::String],
+            Type::pattern(Type::Sample),
+        )),
+    );
+    env.insert(
+        "through",
+        TypeScheme::monomorphic(Type::curried(
+            vec![Type::Pedal, Type::pattern(Type::Sample)],
+            Type::pattern(Type::Sample),
+        )),
+    );
+
+    for name in ["slice", "slice_idx"] {
+        env.insert(
+            name,
+            TypeScheme::monomorphic(Type::curried(
+                vec![
+                    Type::pattern(Type::Number),
+                    Type::pattern(Type::Number),
+                    Type::pattern(Type::Sample),
+                ],
+                Type::pattern(Type::Sample),
+            )),
+        );
+    }
+}
+
+fn install_midi_and_random_builtins(env: &mut TypeEnv) {
+    env.insert(
+        "rand",
+        TypeScheme::monomorphic(Type::function(vec![], Type::pattern(Type::Number))),
+    );
+    for name in ["cc", "midi_cc"] {
+        env.insert(
+            name,
+            TypeScheme::monomorphic(Type::curried(
+                vec![Type::pattern(Type::Number)],
+                Type::pattern(Type::Number),
+            )),
+        );
     }
 }
 
