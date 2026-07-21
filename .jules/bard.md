@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-05-19 - [Fixing Private and Broken Intra-doc Links]
+**Confusion:** Rustdoc warnings for linking to private items (e.g., `METER_DECAY_HALF_LIFE_SECS`, `publish`, `EnvCore`) or unresolved public items (e.g., `TransportSnapshot` instead of `orpheus_dsp::TransportSnapshot`) caused `cargo doc` to fail strict lint checks. Using `[` `]` on private items is generally a broken link anti-pattern.
+**Clarification:** Replaced `[`private_item`]` with `` `private_item` `` to format as standard inline code rather than a broken link, and fully qualified public cross-crate links to `[`orpheus_dsp::TransportSnapshot`]`.

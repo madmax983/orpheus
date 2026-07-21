@@ -39,6 +39,13 @@ pub const MAX_GENERATORS: usize = 8;
 /// [`crate::routing::TrackId`], preallocated so the audio thread only ever
 /// stores into it — never grows it. Track ids at or above this ceiling are
 /// simply not metered.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::MAX_METERED_TRACKS;
+/// assert_eq!(MAX_METERED_TRACKS, 64);
+/// ```
 pub const MAX_METERED_TRACKS: usize = 64;
 
 /// Half-life, in seconds, of the peak-hold meter decay (ADR 0013). The held
@@ -72,7 +79,7 @@ pub fn decayed_peak(previous: f32, magnitude: f32, decay: f32) -> f32 {
 ///
 /// Derived once at engine construction so the meter ballistics stay constant
 /// regardless of tempo or render-block size (ADR 0013): the returned factor
-/// halves a held peak over [`METER_DECAY_HALF_LIFE_SECS`] seconds of silence.
+/// halves a held peak over `METER_DECAY_HALF_LIFE_SECS` seconds of silence.
 ///
 /// # Examples
 ///
