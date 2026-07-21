@@ -5,7 +5,7 @@
 //! `ReplSession`, and prints the formatted results or errors to `stdout`.
 
 use crossterm::style::Stylize;
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::Path;
 
 use orpheus_dsp::EngineHandle;
@@ -51,21 +51,47 @@ pub fn run_stdio_with_engine_and_path(
     let stderr = io::stderr();
     let mut session = ReplSession::with_engine(engine);
 
+    let stdout_is_terminal = stdout.is_terminal();
+    let stderr_is_terminal = stderr.is_terminal();
+
     let mut stdout = stdout.lock();
     let mut stderr = stderr.lock();
 
     if let Some(msg) = warning {
-        writeln!(stderr, "{}", format!("[Warn] {msg}").yellow().bold())?;
+        if stderr_is_terminal {
+            writeln!(stderr, "{}", format!("[Warn] {msg}").yellow().bold())?;
+        } else {
+            writeln!(stderr, "[Warn] {msg}")?;
+        }
     }
 
     if let Some(path) = startup_path {
         match session.open_file(path) {
-            Ok(msg) => writeln!(stdout, "{}", format!("\u{2713} {msg}").green())?,
-            Err(msg) => writeln!(stderr, "{}", format!("\u{2717} {msg}").red().bold())?,
+            Ok(msg) => {
+                if stdout_is_terminal {
+                    writeln!(stdout, "{}", format!("\u{2713} {msg}").green())?;
+                } else {
+                    writeln!(stdout, "\u{2713} {msg}")?;
+                }
+            }
+            Err(msg) => {
+                if stderr_is_terminal {
+                    writeln!(stderr, "{}", format!("\u{2717} {msg}").red().bold())?;
+                } else {
+                    writeln!(stderr, "\u{2717} {msg}")?;
+                }
+            }
         }
     }
 
-    run_with_handles(stdin.lock(), stdout, stderr, &mut session)
+    run_with_handles(
+        stdin.lock(),
+        stdout,
+        stderr,
+        &mut session,
+        stdout_is_terminal,
+        stderr_is_terminal,
+    )
 }
 
 fn run_with_handles<R, W, E>(
@@ -73,6 +99,8 @@ fn run_with_handles<R, W, E>(
     mut stdout: W,
     mut stderr: E,
     session: &mut ReplSession,
+    stdout_is_terminal: bool,
+    stderr_is_terminal: bool,
 ) -> io::Result<()>
 where
     R: BufRead,
@@ -81,7 +109,11 @@ where
 {
     let mut line = String::new();
     loop {
-        write!(stdout, "{}", "> ".dark_grey())?;
+        if stdout_is_terminal {
+            write!(stdout, "{}", "> ".dark_grey())?;
+        } else {
+            write!(stdout, "> ")?;
+        }
         stdout.flush()?;
         line.clear();
         if reader.read_line(&mut line)? == 0 {
@@ -97,8 +129,20 @@ where
         }
 
         match session.eval_line(trimmed) {
-            Ok(message) => writeln!(stdout, "{}", format!("\u{2713} {message}").green())?,
-            Err(message) => writeln!(stderr, "{}", format!("\u{2717} {message}").red().bold())?,
+            Ok(message) => {
+                if stdout_is_terminal {
+                    writeln!(stdout, "{}", format!("\u{2713} {message}").green())?;
+                } else {
+                    writeln!(stdout, "\u{2713} {message}")?;
+                }
+            }
+            Err(message) => {
+                if stderr_is_terminal {
+                    writeln!(stderr, "{}", format!("\u{2717} {message}").red().bold())?;
+                } else {
+                    writeln!(stderr, "\u{2717} {message}")?;
+                }
+            }
         }
     }
 
@@ -117,7 +161,7 @@ mod tests {
         let mut stderr = Vec::new();
         let mut session = ReplSession::with_engine(EngineHandle::stub());
 
-        run_with_handles(reader, &mut stdout, &mut stderr, &mut session).unwrap();
+        run_with_handles(reader, &mut stdout, &mut stderr, &mut session, false, false).unwrap();
 
         let stdout_str = String::from_utf8(stdout).unwrap();
         let stderr_str = String::from_utf8(stderr).unwrap();
@@ -134,7 +178,7 @@ mod tests {
         let mut stderr = Vec::new();
         let mut session = ReplSession::with_engine(EngineHandle::stub());
 
-        run_with_handles(reader, &mut stdout, &mut stderr, &mut session).unwrap();
+        run_with_handles(reader, &mut stdout, &mut stderr, &mut session, false, false).unwrap();
 
         let stderr_str = String::from_utf8(stderr).unwrap();
         assert!(stderr_str.contains("\u{2717} parse error"));
