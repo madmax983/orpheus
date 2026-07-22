@@ -1293,17 +1293,23 @@ impl ReplSession {
     /// session.open_file("song.ode").unwrap();
     /// ```
     pub fn open_file(&mut self, path: impl AsRef<Path>) -> Result<String, String> {
+        use std::fmt::Write;
         let path = path.as_ref();
         if path.as_os_str().is_empty() {
             return Err(open_usage().to_owned());
         }
         let loaded = load_file_runtime_strict(path).map_err(|error| error.to_string())?;
-        let binding_names = loaded
-            .type_bindings
-            .keys()
-            .cloned()
-            .collect::<Vec<_>>()
-            .join(", ");
+
+        let mut binding_names = String::with_capacity(loaded.type_bindings.len() * 10);
+        let mut first = true;
+        for key in loaded.type_bindings.keys() {
+            if !first {
+                binding_names.push_str(", ");
+            }
+            write!(&mut binding_names, "{key}").unwrap();
+            first = false;
+        }
+
         let last_binding_name = loaded.last_binding_name.clone();
 
         self.bindings = loaded.value_bindings;
