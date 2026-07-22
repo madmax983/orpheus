@@ -1376,6 +1376,7 @@ impl ReplSession {
     }
 
     fn poll_sample_watcher(&mut self) -> Result<(), String> {
+        use crossterm::style::Stylize;
         let Some(watcher) = self.sample_watcher.as_mut() else {
             return Ok(());
         };
@@ -1389,8 +1390,9 @@ impl ReplSession {
 
         for issue in reload.errors() {
             eprintln!(
-                "sample hot reload issue at `{}`: {}",
-                issue.path(),
+                "{} {}: {}",
+                "\u{2717} Sample hot reload issue at".red().bold(),
+                issue.path().yellow(),
                 issue.message()
             );
         }
