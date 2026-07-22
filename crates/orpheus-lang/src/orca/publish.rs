@@ -322,7 +322,7 @@ pub fn materialize_cycle_io(
 /// This is the batch, off-thread equivalent of the live poll loop: it clones
 /// `engine` so the caller's live playhead is never advanced, then advances the
 /// clone one grid cycle at a time via [`materialize_cycle`], converting each
-/// note event with [`sample_trigger_from_event`] — exactly the mapping
+/// note event with `sample_trigger_from_event` — exactly the mapping
 /// `ReplSession::push_generator_cycle` applies before shipping a cycle to the
 /// engine. The result feeds `orpheus_dsp`'s `generator_cycles` export seam
 /// (`GeneratorCycleSpec::cycles`): one boxed buffer per cycle index, in play
