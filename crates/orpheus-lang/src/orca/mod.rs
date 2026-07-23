@@ -17,7 +17,7 @@
 //! The key seam to the rest of Orpheus is [`frame_span`], which maps grid
 //! frame `N` of `F` frames-per-cycle onto the exact rational
 //! [`orpheus_pattern::TimeSpan`] `[N/F, (N+1)/F)`. The publish bridge
-//! ([`publish`]) materializes grid cycles into unit-cycle
+//! (`publish`) materializes grid cycles into unit-cycle
 //! `Vec<Event<SampleEvent>>` batches, one per engine cycle boundary because
 //! running grids are not cycle-periodic. As of v5 (ADR 0009) those batches
 //! feed a first-class engine generator source
