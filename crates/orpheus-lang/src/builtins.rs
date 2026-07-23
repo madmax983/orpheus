@@ -118,6 +118,7 @@ fn lookup_pattern_transform(name: &str) -> Option<Value> {
         "scan" => Some(builtin_function_value(BuiltinKind::Scan)),
         "lsystem" => Some(builtin_function_value(BuiltinKind::Lsystem)),
         "wolfram" => Some(builtin_function_value(BuiltinKind::Wolfram)),
+        "collatz" => Some(builtin_function_value(BuiltinKind::Collatz)),
         "pitch_class_set" => Some(builtin_function_value(BuiltinKind::PitchClassSet)),
         "degrees" => Some(builtin_function_value(BuiltinKind::Degrees)),
         "tuning" => Some(builtin_function_value(BuiltinKind::Tuning)),
@@ -383,6 +384,7 @@ pub fn apply_builtin_function(function: &BuiltinFn, args: Vec<Value>) -> Result<
 }
 
 impl BuiltinKind {
+    #[allow(clippy::too_many_lines)]
     const fn name(self) -> &'static str {
         match self {
             Self::Every => "every",
@@ -409,6 +411,7 @@ impl BuiltinKind {
             Self::EuclidFull => "euclid_full",
             Self::Lsystem => "lsystem",
             Self::Wolfram => "wolfram",
+            Self::Collatz => "collatz",
             Self::PitchClassSet => "pitch_class_set",
             Self::Degrees => "degrees",
             Self::Fast => "fast",
@@ -558,6 +561,7 @@ impl BuiltinKind {
             | Self::Euclid
             | Self::EuclidInv
             | Self::Wolfram
+            | Self::Collatz
             | Self::Degrees
             | Self::Fast
             | Self::Slow
@@ -663,6 +667,7 @@ impl BuiltinKind {
             Self::Scan => apply_scan(args),
             Self::Lsystem => apply_lsystem(args),
             Self::Wolfram => apply_wolfram(args),
+            Self::Collatz => apply_collatz(args),
             Self::PitchClassSet => apply_pitch_class_set(args),
             Self::Degrees => apply_degrees(args),
             Self::Fast => apply_fast(args),
@@ -4658,6 +4663,33 @@ mod test_nova {
     }
 }
 
+fn apply_collatz(args: Vec<Value>) -> Result<Value, EvalError> {
+    let mut args = args.into_iter();
+    let mut n = extract_whole_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`collatz` requires a start argument"))?,
+        "`collatz` start",
+        false,
+    )?;
+    let steps = extract_whole_number(
+        args.next()
+            .ok_or_else(|| EvalError::new("`collatz` requires a steps argument"))?,
+        "`collatz` steps",
+        false,
+    )?;
+
+    let mut nodes = Vec::with_capacity(steps as usize);
+    for _ in 0..steps {
+        nodes.push(orpheus_pattern::PatternNode::Atom(f64::from(n)));
+        if n % 2 == 0 {
+            n /= 2;
+        } else {
+            n = 3 * n + 1;
+        }
+    }
+    Ok(Value::NumberPattern(NumberPatternValue::from_nodes(nodes)))
+}
+
 fn apply_wolfram(args: Vec<Value>) -> Result<Value, EvalError> {
     let mut args = args.into_iter();
     let rule = extract_whole_number(
@@ -4806,6 +4838,24 @@ mod hex_bin_tests {
 
     fn assert_one(value: f64) {
         assert_eq!(value.to_bits(), 1.0_f64.to_bits());
+    }
+
+    #[test]
+    fn test_collatz_sequence() {
+        use crate::{ReplMode, eval_module};
+        let source = "pat = collatz(6, 4)";
+        let module = eval_module(source, ReplMode::Loose).unwrap();
+        let pattern = module.get("pat").unwrap().as_number_pattern().unwrap();
+
+        let span = TimeSpan::new(Rational::zero(), Rational::one()).unwrap();
+        let events = pattern.try_query(&span).unwrap();
+
+        // Collatz of 6 for 4 steps: 6, 3, 10, 5
+        assert_eq!(events.len(), 4);
+        assert!((events[0].value - 6.0).abs() < f64::EPSILON);
+        assert!((events[1].value - 3.0).abs() < f64::EPSILON);
+        assert!((events[2].value - 10.0).abs() < f64::EPSILON);
+        assert!((events[3].value - 5.0).abs() < f64::EPSILON);
     }
 
     #[test]
