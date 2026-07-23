@@ -163,4 +163,16 @@ mod tests {
         // Make sure `in` wasn't matched inside `input` by verifying we don't have something weird like `in -> in`
         assert!(!content.contains("\"in\" -> \"in\""));
     }
+
+    #[test]
+    fn dot_exporter_returns_error_on_invalid_path() {
+        let source = "my_graph = graph { wet = input |> clip ; wet |> output }";
+        let module = eval_module(source, ReplMode::Strict).unwrap();
+        let pedal = module.get("my_graph").unwrap().as_pedal().unwrap();
+
+        let path = std::path::PathBuf::from("/invalid_dir_that_does_not_exist/test.dot");
+        let result = export_pedal_value_to_dot(pedal, &path);
+
+        assert!(result.is_err());
+    }
 }
