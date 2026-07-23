@@ -65,14 +65,11 @@ impl TypeEnv {
     ///
     #[must_use]
     #[doc(hidden)]
-    #[allow(clippy::too_many_lines)]
     pub fn with_builtins() -> Self {
         let mut env = Self {
             entries: BTreeMap::new(),
         };
-        for name in ["bd", "sn", "cp", "hh", "saw", "pulse", "tri", "noise"] {
-            env.insert(name, TypeScheme::monomorphic(Type::pattern(Type::Sample)));
-        }
+        install_basic_samples(&mut env);
 
         let alpha = TypeVarId::new(0);
         install_cycle_alternation_builtins(&mut env, alpha);
@@ -90,15 +87,7 @@ impl TypeEnv {
         env.insert("up", TypeScheme::monomorphic(Type::ArpDirection));
         env.insert("down", TypeScheme::monomorphic(Type::ArpDirection));
 
-        for name in ["invert", "drop", "chord"] {
-            env.insert(name, number_pattern_control_scheme());
-        }
-        // `transpose` and `pitch` are the interchangeable semitone-shift
-        // pair: `Pattern<Number> -> Pattern<a> -> Pattern<a>` over number
-        // and sample/voice patterns alike (reference-song gap-fix 3 of 3).
-        for name in ["transpose", "pitch"] {
-            env.insert(name, numeric_pattern_transform_scheme(alpha));
-        }
+        install_number_pattern_controls(&mut env, alpha);
 
         install_euclidean_and_counting_builtins(&mut env, alpha);
         env.insert(
@@ -119,25 +108,14 @@ impl TypeEnv {
         );
         install_plugin_builtins(&mut env);
 
-        for name in [
-            "ionian",
-            "dorian",
-            "phrygian",
-            "mixolydian",
-            "aeolian",
-            "minor_pentatonic",
-        ] {
-            env.insert(name, TypeScheme::monomorphic(Type::PitchClassSet));
-        }
+        install_scales_and_modes(&mut env);
+
         env.insert("jux", jux_transform_scheme());
         env.insert("rev", unary_pattern_transform_scheme(alpha));
         env.insert("chaos", unary_pattern_transform_scheme(alpha));
-        for name in [
-            "gain", "hpf", "lpf", "cutoff", "res", "drive", "pw", "pan", "rate", "onset", "p1",
-            "p2", "p3", "p4",
-        ] {
-            env.insert(name, sample_control_scheme());
-        }
+
+        install_sample_controls(&mut env);
+
         env.insert(
             "sample",
             TypeScheme::monomorphic(Type::curried(
@@ -153,19 +131,7 @@ impl TypeEnv {
             )),
         );
 
-        for name in ["slice", "slice_idx"] {
-            env.insert(
-                name,
-                TypeScheme::monomorphic(Type::curried(
-                    vec![
-                        Type::pattern(Type::Number),
-                        Type::pattern(Type::Number),
-                        Type::pattern(Type::Sample),
-                    ],
-                    Type::pattern(Type::Sample),
-                )),
-            );
-        }
+        install_slice_builtins(&mut env);
 
         env.insert(
             "rand",
@@ -206,6 +172,62 @@ impl TypeEnv {
 
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
+    }
+}
+
+fn install_basic_samples(env: &mut TypeEnv) {
+    for name in ["bd", "sn", "cp", "hh", "saw", "pulse", "tri", "noise"] {
+        env.insert(name, TypeScheme::monomorphic(Type::pattern(Type::Sample)));
+    }
+}
+
+fn install_number_pattern_controls(env: &mut TypeEnv, alpha: TypeVarId) {
+    for name in ["invert", "drop", "chord"] {
+        env.insert(name, number_pattern_control_scheme());
+    }
+    // `transpose` and `pitch` are the interchangeable semitone-shift
+    // pair: `Pattern<Number> -> Pattern<a> -> Pattern<a>` over number
+    // and sample/voice patterns alike (reference-song gap-fix 3 of 3).
+    for name in ["transpose", "pitch"] {
+        env.insert(name, numeric_pattern_transform_scheme(alpha));
+    }
+}
+
+fn install_scales_and_modes(env: &mut TypeEnv) {
+    for name in [
+        "ionian",
+        "dorian",
+        "phrygian",
+        "mixolydian",
+        "aeolian",
+        "minor_pentatonic",
+    ] {
+        env.insert(name, TypeScheme::monomorphic(Type::PitchClassSet));
+    }
+}
+
+fn install_sample_controls(env: &mut TypeEnv) {
+    for name in [
+        "gain", "hpf", "lpf", "cutoff", "res", "drive", "pw", "pan", "rate", "onset", "p1", "p2",
+        "p3", "p4",
+    ] {
+        env.insert(name, sample_control_scheme());
+    }
+}
+
+fn install_slice_builtins(env: &mut TypeEnv) {
+    for name in ["slice", "slice_idx"] {
+        env.insert(
+            name,
+            TypeScheme::monomorphic(Type::curried(
+                vec![
+                    Type::pattern(Type::Number),
+                    Type::pattern(Type::Number),
+                    Type::pattern(Type::Sample),
+                ],
+                Type::pattern(Type::Sample),
+            )),
+        );
     }
 }
 
