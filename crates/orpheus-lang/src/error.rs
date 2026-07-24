@@ -129,4 +129,55 @@ mod tests {
         let err: EvalError = parse_err.into();
         assert_eq!(err.to_string(), "mock parse error");
     }
+
+    #[test]
+    fn eval_error_from_try_from_int_error() {
+        let result: Result<u8, _> = 256_u16.try_into();
+        let err: EvalError = result.unwrap_err().into();
+        assert!(err.to_string().contains("out of range"));
+    }
+
+    #[test]
+    fn eval_error_from_parse_int_error() {
+        let result: Result<i32, _> = "invalid".parse();
+        let err: EvalError = result.unwrap_err().into();
+        assert!(err.to_string().contains("invalid digit"));
+    }
+
+    #[test]
+    fn eval_error_from_pattern_error() {
+        let err = orpheus_pattern::PatternError::ArithmeticOverflow {
+            operation: "addition",
+        };
+        let eval_err: EvalError = err.into();
+        assert_eq!(
+            eval_err.to_string(),
+            "addition exceeded the supported range"
+        );
+    }
+
+    #[test]
+    fn eval_error_from_io_error() {
+        let io_err = std::io::Error::from(std::io::ErrorKind::NotFound);
+        let err: EvalError = io_err.into();
+        assert_eq!(err.to_string(), "file not found");
+
+        let io_err = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        let err: EvalError = io_err.into();
+        assert_eq!(err.to_string(), "permission denied");
+
+        let io_err = std::io::Error::other("other error");
+        let err: EvalError = io_err.into();
+        assert_eq!(err.to_string(), "other error");
+    }
+
+    #[test]
+    fn eval_error_from_fmt_error() {
+        let fmt_err = std::fmt::Error;
+        let err: EvalError = fmt_err.into();
+        assert_eq!(
+            err.to_string(),
+            "an error occurred when formatting an argument"
+        );
+    }
 }
