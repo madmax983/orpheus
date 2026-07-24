@@ -43,6 +43,18 @@ impl ParseError {
     }
 }
 
+impl From<ParseError> for LoadError {
+    fn from(error: ParseError) -> Self {
+        Self::new(error.to_string())
+    }
+}
+
+impl From<TypeError> for LoadError {
+    fn from(error: TypeError) -> Self {
+        Self::new(error.to_string())
+    }
+}
+
 /// A type inference error produced while analyzing Orpheus source.
 ///
 /// This error is returned by [`crate::infer_module`] when a parsed module fails

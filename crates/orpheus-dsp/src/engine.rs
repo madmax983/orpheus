@@ -95,7 +95,7 @@ pub fn meter_decay_per_frame(sample_rate: u32) -> f32 {
 }
 
 /// A UI-readable snapshot of the transport clock.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
 pub struct TransportSnapshot {
     publish_epoch: u64,
     current_frame: u64,
