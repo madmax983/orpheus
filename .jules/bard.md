@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-05-27 - [Fixing Private Intra-doc Links]
+**Confusion:** Several public items were linking to private items (constants, test functions, private modules, and internal functions) using standard `[`intra-doc links`]`, which triggers `rustdoc::private_intra_doc_links` warnings.
+**Clarification:** Converted these invalid intra-doc links to standard inline code formatting (`` `item` ``). Also fixed an unresolved link to a public item by fully qualifying its path (`[`orpheus_dsp::TransportSnapshot`]`).
