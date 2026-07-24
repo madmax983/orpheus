@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2024-06-26 - Add From trait implementations for LoadError
+**Learning:** Found that `LoadError` was missing `From` trait implementations for `ParseError` and `TypeError`, leading to manual conversion code or potential unwraps elsewhere. Additionally, the UI formatting function `format_cycle_position` lacked explicit tests for zero frame cycles.
+**Action:** Always implement standard `From` traits for domain-specific wrapper errors (like `LoadError`) and ensure that edge cases (like zero division scenarios in formatting logic) are covered in the UI test suite.
