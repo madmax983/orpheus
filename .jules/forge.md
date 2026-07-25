@@ -82,3 +82,7 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**Refactoring `BuiltinKind::fmt`**
+**Learning:** A massive 100+ line `match` block inside a `fmt::Display` implementation (like `BuiltinKind::fmt`) that simply maps variants to strings is often redundant if an equivalent `name()` method already exists. Such duplication causes `clippy::too_many_lines`.
+**Action:** Replace the entire `match` block with a single `write!(f, "{}", self.name())` statement and expose the `name()` method appropriately (e.g., `pub(crate)`). This enforces a single source of truth and eliminates the `too_many_lines` smell safely.
