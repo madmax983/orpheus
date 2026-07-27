@@ -10,6 +10,7 @@
 //! `EngineHandle`.
 
 use crate::explain::Explain;
+use crossterm::style::Stylize;
 use ratatui::text::Line;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
@@ -1389,7 +1390,9 @@ impl ReplSession {
 
         for issue in reload.errors() {
             eprintln!(
-                "sample hot reload issue at `{}`: {}",
+                "{} {} at `{}`: {}",
+                "\u{2717}".red().bold(),
+                "sample hot reload issue".yellow().bold(),
                 issue.path(),
                 issue.message()
             );
