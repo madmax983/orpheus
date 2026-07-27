@@ -12,6 +12,8 @@ pub(crate) mod explain;
 pub(crate) mod export;
 #[cfg(feature = "experimental-gcode")]
 pub(crate) mod gcode_export;
+#[cfg(feature = "gnuplot_export")]
+pub(crate) mod gnuplot_export;
 pub(crate) mod guitar_tab_export;
 pub(crate) mod html;
 #[cfg(feature = "lilypond_export")]
@@ -57,6 +59,8 @@ pub use export::{
 };
 #[cfg(feature = "experimental-gcode")]
 pub use gcode_export::export_number_pattern_to_gcode;
+#[cfg(feature = "gnuplot_export")]
+pub use gnuplot_export::{export_number_pattern_to_gnuplot, export_sample_pattern_to_gnuplot};
 pub use guitar_tab_export::export_number_pattern_to_guitar_tab;
 pub use html::{export_number_pattern_to_html, export_sample_pattern_to_html};
 #[cfg(feature = "lilypond_export")]
