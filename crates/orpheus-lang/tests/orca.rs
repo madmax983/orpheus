@@ -5,7 +5,7 @@
 
 use orpheus_dsp::EngineHandle;
 use orpheus_lang::ReplSession;
-use orpheus_lang::orca::{
+use orpheus_lang::{
     DEFAULT_GRID_FRAMES_PER_CYCLE, DEFAULT_SAMPLE_TOKEN, Grid, MidiNote, ORCA_PATTERN_NAME,
     OrcaEngine, OrcaEvent, OrcaIoEvent, OrcaPublisher, frame_span, materialize_cycle,
     playhead_frame, sample_event_from_orca,

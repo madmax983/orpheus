@@ -20,11 +20,11 @@
 use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
 use std::time::{Duration, Instant};
 
-use orpheus_lang::orca::transport::{
+use orpheus_lang::{CommandOutcome, OrcaCommand, OrcaEngine, OrcaIoEvent, parse_command};
+use orpheus_lang::{
     RecordingMidiSink, ScheduledIoEvent, TransportConfig, TransportDispatcher, TransportHandle,
     UdpCommandListener,
 };
-use orpheus_lang::orca::{CommandOutcome, OrcaCommand, OrcaEngine, OrcaIoEvent, parse_command};
 
 /// One grid frame at 120 BPM (16th note), divisible by 6 so clock tick
 /// deadlines land on exact milliseconds.
@@ -238,7 +238,7 @@ fn clock_period_update_retunes_ticks_from_the_next_tick() {
 
 #[test]
 fn clock_interleaves_with_note_events_without_disturbing_them() {
-    use orpheus_lang::orca::MidiNote;
+    use orpheus_lang::MidiNote;
 
     let (mut dispatcher, recording) = midi_dispatcher();
     let start = Instant::now();

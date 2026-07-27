@@ -12,7 +12,7 @@
 use orpheus_dsp::EngineHandle;
 use orpheus_lang::ReplSession;
 use orpheus_lang::SampleEvent;
-use orpheus_lang::orca::{
+use orpheus_lang::{
     MidiNote, ORCA_GENERATOR_ID, ORCA_PATTERN_NAME, OrcaEngine, OrcaEvent, OrcaIoEvent,
     OrcaPublisher, materialize_cycle, sample_event_from_orca,
 };

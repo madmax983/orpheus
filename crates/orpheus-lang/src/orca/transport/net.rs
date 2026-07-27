@@ -86,6 +86,7 @@ impl UdpTransport {
 
     /// The current target address.
     #[must_use]
+    #[allow(dead_code)]
     pub const fn target(&self) -> SocketAddr {
         self.endpoint.target
     }
@@ -124,6 +125,7 @@ impl OscTransport {
 
     /// The current target address.
     #[must_use]
+    #[allow(dead_code)]
     pub const fn target(&self) -> SocketAddr {
         self.endpoint.target
     }

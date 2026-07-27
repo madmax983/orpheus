@@ -8,7 +8,7 @@
 //! (banged or not), and emit typed events instead of driving real
 //! transports. See `docs/design/orca-surface.md` section 9.
 
-use orpheus_lang::orca::{
+use orpheus_lang::{
     MidiNote, OrcaEngine, OrcaEvent, OrcaIoEvent, is_valid_glyph, materialize_cycle, midi_note_id,
     sample_event_from_orca,
 };

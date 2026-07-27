@@ -5,7 +5,7 @@
 //! `docs/design/orca-surface.md`: port offsets, locking behavior,
 //! case-sensitive outputs, and bang-vs-frame execution.
 
-use orpheus_lang::orca::OrcaEngine;
+use orpheus_lang::OrcaEngine;
 
 fn engine(rows: &[&str]) -> OrcaEngine {
     OrcaEngine::from_rows(rows).expect("test grids are well-formed")
