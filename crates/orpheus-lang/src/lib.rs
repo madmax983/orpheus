@@ -22,7 +22,7 @@ pub(crate) mod midi_export;
 mod midi_input;
 pub(crate) mod mixer;
 pub(crate) mod number_roll;
-pub mod orca;
+pub(crate) mod orca;
 pub(crate) mod osu_export;
 mod parser;
 mod pedal;
@@ -95,6 +95,22 @@ pub use value::{
     Value,
 };
 pub use voice::{VoiceValue, compile_voice};
+
+#[doc(hidden)]
+pub use orca::transport::{
+    MidiSink, MidirSink, OscTransport, RecordingMidiSink, ScheduledIoEvent, TransportCommand,
+    TransportConfig, TransportDispatcher, TransportHandle, UdpCommandListener, UdpTransport,
+    cc_bytes, connect_midi_output, cycle_schedule, note_off_bytes, note_on_bytes, pb_bytes,
+    velocity_byte,
+};
+#[doc(hidden)]
+pub use orca::{
+    BANG, COMMENT, CommandOutcome, DEFAULT_GRID_FRAMES_PER_CYCLE, DEFAULT_SAMPLE_TOKEN, EMPTY,
+    Grid, GridError, MAX_GRID_FRAME, MidiNote, ORCA_GENERATOR_ID, ORCA_PATTERN_NAME, OrcaCommand,
+    OrcaCycle, OrcaEngine, OrcaEvent, OrcaIoEvent, OrcaPublisher, frame_span, is_valid_glyph,
+    materialize_cycle, materialize_cycle_io, materialize_generator_cycles, midi_note_id,
+    parse_command, playhead_frame, sample_event_from_orca,
+};
 
 // Hidden re-exports keep rustdoc examples for internal helpers compiling.
 #[doc(hidden)]

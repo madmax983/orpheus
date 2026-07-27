@@ -8,7 +8,7 @@
 //! eastward up to and including the matching `#` (or the row end when
 //! unmatched). See `docs/design/orca-surface.md` section 10.
 
-use orpheus_lang::orca::{
+use orpheus_lang::{
     MidiNote, OrcaEngine, OrcaEvent, OrcaIoEvent, is_valid_glyph, materialize_cycle,
     sample_event_from_orca,
 };
@@ -169,7 +169,7 @@ fn hash_joins_the_grid_alphabet() {
     assert!(is_valid_glyph('#'), "comments are grid glyphs as of v4");
     let orca = engine(&["#ab#"]);
     assert_eq!(rows(&orca), vec!["#ab#"]);
-    let mut grid = orpheus_lang::orca::Grid::new(2, 1).expect("valid dimensions");
+    let mut grid = orpheus_lang::Grid::new(2, 1).expect("valid dimensions");
     assert!(grid.set(0, 0, '#'));
     assert_eq!(grid.glyph_at(0, 0), Some('#'));
 }
