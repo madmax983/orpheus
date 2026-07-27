@@ -13,12 +13,21 @@ use crate::engine::EngineError;
 use crate::routing::TrackId;
 use crate::voice::VoiceKind;
 
+/// An audio event scheduled for playback at an exact sample frame.
+///
+/// This struct bridges the high-level pattern language timing with the low-level
+/// DSP engine, ensuring sample-accurate triggering of sounds.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScheduledTrigger {
+    /// The absolute native audio frame at which this event should start.
     pub frame: u64,
+    /// The duration of the event in native audio frames.
     pub duration_frames: u32,
+    /// The routing track this event will be rendered through.
     pub track_id: TrackId,
+    /// The specific sample configuration to trigger.
     pub trigger: SampleTrigger,
+    /// A built-in voice to use if the custom sample token cannot be resolved.
     pub fallback_voice: Option<VoiceKind>,
 }
 
