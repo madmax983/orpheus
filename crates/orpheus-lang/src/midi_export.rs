@@ -129,6 +129,15 @@ pub fn export_number_pattern_to_midi(
         return Err(EvalError::new("exporting requires at least one cycle"));
     }
 
+    let steps_per_cycle = 16_u32;
+    let total_steps = usize::try_from(cycle_count * u64::from(steps_per_cycle))?;
+
+    if total_steps > 100_000 {
+        return Err(EvalError::new(
+            "evaluation exceeded the maximum allowed event limit",
+        ));
+    }
+
     let span = render_span(cycle_count)?;
     let pattern_events = pattern.try_query(&span)?;
 
@@ -193,6 +202,15 @@ pub fn export_sample_pattern_to_midi(
 ) -> Result<(), EvalError> {
     if cycle_count == 0 {
         return Err(EvalError::new("exporting requires at least one cycle"));
+    }
+
+    let steps_per_cycle = 16_u32;
+    let total_steps = usize::try_from(cycle_count * u64::from(steps_per_cycle))?;
+
+    if total_steps > 100_000 {
+        return Err(EvalError::new(
+            "evaluation exceeded the maximum allowed event limit",
+        ));
     }
 
     let span = render_span(cycle_count)?;
@@ -358,5 +376,33 @@ mod test_zero_cycle {
 
         let err = export_number_pattern_to_midi(pattern, &path, 0).unwrap_err();
         assert_eq!(err.to_string(), "exporting requires at least one cycle");
+    }
+
+    #[test]
+    fn test_havoc_midi_export_number_pattern_oom() {
+        let source = "pattern = 60 62 64 65";
+        let module = eval_module(source, ReplMode::Loose).unwrap();
+        let pattern = module.get("pattern").unwrap().as_number_pattern().unwrap();
+        let path = std::env::temp_dir().join("test_havoc_number.mid");
+
+        let err = export_number_pattern_to_midi(pattern, &path, 1_000_000).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "evaluation exceeded the maximum allowed event limit"
+        );
+    }
+
+    #[test]
+    fn test_havoc_midi_export_sample_pattern_oom() {
+        let source = "pattern = bd sn cp";
+        let module = eval_module(source, ReplMode::Loose).unwrap();
+        let pattern = module.get("pattern").unwrap().as_sample_pattern().unwrap();
+        let path = std::env::temp_dir().join("test_havoc_sample.mid");
+
+        let err = export_sample_pattern_to_midi(pattern, &path, 1_000_000).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "evaluation exceeded the maximum allowed event limit"
+        );
     }
 }
