@@ -493,6 +493,14 @@ mod tests {
     }
 
     #[test]
+    fn freq_to_noise_period_edge_cases() {
+        assert_eq!(freq_to_noise_period(440.0), Some(507));
+        assert_eq!(freq_to_noise_period(200_000.0), Some(0));
+        assert_eq!(freq_to_noise_period(0.0), None);
+        assert_eq!(freq_to_noise_period(f32::NAN), None);
+    }
+
+    #[test]
     fn freq_to_period_round_trips() {
         // 440 Hz → period → emitted freq within a fraction of the quantization.
         let period = freq_to_tone_period(440.0).unwrap();
