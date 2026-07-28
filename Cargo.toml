@@ -49,10 +49,13 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+alsa = "0.9"
 anyhow.workspace = true
 comfy-table = "7.2.2"
 cpal.workspace = true
 crossterm.workspace = true
+gag = "1.0.0"
+libc = "0.2.189"
 orpheus-dsp.workspace = true
 orpheus-lang.workspace = true
 
@@ -61,3 +64,6 @@ assert_cmd = "2"
 hound.workspace = true
 orpheus-pattern.workspace = true
 predicates = "3"
+
+[target.x86_64-unknown-linux-gnu.dependencies]
+alsa-sys = "0.3.1"
