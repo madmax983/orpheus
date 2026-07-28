@@ -130,9 +130,11 @@ impl Inferencer {
                 } => {
                     let inferred = self.infer_binding(name, params, expr)?;
                     let ty = self.resolve(inferred);
-                    self.env.insert(name.clone(), self.generalize(ty.clone()));
-                    self.user_bindings.insert(name.clone(), ty.clone());
-                    last_binding = Some((name.clone(), ty));
+                    let owned_name = name.clone();
+                    self.env
+                        .insert(owned_name.clone(), self.generalize(ty.clone()));
+                    self.user_bindings.insert(owned_name.clone(), ty.clone());
+                    last_binding = Some((owned_name, ty));
                 }
             }
         }
