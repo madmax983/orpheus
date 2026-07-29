@@ -129,8 +129,8 @@ impl Inferencer {
                     name, params, expr, ..
                 } => {
                     let inferred = self.infer_binding(name, params, expr)?;
-                    let ty = self.resolve(inferred);
-                    self.env.insert(name.clone(), self.generalize(ty.clone()));
+                    let ty = self.resolve(&inferred);
+                    self.env.insert(name.clone(), self.generalize(&ty));
                     self.user_bindings.insert(name.clone(), ty.clone());
                     last_binding = Some((name.clone(), ty));
                 }
@@ -170,9 +170,9 @@ impl Inferencer {
             Ok(Type::curried(
                 param_types
                     .into_iter()
-                    .map(|ty| self.resolve(ty))
+                    .map(|ty| self.resolve(&ty))
                     .collect::<Vec<_>>(),
-                self.resolve(body_ty),
+                self.resolve(&body_ty),
             ))
         })();
         self.env = saved_env;
@@ -187,14 +187,14 @@ impl Inferencer {
             Expr::Pipe { lhs, rhs } => {
                 let lhs_ty = self.infer_expr(lhs)?;
                 let rhs_ty = self.infer_expr(rhs)?;
-                self.apply_argument(rhs_ty, lhs_ty)
+                self.apply_argument(&rhs_ty, lhs_ty)
             }
             Expr::Call { callee, args } => {
                 if let Some(ty) = self.infer_variadic_call(callee, args)? {
                     return Ok(ty);
                 }
                 let mut callee_ty = self.infer_expr(callee)?;
-                if matches!(self.resolve(callee_ty.clone()), Type::Pattern(_))
+                if matches!(self.resolve(&callee_ty), Type::Pattern(_))
                     && (2..=3).contains(&args.len())
                 {
                     // Inline euclid sugar `bd(3, 8[, rot])`: "calling" a
@@ -202,25 +202,25 @@ impl Inferencer {
                     // pattern's own type and takes numeric arguments.
                     for arg in args {
                         let actual = self.infer_expr(arg)?;
-                        self.unify(actual.clone(), Type::pattern(Type::Number))
+                        self.unify(&actual, &Type::pattern(Type::Number))
                             .map_err(|_| {
                                 TypeError::new(format!(
                                     "inline euclid arguments must all be numbers; found {}",
-                                    self.resolve(actual)
+                                    self.resolve(&actual)
                                 ))
                             })?;
                     }
-                    return Ok(self.resolve(callee_ty));
+                    return Ok(self.resolve(&callee_ty));
                 }
                 for arg in args {
                     let arg_ty = self.infer_expr(arg)?;
-                    callee_ty = self.apply_argument(callee_ty, arg_ty)?;
+                    callee_ty = self.apply_argument(&callee_ty, arg_ty)?;
                 }
                 Ok(callee_ty)
             }
             Expr::At { start, pattern } => {
                 let start_ty = self.infer_expr(start)?;
-                self.unify(start_ty, Type::pattern(Type::Number))?;
+                self.unify(&start_ty, &Type::pattern(Type::Number))?;
                 self.infer_expr(pattern)
             }
             Expr::Meter {
@@ -229,19 +229,19 @@ impl Inferencer {
                 pattern,
             } => {
                 let beats_ty = self.infer_expr(beats)?;
-                self.unify(beats_ty, Type::pattern(Type::Number))?;
+                self.unify(&beats_ty, &Type::pattern(Type::Number))?;
                 let unit_ty = self.infer_expr(unit)?;
-                self.unify(unit_ty, Type::pattern(Type::Number))?;
+                self.unify(&unit_ty, &Type::pattern(Type::Number))?;
                 self.infer_expr(pattern)
             }
             Expr::Beat(value) => {
                 let value_ty = self.infer_expr(value)?;
-                self.unify(value_ty, Type::pattern(Type::Number))?;
+                self.unify(&value_ty, &Type::pattern(Type::Number))?;
                 Ok(Type::pattern(Type::Number))
             }
             Expr::Section { pattern, cycles } => {
                 let cycles_ty = self.infer_expr(cycles)?;
-                self.unify(cycles_ty, Type::pattern(Type::Number))?;
+                self.unify(&cycles_ty, &Type::pattern(Type::Number))?;
                 self.infer_expr(pattern)
             }
             Expr::SeqSections(items) => self.infer_homogeneous(items, "`seq_sections` items"),
@@ -288,12 +288,12 @@ impl Inferencer {
 
     fn require_numeric_binary_operand(&mut self, expr: &Expr) -> Result<(), TypeError> {
         let ty = self.infer_expr(expr)?;
-        let resolved = self.resolve(ty.clone());
+        let resolved = self.resolve(&ty);
 
         match resolved {
             Type::Pattern(inner) if inner.as_ref() == &Type::Number => Ok(()),
             Type::Var(_) => {
-                self.unify(ty, Type::pattern(Type::Number))?;
+                self.unify(&ty, &Type::pattern(Type::Number))?;
                 Ok(())
             }
             other => Err(TypeError::new(format!(
@@ -310,16 +310,16 @@ impl Inferencer {
         let expected = self.infer_expr(first)?;
         for item in rest {
             let actual = self.infer_expr(item)?;
-            self.unify(expected.clone(), actual.clone()).map_err(|_| {
+            self.unify(&expected, &actual).map_err(|_| {
                 TypeError::new(format!(
                     "{context} must all have the same type; expected {}, found {}",
-                    self.resolve(expected.clone()),
-                    self.resolve(actual)
+                    self.resolve(&expected),
+                    self.resolve(&actual)
                 ))
             })?;
         }
 
-        Ok(self.resolve(expected))
+        Ok(self.resolve(&expected))
     }
 
     /// Types a `{a b, c d e}` polymeter: every subsequence is a pattern item
@@ -329,11 +329,11 @@ impl Inferencer {
         for group in groups {
             let actual = self.infer_pattern_items(group, "polymeter items")?;
             if let Some(expected_ty) = expected.clone() {
-                self.unify(expected_ty.clone(), actual.clone()).map_err(|_| {
+                self.unify(&expected_ty, &actual).map_err(|_| {
                     TypeError::new(format!(
                         "polymeter subsequences must all have the same type; expected {}, found {}",
-                        self.resolve(expected_ty),
-                        self.resolve(actual)
+                        self.resolve(&expected_ty),
+                        self.resolve(&actual)
                     ))
                 })?;
             } else {
@@ -343,7 +343,7 @@ impl Inferencer {
 
         expected.map_or_else(
             || Err(TypeError::new("polymeter cannot be empty")),
-            |expected| Ok(self.resolve(expected)),
+            |expected| Ok(self.resolve(&expected)),
         )
     }
 
@@ -361,18 +361,18 @@ impl Inferencer {
             let actual = self.infer_expr(item)?;
             // A voice binding used inside a pattern is a sample-like token:
             // the engine resolves it through the graph voice bank.
-            let actual = if matches!(self.resolve(actual.clone()), Type::Voice) {
+            let actual = if matches!(self.resolve(&actual), Type::Voice) {
                 Type::pattern(Type::Sample)
             } else {
                 actual
             };
             if let Some(expected_ty) = expected.clone() {
-                self.unify(expected_ty.clone(), actual.clone())
+                self.unify(&expected_ty, &actual)
                     .map_err(|_| {
                         TypeError::new(format!(
                             "{context} must all have the same type; expected {}, found {}",
-                            self.resolve(expected_ty),
-                            self.resolve(actual)
+                            self.resolve(&expected_ty),
+                            self.resolve(&actual)
                         ))
                     })?;
             } else {
@@ -381,7 +381,7 @@ impl Inferencer {
         }
 
         if let Some(expected) = expected {
-            Ok(self.resolve(expected))
+            Ok(self.resolve(&expected))
         } else {
             Ok(Type::pattern(self.fresh_var_type()))
         }
@@ -411,8 +411,8 @@ impl Inferencer {
                 let context = format!("`{name}` patterns");
                 let ty = self.infer_homogeneous(args, &context)?;
                 let element = self.fresh_var_type();
-                self.unify(ty.clone(), Type::pattern(element))?;
-                Ok(Some(self.resolve(ty)))
+                self.unify(&ty, &Type::pattern(element))?;
+                Ok(Some(self.resolve(&ty)))
             }
             "choose" if args.len() > 2 => {
                 if self.env.get(name) != Some(&choose_scheme()) {
@@ -476,19 +476,19 @@ impl Inferencer {
     ) -> Result<Option<Type>, TypeError> {
         for arg in &args[..3] {
             let actual = self.infer_expr(arg)?;
-            self.unify(actual.clone(), Type::pattern(Type::Number))
+            self.unify(&actual, &Type::pattern(Type::Number))
                 .map_err(|_| {
                     TypeError::new(format!(
                         "`euclid_full` pulses, steps, and rotation must be numbers; found {}",
-                        self.resolve(actual)
+                        self.resolve(&actual)
                     ))
                 })?;
         }
 
         let ty = self.infer_homogeneous(&args[3..], "`euclid_full` hit and rest patterns")?;
         let element = self.fresh_var_type();
-        self.unify(ty.clone(), Type::pattern(element))?;
-        Ok(Some(self.resolve(ty)))
+        self.unify(&ty, &Type::pattern(element))?;
+        Ok(Some(self.resolve(&ty)))
     }
 
     /// Types variadic `wrandcat`/`wpchoose` `(p1, w1, p2, w2, ...)` calls:
@@ -510,19 +510,19 @@ impl Inferencer {
         for (index, arg) in args.iter().enumerate() {
             let actual = self.infer_expr(arg)?;
             if !index.is_multiple_of(2) {
-                self.unify(actual.clone(), Type::pattern(Type::Number))
+                self.unify(&actual, &Type::pattern(Type::Number))
                     .map_err(|_| {
                         TypeError::new(format!(
                             "`{name}` weights must be numbers; found {}",
-                            self.resolve(actual)
+                            self.resolve(&actual)
                         ))
                     })?;
             } else if let Some(expected) = pattern_ty.clone() {
-                self.unify(expected.clone(), actual.clone()).map_err(|_| {
+                self.unify(&expected, &actual).map_err(|_| {
                     TypeError::new(format!(
                         "`{name}` patterns must all have the same type; expected {}, found {}",
-                        self.resolve(expected),
-                        self.resolve(actual)
+                        self.resolve(&expected),
+                        self.resolve(&actual)
                     ))
                 })?;
             } else {
@@ -536,8 +536,8 @@ impl Inferencer {
             ))
         })?;
         let element = self.fresh_var_type();
-        self.unify(ty.clone(), Type::pattern(element))?;
-        Ok(Some(self.resolve(ty)))
+        self.unify(&ty, &Type::pattern(element))?;
+        Ok(Some(self.resolve(&ty)))
     }
 
     /// Types variadic `markov(s0, w0_0, ..., w0_{k-1}, s1, ...)` calls: the
@@ -557,23 +557,23 @@ impl Inferencer {
             let actual = self.infer_expr(arg)?;
             if index.is_multiple_of(state_count + 1) {
                 if let Some(expected) = pattern_ty.clone() {
-                    self.unify(expected.clone(), actual.clone()).map_err(|_| {
+                    self.unify(&expected, &actual).map_err(|_| {
                         TypeError::new(format!(
                             "`markov` state patterns must all have the same type; \
                              expected {}, found {}",
-                            self.resolve(expected),
-                            self.resolve(actual)
+                            self.resolve(&expected),
+                            self.resolve(&actual)
                         ))
                     })?;
                 } else {
                     pattern_ty = Some(actual);
                 }
             } else {
-                self.unify(actual.clone(), Type::pattern(Type::Number))
+                self.unify(&actual, &Type::pattern(Type::Number))
                     .map_err(|_| {
                         TypeError::new(format!(
                             "`markov` transition weights must be numbers; found {}",
-                            self.resolve(actual)
+                            self.resolve(&actual)
                         ))
                     })?;
             }
@@ -582,8 +582,8 @@ impl Inferencer {
         let ty =
             pattern_ty.ok_or_else(|| TypeError::new("`markov` requires at least two states"))?;
         let element = self.fresh_var_type();
-        self.unify(ty.clone(), Type::pattern(element))?;
-        Ok(Some(self.resolve(ty)))
+        self.unify(&ty, &Type::pattern(element))?;
+        Ok(Some(self.resolve(&ty)))
     }
 
     /// Checks every argument against `Pattern<Number>` and returns
@@ -595,11 +595,11 @@ impl Inferencer {
     ) -> Result<Option<Type>, TypeError> {
         for arg in args {
             let actual = self.infer_expr(arg)?;
-            self.unify(actual.clone(), Type::pattern(Type::Number))
+            self.unify(&actual, &Type::pattern(Type::Number))
                 .map_err(|_| {
                     TypeError::new(format!(
                         "{context} must all be numbers; found {}",
-                        self.resolve(actual)
+                        self.resolve(&actual)
                     ))
                 })?;
         }
@@ -618,17 +618,17 @@ impl Inferencer {
         }
     }
 
-    fn apply_argument(&mut self, callee_ty: Type, arg_ty: Type) -> Result<Type, TypeError> {
+    fn apply_argument(&mut self, callee_ty: &Type, arg_ty: Type) -> Result<Type, TypeError> {
         let param_ty = self.fresh_var_type();
         let ret_ty = self.fresh_var_type();
         self.unify(
             callee_ty,
-            Type::function(vec![param_ty.clone()], ret_ty.clone()),
+            &Type::function(vec![param_ty.clone()], ret_ty.clone()),
         )
         .map_err(|_| TypeError::new("attempted to call a non-function value"))?;
         let arg_ty = self.coerce_nullary_function_argument(&param_ty, arg_ty);
-        self.unify(param_ty, arg_ty)?;
-        Ok(self.resolve(ret_ty))
+        self.unify(&param_ty, &arg_ty)?;
+        Ok(self.resolve(&ret_ty))
     }
 
     /// Coerces a zero-arity function argument (e.g. bare `rand`, typed
@@ -638,9 +638,9 @@ impl Inferencer {
     /// evaluator, which invokes saturated zero-arity builtins in pattern
     /// position.
     fn coerce_nullary_function_argument(&self, param_ty: &Type, arg_ty: Type) -> Type {
-        match self.resolve(param_ty.clone()) {
+        match self.resolve(param_ty) {
             Type::Function(..) | Type::Var(_) => arg_ty,
-            _ => match self.resolve(arg_ty.clone()) {
+            _ => match self.resolve(&arg_ty) {
                 Type::Function(args, ret) if args.is_empty() => *ret,
                 _ => arg_ty,
             },
@@ -655,7 +655,7 @@ impl Inferencer {
         substitute_scheme_vars(&scheme.ty, &replacements)
     }
 
-    fn generalize(&self, ty: Type) -> TypeScheme {
+    fn generalize(&self, ty: &Type) -> TypeScheme {
         let ty = self.resolve(ty);
         let env_vars = self.free_vars_in_env();
         let vars = free_type_vars(&ty)
@@ -671,22 +671,22 @@ impl Inferencer {
         Type::Var(var)
     }
 
-    fn unify(&mut self, left: Type, right: Type) -> Result<(), TypeError> {
+    fn unify(&mut self, left: &Type, right: &Type) -> Result<(), TypeError> {
         let left = self.resolve(left);
         let right = self.resolve(right);
 
         match (left, right) {
             (Type::Var(left), Type::Var(right)) if left == right => Ok(()),
             (Type::Var(var), ty) | (ty, Type::Var(var)) => self.bind_var(var, ty),
-            (Type::Pattern(left), Type::Pattern(right)) => self.unify(*left, *right),
+            (Type::Pattern(left), Type::Pattern(right)) => self.unify(&left, &right),
             (Type::Function(left_args, left_ret), Type::Function(right_args, right_ret)) => {
                 if left_args.len() != right_args.len() {
                     return Err(TypeError::new("function arity mismatch"));
                 }
                 for (left_arg, right_arg) in left_args.into_iter().zip(right_args) {
-                    self.unify(left_arg, right_arg)?;
+                    self.unify(&left_arg, &right_arg)?;
                 }
-                self.unify(*left_ret, *right_ret)
+                self.unify(&left_ret, &right_ret)
             }
             (Type::Sample, Type::Sample)
             | (Type::Pedal, Type::Pedal)
@@ -703,7 +703,7 @@ impl Inferencer {
             (left, right) => {
                 if let Some((coerced_left, coerced_right)) = self.try_loose_coercion(&left, &right)
                 {
-                    return self.unify(coerced_left, coerced_right);
+                    return self.unify(&coerced_left, &coerced_right);
                 }
 
                 Err(TypeError::new(format!(
@@ -726,7 +726,7 @@ impl Inferencer {
     }
 
     fn occurs(&self, needle: TypeVarId, ty: &Type) -> bool {
-        match self.resolve(ty.clone()) {
+        match self.resolve(ty) {
             Type::Var(var) => var == needle,
             Type::Pattern(inner) => self.occurs(needle, &inner),
             Type::Function(args, ret) => {
@@ -747,17 +747,16 @@ impl Inferencer {
         }
     }
 
-    fn resolve(&self, ty: Type) -> Type {
+    fn resolve(&self, ty: &Type) -> Type {
         match ty {
             Type::Var(var) => self
                 .substitutions
-                .get(&var)
-                .cloned()
-                .map_or(Type::Var(var), |bound| self.resolve(bound)),
-            Type::Pattern(inner) => Type::pattern(self.resolve(*inner)),
+                .get(var)
+                .map_or(Type::Var(*var), |bound| self.resolve(bound)),
+            Type::Pattern(inner) => Type::pattern(self.resolve(inner)),
             Type::Function(args, ret) => Type::function(
-                args.into_iter().map(|arg| self.resolve(arg)).collect(),
-                self.resolve(*ret),
+                args.iter().map(|arg| self.resolve(arg)).collect(),
+                self.resolve(ret),
             ),
             Type::Sample => Type::Sample,
             Type::Pedal => Type::Pedal,
