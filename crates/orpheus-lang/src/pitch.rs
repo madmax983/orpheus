@@ -198,6 +198,24 @@ mod tests {
     }
 
     #[test]
+    fn pitch_literal_octave_overflow_is_rejected() {
+        let error = parse_named_pitch_literal("c10000000000000")
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("exceeded the supported octave range"));
+    }
+
+    #[test]
+    fn pitch_literal_midi_overflow_is_rejected() {
+        let error = parse_named_pitch_literal("c178956971")
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("exceeded the supported evaluator range"));
+    }
+
+    #[test]
     fn non_pitch_identifiers_are_ignored() {
         assert_eq!(parse_named_pitch_literal("cutoff").unwrap(), None);
         assert_eq!(parse_named_pitch_literal("drums").unwrap(), None);
