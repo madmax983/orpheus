@@ -300,6 +300,9 @@ fn print_help() {
 }
 
 fn start_live_audio() -> anyhow::Result<(EngineHandle, Stream)> {
+    #[cfg(unix)]
+    let _gag = gag::Gag::stderr().ok();
+
     let host = cpal::default_host();
     let device = host
         .default_output_device()
