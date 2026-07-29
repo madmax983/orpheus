@@ -53,6 +53,7 @@ anyhow.workspace = true
 comfy-table = "7.2.2"
 cpal.workspace = true
 crossterm.workspace = true
+gag = "1.0.0"
 orpheus-dsp.workspace = true
 orpheus-lang.workspace = true
 
