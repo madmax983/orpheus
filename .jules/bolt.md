@@ -47,3 +47,7 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+**[AST Cloning Bottlenecks in Type Inference]**
+**Learning:** During type inference (`Inferencer::unify`, `Inferencer::resolve`, etc.), accepting AST nodes like `Type` by value and repeatedly calling `.clone()` forces expensive deep copies of heavily nested enums like `Type::Function` or `Type::Pattern`.
+**Action:** When walking or comparing AST nodes, pass them by reference (`&Type`) to recursive inference methods (like `unify` and `resolve`) rather than eagerly cloning them to transfer ownership. Only use `.clone()` if you need to extract and store the underlying data in a struct or collection.
