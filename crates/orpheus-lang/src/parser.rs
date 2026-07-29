@@ -582,14 +582,14 @@ fn build_binding_head(pair: Pair<'_, Rule>) -> Result<(String, Vec<String>), Par
     let mut params = Vec::new();
 
     for identifier in identifiers {
-        let param = identifier.as_str().to_owned();
-        if !seen.insert(param.clone()) {
+        let param_str = identifier.as_str();
+        if !seen.insert(param_str) {
             let (line, col) = identifier.as_span().start_pos().line_col();
             return Err(ParseError::new(format!(
-                "parse error at line {line}, col {col}: duplicate parameter `{param}` in binding `{name}`"
+                "parse error at line {line}, col {col}: duplicate parameter `{param_str}` in binding `{name}`"
             )));
         }
-        params.push(param);
+        params.push(param_str.to_owned());
     }
 
     Ok((name, params))
