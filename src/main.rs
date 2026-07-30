@@ -258,14 +258,18 @@ fn render_master(path: &Path, out: &Path, cycles: u64) -> anyhow::Result<()> {
 /// then reuse the existing `:export master` offline render path.
 fn render_master_inner(path: &Path, out: &Path, cycles: u64) -> anyhow::Result<()> {
     let mut session = ReplSession::with_engine(EngineHandle::stub());
-    session
+    let open_msg = session
         .open_file(path)
-        .map_err(|error| anyhow!("failed to open `{}`: {error}", path.display()))?;
-    let message = session
-        .eval_line(&format!(":export master {} {}", out.display(), cycles))
-        .map_err(|error| anyhow!("failed to render master: {error}"))?;
-    println!("{message}");
-    Ok(())
+        .map_err(|error| anyhow!("{error}"))?;
+    println!("{} {}", "\u{2713}".green(), open_msg);
+
+    match session.eval_line(&format!(":export master {} {}", out.display(), cycles)) {
+        Ok(message) => {
+            println!("{} {}", "\u{2713}".green(), message);
+            Ok(())
+        }
+        Err(message) => Err(anyhow!("{message}")),
+    }
 }
 
 fn print_help() {
