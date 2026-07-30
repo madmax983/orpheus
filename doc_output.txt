@@ -1,0 +1,168 @@
+    Checking strum v0.27.2
+   Compiling alsa-sys v0.3.1
+    Checking regex-syntax v0.8.10
+   Compiling serde v1.0.228
+    Checking byteorder v1.5.0
+    Checking ratatui-core v0.1.0
+   Compiling crossbeam-utils v0.8.21
+   Compiling autocfg v1.5.0
+   Compiling num-traits v0.2.19
+    Checking crossterm v0.29.0
+    Checking serde_core v1.0.228
+   Compiling generator v0.8.8
+    Checking regex-automata v0.4.14
+    Checking crypto-common v0.1.7
+    Checking block-buffer v0.10.4
+   Compiling serde_derive v1.0.228
+    Checking line-clipping v0.3.7
+   Compiling heapless v0.8.0
+   Compiling built v0.7.7
+    Checking lazy_static v1.5.0
+    Checking pin-project-lite v0.2.17
+    Checking tracing v0.1.44
+    Checking sharded-slab v0.1.7
+    Checking matchers v0.2.0
+   Compiling flacenc v0.5.1
+    Checking ratatui-widgets v0.3.0
+    Checking digest v0.10.7
+    Checking alsa v0.9.1
+    Checking hash32 v0.3.1
+    Checking tracing-log v0.2.0
+    Checking thread_local v1.1.9
+   Compiling memchr v2.8.0
+   Compiling cpal v0.15.3
+   Compiling ucd-trie v0.1.7
+    Checking crc-catalog v2.4.0
+    Checking nu-ansi-term v0.50.3
+    Checking stable_deref_trait v1.2.1
+    Checking crc v3.4.0
+    Checking tracing-subscriber v0.3.23
+   Compiling pest v2.8.6
+    Checking ratatui-macros v0.7.0
+    Checking crossbeam-channel v0.5.15
+    Checking md-5 v0.10.6
+    Checking ratatui-crossterm v0.1.0
+    Checking dasp_sample v0.11.0
+   Compiling seq-macro v0.3.6
+    Checking scoped-tls v1.0.1
+    Checking loom v0.7.2
+    Checking ratatui v0.30.0
+   Compiling pest_meta v2.8.6
+    Checking orpheus-pattern v0.1.0 (/app/crates/orpheus-pattern)
+    Checking minimal-lexical v0.2.1
+    Checking rtrb v0.3.3
+    Checking hound v3.5.1
+   Compiling pest_generator v2.8.6
+    Checking nom v7.1.3
+    Checking ratatui-hypertile v0.3.0
+    Checking bitflags v1.3.2
+    Checking midir v0.10.3
+   Compiling pest_derive v2.8.6
+    Checking orpheus-dsp v0.1.0 (/app/crates/orpheus-dsp)
+    Checking rosc v0.11.4
+    Checking ratatui-hypertile-extras v0.3.0
+    Checking comfy-table v7.2.2
+   Compiling anyhow v1.0.102
+ Documenting orpheus-dsp v0.1.0 (/app/crates/orpheus-dsp)
+ Documenting orpheus-pattern v0.1.0 (/app/crates/orpheus-pattern)
+error: missing documentation for a struct
+  --> crates/orpheus-dsp/src/sample_bank.rs:33:1
+   |
+33 | pub struct PlaybackSample {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: requested on the command line with `-D missing-docs`
+
+error: missing documentation for a method
+  --> crates/orpheus-dsp/src/sample_bank.rs:53:5
+   |
+53 |     pub const fn frames(&self) -> &Arc<[f32]> {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: missing documentation for a method
+  --> crates/orpheus-dsp/src/sample_bank.rs:58:5
+   |
+58 |     pub const fn sample_rate_hz(&self) -> u32 {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: missing documentation for a struct
+  --> crates/orpheus-dsp/src/scheduler.rs:17:1
+   |
+17 | pub struct ScheduledTrigger {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: missing documentation for a struct field
+  --> crates/orpheus-dsp/src/scheduler.rs:18:5
+   |
+18 |     pub frame: u64,
+   |     ^^^^^^^^^^^^^^
+
+error: missing documentation for a struct field
+  --> crates/orpheus-dsp/src/scheduler.rs:19:5
+   |
+19 |     pub duration_frames: u32,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: missing documentation for a struct field
+  --> crates/orpheus-dsp/src/scheduler.rs:20:5
+   |
+20 |     pub track_id: TrackId,
+   |     ^^^^^^^^^^^^^^^^^^^^^
+
+error: missing documentation for a struct field
+  --> crates/orpheus-dsp/src/scheduler.rs:21:5
+   |
+21 |     pub trigger: SampleTrigger,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: missing documentation for a struct field
+  --> crates/orpheus-dsp/src/scheduler.rs:22:5
+   |
+22 |     pub fallback_voice: Option<VoiceKind>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: public documentation for `meter_decay_per_frame` links to private item `METER_DECAY_HALF_LIFE_SECS`
+  --> crates/orpheus-dsp/src/engine.rs:75:31
+   |
+75 | ...eak over [`METER_DECAY_HALF_LIFE_SECS`] seconds of silence.
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^ this item is private
+   |
+   = note: this link will resolve properly if you pass `--document-private-items`
+   = note: `-D rustdoc::private-intra-doc-links` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(rustdoc::private_intra_doc_links)]`
+
+error: unresolved link to `tests::lfsr_sequences_match_genesoxide`
+   --> crates/orpheus-dsp/src/graph/genesis_psg.rs:154:26
+    |
+154 | /// exactly (pinned in [`tests::lfsr_sequences_match_genesoxide`]).
+    |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no item named `tests` in scope
+    |
+    = note: `-D rustdoc::broken-intra-doc-links` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(rustdoc::broken_intra_doc_links)]`
+
+error: public documentation for `PsgToneNode` links to private item `PSG_HEADROOM_SCALE`
+   --> crates/orpheus-dsp/src/graph/genesis_psg.rs:181:30
+    |
+181 | /// voice peaks at `±0.9` ([`PSG_HEADROOM_SCALE`]).
+    |                              ^^^^^^^^^^^^^^^^^^ this item is private
+    |
+    = note: this link will resolve properly if you pass `--document-private-items`
+
+error: public documentation for `PsgNoiseNode` links to private item `PSG_HEADROOM_SCALE`
+   --> crates/orpheus-dsp/src/graph/genesis_psg.rs:293:30
+    |
+293 | /// voice peaks at `±0.9` ([`PSG_HEADROOM_SCALE`]).
+    |                              ^^^^^^^^^^^^^^^^^^ this item is private
+    |
+    = note: this link will resolve properly if you pass `--document-private-items`
+
+error: public documentation for `AdsrNode` links to private item `EnvCore`
+   --> crates/orpheus-dsp/src/graph/primitives.rs:446:59
+    |
+446 | ...iding clicks. See [`EnvCore`] for the
+    |                        ^^^^^^^ this item is private
+    |
+    = note: this link will resolve properly if you pass `--document-private-items`
+
+error: could not document `orpheus-dsp`
+warning: build failed, waiting for other jobs to finish...

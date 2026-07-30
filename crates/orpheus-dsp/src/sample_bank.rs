@@ -29,6 +29,26 @@ const HIHAT_WAV: &[u8] = include_bytes!("../assets/hihat.wav");
 const SAMPLE_MANIFEST_FILE: &str = "samples.ron";
 const DEFAULT_WATCH_INTERVAL: Duration = Duration::from_millis(50);
 
+/// Represents a loaded, decoded audio sample ready for playback.
+///
+/// A `PlaybackSample` holds a reference-counted, monolithic buffer of mono floating-point
+/// audio frames, along with its original sample rate. It acts as the immutable backing
+/// memory for active voices.
+///
+/// # Examples
+///
+/// ```
+/// use std::sync::Arc;
+/// // `sample_bank` is private in the crate root but `PlaybackSample` is re-exported or used internally.
+/// // For a doctest, we use it directly as though we were inside the crate, using #
+/// # use orpheus_dsp::PlaybackSample;
+///
+/// let frames: Arc<[f32]> = Arc::new([0.0, 0.5, -0.5, 0.0]);
+/// let sample = PlaybackSample::from_mono_frames(frames, 44100);
+///
+/// assert_eq!(sample.sample_rate_hz(), 44100);
+/// assert_eq!(sample.frames().len(), 4);
+/// ```
 #[derive(Clone, PartialEq)]
 pub struct PlaybackSample {
     frames: Arc<[f32]>,
@@ -49,11 +69,15 @@ impl PlaybackSample {
         }
     }
 
+    /// Accesses the underlying mono audio frames.
+    ///
+    /// Returns a reference to the reference-counted slice of `f32` samples.
     #[must_use]
     pub const fn frames(&self) -> &Arc<[f32]> {
         &self.frames
     }
 
+    /// Returns the original sample rate of the loaded audio data in Hertz.
     #[must_use]
     pub const fn sample_rate_hz(&self) -> u32 {
         self.sample_rate_hz

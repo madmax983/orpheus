@@ -44,7 +44,8 @@ pub const MAX_METERED_TRACKS: usize = 64;
 /// Half-life, in seconds, of the peak-hold meter decay (ADR 0013). The held
 /// peak falls to half its value over this span of silence, giving a natural
 /// VU/peak-hold feel independent of tempo or render-block size.
-const METER_DECAY_HALF_LIFE_SECS: f32 = 0.2;
+#[doc(hidden)]
+pub const METER_DECAY_HALF_LIFE_SECS: f32 = 0.2;
 
 /// Folds a live sample `magnitude` into a running peak-hold meter value.
 ///
@@ -72,7 +73,7 @@ pub fn decayed_peak(previous: f32, magnitude: f32, decay: f32) -> f32 {
 ///
 /// Derived once at engine construction so the meter ballistics stay constant
 /// regardless of tempo or render-block size (ADR 0013): the returned factor
-/// halves a held peak over [`METER_DECAY_HALF_LIFE_SECS`] seconds of silence.
+/// halves a held peak over `METER_DECAY_HALF_LIFE_SECS` seconds of silence.
 ///
 /// # Examples
 ///
