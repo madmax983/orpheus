@@ -2320,6 +2320,23 @@ right = sometimes(fast(2), cp hh)";
     }
 
     #[test]
+    fn extract_constant_number_rational_success() {
+        let val =
+            crate::value::Value::NumberPattern(crate::value::NumberPatternValue::constant(1.5));
+        let res = super::extract_constant_number_rational(val, "test").unwrap();
+        assert_eq!(res.numerator(), 3);
+        assert_eq!(res.denominator(), 2);
+    }
+
+    #[test]
+    fn extract_constant_number_rational_error_on_non_number() {
+        let val = crate::value::Value::String("hello".into());
+        let res = super::extract_constant_number_rational(val, "expected number");
+        let err_msg = res.unwrap_err().to_string();
+        assert_eq!(err_msg, "expected number must resolve to a constant number");
+    }
+
+    #[test]
     fn apply_function_value_evaluates_user_function_correctly() {
         let module = eval_module("f x = x\nres = f(42.0)", ReplMode::Loose).unwrap();
         let val = module.get("res").unwrap().as_number_pattern().unwrap();
