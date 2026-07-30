@@ -47,3 +47,7 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+**Eliminate recursive type cloning in occurs check**
+**Learning:** Checking for cyclic type variable dependencies (`occurs` check) using `self.resolve(ty.clone())` causes massive allocation overhead on the hot path of HM inference, as `ty.clone()` recursively clones the entire inner `Type` tree (which uses `Box` extensively).
+**Action:** By matching on `ty` by reference and explicitly traversing the `substitutions` map only for `Type::Var`, we can perform a structurally identical bounds check entirely allocation-free.
