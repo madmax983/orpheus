@@ -337,8 +337,9 @@ enum EnvStage {
 /// A gate rising edge (or a high gate while idle) starts the attack from the
 /// *current* level, so retriggering mid-release never produces a click.
 /// Non-finite or non-positive segment times jump the segment in one sample.
+#[doc(hidden)]
 #[derive(Debug, Clone)]
-struct EnvCore {
+pub struct EnvCore {
     sample_rate_hz: f32,
     stage: EnvStage,
     level: f32,
@@ -443,7 +444,7 @@ impl EnvCore {
 ///
 /// The gate opens on a rising edge (or any positive gate while idle) and
 /// closes when it falls to <= 0. Retriggering while active restarts the
-/// attack from the current level, avoiding clicks. See [`EnvCore`] for the
+/// attack from the current level, avoiding clicks. See `EnvCore` for the
 /// segment semantics.
 #[derive(Debug, Clone)]
 pub struct AdsrNode {

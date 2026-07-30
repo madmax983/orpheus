@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2026-07-11 - [Missing Struct and Link Documentation in DSP Engine]
+**Confusion:** Core types like `PlaybackSample` and `ScheduledTrigger` lacked structural documentation and executable doctests, and several private intra-doc links in the `orpheus-dsp` crate were broken when compiled with `--document-private-items` off, creating confusing HTML output.
+**Clarification:** Documented `PlaybackSample` and `ScheduledTrigger` with detailed lore and executable examples showing how they map audio buffers and scheduling offsets. Fixed the private links for constants like `PSG_HEADROOM_SCALE` and `METER_DECAY_HALF_LIFE_SECS` by elevating their visibility and applying `#[doc(hidden)]`, and repaired unresolved links to integration tests.

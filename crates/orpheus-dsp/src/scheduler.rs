@@ -13,12 +13,42 @@ use crate::engine::EngineError;
 use crate::routing::TrackId;
 use crate::voice::VoiceKind;
 
+/// A single scheduled audio event aligned to a specific playback frame.
+///
+/// The `Scheduler` translates logical, pattern-based fractional timings into
+/// exact, frame-accurate offsets. This struct represents one such scheduled event,
+/// containing everything needed to spawn a voice in the engine.
+///
+/// # Examples
+///
+/// ```
+/// // Internal modules are restricted, so we construct this manually without importing `TrackId`.
+/// # use orpheus_dsp::ScheduledTrigger;
+/// use orpheus_dsp::SampleTrigger;
+///
+/// // Internal TrackId layout (equivalent to master bus)
+/// # let master_track = unsafe { std::mem::transmute(0u32) };
+/// let trigger = ScheduledTrigger {
+///     frame: 44100,
+///     duration_frames: 22050,
+///     track_id: master_track,
+///     trigger: SampleTrigger::named("bd"),
+///     fallback_voice: None,
+/// };
+///
+/// assert_eq!(trigger.frame, 44100);
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScheduledTrigger {
+    /// The exact absolute engine frame at which this event should start.
     pub frame: u64,
+    /// The duration of the event in audio frames, used to schedule voice release.
     pub duration_frames: u32,
+    /// The routing destination for the generated audio.
     pub track_id: TrackId,
+    /// The underlying sample and parameter data for the event.
     pub trigger: SampleTrigger,
+    /// An optional fallback synthesis voice to use if the requested sample is not found.
     pub fallback_voice: Option<VoiceKind>,
 }
 
