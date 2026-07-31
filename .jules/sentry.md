@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2026-07-31 - Refactored generator id bounds check test
+**Learning:** Replaced manual `catch_unwind` with idiomatic `#[should_panic]` for better test readability and correctness assertion.
+**Action:** Always prefer `#[should_panic(expected="...")]` when validating that an error bubbles up as a panic in rendering pipelines.
