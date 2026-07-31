@@ -82,3 +82,6 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+**[Refactor eval_slot_patterns to use match]
+**Learning:** Sequential `if` conditions checking boolean state on a collection can lead to duplicated mapping logic and obfuscated exclusive conditions.
+**Action:** Use a consolidated `match (bool_a, bool_b)` to handle exclusive states, which flattens logic, exposes unreachable states explicitly, and enables mapping via iterators.
