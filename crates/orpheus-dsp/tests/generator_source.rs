@@ -340,6 +340,7 @@ fn clamped_note_without_whole_still_ends_at_the_boundary() {
 }
 
 #[test]
+#[should_panic(expected = "render test block failed: generator id must be below 8")]
 fn generator_id_out_of_range_is_rejected() {
     let mut engine = engine_with_short_cycles();
     let id = GeneratorId::new(u32::try_from(MAX_GENERATORS).expect("small constant"));
@@ -349,12 +350,7 @@ fn generator_id_out_of_range_is_rejected() {
             vec![event("bd", span((0, 1), (1, 4)), None)],
         )))
         .unwrap();
-    let result =
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| engine.render_test_block(1)));
-    assert!(
-        result.is_err(),
-        "an out-of-range generator id must surface as an engine error"
-    );
+    let _ = engine.render_test_block(1);
 }
 
 #[test]
