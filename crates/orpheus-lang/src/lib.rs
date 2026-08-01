@@ -33,6 +33,7 @@ pub(crate) mod scl;
 pub(crate) mod session;
 pub(crate) mod srt;
 pub(crate) mod stats;
+pub(crate) mod chuck_export;
 pub(crate) mod supercollider_export;
 mod svg;
 pub(crate) mod tracker;
@@ -75,6 +76,7 @@ pub use repl::{run_stdio, run_stdio_with_engine, run_stdio_with_engine_and_path}
 pub use scad_export::export_number_pattern_to_scad;
 pub use srt::{export_number_pattern_to_srt, export_sample_pattern_to_srt};
 pub use stats::{number_pattern_stats, sample_pattern_stats, tuning_stats};
+pub use chuck_export::{export_number_pattern_to_chuck, export_sample_pattern_to_chuck};
 pub use supercollider_export::{
     export_number_pattern_to_supercollider, export_sample_pattern_to_supercollider,
 };
