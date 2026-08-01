@@ -82,3 +82,6 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+**[Refactor apply_every manual match]**
+**Learning:** `apply_every` manually unwrapped `Value::SamplePattern` and `Value::NumberPattern` and constructed custom `EvalError` cases, which duplicated logic found in `apply_pattern_transform` (which safely extracts patterns from `Value` args and applies closures).
+**Action:** Replace the custom structural matching and error handling within `apply_every` by calling `apply_pattern_transform` with closures, avoiding duplicated matching boilerplate and standardizing the shape of structural builtin functions.
