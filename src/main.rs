@@ -110,7 +110,8 @@ fn startup_path_from_args(args: impl IntoIterator<Item = OsString>) -> anyhow::R
             }
             if path_str.starts_with('-') {
                 return Err(anyhow!(
-                    "unexpected argument {} found\n\n{} orpheus {}\n\nFor more information, try {}.",
+                    "{} unexpected argument {} found\n\n{} orpheus {}\n\nFor more information, try {}.",
+                    "error:".red().bold(),
                     format!("'{path_str}'").yellow().bold(),
                     "Usage:".green().bold(),
                     "[PATH]".cyan(),
@@ -120,7 +121,8 @@ fn startup_path_from_args(args: impl IntoIterator<Item = OsString>) -> anyhow::R
             Ok(CliAction::Run(Some(PathBuf::from(path))))
         }
         _ => Err(anyhow!(
-            "{} orpheus {}",
+            "{} unexpected extra arguments found\n\n{} orpheus {}",
+            "error:".red().bold(),
             "Usage:".green().bold(),
             "[path/to/song.ode]".cyan()
         )),
