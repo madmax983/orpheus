@@ -1033,6 +1033,9 @@ impl ReplSession {
             Some("md") => crate::export::export_sample_pattern_to_md(pattern, path, cycles),
             Some("srt") => crate::srt::export_sample_pattern_to_srt(pattern, path, cycles),
             Some("txt") => crate::txt::export_sample_pattern_to_txt(pattern, path, cycles),
+            Some("ck") => {
+                crate::chuck_export::export_sample_pattern_to_chuck(pattern, path, cycles)
+            }
             Some("trk" | "tracker") => {
                 crate::tracker::export_sample_pattern_to_tracker(pattern, path, cycles)
             }
@@ -1067,6 +1070,9 @@ impl ReplSession {
             Some("md") => crate::export::export_number_pattern_to_md(pattern, path, cycles),
             Some("srt") => crate::srt::export_number_pattern_to_srt(pattern, path, cycles),
             Some("txt") => crate::txt::export_number_pattern_to_txt(pattern, path, cycles),
+            Some("ck") => {
+                crate::chuck_export::export_number_pattern_to_chuck(pattern, path, cycles)
+            }
             #[cfg(feature = "lilypond_export")]
             Some("ly") => {
                 crate::lilypond_export::export_number_pattern_to_lilypond(pattern, path, cycles)
