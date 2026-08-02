@@ -4410,6 +4410,38 @@ mod tests {
     }
 
     #[test]
+    fn markov_cumulative_row_handles_all_zero_weights() {
+        let result = super::markov_cumulative_row(&[0.0, 0.0, 0.0]);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "`markov` requires at least one positive outgoing weight per state"
+        );
+    }
+
+    #[test]
+    fn markov_cumulative_row_handles_negative_weights() {
+        let result = super::markov_cumulative_row(&[-1.0, 0.0, -2.0]);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "`markov` requires at least one positive outgoing weight per state"
+        );
+    }
+
+    #[test]
+    fn markov_cumulative_row_calculates_correctly() {
+        let result = super::markov_cumulative_row(&[1.0, 2.0, 1.0]).unwrap();
+        assert_eq!(result, vec![0.25, 0.75, 1.0]);
+    }
+
+    #[test]
+    fn markov_cumulative_row_pins_last_positive() {
+        let result = super::markov_cumulative_row(&[1.0, 0.0, 0.0]).unwrap();
+        assert_eq!(result, vec![1.0, 1.0, 1.0]);
+    }
+
+    #[test]
     fn extract_tempo_factor_control_converts_constant_decimals_exactly() {
         // Conversion goes through the decimal-literal rendering of the f64,
         // so common decimals map to their exact written fractions.
