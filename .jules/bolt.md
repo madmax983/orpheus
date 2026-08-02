@@ -47,3 +47,7 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+**Remove unnecessary Type clone in occurs check**\n**Learning:** Recursively traversing AST or type trees (like during an occurs check) using methods that take ownership forces a deep clone () at every level, creating massive, unnecessary heap allocations on the hot path.\n**Action:** Refactor recursive tree traversals to match on the reference directly () and handle specific node updates (like substitutions) manually to avoid cloning the entire tree structure.
+**Remove unnecessary Type clone in occurs check**
+**Learning:** Recursively traversing AST or type trees (like during an occurs check) using methods that take ownership forces a deep clone (`.clone()`) at every level, creating massive, unnecessary heap allocations on the hot path.
+**Action:** Refactor recursive tree traversals to match on the reference directly (`&Type`) and handle specific node updates (like substitutions) manually to avoid cloning the entire tree structure.
