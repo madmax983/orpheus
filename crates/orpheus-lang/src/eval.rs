@@ -2270,6 +2270,26 @@ right = sometimes(fast(2), cp hh)";
     }
 
     #[test]
+    fn eval_ident_returns_error_on_unresolved_loose() {
+        let result = eval_module("res = something_undefined", ReplMode::Loose);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "unresolved identifier `something_undefined` in loose mode; placeholder playback is not implemented in Task 5"
+        );
+    }
+
+    #[test]
+    fn eval_ident_returns_error_on_unresolved_strict() {
+        let result = eval_module("res = something_undefined", ReplMode::Strict);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "unresolved identifier `something_undefined`"
+        );
+    }
+
+    #[test]
     fn extract_constant_number_value_handles_number_pattern() {
         let val =
             crate::value::Value::NumberPattern(crate::value::NumberPatternValue::constant(42.0));
