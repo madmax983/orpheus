@@ -6988,6 +6988,25 @@ where
 /// This mirrors Tidal's `slowcat`: every child keeps its own cycle counter
 /// that advances only on the cycles it actually plays, so cycle-dependent
 /// children (e.g. `every`) behave as if they were on their own timeline.
+fn localize_child_cycle<T: PatternRuntimeValue>(
+    child: &PatternRuntime<T>,
+    cycle: i128,
+    child_count: i128,
+    query_slice: &TimeSpan,
+    error_msg: &'static str,
+) -> Result<Vec<Event<T>>, EvalError> {
+    let child_cycle = cycle.div_euclid(child_count);
+    let forward = cycle
+        .checked_sub(child_cycle)
+        .ok_or_else(|| EvalError::new(error_msg))?;
+    let forward_offset = rational_from_parts(forward, 1)?;
+    let local_offset = rational_sub(&Rational::zero(), &forward_offset)?;
+    let local_query = translate_span(query_slice, &local_offset)?;
+    let mut child_events = child.try_query(&local_query)?;
+    shift_events(&mut child_events, &forward_offset)?;
+    Ok(child_events)
+}
+
 fn query_slowcat<T>(
     children: &[PatternRuntime<T>],
     span: &TimeSpan,
@@ -7014,15 +7033,13 @@ where
         let index = usize::try_from(cycle.rem_euclid(child_count))
             .map_err(|_| EvalError::new("`cat` child index exceeded evaluator limits"))?;
         let child = &children[index];
-        let child_cycle = cycle.div_euclid(child_count);
-        let forward = cycle.checked_sub(child_cycle).ok_or_else(|| {
-            EvalError::new("cycle index overflowed while localizing a `cat` child")
-        })?;
-        let forward_offset = rational_from_parts(forward, 1)?;
-        let local_offset = rational_sub(&Rational::zero(), &forward_offset)?;
-        let local_query = translate_span(&query_slice, &local_offset)?;
-        let mut child_events = child.try_query(&local_query)?;
-        shift_events(&mut child_events, &forward_offset)?;
+        let child_events = localize_child_cycle(
+            child,
+            cycle,
+            child_count,
+            &query_slice,
+            "cycle index overflowed while localizing a `cat` child",
+        )?;
         if events.len() + child_events.len() > 100_000 {
             return Err(EvalError::new(
                 "evaluation exceeded the maximum allowed event limit",
@@ -7081,15 +7098,13 @@ where
             },
         );
         let child = &children[index.min(children.len() - 1)];
-        let child_cycle = cycle.div_euclid(child_count);
-        let forward = cycle.checked_sub(child_cycle).ok_or_else(|| {
-            EvalError::new("cycle index overflowed while localizing a `randcat` child")
-        })?;
-        let forward_offset = rational_from_parts(forward, 1)?;
-        let local_offset = rational_sub(&Rational::zero(), &forward_offset)?;
-        let local_query = translate_span(&query_slice, &local_offset)?;
-        let mut child_events = child.try_query(&local_query)?;
-        shift_events(&mut child_events, &forward_offset)?;
+        let child_events = localize_child_cycle(
+            child,
+            cycle,
+            child_count,
+            &query_slice,
+            "cycle index overflowed while localizing a `randcat` child",
+        )?;
         if events.len() + child_events.len() > 100_000 {
             return Err(EvalError::new(
                 "evaluation exceeded the maximum allowed event limit",
@@ -7258,15 +7273,13 @@ where
 
         let index = markov_state(site_salt, row_cumulative_weights, cycle);
         let child = &children[index.min(children.len() - 1)];
-        let child_cycle = cycle.div_euclid(child_count);
-        let forward = cycle.checked_sub(child_cycle).ok_or_else(|| {
-            EvalError::new("cycle index overflowed while localizing a `markov` child")
-        })?;
-        let forward_offset = rational_from_parts(forward, 1)?;
-        let local_offset = rational_sub(&Rational::zero(), &forward_offset)?;
-        let local_query = translate_span(&query_slice, &local_offset)?;
-        let mut child_events = child.try_query(&local_query)?;
-        shift_events(&mut child_events, &forward_offset)?;
+        let child_events = localize_child_cycle(
+            child,
+            cycle,
+            child_count,
+            &query_slice,
+            "cycle index overflowed while localizing a `markov` child",
+        )?;
         if events.len() + child_events.len() > 100_000 {
             return Err(EvalError::new(
                 "evaluation exceeded the maximum allowed event limit",

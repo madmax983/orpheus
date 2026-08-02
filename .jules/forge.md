@@ -82,3 +82,7 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**[Extract localize_child_cycle Helper]**
+**Learning:** Duplicated logic for localizing child cycles (calculating euclidian division, taking forward offsets, translating spans, shifting events, and handling bounds check panics) was present identically in `query_slowcat`, `query_randcat`, and `query_markov`.
+**Action:** Extract the complex span manipulation and cycle localization operations into a generic helper function `localize_child_cycle` that accepts a specific contextual error message, dramatically flattening the loop bodies in the caller methods while preserving their behavior precisely.
