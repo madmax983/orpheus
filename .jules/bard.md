@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2026-08-03 - Fix Encapsulation in Documentation Links
+**Confusion:** Private items were made public and hidden via `#[doc(hidden)]` just to satisfy the rustdoc link checker, which compromised module encapsulation.
+**Clarification:** Reverted visibility changes and correctly used standard inline code blocks (e.g., `` `METER_DECAY_HALF_LIFE_SECS` ``) instead of intra-doc links for private items to maintain strict encapsulation while still generating documentation.

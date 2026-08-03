@@ -13,12 +13,18 @@ use crate::engine::EngineError;
 use crate::routing::TrackId;
 use crate::voice::VoiceKind;
 
+/// An evaluated event ready to be emitted by the audio engine at a specific frame.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScheduledTrigger {
+    /// The absolute engine frame when this event should begin playback.
     pub frame: u64,
+    /// The length of the event in audio frames.
     pub duration_frames: u32,
+    /// The ID of the track that generated this event.
     pub track_id: TrackId,
+    /// The full parameter state defining how the sample should be played.
     pub trigger: SampleTrigger,
+    /// An optional fallback synthesized voice to use if the sample buffer cannot be found.
     pub fallback_voice: Option<VoiceKind>,
 }
 
