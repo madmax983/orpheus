@@ -29,6 +29,20 @@ const HIHAT_WAV: &[u8] = include_bytes!("../assets/hihat.wav");
 const SAMPLE_MANIFEST_FILE: &str = "samples.ron";
 const DEFAULT_WATCH_INTERVAL: Duration = Duration::from_millis(50);
 
+/// An immutable, decoded audio buffer ready for realtime playback.
+///
+/// Wraps a reference-counted slice of frames and its associated
+/// sample rate, allowing zero-copy sharing across multiple active voices.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::PlaybackSample;
+///
+/// let frames = vec![0.0_f32; 44100];
+/// let buffer = PlaybackSample::from_mono_frames(frames, 44100);
+/// assert_eq!(buffer.duration_seconds(), 1.0);
+/// ```
 #[derive(Clone, PartialEq)]
 pub struct PlaybackSample {
     frames: Arc<[f32]>,
@@ -49,11 +63,15 @@ impl PlaybackSample {
         }
     }
 
+    /// Extracts a fast, reference-counted handle to the audio frames, preventing
+    /// deep copies when a new voice is triggered.
     #[must_use]
     pub const fn frames(&self) -> &Arc<[f32]> {
         &self.frames
     }
 
+    /// Exposes the original sample rate to allow the engine to pitch-shift
+    /// correctly if the buffer rate mismatches the hardware rate.
     #[must_use]
     pub const fn sample_rate_hz(&self) -> u32 {
         self.sample_rate_hz
