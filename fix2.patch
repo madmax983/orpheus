@@ -1,0 +1,12 @@
+--- src/main.rs
++++ src/main.rs
+@@ -482,8 +482,8 @@
+     fn startup_path_from_args_rejects_multiple_args() {
+         let args = vec![OsString::from("file1.ode"), OsString::from("file2.ode")];
+         let error = startup_path_from_args(args).unwrap_err();
+         assert!(error.to_string().contains("orpheus"));
+-        assert!(error.to_string().contains("[path/to/song.ode]"));
++        assert!(error.to_string().contains("[PATH]"));
+     }
+
+     fn os(args: &[&str]) -> Vec<OsString> {

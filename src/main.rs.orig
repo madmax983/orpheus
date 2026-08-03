@@ -491,7 +491,7 @@ mod tests {
         let args = vec![OsString::from("file1.ode"), OsString::from("file2.ode")];
         let error = startup_path_from_args(args).unwrap_err();
         assert!(error.to_string().contains("orpheus"));
-        assert!(error.to_string().contains("[PATH]"));
+        assert!(error.to_string().contains("[path/to/song.ode]"));
     }
 
     fn os(args: &[&str]) -> Vec<OsString> {
