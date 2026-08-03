@@ -47,3 +47,9 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+**[Optimize occurs type check]
+**Learning:** Checking for infinite types in Hindley-Milner inference via the  check can be extremely expensive if you clone and resolve the entire  tree at every node, resulting in O(N^2) allocations.
+**Action:** Always traverse tree structures by reference (e.g. ) and look up bindings directly using lazy, short-circuiting checks like , avoiding deep  operations on the hot path.
+**[Optimize occurs type check]
+**Learning:** Checking for infinite types in Hindley-Milner inference via the `occurs` check can be extremely expensive if you clone and resolve the entire `Type` tree at every node, resulting in O(N^2) allocations.
+**Action:** Always traverse tree structures by reference (e.g. `&Type`) and look up bindings directly using lazy, short-circuiting checks like `.map_or_else()`, avoiding deep `.clone()` operations on the hot path.
