@@ -974,6 +974,12 @@ mod tests {
             "exporting requires at least one cycle"
         );
         assert_eq!(
+            super::export_sample_pattern_to_md(pat, "test.md", 0)
+                .unwrap_err()
+                .to_string(),
+            "exporting requires at least one cycle"
+        );
+        assert_eq!(
             super::render_sample_pattern_to_file_with_bank(
                 pat,
                 "test.wav",
@@ -996,6 +1002,12 @@ mod tests {
         );
         assert_eq!(
             super::export_number_pattern_to_json(pat, "test.json", 0)
+                .unwrap_err()
+                .to_string(),
+            "exporting requires at least one cycle"
+        );
+        assert_eq!(
+            super::export_number_pattern_to_md(pat, "test.md", 0)
                 .unwrap_err()
                 .to_string(),
             "exporting requires at least one cycle"
