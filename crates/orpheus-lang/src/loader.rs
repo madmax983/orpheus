@@ -39,8 +39,11 @@ struct ImportSpec {
 /// ```
 #[derive(Clone, Debug)]
 pub struct StrictLoadedFile {
+    /// Top-level type aliases mapped from source identifiers to concrete `Type` definitions.
     pub type_bindings: BTreeMap<String, Type>,
+    /// Top-level runtime values bound to variable names.
     pub value_bindings: BTreeMap<String, Value>,
+    /// Tracks the name of the final binding processed, commonly used for REPL focus.
     pub last_binding_name: Option<String>,
 }
 

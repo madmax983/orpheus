@@ -116,6 +116,15 @@ pub struct ValidatedPedalNode {
 
 impl ValidatedPedalNode {
     #[must_use]
+    /// Creates a structural pedal representation with its semantic summary.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalNode, SignalKind};
+    /// use orpheus_dsp::graph::PedalNodeKind;
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Gain, "gain");
+    /// ```
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
             signal_kind,
@@ -131,11 +140,31 @@ impl ValidatedPedalNode {
     }
 
     #[must_use]
+    /// Identifies the actual algorithm this pedal executes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalNode, SignalKind};
+    /// use orpheus_dsp::graph::PedalNodeKind;
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Gain, "gain");
+    /// assert_eq!(node.kind(), &PedalNodeKind::Gain);
+    /// ```
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
     #[must_use]
+    /// A human-readable trace summarizing what the node accomplishes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalNode, SignalKind};
+    /// use orpheus_dsp::graph::PedalNodeKind;
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Gain, "Gain Node");
+    /// assert_eq!(node.summary(), "Gain Node");
+    /// ```
     pub fn summary(&self) -> &str {
         &self.summary
     }
@@ -150,6 +179,16 @@ pub struct ValidatedPedalBinding {
 
 impl ValidatedPedalBinding {
     #[must_use]
+    /// Packages an internal parameter name with its validated routing structure.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind};
+    /// use orpheus_dsp::graph::PedalNodeKind;
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Gain, "gain");
+    /// let binding = ValidatedPedalBinding::new("my_gain", node);
+    /// ```
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
             name: name.into(),
@@ -158,11 +197,33 @@ impl ValidatedPedalBinding {
     }
 
     #[must_use]
+    /// The bound variable name routing data into this pedal.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind};
+    /// use orpheus_dsp::graph::PedalNodeKind;
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Gain, "gain");
+    /// let binding = ValidatedPedalBinding::new("my_gain", node);
+    /// assert_eq!(binding.name(), "my_gain");
+    /// ```
     pub fn name(&self) -> &str {
         &self.name
     }
 
     #[must_use]
+    /// The verified structural layout of the pedal.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind};
+    /// use orpheus_dsp::graph::PedalNodeKind;
+    /// let node = ValidatedPedalNode::new(SignalKind::Audio, PedalNodeKind::Gain, "gain");
+    /// let binding = ValidatedPedalBinding::new("my_gain", node);
+    /// assert_eq!(binding.node().summary(), "gain");
+    /// ```
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node
     }

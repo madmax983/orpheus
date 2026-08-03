@@ -300,6 +300,14 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 
 impl BuiltinFn {
     #[must_use]
+    /// Creates a new `BuiltinFn` matching the provided core runtime kind.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::builtins::{BuiltinFn, BuiltinKind};
+    /// let func = BuiltinFn::new(BuiltinKind::Every);
+    /// ```
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
             kind,
@@ -309,6 +317,14 @@ impl BuiltinFn {
     }
 
     #[must_use]
+    /// Attaches a pseudo-random site salt to a function for reproducible variation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::builtins::{BuiltinFn, BuiltinKind};
+    /// let func = BuiltinFn::new(BuiltinKind::Every).with_site_salt(12345);
+    /// ```
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);
         self

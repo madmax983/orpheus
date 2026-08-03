@@ -29,6 +29,10 @@ const HIHAT_WAV: &[u8] = include_bytes!("../assets/hihat.wav");
 const SAMPLE_MANIFEST_FILE: &str = "samples.ron";
 const DEFAULT_WATCH_INTERVAL: Duration = Duration::from_millis(50);
 
+/// An immutable snapshot of an audio sample loaded in memory.
+///
+/// `PlaybackSample` is the core asset used by sample-based voices to play back
+/// drum hits, one-shots, and loops.
 #[derive(Clone, PartialEq)]
 pub struct PlaybackSample {
     frames: Arc<[f32]>,
@@ -49,12 +53,31 @@ impl PlaybackSample {
         }
     }
 
+    /// The raw floating-point audio data representing the sample payload.
     #[must_use]
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use orpheus_dsp::sample_bank::PlaybackSample;
+    /// let sample = PlaybackSample::new(vec![1.0, -1.0].into(), 48000);
+    /// assert_eq!(sample.frames().len(), 2);
+    /// ```
     pub const fn frames(&self) -> &Arc<[f32]> {
         &self.frames
     }
 
+    /// The sampling rate (in Hz) at which this audio was captured.
     #[must_use]
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::sample_bank::PlaybackSample;
+    /// let sample = PlaybackSample::from_mono_frames(vec![0.0], 44100);
+    /// assert_eq!(sample.sample_rate_hz(), 44100);
+    /// ```
     pub const fn sample_rate_hz(&self) -> u32 {
         self.sample_rate_hz
     }

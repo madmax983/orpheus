@@ -38,10 +38,13 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Applies a transform on every `n`-th cycle (Tidal `every`).
     Every,
+    /// Applies a transform on cycles where a boolean condition holds (Tidal `when`).
     When,
     /// Applies a transform on cycles where `cycle mod period >= threshold` (Tidal `whenmod`).
     WhenMod,
+    /// Applies a transform randomly to half of the events (Tidal `sometimes`).
     Sometimes,
     /// Randomly drops each event with probability 0.5, per event, deterministically.
     Degrade,
@@ -57,37 +60,65 @@ pub enum BuiltinKind {
     AlmostAlways,
     /// `sometimes_by(0.1, ...)`: applies the transform to very few events.
     AlmostNever,
+    /// Applies a transform only within a specific fraction of every cycle (Tidal `within`).
     Within,
+    /// Drops events from the primary pattern when the mask pattern is resting (Tidal `mask`).
     Mask,
+    /// Arpeggiates chords by staggering notes in time (Tidal `strum`).
     Strum,
+    /// Repeatedly stutters events across a cycle (Tidal `jux`/roll equivalent).
     Roll,
+    /// Arpeggiates chords based on a sequence of interval offsets (Tidal `arp`).
     Arp,
+    /// Inverts the intervals of a chord or melody.
     Invert,
+    /// Removes specific notes from a chord.
     Drop,
+    /// Builds a chord from a root note and chord quality name (Tidal `chord`).
     Chord,
+    /// Generates Euclidean rhythms distributing `k` pulses over `n` steps (Tidal `euclid`).
     Euclid,
     /// Inverted euclidean gates: open exactly where `euclid` rests (Tidal `euclidInv`).
     EuclidInv,
     /// Two-pattern euclidean split: hits on the gates, rests on the complement (Tidal `euclidFull`).
     EuclidFull,
+    /// Generates sequences via Lindenmayer systems.
     Lsystem,
+    /// Generates cellular automata sequences (Tidal `wolfram`).
     Wolfram,
+    /// Maps a sequence of integers to a specific pitch class set.
     PitchClassSet,
+    /// Converts scale degrees into semitones.
     Degrees,
+    /// Speeds up playback by squeezing patterns in time (Tidal `fast`).
     Fast,
+    /// Slows down playback by stretching patterns in time (Tidal `slow`).
     Slow,
+    /// Shifts a pattern forward or backward in time.
     Shift,
+    /// Reverses a pattern within its cycle boundaries (Tidal `rev`).
     Rev,
+    /// Scales the amplitude level of the audio signal.
     Gain,
+    /// Controls the wet/dry mix for the delay effect.
     Delay,
+    /// Controls the temporal length of the delay line.
     DelayTime,
+    /// Controls how much delay signal is fed back into the line.
     DelayFeedback,
+    /// Controls the cutoff frequency of the high-pass filter.
     Hpf,
+    /// Controls the cutoff frequency of the low-pass filter.
     Lpf,
+    /// Controls the wet/dry mix for the reverb effect.
     Reverb,
+    /// Controls the simulated physical size of the reverb space.
     ReverbRoom,
+    /// Controls the high-frequency dampening in the reverb tail.
     ReverbDamp,
+    /// A generic control for filter cutoff frequencies.
     Cutoff,
+    /// Controls the wet/dry mix for the chorus effect.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

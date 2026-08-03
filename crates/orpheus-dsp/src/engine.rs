@@ -72,7 +72,7 @@ pub fn decayed_peak(previous: f32, magnitude: f32, decay: f32) -> f32 {
 ///
 /// Derived once at engine construction so the meter ballistics stay constant
 /// regardless of tempo or render-block size (ADR 0013): the returned factor
-/// halves a held peak over [`METER_DECAY_HALF_LIFE_SECS`] seconds of silence.
+/// halving a held peak over `METER_DECAY_HALF_LIFE_SECS` seconds of silence.
 ///
 /// # Examples
 ///
