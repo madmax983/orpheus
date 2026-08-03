@@ -1,0 +1,16 @@
+--- src/main.rs
++++ src/main.rs
+@@ -120,9 +120,11 @@
+             Ok(CliAction::Run(Some(PathBuf::from(path))))
+         }
+         _ => Err(anyhow!(
+-            "{} orpheus {}",
++            "unexpected argument {} found\n\n{} orpheus {}\n\nFor more information, try {}.",
++            format!("'{}'", args[1].to_string_lossy()).yellow().bold(),
+             "Usage:".green().bold(),
+-            "[path/to/song.ode]".cyan()
++            "[PATH]".cyan(),
++            "'--help'".green()
+         )),
+     }
+ }
