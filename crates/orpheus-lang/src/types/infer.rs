@@ -725,12 +725,23 @@ impl Inferencer {
         Ok(())
     }
 
+    /// ⚡ Bolt: Refactored to operate directly on `&Type` references.
+    /// Bypasses eager evaluation of `self.resolve(ty.clone())` to eliminate
+    /// exponential heap allocations when traversing deep AST trees.
     fn occurs(&self, needle: TypeVarId, ty: &Type) -> bool {
-        match self.resolve(ty.clone()) {
-            Type::Var(var) => var == needle,
-            Type::Pattern(inner) => self.occurs(needle, &inner),
+        match ty {
+            Type::Var(var) => {
+                if *var == needle {
+                    true
+                } else {
+                    self.substitutions
+                        .get(var)
+                        .is_some_and(|bound| self.occurs(needle, bound))
+                }
+            }
+            Type::Pattern(inner) => self.occurs(needle, inner),
             Type::Function(args, ret) => {
-                args.iter().any(|arg| self.occurs(needle, arg)) || self.occurs(needle, &ret)
+                args.iter().any(|arg| self.occurs(needle, arg)) || self.occurs(needle, ret)
             }
             Type::Sample
             | Type::Pedal
