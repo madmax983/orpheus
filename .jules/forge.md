@@ -82,3 +82,6 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+**[Title] Flatten TypeEnv Initialization**
+**Learning:** `clippy::too_many_lines` on `TypeEnv::with_builtins` can be resolved by extracting groups of builtins (like plugins or misc ones) into separate helper functions (e.g., `install_misc_builtins`).
+**Action:** Extract large portions of environment initialization into private helper methods to keep the main initialization method short and readable, eliminating the need to use `#[allow(clippy::too_many_lines)]`.
