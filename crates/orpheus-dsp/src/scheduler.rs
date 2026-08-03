@@ -13,12 +13,21 @@ use crate::engine::EngineError;
 use crate::routing::TrackId;
 use crate::voice::VoiceKind;
 
+/// A timestamped command instructing the DSP engine to trigger an audio voice.
+///
+/// When patterns are evaluated by the Orpheus language runtime, they produce
+/// scheduled triggers that are queued into the engine for synchronized playback.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScheduledTrigger {
+    /// The absolute frame number in audio time when this trigger should begin playback.
     pub frame: u64,
+    /// The total duration (in frames) this trigger should sound before releasing.
     pub duration_frames: u32,
+    /// The identifier for the track channel responsible for generating this trigger.
     pub track_id: TrackId,
+    /// The specific sample data to play back for this trigger.
     pub trigger: SampleTrigger,
+    /// The specific voice graph (e.g. `Sampler` or `Fm`) to utilize for playback.
     pub fallback_voice: Option<VoiceKind>,
 }
 

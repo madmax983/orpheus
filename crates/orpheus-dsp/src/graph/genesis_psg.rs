@@ -151,7 +151,7 @@ fn freq_to_noise_period(freq_hz: f32) -> Option<u16> {
 /// (tap mask `0x0009`), periodic noise feeds back `bit0` alone. The register
 /// shifts right one place and the feedback bit is inserted at bit 15. Starting
 /// from the hardware seed `0x8000`, this reproduces the Genesis PSG noise stream
-/// exactly (pinned in [`tests::lfsr_sequences_match_genesoxide`]).
+/// exactly (pinned in internal tests).
 #[must_use]
 pub const fn advance_psg_lfsr(shift_register: u16, white: bool) -> u16 {
     let feedback = if white {
@@ -178,7 +178,7 @@ pub const fn advance_psg_lfsr(shift_register: u16, white: bool) -> u16 {
 ///
 /// The output is a hard **bipolar** 50% square (`±level`), toggled by a
 /// native-rate counter (period-0 → constant high, per genesoxide). A single
-/// voice peaks at `±0.9` ([`PSG_HEADROOM_SCALE`]).
+/// voice peaks at `±0.9` (`PSG_HEADROOM_SCALE`).
 #[derive(Debug, Clone)]
 pub struct PsgToneNode {
     /// 10-bit tone period.
@@ -290,7 +290,7 @@ pub fn psg_tone(sample_rate_hz: f32) -> PsgToneNode {
 /// * `level` — `[0, 1]`, quantized to the 16-step 2 dB attenuation grid.
 ///
 /// The output is `±level` from bit 0 of the 16-bit LFSR (seed `0x8000`). A single
-/// voice peaks at `±0.9` ([`PSG_HEADROOM_SCALE`]).
+/// voice peaks at `±0.9` (`PSG_HEADROOM_SCALE`).
 #[derive(Debug, Clone)]
 pub struct PsgNoiseNode {
     /// 16-bit LFSR (seed `0x8000`).
