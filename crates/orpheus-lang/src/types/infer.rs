@@ -725,12 +725,18 @@ impl Inferencer {
         Ok(())
     }
 
+    /// ⚡ Bolt: Recursively checks if a type variable occurs within a type tree.
+    /// Traverses the AST by reference (`&Type`) to completely eliminate the severe memory
+    /// allocation overhead caused by deep `.clone()` calls during type resolution.
     fn occurs(&self, needle: TypeVarId, ty: &Type) -> bool {
-        match self.resolve(ty.clone()) {
-            Type::Var(var) => var == needle,
-            Type::Pattern(inner) => self.occurs(needle, &inner),
+        match ty {
+            Type::Var(var) => self
+                .substitutions
+                .get(var)
+                .map_or_else(|| *var == needle, |bound| self.occurs(needle, bound)),
+            Type::Pattern(inner) => self.occurs(needle, inner),
             Type::Function(args, ret) => {
-                args.iter().any(|arg| self.occurs(needle, arg)) || self.occurs(needle, &ret)
+                args.iter().any(|arg| self.occurs(needle, arg)) || self.occurs(needle, ret)
             }
             Type::Sample
             | Type::Pedal
