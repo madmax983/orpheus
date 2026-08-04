@@ -1,3 +1,9 @@
+//! Explain mechanism for REPL bindings.
+//!
+//! This module provides the [`Explain`] trait and helper methods to standardise
+//! how the REPL explains a pattern's type signature, structure, and current state
+//! to the user in a readable format.
+
 #[must_use]
 #[doc(hidden)]
 pub trait Explain {

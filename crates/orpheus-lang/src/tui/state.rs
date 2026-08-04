@@ -1,3 +1,9 @@
+//! Shared state model for the ratatui Terminal User Interface.
+//!
+//! This module manages the internal model driving the TUI, tracking command
+//! transcripts, auto-completion palettes, scroll positions, and holding the
+//! central audio/transport session handle.
+
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::Path;
 use std::time::{Duration, Instant};
