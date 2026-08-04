@@ -36,3 +36,7 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+
+## 2024-08-04 - Private Intra-Doc Links Resolution
+**Confusion:** Resolving `rustdoc` warnings where public documentation links to a private item (e.g., `error: public documentation for `orca` links to private item `publish``) without elevating the item's visibility unnecessarily.
+**Clarification:** Converted broken intra-doc links (`[Item]`) to standard inline code blocks (` `Item` `). This satisfies the `cargo doc` link checker while maintaining appropriate encapsulation of internal items.
