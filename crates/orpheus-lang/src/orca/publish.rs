@@ -322,7 +322,7 @@ pub fn materialize_cycle_io(
 /// This is the batch, off-thread equivalent of the live poll loop: it clones
 /// `engine` so the caller's live playhead is never advanced, then advances the
 /// clone one grid cycle at a time via [`materialize_cycle`], converting each
-/// note event with [`sample_trigger_from_event`] — exactly the mapping
+/// note event with `sample_trigger_from_event` — exactly the mapping
 /// `ReplSession::push_generator_cycle` applies before shipping a cycle to the
 /// engine. The result feeds `orpheus_dsp`'s `generator_cycles` export seam
 /// (`GeneratorCycleSpec::cycles`): one boxed buffer per cycle index, in play
@@ -358,7 +358,7 @@ pub fn materialize_generator_cycles(
 /// Maps the audio engine's transport position onto the current grid frame.
 ///
 /// `current_frame` and `cycle_start_frame` are absolute audio frames from
-/// `TransportSnapshot`; `engine_frames_per_cycle` is the audio frames per
+/// `orpheus_dsp::TransportSnapshot`; `engine_frames_per_cycle` is the audio frames per
 /// musical cycle and `grid_frames_per_cycle` the grid's frame count `F`. The
 /// result is clamped to `0..grid_frames_per_cycle` and is `None` when either
 /// clock is degenerate (zero frames per cycle).
@@ -384,7 +384,7 @@ pub const fn playhead_frame(
 /// Drives grid materialization from engine cycle boundaries.
 ///
 /// The publisher owns the grid engine and a boundary tracker. The hosting
-/// surface polls it with the latest `TransportSnapshot::current_cycle_start_frame`;
+/// surface polls it with the latest `orpheus_dsp::TransportSnapshot::current_cycle_start_frame`;
 /// on the first poll after [`Self::start`] and on every boundary change it
 /// materializes the next grid cycle, one cycle ahead of playback (the engine
 /// adopts delivered buffers at the following boundary).
