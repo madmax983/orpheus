@@ -1,3 +1,9 @@
+//! Hypertile widgets for the Orpheus Terminal User Interface.
+//!
+//! This module implements the visual components and keyboard event handlers
+//! for the main TUI layout, including the REPL view, binding lists, mixer,
+//! and the Orca grid surface.
+
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 

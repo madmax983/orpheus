@@ -1,3 +1,10 @@
+//! Error types and diagnostics for the Orpheus language.
+//!
+//! This module defines the core error structures used across the interpreter, including
+//! evaluation failures, type-checking errors, and parsing issues. It provides the
+//! [`EvalError`] enum, which encapsulates runtime errors that occur during expression
+//! execution.
+
 use orpheus_pattern::PatternError;
 use thiserror::Error;
 
