@@ -1,0 +1,88 @@
+--- crates/orpheus-lang/src/types/env.rs
++++ crates/orpheus-lang/src/types/env.rs
+@@ -65,7 +65,6 @@
+     ///
+     #[must_use]
+     #[doc(hidden)]
+-    #[allow(clippy::too_many_lines)]
+     pub fn with_builtins() -> Self {
+         let mut env = Self {
+             entries: BTreeMap::new(),
+@@ -73,26 +72,32 @@
+         for name in ["bd", "sn", "cp", "hh", "saw", "pulse", "tri", "noise"] {
+             env.insert(name, TypeScheme::monomorphic(Type::pattern(Type::Sample)));
+         }
+
++        Self::install_transform_builtins(&mut env);
++        Self::install_plugin_and_scale_builtins(&mut env);
++        Self::install_fx_and_utility_builtins(&mut env);
++
++        env
++    }
++
++    fn install_transform_builtins(env: &mut Self) {
+         let alpha = TypeVarId::new(0);
+-        install_cycle_alternation_builtins(&mut env, alpha);
++        install_cycle_alternation_builtins(env, alpha);
+         for name in ["fast", "slow", "shift"] {
+             env.insert(name, numeric_pattern_transform_scheme(alpha));
+         }
+         env.insert("every", every_transform_scheme(alpha));
+         env.insert("when", when_transform_scheme(alpha));
+-        install_probabilistic_builtins(&mut env, alpha);
++        install_probabilistic_builtins(env, alpha);
+         env.insert("within", within_transform_scheme(alpha));
+         env.insert("mask", mask_scheme());
+         env.insert("strum", unary_number_pattern_scheme());
+         env.insert("roll", numeric_pattern_transform_scheme(alpha));
+         env.insert("arp", arp_scheme());
+         env.insert("up", TypeScheme::monomorphic(Type::ArpDirection));
+         env.insert("down", TypeScheme::monomorphic(Type::ArpDirection));
+
+         for name in ["invert", "drop", "chord"] {
+             env.insert(name, number_pattern_control_scheme());
+         }
+         // `transpose` and `pitch` are the interchangeable semitone-shift
+         // pair: `Pattern<Number> -> Pattern<a> -> Pattern<a>` over number
+         // and sample/voice patterns alike (reference-song gap-fix 3 of 3).
+         for name in ["transpose", "pitch"] {
+             env.insert(name, numeric_pattern_transform_scheme(alpha));
+         }
+
+-        install_euclidean_and_counting_builtins(&mut env, alpha);
++        install_euclidean_and_counting_builtins(env, alpha);
++    }
++
++    fn install_plugin_and_scale_builtins(env: &mut Self) {
++        let alpha = TypeVarId::new(0);
+         env.insert(
+             "pitch_class_set",
+             TypeScheme::monomorphic(Type::curried(
+@@ -108,7 +113,7 @@
+                 Type::Tuning,
+             )),
+         );
+-        install_plugin_builtins(&mut env);
++        install_plugin_builtins(env);
+
+         for name in [
+             "ionian",
+@@ -124,6 +129,9 @@
+         env.insert("jux", jux_transform_scheme());
+         env.insert("rev", unary_pattern_transform_scheme(alpha));
+         env.insert("chaos", unary_pattern_transform_scheme(alpha));
++    }
++
++    fn install_fx_and_utility_builtins(env: &mut Self) {
+         for name in [
+             "gain", "hpf", "lpf", "cutoff", "res", "drive", "pw", "pan", "rate", "onset", "p1",
+             "p2", "p3", "p4",
+@@ -190,8 +198,6 @@
+                 )),
+             );
+         }
+-
+-        env
+     }
+
+     /// Inserts a new variable mapping into the type environment.

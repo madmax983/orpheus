@@ -82,3 +82,6 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+**[Refactoring TypeEnv::with_builtins]**
+**Learning:** Breaking apart large initialization functions into logically grouped helper methods reduces the need for clippy::too_many_lines suppressions and improves code organization without changing runtime behavior.
+**Action:** Extract large sequential builder functions into grouped helper methods (like install_transform_builtins, install_plugin_and_scale_builtins, etc.) passing &mut Self.
