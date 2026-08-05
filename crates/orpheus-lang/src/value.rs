@@ -38,10 +38,13 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Applies a transform only on specific iteration intervals.
     Every,
+    /// Applies a transform on cycles satisfying a condition.
     When,
     /// Applies a transform on cycles where `cycle mod period >= threshold` (Tidal `whenmod`).
     WhenMod,
+    /// Applies a transform to a random subset of events (50% probability).
     Sometimes,
     /// Randomly drops each event with probability 0.5, per event, deterministically.
     Degrade,
@@ -57,37 +60,65 @@ pub enum BuiltinKind {
     AlmostAlways,
     /// `sometimes_by(0.1, ...)`: applies the transform to very few events.
     AlmostNever,
+    /// Applies a transform only to events falling within a relative cycle time window.
     Within,
+    /// Filters a pattern using a boolean pattern, silencing when false.
     Mask,
+    /// Arpeggiates chords forwards across a given duration.
     Strum,
+    /// Repeats individual notes rapidly.
     Roll,
+    /// Breaks chords into sequences of individual notes based on a contour.
     Arp,
+    /// Flips chord voicings up or down across octaves.
     Invert,
+    /// Removes specific notes from chords based on index.
     Drop,
+    /// Maps scale degrees into full chords.
     Chord,
+    /// Distributes events evenly across a step sequence.
     Euclid,
     /// Inverted euclidean gates: open exactly where `euclid` rests (Tidal `euclidInv`).
     EuclidInv,
     /// Two-pattern euclidean split: hits on the gates, rests on the complement (Tidal `euclidFull`).
     EuclidFull,
+    /// Expands strings via recursive replacement rules.
     Lsystem,
+    /// Evaluates 1D cellular automata.
     Wolfram,
+    /// Evaluates set theory operations on pitches.
     PitchClassSet,
+    /// Maps scale degrees into absolute notes.
     Degrees,
+    /// Speeds up pattern playback.
     Fast,
+    /// Slows down pattern playback.
     Slow,
+    /// Rotates a pattern through time.
     Shift,
+    /// Reverses the pattern playback.
     Rev,
+    /// Controls the output volume level.
     Gain,
+    /// Controls the send level to the delay effect.
     Delay,
+    /// Controls the temporal spacing of delay repeats.
     DelayTime,
+    /// Controls the decay rate of delay repeats.
     DelayFeedback,
+    /// Filters out frequencies below a cutoff.
     Hpf,
+    /// Filters out frequencies above a cutoff.
     Lpf,
+    /// Controls the send level to the reverb effect.
     Reverb,
+    /// Controls the simulated physical size of the reverb space.
     ReverbRoom,
+    /// Controls the high frequency absorption of the reverb.
     ReverbDamp,
+    /// The primary filter cutoff frequency.
     Cutoff,
+    /// The wet amount of chorus effect applied.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

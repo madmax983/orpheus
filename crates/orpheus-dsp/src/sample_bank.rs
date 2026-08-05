@@ -30,6 +30,7 @@ const SAMPLE_MANIFEST_FILE: &str = "samples.ron";
 const DEFAULT_WATCH_INTERVAL: Duration = Duration::from_millis(50);
 
 #[derive(Clone, PartialEq)]
+/// An audio sample ready for playback.
 pub struct PlaybackSample {
     frames: Arc<[f32]>,
     sample_rate_hz: u32,
@@ -49,11 +50,13 @@ impl PlaybackSample {
         }
     }
 
+    /// The internal floating-point PCM audio data.
     #[must_use]
     pub const fn frames(&self) -> &Arc<[f32]> {
         &self.frames
     }
 
+    /// The original sample rate this audio was encoded at.
     #[must_use]
     pub const fn sample_rate_hz(&self) -> u32 {
         self.sample_rate_hz

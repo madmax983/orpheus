@@ -115,6 +115,13 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Constructs a validated node with an associated descriptive summary.
+    ///
+    /// # Examples
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    /// let node = ValidatedPedalNode::new(SignalKind::Control, PedalNodeKind::Input, "Control input");
+    /// ```
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +137,13 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// The operational category of this node in the graph.
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// A short, human-readable description of the node\'s configuration.
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +158,14 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Pairs a valid graph node with an explicit identifier.
+    ///
+    /// # Examples
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    /// let node = ValidatedPedalNode::new(SignalKind::Control, PedalNodeKind::Input, "Control input");
+    /// let binding = ValidatedPedalBinding::new("input", node);
+    /// ```
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +174,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// The identifier bound to the node.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// The underlying verified pedal graph node.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node
