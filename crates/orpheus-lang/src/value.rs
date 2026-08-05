@@ -38,10 +38,13 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Applies a transform to every Nth cycle.
     Every,
+    /// Conditionally applies a transform based on a boolean pattern.
     When,
     /// Applies a transform on cycles where `cycle mod period >= threshold` (Tidal `whenmod`).
     WhenMod,
+    /// Randomly applies a transform to roughly half of the events.
     Sometimes,
     /// Randomly drops each event with probability 0.5, per event, deterministically.
     Degrade,
@@ -57,37 +60,65 @@ pub enum BuiltinKind {
     AlmostAlways,
     /// `sometimes_by(0.1, ...)`: applies the transform to very few events.
     AlmostNever,
+    /// Applies a transform only to events that start within a given phase span of the cycle.
     Within,
+    /// Masks a pattern using a boolean pattern, keeping only events where the mask is true.
     Mask,
+    /// Delays the start times of notes in a chord to simulate strumming a string instrument.
     Strum,
+    /// Repeats an event multiple times to create a drum roll or stutter effect.
     Roll,
+    /// Arpeggiates a chord, turning a simultaneous cluster of notes into a sequence.
     Arp,
+    /// Inverts the pitch of a pattern around a central axis.
     Invert,
+    /// Lowers the octave of a pattern by dropping it down.
     Drop,
+    /// Expands a single root note into a full musical chord.
     Chord,
+    /// Generates Euclidean rhythms by distributing pulses as evenly as possible.
     Euclid,
     /// Inverted euclidean gates: open exactly where `euclid` rests (Tidal `euclidInv`).
     EuclidInv,
     /// Two-pattern euclidean split: hits on the gates, rests on the complement (Tidal `euclidFull`).
     EuclidFull,
+    /// Generates a pattern using a Lindenmayer system (L-system) string rewriting process.
     Lsystem,
+    /// Generates a pattern based on Elementary Cellular Automata (Wolfram rules).
     Wolfram,
+    /// Interprets notes as members of a Pitch Class Set for atonal/set-theory transformations.
     PitchClassSet,
+    /// Converts scale degrees into absolute semitone intervals based on the current scale.
     Degrees,
+    /// Speeds up the playback of a pattern, fitting more events into the same cycle duration.
     Fast,
+    /// Slows down the playback of a pattern, stretching events across multiple cycles.
     Slow,
+    /// Shifts the entire pattern forward or backward in time by a given fractional amount.
     Shift,
+    /// Reverses the timeline of a pattern within each cycle.
     Rev,
+    /// Adjusts the volume amplitude of the pattern.
     Gain,
+    /// Controls the dry/wet mix of the delay effect.
     Delay,
+    /// Sets the time interval between delay echoes.
     DelayTime,
+    /// Determines how much of the delayed signal is fed back into the delay line.
     DelayFeedback,
+    /// Controls the cutoff frequency of a High-Pass Filter.
     Hpf,
+    /// Controls the cutoff frequency of a Low-Pass Filter.
     Lpf,
+    /// Controls the dry/wet mix of the reverb effect.
     Reverb,
+    /// Sets the simulated room size for the reverb effect.
     ReverbRoom,
+    /// Controls the high-frequency damping of the reverb tail.
     ReverbDamp,
+    /// A generic cutoff frequency parameter, typically for a synthesizer's primary filter.
     Cutoff,
+    /// Controls the dry/wet mix of the chorus effect.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,

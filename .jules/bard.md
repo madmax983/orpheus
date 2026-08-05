@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2025-08-05 - The 'Missing' Link and 'Ghost' Params
+**Confusion:** Several core types like `BuiltinKind` variants, `PlaybackSample`, `ScheduledTrigger`, `TypeScheme` and `ValidatedPedalNode` had missing documentation in their signatures.
+**Clarification:** Added missing module docs, field docs, and executable doctests across `crates/orpheus-lang` and `crates/orpheus-dsp` to satisfy `missing_docs` warnings.

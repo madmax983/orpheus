@@ -29,6 +29,9 @@ const HIHAT_WAV: &[u8] = include_bytes!("../assets/hihat.wav");
 const SAMPLE_MANIFEST_FILE: &str = "samples.ron";
 const DEFAULT_WATCH_INTERVAL: Duration = Duration::from_millis(50);
 
+/// Represents an audio buffer ready for playback by the engine.
+///
+/// Contains the raw, interleaved float audio data and the sample rate it was recorded at.
 #[derive(Clone, PartialEq)]
 pub struct PlaybackSample {
     frames: Arc<[f32]>,
@@ -49,11 +52,13 @@ impl PlaybackSample {
         }
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn frames(&self) -> &Arc<[f32]> {
         &self.frames
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn sample_rate_hz(&self) -> u32 {
         self.sample_rate_hz

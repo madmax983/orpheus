@@ -115,6 +115,19 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Creates a new validated pedal node.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalNode, SignalKind, PedalNodeKind, PedalValue};
+    ///
+    /// let node = ValidatedPedalNode::new(
+    ///     SignalKind::Control,
+    ///     PedalNodeKind::Constant(PedalValue::Float(0.5)),
+    ///     "0.5"
+    /// );
+    /// ```
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,11 +143,13 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
@@ -149,6 +164,20 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Creates a new named binding to a validated pedal node.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::pedal::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind, PedalValue};
+    ///
+    /// let node = ValidatedPedalNode::new(
+    ///     SignalKind::Control,
+    ///     PedalNodeKind::Constant(PedalValue::Float(1.0)),
+    ///     "1.0"
+    /// );
+    /// let binding = ValidatedPedalBinding::new("my_param", node);
+    /// ```
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +186,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node
