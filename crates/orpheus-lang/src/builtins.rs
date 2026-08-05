@@ -299,6 +299,15 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Creates a new `BuiltinFn` representing the given builtin kind.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::value::{BuiltinFn, BuiltinKind};
+    ///
+    /// let func = BuiltinFn::new(BuiltinKind::Fast);
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -308,6 +317,18 @@ impl BuiltinFn {
         }
     }
 
+    /// Attaches a deterministic site salt for PRNG-based built-ins (like `Sometimes`).
+    ///
+    /// This allows multiple calls to the same built-in in a script to produce
+    /// independent random streams.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_lang::value::{BuiltinFn, BuiltinKind};
+    ///
+    /// let func = BuiltinFn::new(BuiltinKind::Sometimes).with_site_salt(42);
+    /// ```
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);
