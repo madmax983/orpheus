@@ -1042,6 +1042,9 @@ impl ReplSession {
             Some("scd") => crate::supercollider_export::export_sample_pattern_to_supercollider(
                 pattern, path, cycles,
             ),
+            Some("csd") => {
+                crate::csound_export::export_sample_pattern_to_csound(pattern, path, cycles)
+            }
             _ => crate::export::export_sample_pattern_to_csv(pattern, path, cycles),
         }
         .map_err(|error: crate::EvalError| error.to_string())?;
@@ -1081,6 +1084,9 @@ impl ReplSession {
             Some("scd") => crate::supercollider_export::export_number_pattern_to_supercollider(
                 pattern, path, cycles,
             ),
+            Some("csd") => {
+                crate::csound_export::export_number_pattern_to_csound(pattern, path, cycles)
+            }
             _ => crate::export::export_number_pattern_to_csv(pattern, path, cycles),
         }
         .map_err(|error: crate::EvalError| error.to_string())?;
@@ -4428,4 +4434,50 @@ fn build_help_table() -> comfy_table::Table {
     }
 
     table
+}
+
+#[cfg(test)]
+mod csound_export_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    static UNIQUE_TEMP_ID: AtomicU64 = AtomicU64::new(0);
+
+    fn unique_temp_suffix() -> String {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let counter = UNIQUE_TEMP_ID.fetch_add(1, Ordering::Relaxed);
+        format!("{timestamp}-{counter}")
+    }
+
+    #[test]
+    fn export_command_exports_a_bound_pattern_to_csound() {
+        let mut session = ReplSession::new();
+        let path = std::env::temp_dir().join(format!("orpheus-export-{}.csd", unique_temp_suffix()));
+
+        session.eval_line("song = bd sn").unwrap();
+        let message = session
+            .eval_line(&format!(":export song {} 2", path.display()))
+            .unwrap();
+
+        assert!(message.contains("exported `song`"));
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn export_command_exports_number_pattern_to_csound() {
+        let mut session = ReplSession::new();
+        let path = std::env::temp_dir().join(format!("orpheus-export-{}.csd", unique_temp_suffix()));
+
+        session.eval_line("notes = 60 62").unwrap();
+        let message = session
+            .eval_line(&format!(":export notes {} 1", path.display()))
+            .unwrap();
+
+        assert!(message.contains("exported `notes`"));
+        let _ = std::fs::remove_file(path);
+    }
 }
