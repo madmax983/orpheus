@@ -717,47 +717,47 @@ impl Evaluator {
             slots.push(self.eval_slot_pattern(item, meter)?);
         }
 
-        if slots
+        let has_sample = slots
             .iter()
-            .any(|slot| matches!(slot, SlotValue::Sample(_)))
-        {
-            let mut patterns = Vec::with_capacity(slots.len());
-            for slot in slots {
-                patterns.push(match slot {
-                    SlotValue::Sample(pattern) => pattern,
-                    SlotValue::Rest => SamplePatternValue::from_nodes(vec![PatternNode::rest()]),
-                    SlotValue::Number(_) => {
-                        return Err(EvalError::new(format!(
-                            "{context} items must all resolve to the same structural pattern kind"
-                        )));
-                    }
-                });
-            }
-            return Ok(SlotPatterns::Samples(patterns));
-        }
-
-        if slots
+            .any(|slot| matches!(slot, SlotValue::Sample(_)));
+        let has_number = slots
             .iter()
-            .any(|slot| matches!(slot, SlotValue::Number(_)))
-        {
-            let mut patterns = Vec::with_capacity(slots.len());
-            for slot in slots {
-                patterns.push(match slot {
-                    SlotValue::Number(pattern) => pattern,
-                    SlotValue::Rest => NumberPatternValue::from_nodes(vec![PatternNode::rest()]),
-                    SlotValue::Sample(_) => {
-                        return Err(EvalError::new(format!(
-                            "{context} items must all resolve to the same structural pattern kind"
-                        )));
-                    }
-                });
-            }
-            return Ok(SlotPatterns::Numbers(patterns));
-        }
+            .any(|slot| matches!(slot, SlotValue::Number(_)));
 
-        Err(EvalError::new(format!(
-            "{context} requires at least one non-rest item"
-        )))
+        match (has_sample, has_number) {
+            (true, false) => {
+                let patterns = slots
+                    .into_iter()
+                    .map(|slot| match slot {
+                        SlotValue::Sample(pattern) => pattern,
+                        SlotValue::Rest => {
+                            SamplePatternValue::from_nodes(vec![PatternNode::rest()])
+                        }
+                        SlotValue::Number(_) => unreachable!(),
+                    })
+                    .collect();
+                Ok(SlotPatterns::Samples(patterns))
+            }
+            (false, true) => {
+                let patterns = slots
+                    .into_iter()
+                    .map(|slot| match slot {
+                        SlotValue::Number(pattern) => pattern,
+                        SlotValue::Rest => {
+                            NumberPatternValue::from_nodes(vec![PatternNode::rest()])
+                        }
+                        SlotValue::Sample(_) => unreachable!(),
+                    })
+                    .collect();
+                Ok(SlotPatterns::Numbers(patterns))
+            }
+            (true, true) => Err(EvalError::new(format!(
+                "{context} items must all resolve to the same structural pattern kind"
+            ))),
+            (false, false) => Err(EvalError::new(format!(
+                "{context} requires at least one non-rest item"
+            ))),
+        }
     }
 
     fn eval_slot_pattern(

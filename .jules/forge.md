@@ -82,3 +82,6 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+## 2024-05-14 - Flattened boolean slot checking in eval_slot_patterns
+**Learning:** `eval_slot_patterns` contained repetitive iteration checks across `SlotValue::Sample` and `SlotValue::Number` states, leading to duplicated `for` loops and unreachable match arms masquerading as errors inside iterators.
+**Action:** Replaced sequential boolean state iteration blocks with a single `match (has_sample, has_number)` tuple block to logically partition the structural matrix upfront. This strictly encapsulates the mutually exclusive branches and eliminates duplicate error instantiation.
