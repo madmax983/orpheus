@@ -13,12 +13,18 @@ use crate::engine::EngineError;
 use crate::routing::TrackId;
 use crate::voice::VoiceKind;
 
+/// A materialized engine event waiting to be processed by a specific track.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScheduledTrigger {
+    /// The absolute engine frame when this event begins.
     pub frame: u64,
+    /// The length of the event in frames.
     pub duration_frames: u32,
+    /// The target track identifier.
     pub track_id: TrackId,
+    /// The parameter snapshot used to trigger the synth or sample.
     pub trigger: SampleTrigger,
+    /// An optional fallback generator to use if the primary sample cannot be loaded.
     pub fallback_voice: Option<VoiceKind>,
 }
 
