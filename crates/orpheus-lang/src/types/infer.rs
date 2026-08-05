@@ -726,24 +726,37 @@ impl Inferencer {
     }
 
     fn occurs(&self, needle: TypeVarId, ty: &Type) -> bool {
-        match self.resolve(ty.clone()) {
-            Type::Var(var) => var == needle,
-            Type::Pattern(inner) => self.occurs(needle, &inner),
-            Type::Function(args, ret) => {
-                args.iter().any(|arg| self.occurs(needle, arg)) || self.occurs(needle, &ret)
+        let mut current_ty = ty;
+        loop {
+            match current_ty {
+                Type::Var(var) => {
+                    if *var == needle {
+                        return true;
+                    }
+                    if let Some(bound) = self.substitutions.get(var) {
+                        current_ty = bound;
+                        continue;
+                    }
+                    return false;
+                }
+                Type::Pattern(inner) => return self.occurs(needle, inner),
+                Type::Function(args, ret) => {
+                    return args.iter().any(|arg| self.occurs(needle, arg))
+                        || self.occurs(needle, ret);
+                }
+                Type::Sample
+                | Type::Pedal
+                | Type::Voice
+                | Type::Plugin
+                | Type::Note
+                | Type::Number
+                | Type::Duration
+                | Type::ArpDirection
+                | Type::PitchClassSet
+                | Type::Tuning
+                | Type::String
+                | Type::Unit => return false,
             }
-            Type::Sample
-            | Type::Pedal
-            | Type::Voice
-            | Type::Plugin
-            | Type::Note
-            | Type::Number
-            | Type::Duration
-            | Type::ArpDirection
-            | Type::PitchClassSet
-            | Type::Tuning
-            | Type::String
-            | Type::Unit => false,
         }
     }
 
