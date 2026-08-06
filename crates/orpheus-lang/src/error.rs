@@ -129,4 +129,21 @@ mod tests {
         let err: EvalError = parse_err.into();
         assert_eq!(err.to_string(), "mock parse error");
     }
+
+    #[test]
+    fn eval_error_from_io_error() {
+        let io_err = std::io::Error::other("mock io error");
+        let err: EvalError = io_err.into();
+        assert_eq!(err.to_string(), "mock io error");
+    }
+
+    #[test]
+    fn eval_error_from_fmt_error() {
+        let fmt_err = std::fmt::Error;
+        let err: EvalError = fmt_err.into();
+        assert_eq!(
+            err.to_string(),
+            "an error occurred when formatting an argument"
+        );
+    }
 }
