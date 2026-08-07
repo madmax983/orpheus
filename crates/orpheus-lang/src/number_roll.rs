@@ -208,4 +208,27 @@ mod test_zero_cycle {
         let err = render_ascii_number_roll("pattern", pattern, 0, 16).unwrap_err();
         assert_eq!(err.to_string(), "rendering requires at least one cycle");
     }
+
+    #[test]
+    fn render_number_roll_zero_steps() {
+        let source = "pattern = fast(2, 1 2)";
+        let module = eval_module(source, ReplMode::Loose).unwrap();
+        let pattern = module.get("pattern").unwrap().as_number_pattern().unwrap();
+
+        let err = render_ascii_number_roll("pattern", pattern, 1, 0).unwrap_err();
+        assert_eq!(err.to_string(), "steps_per_cycle must be greater than zero");
+    }
+
+    #[test]
+    fn render_number_roll_exceeds_limit() {
+        let source = "pattern = fast(2, 1 2)";
+        let module = eval_module(source, ReplMode::Loose).unwrap();
+        let pattern = module.get("pattern").unwrap().as_number_pattern().unwrap();
+
+        let err = render_ascii_number_roll("pattern", pattern, 10_000, 11).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "evaluation exceeded the maximum allowed event limit"
+        );
+    }
 }

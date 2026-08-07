@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2024-05-24 - [Roll Module Bounds Error Branches]
+**Learning:** The number and ascii roll modules have explicit bounds check error branches to protect against out of memory failures or crashes from massive grid sizes.
+**Action:** Always add tests to assert bounds errors fire correctly rather than just skipping execution.
