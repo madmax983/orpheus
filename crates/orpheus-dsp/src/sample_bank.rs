@@ -29,6 +29,23 @@ const HIHAT_WAV: &[u8] = include_bytes!("../assets/hihat.wav");
 const SAMPLE_MANIFEST_FILE: &str = "samples.ron";
 const DEFAULT_WATCH_INTERVAL: Duration = Duration::from_millis(50);
 
+/// An immutable slice of audio data loaded in memory, ready for playback.
+///
+/// A `PlaybackSample` is the core atomic unit of sound in the DSP engine. It wraps an `Arc<[f32]>`
+/// to ensure zero-copy cloning when multiple voices trigger the same sample concurrently.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::PlaybackSample;
+///
+/// // Create a 1-second silent buffer at 44.1kHz
+/// let frames = vec![0.0; 44100];
+/// let sample = PlaybackSample::from_mono_frames(frames, 44100);
+///
+/// assert_eq!(sample.sample_rate_hz(), 44100);
+/// assert_eq!(sample.frames().len(), 44100);
+/// ```
 #[derive(Clone, PartialEq)]
 pub struct PlaybackSample {
     frames: Arc<[f32]>,
@@ -49,11 +66,36 @@ impl PlaybackSample {
         }
     }
 
+    /// Returns a reference to the underlying PCM frame buffer.
+    ///
+    /// The frames are wrapped in an `Arc` for cheap cloning across threads.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::PlaybackSample;
+    ///
+    /// let sample = PlaybackSample::from_mono_frames(vec![0.5, -0.5], 44100);
+    /// let frames = sample.frames();
+    /// assert_eq!(frames[0], 0.5);
+    /// ```
     #[must_use]
     pub const fn frames(&self) -> &Arc<[f32]> {
         &self.frames
     }
 
+    /// Returns the native sample rate of the audio data in Hertz.
+    ///
+    /// This is used to calculate playback speed adjustments if the engine's output rate differs.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::PlaybackSample;
+    ///
+    /// let sample = PlaybackSample::from_mono_frames(vec![0.0], 48000);
+    /// assert_eq!(sample.sample_rate_hz(), 48000);
+    /// ```
     #[must_use]
     pub const fn sample_rate_hz(&self) -> u32 {
         self.sample_rate_hz
