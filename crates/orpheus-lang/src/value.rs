@@ -4492,6 +4492,7 @@ impl<T> PatternRuntime<T>
 where
     T: PatternRuntimeValue,
 {
+    #[allow(clippy::too_many_lines)]
     fn try_query(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
         match self {
             Self::Cycle(pattern) => pattern.try_query(span).map_err(Into::into),
@@ -4568,12 +4569,8 @@ where
         }
     }
 
-    fn try_query_transform(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
-        self.try_query_transform_method(span)
-    }
-
     #[allow(clippy::too_many_lines)]
-    fn try_query_transform_method(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
+    fn try_query_transform(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
         match self {
             Self::Roll { steps, inner } => T::roll_events(inner.try_query(span)?, *steps),
             Self::Strum { inner } => T::strum_events(inner.try_query(span)?),
@@ -4674,12 +4671,8 @@ where
         }
     }
 
-    fn try_query_audio_effect(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
-        self.try_query_audio_effect_method(span)
-    }
-
     #[allow(clippy::too_many_lines)]
-    fn try_query_audio_effect_method(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
+    fn try_query_audio_effect(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
         match self {
             Self::Delay { mix, inner } => {
                 apply_value_mutation(inner, span, |value| *value = value.adjust_delay_mix(*mix))
@@ -4745,15 +4738,8 @@ where
         }
     }
 
-    fn try_query_modulation_effect(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
-        self.try_query_modulation_effect_method(span)
-    }
-
     #[allow(clippy::too_many_lines)]
-    fn try_query_modulation_effect_method(
-        &self,
-        span: &TimeSpan,
-    ) -> Result<Vec<Event<T>>, EvalError> {
+    fn try_query_modulation_effect(&self, span: &TimeSpan) -> Result<Vec<Event<T>>, EvalError> {
         match self {
             Self::Chorus { mix, inner } => {
                 apply_value_mutation(inner, span, |value| *value = value.adjust_chorus_mix(*mix))

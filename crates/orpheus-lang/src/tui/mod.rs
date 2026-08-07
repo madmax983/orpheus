@@ -656,7 +656,28 @@ fn render_command_palette(frame: &mut Frame<'_>, state: &SharedState) {
 
     // Filtered command rows, highlighting the current selection.
     let matches = state.palette_matches();
-    let rows: Vec<Line<'static>> = if matches.is_empty() {
+    let rows = build_palette_rows(&matches, state.palette_selected);
+    frame.render_widget(
+        Paragraph::new(rows).style(Style::default().bg(Color::Black)),
+        list_area,
+    );
+
+    frame.render_widget(
+        Paragraph::new(Line::styled(
+            "\u{2191}\u{2193} select \u{b7} Enter insert \u{b7} Esc close",
+            help_overlay_footer_style(),
+        ))
+        .style(Style::default().bg(Color::Black)),
+        footer_area,
+    );
+}
+
+fn build_palette_rows(
+    matches: &[(&'static str, &'static str)],
+    selected: usize,
+) -> Vec<Line<'static>> {
+    use ratatui::style::Modifier;
+    if matches.is_empty() {
         vec![Line::styled(
             "  no matching commands",
             Style::default()
@@ -664,7 +685,7 @@ fn render_command_palette(frame: &mut Frame<'_>, state: &SharedState) {
                 .add_modifier(Modifier::DIM),
         )]
     } else {
-        let selected = state.palette_selected.min(matches.len() - 1);
+        let selected = selected.min(matches.len() - 1);
         matches
             .iter()
             .enumerate()
@@ -696,20 +717,7 @@ fn render_command_palette(frame: &mut Frame<'_>, state: &SharedState) {
                 }
             })
             .collect()
-    };
-    frame.render_widget(
-        Paragraph::new(rows).style(Style::default().bg(Color::Black)),
-        list_area,
-    );
-
-    frame.render_widget(
-        Paragraph::new(Line::styled(
-            "\u{2191}\u{2193} select \u{b7} Enter insert \u{b7} Esc close",
-            help_overlay_footer_style(),
-        ))
-        .style(Style::default().bg(Color::Black)),
-        footer_area,
-    );
+    }
 }
 
 fn centered_rect(area: Rect, width_percent: u16, height_percent: u16) -> Rect {
