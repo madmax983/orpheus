@@ -862,25 +862,7 @@ impl ReplSession {
     }
 
     fn export_stems(&self, args: &str) -> Result<String, String> {
-        let tokens: Vec<_> = args.split_whitespace().collect();
-        if tokens.first().copied() != Some("stems") {
-            return Err(export_usage().to_owned());
-        }
-
-        let mut cycles = 1_u64;
-        let mut include_buses = false;
-        for token in tokens.iter().skip(1) {
-            if *token == "--buses" {
-                include_buses = true;
-            } else {
-                cycles = token
-                    .parse::<u64>()
-                    .map_err(|_| "cycles must be a positive integer".to_owned())?;
-            }
-        }
-        if cycles == 0 {
-            return Err("cycles must be a positive integer".to_owned());
-        }
+        let (cycles, include_buses) = Self::parse_export_stems_args(args)?;
 
         let snapshot = self.mixer.compile_snapshot(&self.bindings)?;
         let has_active_tracks = snapshot
@@ -894,20 +876,7 @@ impl ReplSession {
             );
         }
 
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|error| error.to_string())?
-            .as_secs();
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .subsec_nanos();
-
-        let export_dir = if cfg!(test) {
-            std::env::temp_dir().join(format!("orpheus-stems-{timestamp}-{nanos}"))
-        } else {
-            PathBuf::from("exports").join(format!("stems-{timestamp}"))
-        };
+        let export_dir = Self::generate_stem_export_dir()?;
 
         let tempo_bpm = self.transport_snapshot().tempo_bpm();
         let graph_voice_specs = self.graph_voice_specs()?;
@@ -932,6 +901,46 @@ impl ReplSession {
             written.len(),
             export_dir.display()
         ))
+    }
+
+    fn parse_export_stems_args(args: &str) -> Result<(u64, bool), String> {
+        let tokens: Vec<_> = args.split_whitespace().collect();
+        if tokens.first().copied() != Some("stems") {
+            return Err(export_usage().to_owned());
+        }
+
+        let mut cycles = 1_u64;
+        let mut include_buses = false;
+        for token in tokens.iter().skip(1) {
+            if *token == "--buses" {
+                include_buses = true;
+            } else {
+                cycles = token
+                    .parse::<u64>()
+                    .map_err(|_| "cycles must be a positive integer".to_owned())?;
+            }
+        }
+        if cycles == 0 {
+            return Err("cycles must be a positive integer".to_owned());
+        }
+        Ok((cycles, include_buses))
+    }
+
+    fn generate_stem_export_dir() -> Result<PathBuf, String> {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|error| error.to_string())?
+            .as_secs();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .subsec_nanos();
+
+        if cfg!(test) {
+            Ok(std::env::temp_dir().join(format!("orpheus-stems-{timestamp}-{nanos}")))
+        } else {
+            Ok(PathBuf::from("exports").join(format!("stems-{timestamp}")))
+        }
     }
 
     fn export_master(&self, args: &str) -> Result<String, String> {

@@ -82,3 +82,4 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+## 2026-08-07 - Extracted long matches and logic blocks to resolve clippy::too_many_lines\n**Learning:** Massive match statements in pattern query resolution or complex layout logic can cause functions to violate clippy::too_many_lines, which reduces readability.\n**Action:** Extract discrete logical chunks (like rendering a specific list of rows, parsing CLI arguments, or handling a specific class of pattern evaluations) into pure helper functions or methods without redundant wrapper structures.
