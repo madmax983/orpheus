@@ -13,12 +13,37 @@ use crate::engine::EngineError;
 use crate::routing::TrackId;
 use crate::voice::VoiceKind;
 
+/// A concrete audio event that has been translated from logical pattern time into exact audio frames.
+///
+/// The `Scheduler` maintains a queue of these triggers to guarantee sample-accurate playback.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::{ScheduledTrigger, TrackId, VoiceKind};
+/// use orpheus_dsp::SampleTrigger;
+///
+/// let trigger = ScheduledTrigger {
+///     frame: 44100,
+///     duration_frames: 22050,
+///     track_id: TrackId::new(0),
+///     trigger: SampleTrigger::named("bd"),
+///     fallback_voice: Some(VoiceKind::KickLike),
+/// };
+///
+/// assert_eq!(trigger.frame, 44100);
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScheduledTrigger {
+    /// The exact absolute audio frame index when this event should begin playback.
     pub frame: u64,
+    /// The maximum length of the event in frames (used to bound sustained playback).
     pub duration_frames: u32,
+    /// The routing identifier of the track that produced this event.
     pub track_id: TrackId,
+    /// The specific sample data and playback parameters requested.
     pub trigger: SampleTrigger,
+    /// An optional fallback built-in voice to use if the requested token is not loaded.
     pub fallback_voice: Option<VoiceKind>,
 }
 
