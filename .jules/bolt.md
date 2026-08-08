@@ -47,3 +47,10 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+**[Eliminating Intermediate Vec for join]**
+**Learning:** Using `.collect::<Vec<_>>().join(...)` creates an unnecessary intermediate heap allocation.
+**Action:** Pre-allocate a single `String` with `String::with_capacity(len * 16)` and use a loop to push strings directly with separators instead of collecting strings into a `Vec` first just to join them.
+
+**[String join Refactoring Trap]**
+**Learning:** Re-implementing `[T]::join` on a string slice (like `port_names.join(", ")`) with a manual pre-allocated `String` and loop is an anti-pattern. The standard library's `join` already optimizes exact byte capacity calculation and avoids intermediate `.collect()` when used directly on slices, making the manual version slower and un-idiomatic.
+**Action:** Do not manually replace `.join()` if the collection is already in an owned or sliced state (like a `Vec` or array). Only refactor to `String::with_capacity` when eliminating an unnecessary `.collect::<Vec<_>>()` intermediate step.
