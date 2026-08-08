@@ -13,12 +13,35 @@ use crate::engine::EngineError;
 use crate::routing::TrackId;
 use crate::voice::VoiceKind;
 
+/// A sample event mapped to a precise absolute frame timeline.
+///
+/// Contains all necessary information to schedule and render an audio event
+/// at exactly the right audio frame, translating from a pattern's fractional time.
+///
+/// # Examples
+///
+/// ```
+/// use orpheus_dsp::{ScheduledTrigger, SampleTrigger, TrackId, VoiceKind};
+///
+/// let trigger = ScheduledTrigger {
+///     frame: 44100,
+///     duration_frames: 22050,
+///     track_id: TrackId::new(1),
+///     trigger: SampleTrigger::named("bd"),
+///     fallback_voice: Some(VoiceKind::KickLike),
+/// };
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScheduledTrigger {
+    /// The absolute frame index where this event should start rendering.
     pub frame: u64,
+    /// The length of the triggered event in sample frames.
     pub duration_frames: u32,
+    /// The routing identifier of the track that generated this event.
     pub track_id: TrackId,
+    /// The actual sample trigger payload.
     pub trigger: SampleTrigger,
+    /// An optional fallback synth voice if the requested sample is not loaded.
     pub fallback_voice: Option<VoiceKind>,
 }
 

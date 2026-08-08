@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-08-08 - [Missing Documentation for Core Audio Types]
+**Confusion:** The core audio types `PlaybackSample` and `ScheduledTrigger` were missing documentation for their structures and methods, leading to confusion about their purpose and how they integrate into the engine.
+**Clarification:** Added struct-level and method-level documentation with runnable examples to explain their usage and semantics.
