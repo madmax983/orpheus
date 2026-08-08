@@ -725,12 +725,23 @@ impl Inferencer {
         Ok(())
     }
 
+    /// Checks if a type variable occurs within a type.
+    /// ⚡ Bolt: We manually traverse by reference and look up substitutions instead of calling `resolve(ty.clone())`
+    /// to prevent quadratic memory allocations on the hot path of deep AST structures.
     fn occurs(&self, needle: TypeVarId, ty: &Type) -> bool {
-        match self.resolve(ty.clone()) {
-            Type::Var(var) => var == needle,
-            Type::Pattern(inner) => self.occurs(needle, &inner),
+        match ty {
+            Type::Var(var) => {
+                if *var == needle {
+                    true
+                } else if let Some(bound) = self.substitutions.get(var) {
+                    self.occurs(needle, bound)
+                } else {
+                    false
+                }
+            }
+            Type::Pattern(inner) => self.occurs(needle, inner),
             Type::Function(args, ret) => {
-                args.iter().any(|arg| self.occurs(needle, arg)) || self.occurs(needle, &ret)
+                args.iter().any(|arg| self.occurs(needle, arg)) || self.occurs(needle, ret)
             }
             Type::Sample
             | Type::Pedal
