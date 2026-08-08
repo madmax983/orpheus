@@ -29,6 +29,23 @@ const HIHAT_WAV: &[u8] = include_bytes!("../assets/hihat.wav");
 const SAMPLE_MANIFEST_FILE: &str = "samples.ron";
 const DEFAULT_WATCH_INTERVAL: Duration = Duration::from_millis(50);
 
+/// An immutable, in-memory audio buffer ready for synthesis.
+///
+/// A `PlaybackSample` represents decoded audio data (frames and a sample rate)
+/// that can be triggered by the DSP engine. It guarantees that the internal `Arc`
+/// buffer is immutable so multiple triggers can safely share it across voices.
+///
+/// ## Examples
+///
+/// ```
+/// use std::sync::Arc;
+/// use orpheus_dsp::PlaybackSample;
+///
+/// // Create a short 1-second pulse for synthesis tests.
+/// let buffer = vec![0.5_f32; 44100];
+/// let sample = PlaybackSample::from_mono_frames(buffer, 44100);
+/// assert_eq!(sample.sample_rate_hz(), 44100);
+/// ```
 #[derive(Clone, PartialEq)]
 pub struct PlaybackSample {
     frames: Arc<[f32]>,
@@ -49,11 +66,19 @@ impl PlaybackSample {
         }
     }
 
+    /// The decoded audio frames as a mono interleaved buffer.
+    ///
+    /// This buffer is wrapped in an `Arc` so it can be cheaply shared across
+    /// multiple concurrent synthesis voices without deep allocations.
     #[must_use]
     pub const fn frames(&self) -> &Arc<[f32]> {
         &self.frames
     }
 
+    /// The native sample rate (in Hertz) at which the audio was decoded.
+    ///
+    /// Synthesis routines must use this to resample the frames if the engine's
+    /// target sample rate differs from the asset's rate.
     #[must_use]
     pub const fn sample_rate_hz(&self) -> u32 {
         self.sample_rate_hz

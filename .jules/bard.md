@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-05-24 - Documenting missing structs and their getters
+**Confusion:** The struct `PlaybackSample` and `ScheduledTrigger` were fully undocumented, and `clippy` complained about undocumented getters on `PlaybackSample`.
+**Clarification:** Added complete `///` documentation including `## Examples` for both structs to explain their purpose in the engine. Added `///` documentation for the simple getters (`frames` and `sample_rate_hz`) to satisfy the lint without resorting to `#[allow(missing_docs)]` suppressing, ensuring that developers understand why these exist and how to use them.

@@ -13,12 +13,37 @@ use crate::engine::EngineError;
 use crate::routing::TrackId;
 use crate::voice::VoiceKind;
 
+/// Represents a precise, scheduled audio event queued in the timeline.
+///
+/// `ScheduledTrigger` holds the absolute start frame, extent duration, and parameters needed
+/// to instantiate an active synthesis voice when the engine's clock reaches its trigger point.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::{ScheduledTrigger, TrackId, SampleTrigger, VoiceKind};
+///
+/// let trigger = ScheduledTrigger {
+///     frame: 44100,
+///     duration_frames: 22050,
+///     track_id: TrackId::new(0),
+///     trigger: SampleTrigger::named("bd"),
+///     fallback_voice: Some(VoiceKind::KickLike),
+/// };
+///
+/// assert_eq!(trigger.frame, 44100);
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScheduledTrigger {
+    /// The exact absolute clock frame at which playback begins.
     pub frame: u64,
+    /// The total lifespan of the voice in frames before natural truncation.
     pub duration_frames: u32,
+    /// The mixer track id this voice should be routed to.
     pub track_id: TrackId,
+    /// The specific sample parameter overrides requested by the user.
     pub trigger: SampleTrigger,
+    /// A fallback synth voice to use if the exact trigger token cannot be found in the bank.
     pub fallback_voice: Option<VoiceKind>,
 }
 
