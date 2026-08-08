@@ -143,8 +143,7 @@ fn parse_render_args(args: &[OsString]) -> anyhow::Result<CliAction> {
             "--master" => {
                 let value = iter.next().ok_or_else(|| {
                     anyhow!(
-                        "{} `--master` requires an output WAV path\n\n{} {}",
-                        "error:".red().bold(),
+                        "`--master` requires an output WAV path\n\n{} {}",
                         "Usage:".green().bold(),
                         USAGE.cyan()
                     )
@@ -154,8 +153,7 @@ fn parse_render_args(args: &[OsString]) -> anyhow::Result<CliAction> {
             "--cycles" => {
                 let value = iter.next().ok_or_else(|| {
                     anyhow!(
-                        "{} `--cycles` requires a positive integer\n\n{} {}",
-                        "error:".red().bold(),
+                        "`--cycles` requires a positive integer\n\n{} {}",
                         "Usage:".green().bold(),
                         USAGE.cyan()
                     )
@@ -167,8 +165,7 @@ fn parse_render_args(args: &[OsString]) -> anyhow::Result<CliAction> {
                     .filter(|n| *n > 0)
                     .ok_or_else(|| {
                         anyhow!(
-                            "{} `--cycles` must be a positive integer, found {}",
-                            "error:".red().bold(),
+                            "`--cycles` must be a positive integer, found {}",
                             format!("'{}'", value.to_string_lossy()).yellow().bold()
                         )
                     })?;
@@ -176,8 +173,7 @@ fn parse_render_args(args: &[OsString]) -> anyhow::Result<CliAction> {
             }
             other if other.starts_with('-') => {
                 return Err(anyhow!(
-                    "{} unexpected argument {} for `render`\n\n{} {}",
-                    "error:".red().bold(),
+                    "unexpected argument {} for `render`\n\n{} {}",
                     format!("'{other}'").yellow().bold(),
                     "Usage:".green().bold(),
                     USAGE.cyan()
@@ -188,8 +184,7 @@ fn parse_render_args(args: &[OsString]) -> anyhow::Result<CliAction> {
                     path = Some(PathBuf::from(arg));
                 } else {
                     return Err(anyhow!(
-                        "{} unexpected argument {} for `render`\n\n{} {}",
-                        "error:".red().bold(),
+                        "unexpected argument {} for `render`\n\n{} {}",
                         format!("'{text}'").yellow().bold(),
                         "Usage:".green().bold(),
                         USAGE.cyan()
@@ -201,8 +196,7 @@ fn parse_render_args(args: &[OsString]) -> anyhow::Result<CliAction> {
 
     let path = path.ok_or_else(|| {
         anyhow!(
-            "{} `render` requires an input {} file\n\n{} {}",
-            "error:".red().bold(),
+            "`render` requires an input {} file\n\n{} {}",
             ".ode".cyan(),
             "Usage:".green().bold(),
             USAGE.cyan()
@@ -210,8 +204,7 @@ fn parse_render_args(args: &[OsString]) -> anyhow::Result<CliAction> {
     })?;
     let out = out.ok_or_else(|| {
         anyhow!(
-            "{} `render` requires {}\n\n{} {}",
-            "error:".red().bold(),
+            "`render` requires {}\n\n{} {}",
             "--master <out.wav>".cyan(),
             "Usage:".green().bold(),
             USAGE.cyan()
