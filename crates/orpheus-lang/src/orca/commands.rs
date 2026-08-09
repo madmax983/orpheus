@@ -399,3 +399,18 @@ mod tests {
         assert_eq!(adjusted_frame(0, 7), 7);
     }
 }
+
+#[cfg(test)]
+mod havoc_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// 👺 Havoc: Tests that injecting arbitrary string sequences into the
+        /// command parser correctly processes them without panicking.
+        #[test]
+        fn test_havoc_parse_command_fuzz(s in "\\PC*") {
+            let _ = parse_command(&s);
+        }
+    }
+}
