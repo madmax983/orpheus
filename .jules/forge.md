@@ -82,3 +82,18 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+**[Fix branches_sharing_code]**
+**Learning:** `clippy::branches_sharing_code` warns when multiple match arms end with the same expression (e.g. `Ok(())`).
+**Action:** When refactoring functions like `apply_command`, pull the shared expression (like `Ok(())`) out of the match arms to the end of the block.
+
+**[Fix suboptimal_flops]**
+**Learning:** `clippy::suboptimal_flops` warns when a floating point multiplication is added or subtracted to another value without using `mul_add`, which can be less accurate and slower.
+**Action:** Replace `a + frac * (b - a)` with `frac.mul_add(b - a, a)`.
+
+**[Fix chunks_exact_to_as_chunks]**
+**Learning:** `clippy::chunks_exact_to_as_chunks` warns when using `.chunks_exact(N)` where N is a constant.
+**Action:** Replace `.chunks_exact(2)` with `.as_chunks::<2>().0.iter()`.
+
+**[Fix manual_midpoint]**
+**Learning:** `clippy::manual_midpoint` warns when doing `(a + b) * 0.5` which can overflow.
+**Action:** Replace it with `f32::midpoint(a, b)`.

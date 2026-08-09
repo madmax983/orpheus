@@ -210,7 +210,7 @@ impl Node for FractionalDelayNode {
             let read1 = if read0 == 0 { len - 1 } else { read0 - 1 };
             let a = self.buffer[read0];
             let b = self.buffer[read1];
-            out[i] = a + frac * (b - a);
+            out[i] = frac.mul_add(b - a, a);
             self.write_index += 1;
             if self.write_index >= len {
                 self.write_index = 0;
@@ -278,7 +278,7 @@ impl Node for OnePoleNode {
         for i in 0..frames {
             let c = cutoff[i].clamp(0.0, self.sample_rate_hz * 0.5);
             let g = 1.0 - (-TAU * c / self.sample_rate_hz).exp();
-            self.state += g * (audio[i] - self.state);
+            self.state = g.mul_add(audio[i] - self.state, self.state);
             out[i] = self.state;
         }
     }

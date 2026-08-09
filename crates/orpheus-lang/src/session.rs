@@ -2321,10 +2321,12 @@ impl ReplSession {
 /// snapshot. Returns 0 before the frames-per-cycle clock is initialized.
 const fn current_cycle_index(transport: &orpheus_dsp::TransportSnapshot) -> u64 {
     let frames_per_cycle = transport.frames_per_cycle();
-    if frames_per_cycle == 0 {
-        0
-    } else {
-        transport.current_cycle_start_frame() / frames_per_cycle
+    match transport
+        .current_cycle_start_frame()
+        .checked_div(frames_per_cycle)
+    {
+        Some(cycle) => cycle,
+        None => 0,
     }
 }
 

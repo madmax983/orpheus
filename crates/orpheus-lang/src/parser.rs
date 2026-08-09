@@ -513,7 +513,6 @@ fn push_expanded_step(expr: Expr, items: &mut Vec<Expr>) -> Result<(), ParseErro
             for _ in 0..count {
                 push_expanded_step((*inner).clone(), items)?;
             }
-            Ok(())
         }
         Expr::Modified { inner, op } => {
             let mut inner_steps = Vec::new();
@@ -527,13 +526,12 @@ fn push_expanded_step(expr: Expr, items: &mut Vec<Expr>) -> Result<(), ParseErro
                     op,
                 });
             }
-            Ok(())
         }
         other => {
             items.push(other);
-            Ok(())
         }
     }
+    Ok(())
 }
 
 fn build_pipe_target(pair: Pair<'_, Rule>, depth: usize) -> Result<Expr, ParseError> {
