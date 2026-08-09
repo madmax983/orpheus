@@ -10,6 +10,16 @@ use std::path::Path;
 use crate::eval::{EvalError, render_span};
 use crate::value::{NumberPatternValue, SamplePatternValue};
 
+/// ⚡ Bolt: A lightweight, allocation-free enum representing a grid cell's state.
+/// Using this instead of `Option<String>` prevents heavy string allocation churn
+/// inside the massive 2D matrix during tracker initialization.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CellState {
+    Empty,
+    Hit(u32),
+    Continuation,
+}
+
 /// Exports a sample pattern's evaluated events to a Tracker text file.
 ///
 /// The tracker output displays time vertically (as rows corresponding to 1/16th cycle steps)
@@ -63,7 +73,19 @@ pub fn export_sample_pattern_to_tracker(
     // Create a grid of dimensions: [total_steps][sample_list.len()]
     // Each cell will optionally contain a formatted string of the sample name (if triggered)
     // or the delay/continuation character.
-    let mut grid: Vec<Vec<Option<String>>> = vec![vec![None; sample_list.len()]; total_steps];
+    let mut grid: Vec<Vec<CellState>> =
+        vec![vec![CellState::Empty; sample_list.len()]; total_steps];
+
+    let formatted_names: Vec<String> = sample_list
+        .iter()
+        .map(|s| {
+            if s.len() > 4 {
+                s.chars().take(4).collect::<String>()
+            } else {
+                s.to_string()
+            }
+        })
+        .collect();
 
     for event in &events {
         let sample = event.value.sample().to_string();
@@ -86,25 +108,20 @@ pub fn export_sample_pattern_to_tracker(
         let end_step = end_step.min(total_steps);
 
         if start_step < end_step {
-            // Format sample name up to 4 chars
-            let formatted_name = if sample.len() > 4 {
-                sample.chars().take(4).collect::<String>()
-            } else {
-                sample.clone()
-            };
-            grid[start_step][lane_idx] = Some(formatted_name);
+            #[allow(clippy::cast_possible_truncation)]
+            {
+                grid[start_step][lane_idx] = CellState::Hit(lane_idx as u32);
+            }
             for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
-                if item[lane_idx].is_none() {
-                    item[lane_idx] = Some("====".to_string());
+                if item[lane_idx] == CellState::Empty {
+                    item[lane_idx] = CellState::Continuation;
                 }
             }
-        } else if start_step < total_steps && grid[start_step][lane_idx].is_none() {
-            let formatted_name = if sample.len() > 4 {
-                sample.chars().take(4).collect::<String>()
-            } else {
-                sample.clone()
-            };
-            grid[start_step][lane_idx] = Some(formatted_name);
+        } else if start_step < total_steps && grid[start_step][lane_idx] == CellState::Empty {
+            #[allow(clippy::cast_possible_truncation)]
+            {
+                grid[start_step][lane_idx] = CellState::Hit(lane_idx as u32);
+            }
         }
     }
 
@@ -141,10 +158,10 @@ pub fn export_sample_pattern_to_tracker(
         write!(file, " {cycle_num:02}:{sub_step:02} | {time:4.2} |")?;
 
         for item in grid[step].iter().take(sample_list.len()) {
-            if let Some(val) = item {
-                write!(file, " {val:4} |")?;
-            } else {
-                write!(file, " ---- |")?;
+            match item {
+                CellState::Hit(idx) => write!(file, " {:4} |", formatted_names[*idx as usize])?,
+                CellState::Continuation => write!(file, " ==== |")?,
+                CellState::Empty => write!(file, " ---- |")?,
             }
         }
         writeln!(file)?;

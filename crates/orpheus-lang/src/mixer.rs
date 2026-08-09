@@ -989,7 +989,10 @@ pub fn materialize_pattern_cycles(
         format!("failed to query `{binding_name}` across {cycles} cycle(s): {error}")
     })?;
 
-    let mut per_cycle: Vec<Vec<Event<SampleTrigger>>> = (0..cycles).map(|_| Vec::new()).collect();
+    // ⚡ Bolt: Use `vec![Vec::new(); cycles]` instead of `.map(|| Vec::new()).collect()`
+    // to allocate the exact capacity immediately, avoiding iterator overhead.
+    #[allow(clippy::cast_possible_truncation)]
+    let mut per_cycle: Vec<Vec<Event<SampleTrigger>>> = vec![Vec::new(); cycles as usize];
     for event in &events {
         let start = event.part.start();
         // The cycle an event belongs to is the floor of its part start; times
