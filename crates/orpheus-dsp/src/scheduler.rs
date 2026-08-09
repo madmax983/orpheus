@@ -13,12 +13,37 @@ use crate::engine::EngineError;
 use crate::routing::TrackId;
 use crate::voice::VoiceKind;
 
+/// A completely resolved trigger event mapped to absolute sample frames.
+///
+/// This struct holds all information needed for the audio renderer to initiate
+/// a sound, mapping continuous, high-level pattern descriptions onto the discrete
+/// sample clock of the audio pipeline.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::{SampleTrigger, ScheduledTrigger, TrackId, VoiceKind};
+///
+/// let scheduled = ScheduledTrigger {
+///     frame: 44100,
+///     duration_frames: 22050,
+///     track_id: TrackId::new(1),
+///     trigger: SampleTrigger::named("bd"),
+///     fallback_voice: Some(VoiceKind::KickLike),
+/// };
+/// assert_eq!(scheduled.frame, 44100);
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScheduledTrigger {
+    /// The absolute frame index where this audio event starts playback.
     pub frame: u64,
+    /// The length of the audio event, expressed as a discrete frame count.
     pub duration_frames: u32,
+    /// The destination routing track for this trigger's output.
     pub track_id: TrackId,
+    /// The high-level instructions (sample name, mix levels) for the voice.
     pub trigger: SampleTrigger,
+    /// The synthesized fallback instrument to play if the requested sample is missing.
     pub fallback_voice: Option<VoiceKind>,
 }
 
