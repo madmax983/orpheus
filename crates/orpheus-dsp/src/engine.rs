@@ -469,14 +469,12 @@ impl EngineCore {
                 ));
                 self.pending_pattern_name = Some(pattern_name.into_boxed_str());
                 self.prime_initial_routing = false;
-                Ok(())
             }
             EngineCommand::LoadPattern(pattern) => {
                 self.pending_routing = Some(compatibility_routing_snapshot(&pattern));
                 self.pending_pattern_name = Some(pattern.name().into());
                 self.prime_initial_routing =
                     self.active_pattern_name.is_none() && self.current_frame == 0;
-                Ok(())
             }
             EngineCommand::SwapRoutingSnapshot(snapshot) => {
                 self.prime_initial_routing = self.current_frame == 0
@@ -484,7 +482,6 @@ impl EngineCore {
                         || routing_snapshot_has_generator(&snapshot));
                 self.pending_routing = Some(snapshot);
                 self.pending_pattern_name = None;
-                Ok(())
             }
             EngineCommand::PushGeneratorCycle(cycle) => {
                 let slot = usize::try_from(cycle.generator_id().get())
@@ -492,17 +489,14 @@ impl EngineCore {
                     .filter(|slot| *slot < MAX_GENERATORS)
                     .ok_or(EngineError::InvalidGeneratorId)?;
                 self.generator_pending[slot] = Some(cycle.into_events());
-                Ok(())
             }
             EngineCommand::ReplaceSampleBank(sample_bank) => {
                 self.pending_sample_bank = Some(sample_bank);
-                Ok(())
             }
             EngineCommand::ReplaceGraphVoicePrograms(graph_voices) => {
                 // The bank arrives fully built and prepared (constructed off
                 // the audio thread); adopting it at the boundary is a move.
                 self.pending_graph_voices = Some(graph_voices);
-                Ok(())
             }
             EngineCommand::SetTempo(tempo_bpm) => {
                 let frames_per_cycle = frames_per_cycle(self.sample_rate, tempo_bpm)?;
@@ -514,24 +508,21 @@ impl EngineCore {
                         .checked_add(self.frames_per_cycle)
                         .ok_or(EngineError::FrameOverflow)?;
                 }
-                Ok(())
             }
             EngineCommand::SetReferenceFrequency(base_hz) => {
                 if !base_hz.is_finite() || base_hz <= 0.0 {
                     return Err(EngineError::InvalidReferenceFrequency);
                 }
                 self.base_hz = base_hz;
-                Ok(())
             }
             EngineCommand::PlayTransport => {
                 self.play_transport();
-                Ok(())
             }
             EngineCommand::StopTransport => {
                 self.stop_transport();
-                Ok(())
             }
         }
+        Ok(())
     }
 
     fn begin_cycle(&mut self) -> Result<(), EngineError> {
@@ -629,7 +620,7 @@ impl EngineCore {
             if frame.len() >= 2 {
                 frame[1] = right;
             }
-            let mono_fill = (left + right) * 0.5;
+            let mono_fill = f32::midpoint(left, right);
             for sample in frame.iter_mut().skip(2) {
                 *sample = mono_fill;
             }

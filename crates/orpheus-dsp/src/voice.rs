@@ -753,7 +753,7 @@ fn next_noise(noise_state: &mut u32) -> f64 {
         .wrapping_mul(1_664_525)
         .wrapping_add(1_013_904_223);
     let normalized = f64::from((*noise_state >> 8) & 0x00FF_FFFF) / 16_777_215.0;
-    (normalized * 2.0) - 1.0
+    f64::mul_add(normalized, 2.0, -1.0)
 }
 
 fn stereo_gains_for_pan(pan: f64) -> (f64, f64) {

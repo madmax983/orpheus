@@ -81,16 +81,16 @@ impl LadderFilter {
         let feedback = resonance_amount * 4.0 * self.stage4;
         let mut stage_input = (drive - feedback).tanh();
 
-        self.stage1 += g * (stage_input - self.stage1);
+        self.stage1 = g.mul_add(stage_input - self.stage1, self.stage1);
         stage_input = self.stage1.tanh();
 
-        self.stage2 += g * (stage_input - self.stage2);
+        self.stage2 = g.mul_add(stage_input - self.stage2, self.stage2);
         stage_input = self.stage2.tanh();
 
-        self.stage3 += g * (stage_input - self.stage3);
+        self.stage3 = g.mul_add(stage_input - self.stage3, self.stage3);
         stage_input = self.stage3.tanh();
 
-        self.stage4 += g * (stage_input - self.stage4);
+        self.stage4 = g.mul_add(stage_input - self.stage4, self.stage4);
         self.stage4
     }
 }
