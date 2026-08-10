@@ -47,3 +47,6 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+**[Optimizing Lexical Environment Deep Clones]
+**Learning:** Reversing deep clones by using in-place environment mutation during closure inference broke scoping rules because blindly removing parameter keys shadowed and permanently deleted identical variable names from the outer scope.
+**Action:** Always capture the `Option` returned by `BTreeMap::insert` when injecting shadow bindings, and strictly restore those previous values (or `remove` if `None`) when reversing the mutation at the end of the scope block.

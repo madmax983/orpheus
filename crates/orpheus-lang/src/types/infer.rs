@@ -156,13 +156,15 @@ impl Inferencer {
             )));
         }
 
-        let saved_env = self.env.clone();
+        let mut previous_bindings = Vec::with_capacity(params.len());
+
         let result = (|| {
             let mut param_types = Vec::with_capacity(params.len());
             for param in params {
                 let ty = self.fresh_var_type();
-                self.env
+                let prev = self.env
                     .insert(param.clone(), TypeScheme::monomorphic(ty.clone()));
+                previous_bindings.push((param.clone(), prev));
                 param_types.push(ty);
             }
 
@@ -175,7 +177,15 @@ impl Inferencer {
                 self.resolve(body_ty),
             ))
         })();
-        self.env = saved_env;
+
+        for (param, prev) in previous_bindings.into_iter().rev() {
+            if let Some(prev_scheme) = prev {
+                self.env.insert(param, prev_scheme);
+            } else {
+                self.env.remove(&param);
+            }
+        }
+
         result
     }
 
