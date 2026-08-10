@@ -4,6 +4,7 @@ pub(crate) mod abc_export;
 pub(crate) mod arduino_export;
 pub(crate) mod ascii_roll;
 mod ast;
+pub(crate) mod bash_export;
 mod builtins;
 mod diagnostics;
 mod error;
