@@ -13,12 +13,35 @@ use crate::engine::EngineError;
 use crate::routing::TrackId;
 use crate::voice::VoiceKind;
 
+/// Represents an audio event that has been perfectly aligned to the audio thread's sample clock.
+///
+/// The `ScheduledTrigger` bridges the gap between musical timing (e.g., "beat 1.5") and
+/// DSP timing (e.g., "frame 44,100").
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::{SampleTrigger, ScheduledTrigger, TrackId, VoiceKind};
+///
+/// let trigger = ScheduledTrigger {
+///     frame: 44100, // Trigger exactly 1 second in at 44.1kHz
+///     duration_frames: 22050, // Last for half a second
+///     track_id: TrackId::new(0),
+///     trigger: SampleTrigger::named("bd"),
+///     fallback_voice: Some(VoiceKind::KickLike),
+/// };
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScheduledTrigger {
+    /// The exact absolute sample frame on which this event should begin rendering.
     pub frame: u64,
+    /// The calculated duration of the event in audio frames, after resolving cycle overlaps.
     pub duration_frames: u32,
+    /// The unique identifier of the track that generated this event, used for routing and mixing.
     pub track_id: TrackId,
+    /// The core payload describing *what* sound to play (e.g., sample token, gain, effects).
     pub trigger: SampleTrigger,
+    /// The built-in synthesis model to use if the requested sample token is not found in the bank.
     pub fallback_voice: Option<VoiceKind>,
 }
 

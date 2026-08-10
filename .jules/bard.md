@@ -36,3 +36,7 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+
+## $(date +%Y-%m-%d) - Documented sample_bank and scheduler structs
+**Confusion:** The `PlaybackSample` and `ScheduledTrigger` structs lacked basic descriptive docs and executable examples, making it unclear how to instantiate or use them manually outside of internal subsystems.
+**Clarification:** Added module-level and method-level documentation emphasizing how these structs bridge the gap between high-level logic (tokens/timing) and low-level DSP (frames/f32 buffers), along with runnable doc-tests to enforce correctness.
