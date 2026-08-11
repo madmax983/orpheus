@@ -47,3 +47,10 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+**[BTreeMap Moves vs Cloning]**
+**Learning:** During the Hindley-Milner type inference in `infer_into_bindings`, the `BTreeMap` of existing user bindings was being deeply cloned on every pass in order to instantiate the `Inferencer`.
+**Action:** Replace `bindings.clone()` with `std::mem::take(bindings)` to consume the old environment efficiently. Then restore the map by assigning it back from the completed `Inferencer`, converting a heap-allocating O(n) clone into O(1) moves.
+
+**[Type Env Reallocation during Binding Inference]**
+**Learning:** In `infer_binding`, saving and restoring the typing environment during parameter processing was historically done by deeply cloning the `TypeEnv`'s `BTreeMap<String, TypeScheme>` using `self.env.clone()`. This allocates a completely new map for every `expr = a b c` variable binding.
+**Action:** Since we only inject local parameters (which shadow outer ones) during parameter inference, track the old bindings returned by `env.insert(param)`. When inference exits, iterate over the tracked parameters in reverse to explicitly restore the old bindings or remove newly inserted ones, entirely avoiding the O(N) map cloning overhead on a hot path.

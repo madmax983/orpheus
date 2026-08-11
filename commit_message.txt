@@ -1,0 +1,6 @@
+⚡ Bolt: Eliminate TypeEnv cloning during Hindley-Milner type inference
+
+💡 What: Replaced deep clones of the `TypeEnv` internal `BTreeMap` in `infer_binding` with O(1) in-place shadowing and restoration using `insert` and `remove`.
+🎯 Why: In recursive binding inferences (e.g. `foo a b = a + b`), the entire environment tree was previously heap-allocated and deep cloned to restore state once parameter scope was exited.
+📊 Impact: Removes massive `BTreeMap` allocations during compilation and REPL evaluation phases, vastly reducing latency for complex types.
+🔬 Measurement: Run `cargo test -p orpheus-lang infer`.
