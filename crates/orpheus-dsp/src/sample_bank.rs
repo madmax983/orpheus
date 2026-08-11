@@ -29,6 +29,21 @@ const HIHAT_WAV: &[u8] = include_bytes!("../assets/hihat.wav");
 const SAMPLE_MANIFEST_FILE: &str = "samples.ron";
 const DEFAULT_WATCH_INTERVAL: Duration = Duration::from_millis(50);
 
+/// A ready-to-play audio buffer loaded into memory.
+///
+/// Contains fully decoded mono sample data and its native playback rate,
+/// ready to be triggered by the DSP engine without any disk I/O.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::PlaybackSample;
+/// use std::sync::Arc;
+///
+/// let raw_frames: Arc<[f32]> = Arc::new([0.0; 44100]);
+/// let sample = PlaybackSample::from_mono_frames(raw_frames, 44100);
+/// assert_eq!(sample.duration_seconds(), 1.0);
+/// ```
 #[derive(Clone, PartialEq)]
 pub struct PlaybackSample {
     frames: Arc<[f32]>,
@@ -49,11 +64,37 @@ impl PlaybackSample {
         }
     }
 
+    /// Retrieves the internal mono frame buffer.
+    ///
+    /// Returns an [`Arc`] pointing to the continuous float audio data.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::PlaybackSample;
+    /// use std::sync::Arc;
+    ///
+    /// let raw_frames: Arc<[f32]> = Arc::new([0.5, -0.5]);
+    /// let sample = PlaybackSample::from_mono_frames(raw_frames, 44100);
+    /// assert_eq!(sample.frames().len(), 2);
+    /// ```
     #[must_use]
     pub const fn frames(&self) -> &Arc<[f32]> {
         &self.frames
     }
 
+    /// Retrieves the native sample rate in Hertz.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use orpheus_dsp::PlaybackSample;
+    /// use std::sync::Arc;
+    ///
+    /// let raw_frames: Arc<[f32]> = Arc::new([0.0]);
+    /// let sample = PlaybackSample::from_mono_frames(raw_frames, 48000);
+    /// assert_eq!(sample.sample_rate_hz(), 48000);
+    /// ```
     #[must_use]
     pub const fn sample_rate_hz(&self) -> u32 {
         self.sample_rate_hz
