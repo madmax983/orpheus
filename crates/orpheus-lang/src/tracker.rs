@@ -63,15 +63,19 @@ pub fn export_sample_pattern_to_tracker(
     // Create a grid of dimensions: [total_steps][sample_list.len()]
     // Each cell will optionally contain a formatted string of the sample name (if triggered)
     // or the delay/continuation character.
-    let mut grid: Vec<Vec<Option<String>>> = vec![vec![None; sample_list.len()]; total_steps];
+    // ⚡ Bolt: Eliminate allocating grid string elements for a simple state representation.
+    // 0 = None, 1 = Sample triggered, 2 = Continued step
+    let mut grid: Vec<Vec<u8>> = vec![vec![0; sample_list.len()]; total_steps];
 
     for event in &events {
-        let sample = event.value.sample().to_string();
         let lane_idx = sample_list
             .iter()
-            .position(|s| *s == sample)
+            .position(|&s| s == event.value.sample())
             .ok_or_else(|| {
-                crate::EvalError::new(format!("sample '{sample}' not found in lane list"))
+                crate::EvalError::new(format!(
+                    "sample '{}' not found in lane list",
+                    event.value.sample()
+                ))
             })?;
 
         let start_f64 = f64::from(event.part.start());
@@ -86,25 +90,14 @@ pub fn export_sample_pattern_to_tracker(
         let end_step = end_step.min(total_steps);
 
         if start_step < end_step {
-            // Format sample name up to 4 chars
-            let formatted_name = if sample.len() > 4 {
-                sample.chars().take(4).collect::<String>()
-            } else {
-                sample.clone()
-            };
-            grid[start_step][lane_idx] = Some(formatted_name);
+            grid[start_step][lane_idx] = 1;
             for item in grid.iter_mut().take(end_step).skip(start_step + 1) {
-                if item[lane_idx].is_none() {
-                    item[lane_idx] = Some("====".to_string());
+                if item[lane_idx] == 0 {
+                    item[lane_idx] = 2;
                 }
             }
-        } else if start_step < total_steps && grid[start_step][lane_idx].is_none() {
-            let formatted_name = if sample.len() > 4 {
-                sample.chars().take(4).collect::<String>()
-            } else {
-                sample.clone()
-            };
-            grid[start_step][lane_idx] = Some(formatted_name);
+        } else if start_step < total_steps && grid[start_step][lane_idx] == 0 {
+            grid[start_step][lane_idx] = 1;
         }
     }
 
@@ -113,15 +106,21 @@ pub fn export_sample_pattern_to_tracker(
     writeln!(file, "Cycles: {cycle_count}, Resolution: 1/16")?;
     writeln!(file, "=========================================")?;
 
+    // ⚡ Bolt: Precompute formatted short names to avoid repeated string slicing per column header/cell.
+    let mut short_names = Vec::with_capacity(sample_list.len());
+    for sample in &sample_list {
+        let mut sample_iter = sample.chars();
+        let c1 = sample_iter.next().unwrap_or(' ');
+        let c2 = sample_iter.next().unwrap_or(' ');
+        let c3 = sample_iter.next().unwrap_or(' ');
+        let c4 = sample_iter.next().unwrap_or(' ');
+        short_names.push(format!("{c1}{c2}{c3}{c4}"));
+    }
+
     // Print Header
     write!(file, " STEP | TIME  |")?;
-    for sample in &sample_list {
-        let padded = if sample.len() > 4 {
-            sample.chars().take(4).collect::<String>()
-        } else {
-            sample.to_string()
-        };
-        write!(file, " {padded:4} |")?;
+    for short_name in &short_names {
+        write!(file, " {short_name:4} |")?;
     }
     writeln!(file)?;
 
@@ -140,9 +139,12 @@ pub fn export_sample_pattern_to_tracker(
 
         write!(file, " {cycle_num:02}:{sub_step:02} | {time:4.2} |")?;
 
-        for item in grid[step].iter().take(sample_list.len()) {
-            if let Some(val) = item {
-                write!(file, " {val:4} |")?;
+        for (lane_idx, item) in grid[step].iter().enumerate().take(sample_list.len()) {
+            if *item == 1 {
+                let short_name = &short_names[lane_idx];
+                write!(file, " {short_name:4} |")?;
+            } else if *item == 2 {
+                write!(file, " ==== |")?;
             } else {
                 write!(file, " ---- |")?;
             }
