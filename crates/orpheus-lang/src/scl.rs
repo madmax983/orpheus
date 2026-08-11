@@ -179,3 +179,84 @@ fn parse_scala_entry(raw: &str) -> Result<f64, SclError> {
         Ok(integer)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_scl_error_display_and_conversion() {
+        let io_err = SclError::Io(std::io::Error::other("disk missing"));
+        assert_eq!(
+            io_err.to_string(),
+            "failed to read Scala source: disk missing"
+        );
+
+        let header_err = SclError::Header("no desc".into());
+        assert_eq!(header_err.to_string(), "malformed Scala header: no desc");
+
+        let entry_err = SclError::Entry("a/b".into(), "NaN".into());
+        assert_eq!(entry_err.to_string(), "invalid Scala entry `a/b`: NaN");
+
+        let count_err = SclError::Count {
+            expected: 5,
+            actual: 3,
+        };
+        assert_eq!(
+            count_err.to_string(),
+            "Scala file note count mismatch: header declared 5 entries but got 3"
+        );
+
+        let inv_err = SclError::Invariant("bad period".into());
+        assert_eq!(inv_err.to_string(), "invalid Scala tuning: bad period");
+
+        let eval_err: EvalError = header_err.into();
+        assert_eq!(eval_err.to_string(), "malformed Scala header: no desc");
+    }
+
+    #[test]
+    fn test_parse_scala_entry_errors() {
+        assert!(matches!(parse_scala_entry(""), Err(SclError::Entry(_, _))));
+        assert!(matches!(
+            parse_scala_entry("1/0"),
+            Err(SclError::Entry(_, _))
+        ));
+        assert!(matches!(
+            parse_scala_entry("a/2"),
+            Err(SclError::Entry(_, _))
+        ));
+        assert!(matches!(
+            parse_scala_entry("1/b"),
+            Err(SclError::Entry(_, _))
+        ));
+        assert!(matches!(
+            parse_scala_entry("1.x"),
+            Err(SclError::Entry(_, _))
+        ));
+        assert!(matches!(
+            parse_scala_entry("xyz"),
+            Err(SclError::Entry(_, _))
+        ));
+    }
+
+    #[test]
+    fn test_parse_scala_source_errors() {
+        let missing_desc = "! comment only\n";
+        assert!(matches!(
+            parse_scala_source(missing_desc, "test"),
+            Err(SclError::Header(_))
+        ));
+
+        let missing_count = "desc only\n";
+        assert!(matches!(
+            parse_scala_source(missing_count, "test"),
+            Err(SclError::Header(_))
+        ));
+
+        let invalid_count = "desc\nbad_count\n";
+        assert!(matches!(
+            parse_scala_source(invalid_count, "test"),
+            Err(SclError::Header(_))
+        ));
+    }
+}
