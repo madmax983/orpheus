@@ -193,6 +193,14 @@ impl TypeEnv {
         self.entries.insert(name.into(), scheme);
     }
 
+    /// Removes a variable from the type environment.
+    ///
+    /// ⚡ Bolt: Added to support in-place environment modifications during inference,
+    /// avoiding full environment clones and their associated heap allocations.
+    pub fn remove(&mut self, name: &str) -> Option<TypeScheme> {
+        self.entries.remove(name)
+    }
+
     /// Looks up a variable's type scheme in the environment.
     ///
     /// Returns `Some(&TypeScheme)` if the name exists, which can then be instantiated
