@@ -30,6 +30,18 @@ const SAMPLE_MANIFEST_FILE: &str = "samples.ron";
 const DEFAULT_WATCH_INTERVAL: Duration = Duration::from_millis(50);
 
 #[derive(Clone, PartialEq)]
+/// A playback buffer.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::PlaybackSample;
+/// use std::sync::Arc;
+///
+/// let frames = Arc::new([0.0; 1024]);
+/// let sample = PlaybackSample::from_mono_frames(frames, 44100);
+/// assert_eq!(sample.sample_rate_hz(), 44100);
+/// ```
 pub struct PlaybackSample {
     frames: Arc<[f32]>,
     sample_rate_hz: u32,
@@ -49,11 +61,13 @@ impl PlaybackSample {
         }
     }
 
+    /// The decoded `f32` buffer of the underlying sample.
     #[must_use]
     pub const fn frames(&self) -> &Arc<[f32]> {
         &self.frames
     }
 
+    /// The frequency (in Hertz) that the sample buffer was recorded at.
     #[must_use]
     pub const fn sample_rate_hz(&self) -> u32 {
         self.sample_rate_hz
