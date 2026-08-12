@@ -13,12 +13,32 @@ use crate::engine::EngineError;
 use crate::routing::TrackId;
 use crate::voice::VoiceKind;
 
+/// Represents an audio event mapped to absolute time.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::{ScheduledTrigger, TrackId, SampleTrigger};
+///
+/// let trigger = ScheduledTrigger {
+///     frame: 0,
+///     duration_frames: 44100,
+///     track_id: TrackId::new(0),
+///     trigger: SampleTrigger::named("bd"),
+///     fallback_voice: None,
+/// };
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScheduledTrigger {
+    /// The absolute frame index when the event begins.
     pub frame: u64,
+    /// The duration of the event in frames.
     pub duration_frames: u32,
+    /// The destination track for the event.
     pub track_id: TrackId,
+    /// The trigger payload containing playback configuration.
     pub trigger: SampleTrigger,
+    /// An optional fallback voice mapping for the trigger.
     pub fallback_voice: Option<VoiceKind>,
 }
 
