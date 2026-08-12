@@ -156,7 +156,18 @@ impl Inferencer {
             )));
         }
 
-        let saved_env = self.env.clone();
+        // ⚡ Bolt: Instead of `let saved_env = self.env.clone();` which causes massive
+        // heap allocations by copying the entire symbol table, we stash only the bindings
+        // that will be shadowed and manually restore them after inference.
+        let mut previous_bindings = Vec::with_capacity(params.len());
+        for param in params {
+            if let Some(prev) = self.env.get(param).cloned() {
+                previous_bindings.push((param.clone(), Some(prev)));
+            } else {
+                previous_bindings.push((param.clone(), None));
+            }
+        }
+
         let result = (|| {
             let mut param_types = Vec::with_capacity(params.len());
             for param in params {
@@ -175,7 +186,18 @@ impl Inferencer {
                 self.resolve(body_ty),
             ))
         })();
-        self.env = saved_env;
+
+        for (param, prev_scheme) in previous_bindings {
+            match prev_scheme {
+                Some(scheme) => {
+                    self.env.insert(param, scheme);
+                }
+                None => {
+                    self.env.remove(&param);
+                }
+            }
+        }
+
         result
     }
 

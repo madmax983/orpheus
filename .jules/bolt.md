@@ -47,3 +47,6 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+**Remove TypeEnv cloning in infer_binding**
+**Learning:** `TypeEnv` was being fully cloned recursively during parameterized binding inference to preserve outer bindings across parameter lists. This created excessive redundant heap allocations, copying identical baseline bindings thousands of times.
+**Action:** Replace `clone()` with an in-place capture-modify-restore model that uses `Vec` to stash outer bindings and standard `insert`/`remove` calls to mutate a single shared `TypeEnv`.
