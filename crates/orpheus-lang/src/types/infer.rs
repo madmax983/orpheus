@@ -791,16 +791,15 @@ impl Inferencer {
     }
 
     fn free_vars_in_env(&self) -> BTreeSet<TypeVarId> {
-        self.env
-            .values()
-            .flat_map(|scheme| {
-                let mut vars = free_type_vars(&scheme.ty);
-                for quantified in &scheme.vars {
-                    vars.remove(quantified);
-                }
-                vars.into_iter()
-            })
-            .collect()
+        let mut env_vars = BTreeSet::new();
+        for scheme in self.env.values() {
+            let mut vars = free_type_vars(&scheme.ty);
+            for quantified in &scheme.vars {
+                vars.remove(quantified);
+            }
+            env_vars.extend(vars);
+        }
+        env_vars
     }
 }
 
@@ -829,18 +828,18 @@ fn substitute_scheme_vars(ty: &Type, replacements: &BTreeMap<TypeVarId, Type>) -
     }
 }
 
-fn free_type_vars(ty: &Type) -> BTreeSet<TypeVarId> {
+fn free_type_vars_into(ty: &Type, vars: &mut BTreeSet<TypeVarId>) {
     match ty {
-        Type::Pattern(inner) => free_type_vars(inner),
+        Type::Pattern(inner) => free_type_vars_into(inner, vars),
         Type::Function(args, ret) => {
-            let mut vars = BTreeSet::new();
             for arg in args {
-                vars.extend(free_type_vars(arg));
+                free_type_vars_into(arg, vars);
             }
-            vars.extend(free_type_vars(ret));
-            vars
+            free_type_vars_into(ret, vars);
         }
-        Type::Var(var) => BTreeSet::from([*var]),
+        Type::Var(var) => {
+            vars.insert(*var);
+        }
         Type::Sample
         | Type::Pedal
         | Type::Voice
@@ -852,8 +851,20 @@ fn free_type_vars(ty: &Type) -> BTreeSet<TypeVarId> {
         | Type::PitchClassSet
         | Type::Tuning
         | Type::String
-        | Type::Unit => BTreeSet::new(),
+        | Type::Unit => {}
     }
+}
+
+/// Extracts all free type variables from a `Type`.
+///
+/// ⚡ Bolt Optimization: This function delegates to `free_type_vars_into`
+/// which accumulates variables into a single `BTreeSet` reference, eliminating
+/// the O(N) intermediate heap allocations previously caused by recursively
+/// returning and merging `BTreeSet`s at every branch of the AST type tree.
+fn free_type_vars(ty: &Type) -> BTreeSet<TypeVarId> {
+    let mut vars = BTreeSet::new();
+    free_type_vars_into(ty, &mut vars);
+    vars
 }
 
 #[cfg(test)]
