@@ -1,3 +1,5 @@
+//! Integration tests for the offline rendering engine, ensuring accurate non-realtime audio block generation.
+
 #![allow(clippy::needless_range_loop)]
 use std::fs;
 use std::path::{Path, PathBuf};

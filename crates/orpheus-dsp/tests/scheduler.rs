@@ -1,3 +1,5 @@
+//! Integration tests for the real-time event scheduler, guaranteeing frame-accurate synchronization.
+
 use orpheus_dsp::{SampleTrigger, Scheduler, TrackId};
 use orpheus_pattern::{Event, Rational, TimeSpan};
 

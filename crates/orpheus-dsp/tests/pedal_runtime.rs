@@ -1,3 +1,5 @@
+//! Integration tests verifying the initialization and execution of the virtual analog pedal graph runtime.
+
 #![allow(
     clippy::suboptimal_flops,
     clippy::cast_precision_loss,

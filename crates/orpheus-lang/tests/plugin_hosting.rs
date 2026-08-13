@@ -1,3 +1,5 @@
+//! Language-level integration tests for instantiating and controlling DSP plugins via REPL scripts.
+
 use orpheus_dsp::PluginFormat;
 use orpheus_lang::{ReplMode, ReplSession, eval_module};
 

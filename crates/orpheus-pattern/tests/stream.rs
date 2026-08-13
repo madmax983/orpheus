@@ -1,3 +1,5 @@
+//! Tests for sequence generation and pattern streaming mechanics in the event generation runtime.
+
 use orpheus_pattern::{Event, EventStream, Pattern, Rational, TimeSpan};
 
 fn rational(numerator: i64, denominator: i64) -> Rational {

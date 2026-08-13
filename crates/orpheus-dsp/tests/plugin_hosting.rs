@@ -1,3 +1,5 @@
+//! Integration tests verifying that the DSP engine correctly hosts and processes external plugin formats.
+
 use orpheus_dsp::{
     PluginDescriptor, PluginNote, PluginParameterLane, PluginProcessor, PluginTrackSource,
     RoutingSnapshot, SampleBank, TrackSource, render_routing_snapshot_to_stereo_for_test,
