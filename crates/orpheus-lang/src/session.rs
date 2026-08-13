@@ -1042,6 +1042,9 @@ impl ReplSession {
             Some("scd") => crate::supercollider_export::export_sample_pattern_to_supercollider(
                 pattern, path, cycles,
             ),
+            Some("rb") => {
+                crate::sonic_pi_export::export_sample_pattern_to_sonic_pi(pattern, path, cycles)
+            }
             _ => crate::export::export_sample_pattern_to_csv(pattern, path, cycles),
         }
         .map_err(|error: crate::EvalError| error.to_string())?;
@@ -1081,6 +1084,9 @@ impl ReplSession {
             Some("scd") => crate::supercollider_export::export_number_pattern_to_supercollider(
                 pattern, path, cycles,
             ),
+            Some("rb") => {
+                crate::sonic_pi_export::export_number_pattern_to_sonic_pi(pattern, path, cycles)
+            }
             _ => crate::export::export_number_pattern_to_csv(pattern, path, cycles),
         }
         .map_err(|error: crate::EvalError| error.to_string())?;
@@ -4319,6 +4325,25 @@ mod supercollider_integration_tests {
         assert!(contents.contains("Synth(\\play_sample"));
         assert!(contents.contains("\\bd"));
         assert!(contents.contains("\\sn"));
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn export_command_exports_a_bound_pattern_to_sonic_pi() {
+        let mut session = ReplSession::new();
+        let path = std::env::temp_dir().join(format!("orpheus-export-rb-{}.rb", 1_234_578));
+
+        session.eval_line("song = bd sn cp sn").unwrap();
+        let message = session
+            .eval_line(&format!(":export song {} 2", path.display()))
+            .unwrap();
+
+        assert!(message.contains("exported `song`"));
+        assert!(path.exists());
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert!(contents.contains("# Orpheus Sonic Pi Export"));
+        assert!(contents.contains("sample :bd_haus"));
 
         let _ = std::fs::remove_file(path);
     }
