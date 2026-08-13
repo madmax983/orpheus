@@ -47,3 +47,6 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+**[Inferencer Lexical Scope Binding Efficiency]
+**Learning:** In Hindley-Milner type inference, deep-cloning the entire `TypeEnv` bindings map on every function parameter scope boundary (e.g. `self.env.clone()`) creates massive unnecessary heap allocations on the hot path.
+**Action:** Instead of cloning the environment, temporarily insert the new parameter types into the shared environment, explicitly track the previous bindings (if any), and restore them when the scope exits. This achieves the same lexical scoping behavior with zero deep clones.
