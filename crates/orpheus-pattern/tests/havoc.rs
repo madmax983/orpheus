@@ -1,3 +1,5 @@
+//! Havoc fuzzing tests for the pattern crate, exploring extreme edge cases in time representation and cycles.
+
 use orpheus_pattern::{CyclePattern, EventStream, Pattern, PatternNode, Rational, TimeSpan};
 
 #[test]

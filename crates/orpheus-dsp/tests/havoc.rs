@@ -1,3 +1,5 @@
+//! Havoc property-based testing and fuzzing targets for the `orpheus-dsp` crate to uncover panics or math anomalies.
+
 use loom::sync::Arc;
 use loom::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use loom::thread;

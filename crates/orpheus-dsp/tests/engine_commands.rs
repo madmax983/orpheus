@@ -1,3 +1,5 @@
+//! Tests validating the asynchronous command queue from the REPL to the real-time audio thread.
+
 use orpheus_dsp::{
     EngineCommand, EngineError, EngineHandle, PatternUpdate, PedalProgram, RoutingSnapshot,
     SampleTrigger, TrackSource, load_builtin_sample_for_test, load_sample_bank_from_directory,

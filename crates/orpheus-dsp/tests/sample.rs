@@ -1,3 +1,5 @@
+//! Integration tests for memory-mapped sample playback and buffering within the DSP engine.
+
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};

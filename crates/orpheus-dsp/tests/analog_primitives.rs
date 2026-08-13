@@ -1,3 +1,5 @@
+//! Tests for foundational mathematical DSP primitives used in building virtual analog circuits.
+
 use orpheus_dsp::{Gain, LadderFilter, Mix, PhaseAccumulator, PulseOsc, SawOsc, SoftSat};
 
 #[test]

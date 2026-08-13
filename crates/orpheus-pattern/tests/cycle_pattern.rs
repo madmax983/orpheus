@@ -1,3 +1,5 @@
+//! Integration tests for cycle-based pattern combinators and transformations.
+
 use orpheus_pattern::{CyclePattern, Pattern, PatternNode, Rational, TimeSpan};
 use proptest::prelude::*;
 

@@ -1,3 +1,5 @@
+//! Tests for audio graph routing snapshots, validating serialization and deserialization of connections.
+
 use orpheus_dsp::{BusEffectSpec, RoutingError, RoutingSnapshot};
 use orpheus_pattern::Rational;
 

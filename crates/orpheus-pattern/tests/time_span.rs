@@ -1,3 +1,5 @@
+//! Tests verifying continuous cycle math and fractional time spans within musical pattern evaluation.
+
 use orpheus_pattern::{PatternError, Rational, TimeSpan};
 
 #[test]

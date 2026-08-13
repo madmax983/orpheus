@@ -1,3 +1,5 @@
+//! Integration tests for the `AnalogVoice` DSP component, verifying oscillator shapes and envelope generation.
+
 use orpheus_dsp::{AnalogVoice, AnalogVoiceParams, OscShape};
 
 const fn params(shape: OscShape) -> AnalogVoiceParams {

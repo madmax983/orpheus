@@ -1,3 +1,5 @@
+//! Integration tests for the virtual analog filter component, testing cutoff, resonance, and instability.
+
 use orpheus_dsp::LadderFilter;
 
 #[test]
