@@ -156,26 +156,40 @@ impl Inferencer {
             )));
         }
 
-        let saved_env = self.env.clone();
-        let result = (|| {
-            let mut param_types = Vec::with_capacity(params.len());
-            for param in params {
-                let ty = self.fresh_var_type();
-                self.env
-                    .insert(param.clone(), TypeScheme::monomorphic(ty.clone()));
-                param_types.push(ty);
-            }
+        let mut param_types = Vec::with_capacity(params.len());
+        let mut old_bindings = Vec::with_capacity(params.len());
 
-            let body_ty = self.infer_expr(expr)?;
-            Ok(Type::curried(
+        for param in params {
+            let ty = self.fresh_var_type();
+            let scheme = TypeScheme::monomorphic(ty.clone());
+            if let Some(old) = self.env.get(param) {
+                old_bindings.push((param.clone(), Some(old.clone())));
+            } else {
+                old_bindings.push((param.clone(), None));
+            }
+            self.env.insert(param.clone(), scheme);
+            param_types.push(ty);
+        }
+
+        let result = self.infer_expr(expr).map(|body_ty| {
+            Type::curried(
                 param_types
                     .into_iter()
                     .map(|ty| self.resolve(ty))
                     .collect::<Vec<_>>(),
                 self.resolve(body_ty),
-            ))
-        })();
-        self.env = saved_env;
+            )
+        });
+
+        // Restore lexical scope
+        for (param, old_binding) in old_bindings.into_iter().rev() {
+            if let Some(old) = old_binding {
+                self.env.insert(param, old);
+            } else {
+                self.env.remove(&param);
+            }
+        }
+
         result
     }
 

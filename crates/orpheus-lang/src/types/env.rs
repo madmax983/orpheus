@@ -204,6 +204,10 @@ impl TypeEnv {
         self.entries.get(name)
     }
 
+    pub fn remove(&mut self, name: &str) -> Option<TypeScheme> {
+        self.entries.remove(name)
+    }
+
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }
