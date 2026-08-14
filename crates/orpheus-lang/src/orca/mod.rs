@@ -33,7 +33,14 @@ mod commands;
 mod engine;
 mod grid;
 mod publish;
-pub mod transport;
+pub(crate) mod transport;
+
+pub use transport::{
+    MidiSink, MidirSink, OscTransport, RecordingMidiSink, ScheduledIoEvent, TransportCommand,
+    TransportConfig, TransportDispatcher, TransportError, TransportHandle, UdpCommandListener,
+    UdpTransport, cc_bytes, connect_midi_output, cycle_schedule, midi_output_names, note_off_bytes,
+    note_on_bytes, pb_bytes, velocity_byte,
+};
 
 pub use commands::{CommandOutcome, MAX_GRID_FRAME, OrcaCommand, adjusted_frame, parse_command};
 pub use engine::{MidiNote, OrcaEngine, OrcaEvent, OrcaIoEvent, frame_span};
