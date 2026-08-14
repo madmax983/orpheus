@@ -83,7 +83,11 @@ pub use tracker::{export_number_pattern_to_tracker, export_sample_pattern_to_tra
 pub use tui::{render_initial_frame_for_test, run_with_engine, run_with_engine_and_path};
 pub use txt::{export_number_pattern_to_txt, export_sample_pattern_to_txt};
 
+#[cfg(feature = "chuck_export")]
+pub(crate) mod chuck_export;
 pub(crate) mod dot_export;
+#[cfg(feature = "chuck_export")]
+pub use chuck_export::{export_number_pattern_to_chuck, export_sample_pattern_to_chuck};
 pub use dot_export::export_pedal_value_to_dot;
 pub use scl::{SclError, parse_scala_file, parse_scala_source};
 pub use types::{
