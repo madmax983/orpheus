@@ -20,11 +20,11 @@
 use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
 use std::time::{Duration, Instant};
 
-use orpheus_lang::orca::transport::{
+use orpheus_lang::orca::{CommandOutcome, OrcaCommand, OrcaEngine, OrcaIoEvent, parse_command};
+use orpheus_lang::orca::{
     RecordingMidiSink, ScheduledIoEvent, TransportConfig, TransportDispatcher, TransportHandle,
     UdpCommandListener,
 };
-use orpheus_lang::orca::{CommandOutcome, OrcaCommand, OrcaEngine, OrcaIoEvent, parse_command};
 
 /// One grid frame at 120 BPM (16th note), divisible by 6 so clock tick
 /// deadlines land on exact milliseconds.

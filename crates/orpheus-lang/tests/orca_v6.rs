@@ -14,12 +14,12 @@
 use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
 use std::time::{Duration, Instant};
 
-use orpheus_lang::orca::transport::{
-    RecordingMidiSink, ScheduledIoEvent, TransportConfig, TransportDispatcher, TransportHandle,
-    cycle_schedule,
-};
 use orpheus_lang::orca::{
     MidiNote, OrcaEngine, OrcaIoEvent, OrcaPublisher, materialize_cycle_io, midi_note_id,
+};
+use orpheus_lang::orca::{
+    RecordingMidiSink, ScheduledIoEvent, TransportConfig, TransportDispatcher, TransportHandle,
+    cycle_schedule,
 };
 
 const FRAME: Duration = Duration::from_millis(125);
