@@ -10,6 +10,7 @@ workspace = true
 [features]
 experimental-gcode = []
 lilypond_export = []
+chuck_export = []
 
 [dependencies]
 comfy-table.workspace = true
