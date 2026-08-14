@@ -163,4 +163,18 @@ mod tests {
         // Make sure `in` wasn't matched inside `input` by verifying we don't have something weird like `in -> in`
         assert!(!content.contains("\"in\" -> \"in\""));
     }
+
+    #[test]
+    fn export_pedal_value_to_dot_io_error() {
+        let source = "my_graph = graph { wet = input |> clip ; wet |> output }";
+        let module = eval_module(source, ReplMode::Strict).unwrap();
+        let pedal = module.get("my_graph").unwrap().as_pedal().unwrap();
+
+        assert_eq!(
+            export_pedal_value_to_dot(pedal, "/invalid_directory/invalid_file.dot")
+                .unwrap_err()
+                .to_string(),
+            "file not found"
+        );
+    }
 }

@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2024-06-25 - Dot Export IO Error Test Coverage
+**Learning:** Found that `dot_export.rs` lacked a test verifying that `export_pedal_value_to_dot` handles file creation IO errors correctly by returning an `EvalError` (specifically "file not found"), unlike other exporters that had `export_cycle_count_zero_returns_error`.
+**Action:** Always ensure exporters and file-writing functions have a test simulating an invalid output directory path to verify the OS error is caught and wrapped correctly instead of panicking.
