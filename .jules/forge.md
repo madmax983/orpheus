@@ -82,3 +82,7 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+
+**Refactoring redundant `match` blocks to helper functions**
+**Learning:** Repetitive `match pattern { ... }` blocks used solely to dispatch to `SamplePattern` and `NumberPattern` and return verbose errors for everything else can be extracted using a centralized helper function like `apply_pattern_transform`.
+**Action:** When working with transformations that accept `Value` patterns, use `apply_pattern_transform` (or similar helpers) passing closures for `apply_sample` and `apply_number` instead of writing out boilerplate `match` statements across multiple functions. This enforces consistency in error messaging and significantly reduces cognitive overhead. If a function requires cloning references into closures, it may require deriving `Clone` on related types (like `NumericControl`) or extracting the dereferenced values prior to the closure.
