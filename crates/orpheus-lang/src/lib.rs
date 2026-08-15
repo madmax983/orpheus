@@ -35,6 +35,7 @@ pub(crate) mod srt;
 pub(crate) mod stats;
 pub(crate) mod supercollider_export;
 mod svg;
+pub(crate) mod tonejs_export;
 pub(crate) mod tracker;
 mod tui;
 pub(crate) mod txt;
@@ -79,6 +80,7 @@ pub use supercollider_export::{
     export_number_pattern_to_supercollider, export_sample_pattern_to_supercollider,
 };
 pub use svg::{export_number_pattern_to_svg, export_sample_pattern_to_svg};
+pub use tonejs_export::{export_number_pattern_to_tonejs, export_sample_pattern_to_tonejs};
 pub use tracker::{export_number_pattern_to_tracker, export_sample_pattern_to_tracker};
 pub use tui::{render_initial_frame_for_test, run_with_engine, run_with_engine_and_path};
 pub use txt::{export_number_pattern_to_txt, export_sample_pattern_to_txt};
