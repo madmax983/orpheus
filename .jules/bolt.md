@@ -47,3 +47,6 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+**[Optimize TypeEnv BTreeMap allocs]
+**Learning:** During Hindley-Milner type inference, the `TypeEnv` was previously deeply cloned for every parameterized binding evaluation via `.clone()`. Since it holds a `BTreeMap` of strings to types, this incurred significant memory allocation overhead on hot inference paths.
+**Action:** Instead of deeply cloning the environment, for temporary lexical scopes (like function parameters), insert into the existing map while saving the overwritten value, then restore or remove the keys in reverse order before returning. This converts O(N) heap allocations into O(k) in-place mutations.
