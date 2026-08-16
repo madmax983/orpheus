@@ -47,3 +47,6 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+**[Type Inference Environment Allocations]
+**Learning:** `TypeEnv` was cloning its entire `BTreeMap` and re-allocating strings for every parameterized binding inferred during `infer_binding`. This causes excessive memory allocations and hurts compile-time performance.
+**Action:** Instead of cloning the environment, use `TypeEnv::insert` (returning the old value) and a `Vec` of previous entries to manually revert the mutations after inference completes. This uses standard in-place mutation and avoids allocating new maps.
