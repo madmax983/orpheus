@@ -115,6 +115,19 @@ pub struct ValidatedPedalNode {
 }
 
 impl ValidatedPedalNode {
+    /// Constructs a validated signal routing operation.
+    ///
+    /// This verifies that the node has been typechecked and assigned a valid
+    /// `SignalKind` (e.g., Mono, Stereo) alongside a human-readable summary
+    /// for diagnostic output.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Mono, PedalNodeKind::Identity, "Identity");
+    /// ```
     #[must_use]
     pub fn new(signal_kind: SignalKind, kind: PedalNodeKind, summary: impl Into<String>) -> Self {
         Self {
@@ -130,18 +143,23 @@ impl ValidatedPedalNode {
         &self.signal_kind
     }
 
+    /// Inspects the concrete DSP operation this node represents.
     #[must_use]
     pub const fn kind(&self) -> &PedalNodeKind {
         &self.kind
     }
 
+    /// Provides a concise description of the node, primarily used by the REPL's `explain` command.
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
     }
 }
 
-/// A validated let-bound signal inside the pedal plan.
+/// A named variable binding within a Faust-style pedal graph.
+///
+/// Pedal bindings act as internal let-statements inside a graph block, mapping
+/// an identifier to a specific intermediate signal routing step.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ValidatedPedalBinding {
     name: String,
@@ -149,6 +167,16 @@ pub struct ValidatedPedalBinding {
 }
 
 impl ValidatedPedalBinding {
+    /// Associates a valid DSP routing operation with an environment identifier.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{ValidatedPedalBinding, ValidatedPedalNode, SignalKind, PedalNodeKind};
+    ///
+    /// let node = ValidatedPedalNode::new(SignalKind::Mono, PedalNodeKind::Identity, "Identity");
+    /// let binding = ValidatedPedalBinding::new("my_signal", node);
+    /// ```
     #[must_use]
     pub fn new(name: impl Into<String>, node: ValidatedPedalNode) -> Self {
         Self {
@@ -157,11 +185,13 @@ impl ValidatedPedalBinding {
         }
     }
 
+    /// Identifies the bound variable in the local pedal environment.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Retrieves the internal DSP operation assigned to this variable.
     #[must_use]
     pub const fn node(&self) -> &ValidatedPedalNode {
         &self.node

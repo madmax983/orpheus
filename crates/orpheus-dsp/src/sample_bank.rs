@@ -29,6 +29,7 @@ const HIHAT_WAV: &[u8] = include_bytes!("../assets/hihat.wav");
 const SAMPLE_MANIFEST_FILE: &str = "samples.ron";
 const DEFAULT_WATCH_INTERVAL: Duration = Duration::from_millis(50);
 
+/// Represents a decoded mono audio sample ready for low-latency playback.
 #[derive(Clone, PartialEq)]
 pub struct PlaybackSample {
     frames: Arc<[f32]>,
@@ -49,11 +50,19 @@ impl PlaybackSample {
         }
     }
 
+    /// Grants read-only access to the underlying floating-point sample buffers.
+    ///
+    /// Audio is guaranteed to be mixed down to mono during the load process,
+    /// ensuring predictable scheduling regardless of the source file format.
     #[must_use]
     pub const fn frames(&self) -> &Arc<[f32]> {
         &self.frames
     }
 
+    /// Exposes the sample rate (e.g., 44100 Hz) encoded in the original file.
+    ///
+    /// This is required so the playback engine can resample the clip on-the-fly
+    /// if the system's output device is running at a different sample rate.
     #[must_use]
     pub const fn sample_rate_hz(&self) -> u32 {
         self.sample_rate_hz
