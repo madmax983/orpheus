@@ -208,10 +208,11 @@ pub enum BuiltinKind {
     VoiceParam4,
 }
 
-impl fmt::Display for BuiltinKind {
-    #[allow(clippy::too_many_lines)]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let name = match self {
+impl BuiltinKind {
+    /// Returns the string representation of the builtin.
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
             Self::Every => "every",
             Self::When => "when",
             Self::WhenMod => "whenmod",
@@ -310,8 +311,13 @@ impl fmt::Display for BuiltinKind {
             Self::VoiceParam2 => "p2",
             Self::VoiceParam3 => "p3",
             Self::VoiceParam4 => "p4",
-        };
-        write!(f, "{name}")
+        }
+    }
+}
+
+impl fmt::Display for BuiltinKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
