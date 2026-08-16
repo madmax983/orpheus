@@ -299,6 +299,19 @@ pub fn stack_values(values: Vec<Value>) -> Result<Value, EvalError> {
 }
 
 impl BuiltinFn {
+    /// Instantiates a new primitive transformation from the standard library.
+    ///
+    /// Built-in functions start with no bound arguments and a zeroed internal state.
+    /// They must have arguments applied to them via `apply_builtin_function` until
+    /// their arity is satisfied.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    ///
+    /// let fast = BuiltinFn::new(BuiltinKind::Fast);
+    /// ```
     #[must_use]
     pub const fn new(kind: BuiltinKind) -> Self {
         Self {
@@ -308,6 +321,20 @@ impl BuiltinFn {
         }
     }
 
+    /// Associates this function invocation with a specific source code location.
+    ///
+    /// Orpheus uses this salt to seed pseudo-random number generators inside
+    /// functions like `degrade` and `sometimes`. By tying the RNG to the AST
+    /// position, random operations sound consistent across hot-reloads of the
+    /// same `.ode` file, instead of jumping every time you hit save.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{BuiltinFn, BuiltinKind};
+    ///
+    /// let degraded = BuiltinFn::new(BuiltinKind::Degrade).with_site_salt(0x12345678);
+    /// ```
     #[must_use]
     pub const fn with_site_salt(mut self, site_salt: u64) -> Self {
         self.site_salt = Some(site_salt);

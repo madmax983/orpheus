@@ -13,12 +13,22 @@ use crate::engine::EngineError;
 use crate::routing::TrackId;
 use crate::voice::VoiceKind;
 
+/// Represents an audio event that has been strictly resolved to an absolute frame position.
+///
+/// While patterns operate in logical fractions of a cycle (e.g., "1/4 note"),
+/// the audio thread requires precise sample counts. The `Scheduler` translates
+/// those logical events into `ScheduledTrigger`s to guarantee jitter-free, sample-accurate playback.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScheduledTrigger {
+    /// The precise output frame count where the audio engine should start emitting sound for this event.
     pub frame: u64,
+    /// The absolute length of the event measured in audio frames, defining the boundary for envelopes and holds.
     pub duration_frames: u32,
+    /// The destination routing track for the event's audio signal, determining which mixer bus processes the sound.
     pub track_id: TrackId,
+    /// The actionable payload that informs the audio engine which sound source (sample or synth) to play.
     pub trigger: SampleTrigger,
+    /// A synthesized instrument voice to dynamically instantiate if the primary trigger doesn't resolve to a static sample.
     pub fallback_voice: Option<VoiceKind>,
 }
 

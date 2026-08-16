@@ -26,11 +26,25 @@ use crate::types::{Type, TypeVarId};
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScheme {
+    /// The list of universally quantified type variable IDs in this scheme.
     pub vars: Vec<TypeVarId>,
+    /// The underlying type that contains these variables.
     pub ty: Type,
 }
 
 impl TypeScheme {
+    /// Instantiates a type scheme that has no polymorphic type parameters.
+    ///
+    /// This is used for functions or values that operate on entirely concrete types
+    /// (e.g., `Option<f64>` instead of `Option<T>`).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use orpheus_lang::{TypeScheme, Type};
+    ///
+    /// let concrete_scheme = TypeScheme::monomorphic(Type::Number);
+    /// ```
     #[must_use]
     pub const fn monomorphic(ty: Type) -> Self {
         Self {
@@ -204,6 +218,10 @@ impl TypeEnv {
         self.entries.get(name)
     }
 
+    /// Extracts an iterator over every type scheme present in the typing environment.
+    ///
+    /// Useful when you need to inspect all available functions or values without
+    /// caring about their specific binding names.
     pub fn values(&self) -> impl Iterator<Item = &TypeScheme> {
         self.entries.values()
     }
