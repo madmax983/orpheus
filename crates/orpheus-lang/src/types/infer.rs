@@ -791,16 +791,16 @@ impl Inferencer {
     }
 
     fn free_vars_in_env(&self) -> BTreeSet<TypeVarId> {
-        self.env
-            .values()
-            .flat_map(|scheme| {
-                let mut vars = free_type_vars(&scheme.ty);
-                for quantified in &scheme.vars {
-                    vars.remove(quantified);
-                }
-                vars.into_iter()
-            })
-            .collect()
+        let mut all_vars = BTreeSet::new();
+        for scheme in self.env.values() {
+            let mut vars = BTreeSet::new();
+            free_type_vars_into(&scheme.ty, &mut vars);
+            for quantified in &scheme.vars {
+                vars.remove(quantified);
+            }
+            all_vars.extend(vars);
+        }
+        all_vars
     }
 }
 
@@ -829,18 +829,26 @@ fn substitute_scheme_vars(ty: &Type, replacements: &BTreeMap<TypeVarId, Type>) -
     }
 }
 
+/// ⚡ Bolt: Recursively extract free type variables into a single mutable BTreeSet reference
+/// to avoid excessive heap allocations and intermediate `extend` merges during type inference.
 fn free_type_vars(ty: &Type) -> BTreeSet<TypeVarId> {
+    let mut vars = BTreeSet::new();
+    free_type_vars_into(ty, &mut vars);
+    vars
+}
+
+fn free_type_vars_into(ty: &Type, vars: &mut BTreeSet<TypeVarId>) {
     match ty {
-        Type::Pattern(inner) => free_type_vars(inner),
+        Type::Pattern(inner) => free_type_vars_into(inner, vars),
         Type::Function(args, ret) => {
-            let mut vars = BTreeSet::new();
             for arg in args {
-                vars.extend(free_type_vars(arg));
+                free_type_vars_into(arg, vars);
             }
-            vars.extend(free_type_vars(ret));
-            vars
+            free_type_vars_into(ret, vars);
         }
-        Type::Var(var) => BTreeSet::from([*var]),
+        Type::Var(var) => {
+            vars.insert(*var);
+        }
         Type::Sample
         | Type::Pedal
         | Type::Voice
@@ -852,7 +860,7 @@ fn free_type_vars(ty: &Type) -> BTreeSet<TypeVarId> {
         | Type::PitchClassSet
         | Type::Tuning
         | Type::String
-        | Type::Unit => BTreeSet::new(),
+        | Type::Unit => {}
     }
 }
 
