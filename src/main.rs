@@ -65,7 +65,8 @@ fn run() -> anyhow::Result<()> {
         Ok((engine, stream)) => (engine, Some(stream), None),
         Err(error) => {
             let mut message = format!(
-                "{}\n  {}",
+                "{} {}\n  {}",
+                "[Warn]".yellow().bold(),
                 "Audio Output Disabled:".yellow().bold(),
                 error.to_string().red()
             );
