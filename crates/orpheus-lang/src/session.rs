@@ -1042,6 +1042,9 @@ impl ReplSession {
             Some("scd") => crate::supercollider_export::export_sample_pattern_to_supercollider(
                 pattern, path, cycles,
             ),
+            Some("foxdot" | "py") => {
+                crate::foxdot_export::export_sample_pattern_to_foxdot(pattern, path, cycles)
+            }
             _ => crate::export::export_sample_pattern_to_csv(pattern, path, cycles),
         }
         .map_err(|error: crate::EvalError| error.to_string())?;
@@ -1081,6 +1084,9 @@ impl ReplSession {
             Some("scd") => crate::supercollider_export::export_number_pattern_to_supercollider(
                 pattern, path, cycles,
             ),
+            Some("foxdot" | "py") => {
+                crate::foxdot_export::export_number_pattern_to_foxdot(pattern, path, cycles)
+            }
             _ => crate::export::export_number_pattern_to_csv(pattern, path, cycles),
         }
         .map_err(|error: crate::EvalError| error.to_string())?;
@@ -4428,4 +4434,45 @@ fn build_help_table() -> comfy_table::Table {
     }
 
     table
+}
+
+#[test]
+fn export_command_exports_number_pattern_to_foxdot() {
+    let mut session = ReplSession::new();
+    let path = std::env::temp_dir().join("orpheus-export-num-1_234_578.py");
+
+    session.eval_line("notes = 60 62 64").unwrap();
+    let message = session
+        .eval_line(&format!(":export notes {} 1", path.display()))
+        .unwrap();
+
+    assert!(message.contains("exported `notes`"));
+    assert!(path.exists());
+    let contents = std::fs::read_to_string(&path).unwrap();
+    assert!(contents.contains("# Orpheus `FoxDot` Export"));
+    assert!(contents.contains("p1 >> pluck(["));
+    assert!(contents.contains("60"));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn export_command_exports_sample_pattern_to_foxdot() {
+    let mut session = ReplSession::new();
+    let path = std::env::temp_dir().join("orpheus-export-sample-1_234_578.py");
+
+    session.eval_line("notes = bd sn cp").unwrap();
+    let message = session
+        .eval_line(&format!(":export notes {} 1", path.display()))
+        .unwrap();
+
+    assert!(message.contains("exported `notes`"));
+    assert!(path.exists());
+    let contents = std::fs::read_to_string(&path).unwrap();
+    assert!(contents.contains("# Orpheus `FoxDot` Export"));
+    assert!(contents.contains("d1 >> play(["));
+    assert!(contents.contains("'x'")); // bd
+    assert!(contents.contains("'o'")); // sn
+
+    let _ = std::fs::remove_file(path);
 }

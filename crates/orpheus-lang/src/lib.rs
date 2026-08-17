@@ -135,5 +135,8 @@ pub enum ReplMode {
     Strict,
 }
 
+pub(crate) mod foxdot_export;
+pub use foxdot_export::{export_number_pattern_to_foxdot, export_sample_pattern_to_foxdot};
+
 pub(crate) mod mermaid;
 pub use mermaid::export_sample_pattern_to_mermaid_gantt;
