@@ -47,3 +47,9 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+**[Optimizing Hindley-Milner Type Environment Inference]**
+**Learning:** TypeEnv clone operations during function parameter inference caused redundant heap allocations. The `std::mem::take` optimization applied to `bindings` in `infer_into_bindings` hinted at further memory efficiencies in `infer_binding`.
+**Action:** Replaced `.clone()` on `self.env` with surgical push/pop of previous variable states into a local `Vec`, avoiding complete environment duplication. This avoids cloning the environment on every user defined binding inference.
+**[Handling Lexical Scopes and Name Shadowing in Rust]**
+**Learning:** A critical edge case when saving/restoring type environments iteratively: parameter name shadowing (e.g., `|x, x|`) causes the last environment update to be the only one present.
+**Action:** When saving state and pushing to a `Vec` inside an iteration block, the restore phase must pop items in `reverse()` order (LIFO) to ensure the original shadowed binding is correctly restored at the end.

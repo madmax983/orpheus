@@ -193,6 +193,12 @@ impl TypeEnv {
         self.entries.insert(name.into(), scheme);
     }
 
+    /// Removes a variable mapping from the environment.
+    #[doc(hidden)]
+    pub fn remove(&mut self, name: &str) -> Option<TypeScheme> {
+        self.entries.remove(name)
+    }
+
     /// Looks up a variable's type scheme in the environment.
     ///
     /// Returns `Some(&TypeScheme)` if the name exists, which can then be instantiated
