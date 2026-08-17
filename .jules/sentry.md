@@ -49,3 +49,6 @@
 ## 2024-05-30 - Fix non-exhaustive matches for Hex and Bin in value.rs
 **Learning:** Found non-exhaustive pattern match errors in `crates/orpheus-lang/src/value.rs` around the newly added `Hex` and `Bin` BuiltinKinds when running `cargo test --all-targets --all-features`.
 **Action:** The solution was to find exhaustive `match` statements across the repository that use `BuiltinKind` and add matches for `BuiltinKind::Hex` and `BuiltinKind::Bin`. Also added missing arguments test cases for `hex` and `bin` to value.rs.
+## 2025-02-12 - Tracker Event Limit Check Coverage
+**Learning:** Found an untested panic prevention path (`total_steps > 100_000`) in `tracker.rs` that prevents memory exhaustion for huge exports. The previous tests only validated success outputs and zero-cycle inputs.
+**Action:** Wrote `export_exceeds_event_limit_returns_error` checking that OOM conditions gracefully return an `EvalError`.
