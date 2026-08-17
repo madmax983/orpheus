@@ -55,7 +55,7 @@ pub fn run_stdio_with_engine_and_path(
     let mut stderr = stderr.lock();
 
     if let Some(msg) = warning {
-        writeln!(stderr, "{}", format!("[Warn] {msg}").yellow().bold())?;
+        writeln!(stderr, "{} {msg}", "[Warn]".yellow().bold())?;
     }
 
     if let Some(path) = startup_path {
