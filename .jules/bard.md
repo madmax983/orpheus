@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-08-17 - [Broken Intra-Doc Links]
+**Confusion:** Running `cargo doc --workspace --no-deps` produced warnings for intra-doc links pointing to private items.
+**Clarification:** Replaced the broken intra-doc links (e.g. `[`METER_DECAY_HALF_LIFE_SECS`]`) with standard inline code blocks (e.g. `` `METER_DECAY_HALF_LIFE_SECS` ``) to prevent documentation generation warnings while still providing clear documentation.

@@ -548,7 +548,7 @@ pub fn focus_border_style() -> Style {
 ///
 /// This is the same ratio underlying [`format_cycle_position`], exposed as a raw
 /// float so downbeat visuals (the pulse glyph and progress bar) can be driven
-/// purely from a `TransportSnapshot`.
+/// purely from a [`TransportSnapshot`].
 ///
 /// # Examples
 /// ```
