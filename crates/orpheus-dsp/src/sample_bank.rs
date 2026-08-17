@@ -29,6 +29,21 @@ const HIHAT_WAV: &[u8] = include_bytes!("../assets/hihat.wav");
 const SAMPLE_MANIFEST_FILE: &str = "samples.ron";
 const DEFAULT_WATCH_INTERVAL: Duration = Duration::from_millis(50);
 
+/// A reference-counted, memory-resident audio sample buffer.
+///
+/// Holds floating-point audio data and the sample rate needed
+/// to interpret it for playback or analysis.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::PlaybackSample;
+/// use std::sync::Arc;
+///
+/// let frames: Arc<[f32]> = Arc::new([0.0; 100]);
+/// let sample = PlaybackSample::from_mono_frames(frames, 48000);
+/// assert_eq!(sample.sample_rate_hz(), 48000);
+/// ```
 #[derive(Clone, PartialEq)]
 pub struct PlaybackSample {
     frames: Arc<[f32]>,
@@ -49,11 +64,13 @@ impl PlaybackSample {
         }
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn frames(&self) -> &Arc<[f32]> {
         &self.frames
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn sample_rate_hz(&self) -> u32 {
         self.sample_rate_hz

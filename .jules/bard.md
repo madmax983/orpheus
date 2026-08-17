@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-05-26 - [Missing PlaybackSample and ScheduledTrigger Documentation]
+**Confusion:** The `PlaybackSample` and `ScheduledTrigger` DSP types were completely undocumented, leading to compiler warnings and developer confusion about the difference between conceptual cycle-based events and exact-frame execution triggers.
+**Clarification:** Added narrative documentation explaining the lifecycle of `PlaybackSample` in memory, and how `ScheduledTrigger` resolves jitter by binding logical event time to an absolute exact DSP clock frame. Included `## Examples` in both structs to clearly demonstrate how the types are instantiated or constructed in practice, whilst avoiding useless 'getter noise' for trivial field accessors.

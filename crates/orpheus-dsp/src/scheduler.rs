@@ -13,12 +13,36 @@ use crate::engine::EngineError;
 use crate::routing::TrackId;
 use crate::voice::VoiceKind;
 
+/// A timed audio event scheduled for exact-frame playback.
+///
+/// Ensures triggers are bound to an exact DSP frame, avoiding the jitter that
+/// would occur if events were evaluated loosely on cycle boundaries.
+///
+/// ## Examples
+///
+/// ```
+/// use orpheus_dsp::{ScheduledTrigger, SampleTrigger, TrackId};
+///
+/// let scheduled = ScheduledTrigger {
+///     frame: 44100,
+///     duration_frames: 4410,
+///     track_id: TrackId::new(0),
+///     trigger: SampleTrigger::named("hh"),
+///     fallback_voice: None,
+/// };
+/// assert_eq!(scheduled.frame, 44100);
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScheduledTrigger {
+    /// The absolute DSP clock frame when this trigger starts.
     pub frame: u64,
+    /// The duration of the event in frames.
     pub duration_frames: u32,
+    /// The routing track this trigger originated from.
     pub track_id: TrackId,
+    /// The trigger payload containing sample and control data.
     pub trigger: SampleTrigger,
+    /// An optional fallback voice kind if the sample cannot be played.
     pub fallback_voice: Option<VoiceKind>,
 }
 
