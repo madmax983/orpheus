@@ -82,3 +82,6 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+**[Refactored clippy::too_many_lines on BuiltinKind Display format match]**
+**Learning:** `clippy::too_many_lines` on the `fmt::Display` implementation for `BuiltinKind` (which matched 70+ variants to string literals) was resolved by creating a `pub(crate) const fn name(self) -> &'static str` on `BuiltinKind` and moving the massive match into it. This allows reusing the string mapping, isolates the large match, and significantly simplifies the formatting trait.
+**Action:** Extract large string-mapping matches from `fmt::Display` into a dedicated `name` or `as_str` method on the enum itself.

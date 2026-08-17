@@ -383,7 +383,7 @@ pub fn apply_builtin_function(function: &BuiltinFn, args: Vec<Value>) -> Result<
 }
 
 impl BuiltinKind {
-    const fn name(self) -> &'static str {
+    pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::Every => "every",
             Self::When => "when",
