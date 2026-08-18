@@ -5,6 +5,7 @@ pub(crate) mod arduino_export;
 pub(crate) mod ascii_roll;
 mod ast;
 mod builtins;
+pub mod csound_export;
 mod diagnostics;
 mod error;
 mod eval;
