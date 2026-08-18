@@ -38,10 +38,28 @@ use crate::{
 /// available in the base language.
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinKind {
+    /// Applies a transformation every N cycles.
+    ///
+    /// ## Examples
+    /// ```text
+    /// > every(3, fast(2), s("bd sn"))
+    /// ```
     Every,
+    /// Applies a transformation only when a boolean condition pattern is true.
+    ///
+    /// ## Examples
+    /// ```text
+    /// > when(euclid(3, 8), fast(2), s("bd sn"))
+    /// ```
     When,
     /// Applies a transform on cycles where `cycle mod period >= threshold` (Tidal `whenmod`).
     WhenMod,
+    /// Randomly applies a transformation with 50% probability.
+    ///
+    /// ## Examples
+    /// ```text
+    /// > sometimes(fast(2), s("bd sn"))
+    /// ```
     Sometimes,
     /// Randomly drops each event with probability 0.5, per event, deterministically.
     Degrade,
@@ -57,37 +75,140 @@ pub enum BuiltinKind {
     AlmostAlways,
     /// `sometimes_by(0.1, ...)`: applies the transform to very few events.
     AlmostNever,
+    /// Applies a transformation only to a specific cycle sub-interval.
+    ///
+    /// ## Examples
+    /// ```text
+    /// > within(0.0, 0.5, fast(2), s("bd sn"))
+    /// ```
     Within,
+    /// Masks a pattern with a boolean pattern, dropping events where the mask is false.
+    ///
+    /// ## Examples
+    /// ```text
+    /// > mask(euclid(3, 8), s("hh*8"))
+    /// ```
     Mask,
+    /// Delays events progressively within a pattern to create a strumming effect.
+    ///
+    /// ## Examples
+    /// ```text
+    /// > strum(0.1, n("c e g"))
+    /// ```
     Strum,
+    /// Rolls a pattern (repeats it continuously, usually used for drum rolls).
+    ///
+    /// ## Examples
+    /// ```text
+    /// > roll(s("bd"))
+    /// ```
     Roll,
+    /// Arpeggiates a chord pattern into a sequence of notes.
+    ///
+    /// ## Examples
+    /// ```text
+    /// > arp("up", n("c'maj"))
+    /// ```
     Arp,
+    /// Inverts a pattern's values or structure.
+    ///
+    /// ## Examples
+    /// ```text
+    /// > invert(n("c e g"))
+    /// ```
     Invert,
+    /// Drops the first N events from a pattern.
+    ///
+    /// ## Examples
+    /// ```text
+    /// > drop(1, s("bd sn cp hh"))
+    /// ```
     Drop,
+    /// Creates a chord pattern from a root note and chord name.
+    ///
+    /// ## Examples
+    /// ```text
+    /// > chord("maj7", n("c"))
+    /// ```
     Chord,
+    /// Generates a Euclidean rhythm pattern.
+    ///
+    /// ## Examples
+    /// ```text
+    /// > euclid(3, 8)
+    /// ```
     Euclid,
     /// Inverted euclidean gates: open exactly where `euclid` rests (Tidal `euclidInv`).
     EuclidInv,
     /// Two-pattern euclidean split: hits on the gates, rests on the complement (Tidal `euclidFull`).
     EuclidFull,
+    /// Generates a pattern using an L-system string rewriting system.
+    ///
+    /// ## Examples
+    /// ```text
+    /// > lsystem(3, "A", "A:AB, B:A")
+    /// ```
     Lsystem,
+    /// Generates a pattern based on Wolfram's 1D cellular automata.
+    ///
+    /// ## Examples
+    /// ```text
+    /// > wolfram(30, 8)
+    /// ```
     Wolfram,
+    /// Represents a set of pitch classes for microtonal or custom scales.
     PitchClassSet,
+    /// Specifies degrees within a scale.
     Degrees,
+    /// Speeds up a pattern by a given factor.
+    ///
+    /// ## Examples
+    /// ```text
+    /// > fast(2, s("bd sn"))
+    /// ```
     Fast,
+    /// Slows down a pattern by a given factor.
+    ///
+    /// ## Examples
+    /// ```text
+    /// > slow(2, s("bd sn"))
+    /// ```
     Slow,
+    /// Shifts a pattern forward or backward in time by a cycle fraction.
+    ///
+    /// ## Examples
+    /// ```text
+    /// > shift(0.25, s("bd sn"))
+    /// ```
     Shift,
+    /// Reverses the time flow of a pattern within each cycle.
+    ///
+    /// ## Examples
+    /// ```text
+    /// > rev(s("bd sn cp hh"))
+    /// ```
     Rev,
+    /// Controls the overall volume or gain level.
     Gain,
+    /// Enables or sets the mix level of a delay effect.
     Delay,
+    /// Sets the time parameter for a delay effect.
     DelayTime,
+    /// Sets the feedback amount for a delay effect.
     DelayFeedback,
+    /// Sets the cutoff frequency for a high-pass filter.
     Hpf,
+    /// Sets the cutoff frequency for a low-pass filter.
     Lpf,
+    /// Enables or sets the mix level of a reverb effect.
     Reverb,
+    /// Sets the room size parameter for a reverb effect.
     ReverbRoom,
+    /// Sets the damping amount for a reverb effect.
     ReverbDamp,
+    /// Sets a general filter cutoff frequency.
     Cutoff,
+    /// Enables or sets the mix level of a chorus effect.
     Chorus,
     /// Depth control for a chorus effect, measured in milliseconds of delay variation.
     ChorusDepth,
