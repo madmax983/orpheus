@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-05-19 - [Fixing Broken Intra-Doc Links to Private Items]
+**Confusion:** Building documentation with `cargo doc --no-deps` failed because several public functions and structs linked to private internal modules, constants, or functions (e.g., `METER_DECAY_HALF_LIFE_SECS`, `publish`, `PSG_HEADROOM_SCALE`), which is rejected by `-D rustdoc::private_intra_doc_links` and `-D rustdoc::broken_intra_doc_links`.
+**Clarification:** Replaced the intra-doc links `[`item`]` with standard markdown inline code formatting `` `item` `` in `crates/orpheus-dsp/src/engine.rs`, `crates/orpheus-dsp/src/graph/genesis_psg.rs`, `crates/orpheus-dsp/src/graph/primitives.rs`, `crates/orpheus-lang/src/orca/mod.rs`, `crates/orpheus-lang/src/orca/publish.rs`, and `crates/orpheus-lang/src/tui/style.rs`. This allows the text to remain readable and clearly refer to the private elements without breaking the public documentation build.
