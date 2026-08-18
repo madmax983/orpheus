@@ -244,6 +244,19 @@ mod tests {
         );
     }
 
+    use proptest::prelude::*;
+
+    proptest! {
+        /// 👺 Havoc: Tests that injecting arbitrary generated strings into the
+        /// command parser correctly ignores them without panicking via out-of-bounds indexing or slicing errors.
+        #[test]
+        fn test_havoc_proptest_orca_commands(s in "\\PC*") {
+            // Havoc: Inject arbitrary property-generated strings to simulate invalid commands.
+            // It shouldn't panic on string slicing.
+            let _ = parse_command(&s);
+        }
+    }
+
     #[test]
     fn bpm_zero_and_non_numeric_values_are_reference_no_ops() {
         // `setSpeed` skips falsy values; parseInt of junk is NaN.
