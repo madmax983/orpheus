@@ -189,8 +189,14 @@ impl TypeEnv {
     /// This makes the variable available for subsequent type inferences in the same environment.
     ///
     #[doc(hidden)]
-    pub fn insert(&mut self, name: impl Into<String>, scheme: TypeScheme) {
-        self.entries.insert(name.into(), scheme);
+    pub fn insert(&mut self, name: impl Into<String>, scheme: TypeScheme) -> Option<TypeScheme> {
+        self.entries.insert(name.into(), scheme)
+    }
+
+    /// Removes a variable from the type environment, returning its scheme if it existed.
+    #[doc(hidden)]
+    pub fn remove(&mut self, name: &str) -> Option<TypeScheme> {
+        self.entries.remove(name)
     }
 
     /// Looks up a variable's type scheme in the environment.

@@ -47,3 +47,7 @@
 **[Optimizing Event Generation with In-Place Mutation]**
 **Learning:** `arp_event_cluster` previously forced its caller, `arp_events`, to clone the `cluster` slice into a mutable `Vec` using `.to_vec()` so that it could mutate the `Events` before extending the main vector.
 **Action:** Replaced `process_event_clusters` which maps the result to a new `Vec` and required `cluster` cloning, with a new `mutate_event_clusters` which operates over a `&mut [Event<T>]`. This allows the transformation to be done in-place or efficiently appended without allocating a full `Vec` clone just to satisfy signature requirements.
+
+**[Avoiding Environment Clone in Type Inference]
+**Learning:** `Inferencer::infer_binding` was deep cloning the entire `TypeEnv` (which is a large `BTreeMap` of builtins) for every parameterized binding inferred. By having `TypeEnv::insert` return the previous value, and keeping track of the overridden bindings in a small vector, we can restore the environment state by inserting back the old values or removing newly added ones instead of cloning the entire environment tree.
+**Action:** Use `std::mem::replace` or track overridden values to avoid deep `clone()` on large state trees when the mutation is scoped and can be trivially rolled back.
