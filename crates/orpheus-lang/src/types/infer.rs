@@ -156,27 +156,36 @@ impl Inferencer {
             )));
         }
 
-        let saved_env = self.env.clone();
-        let result = (|| {
-            let mut param_types = Vec::with_capacity(params.len());
-            for param in params {
-                let ty = self.fresh_var_type();
-                self.env
-                    .insert(param.clone(), TypeScheme::monomorphic(ty.clone()));
-                param_types.push(ty);
-            }
+        let mut param_types = Vec::with_capacity(params.len());
+        let mut saved_bindings = Vec::with_capacity(params.len());
+        for param in params {
+            let ty = self.fresh_var_type();
+            let old_binding = self
+                .env
+                .insert(param.clone(), TypeScheme::monomorphic(ty.clone()));
+            saved_bindings.push((param, old_binding));
+            param_types.push(ty);
+        }
 
-            let body_ty = self.infer_expr(expr)?;
-            Ok(Type::curried(
+        let body_ty = self.infer_expr(expr);
+
+        for (param, old_binding) in saved_bindings.into_iter().rev() {
+            if let Some(binding) = old_binding {
+                self.env.insert(param.clone(), binding);
+            } else {
+                self.env.remove(param);
+            }
+        }
+
+        body_ty.map(|body_ty| {
+            Type::curried(
                 param_types
                     .into_iter()
                     .map(|ty| self.resolve(ty))
                     .collect::<Vec<_>>(),
                 self.resolve(body_ty),
-            ))
-        })();
-        self.env = saved_env;
-        result
+            )
+        })
     }
 
     fn infer_expr(&mut self, expr: &Expr) -> Result<Type, TypeError> {
