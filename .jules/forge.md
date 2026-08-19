@@ -82,3 +82,6 @@
 **Extracting Match Arms that mutate State**
 **Learning:** Destructuring mutable fields from `&mut self` and modifying them locally avoids passing `&mut self` to helper methods, preventing borrow checker issues.
 **Action:** Pass only the destructured fields (and other needed vars) directly to the helper methods rather than the entire `self` struct to satisfy the borrow checker.
+## 2026-08-19 - Refactored massive function with enum match to impl method
+**Learning:** When manually splitting large `match` statements across multiple helper functions to resolve `clippy::too_many_lines` (e.g., grouping variants by arity like `arity_1()`, `arity_2()`), the compiler's inherent exhaustiveness check for the enum is bypassed. You must carefully verify that no variants are accidentally omitted, as missing variants will fall through to default catch-all arms and cause runtime panics.
+**Action:** Extract large match arms into separate private helper methods on the enum.
