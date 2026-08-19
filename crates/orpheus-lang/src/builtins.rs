@@ -507,26 +507,37 @@ impl BuiltinKind {
         )
     }
 
-    #[allow(clippy::too_many_lines)]
     const fn arity(self) -> usize {
+        if let Some(a) = self.arity_0() {
+            return a;
+        }
+        if let Some(a) = self.arity_1() {
+            return a;
+        }
+        if let Some(a) = self.arity_2() {
+            return a;
+        }
+        if let Some(a) = self.arity_3() {
+            return a;
+        }
+        if let Some(a) = self.arity_4() {
+            return a;
+        }
+        if let Some(a) = self.arity_6() {
+            return a;
+        }
+        unreachable!()
+    }
+
+    const fn arity_0(self) -> Option<usize> {
         match self {
-            Self::Every
-            | Self::Arp
-            | Self::Slice
-            | Self::SliceIdx
-            | Self::Lsystem
-            | Self::Range
-            | Self::Off
-            | Self::Chunk
-            | Self::ChunkBack
-            | Self::SometimesBy => 3,
-            Self::When
-            | Self::WhenMod
-            | Self::Within
-            | Self::WChoose
-            | Self::WRandCat
-            | Self::WPChoose
-            | Self::EuclidFull => 4,
+            Self::Rand => Some(0),
+            _ => None,
+        }
+    }
+
+    const fn arity_1(self) -> Option<usize> {
+        match self {
             Self::PitchClassSet
             | Self::Rev
             | Self::Sample
@@ -543,7 +554,13 @@ impl BuiltinKind {
             | Self::IRand
             | Self::Run
             | Self::Scan
-            | Self::Degrade => 1,
+            | Self::Degrade => Some(1),
+            _ => None,
+        }
+    }
+
+    const fn arity_2(self) -> Option<usize> {
+        match self {
             Self::Sometimes
             | Self::DegradeBy
             | Self::Often
@@ -588,7 +605,6 @@ impl BuiltinKind {
             | Self::Rate
             | Self::Jux
             | Self::Through
-            | Self::MidiCc
             | Self::Tune
             | Self::Cat
             | Self::RandCat
@@ -605,10 +621,45 @@ impl BuiltinKind {
             | Self::VoiceParam2
             | Self::VoiceParam3
             | Self::VoiceParam4
-            | Self::Notes => 2,
-            Self::PluginParam => 3,
-            Self::Markov => 6,
-            Self::Rand => 0,
+            | Self::Notes => Some(2),
+            _ => None,
+        }
+    }
+
+    const fn arity_3(self) -> Option<usize> {
+        match self {
+            Self::Every
+            | Self::Arp
+            | Self::Slice
+            | Self::SliceIdx
+            | Self::Lsystem
+            | Self::Range
+            | Self::Off
+            | Self::Chunk
+            | Self::ChunkBack
+            | Self::SometimesBy
+            | Self::PluginParam => Some(3),
+            _ => None,
+        }
+    }
+
+    const fn arity_4(self) -> Option<usize> {
+        match self {
+            Self::When
+            | Self::WhenMod
+            | Self::Within
+            | Self::WChoose
+            | Self::WRandCat
+            | Self::WPChoose
+            | Self::EuclidFull => Some(4),
+            _ => None,
+        }
+    }
+
+    const fn arity_6(self) -> Option<usize> {
+        match self {
+            Self::Markov => Some(6),
+            _ => None,
         }
     }
 
@@ -628,116 +679,182 @@ impl BuiltinKind {
         }
     }
 
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::needless_pass_by_value)]
     fn execute(self, function: &BuiltinFn, args: Vec<Value>) -> Result<Value, EvalError> {
+        let args = match self.execute_routing(function, args) {
+            Ok(res) => return res,
+            Err(args) => args,
+        };
+        let args = match self.execute_audio_effects(function, args) {
+            Ok(res) => return res,
+            Err(args) => args,
+        };
+        let args = match self.execute_generators(function, args) {
+            Ok(res) => return res,
+            Err(args) => args,
+        };
+        self.execute_structural(function, args).unwrap_or_else(|_| unreachable!("unhandled builtin: {}", self.name()))
+    }
+
+    fn execute_routing(
+        self,
+        function: &BuiltinFn,
+        args: Vec<Value>,
+    ) -> Result<Result<Value, EvalError>, Vec<Value>> {
         match self {
-            Self::Every => apply_every(args),
-            Self::When => apply_when(args),
-            Self::WhenMod => apply_whenmod(args),
-            Self::Sometimes => apply_sometimes(args, function.site_salt.unwrap_or_default()),
-            Self::Degrade => apply_degrade(args, function.site_salt.unwrap_or_default()),
-            Self::DegradeBy => apply_degrade_by(args, function.site_salt.unwrap_or_default()),
-            Self::SometimesBy => {
-                apply_sometimes_by(args, function.site_salt.unwrap_or_default(), self.name())
-            }
+            Self::Every => Ok(apply_every(args)),
+            Self::When => Ok(apply_when(args)),
+            Self::WhenMod => Ok(apply_whenmod(args)),
+            Self::Sometimes => Ok(apply_sometimes(
+                args,
+                function.site_salt.unwrap_or_default(),
+            )),
+            Self::Degrade => Ok(apply_degrade(args, function.site_salt.unwrap_or_default())),
+            Self::DegradeBy => Ok(apply_degrade_by(
+                args,
+                function.site_salt.unwrap_or_default(),
+            )),
+            Self::SometimesBy => Ok(apply_sometimes_by(
+                args,
+                function.site_salt.unwrap_or_default(),
+                self.name(),
+            )),
             Self::Often | Self::Rarely | Self::AlmostAlways | Self::AlmostNever => {
-                apply_sometimes_by_wrapper(
+                Ok(apply_sometimes_by_wrapper(
                     args,
                     function.site_salt.unwrap_or_default(),
                     self.name(),
                     self.fixed_sometimes_by_probability(),
-                )
+                ))
             }
-            Self::Within => apply_within(args),
-            Self::Mask => apply_mask(args),
-            Self::Strum => apply_strum(args),
-            Self::Roll => apply_roll(args),
-            Self::Arp => apply_arp(args),
-            Self::Invert => apply_invert(args),
-            Self::Drop => apply_drop(args),
-            Self::Chord => apply_chord(args),
-            Self::Euclid => apply_euclid(args, false, "euclid"),
-            Self::EuclidInv => apply_euclid(args, true, "euclid_inv"),
-            Self::EuclidFull => apply_euclid_full(args),
-            Self::Run => apply_run(args),
-            Self::Scan => apply_scan(args),
-            Self::Lsystem => apply_lsystem(args),
-            Self::Wolfram => apply_wolfram(args),
-            Self::PitchClassSet => apply_pitch_class_set(args),
-            Self::Degrees => apply_degrees(args),
-            Self::Fast => apply_fast(args),
-            Self::Slow => apply_slow(args),
-            Self::Shift => apply_shift(args),
-            Self::Rev => apply_rev(args),
-            Self::Gain => apply_gain(args),
-            Self::Delay => apply_delay(args),
-            Self::DelayTime => apply_delay_time(args),
-            Self::DelayFeedback => apply_delay_feedback(args),
-            Self::Hpf => apply_hpf(args),
-            Self::Lpf => apply_lpf(args),
-            Self::Reverb => apply_reverb(args),
-            Self::ReverbRoom => apply_reverb_room(args),
-            Self::ReverbDamp => apply_reverb_damp(args),
-            Self::Cutoff => apply_cutoff(args),
-            Self::Chorus => apply_chorus(args),
-            Self::ChorusDepth => apply_chorus_depth(args),
-            Self::ChorusRate => apply_chorus_rate(args),
-            Self::Compressor => apply_compressor(args),
-            Self::CompressorThreshold => apply_compressor_threshold(args),
-            Self::CompressorRatio => apply_compressor_ratio(args),
-            Self::Res => apply_res(args),
-            Self::Drive => apply_drive(args),
-            Self::Pw => apply_pw(args),
-            Self::Pan => apply_pan(args),
-            Self::Pitch => apply_pitch(args),
-            Self::Transpose => apply_transpose(args),
-            Self::Sample => apply_sample(args),
-            Self::Onset => apply_onset(args),
-            Self::Rate => apply_rate(args),
-            Self::Slice => apply_slice(args),
-            Self::SliceIdx => apply_slice_idx(args),
-            Self::Rand => apply_rand(args, function.site_salt.unwrap_or_default()),
-            Self::Segment => apply_segment(args),
-            Self::Range => apply_range(args),
-            Self::Choose => apply_choose(args, function.site_salt.unwrap_or_default()),
-            Self::WChoose => apply_wchoose(args, function.site_salt.unwrap_or_default()),
-            Self::IRand => apply_irand(args, function.site_salt.unwrap_or_default()),
-            Self::Jux => apply_jux(args),
-            Self::Through => apply_through(args),
-            Self::MidiCc => apply_midi_cc(args),
-            Self::Chaos => apply_chaos(args, function.site_salt.unwrap_or_default()),
-            Self::Palindrome => apply_palindrome(args),
-            Self::Tuning => apply_tuning(args),
-            Self::LoadScl => apply_load_scl(args),
-            Self::Tune => apply_tune(args),
-            Self::Cat | Self::Append => apply_cat(args, self.name()),
-            Self::RandCat => apply_randcat(args, function.site_salt.unwrap_or_default()),
-            Self::WRandCat => apply_wrandcat_patterns(args, function.site_salt.unwrap_or_default()),
-            Self::PChoose => apply_pchoose(args, function.site_salt.unwrap_or_default()),
-            Self::WPChoose => apply_wpchoose(args, function.site_salt.unwrap_or_default()),
-            Self::Markov => apply_markov(args, function.site_salt.unwrap_or_default()),
-            Self::Iter => apply_iter(args, false),
-            Self::IterBack => apply_iter(args, true),
-            Self::Off => apply_off(args),
-            Self::Rot => apply_rot(args),
-            Self::Chunk => apply_chunk(args, false),
-            Self::ChunkBack => apply_chunk(args, true),
-            Self::Shuffle => {
-                apply_shuffle_slots(args, false, function.site_salt.unwrap_or_default())
-            }
-            Self::Scramble => {
-                apply_shuffle_slots(args, true, function.site_salt.unwrap_or_default())
-            }
-            Self::Vst => apply_vst(args),
-            Self::Au => apply_au(args),
-            Self::Notes => apply_plugin_notes(args),
-            Self::Hex => apply_hex(args),
-            Self::Bin => apply_bin(args),
-            Self::PluginParam => apply_plugin_param(args),
-            Self::VoiceParam1 => apply_voice_param(args, 0),
-            Self::VoiceParam2 => apply_voice_param(args, 1),
-            Self::VoiceParam3 => apply_voice_param(args, 2),
-            Self::VoiceParam4 => apply_voice_param(args, 3),
+            Self::Within => Ok(apply_within(args)),
+            Self::Mask => Ok(apply_mask(args)),
+            _ => Err(args),
+        }
+    }
+
+    fn execute_audio_effects(
+        self,
+        _function: &BuiltinFn,
+        args: Vec<Value>,
+    ) -> Result<Result<Value, EvalError>, Vec<Value>> {
+        match self {
+            Self::Gain => Ok(apply_gain(args)),
+            Self::Delay => Ok(apply_delay(args)),
+            Self::DelayTime => Ok(apply_delay_time(args)),
+            Self::DelayFeedback => Ok(apply_delay_feedback(args)),
+            Self::Hpf => Ok(apply_hpf(args)),
+            Self::Lpf => Ok(apply_lpf(args)),
+            Self::Reverb => Ok(apply_reverb(args)),
+            Self::ReverbRoom => Ok(apply_reverb_room(args)),
+            Self::ReverbDamp => Ok(apply_reverb_damp(args)),
+            Self::Cutoff => Ok(apply_cutoff(args)),
+            Self::Chorus => Ok(apply_chorus(args)),
+            Self::ChorusDepth => Ok(apply_chorus_depth(args)),
+            Self::ChorusRate => Ok(apply_chorus_rate(args)),
+            Self::Compressor => Ok(apply_compressor(args)),
+            Self::CompressorThreshold => Ok(apply_compressor_threshold(args)),
+            Self::CompressorRatio => Ok(apply_compressor_ratio(args)),
+            Self::Res => Ok(apply_res(args)),
+            Self::Drive => Ok(apply_drive(args)),
+            Self::Pw => Ok(apply_pw(args)),
+            Self::Pan => Ok(apply_pan(args)),
+            Self::Pitch => Ok(apply_pitch(args)),
+            Self::Transpose => Ok(apply_transpose(args)),
+            Self::Sample => Ok(apply_sample(args)),
+            Self::Onset => Ok(apply_onset(args)),
+            Self::Rate => Ok(apply_rate(args)),
+            Self::Slice => Ok(apply_slice(args)),
+            Self::SliceIdx => Ok(apply_slice_idx(args)),
+            _ => Err(args),
+        }
+    }
+
+    fn execute_generators(
+        self,
+        function: &BuiltinFn,
+        args: Vec<Value>,
+    ) -> Result<Result<Value, EvalError>, Vec<Value>> {
+        match self {
+            Self::Rand => Ok(apply_rand(args, function.site_salt.unwrap_or_default())),
+            Self::Choose => Ok(apply_choose(args, function.site_salt.unwrap_or_default())),
+            Self::WChoose => Ok(apply_wchoose(args, function.site_salt.unwrap_or_default())),
+            Self::IRand => Ok(apply_irand(args, function.site_salt.unwrap_or_default())),
+            Self::Chaos => Ok(apply_chaos(args, function.site_salt.unwrap_or_default())),
+            Self::PChoose => Ok(apply_pchoose(args, function.site_salt.unwrap_or_default())),
+            Self::WPChoose => Ok(apply_wpchoose(args, function.site_salt.unwrap_or_default())),
+            Self::Markov => Ok(apply_markov(args, function.site_salt.unwrap_or_default())),
+            Self::Run => Ok(apply_run(args)),
+            Self::Scan => Ok(apply_scan(args)),
+            Self::Lsystem => Ok(apply_lsystem(args)),
+            Self::Wolfram => Ok(apply_wolfram(args)),
+            _ => Err(args),
+        }
+    }
+
+    fn execute_structural(
+        self,
+        function: &BuiltinFn,
+        args: Vec<Value>,
+    ) -> Result<Result<Value, EvalError>, Vec<Value>> {
+        match self {
+            Self::Strum => Ok(apply_strum(args)),
+            Self::Roll => Ok(apply_roll(args)),
+            Self::Arp => Ok(apply_arp(args)),
+            Self::Invert => Ok(apply_invert(args)),
+            Self::Drop => Ok(apply_drop(args)),
+            Self::Chord => Ok(apply_chord(args)),
+            Self::Euclid => Ok(apply_euclid(args, false, "euclid")),
+            Self::EuclidInv => Ok(apply_euclid(args, true, "euclid_inv")),
+            Self::EuclidFull => Ok(apply_euclid_full(args)),
+            Self::PitchClassSet => Ok(apply_pitch_class_set(args)),
+            Self::Degrees => Ok(apply_degrees(args)),
+            Self::Fast => Ok(apply_fast(args)),
+            Self::Slow => Ok(apply_slow(args)),
+            Self::Shift => Ok(apply_shift(args)),
+            Self::Rev => Ok(apply_rev(args)),
+            Self::Segment => Ok(apply_segment(args)),
+            Self::Range => Ok(apply_range(args)),
+            Self::Jux => Ok(apply_jux(args)),
+            Self::Through => Ok(apply_through(args)),
+            Self::MidiCc => Ok(apply_midi_cc(args)),
+            Self::Palindrome => Ok(apply_palindrome(args)),
+            Self::Tuning => Ok(apply_tuning(args)),
+            Self::LoadScl => Ok(apply_load_scl(args)),
+            Self::Tune => Ok(apply_tune(args)),
+            Self::Cat | Self::Append => Ok(apply_cat(args, self.name())),
+            Self::RandCat => Ok(apply_randcat(args, function.site_salt.unwrap_or_default())),
+            Self::WRandCat => Ok(apply_wrandcat_patterns(
+                args,
+                function.site_salt.unwrap_or_default(),
+            )),
+            Self::Iter => Ok(apply_iter(args, false)),
+            Self::IterBack => Ok(apply_iter(args, true)),
+            Self::Off => Ok(apply_off(args)),
+            Self::Rot => Ok(apply_rot(args)),
+            Self::Chunk => Ok(apply_chunk(args, false)),
+            Self::ChunkBack => Ok(apply_chunk(args, true)),
+            Self::Shuffle => Ok(apply_shuffle_slots(
+                args,
+                false,
+                function.site_salt.unwrap_or_default(),
+            )),
+            Self::Scramble => Ok(apply_shuffle_slots(
+                args,
+                true,
+                function.site_salt.unwrap_or_default(),
+            )),
+            Self::Vst => Ok(apply_vst(args)),
+            Self::Au => Ok(apply_au(args)),
+            Self::Notes => Ok(apply_plugin_notes(args)),
+            Self::Hex => Ok(apply_hex(args)),
+            Self::Bin => Ok(apply_bin(args)),
+            Self::PluginParam => Ok(apply_plugin_param(args)),
+            Self::VoiceParam1 => Ok(apply_voice_param(args, 0)),
+            Self::VoiceParam2 => Ok(apply_voice_param(args, 1)),
+            Self::VoiceParam3 => Ok(apply_voice_param(args, 2)),
+            Self::VoiceParam4 => Ok(apply_voice_param(args, 3)),
+            _ => Err(args),
         }
     }
 }
