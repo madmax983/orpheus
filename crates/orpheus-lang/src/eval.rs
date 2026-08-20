@@ -86,6 +86,17 @@ pub fn eval_module(source: &str, mode: ReplMode) -> Result<BTreeMap<String, Valu
 /// (`bd`/`sn`/`cp`/`hh`); sessions pass their live bank so directory-loaded
 /// samples resolve too.
 ///
+/// # Examples
+///
+/// ```
+/// use orpheus_lang::{eval_module_with_samples, ReplMode};
+/// use orpheus_dsp::SampleBank;
+///
+/// let samples = SampleBank::default();
+/// let env = eval_module_with_samples("x = bd sn", ReplMode::Loose, &samples).unwrap();
+/// assert!(env.contains_key("x"));
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`EvalError`] when parsing fails or when evaluation encounters an
@@ -146,6 +157,19 @@ pub fn eval_into_bindings(
 /// The REPL session uses this variant so voice definitions resolve against
 /// its live bank (directory loads, watcher reloads); [`eval_into_bindings`]
 /// delegates here with the built-in bank.
+///
+/// # Examples
+///
+/// ```
+/// use std::collections::BTreeMap;
+/// use orpheus_lang::{eval_into_bindings_with_samples, ReplMode};
+/// use orpheus_dsp::SampleBank;
+///
+/// let samples = SampleBank::default();
+/// let mut env = BTreeMap::new();
+/// eval_into_bindings_with_samples("a = bd", ReplMode::Loose, &mut env, &samples).unwrap();
+/// assert!(env.contains_key("a"));
+/// ```
 ///
 /// # Errors
 ///

@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2024-08-20 - [Missing SampleBank Evaluation Examples]
+**Confusion:** The `eval_module_with_samples` and `eval_into_bindings_with_samples` functions lacked executable examples, failing to demonstrate how a `SampleBank` is passed into the environment for runtime resolution of `voice { ... }` samples.
+**Clarification:** Added `## Examples` doctests to both functions illustrating how to construct a `SampleBank` and pass it explicitly during evaluation, fulfilling the Bard `# Examples` requirement.
