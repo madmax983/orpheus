@@ -36,3 +36,6 @@
 ## 2024-05-19 - [Missing Module Level Test Documentation]
 **Confusion:** The integration test files lacked module-level documentation `//!`, violating the Bard philosophy of explaining *why* the test suite exists and the scope of its verifications.
 **Clarification:** Added high-level `//!` module comments to all integration test files in the workspace (including Havoc tests and parser tests) outlining their testing domain and context.
+## 2026-08-20 - [Missing Documentation for Transient and MIDI APIs]
+**Confusion:** The `detect_transient_markers`, `rebase_transient_markers`, and `resolve_onset_slice` functions in `transient.rs` as well as the MIDI parsing functions `cc_normalized`, `update_from_message`, and `drain_note_events` in `midi_input.rs` were undocumented, lacking execution examples and explanations of their algorithmic context.
+**Clarification:** Added detailed `///` documentation to all 6 functions, including clear explanations of their behavior and valid, executable `## Examples` sections demonstrating realistic use cases (e.g., simulating a drum hit buffer, receiving a CC message).

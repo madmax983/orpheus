@@ -17,6 +17,29 @@ const RELEASE_COEFFICIENT: f32 = 0.02;
 const THRESHOLD_MULTIPLIER: f32 = 3.0;
 const MIN_THRESHOLD: f32 = 0.005;
 
+/// Detects rhythmic transients (onsets) within an audio buffer.
+///
+/// This analyzes the amplitude envelope and flux to find points where a sound
+/// starts sharply (like a drum hit). It's primarily used to automatically "chop"
+/// loops into individual one-shot samples.
+///
+/// Returns an `Arc<[f64]>` of marker positions, normalized between `0.0` (start
+/// of the buffer) and `1.0` (end of the buffer).
+///
+/// # Examples
+///
+/// ```rust
+/// use orpheus_dsp::detect_transient_markers;
+///
+/// // 300 frames of audio: silence, a loud hit at 10, a medium hit at 110, etc.
+/// let mut frames = vec![0.0_f32; 300];
+/// frames[10] = 1.0; frames[110] = 0.6; frames[210] = 0.3;
+///
+/// let markers = detect_transient_markers(&frames, 48_000);
+/// assert_eq!(markers.len(), 3);
+/// // First marker is roughly at 10 / 300 = 0.0333...
+/// assert!((markers[0] - 0.0333).abs() < 0.001);
+/// ```
 #[allow(clippy::cast_precision_loss)]
 pub fn detect_transient_markers(frames: &[f32], sample_rate_hz: u32) -> Arc<[f64]> {
     if frames.is_empty() {
@@ -84,6 +107,29 @@ pub fn detect_transient_markers(frames: &[f32], sample_rate_hz: u32) -> Arc<[f64
     )
 }
 
+/// Re-normalizes transient markers to fit within a specific sub-region of a sample.
+///
+/// This is crucial when a user selects a slice of a larger sample (e.g., just the
+/// second bar of a drum loop) and wants to chop that specific region. The original
+/// markers must be filtered and shifted so they map from `0.0` to `1.0` within the
+/// new bounds.
+///
+/// # Examples
+///
+/// ```rust
+/// use orpheus_dsp::rebase_transient_markers;
+///
+/// // Markers at 10%, 40%, and 80%
+/// let markers = vec![0.1, 0.4, 0.8];
+///
+/// // We only care about the region from 25% to 75%
+/// let rebased = rebase_transient_markers(&markers, 0.25, 0.75);
+///
+/// // Only the 40% marker was in range. It's now rebased:
+/// // (0.4 - 0.25) / (0.75 - 0.25) = 0.15 / 0.50 = 0.3
+/// assert_eq!(rebased.len(), 1);
+/// assert!((rebased[0] - 0.3).abs() < 1.0e-6);
+/// ```
 #[allow(clippy::cast_precision_loss)]
 pub fn rebase_transient_markers(markers: &[f64], start: f64, end: f64) -> Arc<[f64]> {
     let range = end - start;
@@ -101,6 +147,28 @@ pub fn rebase_transient_markers(markers: &[f64], start: f64, end: f64) -> Arc<[f
     )
 }
 
+/// Determines the start and end positions of a specific audio slice based on onset markers.
+///
+/// Given a list of normalized markers, this returns the region spanning from the
+/// requested `onset_index` to the next marker (or `1.0` if it's the last marker).
+/// If the index is out of bounds, returns `None`.
+///
+/// # Examples
+///
+/// ```rust
+/// use orpheus_dsp::resolve_onset_slice;
+///
+/// let markers = vec![0.1, 0.4, 0.8];
+///
+/// // Request the slice starting at index 1 (the 40% marker).
+/// // It should end at the next marker (80%).
+/// let slice = resolve_onset_slice(&markers, 1);
+/// assert_eq!(slice, Some((0.4, 0.8)));
+///
+/// // Request the last slice (starts at 80%, ends at end-of-file 100%).
+/// let slice = resolve_onset_slice(&markers, 2);
+/// assert_eq!(slice, Some((0.8, 1.0)));
+/// ```
 pub fn resolve_onset_slice(markers: &[f64], onset_index: u32) -> Option<(f64, f64)> {
     if markers.is_empty() {
         return (onset_index == 0).then_some((0.0, 1.0));
