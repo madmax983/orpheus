@@ -51,6 +51,24 @@ pub fn reset_state_for_test() {
     }
 }
 
+/// Retrieves the last seen normalized value for a specific MIDI Control Change (CC).
+///
+/// The raw `0..=127` MIDI value is converted to a `0.0..=1.0` float, making it
+/// universally compatible with standard Orpheus modulation ranges.
+///
+/// Returns `0.0` if the controller index is out of bounds or no value has been seen yet.
+///
+/// # Examples
+///
+/// ```rust
+/// use orpheus_lang::midi_input::{cc_normalized, update_from_message};
+///
+/// // Simulate receiving CC #10 with value 64 (roughly 50%)
+/// update_from_message(&[0xB0, 10, 64]);
+///
+/// let value = cc_normalized(10);
+/// assert!((value - (64.0 / 127.0)).abs() < 0.001);
+/// ```
 pub fn cc_normalized(controller: u8) -> f64 {
     state()
         .cc_values
@@ -61,6 +79,23 @@ pub fn cc_normalized(controller: u8) -> f64 {
         })
 }
 
+/// Parses raw MIDI bytes and updates the shared global state for notes and CCs.
+///
+/// This is designed to be called directly from an audio backend's MIDI callback
+/// thread. It uses lock-free atomics for Continuous Controllers (CC) and a fast mutex queue
+/// for note events to minimize jitter.
+///
+/// # Examples
+///
+/// ```rust
+/// use orpheus_lang::midi_input::update_from_message;
+///
+/// // Parse a Note On message (Channel 1, Note 60, Velocity 100)
+/// update_from_message(&[0x90, 60, 100]);
+///
+/// // Parse a CC message (Channel 1, Controller 7, Value 127)
+/// update_from_message(&[0xB0, 7, 127]);
+/// ```
 pub fn update_from_message(message: &[u8]) {
     if message.is_empty() {
         return;
@@ -100,6 +135,28 @@ pub fn update_from_message(message: &[u8]) {
     }
 }
 
+/// Extracts and clears all pending MIDI note events (On/Off).
+///
+/// This is typically called at the start of a render cycle to process any
+/// keystrokes or pad hits that arrived since the last block. The queue is completely
+/// drained to prevent backlogging.
+///
+/// # Examples
+///
+/// ```rust
+/// use orpheus_lang::midi_input::{drain_note_events, update_from_message};
+///
+/// // Send two note events
+/// update_from_message(&[0x90, 60, 100]); // Note On
+/// update_from_message(&[0x80, 60, 0]);   // Note Off
+///
+/// let events = drain_note_events();
+/// assert_eq!(events.len(), 2);
+/// assert_eq!(events[0].note, 60);
+///
+/// // Subsequent calls return empty until new messages arrive
+/// assert!(drain_note_events().is_empty());
+/// ```
 pub fn drain_note_events() -> Vec<MidiNoteEvent> {
     state()
         .note_events
